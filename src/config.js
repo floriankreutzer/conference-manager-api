@@ -35,6 +35,12 @@ function parseInteger(value, fallback, { min, max, code }) {
   return parsed;
 }
 
+function parseMode(env) {
+  const mode = env.NODE_ENV || 'development';
+  if (!MODES.has(mode)) throw new ConfigurationError('NODE_ENV_INVALID');
+  return mode;
+}
+
 function parseOrigin(value, mode) {
   const fallback = mode === 'development' || mode === 'test' ? 'http://localhost:3000' : null;
   const candidate = value || fallback;
@@ -88,9 +94,36 @@ function parseDatabaseSsl(value, mode) {
   return selected;
 }
 
+export function loadDatabaseConfig(env = process.env, mode = parseMode(env)) {
+  return Object.freeze({
+    databaseUrl: parseDatabaseUrl(env.DATABASE_URL, mode),
+    databaseSsl: parseDatabaseSsl(env.DATABASE_SSL, mode),
+    databasePoolMax: parseInteger(env.DATABASE_POOL_MAX, DEFAULTS.databasePoolMax, {
+      min: 1,
+      max: 50,
+      code: 'DATABASE_POOL_MAX_INVALID',
+    }),
+    databaseConnectionTimeoutMs: parseInteger(
+      env.DATABASE_CONNECTION_TIMEOUT_MS,
+      DEFAULTS.databaseConnectionTimeoutMs,
+      { min: 500, max: 30_000, code: 'DATABASE_CONNECTION_TIMEOUT_MS_INVALID' },
+    ),
+    databaseIdleTimeoutMs: parseInteger(env.DATABASE_IDLE_TIMEOUT_MS, DEFAULTS.databaseIdleTimeoutMs, {
+      min: 1_000,
+      max: 300_000,
+      code: 'DATABASE_IDLE_TIMEOUT_MS_INVALID',
+    }),
+    databaseStatementTimeoutMs: parseInteger(
+      env.DATABASE_STATEMENT_TIMEOUT_MS,
+      DEFAULTS.databaseStatementTimeoutMs,
+      { min: 500, max: 120_000, code: 'DATABASE_STATEMENT_TIMEOUT_MS_INVALID' },
+    ),
+  });
+}
+
 export function loadConfig(env = process.env) {
-  const mode = env.NODE_ENV || 'development';
-  if (!MODES.has(mode)) throw new ConfigurationError('NODE_ENV_INVALID');
+  const mode = parseMode(env);
+  const database = loadDatabaseConfig(env, mode);
 
   return Object.freeze({
     mode,
@@ -137,28 +170,7 @@ export function loadConfig(env = process.env) {
       max: 10_000,
       code: 'READINESS_TIMEOUT_MS_INVALID',
     }),
-    databaseUrl: parseDatabaseUrl(env.DATABASE_URL, mode),
-    databaseSsl: parseDatabaseSsl(env.DATABASE_SSL, mode),
-    databasePoolMax: parseInteger(env.DATABASE_POOL_MAX, DEFAULTS.databasePoolMax, {
-      min: 1,
-      max: 50,
-      code: 'DATABASE_POOL_MAX_INVALID',
-    }),
-    databaseConnectionTimeoutMs: parseInteger(
-      env.DATABASE_CONNECTION_TIMEOUT_MS,
-      DEFAULTS.databaseConnectionTimeoutMs,
-      { min: 500, max: 30_000, code: 'DATABASE_CONNECTION_TIMEOUT_MS_INVALID' },
-    ),
-    databaseIdleTimeoutMs: parseInteger(env.DATABASE_IDLE_TIMEOUT_MS, DEFAULTS.databaseIdleTimeoutMs, {
-      min: 1_000,
-      max: 300_000,
-      code: 'DATABASE_IDLE_TIMEOUT_MS_INVALID',
-    }),
-    databaseStatementTimeoutMs: parseInteger(
-      env.DATABASE_STATEMENT_TIMEOUT_MS,
-      DEFAULTS.databaseStatementTimeoutMs,
-      { min: 500, max: 120_000, code: 'DATABASE_STATEMENT_TIMEOUT_MS_INVALID' },
-    ),
+    ...database,
   });
 }
 
