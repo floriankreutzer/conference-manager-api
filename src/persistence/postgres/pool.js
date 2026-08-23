@@ -2,6 +2,8 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
+export const CURRENT_SCHEMA_VERSION = 1;
+
 export function createPostgresPool(config) {
   if (!config?.databaseUrl) throw new TypeError('DATABASE_URL_REQUIRED');
 
@@ -28,4 +30,15 @@ export function createPostgresPool(config) {
 export async function isPostgresReady(pool) {
   const result = await pool.query('SELECT 1 AS ready');
   return result.rows[0]?.ready === 1;
+}
+
+export async function isPostgresSchemaReady(pool, expectedVersion = CURRENT_SCHEMA_VERSION) {
+  const result = await pool.query({
+    name: 'schema-readiness',
+    text: `
+      SELECT COALESCE(MAX(version), 0) AS version
+      FROM schema_migrations
+    `,
+  });
+  return Number(result.rows[0]?.version) === expectedVersion;
 }
