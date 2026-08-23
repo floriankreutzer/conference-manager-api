@@ -1,0 +1,22 @@
+{
+  "name": "conference-manager-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "check:syntax": "node scripts/check-syntax.mjs",
+    "check:agents": "node scripts/check-agent-instructions.mjs",
+    "check:architecture": "node scripts/check-architecture.mjs",
+    "check:dependencies": "node scripts/check-dependencies.mjs",
+    "check:static": "node scripts/check-static.mjs",
+    "check:secrets": "node scripts/check-secrets.mjs",
+    "check:style": "node scripts/check-style.mjs",
+    "test": "node --test tests/*.test.js",
+    "check": "npm run check:syntax && npm run check:agents && npm run check:architecture && npm run check:dependencies && npm run check:static && npm run check:secrets && npm run check:style && npm test",
+    "audit": "npm audit --audit-level=high"
+  }
+}
