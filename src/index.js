@@ -1,24 +1,45 @@
 import { loadConfig } from './config.js';
 import { createLogger } from './logger.js';
+import { createPostgresPersistence } from './persistence/postgres/index.js';
 import { createHttpServer } from './server.js';
 
 const config = loadConfig();
 const logger = createLogger();
-const server = createHttpServer({ config, logger });
+const persistence = config.databaseUrl ? createPostgresPersistence(config) : null;
+const server = createHttpServer({
+  config,
+  logger,
+  loadTenant: persistence?.loadTenant,
+  readinessChecks: persistence?.readinessChecks || [],
+});
 
-function shutdown(signal) {
+let shuttingDown = false;
+
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
   logger.lifecycle({ event: `shutdown_${signal.toLowerCase()}` });
-  server.close((error) => {
-    process.exitCode = error ? 1 : 0;
-  });
-  setTimeout(() => {
+
+  const forceTimer = setTimeout(() => {
     server.closeAllConnections();
     process.exitCode = 1;
-  }, 10_000).unref();
+  }, 10_000);
+  forceTimer.unref();
+
+  try {
+    await new Promise((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+    await persistence?.close();
+    clearTimeout(forceTimer);
+    process.exitCode = 0;
+  } catch {
+    process.exitCode = 1;
+  }
 }
 
-process.once('SIGTERM', () => shutdown('SIGTERM'));
-process.once('SIGINT', () => shutdown('SIGINT'));
+process.once('SIGTERM', () => void shutdown('SIGTERM'));
+process.once('SIGINT', () => void shutdown('SIGINT'));
 
 server.listen(config.port, config.host, () => {
   logger.lifecycle({ event: 'server_started' });
