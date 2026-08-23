@@ -11,6 +11,7 @@ import {
   createRequestId,
 } from './security.js';
 import { createLogger } from './logger.js';
+import { createTenantContextGuard } from './tenancy/tenant-context.js';
 
 const ROUTES = Object.freeze({
   live: '/api/v1/health/live',
@@ -56,6 +57,7 @@ export function createApp({
   readinessChecks = [],
   resolvePrincipal,
   verifyCsrf,
+  loadTenant,
   clientKey = (request) => request.socket.remoteAddress || 'unknown',
   logger = createLogger(),
   clock = () => Date.now(),
@@ -72,6 +74,7 @@ export function createApp({
     clock,
   });
   const principalGuard = createPrincipalGuard({ resolvePrincipal, verifyCsrf });
+  const tenantGuard = createTenantContextGuard({ loadTenant });
 
   return async function handle(request, response) {
     const startedAt = clock();
@@ -107,10 +110,14 @@ export function createApp({
       if (path === ROUTES.principal) {
         if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
         const principal = await principalGuard.require(request);
+        const tenantContext = await tenantGuard.requireKnown(principal);
         statusCode = 200;
         sendJson(response, statusCode, {
           user: { id: principal.userId },
-          tenant: { id: principal.tenantId },
+          tenant: {
+            id: tenantContext.tenantId,
+            status: tenantContext.status,
+          },
           roles: principal.roles,
           requestId,
         }, config.maxResponseBytes);
