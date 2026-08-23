@@ -11,7 +11,7 @@ Client-controlled tenant IDs, user IDs, roles, ownership, workflow state, prices
 - Production/pilot public origin must be explicit HTTPS configuration.
 - Host validation mitigates host-header confusion for the configured public origin.
 - A present Origin header must match the public origin; normal CORS support is not enabled.
-- API request targets reject malformed encoding, dot-segment traversal, backslashes, and encoded path separators before routing.
+- API request targets reject malformed encoding, dot-segment traversal, backslashes, encoded path separators, and absolute/protocol-relative request targets before routing.
 - Only the approved method set is accepted.
 - Request header size/count, request timeout, header timeout, keep-alive timeout, JSON body size, response size, rate-limit count, and readiness timeout are bounded.
 - Security headers include CSP default deny, frame restrictions, no-sniff, no-referrer, same-origin resource/opener policies, permissions restrictions, no-store, and HSTS in pilot/production.
@@ -22,6 +22,22 @@ Client-controlled tenant IDs, user IDs, roles, ownership, workflow state, prices
 - The CSRF guard is fail-closed for unsafe methods when a protected route requires CSRF verification.
 - JSON request helpers enforce media type, no compression, stream/content-length bounds, object shape, explicit allowed fields, and field validators.
 - The in-process rate limiter has a bounded key map and fails closed when exhausted.
+
+## Supply-chain controls
+
+The repository uses `npm ci --ignore-scripts --no-fund`, `npm audit --audit-level=high`, full-history Gitleaks scanning, Dependabot configuration, and a repository-local Dependency Policy gate.
+
+The Dependency Policy gate enforces:
+
+- package manifest and lockfile dependency sections must match exactly;
+- direct dependencies must use exact semantic versions instead of ranges or mutable sources;
+- direct dependencies must resolve to the exact version recorded in `package-lock.json`;
+- installed packages must expose license metadata in the lockfile;
+- GPL-3.0 and AGPL-3.0 variants are denied;
+- dependencies declaring install lifecycle scripts are rejected;
+- high-severity known vulnerabilities block through `npm audit`.
+
+GitHub's native Dependency Review action is unavailable for this private user-owned repository without GitHub Code Security/Advanced Security. The repository-local Dependency Policy workflow is therefore the enforced dependency-change review control rather than leaving a permanently failing platform-specific check. If native Dependency Review becomes available later, it should be enabled in addition to this gate or replace it only after equivalent coverage is demonstrated.
 
 ## Important limitations
 
