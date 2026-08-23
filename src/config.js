@@ -123,11 +123,12 @@ export function loadDatabaseConfig(env = process.env, mode = parseMode(env)) {
 
 export function loadConfig(env = process.env) {
   const mode = parseMode(env);
+  const publicOrigin = parseOrigin(env.PUBLIC_ORIGIN, mode);
   const database = loadDatabaseConfig(env, mode);
 
   return Object.freeze({
     mode,
-    publicOrigin: parseOrigin(env.PUBLIC_ORIGIN, mode),
+    publicOrigin,
     host: env.HOST || DEFAULTS.host,
     port: parseInteger(env.PORT, DEFAULTS.port, { min: 1, max: 65_535, code: 'PORT_INVALID' }),
     maxBodyBytes: parseInteger(env.MAX_BODY_BYTES, DEFAULTS.maxBodyBytes, {
