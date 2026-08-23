@@ -4,9 +4,11 @@ import test from 'node:test';
 import { loadConfig } from '../src/config.js';
 import { createLogger } from '../src/logger.js';
 import { createHttpServer } from '../src/server.js';
+import { TENANT_STATUS } from '../src/tenancy/tenant.js';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const TENANT_ID = '22222222-2222-4222-8222-222222222222';
+const OTHER_TENANT_ID = '33333333-3333-4333-8333-333333333333';
 
 function request({ port, path, method = 'GET', headers = {}, body }) {
   return new Promise((resolve, reject) => {
@@ -55,6 +57,16 @@ async function withServer(options, run) {
 function testConfig() {
   const base = loadConfig({ NODE_ENV: 'test', PUBLIC_ORIGIN: 'http://localhost:3000', RATE_LIMIT_MAX: '50' });
   return { ...base };
+}
+
+function tenant(id = TENANT_ID, status = TENANT_STATUS.ACTIVE) {
+  return {
+    id,
+    displayName: 'Test Tenant',
+    status,
+    createdAt: '2026-08-24T00:00:00.000Z',
+    updatedAt: '2026-08-24T00:00:00.000Z',
+  };
 }
 
 test('liveness and readiness expose no configuration details and set security headers', async () => {
@@ -123,25 +135,51 @@ test('cross-origin, host mismatch, traversal, and unsupported methods are reject
   });
 });
 
-test('protected session endpoint fails closed without principal and returns only safe principal context when authenticated', async () => {
-  const anonymousConfig = testConfig();
-  await withServer({ config: anonymousConfig }, async ({ port }) => {
+test('protected session endpoint fails closed without principal', async () => {
+  const config = testConfig();
+  await withServer({ config }, async ({ port }) => {
     const result = await request({ port, path: '/api/v1/session' });
     assert.equal(result.statusCode, 401);
     assert.equal(result.body.error.code, 'UNAUTHENTICATED');
   });
+});
 
-  const authenticatedConfig = testConfig();
+test('protected session resolves tenant only from the authenticated principal', async () => {
+  const config = testConfig();
   await withServer({
-    config: authenticatedConfig,
+    config,
     resolvePrincipal: async () => ({ userId: USER_ID, tenantId: TENANT_ID, roles: ['employee'] }),
+    loadTenant: async (tenantId) => tenantId === TENANT_ID ? tenant() : null,
   }, async ({ port }) => {
-    const result = await request({ port, path: '/api/v1/session' });
+    const result = await request({
+      port,
+      path: `/api/v1/session?tenantId=${OTHER_TENANT_ID}`,
+      headers: { 'X-Tenant-Id': OTHER_TENANT_ID },
+    });
     assert.equal(result.statusCode, 200);
     assert.deepEqual(result.body.user, { id: USER_ID });
-    assert.deepEqual(result.body.tenant, { id: TENANT_ID });
+    assert.deepEqual(result.body.tenant, { id: TENANT_ID, status: TENANT_STATUS.ACTIVE });
     assert.deepEqual(result.body.roles, ['employee']);
   });
+});
+
+test('unknown, suspended, and archived tenant contexts fail closed', async () => {
+  for (const tenantRecord of [
+    null,
+    tenant(TENANT_ID, TENANT_STATUS.SUSPENDED),
+    tenant(TENANT_ID, TENANT_STATUS.ARCHIVED),
+  ]) {
+    const config = testConfig();
+    await withServer({
+      config,
+      resolvePrincipal: async () => ({ userId: USER_ID, tenantId: TENANT_ID, roles: ['employee'] }),
+      loadTenant: async () => tenantRecord,
+    }, async ({ port }) => {
+      const result = await request({ port, path: '/api/v1/session' });
+      assert.equal(result.statusCode, 403);
+      assert.equal(result.body.error.code, 'TENANT_UNAVAILABLE');
+    });
+  }
 });
 
 test('logs contain only bounded metadata and do not copy authorization or cookie headers', async () => {
