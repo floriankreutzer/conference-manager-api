@@ -46,14 +46,19 @@ The response never enumerates internal dependency names or configuration.
 
 ### `GET /api/v1/session`
 
-Protected server-principal context. Returns HTTP 401 by default until issue #50 installs the real principal/session resolver.
+Protected server-principal and Tenant context. The endpoint returns HTTP 401 until issue #50 installs a real principal/session resolver.
 
-When authenticated:
+After the principal is resolved, the API loads the canonical Tenant only from the validated internal `principal.tenantId`. Unknown, suspended, or archived tenants return HTTP 403 with `TENANT_UNAVAILABLE`.
+
+When the principal and Tenant context are valid:
 
 ```json
 {
   "user": { "id": "internal-user-uuid" },
-  "tenant": { "id": "internal-tenant-uuid" },
+  "tenant": {
+    "id": "internal-tenant-uuid",
+    "status": "active"
+  },
   "roles": ["employee"],
   "requestId": "..."
 }
@@ -61,14 +66,23 @@ When authenticated:
 
 The browser may use this response for presentation. It does not become authorization input when values are sent back in later requests.
 
+A client-supplied Tenant selector is never authoritative. Values such as `X-Tenant-Id`, `tenantId` query parameters, route values, or body fields cannot replace the Tenant derived from the authenticated server-side principal.
+
+## Tenant-scoped business endpoints
+
+Future tenant-owned endpoints must obtain Tenant context through the server-side Tenant guard before calling application services or repositories. Productive business operations must use the `active` Tenant requirement; onboarding/status endpoints may use the narrower documented lifecycle semantics where explicitly justified.
+
+Tenant-owned repository access must use the scoped repository contract documented in `docs/TENANCY.md`. A valid resource ID belonging to another tenant must not be globally resolved first and filtered afterwards.
+
 ## Request boundary
 
 - Allowed methods: GET, POST, PUT, PATCH, DELETE.
 - TRACE/CONNECT and other methods fail closed.
 - Host must match the configured public origin.
 - A present browser `Origin` header must match the configured public origin exactly.
-- Backslashes, encoded path separators, malformed percent encoding, and dot-segment traversal are rejected before routing.
+- Backslashes, encoded path separators, malformed percent encoding, dot-segment traversal, and absolute/protocol-relative request targets are rejected before routing.
 - State-changing JSON endpoints added later must use `readJsonObjectBody` plus an explicit positive schema such as `validateExactObject`.
 - Unknown fields are rejected by the positive-schema helper.
 - Request bodies are bounded before and during stream consumption.
 - Non-identity content encoding is rejected by the JSON parser until a reviewed decompression policy exists.
+- Client-controlled Tenant identifiers never establish Tenant context or ownership.
