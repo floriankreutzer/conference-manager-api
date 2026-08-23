@@ -17,7 +17,13 @@ export function assertAllowedMethod(method) {
 }
 
 export function assertSafeRequestTarget(rawUrl) {
-  if (typeof rawUrl !== 'string' || !rawUrl || rawUrl.length > REQUEST_TARGET_LIMIT) {
+  if (
+    typeof rawUrl !== 'string'
+    || !rawUrl
+    || rawUrl.length > REQUEST_TARGET_LIMIT
+    || !rawUrl.startsWith('/')
+    || rawUrl.startsWith('//')
+  ) {
     throw new ApiError(400, 'REQUEST_TARGET_INVALID');
   }
   const path = rawUrl.split('?', 1)[0];
