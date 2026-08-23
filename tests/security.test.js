@@ -20,8 +20,16 @@ function requestBody(value, headers = {}) {
   return stream;
 }
 
-test('request target rejects traversal and encoded path separators', () => {
-  for (const target of ['/api/../secret', '/api/%2e%2e/secret', '/api/%2Fsecret', '/api\\secret']) {
+test('request target accepts only safe origin-form paths', () => {
+  for (const target of [
+    '/api/../secret',
+    '/api/%2e%2e/secret',
+    '/api/%2Fsecret',
+    '/api\\secret',
+    'https://attacker.example/api/v1/health/live',
+    '//attacker.example/api/v1/health/live',
+    '?probe=1',
+  ]) {
     assert.throws(() => assertSafeRequestTarget(target), ApiError);
   }
   assert.doesNotThrow(() => assertSafeRequestTarget('/api/v1/health/live?probe=1'));
