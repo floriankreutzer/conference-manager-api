@@ -49,7 +49,7 @@ test('PostgreSQL migration and tenant persistence contract', async (t) => {
     assert.deepEqual(result.rows, [{ version: 1, name: 'core_tenant_schema' }]);
   });
 
-  await t.test('tenant and room repositories isolate identical IDs across tenants', async () => {
+  await t.test('tenant and room repositories isolate real records across tenants', async () => {
     await seedTenant(pool, TENANT_A, USER_A, 'site-a');
     await seedTenant(pool, TENANT_B, USER_B, 'site-b');
 
@@ -71,12 +71,20 @@ test('PostgreSQL migration and tenant persistence contract', async (t) => {
       capacity: 20,
       active: true,
     });
+    await rooms.create(contextA, {
+      id: 'alpha-only-room',
+      siteId: 'site-a',
+      name: 'Alpha Only',
+      capacity: 8,
+      active: true,
+    });
 
     assert.equal((await rooms.get(contextA, 'shared-room')).name, 'Alpha Room');
     assert.equal((await rooms.get(contextB, 'shared-room')).name, 'Beta Room');
-    assert.equal(await rooms.get(contextA, 'tenant-b-only-room'), null);
+    assert.equal(await rooms.get(contextB, 'alpha-only-room'), null);
     assert.equal(await rooms.update(contextB, 'alpha-only-room', { name: 'Stolen' }), null);
     assert.equal(await rooms.delete(contextB, 'alpha-only-room'), false);
+    assert.equal((await rooms.get(contextA, 'alpha-only-room')).name, 'Alpha Only');
 
     const tenantRepository = createPostgresTenantRepository(pool);
     assert.equal((await tenantRepository.findById(TENANT_A)).displayName, 'Tenant site-a');
@@ -123,6 +131,18 @@ test('PostgreSQL migration and tenant persistence contract', async (t) => {
       ),
       (error) => error.code === '23514',
     );
+  });
+
+  await t.test('concurrent duplicate writes are deterministic within one tenant', async () => {
+    const insert = () => pool.query(
+      `INSERT INTO rooms (tenant_id, id, site_id, name, capacity)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [TENANT_A, 'concurrent-room', 'site-a', 'Concurrent Room', 4],
+    );
+    const results = await Promise.allSettled([insert(), insert()]);
+    assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
+    const rejected = results.find((result) => result.status === 'rejected');
+    assert.equal(rejected.reason.code, '23505');
   });
 
   await t.test('failed transactions do not leave successful writes behind', async () => {
