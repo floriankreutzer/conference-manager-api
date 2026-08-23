@@ -52,4 +52,6 @@ npm run check
 npm run audit
 ```
 
-CI uses `npm ci --ignore-scripts --no-fund`, then runs the audit and quality gate. Dependency Review and full-history secret scanning are separate pull-request/security gates.
+CI uses `npm ci --ignore-scripts --no-fund`, then runs the audit and quality gate. The separate Dependency Policy workflow revalidates the locked dependency graph, exact direct versions, license policy, lifecycle-script policy, and high-severity vulnerability audit. Full-history Gitleaks scanning is an additional pull-request/security gate.
+
+GitHub's native Dependency Review action is not available for this private user-owned repository without GitHub Code Security/Advanced Security. The repository-local Dependency Policy gate is therefore the enforced supply-chain review control. If the repository later gains native Dependency Review capability, it should be enabled in addition to this gate or replace it only after equivalent coverage is demonstrated.
