@@ -61,7 +61,9 @@ Events are additionally chained per internal Tenant:
 
 Canonical JSON recursively sorts object keys so PostgreSQL `jsonb` normalization cannot create false integrity failures.
 
-Pilot/Production require an externally managed `AUDIT_HMAC_SECRET` of at least 32 bytes. The secret is never stored in the database or repository.
+Any runtime using PostgreSQL persistence must provide a stable `AUDIT_HMAC_SECRET` of at least 32 bytes. Pilot/Production require it from external secret management. The secret is never stored in PostgreSQL or source control and must remain stable across application restarts while existing events depend on that key.
+
+`AUDIT_HMAC_SECRET` rotation is not an ordinary deployment configuration change. A rotation requires a reviewed integrity migration/checkpoint strategy that preserves the ability to verify events signed with the previous key. Automatic multi-key verification/rotation is not implemented by #52.
 
 The chain detects record modification/reordering when the HMAC key is not compromised. It does not by itself prove completeness against a privileged actor who can remove an entire suffix or restore an older database snapshot. External anchoring/WORM export and independently controlled retention are production-hardening topics for the later secure-configuration/operations work and must not be claimed as implemented here.
 
@@ -70,6 +72,8 @@ The chain detects record modification/reordering when the HMAC key is not compro
 Successful Request transitions and session issue/revoke/rotation append their corresponding success audit event in the same PostgreSQL transaction as the authoritative mutation. If the audit append fails, the business/security mutation rolls back.
 
 Failures that produce no authoritative mutation are appended as separate failure/denial events when a valid Tenant/actor context exists. Events for identities that cannot be mapped to a valid internal Tenant belong to a future platform/security telemetry boundary rather than being forced into another Tenant's audit trail.
+
+Anonymous or otherwise unmapped authentication failures therefore are not assigned to a tenant audit chain. The future identity-provider adapter may emit `authentication.failed` only after it has a trusted internal Tenant/actor mapping or may route unmapped security telemetry to the separate platform security domain.
 
 ## Tenant read API
 
@@ -102,4 +106,4 @@ The current taxonomy reserves server-controlled actions for:
 - calendar operations;
 - tenant audit reads.
 
-Some actions are reserved for later owning issues. Reserving the taxonomy does not claim those workflows are already implemented.
+#52 actively emits events for supported session lifecycle operations, Request workflow outcomes/denials and tenant audit reads. Tenant/User-permission, integration, calendar and provider-authentication actions are reserved for their owning future services; reserving an action name does not claim that workflow is already implemented.
