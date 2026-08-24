@@ -67,7 +67,11 @@ Requirements and behavior:
 - requires the Entra authentication service to be configured;
 - creates random state/nonce and a PKCE S256 challenge server-side;
 - persists only hashed short-lived OIDC transaction material in PostgreSQL;
+- derives a separate server-HMAC browser binding for the generated state;
+- sets the binding as the short-lived `cm_oidc_tx` HttpOnly/SameSite=Lax callback-scoped cookie;
 - redirects only to the fixed configured Microsoft organizational authority.
+
+`cm_oidc_tx` is not an application session, contains no Tenant/User/role authority, is not persisted, and is `Secure` in Pilot/Production. Starting another Microsoft login in the same browser may replace the previous transient transaction cookie; the older callback then fails closed and can be restarted.
 
 The route never accepts a Tenant ID, authority URL, redirect URI, role, permission, email domain, or other identity authority from browser input.
 
@@ -77,9 +81,13 @@ Completes the Microsoft Entra authorization-code flow.
 
 The callback accepts one copy of the bounded Microsoft callback fields only. Unknown or duplicate query parameters return HTTP 400 `VALIDATION_FAILED`.
 
-The state is atomically consumed from PostgreSQL before authorization-code redemption. Expired, unknown, malformed, or replayed state fails closed. The Entra adapter then relies on MSAL for the Microsoft protocol/token validation and additionally validates the application audience, Tenant-specific v2 issuer, nonce, expiry/time claims, token version, and required stable `tid`/`oid` GUID claims.
+Before the shared state can be consumed, the callback must present the `cm_oidc_tx` value created in the browser that initiated that exact state. The server recomputes the state-bound HMAC and compares it timing-safely. Missing, malformed, duplicated, or mismatched browser binding fails authentication and does not consume the valid OIDC transaction.
 
-Provider errors and failed authentication use a fixed same-origin redirect:
+This browser binding prevents login-CSRF/session swapping: possession of a valid callback URL/state created and authenticated in another browser is not sufficient to create a Conference Manager session in the victim browser.
+
+After browser-binding validation, the state is atomically consumed from PostgreSQL before authorization-code redemption. Expired, unknown, malformed, or replayed state fails closed. The Entra adapter then relies on MSAL for the Microsoft protocol/token validation and additionally validates the application audience, Tenant-specific v2 issuer, nonce, expiry/time claims, token version, and required stable `tid`/`oid` GUID claims.
+
+For every syntactically valid callback attempt, the transient `cm_oidc_tx` cookie is cleared. Provider errors and failed authentication use a fixed same-origin redirect:
 
 `/?auth=authentication_failed`
 
@@ -89,9 +97,9 @@ A validated Entra identity that is not yet bound/provisioned by the Tenant/User 
 
 No business session is created in that case.
 
-When a trusted provider-neutral resolver returns an internal Tenant/User identity, the existing server-side SessionService creates the HttpOnly session and the callback returns a fixed same-origin redirect to `/` with `Set-Cookie`.
+When a trusted provider-neutral resolver returns an internal Tenant/User identity, the existing server-side SessionService creates the HttpOnly session. The callback clears `cm_oidc_tx`, separately sets `cm_session`, and returns a fixed same-origin redirect to `/`.
 
-Provider error descriptions, provider tokens, raw claims and secrets are never reflected to the browser.
+Provider error descriptions, provider tokens, raw claims, browser-binding values and secrets are never reflected to browser JSON or logs.
 
 See `docs/ENTRA-AUTHENTICATION.md` for the complete protocol and trust-boundary contract.
 
@@ -257,11 +265,11 @@ See `docs/AUDIT.md` for the full audit/integrity contract.
 
 A browser cannot create a session directly.
 
-The Microsoft Entra callback validates the external authentication protocol and translates the validated provider identity through the provider-neutral identity resolver. Only a resolver result containing a trusted internal Tenant/User identity can call `createSessionService.issue(...)` and send its `Set-Cookie` result to the browser.
+The Microsoft Entra callback first proves that the browser presenting the callback initiated the corresponding state, then validates the external authentication protocol and translates the validated provider identity through the provider-neutral identity resolver. Only a resolver result containing a trusted internal Tenant/User identity can call `createSessionService.issue(...)` and send its `cm_session` result to the browser.
 
 SaaS 1 issue #58 intentionally leaves unclaimed/unprovisioned identities in `onboarding_required`; issues #59 and #60 own Tenant claiming and JIT User provisioning. Authentication by itself therefore creates no application role or privilege.
 
-Successful session issuance and its `session.issued` event are persisted atomically. Provider access/refresh tokens, raw claims, Entra Tenant IDs and Entra object IDs are not audit metadata.
+Successful session issuance and its `session.issued` event are persisted atomically. Provider access/refresh tokens, raw claims, Entra Tenant IDs, Entra object IDs and transient OIDC browser-binding values are not audit metadata.
 
 ## Tenant-scoped business endpoints
 
@@ -281,7 +289,7 @@ Tenant-visible audit access follows the same Tenant boundary but uses its own `t
 - A present browser `Origin` must match the configured public origin exactly.
 - Traversal, encoded separators, malformed encoding, backslashes and absolute/protocol-relative targets are rejected before routing.
 - JSON state changes use bounded body parsing and positive schemas; unknown fields are rejected.
-- Authentication callbacks accept only their bounded documented query fields and never accept Tenant authority.
+- Authentication callbacks accept only their bounded documented query fields, require the initiating-browser OIDC binding, and never accept Tenant authority.
 - Audit pagination accepts only bounded explicit query fields.
 - Client-controlled Tenant/User/role/permission/provider/owner/workflow-status/audit-authority values never establish server authority.
 - Protected POST/PUT/PATCH/DELETE operations require authenticated Principal resolution and session-bound CSRF verification.
