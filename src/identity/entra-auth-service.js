@@ -4,6 +4,7 @@ import {
   randomBytes,
   timingSafeEqual,
 } from 'node:crypto';
+import { isInternalUuid } from '../domain/identifiers.js';
 import { EntraAuthenticationError } from './entra-errors.js';
 import { ENTRA_IDENTITY_PROVIDER } from './entra-client.js';
 import {
@@ -52,6 +53,13 @@ function requireCode(value) {
   return value;
 }
 
+function validateOnboardingInvitationId(value) {
+  if (value !== null && !isInternalUuid(value)) {
+    throw new TypeError('OIDC_ONBOARDING_INVITATION_INVALID');
+  }
+  return value;
+}
+
 function safeTokenEqual(left, right) {
   if (
     typeof left !== 'string'
@@ -70,6 +78,9 @@ function validateIdentityResolution(value) {
   }
   if (value.status === 'onboarding_required') {
     return Object.freeze({ status: 'onboarding_required' });
+  }
+  if (value.status === 'claim_confirmation_required' && typeof value.setCookie === 'string') {
+    return Object.freeze({ status: 'claim_confirmation_required', setCookie: value.setCookie });
   }
   if (value.status === 'authenticated' && value.trustedIdentity) {
     return Object.freeze({ status: 'authenticated', trustedIdentity: value.trustedIdentity });
@@ -104,9 +115,10 @@ export function createEntraAuthService({
   const secret = normalizeTransactionSecret(transactionSecret);
 
   return Object.freeze({
-    async start({ correlationId } = {}) {
+    async start({ correlationId, onboardingInvitationId = null } = {}) {
       const state = requireState(randomToken());
       const nonce = requireState(randomToken());
+      validateOnboardingInvitationId(onboardingInvitationId);
       const nowMs = clock();
       if (!Number.isSafeInteger(nowMs) || nowMs < 0) throw new TypeError('OIDC_CLOCK_INVALID');
       const createdAt = new Date(nowMs);
@@ -115,6 +127,7 @@ export function createEntraAuthService({
         provider: ENTRA_IDENTITY_PROVIDER,
         stateHash: sha256Hex(state),
         nonceHash: sha256Hex(nonce),
+        onboardingInvitationId,
         createdAt,
         expiresAt,
         correlationId,
@@ -157,8 +170,13 @@ export function createEntraAuthService({
         codeVerifier: verifier,
         expectedNonceHash: transaction.nonceHash,
       });
-      const resolution = validateIdentityResolution(await identityResolver.resolve(externalIdentity, { correlationId }));
-      if (resolution.status === 'onboarding_required') return resolution;
+      const resolution = validateIdentityResolution(await identityResolver.resolve(externalIdentity, {
+        correlationId,
+        onboardingInvitationId: transaction.onboardingInvitationId,
+      }));
+      if (resolution.status === 'onboarding_required' || resolution.status === 'claim_confirmation_required') {
+        return resolution;
+      }
 
       const issued = await sessionService.issue(resolution.trustedIdentity, { correlationId });
       return Object.freeze({

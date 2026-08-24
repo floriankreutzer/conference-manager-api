@@ -54,6 +54,8 @@ for (const route of [
   "'/api/v1/health/ready'",
   "'/api/v1/auth/microsoft/login'",
   "'/api/v1/auth/microsoft/callback'",
+  "'/api/v1/onboarding/invitations/start'",
+  "'/api/v1/onboarding/claim'",
   "'/api/v1/session'",
   "'/api/v1/audit'",
 ]) {
@@ -74,8 +76,23 @@ for (const required of [
     throw new Error(`Microsoft callback must preserve initiating-browser binding contract ${required}.`);
   }
 }
+for (const required of [
+  'readTenantClaimCookie',
+  'onboardingService.beginInvitation',
+  'onboardingService.claimStatus',
+  'onboardingService.confirmClaim',
+  "request.headers['x-csrf-token']",
+  "'/onboarding?auth=confirm'",
+]) {
+  if (!app.includes(required)) {
+    throw new Error(`Tenant onboarding HTTP contract is missing ${required}.`);
+  }
+}
 if (app.includes("searchParams.get('tenantId')") || app.includes("searchParams.get('tid')")) {
   throw new Error('Microsoft authentication routes must not accept browser-selected Tenant authority.');
+}
+if (/ONBOARDING_[A-Z_]+_BODY_SCHEMA[\s\S]{0,1000}\btenantId\b/.test(app)) {
+  throw new Error('Tenant onboarding request schemas must not accept browser-selected Tenant authority.');
 }
 if (!app.includes("'/?auth=authentication_failed'") || !app.includes("'/?auth=tenant_onboarding_required'")) {
   throw new Error('Authentication callbacks must use fixed same-origin result redirects.');
@@ -140,6 +157,8 @@ for (const resourceType of [
   'integration',
   'entitlement',
   'booking_provider_reference',
+  'tenant_onboarding_invitation',
+  'tenant_identity_binding',
   'audit_event',
 ]) {
   if (!tenantModel.includes(`'${resourceType}'`)) {
@@ -179,7 +198,15 @@ if (!requestService.includes('auditService.createEvent') || !requestService.incl
 }
 
 const auditEvent = await readFile('src/audit/event.js', 'utf8');
-for (const required of ['FORBIDDEN_KEY', 'canonicalAuditPayload', 'retentionClass', 'correlationId']) {
+for (const required of [
+  'FORBIDDEN_KEY',
+  'canonicalAuditPayload',
+  'retentionClass',
+  'correlationId',
+  'TENANT_ONBOARDING_INVITED',
+  'TENANT_IDENTITY_CLAIMED',
+  'TENANT_IDENTITY_UNBOUND',
+]) {
   if (!auditEvent.includes(required)) throw new Error(`Audit event contract is missing ${required}.`);
 }
 
@@ -198,10 +225,12 @@ for (const required of [
   'createPostgresEntitlementRepository',
   'createPostgresBookingReferenceRepository',
   'createPostgresOidcTransactionRepository',
+  'createPostgresTenantOnboardingRepository',
   'auditRepository',
   'entitlementRepository',
   'bookingReferenceRepository',
   'oidcTransactionRepository',
+  'tenantOnboardingRepository',
 ]) {
   if (!persistence.includes(required)) throw new Error(`PostgreSQL persistence is missing ${required}.`);
 }
@@ -257,6 +286,21 @@ if (entraTransactionCookie.includes('Domain=')) {
   throw new Error('Entra transaction cookie must not set a broad Domain attribute.');
 }
 
+const claimCookie = await readFile('src/onboarding/claim-cookie.js', 'utf8');
+for (const required of [
+  "'cm_tenant_claim'",
+  "'HttpOnly'",
+  "'SameSite=Strict'",
+  "'Secure'",
+  "'/api/v1/onboarding/claim'",
+  'Max-Age=',
+]) {
+  if (!claimCookie.includes(required)) {
+    throw new Error(`Tenant claim cookie contract is missing ${required}.`);
+  }
+}
+if (claimCookie.includes('Domain=')) throw new Error('Tenant claim cookie must not set a broad Domain attribute.');
+
 const sessionService = await readFile('src/identity/session-service.js', 'utf8');
 for (const required of [
   'randomBytes(32)',
@@ -311,6 +355,7 @@ for (const required of [
   'safeTokenEqual',
   'serializeEntraTransactionCookie',
   'serializeClearedEntraTransactionCookie',
+  'onboardingInvitationId',
   'repository.consume',
   'identityResolver.resolve',
   'sessionService.issue',
@@ -325,15 +370,54 @@ if (browserBindingCheck < 0 || oidcStateConsume < 0 || browserBindingCheck > oid
   throw new Error('Entra browser binding must be validated before shared OIDC state is consumed.');
 }
 
+const identityResolver = await readFile('src/identity/provider-identity-resolver.js', 'utf8');
+for (const required of ['onboardingInvitationId', 'onboardingService.prepareClaim', "status: 'onboarding_required'"]) {
+  if (!identityResolver.includes(required)) {
+    throw new Error(`Provider identity resolver is missing onboarding invariant ${required}.`);
+  }
+}
+
 const oidcRepository = await readFile('src/persistence/postgres/oidc-transaction-repository.js', 'utf8');
 for (const required of [
   'DELETE FROM oidc_auth_transactions',
   'WHERE provider = $1',
   'AND state_hash = $2',
   'AND expires_at > $3',
-  'RETURNING nonce_hash',
+  'RETURNING nonce_hash, onboarding_invitation_id',
 ]) {
   if (!oidcRepository.includes(required)) throw new Error(`OIDC transaction repository is missing replay invariant ${required}.`);
+}
+
+const onboardingService = await readFile('src/onboarding/tenant-onboarding-service.js', 'utf8');
+for (const required of [
+  'authorizeOperator = async () => false',
+  "createHash('sha256')",
+  "createHmac('sha256'",
+  'timingSafeEqual',
+  'claimCsrf',
+  'repository.confirmClaim',
+  'AUDIT_ACTION.TENANT_ONBOARDING_INVITED',
+  'AUDIT_ACTION.TENANT_IDENTITY_CLAIMED',
+  'AUDIT_ACTION.TENANT_IDENTITY_UNBOUND',
+]) {
+  if (!onboardingService.includes(required)) {
+    throw new Error(`Tenant onboarding service is missing security invariant ${required}.`);
+  }
+}
+
+const onboardingRepository = await readFile('src/persistence/postgres/tenant-onboarding-repository.js', 'utf8');
+for (const required of [
+  'withPostgresTransaction',
+  'tenant_onboarding_invitations',
+  'tenant_identity_bindings',
+  'tenant_claim_transactions',
+  'appendWithClient(client, auditEvent)',
+  "status IN ('pending', 'onboarding')",
+  "status IN ('pending', 'onboarding', 'ready')",
+]) {
+  if (!onboardingRepository.includes(required)) {
+    throw new Error(`Tenant onboarding persistence is missing invariant ${required}.`);
+  }
 }
 
 const config = await readFile('src/config.js', 'utf8');
@@ -349,8 +433,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!pool.includes('CURRENT_SCHEMA_VERSION = 7')) {
-  throw new Error('Runtime schema readiness must require OIDC transaction migration version 7.');
+if (!pool.includes('CURRENT_SCHEMA_VERSION = 8')) {
+  throw new Error('Runtime schema readiness must require tenant onboarding migration version 8.');
 }
 
 const index = await readFile('src/index.js', 'utf8');
@@ -361,6 +445,8 @@ for (const required of [
   'createAuditService',
   'createEntraClient',
   'createEntraAuthService',
+  'createTenantOnboardingService',
+  'createPendingProviderIdentityResolver({ onboardingService })',
 ]) {
   if (!index.includes(required)) throw new Error(`Process composition must wire ${required}.`);
 }
@@ -374,6 +460,22 @@ for (const required of [
   'event_hash',
 ]) {
   if (!auditMigration.includes(required)) throw new Error(`Audit migration is missing ${required}.`);
+}
+
+const onboardingMigration = await readFile('migrations/008_tenant_onboarding_identity_claims.up.sql', 'utf8');
+for (const required of [
+  'tenant_onboarding_invitations',
+  'tenant_identity_bindings_active_provider_idx',
+  'tenant_identity_bindings_active_tenant_idx',
+  'tenant_claim_transactions',
+  'onboarding_invitation_id',
+  'tenant.identity.claimed',
+]) {
+  if (!onboardingMigration.includes(required)) throw new Error(`Tenant onboarding migration is missing ${required}.`);
+}
+const onboardingRollback = await readFile('migrations/008_tenant_onboarding_identity_claims.down.sql', 'utf8');
+if (!onboardingRollback.includes('TENANT_ONBOARDING_ROWS_REQUIRE_REVIEW')) {
+  throw new Error('Tenant onboarding rollback must fail closed when claim/binding evidence exists.');
 }
 
 for (const migration of [
@@ -391,6 +493,8 @@ for (const migration of [
   'migrations/006_booking_provider_references.down.sql',
   'migrations/007_oidc_auth_transactions.up.sql',
   'migrations/007_oidc_auth_transactions.down.sql',
+  'migrations/008_tenant_onboarding_identity_claims.up.sql',
+  'migrations/008_tenant_onboarding_identity_claims.down.sql',
 ]) {
   await readFile(migration, 'utf8');
 }

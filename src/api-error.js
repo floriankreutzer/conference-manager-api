@@ -9,6 +9,11 @@ import {
 } from './authorization/errors.js';
 import { EntraAuthenticationError } from './identity/entra-errors.js';
 import {
+  OnboardingConflictError,
+  OnboardingDeniedError,
+  OnboardingInputError,
+} from './onboarding/errors.js';
+import {
   TenantInputError,
   TenantUnavailableError,
 } from './tenancy/errors.js';
@@ -29,9 +34,12 @@ export function asApiError(error) {
     error instanceof TenantInputError
     || error instanceof AuthorizationInputError
     || error instanceof AuditInputError
+    || error instanceof OnboardingInputError
   ) {
     return new ApiError(400, 'VALIDATION_FAILED');
   }
+  if (error instanceof OnboardingDeniedError) return new ApiError(403, 'ONBOARDING_UNAVAILABLE');
+  if (error instanceof OnboardingConflictError) return new ApiError(409, 'ONBOARDING_CONFLICT');
   if (error instanceof TenantUnavailableError) return new ApiError(403, 'TENANT_UNAVAILABLE');
   if (error instanceof AuthorizationDeniedError) {
     return error.conceal

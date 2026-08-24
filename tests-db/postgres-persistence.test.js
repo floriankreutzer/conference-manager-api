@@ -146,6 +146,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 5, name: 'tenant_entitlements' },
       { version: 6, name: 'booking_provider_references' },
       { version: 7, name: 'oidc_auth_transactions' },
+      { version: 8, name: 'tenant_onboarding_identity_claims' },
     ]);
   });
 
@@ -596,6 +597,18 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 4 },
       { version: 5 },
       { version: 6 },
+      { version: 7 },
+    ]);
+
+    assert.equal(await rollbackLatest(pool), true);
+    remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
+    assert.deepEqual(remaining.rows, [
+      { version: 1 },
+      { version: 2 },
+      { version: 3 },
+      { version: 4 },
+      { version: 5 },
+      { version: 6 },
     ]);
 
     assert.equal(await rollbackLatest(pool), true);
@@ -625,6 +638,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
     await migrateUp(pool);
     assert.equal(await isPostgresSchemaReady(pool), true);
 
+    assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);

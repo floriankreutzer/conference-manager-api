@@ -9,6 +9,7 @@ import { createPostgresEntitlementRepository } from './entitlement-repository.js
 import { createPostgresOidcTransactionRepository } from './oidc-transaction-repository.js';
 import { createPostgresRequestRepository } from './request-repository.js';
 import { createPostgresSessionRepository } from './session-repository.js';
+import { createPostgresTenantOnboardingRepository } from './tenant-onboarding-repository.js';
 import { createPostgresTenantRepository } from './tenant-repository.js';
 
 export function createPostgresPersistence(config) {
@@ -22,6 +23,7 @@ export function createPostgresPersistence(config) {
   const oidcTransactionRepository = createPostgresOidcTransactionRepository(pool);
   const sessionRepository = createPostgresSessionRepository(pool, { auditRepository });
   const requestRepository = createPostgresRequestRepository(pool, { auditRepository });
+  const tenantOnboardingRepository = createPostgresTenantOnboardingRepository(pool, { auditRepository });
 
   return Object.freeze({
     pool,
@@ -31,6 +33,7 @@ export function createPostgresPersistence(config) {
     oidcTransactionRepository,
     sessionRepository,
     requestRepository,
+    tenantOnboardingRepository,
     loadTenant: (tenantId) => tenantRepository.findById(tenantId),
     readinessChecks: [
       () => isPostgresReady(pool),
