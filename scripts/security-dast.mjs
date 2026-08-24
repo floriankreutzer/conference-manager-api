@@ -80,6 +80,9 @@ const entraAuthService = Object.freeze({
   async complete() {
     throw new Error(AUTH_BYPASS_MARKER);
   },
+  clearCookie() {
+    throw new Error(AUTH_BYPASS_MARKER);
+  },
 });
 
 function request(serverPort, {
