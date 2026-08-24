@@ -6,7 +6,7 @@ Trusted production backend for the Conference Manager SaaS application.
 
 This repository owns the server-side trust boundary defined by `conference-manager/docs/SAAS-PRODUCTION-TOPOLOGY.md`. The browser remains untrusted.
 
-The SaaS 0 foundation through issue #52 now provides:
+The SaaS 0 foundation through issue #53 now provides:
 
 - Node.js 22 native HTTP API with same-origin request hardening and secure error/health contracts;
 - canonical internal Tenant model and hard Tenant isolation;
@@ -29,11 +29,15 @@ The SaaS 0 foundation through issue #52 now provides:
 - append-only PostgreSQL audit persistence plus per-Tenant HMAC-SHA-256 integrity chains;
 - atomic audit persistence for successful Request transitions and session issue/revoke/rotation;
 - Tenant Admin audit reads through explicit `tenant:audit:read` authorization and chain verification;
-- no browser LocalStorage/sessionStorage authentication or authorization authority;
+- stable server-side Tenant capability IDs and fail-closed entitlement persistence;
+- explicit separation of Tenant entitlements from frontend/browser rollout feature flags;
+- effective capability evaluation requiring authorization plus entitlement, with optional server-side rollout disablement;
+- deny-by-default internal operator entitlement mutation with atomic `tenant.entitlement.changed` audit evidence;
+- no browser LocalStorage/sessionStorage authentication, authorization or entitlement authority;
 - safe metadata-only operational logging and secret-minimized audit payloads;
-- regression/progression/adversarial tests for HTTP, Tenant, persistence, session, authorization and audit boundaries.
+- regression/progression/adversarial tests for HTTP, Tenant, persistence, session, authorization, audit and entitlement boundaries.
 
-Entitlements, booking/provider contracts, full observability and the complete production threat/configuration baseline remain later SaaS 0 issues.
+Booking/provider contracts, full observability and the complete production threat/configuration baseline remain later SaaS 0 issues.
 
 ## Run locally
 
@@ -60,7 +64,7 @@ Do not rotate `AUDIT_HMAC_SECRET` as an ordinary configuration change. Key rotat
 - `POST /api/v1/requests/{requestId}/transitions` — CSRF-protected, server-authorized Request workflow transition.
 - `GET /api/v1/audit` — Tenant Admin audit read after Tenant authorization and integrity-chain verification.
 
-There is intentionally no public browser-controlled session issuance endpoint in SaaS 0. Future Entra OIDC code validates/maps provider identity server-side and then calls the provider-neutral session issuance boundary.
+There is intentionally no public browser-controlled session issuance or entitlement-administration endpoint in SaaS 0. Future Entra OIDC code validates/maps provider identity server-side before session issuance. Future Platform Admin tooling must use a separately authorized server-side operator contract before changing Tenant entitlements.
 
 See:
 
@@ -68,6 +72,7 @@ See:
 - `docs/ARCHITECTURE.md`
 - `docs/AUDIT.md`
 - `docs/AUTHORIZATION.md`
+- `docs/ENTITLEMENTS.md`
 - `docs/IDENTITY-SESSION.md`
 - `docs/PERSISTENCE.md`
 - `docs/SECURITY.md`

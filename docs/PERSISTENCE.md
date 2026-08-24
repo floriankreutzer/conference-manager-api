@@ -54,9 +54,17 @@ Migration 004 establishes tenant-scoped audit integrity:
 - adds `previous_hash`, `event_hash` and integrity version 1;
 - adds Tenant/correlation and Tenant/hash indexes;
 - installs an append-only trigger rejecting `UPDATE` and `DELETE`;
-- advances expected runtime schema readiness to version 4.
+- establishes the audit integrity boundary consumed by later migrations.
 
-The raw session token, CSRF token and audit HMAC key are never persisted.
+Migration 005 establishes Tenant entitlement persistence:
+
+- allowlisted stable capability IDs for the Microsoft-first pilot;
+- explicit boolean entitlement state keyed by `(tenant_id, capability_id)`;
+- Tenant foreign-key ownership with `ON DELETE RESTRICT`;
+- `tenant.entitlement.changed` in the database audit-action allowlist;
+- exact runtime schema readiness version 5.
+
+No entitlement row means disabled. The raw session token, CSRF token and audit HMAC key are never persisted.
 
 ## Tenant integrity
 
@@ -69,6 +77,8 @@ Session rows reference `(tenant_id, user_id)`, so a session cannot attach an int
 Request lookup and workflow mutation are always parameterized by internal `tenant_id` plus Request ID. A Request ID from another Tenant therefore resolves as absent without a global lookup.
 
 Audit rows are likewise Tenant-owned. Append/list/verification operations receive one internal Tenant ID, and each Tenant has an independent HMAC chain beginning with `previous_hash = NULL`.
+
+Entitlement rows use `(tenant_id, capability_id)` as their primary key. The same capability can therefore be enabled independently for separate Tenants, while unknown capability IDs are rejected by the database allowlist.
 
 ## Request workflow concurrency
 
@@ -132,7 +142,7 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 4 for this foundation.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 5 for this foundation.
 
 ## Transaction contract
 
@@ -143,6 +153,8 @@ Business/session services must not report successful persistence before the auth
 Session issuance, revocation and rotation persist their corresponding success audit event in the same transaction as the session mutation. Rotation additionally locks the current session, inserts the replacement using current User `security_version`, revokes the previous session and appends the audit evidence before commit.
 
 Request workflow transitions conditionally update the row and append the success audit event in the same transaction. A failed audit insert therefore prevents a successful Request transition from becoming authoritative.
+
+Entitlement changes are serialized per Tenant/capability, update the allowlisted entitlement row and append `tenant.entitlement.changed` in the same transaction. A failed audit append rolls the entitlement change back; setting an already-effective value is idempotent and creates no false change event.
 
 Failure/denial events for operations that did not commit an authoritative mutation are separate audit appends because there is no successful business transaction to join.
 
@@ -175,6 +187,8 @@ Migration 003 down removes `status_reason`, `status_changed_at` and the Request 
 
 Migration 004 down removes the append-only trigger, integrity chain fields and retention/state extensions. On a populated environment this would weaken evidentiary controls and discard integrity metadata, so production rollback requires an explicit security/audit decision; a forward fix is preferred.
 
+Migration 005 down fails closed when entitlement rows or entitlement-change audit evidence exists. Populated-environment rollback therefore requires an explicit entitlement/evidence migration decision rather than silently deleting commercial access state or its audit trail.
+
 ## Testing evidence required
 
 Database changes require PostgreSQL integration coverage for applicable migration/version/checksum behavior, tenant-scoped repositories, composite FK isolation, invalid constraints, duplicate/concurrent writes, transaction rollback, schema readiness and cross-Tenant persistence.
@@ -185,7 +199,7 @@ Request authorization persistence additionally requires real PostgreSQL tests fo
 
 Audit persistence additionally requires real PostgreSQL tests for:
 
-- schema version 4 migration behavior;
+- schema version 4 audit migration behavior;
 - independent Tenant chains;
 - Tenant-scoped listing;
 - append-only UPDATE/DELETE rejection;
@@ -194,6 +208,8 @@ Audit persistence additionally requires real PostgreSQL tests for:
 - unaffected integrity of another Tenant after one Tenant is tampered;
 - atomic rollback when required audit persistence fails;
 - migration rollback/reapply where applicable.
+
+Entitlement persistence additionally requires real PostgreSQL tests for schema version 5, absent-is-disabled behavior, cross-Tenant independence, database capability allowlisting, rollout/entitlement intersection, audit-atomic changes and fail-closed populated rollback.
 
 The DB suites share migration state and are therefore executed serially with `--test-concurrency=1` to prevent test-runner races from weakening the migration/integrity evidence.
 

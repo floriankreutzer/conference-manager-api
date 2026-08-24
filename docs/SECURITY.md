@@ -97,6 +97,18 @@ See `docs/AUTHORIZATION.md` for the complete permission/transition matrix.
 
 See `docs/AUDIT.md` for the event taxonomy, integrity model and limitations.
 
+## Entitlement controls (#53)
+
+- Product capability access is a server-side intersection of business authorization and Tenant entitlement; an optional trusted rollout gate may only restrict that result.
+- The initial allowlisted capability IDs are `microsoft.directory` and `microsoft.calendar`; unknown capability IDs fail closed in application and database layers.
+- Missing entitlement rows mean disabled. A browser flag, UI visibility, header/query/body value or rollout override cannot grant a missing entitlement.
+- Entitlement reads and writes are scoped by internal Tenant ID plus capability ID. Cross-Tenant or inactive-Tenant evaluation fails closed.
+- Commercial entitlement mutation uses a separate server-internal operator authorization port whose default is deny-all; Tenant Admin is not implicitly a commercial entitlement administrator.
+- Real entitlement changes and `tenant.entitlement.changed` audit evidence commit atomically; audit failure rolls the entitlement mutation back.
+- The frontend centralized feature-flag registry remains an untrusted rollout/UI mechanism and is not duplicated as backend entitlement authority.
+
+See `docs/ENTITLEMENTS.md` for the complete capability/rollout separation.
+
 ## Supply-chain controls
 
 The repository uses locked installs without lifecycle scripts, `npm audit --audit-level=high`, Dependabot, full-history Gitleaks and the repository-local Dependency Policy gate.
@@ -117,14 +129,14 @@ The Entra OIDC adapter is not implemented in SaaS 0. SaaS 1 must validate OIDC i
 
 ## OWASP/CWE mapping
 
-- Broken Access Control / BOLA / IDOR (CWE-639/CWE-862): Tenant-scoped lookup, Employee ownership, role/permission intersection, concealed non-owned objects, workflow authorization and Tenant-scoped audit reads are implemented and negatively tested.
+- Broken Access Control / BOLA / IDOR (CWE-639/CWE-862): Tenant-scoped lookup, Employee ownership, role/permission intersection, concealed non-owned objects, workflow authorization, Tenant-scoped audit reads and Tenant-scoped entitlement evaluation are implemented and negatively tested.
 - Authentication/session weaknesses: opaque high-entropy cookies, server-side expiry/revocation, rotation and security-version invalidation are implemented and negatively tested; session lifecycle mutations carry atomic audit evidence.
 - CSRF (CWE-352): unsafe protected cookie-authenticated requests require session-bound HMAC synchronizer tokens, including Request transitions and logout.
 - SQL injection (CWE-89): fixed SQL plus PostgreSQL parameter binding; real database integration tests execute Request/session/audit persistence paths.
 - XSS (CWE-79): API emits JSON/no HTML and sets default-deny CSP; frontend rendering remains separately governed.
 - SSRF (CWE-918): no provider outbound transport exists yet; future destinations remain fixed/allowlisted requirements.
 - Information disclosure: session credentials/provider references/DB secrets are excluded from public output; audit metadata rejects sensitive key classes and Employee object probing conceals non-owned Request existence.
-- Privilege escalation/confused deputy: unknown roles/permissions fail closed, Tenant Admin does not inherit Manager rights, audit read is a separate permission, and target workflow state is selected only by server policy.
+- Privilege escalation/confused deputy: unknown roles/permissions and capabilities fail closed, Tenant Admin does not inherit Manager or commercial entitlement-administration rights, rollout state cannot grant missing entitlement, audit read is a separate permission, and target workflow state is selected only by server policy.
 - Replay/stale state: session revocation/security-version checks protect credentials; Request workflow writes use expected-current-state predicates.
 - Integrity/tampering: audit writes are append-only, per-Tenant HMAC chained and verified before tenant-visible reads; external completeness anchoring remains explicitly out of scope.
 - Resource exhaustion: HTTP, database pool/query, audit payload/page and session TTL bounds are explicit; capacity/load tuning remains operational work.
