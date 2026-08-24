@@ -4,6 +4,8 @@ import { withPostgresTransaction } from './transaction.js';
 const PROVIDER_PATTERN = /^[a-z][a-z0-9_-]{1,63}$/;
 const REFERENCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const TENANT_LOGIN_STATUSES = new Set(['onboarding', 'ready', 'active']);
+const ELEVATED_ROLE_ORDER = Object.freeze(['conference_manager', 'tenant_admin']);
+const ELEVATED_ROLES = new Set(ELEVATED_ROLE_ORDER);
 
 function assertUuid(value, code) {
   if (!isInternalUuid(value)) throw new TypeError(code);
@@ -33,7 +35,17 @@ function assertDate(value) {
   if (!(value instanceof Date) || Number.isNaN(value.getTime())) throw new TypeError('JIT_CHANGED_AT_INVALID');
 }
 
-function mapped(row, { created = false, profileChanged = false } = {}) {
+function normalizeElevatedRoles(value) {
+  if (!Array.isArray(value) || value.length > ELEVATED_ROLE_ORDER.length) {
+    throw new TypeError('JIT_USER_ROLES_INVALID');
+  }
+  if (new Set(value).size !== value.length || value.some((role) => !ELEVATED_ROLES.has(role))) {
+    throw new TypeError('JIT_USER_ROLES_INVALID');
+  }
+  return Object.freeze(ELEVATED_ROLE_ORDER.filter((role) => value.includes(role)));
+}
+
+function mapped(row, { created = false, profileChanged = false, elevatedRoles = [] } = {}) {
   if (!row) return null;
   return Object.freeze({
     tenantId: row.tenant_id,
@@ -41,9 +53,28 @@ function mapped(row, { created = false, profileChanged = false } = {}) {
     displayName: row.display_name,
     active: row.active,
     securityVersion: Number(row.security_version),
+    elevatedRoles: normalizeElevatedRoles(elevatedRoles),
     created,
     profileChanged,
   });
+}
+
+async function loadElevatedRoles(client, tenantId, userId) {
+  const result = await client.query({
+    name: 'jit-load-elevated-roles',
+    text: `
+      SELECT role
+      FROM tenant_user_roles
+      WHERE tenant_id = $1 AND user_id = $2
+      ORDER BY CASE role
+        WHEN 'conference_manager' THEN 1
+        WHEN 'tenant_admin' THEN 2
+        ELSE 99
+      END
+    `,
+    values: [tenantId, userId],
+  });
+  return normalizeElevatedRoles(result.rows.map((row) => row.role));
 }
 
 export function createPostgresJitUserRepository(pool, { auditRepository } = {}) {
@@ -65,6 +96,8 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
       changedAt,
       provisionAuditEvent,
       profileAuditEventFor,
+      bootstrapTenantAdmin = false,
+      bootstrapAuditEvent = null,
     }) {
       assertUuid(tenantId, 'JIT_TENANT_ID_INVALID');
       assertProvider(provider);
@@ -74,6 +107,8 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
       assertUuid(newUserId, 'JIT_USER_ID_INVALID');
       assertDate(changedAt);
       if (typeof profileAuditEventFor !== 'function') throw new TypeError('JIT_PROFILE_AUDIT_FACTORY_REQUIRED');
+      if (typeof bootstrapTenantAdmin !== 'boolean') throw new TypeError('JIT_BOOTSTRAP_FLAG_INVALID');
+      if (bootstrapTenantAdmin && !bootstrapAuditEvent) throw new TypeError('JIT_BOOTSTRAP_AUDIT_REQUIRED');
 
       return withPostgresTransaction(pool, async (client) => {
         await client.query({
@@ -114,6 +149,7 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
         const current = existing.rows[0];
         if (current) {
           if (current.active !== true) return Object.freeze({ status: 'user_disabled' });
+          const elevatedRoles = await loadElevatedRoles(client, tenantId, current.user_id);
           if (current.display_name !== displayName) {
             const updated = await client.query({
               name: 'jit-update-user-profile',
@@ -132,9 +168,40 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
             const profileAuditEvent = profileAuditEventFor(current.user_id);
             const audit = await auditRepository.appendWithClient(client, profileAuditEvent);
             if (!audit) throw new Error('AUDIT_APPEND_FAILED');
-            return Object.freeze({ status: 'resolved', identity: mapped(updated.rows[0], { profileChanged: true }) });
+            return Object.freeze({
+              status: 'resolved',
+              identity: mapped(updated.rows[0], { profileChanged: true, elevatedRoles }),
+            });
           }
-          return Object.freeze({ status: 'resolved', identity: mapped(current) });
+          return Object.freeze({
+            status: 'resolved',
+            identity: mapped(current, { elevatedRoles }),
+          });
+        }
+
+        let bootstrapGranted = false;
+        if (bootstrapTenantAdmin) {
+          await client.query({
+            name: 'jit-role-bootstrap-lock',
+            text: 'SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))',
+            values: [`tenant-role-admin:${tenantId}`],
+          });
+          const existingAdmin = await client.query({
+            name: 'jit-find-existing-tenant-admin',
+            text: `
+              SELECT 1
+              FROM tenant_user_roles r
+              JOIN users u
+                ON u.tenant_id = r.tenant_id
+               AND u.id = r.user_id
+              WHERE r.tenant_id = $1
+                AND r.role = 'tenant_admin'
+                AND u.active = true
+              LIMIT 1
+            `,
+            values: [tenantId],
+          });
+          bootstrapGranted = existingAdmin.rowCount === 0;
         }
 
         const insertedUser = await client.query({
@@ -172,11 +239,29 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
             changedAt,
           ],
         });
-        const audit = await auditRepository.appendWithClient(client, provisionAuditEvent);
-        if (!audit) throw new Error('AUDIT_APPEND_FAILED');
+
+        const elevatedRoles = [];
+        if (bootstrapGranted) {
+          await client.query({
+            name: 'jit-bootstrap-tenant-admin',
+            text: `
+              INSERT INTO tenant_user_roles (tenant_id, user_id, role, created_at, updated_at)
+              VALUES ($1, $2, 'tenant_admin', $3, $3)
+            `,
+            values: [tenantId, newUserId, changedAt],
+          });
+          elevatedRoles.push('tenant_admin');
+        }
+
+        const provisionAudit = await auditRepository.appendWithClient(client, provisionAuditEvent);
+        if (!provisionAudit) throw new Error('AUDIT_APPEND_FAILED');
+        if (bootstrapGranted) {
+          const roleAudit = await auditRepository.appendWithClient(client, bootstrapAuditEvent);
+          if (!roleAudit) throw new Error('AUDIT_APPEND_FAILED');
+        }
         return Object.freeze({
           status: 'resolved',
-          identity: mapped(insertedUser.rows[0], { created: true }),
+          identity: mapped(insertedUser.rows[0], { created: true, elevatedRoles }),
         });
       });
     },
