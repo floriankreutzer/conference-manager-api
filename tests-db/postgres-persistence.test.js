@@ -290,6 +290,16 @@ test('PostgreSQL migration, tenant persistence, and session security contract', 
     );
     assert.equal(await service.resolvePrincipal(originalRequest), null);
 
+    await assert.rejects(
+      pool.query(
+        `UPDATE users
+         SET security_version = security_version - 1
+         WHERE tenant_id = $1 AND id = $2`,
+        [TENANT_A, USER_A],
+      ),
+      (error) => error.code === '23514',
+    );
+
     now += 1_000;
     const rotated = await service.rotate(original.principal, identity({
       roles: ['manager'],
