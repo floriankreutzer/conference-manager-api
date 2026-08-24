@@ -58,6 +58,7 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
     async resolveOrProvision({
       tenantId,
       provider,
+      providerTenantReference,
       providerUserReference,
       displayName,
       newUserId,
@@ -67,6 +68,7 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
     }) {
       assertUuid(tenantId, 'JIT_TENANT_ID_INVALID');
       assertProvider(provider);
+      assertReference(providerTenantReference, 'JIT_PROVIDER_TENANT_REFERENCE_INVALID');
       assertReference(providerUserReference, 'JIT_PROVIDER_USER_REFERENCE_INVALID');
       assertDisplayName(displayName);
       assertUuid(newUserId, 'JIT_USER_ID_INVALID');
@@ -77,7 +79,7 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
         await client.query({
           name: 'jit-lock-provider-user',
           text: 'SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))',
-          values: [`${tenantId}:${provider}:${providerUserReference}`],
+          values: [`${tenantId}:${provider}:${providerTenantReference}:${providerUserReference}`],
         });
 
         const tenant = await client.query({
@@ -103,10 +105,11 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
              AND u.id = b.user_id
             WHERE b.tenant_id = $1
               AND b.provider = $2
-              AND b.provider_user_reference = $3
+              AND b.provider_tenant_reference = $3
+              AND b.provider_user_reference = $4
             FOR UPDATE OF b, u
           `,
-          values: [tenantId, provider, providerUserReference],
+          values: [tenantId, provider, providerTenantReference, providerUserReference],
         });
         const current = existing.rows[0];
         if (current) {
@@ -152,14 +155,22 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
             INSERT INTO user_identity_bindings (
               tenant_id,
               provider,
+              provider_tenant_reference,
               provider_user_reference,
               user_id,
               created_at,
               updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $5)
+            VALUES ($1, $2, $3, $4, $5, $6, $6)
           `,
-          values: [tenantId, provider, providerUserReference, newUserId, changedAt],
+          values: [
+            tenantId,
+            provider,
+            providerTenantReference,
+            providerUserReference,
+            newUserId,
+            changedAt,
+          ],
         });
         const audit = await auditRepository.appendWithClient(client, provisionAuditEvent);
         if (!audit) throw new Error('AUDIT_APPEND_FAILED');
