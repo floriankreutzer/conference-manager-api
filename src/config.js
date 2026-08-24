@@ -3,6 +3,9 @@ import { ApiError } from './api-error.js';
 const MODES = new Set(['development', 'test', 'pilot', 'production']);
 const DATABASE_SSL_MODES = new Set(['disable', 'verify-full']);
 const SUPPORT_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ENTRA_AUTHORITY = 'https://login.microsoftonline.com/organizations';
+const ENTRA_CALLBACK_PATH = '/api/v1/auth/microsoft/callback';
 const DEFAULTS = Object.freeze({
   host: '127.0.0.1',
   port: 3000,
@@ -19,6 +22,7 @@ const DEFAULTS = Object.freeze({
   databaseIdleTimeoutMs: 30_000,
   databaseStatementTimeoutMs: 10_000,
   sessionTtlSeconds: 28_800,
+  oidcTransactionTtlSeconds: 600,
 });
 
 export class ConfigurationError extends Error {
@@ -115,6 +119,50 @@ function parseServerSecret(value, mode, { requiredCode, invalidCode }) {
   return value;
 }
 
+function parseEntraConfig(env, mode, publicOrigin) {
+  const required = mode === 'pilot' || mode === 'production';
+  const configured = Boolean(env.ENTRA_CLIENT_ID || env.ENTRA_CLIENT_SECRET || env.OIDC_TRANSACTION_SECRET);
+  if (!required && !configured) {
+    return Object.freeze({
+      entraClientId: null,
+      entraClientSecret: null,
+      oidcTransactionSecret: null,
+      entraAuthority: ENTRA_AUTHORITY,
+      entraRedirectUri: new URL(ENTRA_CALLBACK_PATH, publicOrigin).toString(),
+      oidcTransactionTtlSeconds: parseInteger(
+        env.OIDC_TRANSACTION_TTL_SECONDS,
+        DEFAULTS.oidcTransactionTtlSeconds,
+        { min: 120, max: 900, code: 'OIDC_TRANSACTION_TTL_SECONDS_INVALID' },
+      ),
+    });
+  }
+
+  if (typeof env.ENTRA_CLIENT_ID !== 'string' || !GUID_PATTERN.test(env.ENTRA_CLIENT_ID)) {
+    throw new ConfigurationError(env.ENTRA_CLIENT_ID ? 'ENTRA_CLIENT_ID_INVALID' : 'ENTRA_CLIENT_ID_REQUIRED');
+  }
+  const entraClientSecret = parseServerSecret(env.ENTRA_CLIENT_SECRET, 'production', {
+    requiredCode: 'ENTRA_CLIENT_SECRET_REQUIRED',
+    invalidCode: 'ENTRA_CLIENT_SECRET_INVALID',
+  });
+  const oidcTransactionSecret = parseServerSecret(env.OIDC_TRANSACTION_SECRET, 'production', {
+    requiredCode: 'OIDC_TRANSACTION_SECRET_REQUIRED',
+    invalidCode: 'OIDC_TRANSACTION_SECRET_INVALID',
+  });
+
+  return Object.freeze({
+    entraClientId: env.ENTRA_CLIENT_ID.toLowerCase(),
+    entraClientSecret,
+    oidcTransactionSecret,
+    entraAuthority: ENTRA_AUTHORITY,
+    entraRedirectUri: new URL(ENTRA_CALLBACK_PATH, publicOrigin).toString(),
+    oidcTransactionTtlSeconds: parseInteger(
+      env.OIDC_TRANSACTION_TTL_SECONDS,
+      DEFAULTS.oidcTransactionTtlSeconds,
+      { min: 120, max: 900, code: 'OIDC_TRANSACTION_TTL_SECONDS_INVALID' },
+    ),
+  });
+}
+
 export function loadDatabaseConfig(env = process.env, mode = parseMode(env)) {
   return Object.freeze({
     databaseUrl: parseDatabaseUrl(env.DATABASE_URL, mode),
@@ -158,6 +206,7 @@ export function loadConfig(env = process.env) {
   if (database.databaseUrl && !auditHmacSecret) {
     throw new ConfigurationError('AUDIT_HMAC_SECRET_REQUIRED');
   }
+  const entra = parseEntraConfig(env, mode, publicOrigin);
 
   return Object.freeze({
     mode,
@@ -219,6 +268,7 @@ export function loadConfig(env = process.env) {
     }),
     csrfSecret,
     auditHmacSecret,
+    ...entra,
     ...database,
   });
 }
@@ -238,5 +288,14 @@ export function assertProductionConfig(config) {
   }
   if (config.databaseUrl && !config.auditHmacSecret) {
     throw new ApiError(500, 'AUDIT_HMAC_SECRET_REQUIRED');
+  }
+  if ((config.mode === 'pilot' || config.mode === 'production') && !config.entraClientId) {
+    throw new ApiError(500, 'ENTRA_CONFIGURATION_REQUIRED');
+  }
+  if ((config.mode === 'pilot' || config.mode === 'production') && !config.entraClientSecret) {
+    throw new ApiError(500, 'ENTRA_CONFIGURATION_REQUIRED');
+  }
+  if ((config.mode === 'pilot' || config.mode === 'production') && !config.oidcTransactionSecret) {
+    throw new ApiError(500, 'OIDC_CONFIGURATION_REQUIRED');
   }
 }
