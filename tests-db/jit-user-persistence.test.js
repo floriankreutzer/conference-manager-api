@@ -186,7 +186,7 @@ test('JIT provisioning is tenant-isolated, deterministic, concurrent-safe and au
   );
   assert.equal(changed.trustedIdentity.userId, resolvedUserA);
   const profile = await pool.query(
-    'SELECT display_name, security_version FROM users WHERE tenant_id = $1 AND id = $2',
+    'SELECT display_name, security_version::int AS security_version FROM users WHERE tenant_id = $1 AND id = $2',
     [TENANT_A, resolvedUserA],
   );
   assert.deepEqual(profile.rows[0], { display_name: 'Pilot User Renamed', security_version: 1 });
