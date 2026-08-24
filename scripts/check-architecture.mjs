@@ -54,11 +54,20 @@ if (!app.includes('createPrincipalGuard') || !app.includes('assertSameOrigin') |
 if (!app.includes('createTenantContextGuard') || !app.includes('tenantGuard.requireKnown(principal)')) {
   throw new Error('Protected session context must resolve the tenant from the authenticated principal.');
 }
+if (!app.includes('tenantGuard.requireActive(principal)') || !app.includes('requestService.transitionRequest')) {
+  throw new Error('Tenant business requests must require active Tenant context and the authorized application service.');
+}
 if (!app.includes('sessionService?.resolvePrincipal') || !app.includes('sessionService?.verifyCsrf')) {
   throw new Error('HTTP principal and CSRF resolution must use the server-side session service when configured.');
 }
 if (!app.includes("request.method === 'DELETE'") || !app.includes('sessionService.revoke(principal)')) {
   throw new Error('Session logout must revoke the authenticated server-side session.');
+}
+if (!app.includes('readJsonObjectBody') || !app.includes('validateExactObject')) {
+  throw new Error('State-changing request routes must keep positive-schema bounded JSON validation.');
+}
+if (/requesterUserId:\s*.*body|tenantId:\s*.*body|nextStatus:\s*.*body/i.test(app)) {
+  throw new Error('HTTP input must not supply request ownership, Tenant authority, or target workflow status.');
 }
 
 const tenantContext = await readFile('src/tenancy/tenant-context.js', 'utf8');
@@ -102,12 +111,50 @@ for (const resourceType of [
   }
 }
 
+const authorizationPolicy = await readFile('src/authorization/policy.js', 'utf8');
+for (const required of [
+  'PERMISSION_NOT_AUTHORIZED',
+  'ROLE_NOT_AUTHORIZED',
+  'request.requesterUserId !== principal.userId',
+  'TENANT_ROLE.CONFERENCE_MANAGER',
+  'TENANT_ROLE.TENANT_ADMIN',
+]) {
+  if (!authorizationPolicy.includes(required)) {
+    throw new Error(`Authorization policy is missing deny-by-default invariant ${required}.`);
+  }
+}
+if (authorizationPolicy.includes("PLATFORM_ADMIN: 'platform_admin'")) {
+  throw new Error('Platform Admin must remain outside the Tenant authorization role model.');
+}
+
+const requestService = await readFile('src/application/request-service.js', 'utf8');
+if (!requestService.includes('authorizationPolicy.authorizeRequestRead')) {
+  throw new Error('Request reads must pass through the central authorization policy.');
+}
+if (!requestService.includes('authorizationPolicy.authorizeRequestTransition')) {
+  throw new Error('Request workflow changes must pass through the central authorization policy.');
+}
+if (!requestService.includes('expectedStatus: decision.expectedStatus')) {
+  throw new Error('Authorized workflow writes must preserve optimistic status concurrency.');
+}
+
 const persistence = await readFile('src/persistence/postgres/index.js', 'utf8');
 if (!persistence.includes('isPostgresSchemaReady') || !persistence.includes('createPostgresTenantRepository')) {
   throw new Error('PostgreSQL persistence must enforce schema readiness and provide Tenant loading.');
 }
 if (!persistence.includes('createPostgresSessionRepository') || !persistence.includes('sessionRepository')) {
   throw new Error('PostgreSQL persistence must expose the server-side session repository.');
+}
+if (!persistence.includes('createPostgresRequestRepository') || !persistence.includes('requestRepository')) {
+  throw new Error('PostgreSQL persistence must expose the tenant-scoped request repository.');
+}
+
+const requestRepository = await readFile('src/persistence/postgres/request-repository.js', 'utf8');
+if (!requestRepository.includes('WHERE tenant_id = $1') || !requestRepository.includes('AND status = $3')) {
+  throw new Error('Request persistence must scope object access by Tenant and protect workflow writes against stale status.');
+}
+if (!requestRepository.includes('normalizeRequest')) {
+  throw new Error('Request persistence must validate database output through the canonical domain contract.');
 }
 
 const principal = await readFile('src/identity/principal.js', 'utf8');
@@ -141,12 +188,17 @@ const index = await readFile('src/index.js', 'utf8');
 if (!index.includes('createSessionService') || !index.includes('sessionService')) {
   throw new Error('Process composition must wire PostgreSQL sessions into the HTTP boundary.');
 }
+if (!index.includes('createAuthorizationPolicy') || !index.includes('createRequestService')) {
+  throw new Error('Process composition must wire the central authorization policy and request application service.');
+}
 
 for (const migration of [
   'migrations/001_core_tenant_schema.up.sql',
   'migrations/001_core_tenant_schema.down.sql',
   'migrations/002_secure_sessions.up.sql',
   'migrations/002_secure_sessions.down.sql',
+  'migrations/003_request_authorization_workflow.up.sql',
+  'migrations/003_request_authorization_workflow.down.sql',
 ]) {
   await readFile(migration, 'utf8');
 }
