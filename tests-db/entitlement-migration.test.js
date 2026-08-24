@@ -63,9 +63,15 @@ test('entitlement migration rollback fails closed when state or evidence exists'
 
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
+  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await isPostgresSchemaReady(pool), false);
   await assert.rejects(rollbackLatest(pool), (error) => error.code === '55000');
   assert.equal(await isPostgresSchemaReady(pool), false);
-  assert.equal((await repository.findByTenantIdAndCapabilityId(TENANT_ID, CAPABILITY.MICROSOFT_DIRECTORY)).enabled, true);
+  const stored = await repository.findByTenantIdAndCapabilityId(
+    TENANT_ID,
+    CAPABILITY.MICROSOFT_DIRECTORY,
+  );
+  assert.equal(stored.enabled, true);
 
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
