@@ -8,6 +8,7 @@ import { createPendingProviderIdentityResolver } from './identity/provider-ident
 import { createSessionService } from './identity/session-service.js';
 import { createLogger } from './logger.js';
 import { createMetricsRegistry } from './observability/metrics.js';
+import { createTenantOnboardingService } from './onboarding/tenant-onboarding-service.js';
 import { createPostgresPersistence } from './persistence/postgres/index.js';
 import { createHttpServer } from './server.js';
 
@@ -31,6 +32,14 @@ const sessionService = persistence
     sessionTtlSeconds: config.sessionTtlSeconds,
   })
   : null;
+const onboardingService = persistence && auditService
+  ? createTenantOnboardingService({
+    repository: persistence.tenantOnboardingRepository,
+    auditService,
+    transactionSecret: config.oidcTransactionSecret,
+    publicOrigin: config.publicOrigin,
+  })
+  : null;
 const entraClient = config.entraClientId
   ? createEntraClient({
     clientId: config.entraClientId,
@@ -39,7 +48,7 @@ const entraClient = config.entraClientId
     redirectUri: config.entraRedirectUri,
   })
   : null;
-const identityResolver = createPendingProviderIdentityResolver();
+const identityResolver = createPendingProviderIdentityResolver({ onboardingService });
 const entraAuthService = persistence && entraClient && sessionService
   ? createEntraAuthService({
     repository: persistence.oidcTransactionRepository,
@@ -66,6 +75,7 @@ const server = createHttpServer({
   auditService,
   sessionService,
   entraAuthService,
+  onboardingService,
   requestService,
   loadTenant: persistence?.loadTenant,
   readinessChecks: persistence?.readinessChecks || [],
