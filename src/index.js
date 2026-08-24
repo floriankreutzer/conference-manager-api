@@ -4,11 +4,13 @@ import { createAuthorizationPolicy } from './authorization/policy.js';
 import { loadConfig } from './config.js';
 import { createSessionService } from './identity/session-service.js';
 import { createLogger } from './logger.js';
+import { createMetricsRegistry } from './observability/metrics.js';
 import { createPostgresPersistence } from './persistence/postgres/index.js';
 import { createHttpServer } from './server.js';
 
 const config = loadConfig();
 const logger = createLogger();
+const metrics = createMetricsRegistry();
 const persistence = config.databaseUrl ? createPostgresPersistence(config) : null;
 const authorizationPolicy = createAuthorizationPolicy();
 const auditService = persistence
@@ -36,6 +38,7 @@ const requestService = persistence
 const server = createHttpServer({
   config,
   logger,
+  metrics,
   authorizationPolicy,
   auditService,
   sessionService,
@@ -73,5 +76,10 @@ process.once('SIGTERM', () => void shutdown('SIGTERM'));
 process.once('SIGINT', () => void shutdown('SIGINT'));
 
 server.listen(config.port, config.host, () => {
-  logger.lifecycle({ event: 'server_started' });
+  logger.lifecycle({
+    event: 'server_started',
+    serviceVersion: config.serviceVersion,
+    buildId: config.buildId,
+    environment: config.mode,
+  });
 });
