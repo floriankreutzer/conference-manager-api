@@ -1,8 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { REQUEST_STATUS } from '../src/domain/request-workflow.js';
+import { createAuditService } from '../src/audit/audit-service.js';
+import {
+  AUDIT_ACTION,
+  AUDIT_OUTCOME,
+  AUDIT_RETENTION_CLASS,
+  normalizeAuditEvent,
+} from '../src/audit/event.js';
+import { createAuthorizationPolicy } from '../src/authorization/policy.js';
 import { loadDatabaseConfig } from '../src/config.js';
+import { REQUEST_STATUS } from '../src/domain/request-workflow.js';
 import { createSessionService, SessionServiceError } from '../src/identity/session-service.js';
+import { createPostgresAuditRepository } from '../src/persistence/postgres/audit-repository.js';
 import {
   createPostgresPool,
   isPostgresSchemaReady,
@@ -22,10 +31,13 @@ const USER_B = '44444444-4444-4444-8444-444444444444';
 const SESSION_A = '55555555-5555-4555-8555-555555555555';
 const SESSION_B = '66666666-6666-4666-8666-666666666666';
 const SESSION_C = '77777777-7777-4777-8777-777777777777';
+const CORRELATION_A = '88888888-8888-4888-8888-888888888888';
+const CORRELATION_B = '99999999-9999-4999-8999-999999999999';
 const TOKEN_A = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 const TOKEN_B = 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
 const TOKEN_C = 'CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC';
 const CSRF_KEY = 's'.repeat(32);
+const AUDIT_KEY = 'a'.repeat(32);
 
 function databaseConfig() {
   const database = loadDatabaseConfig(process.env, 'test');
@@ -82,12 +94,41 @@ function identity(overrides = {}) {
   };
 }
 
+function requestAuditEvent({
+  tenantId = TENANT_A,
+  actorUserId = USER_A,
+  requestId,
+  previousStatus = REQUEST_STATUS.SUBMITTED,
+  nextStatus = REQUEST_STATUS.IN_REVIEW,
+  correlationId = CORRELATION_A,
+}) {
+  return normalizeAuditEvent({
+    tenantId,
+    actorUserId,
+    action: AUDIT_ACTION.REQUEST_TRANSITION,
+    targetType: 'request',
+    targetId: requestId,
+    previousState: { status: previousStatus },
+    newState: { status: nextStatus },
+    occurredAt: '2026-08-24T10:00:00.000Z',
+    correlationId,
+    outcome: AUDIT_OUTCOME.SUCCESS,
+    metadata: { reasonProvided: false, transition: 'test_transition' },
+    retentionClass: AUDIT_RETENTION_CLASS.BUSINESS,
+  });
+}
+
 function cookiePair(setCookie) {
   return setCookie.split(';', 1)[0];
 }
 
-test('PostgreSQL migration, tenant persistence, session, and authorization contract', async (t) => {
+test('PostgreSQL migration, tenant persistence, session, authorization, and audit contract', async (t) => {
   const pool = createPostgresPool(databaseConfig());
+  const authorizationPolicy = createAuthorizationPolicy();
+  const auditRepository = createPostgresAuditRepository(pool, { hmacSecret: AUDIT_KEY });
+  const auditService = createAuditService({ repository: auditRepository, authorizationPolicy });
+  const requestRepository = () => createPostgresRequestRepository(pool, { auditRepository });
+  const sessionRepository = () => createPostgresSessionRepository(pool, { auditRepository });
   t.after(async () => pool.end());
 
   await t.test('migration up is repeatable and schema readiness is versioned', async () => {
@@ -99,6 +140,7 @@ test('PostgreSQL migration, tenant persistence, session, and authorization contr
       { version: 1, name: 'core_tenant_schema' },
       { version: 2, name: 'secure_sessions' },
       { version: 3, name: 'request_authorization_workflow' },
+      { version: 4, name: 'tamper_evident_audit' },
     ]);
   });
 
@@ -202,12 +244,71 @@ test('PostgreSQL migration, tenant persistence, session, and authorization contr
     );
   });
 
-  await t.test('request repository is tenant-scoped and same IDs remain independent', async () => {
+  await t.test('audit repository isolates tenant chains and rejects update/delete mutation', async () => {
+    const first = await auditRepository.append(requestAuditEvent({ requestId: 'audit-a' }));
+    const second = await auditRepository.append(requestAuditEvent({
+      tenantId: TENANT_B,
+      actorUserId: USER_B,
+      requestId: 'audit-b',
+      correlationId: CORRELATION_B,
+    }));
+    assert.equal((await auditRepository.listByTenantId(TENANT_A))[0].id, first.id);
+    assert.equal((await auditRepository.listByTenantId(TENANT_B))[0].id, second.id);
+    assert.equal(await auditRepository.verifyTenantChain(TENANT_A), true);
+    assert.equal(await auditRepository.verifyTenantChain(TENANT_B), true);
+
+    await assert.rejects(
+      pool.query(
+        'UPDATE audit_events SET outcome = $3 WHERE tenant_id = $1 AND id = $2',
+        [TENANT_A, first.id, AUDIT_OUTCOME.FAILURE],
+      ),
+      (error) => error.code === '55000',
+    );
+    await assert.rejects(
+      pool.query('DELETE FROM audit_events WHERE tenant_id = $1 AND id = $2', [TENANT_A, first.id]),
+      (error) => error.code === '55000',
+    );
+  });
+
+  await t.test('HMAC verification detects privileged audit-row tampering and recovers after test repair', async () => {
+    const stored = await auditRepository.append(requestAuditEvent({ requestId: 'tamper-check' }));
+    const original = await pool.query(
+      'SELECT metadata FROM audit_events WHERE tenant_id = $1 AND id = $2',
+      [TENANT_A, stored.id],
+    );
+    await pool.query('ALTER TABLE audit_events DISABLE TRIGGER audit_events_append_only');
+    try {
+      await pool.query(
+        `UPDATE audit_events
+         SET metadata = $3::jsonb
+         WHERE tenant_id = $1 AND id = $2`,
+        [TENANT_A, stored.id, JSON.stringify({ tampered: true })],
+      );
+    } finally {
+      await pool.query('ALTER TABLE audit_events ENABLE TRIGGER audit_events_append_only');
+    }
+    assert.equal(await auditRepository.verifyTenantChain(TENANT_A), false);
+
+    await pool.query('ALTER TABLE audit_events DISABLE TRIGGER audit_events_append_only');
+    try {
+      await pool.query(
+        `UPDATE audit_events
+         SET metadata = $3::jsonb
+         WHERE tenant_id = $1 AND id = $2`,
+        [TENANT_A, stored.id, JSON.stringify(original.rows[0].metadata)],
+      );
+    } finally {
+      await pool.query('ALTER TABLE audit_events ENABLE TRIGGER audit_events_append_only');
+    }
+    assert.equal(await auditRepository.verifyTenantChain(TENANT_A), true);
+  });
+
+  await t.test('request repository is tenant-scoped and commits transition plus audit atomically', async () => {
     await seedRequest(pool, { tenantId: TENANT_A, requestId: 'shared-request', requesterUserId: USER_A });
     await seedRequest(pool, { tenantId: TENANT_B, requestId: 'shared-request', requesterUserId: USER_B });
     await seedRequest(pool, { tenantId: TENANT_A, requestId: 'alpha-request', requesterUserId: USER_A });
 
-    const requests = createPostgresRequestRepository(pool);
+    const requests = requestRepository();
     assert.equal((await requests.findByTenantIdAndId(TENANT_A, 'shared-request')).requesterUserId, USER_A);
     assert.equal((await requests.findByTenantIdAndId(TENANT_B, 'shared-request')).requesterUserId, USER_B);
     assert.equal(await requests.findByTenantIdAndId(TENANT_B, 'alpha-request'), null);
@@ -219,29 +320,66 @@ test('PostgreSQL migration, tenant persistence, session, and authorization contr
       nextStatus: REQUEST_STATUS.IN_REVIEW,
       reason: null,
       changedAt: new Date('2026-08-24T10:00:00.000Z'),
+      auditEvent: requestAuditEvent({ requestId: 'shared-request' }),
     });
     assert.equal(changed.status, REQUEST_STATUS.IN_REVIEW);
     assert.equal((await requests.findByTenantIdAndId(TENANT_B, 'shared-request')).status, REQUEST_STATUS.SUBMITTED);
+    assert.equal((await auditRepository.listByTenantId(TENANT_A))[0].targetId, 'shared-request');
+  });
+
+  await t.test('request mutation rolls back when its required audit append fails', async () => {
+    await seedRequest(pool, { tenantId: TENANT_A, requestId: 'audit-rollback-request', requesterUserId: USER_A });
+    const failingAuditRepository = {
+      async appendWithClient() {
+        throw new Error('EXPECTED_AUDIT_FAILURE');
+      },
+    };
+    const requests = createPostgresRequestRepository(pool, { auditRepository: failingAuditRepository });
+    await assert.rejects(
+      requests.transitionByTenantIdAndId({
+        tenantId: TENANT_A,
+        requestId: 'audit-rollback-request',
+        expectedStatus: REQUEST_STATUS.SUBMITTED,
+        nextStatus: REQUEST_STATUS.CONFIRMED,
+        reason: null,
+        changedAt: new Date('2026-08-24T10:01:00.000Z'),
+        auditEvent: requestAuditEvent({
+          requestId: 'audit-rollback-request',
+          nextStatus: REQUEST_STATUS.CONFIRMED,
+        }),
+      }),
+      /EXPECTED_AUDIT_FAILURE/,
+    );
+    const persisted = await requestRepository().findByTenantIdAndId(TENANT_A, 'audit-rollback-request');
+    assert.equal(persisted.status, REQUEST_STATUS.SUBMITTED);
   });
 
   await t.test('request transitions reject stale concurrent state instead of silently overwriting', async () => {
     await seedRequest(pool, { tenantId: TENANT_A, requestId: 'race-request', requesterUserId: USER_A });
-    const requests = createPostgresRequestRepository(pool);
-    const transition = (nextStatus) => requests.transitionByTenantIdAndId({
+    const requests = requestRepository();
+    const transition = (nextStatus, correlationId) => requests.transitionByTenantIdAndId({
       tenantId: TENANT_A,
       requestId: 'race-request',
       expectedStatus: REQUEST_STATUS.SUBMITTED,
       nextStatus,
       reason: null,
       changedAt: new Date('2026-08-24T10:05:00.000Z'),
+      auditEvent: requestAuditEvent({
+        requestId: 'race-request',
+        nextStatus,
+        correlationId,
+      }),
     });
     const [first, second] = await Promise.all([
-      transition(REQUEST_STATUS.IN_REVIEW),
-      transition(REQUEST_STATUS.CONFIRMED),
+      transition(REQUEST_STATUS.IN_REVIEW, CORRELATION_A),
+      transition(REQUEST_STATUS.CONFIRMED, CORRELATION_B),
     ]);
     assert.equal([first, second].filter(Boolean).length, 1);
     const persisted = await requests.findByTenantIdAndId(TENANT_A, 'race-request');
     assert.ok([REQUEST_STATUS.IN_REVIEW, REQUEST_STATUS.CONFIRMED].includes(persisted.status));
+    const auditRows = (await auditRepository.listByTenantId(TENANT_A, { limit: 100 }))
+      .filter((entry) => entry.targetId === 'race-request');
+    assert.equal(auditRows.length, 1);
   });
 
   await t.test('workflow reason constraints reject client-style status/reason combinations', async () => {
@@ -286,10 +424,11 @@ test('PostgreSQL migration, tenant persistence, session, and authorization contr
     assert.equal(result.rows[0].count, 0);
   });
 
-  await t.test('session persistence stores only hashes and rejects cross-tenant identities', async () => {
-    const repository = createPostgresSessionRepository(pool);
+  await t.test('session persistence stores only hashes and commits issuance audit atomically', async () => {
+    const repository = sessionRepository();
     const service = createSessionService({
       repository,
+      auditService,
       publicOrigin: 'https://conference.example',
       csrfSecret: CSRF_KEY,
       clock: () => Date.parse('2026-08-24T06:00:00.000Z'),
@@ -297,7 +436,7 @@ test('PostgreSQL migration, tenant persistence, session, and authorization contr
       idFactory: () => SESSION_A,
     });
 
-    const issued = await service.issue(identity());
+    const issued = await service.issue(identity(), { correlationId: CORRELATION_A });
     const persisted = await pool.query(
       'SELECT token_hash, provider, provider_identity_reference FROM sessions WHERE id = $1',
       [SESSION_A],
@@ -307,6 +446,11 @@ test('PostgreSQL migration, tenant persistence, session, and authorization contr
     assert.equal(persisted.rows[0].provider, 'test_oidc');
     assert.equal(persisted.rows[0].provider_identity_reference, 'subject-a');
     assert.doesNotMatch(JSON.stringify(persisted.rows[0]), new RegExp(TOKEN_A));
+    const sessionAudit = (await auditRepository.listByTenantId(TENANT_A, { limit: 100 }))
+      .find((entry) => entry.correlationId === CORRELATION_A && entry.action === AUDIT_ACTION.SESSION_ISSUED);
+    assert.ok(sessionAudit);
+    assert.doesNotMatch(JSON.stringify(sessionAudit), new RegExp(TOKEN_A));
+    assert.doesNotMatch(JSON.stringify(sessionAudit), new RegExp(SESSION_A));
 
     const resolved = await service.resolvePrincipal({ headers: { cookie: cookiePair(issued.setCookie) } });
     assert.equal(resolved.userId, USER_A);
@@ -318,11 +462,36 @@ test('PostgreSQL migration, tenant persistence, session, and authorization contr
     });
   });
 
-  await t.test('expired and revoked sessions fail closed against PostgreSQL', async () => {
-    let now = Date.parse('2026-08-24T07:00:00.000Z');
-    const repository = createPostgresSessionRepository(pool);
+  await t.test('session creation rolls back when its required audit append fails', async () => {
+    const failingAuditRepository = {
+      async appendWithClient() {
+        throw new Error('EXPECTED_AUDIT_FAILURE');
+      },
+    };
+    const repository = createPostgresSessionRepository(pool, { auditRepository: failingAuditRepository });
     const service = createSessionService({
       repository,
+      auditService,
+      publicOrigin: 'https://conference.example',
+      csrfSecret: CSRF_KEY,
+      clock: () => Date.parse('2026-08-24T06:30:00.000Z'),
+      tokenFactory: () => 'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF',
+      idFactory: () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    });
+    await assert.rejects(service.issue(identity()), /EXPECTED_AUDIT_FAILURE/);
+    const persisted = await pool.query(
+      'SELECT count(*)::int AS count FROM sessions WHERE id = $1',
+      ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+    );
+    assert.equal(persisted.rows[0].count, 0);
+  });
+
+  await t.test('expired and revoked sessions fail closed against PostgreSQL', async () => {
+    let now = Date.parse('2026-08-24T07:00:00.000Z');
+    const repository = sessionRepository();
+    const service = createSessionService({
+      repository,
+      auditService,
       publicOrigin: 'https://conference.example',
       csrfSecret: CSRF_KEY,
       sessionTtlSeconds: 300,
@@ -340,6 +509,7 @@ test('PostgreSQL migration, tenant persistence, session, and authorization contr
     now = Date.parse('2026-08-24T08:00:00.000Z');
     const revocationService = createSessionService({
       repository,
+      auditService,
       publicOrigin: 'https://conference.example',
       csrfSecret: CSRF_KEY,
       sessionTtlSeconds: 300,
@@ -356,7 +526,7 @@ test('PostgreSQL migration, tenant persistence, session, and authorization contr
 
   await t.test('security-version change invalidates stale privileges and authorized rotation refreshes them', async () => {
     let now = Date.parse('2026-08-24T09:00:00.000Z');
-    const repository = createPostgresSessionRepository(pool);
+    const repository = sessionRepository();
     const tokens = [
       'DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD',
       'EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE',
@@ -367,6 +537,7 @@ test('PostgreSQL migration, tenant persistence, session, and authorization contr
     ];
     const service = createSessionService({
       repository,
+      auditService,
       publicOrigin: 'https://conference.example',
       csrfSecret: CSRF_KEY,
       clock: () => now,
@@ -409,14 +580,19 @@ test('PostgreSQL migration, tenant persistence, session, and authorization contr
     assert.equal(await service.resolvePrincipal(originalRequest), null);
   });
 
-  await t.test('request and session migrations remain independently reversible and reapplicable', async () => {
+  await t.test('audit migration refuses unreviewed legacy rows before reapplication', async () => {
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await isPostgresSchemaReady(pool), false);
     let remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
-    assert.deepEqual(remaining.rows, [{ version: 1 }, { version: 2 }]);
+    assert.deepEqual(remaining.rows, [{ version: 1 }, { version: 2 }, { version: 3 }]);
 
+    await assert.rejects(migrateUp(pool), (error) => error.code === '55000');
+    await pool.query('DELETE FROM audit_events');
     await migrateUp(pool);
     assert.equal(await isPostgresSchemaReady(pool), true);
+
+    assert.equal(await rollbackLatest(pool), true);
+    await pool.query('DELETE FROM audit_events');
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
     remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
