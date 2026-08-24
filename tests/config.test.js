@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ConfigurationError, loadConfig, loadDatabaseConfig } from '../src/config.js';
 
+const VALID_CSRF_SECRET = 'production-csrf-secret-at-least-32-bytes-long';
+
 test('development configuration has safe bounded defaults', () => {
   const config = loadConfig({ NODE_ENV: 'development' });
   assert.equal(config.publicOrigin, 'http://localhost:3000');
@@ -9,6 +11,8 @@ test('development configuration has safe bounded defaults', () => {
   assert.equal(config.maxBodyBytes, 65_536);
   assert.equal(config.databaseUrl, null);
   assert.equal(config.databaseSsl, 'disable');
+  assert.equal(config.sessionTtlSeconds, 28_800);
+  assert.equal(config.csrfSecret, null);
   assert.ok(Object.isFrozen(config));
 });
 
@@ -23,7 +27,7 @@ test('production requires explicit HTTPS origin before database configuration', 
   });
 });
 
-test('production requires PostgreSQL and certificate-verifying TLS', () => {
+test('production requires PostgreSQL, certificate-verifying TLS, and external CSRF secret', () => {
   assert.throws(
     () => loadConfig({ NODE_ENV: 'production', PUBLIC_ORIGIN: 'https://example.com' }),
     (error) => error instanceof ConfigurationError && error.code === 'DATABASE_URL_REQUIRED',
@@ -37,14 +41,37 @@ test('production requires PostgreSQL and certificate-verifying TLS', () => {
     }),
     (error) => error instanceof ConfigurationError && error.code === 'DATABASE_SSL_REQUIRED',
   );
+  assert.throws(
+    () => loadConfig({
+      NODE_ENV: 'production',
+      PUBLIC_ORIGIN: 'https://example.com',
+      DATABASE_URL: 'postgresql://db.example.com/conference_manager',
+      DATABASE_SSL: 'verify-full',
+    }),
+    (error) => error instanceof ConfigurationError && error.code === 'CSRF_SECRET_REQUIRED',
+  );
+  assert.throws(
+    () => loadConfig({
+      NODE_ENV: 'production',
+      PUBLIC_ORIGIN: 'https://example.com',
+      DATABASE_URL: 'postgresql://db.example.com/conference_manager',
+      DATABASE_SSL: 'verify-full',
+      CSRF_SECRET: 'too-short',
+    }),
+    (error) => error instanceof ConfigurationError && error.code === 'CSRF_SECRET_INVALID',
+  );
 
   const config = loadConfig({
     NODE_ENV: 'production',
     PUBLIC_ORIGIN: 'https://example.com',
     DATABASE_URL: 'postgresql://db.example.com/conference_manager',
     DATABASE_SSL: 'verify-full',
+    CSRF_SECRET: VALID_CSRF_SECRET,
+    SESSION_TTL_SECONDS: '3600',
   });
   assert.equal(config.databaseSsl, 'verify-full');
+  assert.equal(config.csrfSecret, VALID_CSRF_SECRET);
+  assert.equal(config.sessionTtlSeconds, 3600);
 });
 
 test('database URL rejects unsupported schemes, fragments, and connection-string overrides', () => {
@@ -70,6 +97,7 @@ test('numeric security and database limits reject malformed or unsafe values', (
   assert.throws(() => loadConfig({ NODE_ENV: 'test', MAX_BODY_BYTES: '0' }), ConfigurationError);
   assert.throws(() => loadConfig({ NODE_ENV: 'test', RATE_LIMIT_MAX: 'not-a-number' }), ConfigurationError);
   assert.throws(() => loadConfig({ NODE_ENV: 'test', PORT: '70000' }), ConfigurationError);
+  assert.throws(() => loadConfig({ NODE_ENV: 'test', SESSION_TTL_SECONDS: '299' }), ConfigurationError);
   assert.throws(() => loadDatabaseConfig({ NODE_ENV: 'test', DATABASE_POOL_MAX: '0' }, 'test'), ConfigurationError);
   assert.throws(
     () => loadDatabaseConfig({ NODE_ENV: 'test', DATABASE_STATEMENT_TIMEOUT_MS: '999999' }, 'test'),
