@@ -320,7 +320,7 @@ for (const required of [
   }
 }
 const browserBindingCheck = entraAuthService.indexOf('safeTokenEqual(presentedBinding');
-const oidcStateConsume = entraAuthService.indexOf('repository.consume');
+const oidcStateConsume = entraAuthService.indexOf('const transaction = await repository.consume({');
 if (browserBindingCheck < 0 || oidcStateConsume < 0 || browserBindingCheck > oidcStateConsume) {
   throw new Error('Entra browser binding must be validated before shared OIDC state is consumed.');
 }
