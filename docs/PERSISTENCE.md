@@ -17,7 +17,8 @@ Production requirements include:
 - bounded pool/connection/idle/statement/query timeouts;
 - PostgreSQL parameter binding for application/user values;
 - no logging of connection strings, session tokens or raw driver Error objects;
-- reviewed migration SQL selected only from the fixed source-controlled migration directory.
+- reviewed migration SQL selected only from the fixed source-controlled migration directory;
+- externally managed `AUDIT_HMAC_SECRET` in Pilot/Production; the HMAC key is not stored in PostgreSQL.
 
 ## Schema ownership
 
@@ -42,12 +43,18 @@ Migration 003 establishes authoritative Request workflow persistence:
 - allowlisted Request status constraint matching the server workflow;
 - `status_reason` with bounded/trimmed database validation;
 - reason storage restricted to `Rejected` and `Change Requested` states;
-- `status_changed_at` machine timestamp;
-- expected schema version 3.
+- `status_changed_at` machine timestamp.
 
-The raw session token and CSRF token are never persisted.
+Migration 004 establishes tenant-scoped audit integrity:
 
-The audit table provides relational ownership only. Append-only/tamper-evident audit behavior remains #52.
+- refuses unexplained pre-existing audit rows rather than silently treating them as trusted evidence;
+- adds bounded previous/new state and retention classification;
+- adds `previous_hash`, `event_hash` and integrity version 1;
+- adds Tenant/correlation and Tenant/hash indexes;
+- installs an append-only trigger rejecting `UPDATE` and `DELETE`;
+- advances expected runtime schema readiness to version 4.
+
+The raw session token, CSRF token and audit HMAC key are never persisted.
 
 ## Tenant integrity
 
@@ -59,12 +66,11 @@ Session rows reference `(tenant_id, user_id)`, so a session cannot attach an int
 
 Request lookup and workflow mutation are always parameterized by internal `tenant_id` plus Request ID. A Request ID from another Tenant therefore resolves as absent without a global lookup.
 
+Audit rows are likewise Tenant-owned. Append/list/verification operations receive one internal Tenant ID, and each Tenant has an independent HMAC chain beginning with `previous_hash = NULL`.
+
 ## Request workflow concurrency
 
-`createPostgresRequestRepository` implements two Request operations for the #51 authorization slice:
-
-- `findByTenantIdAndId(tenantId, requestId)`;
-- `transitionByTenantIdAndId(...)`.
+`createPostgresRequestRepository` implements Tenant-scoped Request access and status-conditional workflow mutation.
 
 A transition update includes the previously authorized current status in its `WHERE` predicate:
 
@@ -75,6 +81,26 @@ tenant_id + request id + expected current status
 This provides optimistic workflow concurrency. If another operation changes the Request between the authorized read and the write, the stale update affects zero rows and the application returns `409 REQUEST_STATE_CONFLICT` rather than overwriting the newer state.
 
 The repository persists only the server policy decision (`nextStatus`, validated reason and server timestamp). Client-supplied target status/owner/Tenant fields do not reach the repository contract.
+
+A successful Request transition and its server-generated audit event execute in one PostgreSQL transaction. The transition is not committed if the required audit append fails.
+
+## Audit append and verification
+
+`createPostgresAuditRepository` owns durable audit integrity.
+
+For each append it:
+
+1. obtains a transaction-scoped advisory lock derived from the internal Tenant ID;
+2. verifies that the Tenant exists;
+3. loads the latest event hash for that Tenant;
+4. computes HMAC-SHA-256 over the canonical event payload plus the previous hash;
+5. inserts the event with `previous_hash`, `event_hash` and integrity version 1.
+
+Canonical object-key sorting keeps the HMAC stable after PostgreSQL `jsonb` normalization.
+
+Tenant-chain verification reads the Tenant's events oldest-to-newest and validates the stored previous-hash linkage and HMAC using timing-safe hash comparison. Tenant-visible audit reads fail closed when verification fails.
+
+The database trigger rejects ordinary row UPDATE/DELETE operations. The HMAC chain detects modified or reordered rows while the HMAC key remains protected. It does not independently prove completeness against a privileged deletion of an entire chain suffix or restoration of an older database snapshot. External anchoring/WORM export and independently controlled retention remain later production-hardening decisions.
 
 ## Migration framework
 
@@ -104,7 +130,7 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and the exact expected schema version.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 4 for this foundation.
 
 ## Transaction contract
 
@@ -112,9 +138,11 @@ The app does not auto-migrate on process start. Deployment automation runs migra
 
 Business/session services must not report successful persistence before the authoritative transaction commits.
 
-Session rotation is implemented as one transaction: the current session is locked, the replacement is inserted using the current User `security_version`, then the previous session is revoked. Failure prevents a partial rotation.
+Session issuance, revocation and rotation persist their corresponding success audit event in the same transaction as the session mutation. Rotation additionally locks the current session, inserts the replacement using current User `security_version`, revokes the previous session and appends the audit evidence before commit.
 
-Request workflow updates are single conditional SQL statements and therefore atomic at row-update level. Their expected-current-status predicate is the concurrency control for #51.
+Request workflow transitions conditionally update the row and append the success audit event in the same transaction. A failed audit insert therefore prevents a successful Request transition from becoming authoritative.
+
+Failure/denial events for operations that did not commit an authoritative mutation are separate audit appends because there is no successful business transaction to join.
 
 Booking concurrency will receive additional domain-specific exclusion/atomicity controls; Request workflow state concurrency is not a room double-booking guarantee.
 
@@ -134,7 +162,7 @@ Before schema-changing production deployment:
 Rollback policy:
 
 - prefer application rollback for backward-compatible schema changes;
-- use `npm run db:rollback` only when the down migration was validated and data-loss impact is explicitly acceptable;
+- use `npm run db:rollback` only when the down migration was validated and data-loss/security impact is explicitly acceptable;
 - destructive down migrations are bootstrap/test tools unless separately approved for populated environments;
 - populated-environment destructive/data-transforming failures require reviewed forward-fix or restore/PITR decisions;
 - restore procedures must be exercised before General Availability.
@@ -143,20 +171,26 @@ Migration 002 down removes the session table/security-version column and therefo
 
 Migration 003 down removes `status_reason`, `status_changed_at` and the Request workflow constraints. Any populated-environment rollback would lose persisted status reasons/change timestamps and weaken database workflow validation, so it requires an explicit data/security-impact decision rather than automatic rollback.
 
+Migration 004 down removes the append-only trigger, integrity chain fields and retention/state extensions. On a populated environment this would weaken evidentiary controls and discard integrity metadata, so production rollback requires an explicit security/audit decision; a forward fix is preferred.
+
 ## Testing evidence required
 
 Database changes require PostgreSQL integration coverage for applicable migration/version/checksum behavior, tenant-scoped repositories, composite FK isolation, invalid constraints, duplicate/concurrent writes, transaction rollback, schema readiness and cross-Tenant persistence.
 
 Session persistence additionally requires real PostgreSQL tests for raw-token non-persistence, session resolution, cross-Tenant issuance rejection, expiry, revocation, stale privilege invalidation, rotation and migration rollback/reapply.
 
-Request authorization persistence additionally requires real PostgreSQL tests for:
+Request authorization persistence additionally requires real PostgreSQL tests for same-ID Tenant isolation, cross-Tenant absence, workflow constraints, invalid status/reason combinations and stale/concurrent transition protection.
 
-- same Request ID isolation across different Tenants;
-- cross-Tenant Request lookup returning absent;
-- server workflow status constraints;
-- invalid status/reason combinations;
-- Tenant-specific transitions;
-- concurrent/stale expected-status writes allowing at most one winner;
-- migration 003 rollback/reapply while preserving independent migration 002 regression coverage.
+Audit persistence additionally requires real PostgreSQL tests for:
+
+- schema version 4 migration behavior;
+- independent Tenant chains;
+- Tenant-scoped listing;
+- append-only UPDATE/DELETE rejection;
+- HMAC chain verification;
+- detectable row tampering;
+- unaffected integrity of another Tenant after one Tenant is tampered;
+- atomic rollback when required audit persistence fails;
+- migration rollback/reapply where applicable.
 
 CI runs database tests against an isolated PostgreSQL 18 service after the normal quality/security gate.
