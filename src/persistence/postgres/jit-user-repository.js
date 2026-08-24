@@ -63,7 +63,7 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
       newUserId,
       changedAt,
       provisionAuditEvent,
-      profileAuditEvent,
+      profileAuditEventFor,
     }) {
       assertUuid(tenantId, 'JIT_TENANT_ID_INVALID');
       assertProvider(provider);
@@ -71,6 +71,7 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
       assertDisplayName(displayName);
       assertUuid(newUserId, 'JIT_USER_ID_INVALID');
       assertDate(changedAt);
+      if (typeof profileAuditEventFor !== 'function') throw new TypeError('JIT_PROFILE_AUDIT_FACTORY_REQUIRED');
 
       return withPostgresTransaction(pool, async (client) => {
         await client.query({
@@ -125,10 +126,9 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
               values: [tenantId, current.user_id, displayName, changedAt],
             });
             if (updated.rowCount !== 1) return Object.freeze({ status: 'user_disabled' });
-            if (profileAuditEvent) {
-              const audit = await auditRepository.appendWithClient(client, profileAuditEvent);
-              if (!audit) throw new Error('AUDIT_APPEND_FAILED');
-            }
+            const profileAuditEvent = profileAuditEventFor(current.user_id);
+            const audit = await auditRepository.appendWithClient(client, profileAuditEvent);
+            if (!audit) throw new Error('AUDIT_APPEND_FAILED');
             return Object.freeze({ status: 'resolved', identity: mapped(updated.rows[0], { profileChanged: true }) });
           }
           return Object.freeze({ status: 'resolved', identity: mapped(current) });
