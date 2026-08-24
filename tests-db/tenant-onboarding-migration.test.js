@@ -18,6 +18,9 @@ test('tenant onboarding migration refuses rollback when invitation or binding ev
   t.after(async () => pool.end());
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await isPostgresSchemaReady(pool), false);
+
   await pool.query(
     'INSERT INTO tenants (id, display_name, status) VALUES ($1, $2, $3)',
     [TENANT_ID, 'Rollback Guard Tenant', 'pending'],
@@ -36,7 +39,7 @@ test('tenant onboarding migration refuses rollback when invitation or binding ev
   );
 
   await assert.rejects(rollbackLatest(pool), (error) => error.code === '55000');
-  assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await isPostgresSchemaReady(pool), false);
   const retained = await pool.query(
     'SELECT count(*)::int AS count FROM tenant_onboarding_invitations WHERE id = $1',
     [INVITATION_ID],
@@ -46,7 +49,6 @@ test('tenant onboarding migration refuses rollback when invitation or binding ev
   await pool.query('DELETE FROM tenant_onboarding_invitations WHERE id = $1', [INVITATION_ID]);
   await pool.query('DELETE FROM tenants WHERE id = $1', [TENANT_ID]);
   assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await isPostgresSchemaReady(pool), false);
   const missing = await pool.query("SELECT to_regclass('public.tenant_identity_bindings') AS table_name");
   assert.equal(missing.rows[0].table_name, null);
 
