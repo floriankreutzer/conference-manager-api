@@ -110,6 +110,7 @@ for (const resourceType of [
   'notification',
   'integration',
   'entitlement',
+  'booking_provider_reference',
   'audit_event',
 ]) {
   if (!tenantModel.includes(`'${resourceType}'`)) {
@@ -166,8 +167,10 @@ for (const required of [
   'createPostgresRequestRepository',
   'createPostgresAuditRepository',
   'createPostgresEntitlementRepository',
+  'createPostgresBookingReferenceRepository',
   'auditRepository',
   'entitlementRepository',
+  'bookingReferenceRepository',
 ]) {
   if (!persistence.includes(required)) throw new Error(`PostgreSQL persistence is missing ${required}.`);
 }
@@ -239,8 +242,8 @@ if (!config.includes('AUDIT_HMAC_SECRET_REQUIRED') || !config.includes('auditHma
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!pool.includes('CURRENT_SCHEMA_VERSION = 5')) {
-  throw new Error('Runtime schema readiness must require entitlement migration version 5.');
+if (!pool.includes('CURRENT_SCHEMA_VERSION = 6')) {
+  throw new Error('Runtime schema readiness must require booking-reference migration version 6.');
 }
 
 const index = await readFile('src/index.js', 'utf8');
@@ -270,6 +273,8 @@ for (const migration of [
   'migrations/004_tamper_evident_audit.down.sql',
   'migrations/005_tenant_entitlements.up.sql',
   'migrations/005_tenant_entitlements.down.sql',
+  'migrations/006_booking_provider_references.up.sql',
+  'migrations/006_booking_provider_references.down.sql',
 ]) {
   await readFile(migration, 'utf8');
 }

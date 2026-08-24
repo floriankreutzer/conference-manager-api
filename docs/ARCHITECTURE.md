@@ -8,7 +8,7 @@ The cross-repository production topology is defined in `floriankreutzer/conferen
 
 ## Current foundation
 
-The service uses Node.js 22 native HTTP and ECMAScript modules. Issues #47-#53 establish the trusted HTTP boundary, hard Tenant isolation, PostgreSQL persistence, provider-neutral server-side sessions, deny-by-default Tenant authorization, tenant-scoped tamper-evident audit evidence and server-side Tenant entitlements. `pg` remains the only runtime dependency.
+The service uses Node.js 22 native HTTP and ECMAScript modules. Issues #47-#54 establish the trusted HTTP boundary, hard Tenant isolation, PostgreSQL persistence, provider-neutral server-side sessions, deny-by-default Tenant authorization, tenant-scoped tamper-evident audit evidence, server-side Tenant entitlements and provider-neutral booking/calendar integration contracts. `pg` remains the only runtime dependency.
 
 ```text
 Browser (untrusted)
@@ -56,13 +56,17 @@ Provider-specific identity claims and SDK types do not cross into business servi
 - `src/audit/audit-service.js` derives Tenant/actor/time from trusted context, authorizes tenant audit reads and records denial/read evidence.
 - `src/entitlements/capabilities.js` owns stable product capability IDs and the authorization/entitlement/rollout intersection.
 - `src/entitlements/entitlement-service.js` owns fail-closed Tenant capability evaluation and deny-by-default operator entitlement changes.
+- `src/integrations/calendar-contract.js` owns the provider-neutral calendar port, response validation and stable provider failure taxonomy.
+- `src/integrations/booking-reference.js` owns the opaque provider-reference persistence model.
+- `src/application/booking-integration-service.js` coordinates authorized/entitled availability, reservation validation and idempotent calendar operations without provider-specific SDK types.
 - `src/persistence/postgres/pool.js` owns bounded PostgreSQL pooling, TLS policy and database/schema readiness.
 - `src/persistence/postgres/session-repository.js` owns session persistence and authoritative expiry/revocation/security-version checks; successful lifecycle mutations append audit evidence in the same transaction.
 - `src/persistence/postgres/request-repository.js` owns Tenant-scoped Request lookup and status-conditional workflow updates; successful transitions append audit evidence in the same transaction.
 - `src/persistence/postgres/audit-repository.js` owns per-Tenant append serialization, HMAC signing, tenant-scoped listing and chain verification.
 - `src/persistence/postgres/entitlement-repository.js` owns Tenant-scoped entitlement reads and audit-atomic entitlement changes.
+- `src/persistence/postgres/booking-reference-repository.js` owns Tenant-scoped room-conflict lookup and audit-atomic opaque provider-reference persistence.
 - `src/persistence/postgres/transaction.js` owns the common commit/rollback transaction boundary.
-- `src/persistence/postgres/index.js` composes pool, Tenant loading, Session/Request/Audit/Entitlement repositories and readiness.
+- `src/persistence/postgres/index.js` composes pool, Tenant loading, Session/Request/Audit/Entitlement/Booking-reference repositories and readiness.
 - `scripts/db-migrations.mjs` owns source-controlled migration discovery, checksums, advisory locking and transactional up/down execution.
 - `src/logger.js` owns bounded non-sensitive operational logs, separate from durable audit evidence.
 - `src/app.js` composes transport, session, CSRF, Tenant, audit and application boundaries without importing PostgreSQL or provider SDKs.
@@ -72,7 +76,7 @@ Provider-specific identity claims and SDK types do not cross into business servi
 
 HTTP handlers call security/identity/Tenant/application/audit contracts. Application services call authorization/domain policies and repository ports. Application/domain/authorization code must not depend on Node HTTP objects, `pg`, migrations, provider claims or provider SDK types.
 
-PostgreSQL adapters implement repository contracts using fixed source-controlled SQL and parameter binding. Identity-provider adapters added later translate validated provider claims to internal identity contracts before business/session code sees them.
+PostgreSQL adapters implement repository contracts using fixed source-controlled SQL and parameter binding. Identity-provider adapters added later translate validated provider claims to internal identity contracts before business/session code sees them. Calendar/provider adapters translate fixed provider APIs and provider-specific resource identifiers into the URL-free provider-neutral booking contract before application services consume them.
 
 ## Tenant and identity trust boundary
 
@@ -132,7 +136,19 @@ Schema ownership lives in `migrations/`. Migrations are paired up/down files, nu
 
 The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and the exact expected schema version.
 
-Migration 001 establishes tenant-owned product structures. Migration 002 adds User security-version state and server-side sessions. Migration 003 constrains authoritative Request workflow state and adds workflow reason/change timestamps. Migration 004 upgrades audit storage to the append-only, HMAC-chained event contract. Migration 005 adds allowlisted Tenant entitlements, extends the audit taxonomy for entitlement changes and advances runtime schema readiness to version 5.
+Migration 001 establishes tenant-owned product structures. Migration 002 adds User security-version state and server-side sessions. Migration 003 constrains authoritative Request workflow state and adds workflow reason/change timestamps. Migration 004 upgrades audit storage to the append-only, HMAC-chained event contract. Migration 005 adds allowlisted Tenant entitlements and extends the audit taxonomy for entitlement changes. Migration 006 adds Tenant-scoped opaque booking-provider references and advances runtime schema readiness to version 6.
+
+## Booking and calendar integration architecture
+
+`src/application/booking-integration-service.js` is an internal use-case boundary, not a new browser endpoint. It preserves the existing Employee/Manager Request workflow semantics and requires same-active-Tenant binding, an explicit server authorization decision and the configured Tenant entitlement before provider access.
+
+Availability and provisional/final reservation validation first apply the Tenant-scoped local overlap rule. Provider-specific room/resource mapping remains inside future provider adapters. Calendar create uses a deterministic server-derived SHA-256 idempotency key so a retry after external success plus local persistence failure can recover the same provider event rather than create a duplicate.
+
+Migration 006 persists only the internal Tenant/Request/Integration binding, opaque provider reference, idempotency key, state and correlation metadata. Local provider-reference mutations and `calendar.operation` success evidence commit atomically. External provider work cannot participate in the PostgreSQL transaction; recovery therefore uses idempotency rather than claiming distributed atomicity.
+
+The provider-neutral contract contains no URL. Future outbound adapters must use fixed/allowlisted destinations, bounded timeouts, constrained redirects, validated responses and explicit retry classification.
+
+See `docs/BOOKING-INTEGRATION.md` for the normative contract.
 
 ## Foundation endpoints
 
@@ -156,7 +172,6 @@ The foundation rate limiter is local/in-memory and bounded. It is not a multi-in
 
 ## Deferred ownership
 
-- #54: Provider-neutral booking/calendar contracts and provider adapters.
 - #55: Production observability and SLO-oriented diagnostics.
 - #56: Frontend production-persistence migration onto API/database authority.
 - #57: Complete threat model and production secure-configuration baseline, including independent audit anchoring/retention decisions.

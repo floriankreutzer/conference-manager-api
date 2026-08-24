@@ -68,8 +68,9 @@ async function seedRequest(pool, {
 }) {
   await pool.query(
     `INSERT INTO requests
-      (tenant_id, id, requester_user_id, status, starts_at, ends_at, internal_participants, external_participants)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      (tenant_id, id, requester_user_id, status, starts_at, ends_at,
+       internal_participants, external_participants, status_changed_at, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $9)`,
     [
       tenantId,
       requestId,
@@ -79,6 +80,7 @@ async function seedRequest(pool, {
       '2026-09-01T11:00:00.000Z',
       4,
       1,
+      '2026-08-24T09:00:00.000Z',
     ],
   );
 }
@@ -142,6 +144,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 3, name: 'request_authorization_workflow' },
       { version: 4, name: 'tamper_evident_audit' },
       { version: 5, name: 'tenant_entitlements' },
+      { version: 6, name: 'booking_provider_references' },
     ]);
   });
 
@@ -590,6 +593,16 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 2 },
       { version: 3 },
       { version: 4 },
+      { version: 5 },
+    ]);
+
+    assert.equal(await rollbackLatest(pool), true);
+    remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
+    assert.deepEqual(remaining.rows, [
+      { version: 1 },
+      { version: 2 },
+      { version: 3 },
+      { version: 4 },
     ]);
 
     assert.equal(await rollbackLatest(pool), true);
@@ -600,6 +613,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
     await migrateUp(pool);
     assert.equal(await isPostgresSchemaReady(pool), true);
 
+    assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
