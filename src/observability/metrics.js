@@ -9,7 +9,7 @@ const ROUTES = new Set([
   'not_found',
   'invalid_request',
 ]);
-const METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
+const METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OTHER']);
 const BOOKING_OPERATIONS = new Set(['availability', 'reservation_validation', 'create', 'update', 'cancel']);
 const OUTCOMES = new Set(['success', 'failure', 'denied']);
 const DEPENDENCY_STATES = new Set(['healthy', 'degraded', 'unavailable']);
