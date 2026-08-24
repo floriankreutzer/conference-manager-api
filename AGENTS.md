@@ -7,25 +7,27 @@ This repository is the trusted production backend for the Conference Manager Saa
 ## 1. Canonical source of truth
 
 - This root `AGENTS.md` is the mandatory entry point for all repository work.
+- The detailed engineering requirements in `docs/CODING-STANDARDS.md` are mandatory and form part of these instructions.
 - All repository-wide coding and agent instructions must be written in English.
 - `main` is the current functional and architectural source of truth.
 - The approved frontend/topology decision in `floriankreutzer/conference-manager` under `docs/SAAS-PRODUCTION-TOPOLOGY.md` defines the cross-repository trust boundary. This repository must remain compatible with that decision.
 - If repository documentation conflicts with an assumption from a conversation, the repository documentation wins unless the conflict is explicitly reviewed and changed.
 - Agent-specific instruction files may only point to this file and must not define competing requirements.
-- If an agent cannot read this file, it must not modify the repository.
+- If an agent cannot read this file or the referenced coding standards, it must not modify the repository. It must report that the required instructions could not be loaded.
 
 ## 2. Mandatory workflow before every change or review
 
 Before writing, editing, refactoring, or reviewing code:
 
 1. Read this `AGENTS.md` completely.
-2. Treat current `main` as the baseline and determine the target/base ref.
-3. Read the current version of every existing file before modifying it; when using the GitHub Contents API, use its current blob SHA.
-4. Read all architecture, security, API, persistence, identity, tenancy, observability, and testing documentation relevant to the scope.
-5. Identify existing components, contracts, schemas, middleware, repositories, services, tests, and infrastructure patterns that can be reused.
-6. Assess regression, progression, tenant-isolation, authorization, authentication/session, privacy, audit, data-integrity, availability, and operational impact.
-7. Make the smallest coherent, reviewable change required for the issue. Do not combine unrelated architectural migrations or features.
-8. Run the repository validation commands defined by `package.json` and CI after the final modification.
+2. Read `docs/CODING-STANDARDS.md` completely.
+3. Treat current `main` as the baseline and determine the target/base ref.
+4. Read the current version of every existing file before modifying it; when using the GitHub Contents API, use its current blob SHA.
+5. Read all architecture, security, API, persistence, identity, tenancy, observability, and testing documentation relevant to the scope.
+6. Identify existing components, contracts, schemas, middleware, repositories, services, tests, and infrastructure patterns that can be reused.
+7. Assess regression, progression, tenant-isolation, authorization, authentication/session, privacy, audit, data-integrity, availability, and operational impact.
+8. Make the smallest coherent, reviewable change required for the issue. Do not combine unrelated architectural migrations or features.
+9. Run the repository validation commands defined by `package.json` and CI after the final modification.
 
 Do not bypass branch protection, required reviews, required status checks, security gates, test gates, migration checks, or secret controls.
 
