@@ -68,9 +68,11 @@ test('inactive users may lose existing elevated roles but cannot receive a new e
     [TENANT_ID, 'Inactive Role Tenant', 'active'],
   );
   await pool.query(
-    `INSERT INTO users (tenant_id, id, display_name, active)
-     VALUES ($1, $2, 'Active Admin', true), ($1, $3, 'Inactive Target', false)`,
-    [TENANT_ID, ADMIN_ID, TARGET_ID],
+    `INSERT INTO users (tenant_id, id, display_name, active, created_at, updated_at)
+     VALUES
+       ($1, $2, 'Active Admin', true, $4, $4),
+       ($1, $3, 'Inactive Target', false, $4, $4)`,
+    [TENANT_ID, ADMIN_ID, TARGET_ID, '2026-08-24T16:00:00.000Z'],
   );
   await pool.query(
     `INSERT INTO tenant_user_roles (tenant_id, user_id, role)
