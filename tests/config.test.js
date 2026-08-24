@@ -3,6 +3,7 @@ import test from 'node:test';
 import { ConfigurationError, loadConfig, loadDatabaseConfig } from '../src/config.js';
 
 const VALID_CSRF_SECRET = 'production-csrf-secret-at-least-32-bytes-long';
+const VALID_AUDIT_SECRET = 'production-audit-hmac-secret-at-least-32-bytes';
 
 test('development configuration has safe bounded defaults', () => {
   const config = loadConfig({ NODE_ENV: 'development' });
@@ -13,6 +14,7 @@ test('development configuration has safe bounded defaults', () => {
   assert.equal(config.databaseSsl, 'disable');
   assert.equal(config.sessionTtlSeconds, 28_800);
   assert.equal(config.csrfSecret, null);
+  assert.equal(config.auditHmacSecret, null);
   assert.ok(Object.isFrozen(config));
 });
 
@@ -27,7 +29,7 @@ test('production requires explicit HTTPS origin before database configuration', 
   });
 });
 
-test('production requires PostgreSQL, certificate-verifying TLS, and external CSRF secret', () => {
+test('production requires PostgreSQL, verified TLS, CSRF secret, and stable audit HMAC secret', () => {
   assert.throws(
     () => loadConfig({ NODE_ENV: 'production', PUBLIC_ORIGIN: 'https://example.com' }),
     (error) => error instanceof ConfigurationError && error.code === 'DATABASE_URL_REQUIRED',
@@ -60,6 +62,27 @@ test('production requires PostgreSQL, certificate-verifying TLS, and external CS
     }),
     (error) => error instanceof ConfigurationError && error.code === 'CSRF_SECRET_INVALID',
   );
+  assert.throws(
+    () => loadConfig({
+      NODE_ENV: 'production',
+      PUBLIC_ORIGIN: 'https://example.com',
+      DATABASE_URL: 'postgresql://db.example.com/conference_manager',
+      DATABASE_SSL: 'verify-full',
+      CSRF_SECRET: VALID_CSRF_SECRET,
+    }),
+    (error) => error instanceof ConfigurationError && error.code === 'AUDIT_HMAC_SECRET_REQUIRED',
+  );
+  assert.throws(
+    () => loadConfig({
+      NODE_ENV: 'production',
+      PUBLIC_ORIGIN: 'https://example.com',
+      DATABASE_URL: 'postgresql://db.example.com/conference_manager',
+      DATABASE_SSL: 'verify-full',
+      CSRF_SECRET: VALID_CSRF_SECRET,
+      AUDIT_HMAC_SECRET: 'too-short',
+    }),
+    (error) => error instanceof ConfigurationError && error.code === 'AUDIT_HMAC_SECRET_INVALID',
+  );
 
   const config = loadConfig({
     NODE_ENV: 'production',
@@ -67,10 +90,12 @@ test('production requires PostgreSQL, certificate-verifying TLS, and external CS
     DATABASE_URL: 'postgresql://db.example.com/conference_manager',
     DATABASE_SSL: 'verify-full',
     CSRF_SECRET: VALID_CSRF_SECRET,
+    AUDIT_HMAC_SECRET: VALID_AUDIT_SECRET,
     SESSION_TTL_SECONDS: '3600',
   });
   assert.equal(config.databaseSsl, 'verify-full');
   assert.equal(config.csrfSecret, VALID_CSRF_SECRET);
+  assert.equal(config.auditHmacSecret, VALID_AUDIT_SECRET);
   assert.equal(config.sessionTtlSeconds, 3600);
 });
 
