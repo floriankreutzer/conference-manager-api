@@ -18,6 +18,23 @@ test('development configuration has safe bounded defaults', () => {
   assert.ok(Object.isFrozen(config));
 });
 
+test('any database-backed runtime requires a stable audit HMAC secret', () => {
+  assert.throws(
+    () => loadConfig({
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://localhost/conference_manager',
+    }),
+    (error) => error instanceof ConfigurationError && error.code === 'AUDIT_HMAC_SECRET_REQUIRED',
+  );
+  const config = loadConfig({
+    NODE_ENV: 'test',
+    DATABASE_URL: 'postgresql://localhost/conference_manager',
+    AUDIT_HMAC_SECRET: VALID_AUDIT_SECRET,
+  });
+  assert.equal(config.databaseUrl, 'postgresql://localhost/conference_manager');
+  assert.equal(config.auditHmacSecret, VALID_AUDIT_SECRET);
+});
+
 test('production requires explicit HTTPS origin before database configuration', () => {
   assert.throws(() => loadConfig({ NODE_ENV: 'production' }), (error) => {
     assert.ok(error instanceof ConfigurationError);
