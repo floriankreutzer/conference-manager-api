@@ -6,6 +6,7 @@ import {
   normalizeAuditEvent,
 } from './event.js';
 import { AuditInputError, AuditIntegrityError } from './errors.js';
+import { AuthorizationDeniedError } from '../authorization/errors.js';
 import { PERMISSION } from '../authorization/policy.js';
 
 const MAX_AUDIT_ID = 9_223_372_036_854_775_807n;
@@ -39,10 +40,13 @@ export function createAuditService({
   if (!authorizationPolicy || typeof authorizationPolicy.requireTenantPermission !== 'function') {
     throw new TypeError('AUTHORIZATION_POLICY_REQUIRED');
   }
+  if (typeof clock !== 'function' || typeof correlationFactory !== 'function') {
+    throw new TypeError('AUDIT_RUNTIME_DEPENDENCY_INVALID');
+  }
 
-  function createEvent({
-    principal,
-    tenantContext,
+  function buildEvent({
+    tenantId,
+    actorUserId,
     correlationId,
     action,
     targetType,
@@ -54,13 +58,14 @@ export function createAuditService({
     retentionClass,
     occurredAt,
   }) {
-    if (!principal || principal.tenantId !== tenantContext?.tenantId) {
-      throw new AuditInputError('AUDIT_PRINCIPAL_CONTEXT_INVALID');
+    const clockValue = occurredAt === undefined ? clock() : null;
+    if (occurredAt === undefined && (!Number.isSafeInteger(clockValue) || clockValue < 0)) {
+      throw new AuditInputError('AUDIT_CLOCK_INVALID');
     }
-    const timestamp = occurredAt || new Date(clock()).toISOString();
+    const timestamp = occurredAt || new Date(clockValue).toISOString();
     return normalizeAuditEvent({
-      tenantId: tenantContext.tenantId,
-      actorUserId: principal.userId,
+      tenantId,
+      actorUserId,
       action,
       targetType,
       targetId,
@@ -74,6 +79,21 @@ export function createAuditService({
     });
   }
 
+  function createEvent({ principal, tenantContext, ...values }) {
+    if (!principal || principal.tenantId !== tenantContext?.tenantId) {
+      throw new AuditInputError('AUDIT_PRINCIPAL_CONTEXT_INVALID');
+    }
+    return buildEvent({
+      tenantId: tenantContext.tenantId,
+      actorUserId: principal.userId,
+      ...values,
+    });
+  }
+
+  function createActorEvent({ tenantId, actorUserId, ...values }) {
+    return buildEvent({ tenantId, actorUserId, ...values });
+  }
+
   async function record(values) {
     const event = createEvent(values);
     const stored = await repository.append(event);
@@ -81,16 +101,53 @@ export function createAuditService({
     return stored;
   }
 
+  async function recordAuthorizationDenied({
+    principal,
+    tenantContext,
+    correlationId,
+    targetType,
+    targetId,
+    metadata = {},
+  }) {
+    return record({
+      principal,
+      tenantContext,
+      correlationId,
+      action: AUDIT_ACTION.AUTHORIZATION_DENIED,
+      targetType,
+      targetId,
+      outcome: AUDIT_OUTCOME.DENIED,
+      metadata,
+      retentionClass: AUDIT_RETENTION_CLASS.SECURITY,
+    });
+  }
+
   return Object.freeze({
     createEvent,
+    createActorEvent,
     record,
+    recordAuthorizationDenied,
 
     async listTenantEvents({ principal, tenantContext, limit, beforeId, correlationId }) {
-      authorizationPolicy.requireTenantPermission(
-        principal,
-        tenantContext,
-        PERMISSION.TENANT_AUDIT_READ,
-      );
+      try {
+        authorizationPolicy.requireTenantPermission(
+          principal,
+          tenantContext,
+          PERMISSION.TENANT_AUDIT_READ,
+        );
+      } catch (error) {
+        if (error instanceof AuthorizationDeniedError) {
+          await recordAuthorizationDenied({
+            principal,
+            tenantContext,
+            correlationId,
+            targetType: 'audit',
+            targetId: 'tenant-audit',
+            metadata: { operation: 'read' },
+          });
+        }
+        throw error;
+      }
       if (await repository.verifyTenantChain(tenantContext.tenantId) !== true) {
         throw new AuditIntegrityError();
       }
