@@ -78,17 +78,27 @@ async function insertSession(client, session, securityContext) {
   return mapSessionRow({ ...result.rows[0], tenant_status: securityContext.tenant_status });
 }
 
-export function createPostgresSessionRepository(pool) {
+async function appendAudit(client, auditRepository, auditEvent) {
+  const stored = await auditRepository.appendWithClient(client, auditEvent);
+  if (!stored) throw new Error('AUDIT_APPEND_FAILED');
+}
+
+export function createPostgresSessionRepository(pool, { auditRepository } = {}) {
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
   }
+  if (!auditRepository || typeof auditRepository.appendWithClient !== 'function') {
+    throw new TypeError('AUDIT_REPOSITORY_REQUIRED');
+  }
 
   return Object.freeze({
-    async issue(session) {
+    async issue(session, auditEvent) {
       return withPostgresTransaction(pool, async (client) => {
         const securityContext = await loadSecurityContext(client, session.tenantId, session.userId);
         if (!securityContext) return null;
-        return insertSession(client, session, securityContext);
+        const created = await insertSession(client, session, securityContext);
+        await appendAudit(client, auditRepository, auditEvent);
+        return created;
       });
     },
 
@@ -115,24 +125,28 @@ export function createPostgresSessionRepository(pool) {
       return mapSessionRow(result.rows[0]);
     },
 
-    async revoke({ sessionId, tenantId, userId, revokedAt }) {
-      const result = await pool.query({
-        name: 'session-revoke',
-        text: `
-          UPDATE sessions
-          SET revoked_at = $4
-          WHERE id = $1
-            AND tenant_id = $2
-            AND user_id = $3
-            AND revoked_at IS NULL
-          RETURNING id
-        `,
-        values: [sessionId, tenantId, userId, revokedAt],
+    async revoke({ sessionId, tenantId, userId, revokedAt, auditEvent }) {
+      return withPostgresTransaction(pool, async (client) => {
+        const result = await client.query({
+          name: 'session-revoke',
+          text: `
+            UPDATE sessions
+            SET revoked_at = $4
+            WHERE id = $1
+              AND tenant_id = $2
+              AND user_id = $3
+              AND revoked_at IS NULL
+            RETURNING id
+          `,
+          values: [sessionId, tenantId, userId, revokedAt],
+        });
+        if (result.rowCount !== 1) return false;
+        await appendAudit(client, auditRepository, auditEvent);
+        return true;
       });
-      return result.rowCount === 1;
     },
 
-    async rotate({ currentSessionId, session, revokedAt }) {
+    async rotate({ currentSessionId, session, revokedAt, auditEvent }) {
       return withPostgresTransaction(pool, async (client) => {
         const current = await client.query({
           name: 'session-rotate-current',
@@ -158,6 +172,7 @@ export function createPostgresSessionRepository(pool) {
           text: 'UPDATE sessions SET revoked_at = $2 WHERE id = $1',
           values: [currentSessionId, revokedAt],
         });
+        await appendAudit(client, auditRepository, auditEvent);
         return created;
       });
     },
