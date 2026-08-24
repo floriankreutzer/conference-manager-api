@@ -10,7 +10,7 @@ import { createHttpServer } from './server.js';
 
 const config = loadConfig();
 const logger = createLogger();
-const metrics = createMetricsRegistry();
+const metrics = createMetricsRegistry({ write: (line) => process.stdout.write(line) });
 const persistence = config.databaseUrl ? createPostgresPersistence(config) : null;
 const authorizationPolicy = createAuthorizationPolicy();
 const auditService = persistence
