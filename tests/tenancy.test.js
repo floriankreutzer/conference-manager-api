@@ -85,6 +85,7 @@ test('canonical tenant model separates internal ownership from external provider
     'notification',
     'integration',
     'entitlement',
+    'booking_provider_reference',
     'audit_event',
     'tenant_configuration',
   ]);
