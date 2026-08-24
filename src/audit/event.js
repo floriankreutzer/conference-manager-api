@@ -11,6 +11,7 @@ export const AUDIT_ACTION = Object.freeze({
   REQUEST_TRANSITION_FAILED: 'request.transition_failed',
   TENANT_CONFIGURATION_CHANGED: 'tenant.configuration.changed',
   TENANT_USER_PERMISSIONS_CHANGED: 'tenant.user_permissions.changed',
+  TENANT_ENTITLEMENT_CHANGED: 'tenant.entitlement.changed',
   INTEGRATION_CONNECTED: 'integration.connected',
   INTEGRATION_DISCONNECTED: 'integration.disconnected',
   INTEGRATION_ADMIN_CONSENT_CHANGED: 'integration.admin_consent.changed',
