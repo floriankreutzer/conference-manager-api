@@ -88,7 +88,7 @@ See `docs/AUTHORIZATION.md` for the complete permission/transition matrix.
 - Session tokens/hashes, internal session IDs, CSRF tokens, provider credentials/subjects, cookies, private keys and connection strings are not included in audit payloads.
 - Migration 004 makes `audit_events` append-only with a PostgreSQL trigger rejecting `UPDATE` and `DELETE`.
 - Events are HMAC-SHA-256 chained independently per internal Tenant using canonical payloads and the previous event hash.
-- Pilot/Production require an externally managed `AUDIT_HMAC_SECRET`; the key is not stored in PostgreSQL/source.
+- Every DB-backed runtime requires a stable `AUDIT_HMAC_SECRET`; Pilot/Production source it from external secret management. The key is not stored in PostgreSQL/source and must not be rotated without a reviewed integrity migration/checkpoint strategy.
 - Tenant audit reads verify the full Tenant chain before returning data and fail closed with `AUDIT_INTEGRITY_UNAVAILABLE` if verification fails.
 - Tenant-visible reads require Tenant Admin plus explicit `tenant:audit:read`; Platform/operator audit remains outside this Tenant role model.
 - Successful Request transitions and session issue/revoke/rotation append their audit success event inside the same PostgreSQL transaction as the authoritative state mutation.
@@ -109,7 +109,7 @@ GitHub-native Dependency Review is unavailable for this private user-owned repos
 
 Issue #51 establishes the Tenant role/permission and Request object/workflow policy. It does not create a platform-operator authorization model, and it does not infer site/location/department scope from provider or browser data. A finer Manager scope requires a future explicit server-side scope model.
 
-The audit chain is tamper-evident for modified/reordered rows while the HMAC key is protected, but it is not an external completeness proof against privileged deletion of an entire chain suffix or restoration of an older database snapshot. External anchoring/WORM export, independently controlled retention and recovery verification remain production-hardening work for the later operational/security baseline.
+The audit chain is tamper-evident for modified/reordered rows while the HMAC key is protected, but it is not an external completeness proof against privileged deletion of an entire chain suffix or restoration of an older database snapshot. External anchoring/WORM export, independently controlled retention, key-rotation lifecycle and recovery verification remain production-hardening work for the later operational/security baseline.
 
 The local in-process rate limiter is not a distributed production quota solution. Trusted proxy/client-key semantics and shared/edge abuse controls remain operational/security-baseline work.
 
