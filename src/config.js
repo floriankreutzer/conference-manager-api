@@ -138,6 +138,17 @@ export function loadConfig(env = process.env) {
   const mode = parseMode(env);
   const publicOrigin = parseOrigin(env.PUBLIC_ORIGIN, mode);
   const database = loadDatabaseConfig(env, mode);
+  const csrfSecret = parseServerSecret(env.CSRF_SECRET, mode, {
+    requiredCode: 'CSRF_SECRET_REQUIRED',
+    invalidCode: 'CSRF_SECRET_INVALID',
+  });
+  const auditHmacSecret = parseServerSecret(env.AUDIT_HMAC_SECRET, mode, {
+    requiredCode: 'AUDIT_HMAC_SECRET_REQUIRED',
+    invalidCode: 'AUDIT_HMAC_SECRET_INVALID',
+  });
+  if (database.databaseUrl && !auditHmacSecret) {
+    throw new ConfigurationError('AUDIT_HMAC_SECRET_REQUIRED');
+  }
 
   return Object.freeze({
     mode,
@@ -189,14 +200,8 @@ export function loadConfig(env = process.env) {
       max: 86_400,
       code: 'SESSION_TTL_SECONDS_INVALID',
     }),
-    csrfSecret: parseServerSecret(env.CSRF_SECRET, mode, {
-      requiredCode: 'CSRF_SECRET_REQUIRED',
-      invalidCode: 'CSRF_SECRET_INVALID',
-    }),
-    auditHmacSecret: parseServerSecret(env.AUDIT_HMAC_SECRET, mode, {
-      requiredCode: 'AUDIT_HMAC_SECRET_REQUIRED',
-      invalidCode: 'AUDIT_HMAC_SECRET_INVALID',
-    }),
+    csrfSecret,
+    auditHmacSecret,
     ...database,
   });
 }
@@ -214,7 +219,7 @@ export function assertProductionConfig(config) {
   if ((config.mode === 'pilot' || config.mode === 'production') && !config.csrfSecret) {
     throw new ApiError(500, 'CSRF_SECRET_REQUIRED');
   }
-  if ((config.mode === 'pilot' || config.mode === 'production') && !config.auditHmacSecret) {
+  if (config.databaseUrl && !config.auditHmacSecret) {
     throw new ApiError(500, 'AUDIT_HMAC_SECRET_REQUIRED');
   }
 }
