@@ -22,9 +22,12 @@ function mapSessionRow(row) {
   });
 }
 
-async function loadSecurityContext(client, tenantId, userId) {
+async function loadSecurityContext(client, tenantId, userId, securityVersion) {
+  if (!Number.isSafeInteger(securityVersion) || securityVersion < 1) {
+    throw new TypeError('SESSION_SECURITY_VERSION_INVALID');
+  }
   const result = await client.query({
-    name: 'session-security-context',
+    name: 'session-security-context-by-version',
     text: `
       SELECT u.security_version, t.status AS tenant_status
       FROM users u
@@ -33,9 +36,10 @@ async function loadSecurityContext(client, tenantId, userId) {
         AND u.id = $2
         AND u.active = true
         AND t.status = ANY($3::text[])
+        AND u.security_version = $4
       FOR SHARE OF u, t
     `,
-    values: [tenantId, userId, SESSION_TENANT_STATUSES],
+    values: [tenantId, userId, SESSION_TENANT_STATUSES, securityVersion],
   });
   return result.rows[0] || null;
 }
@@ -94,7 +98,12 @@ export function createPostgresSessionRepository(pool, { auditRepository } = {}) 
   return Object.freeze({
     async issue(session, auditEvent) {
       return withPostgresTransaction(pool, async (client) => {
-        const securityContext = await loadSecurityContext(client, session.tenantId, session.userId);
+        const securityContext = await loadSecurityContext(
+          client,
+          session.tenantId,
+          session.userId,
+          session.securityVersion,
+        );
         if (!securityContext) return null;
         const created = await insertSession(client, session, securityContext);
         await appendAudit(client, auditRepository, auditEvent);
@@ -164,7 +173,12 @@ export function createPostgresSessionRepository(pool, { auditRepository } = {}) 
         });
         if (current.rowCount !== 1) return null;
 
-        const securityContext = await loadSecurityContext(client, session.tenantId, session.userId);
+        const securityContext = await loadSecurityContext(
+          client,
+          session.tenantId,
+          session.userId,
+          session.securityVersion,
+        );
         if (!securityContext) return null;
         const created = await insertSession(client, session, securityContext);
         await client.query({
