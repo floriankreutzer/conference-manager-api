@@ -36,14 +36,26 @@ function labelsKey(metric, labels) {
   return `${metric}:${Object.entries(labels).map(([key, value]) => `${key}=${value}`).join(',')}`;
 }
 
-export function createMetricsRegistry() {
+export function createMetricsRegistry({ write = null } = {}) {
+  if (write !== null && typeof write !== 'function') throw new TypeError('METRIC_WRITER_INVALID');
   const counters = new Map();
   const durations = new Map();
+
+  function emit(sample) {
+    if (!write) return;
+    write(`${JSON.stringify({
+      timestamp: new Date().toISOString(),
+      level: 'info',
+      event: 'metric_sample',
+      ...sample,
+    })}\n`);
+  }
 
   function increment(metric, labels) {
     const key = labelsKey(metric, labels);
     const current = counters.get(key) || { metric, labels: Object.freeze({ ...labels }), value: 0 };
     counters.set(key, { ...current, value: current.value + 1 });
+    emit({ metric, labels, value: 1 });
   }
 
   function observe(metric, labels, durationMs) {
@@ -62,6 +74,7 @@ export function createMetricsRegistry() {
       sumMs: current.sumMs + duration,
       maxMs: Math.max(current.maxMs, duration),
     });
+    emit({ metric, labels, valueMs: duration });
   }
 
   return Object.freeze({
