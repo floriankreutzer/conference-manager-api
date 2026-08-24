@@ -1,4 +1,8 @@
 import {
+  AuditInputError,
+  AuditIntegrityError,
+} from './audit/errors.js';
+import {
   AuthorizationDeniedError,
   AuthorizationInputError,
   RequestStateConflictError,
@@ -19,7 +23,11 @@ export class ApiError extends Error {
 
 export function asApiError(error) {
   if (error instanceof ApiError) return error;
-  if (error instanceof TenantInputError || error instanceof AuthorizationInputError) {
+  if (
+    error instanceof TenantInputError
+    || error instanceof AuthorizationInputError
+    || error instanceof AuditInputError
+  ) {
     return new ApiError(400, 'VALIDATION_FAILED');
   }
   if (error instanceof TenantUnavailableError) return new ApiError(403, 'TENANT_UNAVAILABLE');
@@ -29,5 +37,6 @@ export function asApiError(error) {
       : new ApiError(403, 'FORBIDDEN');
   }
   if (error instanceof RequestStateConflictError) return new ApiError(409, 'REQUEST_STATE_CONFLICT');
+  if (error instanceof AuditIntegrityError) return new ApiError(503, 'AUDIT_INTEGRITY_UNAVAILABLE');
   return new ApiError(500, 'INTERNAL_ERROR');
 }

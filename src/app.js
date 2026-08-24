@@ -1,4 +1,5 @@
 import { ApiError, asApiError } from './api-error.js';
+import { AuthorizationDeniedError } from './authorization/errors.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { assertProductionConfig } from './config.js';
 import {
@@ -20,6 +21,7 @@ const ROUTES = Object.freeze({
   live: '/api/v1/health/live',
   ready: '/api/v1/health/ready',
   principal: '/api/v1/session',
+  audit: '/api/v1/audit',
 });
 const REQUEST_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/;
 const REQUEST_TRANSITION_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/transitions$/;
@@ -31,9 +33,10 @@ const TRANSITION_BODY_SCHEMA = Object.freeze({
     reason: (value) => typeof value === 'string' && value.length <= 1000,
   }),
 });
+const AUDIT_QUERY_KEYS = new Set(['limit', 'beforeId']);
 
-function pathnameOf(rawUrl, publicOrigin) {
-  return new URL(rawUrl, publicOrigin).pathname;
+function urlOf(rawUrl, publicOrigin) {
+  return new URL(rawUrl, publicOrigin);
 }
 
 function sendJson(response, statusCode, payload, maxResponseBytes) {
@@ -67,6 +70,40 @@ function publicRequest(request) {
   });
 }
 
+function publicAuditEvent(event) {
+  return Object.freeze({
+    id: event.id,
+    actorUserId: event.actorUserId,
+    action: event.action,
+    targetType: event.targetType,
+    targetId: event.targetId,
+    previousState: event.previousState,
+    newState: event.newState,
+    occurredAt: event.occurredAt,
+    correlationId: event.correlationId,
+    outcome: event.outcome,
+    metadata: event.metadata,
+    retentionClass: event.retentionClass,
+  });
+}
+
+function auditPageFromUrl(parsedUrl) {
+  for (const key of parsedUrl.searchParams.keys()) {
+    if (!AUDIT_QUERY_KEYS.has(key) || parsedUrl.searchParams.getAll(key).length !== 1) {
+      throw new ApiError(400, 'VALIDATION_FAILED');
+    }
+  }
+  const limitValue = parsedUrl.searchParams.get('limit');
+  const beforeId = parsedUrl.searchParams.get('beforeId');
+  if (limitValue !== null && !/^\d{1,3}$/.test(limitValue)) {
+    throw new ApiError(400, 'VALIDATION_FAILED');
+  }
+  return Object.freeze({
+    limit: limitValue === null ? undefined : Number(limitValue),
+    beforeId,
+  });
+}
+
 async function withTimeout(task, timeoutMs) {
   let timer;
   try {
@@ -91,6 +128,7 @@ export function createApp({
   config,
   readinessChecks = [],
   authorizationPolicy = createAuthorizationPolicy(),
+  auditService,
   sessionService,
   requestService,
   resolvePrincipal,
@@ -134,7 +172,8 @@ export function createApp({
       assertRequestHost(request.headers, config.publicOrigin);
       assertSameOrigin(request.headers, config.publicOrigin);
       rateLimiter.consume(clientKey(request));
-      path = pathnameOf(request.url, config.publicOrigin);
+      const parsedUrl = urlOf(request.url, config.publicOrigin);
+      path = parsedUrl.pathname;
 
       if (path === ROUTES.live) {
         if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
@@ -162,14 +201,28 @@ export function createApp({
           if (!sessionService || typeof sessionService.revoke !== 'function') {
             throw new ApiError(503, 'SESSION_SERVICE_UNAVAILABLE');
           }
-          await sessionService.revoke(principal);
+          await sessionService.revoke(principal, { correlationId: requestId });
           response.setHeader('Set-Cookie', sessionService.clearCookie());
           statusCode = 204;
           sendNoContent(response);
           return;
         }
 
-        authorizationPolicy.assertRecognizedPrincipal(principal);
+        try {
+          authorizationPolicy.assertRecognizedPrincipal(principal);
+        } catch (error) {
+          if (error instanceof AuthorizationDeniedError && auditService?.recordAuthorizationDenied) {
+            await auditService.recordAuthorizationDenied({
+              principal,
+              tenantContext,
+              correlationId: requestId,
+              targetType: 'endpoint',
+              targetId: 'session',
+              metadata: { operation: 'read' },
+            });
+          }
+          throw error;
+        }
         const csrfToken = sessionService?.csrfTokenForPrincipal?.(principal);
         statusCode = 200;
         sendJson(response, statusCode, {
@@ -182,6 +235,30 @@ export function createApp({
           permissions: principal.permissions,
           session: { expiresAt: principal.session.expiresAt },
           ...(csrfToken ? { csrfToken } : {}),
+          requestId,
+        }, config.maxResponseBytes);
+        return;
+      }
+
+      if (path === ROUTES.audit) {
+        if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+        const principal = await principalGuard.require(request);
+        const tenantContext = await tenantGuard.requireKnown(principal);
+        if (!auditService || typeof auditService.listTenantEvents !== 'function') {
+          throw new ApiError(503, 'AUDIT_SERVICE_UNAVAILABLE');
+        }
+        const page = auditPageFromUrl(parsedUrl);
+        const events = await auditService.listTenantEvents({
+          principal,
+          tenantContext,
+          correlationId: requestId,
+          ...page,
+        });
+        const publicEvents = events.map(publicAuditEvent);
+        statusCode = 200;
+        sendJson(response, statusCode, {
+          events: publicEvents,
+          nextBeforeId: publicEvents.at(-1)?.id || null,
           requestId,
         }, config.maxResponseBytes);
         return;
@@ -204,6 +281,7 @@ export function createApp({
             principal,
             tenantContext,
             requestId: requestIdValue,
+            correlationId: requestId,
             ...validateExactObject(
               await readJsonObjectBody(request, { maxBytes: config.maxBodyBytes }),
               TRANSITION_BODY_SCHEMA,
@@ -213,6 +291,7 @@ export function createApp({
             principal,
             tenantContext,
             requestId: requestIdValue,
+            correlationId: requestId,
           });
         statusCode = 200;
         sendJson(response, statusCode, { request: publicRequest(record), requestId }, config.maxResponseBytes);

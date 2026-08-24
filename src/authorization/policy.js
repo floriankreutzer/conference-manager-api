@@ -24,6 +24,7 @@ export const PERMISSION = Object.freeze({
   TENANT_CONFIGURE: 'tenant:configure',
   TENANT_USERS_MANAGE: 'tenant:users:manage',
   TENANT_INTEGRATIONS_MANAGE: 'tenant:integrations:manage',
+  TENANT_AUDIT_READ: 'tenant:audit:read',
 });
 
 const ROLE_PERMISSIONS = Object.freeze({
@@ -39,6 +40,7 @@ const ROLE_PERMISSIONS = Object.freeze({
     PERMISSION.TENANT_CONFIGURE,
     PERMISSION.TENANT_USERS_MANAGE,
     PERMISSION.TENANT_INTEGRATIONS_MANAGE,
+    PERMISSION.TENANT_AUDIT_READ,
   ]),
 });
 

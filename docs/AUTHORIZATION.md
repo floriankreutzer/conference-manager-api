@@ -2,11 +2,11 @@
 
 ## Authority
 
-Root `AGENTS.md` remains the canonical repository instruction source. This document defines the SaaS 0 authorization contract implemented by issue #51.
+Root `AGENTS.md` remains the canonical repository instruction source. This document defines the SaaS 0 authorization contract implemented by issue #51 and extended by issue #52 for tenant audit reads.
 
-Authentication proves the internal Principal. Tenant resolution proves the active internal Tenant context. Authorization is a separate deny-by-default decision performed after both steps.
+Authentication proves the internal Principal. Tenant resolution proves the internal Tenant context. Authorization is a separate deny-by-default decision performed after both steps.
 
-The browser never supplies authoritative Tenant, User, role, permission, owner, workflow status or target status values.
+The browser never supplies authoritative Tenant, User, role, permission, owner, workflow status, target status or audit scope values.
 
 ## Tenant role model
 
@@ -16,7 +16,7 @@ The current Tenant roles are:
 | --- | --- | --- |
 | `employee` | Employee self-service | Own requests only |
 | `conference_manager` | Conference operations | Requests inside the authenticated Tenant |
-| `tenant_admin` | Tenant configuration, User/role administration and integrations | No implicit Conference Manager request access |
+| `tenant_admin` | Tenant configuration, User/role administration, integrations and authorized Tenant audit reads | No implicit Conference Manager request access |
 
 `platform_admin` is explicitly outside the Tenant authorization model. Supplying it as a Tenant session role is treated as an unknown role and fails closed.
 
@@ -39,6 +39,7 @@ A capability is granted only when both conditions are true:
 | `tenant:configure` | No | No | Tenant |
 | `tenant:users:manage` | No | No | Tenant |
 | `tenant:integrations:manage` | No | No | Tenant |
+| `tenant:audit:read` | No | No | Tenant audit only |
 
 Roles do not automatically grant permissions, and a permission that is not valid for the assigned role does not grant access.
 
@@ -53,6 +54,24 @@ A missing request, a request from another Tenant and a same-Tenant request owned
 A Conference Manager with `request:read` may read requests belonging to another Employee only inside the authenticated Tenant.
 
 Tenant Admin has no implicit request-read or Conference Manager workflow capability.
+
+## Tenant audit-read authorization
+
+`GET /api/v1/audit` is a separate Tenant Admin capability. It requires:
+
+- authenticated internal Principal;
+- known Tenant context derived from `principal.tenantId`;
+- recognized role/permission snapshot;
+- `tenant_admin` role;
+- explicit `tenant:audit:read` permission.
+
+The endpoint accepts no Tenant selector. The audit repository receives only the authenticated internal Tenant ID. Tenant Admin cannot query another Tenant's audit chain through route/query/body manipulation.
+
+Before events are exposed, the audit service verifies the authenticated Tenant's integrity chain. A verification failure fails closed rather than returning unverified data.
+
+Platform/operator audit remains a separate authorization domain. `tenant_admin` cannot become a platform auditor through this permission.
+
+Successful audit reads and denied Tenant-audit probes with a valid Tenant/actor context create their own correlated security audit events.
 
 ## Request workflow authorization
 
@@ -79,7 +98,7 @@ Unsupported transitions fail validation. Valid transitions from an ineligible cu
 
 Reject/change-request reasons are trimmed server-side, limited to 1-1000 characters and reject control characters. Reasons on transitions that do not use a reason are rejected instead of ignored.
 
-## Concurrency and persistence
+## Concurrency, persistence and audit evidence
 
 Migration 003 constrains persisted request status values and introduces `status_reason` plus `status_changed_at`.
 
@@ -92,6 +111,10 @@ The application service first loads a Tenant-scoped request and authorizes the t
 If another transaction changed the workflow state between read and write, the update affects no row and the API returns `409 REQUEST_STATE_CONFLICT`. It does not silently overwrite the newer state.
 
 Request status values and reason/status combinations are additionally constrained in PostgreSQL as defense in depth. Database constraints do not replace the application authorization policy.
+
+For a successful Request transition, the application constructs the audit event from the server Principal, Tenant context, current Request, authorized transition decision and request correlation ID. PostgreSQL commits that success event in the same transaction as the Request mutation. Audit append failure prevents the transition from committing.
+
+Authorization denials, validation failures and concurrency failures that produce no successful Request mutation are recorded as separate correlated failure/denial events where a valid Tenant/actor context exists.
 
 ## HTTP contracts
 
@@ -123,9 +146,15 @@ Fields such as `tenantId`, `requesterUserId`, `owner`, `role`, `permission`, `st
 
 The public Request response deliberately omits internal Tenant ownership and requester User ID in this foundation slice. Later business APIs may expose additional required presentation data only through an explicit reviewed contract.
 
+`GET /api/v1/audit` is read-only, accepts only bounded pagination, and returns presentation-safe events for the authenticated Tenant after `tenant:audit:read` authorization and integrity verification.
+
 ## Audit boundary
 
-Issue #51 decides authorization but does not claim immutable authorization/security-event auditing. Issue #52 owns server-generated audit events for successful and denied security/workflow-relevant actions, including actor, Tenant, target, transition, outcome and correlation metadata.
+Issue #52 implements server-generated Tenant audit events for the currently supported session, authorization and Request workflow paths. Audit actor/Tenant/time/outcome values are not accepted from browser input.
+
+The audit action taxonomy also reserves identifiers for later Tenant/integration/calendar owning issues. A reserved action name does not imply that the corresponding future workflow is already implemented.
+
+See `docs/AUDIT.md` for the event taxonomy, data-minimization rules, append-only persistence and integrity-chain limitations.
 
 ## Required tests
 
@@ -136,8 +165,10 @@ Changes to this policy require, as applicable:
 - Employee owner/non-owner tests;
 - Conference Manager same-Tenant/cross-Tenant tests;
 - Tenant Admin separation tests;
+- Tenant audit-read permission and cross-Tenant isolation tests;
 - every privileged workflow transition;
 - malformed/manipulated ID and body tests;
 - CSRF tests for state changes;
 - stale/concurrent workflow-state tests;
-- PostgreSQL Tenant-scoping and constraint tests.
+- PostgreSQL Tenant-scoping and constraint tests;
+- audit denial/success/failure correlation and integrity verification tests.

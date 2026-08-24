@@ -3,6 +3,11 @@ import http from 'node:http';
 import test from 'node:test';
 import { createRequestService } from '../src/application/request-service.js';
 import {
+  AUDIT_ACTION,
+  AUDIT_OUTCOME,
+  AUDIT_RETENTION_CLASS,
+} from '../src/audit/event.js';
+import {
   PERMISSION,
   REQUEST_STATUS,
   REQUEST_TRANSITION,
@@ -13,6 +18,7 @@ import { loadConfig } from '../src/config.js';
 import { createLogger } from '../src/logger.js';
 import { createHttpServer } from '../src/server.js';
 import { TENANT_STATUS } from '../src/tenancy/tenant.js';
+import { createAuditHarness } from './support/audit-harness.js';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_USER_ID = '44444444-4444-4444-8444-444444444444';
@@ -118,15 +124,25 @@ function requestRecord(overrides = {}) {
 
 function requestServiceFor(initialRecord) {
   let record = initialRecord;
+  const authorizationPolicy = createAuthorizationPolicy();
+  const audit = createAuditHarness({ authorizationPolicy });
   return createRequestService({
-    authorizationPolicy: createAuthorizationPolicy(),
+    authorizationPolicy,
+    auditService: audit.service,
     clock: () => Date.parse('2026-08-24T09:00:00.000Z'),
     repository: {
       async findByTenantIdAndId(tenantId, requestId) {
         if (!record || record.tenantId !== tenantId || record.id !== requestId) return null;
         return record;
       },
-      async transitionByTenantIdAndId({ tenantId, requestId, expectedStatus, nextStatus, reason, changedAt }) {
+      async transitionByTenantIdAndId({
+        tenantId,
+        requestId,
+        expectedStatus,
+        nextStatus,
+        reason,
+        changedAt,
+      }) {
         if (!record || record.tenantId !== tenantId || record.id !== requestId || record.status !== expectedStatus) {
           return null;
         }
@@ -315,6 +331,86 @@ test('unknown, suspended, and archived tenant contexts fail closed', async () =>
       assert.equal(result.body.error.code, 'TENANT_UNAVAILABLE');
     });
   }
+});
+
+test('tenant admin audit endpoint is scoped, minimized, correlated, and permission protected', async () => {
+  const authorizationPolicy = createAuthorizationPolicy();
+  const audit = createAuditHarness({ authorizationPolicy });
+  const tenantAdmin = principal({
+    roles: [TENANT_ROLE.TENANT_ADMIN],
+    permissions: [PERMISSION.TENANT_AUDIT_READ],
+  });
+  await audit.service.record({
+    principal: tenantAdmin,
+    tenantContext: { tenantId: TENANT_ID },
+    action: AUDIT_ACTION.TENANT_CONFIGURATION_CHANGED,
+    targetType: 'tenant',
+    targetId: TENANT_ID,
+    outcome: AUDIT_OUTCOME.SUCCESS,
+    metadata: { changedFieldCount: 1 },
+    retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
+  });
+
+  const options = {
+    config: testConfig(),
+    authorizationPolicy,
+    auditService: audit.service,
+    resolvePrincipal: async () => tenantAdmin,
+    loadTenant: async () => tenant(),
+  };
+  await withServer(options, async ({ port }) => {
+    const result = await request({ port, path: '/api/v1/audit?limit=10' });
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.body.events.length, 1);
+    assert.equal(result.body.events[0].action, AUDIT_ACTION.TENANT_CONFIGURATION_CHANGED);
+    assert.equal(result.body.events[0].tenantId, undefined);
+    assert.equal(result.body.events[0].eventHash, undefined);
+    assert.equal(result.body.events[0].previousHash, undefined);
+    assert.equal(result.body.events[0].integrityVersion, undefined);
+    assert.match(result.body.events[0].correlationId, /^[0-9a-f-]{36}$/i);
+    assert.equal(audit.events.at(-1).action, AUDIT_ACTION.AUDIT_READ);
+  });
+
+  const employee = principal();
+  await withServer({ ...options, resolvePrincipal: async () => employee }, async ({ port }) => {
+    const denied = await request({ port, path: '/api/v1/audit' });
+    assert.equal(denied.statusCode, 403);
+    assert.equal(denied.body.error.code, 'FORBIDDEN');
+    assert.equal(audit.events.at(-1).action, AUDIT_ACTION.AUTHORIZATION_DENIED);
+  });
+});
+
+test('audit endpoint rejects manipulated queries and fails closed on chain-integrity failure', async () => {
+  const authorizationPolicy = createAuthorizationPolicy();
+  const tenantAdmin = principal({
+    roles: [TENANT_ROLE.TENANT_ADMIN],
+    permissions: [PERMISSION.TENANT_AUDIT_READ],
+  });
+  const validAudit = createAuditHarness({ authorizationPolicy });
+  const common = {
+    config: testConfig(),
+    authorizationPolicy,
+    resolvePrincipal: async () => tenantAdmin,
+    loadTenant: async () => tenant(),
+  };
+  await withServer({ ...common, auditService: validAudit.service }, async ({ port }) => {
+    const injected = await request({
+      port,
+      path: `/api/v1/audit?tenantId=${OTHER_TENANT_ID}`,
+    });
+    assert.equal(injected.statusCode, 400);
+    assert.equal(injected.body.error.code, 'VALIDATION_FAILED');
+
+    const duplicate = await request({ port, path: '/api/v1/audit?limit=10&limit=20' });
+    assert.equal(duplicate.statusCode, 400);
+  });
+
+  const compromised = createAuditHarness({ authorizationPolicy, verifyResult: false });
+  await withServer({ ...common, auditService: compromised.service }, async ({ port }) => {
+    const result = await request({ port, path: '/api/v1/audit' });
+    assert.equal(result.statusCode, 503);
+    assert.equal(result.body.error.code, 'AUDIT_INTEGRITY_UNAVAILABLE');
+  });
 });
 
 test('employee request endpoint returns own object and conceals another employee object', async () => {

@@ -6,7 +6,7 @@ Trusted production backend for the Conference Manager SaaS application.
 
 This repository owns the server-side trust boundary defined by `conference-manager/docs/SAAS-PRODUCTION-TOPOLOGY.md`. The browser remains untrusted.
 
-The SaaS 0 foundation through issue #51 now provides:
+The SaaS 0 foundation through issue #52 now provides:
 
 - Node.js 22 native HTTP API with same-origin request hardening and secure error/health contracts;
 - canonical internal Tenant model and hard Tenant isolation;
@@ -25,11 +25,15 @@ The SaaS 0 foundation through issue #51 now provides:
 - Tenant-scoped Conference Manager Request access;
 - server-authorized Request workflow transitions with optimistic status concurrency;
 - PostgreSQL workflow status/reason constraints;
+- server-generated tenant audit/security events with explicit retention classes;
+- append-only PostgreSQL audit persistence plus per-Tenant HMAC-SHA-256 integrity chains;
+- atomic audit persistence for successful Request transitions and session issue/revoke/rotation;
+- Tenant Admin audit reads through explicit `tenant:audit:read` authorization and chain verification;
 - no browser LocalStorage/sessionStorage authentication or authorization authority;
-- safe metadata-only operational logging;
-- regression/progression/adversarial tests for HTTP, Tenant, persistence, session and authorization boundaries.
+- safe metadata-only operational logging and secret-minimized audit payloads;
+- regression/progression/adversarial tests for HTTP, Tenant, persistence, session, authorization and audit boundaries.
 
-Append-only audit behavior, entitlements, booking/provider contracts, full observability and the complete production threat/configuration baseline remain later SaaS 0 issues.
+Entitlements, booking/provider contracts, full observability and the complete production threat/configuration baseline remain later SaaS 0 issues.
 
 ## Run locally
 
@@ -42,7 +46,9 @@ npm run db:migrate
 npm start
 ```
 
-Development may leave `CSRF_SECRET` empty; the process then uses an ephemeral CSRF key. Pilot/Production require an external `CSRF_SECRET`, HTTPS public origin, PostgreSQL and certificate-verifying database TLS.
+A non-persistent development composition may leave `CSRF_SECRET` and `AUDIT_HMAC_SECRET` empty. Any runtime configured with `DATABASE_URL` must provide a stable `AUDIT_HMAC_SECRET` of at least 32 bytes so persisted audit chains remain verifiable across restarts. Pilot/Production additionally require an externally managed `CSRF_SECRET`, an HTTPS public origin and certificate-verifying database TLS.
+
+Do not rotate `AUDIT_HMAC_SECRET` as an ordinary configuration change. Key rotation requires a reviewed audit-integrity migration/checkpoint strategy because existing events were signed with the previous key.
 
 ## API foundation
 
@@ -52,6 +58,7 @@ Development may leave `CSRF_SECRET` empty; the process then uses an ephemeral CS
 - `DELETE /api/v1/session` — CSRF-protected server-side logout/revocation and cookie clearing.
 - `GET /api/v1/requests/{requestId}` — active-Tenant and object-authorized Request read.
 - `POST /api/v1/requests/{requestId}/transitions` — CSRF-protected, server-authorized Request workflow transition.
+- `GET /api/v1/audit` — Tenant Admin audit read after Tenant authorization and integrity-chain verification.
 
 There is intentionally no public browser-controlled session issuance endpoint in SaaS 0. Future Entra OIDC code validates/maps provider identity server-side and then calls the provider-neutral session issuance boundary.
 
@@ -59,6 +66,7 @@ See:
 
 - `docs/API.md`
 - `docs/ARCHITECTURE.md`
+- `docs/AUDIT.md`
 - `docs/AUTHORIZATION.md`
 - `docs/IDENTITY-SESSION.md`
 - `docs/PERSISTENCE.md`

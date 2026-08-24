@@ -95,14 +95,14 @@ function parseDatabaseSsl(value, mode) {
   return selected;
 }
 
-function parseCsrfSecret(value, mode) {
+function parseServerSecret(value, mode, { requiredCode, invalidCode }) {
   if (!value) {
-    if (mode === 'pilot' || mode === 'production') throw new ConfigurationError('CSRF_SECRET_REQUIRED');
+    if (mode === 'pilot' || mode === 'production') throw new ConfigurationError(requiredCode);
     return null;
   }
   const bytes = Buffer.byteLength(value, 'utf8');
   if (bytes < 32 || bytes > 512 || /[\u0000-\u001f\u007f]/.test(value)) {
-    throw new ConfigurationError('CSRF_SECRET_INVALID');
+    throw new ConfigurationError(invalidCode);
   }
   return value;
 }
@@ -138,6 +138,17 @@ export function loadConfig(env = process.env) {
   const mode = parseMode(env);
   const publicOrigin = parseOrigin(env.PUBLIC_ORIGIN, mode);
   const database = loadDatabaseConfig(env, mode);
+  const csrfSecret = parseServerSecret(env.CSRF_SECRET, mode, {
+    requiredCode: 'CSRF_SECRET_REQUIRED',
+    invalidCode: 'CSRF_SECRET_INVALID',
+  });
+  const auditHmacSecret = parseServerSecret(env.AUDIT_HMAC_SECRET, mode, {
+    requiredCode: 'AUDIT_HMAC_SECRET_REQUIRED',
+    invalidCode: 'AUDIT_HMAC_SECRET_INVALID',
+  });
+  if (database.databaseUrl && !auditHmacSecret) {
+    throw new ConfigurationError('AUDIT_HMAC_SECRET_REQUIRED');
+  }
 
   return Object.freeze({
     mode,
@@ -189,7 +200,8 @@ export function loadConfig(env = process.env) {
       max: 86_400,
       code: 'SESSION_TTL_SECONDS_INVALID',
     }),
-    csrfSecret: parseCsrfSecret(env.CSRF_SECRET, mode),
+    csrfSecret,
+    auditHmacSecret,
     ...database,
   });
 }
@@ -206,5 +218,8 @@ export function assertProductionConfig(config) {
   }
   if ((config.mode === 'pilot' || config.mode === 'production') && !config.csrfSecret) {
     throw new ApiError(500, 'CSRF_SECRET_REQUIRED');
+  }
+  if (config.databaseUrl && !config.auditHmacSecret) {
+    throw new ApiError(500, 'AUDIT_HMAC_SECRET_REQUIRED');
   }
 }

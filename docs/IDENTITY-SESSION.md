@@ -2,11 +2,11 @@
 
 ## Authority and scope
 
-Root `AGENTS.md` remains authoritative. This document defines the provider-neutral server-side identity/session boundary implemented by SaaS 0 issue #50.
+Root `AGENTS.md` remains authoritative. This document defines the provider-neutral server-side identity/session boundary implemented by SaaS 0 issue #50 and its durable session-audit integration added by issue #52.
 
 Microsoft Entra ID is intentionally not part of the business-layer contract. A future Entra OIDC adapter validates provider tokens/claims and maps them to a trusted internal identity before calling the session issuance boundary.
 
-The recognized Tenant roles/permissions and object/workflow authorization rules are defined separately by `docs/AUTHORIZATION.md` and implemented by issue #51.
+The recognized Tenant roles/permissions and object/workflow authorization rules are defined separately by `docs/AUTHORIZATION.md`. The durable audit event/integrity contract is defined by `docs/AUDIT.md`.
 
 ## Trust flow
 
@@ -16,7 +16,9 @@ External identity provider
      -> server-side identity mapping resolves internal Tenant/User and approved roles/permissions
         -> normalizeTrustedIdentity(...)
            -> createSessionService.issue(...)
-              -> PostgreSQL session record containing only a token hash
+              -> one PostgreSQL transaction:
+                   session row containing only token hash
+                   + session.issued audit event
                  -> HttpOnly session cookie returned to browser
 
 Browser request
@@ -40,7 +42,7 @@ The trusted identity input contains only normalized server-side values:
 - approved roles;
 - approved permissions.
 
-The provider identity reference is evidence/linkage for the identity adapter. It is not a Tenant ownership identifier and is not returned by the public session endpoint.
+The provider identity reference is evidence/linkage for the identity adapter. It is not a Tenant ownership identifier and is not returned by the public session endpoint or copied into Tenant audit metadata.
 
 Provider-specific fields such as Entra `tid`, `oid`, group claim formats, token types, issuer URLs, Graph objects, or Microsoft SDK types must remain inside the future identity adapter. Business services consume only the internal Principal.
 
@@ -60,7 +62,7 @@ PostgreSQL stores:
 - User `security_version` snapshot;
 - issue/expiry/revocation timestamps.
 
-The raw session token is never persisted, logged, returned in JSON, or exposed to browser JavaScript.
+The raw session token is never persisted, logged, returned in JSON, exposed to browser JavaScript or copied into audit records.
 
 Session lookup hashes the presented cookie token and requires all of the following:
 
@@ -102,7 +104,8 @@ The CSRF token:
 - is not written to LocalStorage/sessionStorage;
 - is bound to the internal session ID;
 - is compared using a timing-safe comparison;
-- becomes unusable when the session is replaced/revoked or when the CSRF secret is rotated.
+- becomes unusable when the session is replaced/revoked or when the CSRF secret is rotated;
+- is never copied into durable audit evidence.
 
 A missing/malformed/mismatched token fails closed before an unsafe protected operation is performed.
 
@@ -110,11 +113,32 @@ A missing/malformed/mismatched token fails closed before an unsafe protected ope
 
 Session expiry is enforced by PostgreSQL lookup, not only by cookie expiration.
 
-Logout uses `DELETE /api/v1/session` and requires the authenticated session plus a valid CSRF token. The session row is revoked server-side before the cookie is cleared.
+Logout uses `DELETE /api/v1/session` and requires the authenticated session plus a valid CSRF token. The session row is revoked and the `session.revoked` success audit event is appended in one PostgreSQL transaction before the cookie is cleared.
 
-Session rotation creates a new random token/session ID and revokes the previous session in one database transaction. The old cookie cannot resolve after a successful rotation.
+Session rotation creates a new random token/session ID, revokes the previous session and appends `session.rotated` audit evidence in one database transaction. The old cookie cannot resolve after a successful rotation.
+
+Session issuance inserts the new session row and `session.issued` success audit event in one transaction. If the required audit append fails, the session mutation does not commit.
 
 Rotation is an internal server operation, not a browser-controlled identity update. The caller must provide a newly validated trusted identity for the same internal User/Tenant.
+
+No-mutation revocation/rotation failures can be recorded separately as failure audit events when a valid internal Principal/Tenant context exists.
+
+## Session audit data minimization
+
+Session lifecycle audit records target the internal User rather than exposing the session credential as an audit target.
+
+Allowed session audit metadata is intentionally limited to non-secret facts such as role/permission counts and abstract session state labels. Audit records do not contain:
+
+- raw session token;
+- session token hash;
+- internal session ID;
+- CSRF token;
+- provider subject/reference;
+- provider access/refresh/ID token;
+- cookie header;
+- secret material.
+
+See `docs/AUDIT.md` for the common event validation and HMAC-chain contract.
 
 ## Privilege changes and stale-session prevention
 
@@ -124,7 +148,7 @@ When an authorized role/permission mapping changes, the responsible server-side 
 
 If the user should remain signed in, an authorized identity/session orchestration path may rotate the known current session using the newly approved role/permission snapshot. The new session receives the new `security_version`; the old session remains unusable.
 
-Issue #51 defines the deny-by-default role/permission and object/workflow policy in `docs/AUTHORIZATION.md`. Operations that later mutate User role/permission assignments must use Tenant Admin authorization and increment `security_version`; the browser cannot rotate privileges by submitting new role values.
+Issue #51 defines the deny-by-default role/permission and object/workflow policy in `docs/AUTHORIZATION.md`. Operations that later mutate User role/permission assignments must use Tenant Admin authorization, increment `security_version` and emit the corresponding server-generated audit event; the browser cannot rotate privileges by submitting new role values.
 
 ## Public session endpoint
 
@@ -145,9 +169,10 @@ It does not return:
 - token hash;
 - provider identity reference;
 - provider access/refresh/ID tokens;
-- database/security version metadata.
+- database/security version metadata;
+- audit HMAC/integrity data.
 
-`DELETE /api/v1/session` revokes the server-side session and returns HTTP 204 while clearing the cookie.
+`DELETE /api/v1/session` revokes the server-side session, atomically persists its success audit event, and returns HTTP 204 while clearing the cookie.
 
 ## Future Entra OIDC adapter
 
@@ -157,10 +182,12 @@ The adapter must not allow browser-supplied internal IDs, roles, permissions, or
 
 The adapter's role/permission mapping output must use only authorization values recognized by `docs/AUTHORIZATION.md`. Unknown mapping output fails closed at the business authorization boundary.
 
+Authentication failures that cannot be mapped safely to a valid internal Tenant/actor must not be forced into another Tenant's audit chain. Platform/security telemetry for such pre-Tenant failures remains a separate future boundary.
+
 ## Operational considerations
 
 Expired/revoked session cleanup is an operational maintenance concern and may be implemented with bounded server-side cleanup once production job scheduling/observability is defined. Removing expired rows is not required for correctness because lookup always enforces expiration and revocation.
 
 CSRF secret rotation invalidates previously issued CSRF tokens but not the underlying authenticated session. A client can retrieve a new CSRF token with authenticated `GET /api/v1/session`.
 
-Session creation, revocation, rotation, authentication failures, authorization decisions and security-version changes are security-relevant events. Persistent audit policy for those events is owned by issue #52.
+Audit HMAC-key rotation requires an explicit integrity-chain/key-version migration or archive design; silently replacing the key would make historical chain verification impossible. Issue #52 therefore fixes integrity version 1 and requires a stable externally managed `AUDIT_HMAC_SECRET` for the deployed chain until a reviewed key-rotation mechanism exists.

@@ -67,7 +67,7 @@ Future Tenant-owned resource classes inherit the same invariant unless an explic
 
 ## Repository contract
 
-`createTenantScopedRepository` defines the generic scoped repository pattern. Concrete PostgreSQL adapters introduced by #49/#51 preserve the same direction even when a resource has a specialized repository contract.
+`createTenantScopedRepository` defines the generic scoped repository pattern. Concrete PostgreSQL adapters preserve the same direction even when a resource has a specialized repository contract.
 
 Generic Tenant-owned adapters expose only scoped methods such as:
 
@@ -80,6 +80,8 @@ Generic Tenant-owned adapters expose only scoped methods such as:
 The generic wrapper never offers unscoped `findById`, `updateById`, or `deleteById` calls. Tenant ID is supplied separately from mutation data, and payloads that try to set `tenantId` are rejected. Adapter results are revalidated so an adapter cannot silently return another Tenant's resource.
 
 The specialized PostgreSQL Request repository follows the same invariant through `findByTenantIdAndId` and `transitionByTenantIdAndId`; its SQL always includes internal `tenant_id`.
+
+The specialized Audit repository similarly appends, lists and verifies events only within an explicit internal Tenant scope. It does not expose a cross-Tenant list API to the Tenant-facing application service.
 
 A resource identifier that exists only in another Tenant resolves as absent inside the caller's Tenant scope. This prevents object-existence disclosure while enforcing BOLA/IDOR protection.
 
@@ -109,6 +111,19 @@ The current Conference Manager scope granularity is the internal Tenant. A finer
 
 See `docs/AUTHORIZATION.md`.
 
+## Audit isolation (#52)
+
+Audit evidence preserves the same Tenant boundary as business data.
+
+- Audit event Tenant ID is derived from the authenticated Principal/Tenant context or an already validated internal server identity flow, never from browser input.
+- HMAC chains are independent per internal Tenant. The first event of each Tenant starts a separate chain.
+- `GET /api/v1/audit` accepts no Tenant selector and passes only `tenantContext.tenantId` to the audit service/repository.
+- Tenant-visible audit reads require Tenant Admin plus `tenant:audit:read` and verify only that Tenant's complete integrity chain before returning records.
+- A compromised/corrupt chain in one Tenant does not cause another Tenant's chain to be treated as corrupt.
+- Platform/operator audit remains a separate authorization domain and cannot be reached through Tenant Admin authorization.
+
+See `docs/AUDIT.md`.
+
 ## Required negative testing
 
 Tenant isolation and object-authorization tests are mandatory for every Tenant-owned repository and endpoint. Required cases include, as applicable:
@@ -123,6 +138,9 @@ Tenant isolation and object-authorization tests are mandatory for every Tenant-o
 - mismatched repository results;
 - unknown role/permission values;
 - concurrent operations by independent Tenants, including identical resource IDs;
-- stale/concurrent workflow updates.
+- stale/concurrent workflow updates;
+- Tenant-scoped audit listing and independent HMAC chains;
+- audit corruption in one Tenant without cross-Tenant contamination;
+- denied audit reads by non-Tenant-Admin or missing `tenant:audit:read` permission.
 
-These tests are security release evidence for the implemented scope only. They do not replace penetration testing or later platform/control-plane authorization testing.
+These tests are security release evidence for the implemented scope only. They do not replace penetration testing, external audit-chain anchoring or later platform/control-plane authorization testing.
