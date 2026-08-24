@@ -16,6 +16,7 @@ async function filesUnder(directory) {
 const files = [
   ...await filesUnder('src'),
   ...await filesUnder('tests'),
+  ...await filesUnder('tests-db'),
   ...await filesUnder('scripts'),
 ].sort();
 

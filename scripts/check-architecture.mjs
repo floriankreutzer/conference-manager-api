@@ -13,8 +13,9 @@ async function sourceFiles(directory) {
 }
 
 const packageJson = JSON.parse(await readFile('package.json', 'utf8'));
-if (Object.keys(packageJson.dependencies || {}).length !== 0) {
-  throw new Error('SaaS API foundation must remain runtime-dependency-free until a scoped issue introduces a reviewed dependency.');
+const runtimeDependencies = packageJson.dependencies || {};
+if (JSON.stringify(runtimeDependencies) !== JSON.stringify({ pg: '8.23.0' })) {
+  throw new Error('The reviewed PostgreSQL driver must remain the only runtime dependency for this persistence slice.');
 }
 
 const files = await sourceFiles('src');
@@ -31,6 +32,12 @@ for (const file of files) {
   }
   if (/x-tenant-id|x-tenant-context/i.test(content)) {
     throw new Error(`${file} introduces a client-controlled tenant header into the trusted runtime.`);
+  }
+  if (/from ['"]pg['"]/.test(content) && !file.startsWith('src/persistence/postgres/')) {
+    throw new Error(`${file} imports the database driver outside the PostgreSQL infrastructure adapter boundary.`);
+  }
+  if (/\b(?:SELECT|INSERT INTO|UPDATE|DELETE FROM)\b/.test(content) && !file.startsWith('src/persistence/postgres/')) {
+    throw new Error(`${file} contains SQL outside the PostgreSQL infrastructure adapter boundary.`);
   }
 }
 
@@ -84,6 +91,18 @@ for (const resourceType of [
   if (!tenantModel.includes(`'${resourceType}'`)) {
     throw new Error(`Tenant ownership inventory is missing ${resourceType}.`);
   }
+}
+
+const persistence = await readFile('src/persistence/postgres/index.js', 'utf8');
+if (!persistence.includes('isPostgresSchemaReady') || !persistence.includes('createPostgresTenantRepository')) {
+  throw new Error('PostgreSQL persistence must enforce schema readiness and provide Tenant loading.');
+}
+
+for (const migration of [
+  'migrations/001_core_tenant_schema.up.sql',
+  'migrations/001_core_tenant_schema.down.sql',
+]) {
+  await readFile(migration, 'utf8');
 }
 
 console.log('Architecture boundary check passed.');

@@ -12,7 +12,12 @@ async function filesUnder(directory) {
   return files;
 }
 
-const files = [...await filesUnder('src'), ...await filesUnder('tests'), ...await filesUnder('scripts')];
+const files = [
+  ...await filesUnder('src'),
+  ...await filesUnder('tests'),
+  ...await filesUnder('tests-db'),
+  ...await filesUnder('scripts'),
+];
 for (const file of files) {
   const content = await readFile(file, 'utf8');
   if (!content.endsWith('\n')) throw new Error(`${file} must end with a newline.`);

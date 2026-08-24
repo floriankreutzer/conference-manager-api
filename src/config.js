@@ -1,6 +1,7 @@
 import { ApiError } from './api-error.js';
 
 const MODES = new Set(['development', 'test', 'pilot', 'production']);
+const DATABASE_SSL_MODES = new Set(['disable', 'verify-full']);
 const DEFAULTS = Object.freeze({
   host: '127.0.0.1',
   port: 3000,
@@ -12,6 +13,10 @@ const DEFAULTS = Object.freeze({
   headersTimeoutMs: 10_000,
   keepAliveTimeoutMs: 5_000,
   readinessTimeoutMs: 1_000,
+  databasePoolMax: 10,
+  databaseConnectionTimeoutMs: 5_000,
+  databaseIdleTimeoutMs: 30_000,
+  databaseStatementTimeoutMs: 10_000,
 });
 
 export class ConfigurationError extends Error {
@@ -28,6 +33,12 @@ function parseInteger(value, fallback, { min, max, code }) {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) throw new ConfigurationError(code);
   return parsed;
+}
+
+function parseMode(env) {
+  const mode = env.NODE_ENV || 'development';
+  if (!MODES.has(mode)) throw new ConfigurationError('NODE_ENV_INVALID');
+  return mode;
 }
 
 function parseOrigin(value, mode) {
@@ -52,13 +63,72 @@ function parseOrigin(value, mode) {
   return parsed.origin;
 }
 
+function parseDatabaseUrl(value, mode) {
+  if (!value) {
+    if (mode === 'pilot' || mode === 'production') throw new ConfigurationError('DATABASE_URL_REQUIRED');
+    return null;
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new ConfigurationError('DATABASE_URL_INVALID');
+  }
+  if (!['postgres:', 'postgresql:'].includes(parsed.protocol)) {
+    throw new ConfigurationError('DATABASE_URL_INVALID');
+  }
+  if (!parsed.hostname || !parsed.pathname || parsed.pathname === '/' || parsed.hash || parsed.search) {
+    throw new ConfigurationError('DATABASE_URL_INVALID');
+  }
+  return value;
+}
+
+function parseDatabaseSsl(value, mode) {
+  const fallback = mode === 'pilot' || mode === 'production' ? 'verify-full' : 'disable';
+  const selected = value || fallback;
+  if (!DATABASE_SSL_MODES.has(selected)) throw new ConfigurationError('DATABASE_SSL_INVALID');
+  if ((mode === 'pilot' || mode === 'production') && selected !== 'verify-full') {
+    throw new ConfigurationError('DATABASE_SSL_REQUIRED');
+  }
+  return selected;
+}
+
+export function loadDatabaseConfig(env = process.env, mode = parseMode(env)) {
+  return Object.freeze({
+    databaseUrl: parseDatabaseUrl(env.DATABASE_URL, mode),
+    databaseSsl: parseDatabaseSsl(env.DATABASE_SSL, mode),
+    databasePoolMax: parseInteger(env.DATABASE_POOL_MAX, DEFAULTS.databasePoolMax, {
+      min: 1,
+      max: 50,
+      code: 'DATABASE_POOL_MAX_INVALID',
+    }),
+    databaseConnectionTimeoutMs: parseInteger(
+      env.DATABASE_CONNECTION_TIMEOUT_MS,
+      DEFAULTS.databaseConnectionTimeoutMs,
+      { min: 500, max: 30_000, code: 'DATABASE_CONNECTION_TIMEOUT_MS_INVALID' },
+    ),
+    databaseIdleTimeoutMs: parseInteger(env.DATABASE_IDLE_TIMEOUT_MS, DEFAULTS.databaseIdleTimeoutMs, {
+      min: 1_000,
+      max: 300_000,
+      code: 'DATABASE_IDLE_TIMEOUT_MS_INVALID',
+    }),
+    databaseStatementTimeoutMs: parseInteger(
+      env.DATABASE_STATEMENT_TIMEOUT_MS,
+      DEFAULTS.databaseStatementTimeoutMs,
+      { min: 500, max: 120_000, code: 'DATABASE_STATEMENT_TIMEOUT_MS_INVALID' },
+    ),
+  });
+}
+
 export function loadConfig(env = process.env) {
-  const mode = env.NODE_ENV || 'development';
-  if (!MODES.has(mode)) throw new ConfigurationError('NODE_ENV_INVALID');
+  const mode = parseMode(env);
+  const publicOrigin = parseOrigin(env.PUBLIC_ORIGIN, mode);
+  const database = loadDatabaseConfig(env, mode);
 
   return Object.freeze({
     mode,
-    publicOrigin: parseOrigin(env.PUBLIC_ORIGIN, mode),
+    publicOrigin,
     host: env.HOST || DEFAULTS.host,
     port: parseInteger(env.PORT, DEFAULTS.port, { min: 1, max: 65_535, code: 'PORT_INVALID' }),
     maxBodyBytes: parseInteger(env.MAX_BODY_BYTES, DEFAULTS.maxBodyBytes, {
@@ -101,11 +171,18 @@ export function loadConfig(env = process.env) {
       max: 10_000,
       code: 'READINESS_TIMEOUT_MS_INVALID',
     }),
+    ...database,
   });
 }
 
 export function assertProductionConfig(config) {
   if ((config.mode === 'pilot' || config.mode === 'production') && !config.publicOrigin.startsWith('https://')) {
     throw new ApiError(500, 'SECURE_CONFIGURATION_REQUIRED');
+  }
+  if ((config.mode === 'pilot' || config.mode === 'production') && !config.databaseUrl) {
+    throw new ApiError(500, 'DATABASE_CONFIGURATION_REQUIRED');
+  }
+  if ((config.mode === 'pilot' || config.mode === 'production') && config.databaseSsl !== 'verify-full') {
+    throw new ApiError(500, 'DATABASE_TLS_REQUIRED');
   }
 }
