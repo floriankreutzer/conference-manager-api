@@ -1,3 +1,5 @@
+import { createRequestService } from './application/request-service.js';
+import { createAuthorizationPolicy } from './authorization/policy.js';
 import { loadConfig } from './config.js';
 import { createSessionService } from './identity/session-service.js';
 import { createLogger } from './logger.js';
@@ -7,6 +9,7 @@ import { createHttpServer } from './server.js';
 const config = loadConfig();
 const logger = createLogger();
 const persistence = config.databaseUrl ? createPostgresPersistence(config) : null;
+const authorizationPolicy = createAuthorizationPolicy();
 const sessionService = persistence
   ? createSessionService({
     repository: persistence.sessionRepository,
@@ -15,10 +18,18 @@ const sessionService = persistence
     sessionTtlSeconds: config.sessionTtlSeconds,
   })
   : null;
+const requestService = persistence
+  ? createRequestService({
+    repository: persistence.requestRepository,
+    authorizationPolicy,
+  })
+  : null;
 const server = createHttpServer({
   config,
   logger,
+  authorizationPolicy,
   sessionService,
+  requestService,
   loadTenant: persistence?.loadTenant,
   readinessChecks: persistence?.readinessChecks || [],
 });
