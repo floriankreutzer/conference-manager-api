@@ -47,10 +47,10 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!pool.includes('CURRENT_SCHEMA_VERSION = 8')) {
+if (!pool.includes('CURRENT_SCHEMA_VERSION = 9')) {
   throw new Error(
     'Runtime schema readiness must include entitlement, booking-reference, OIDC, '
-      + 'and tenant-onboarding migrations through version 8.',
+      + 'tenant-onboarding, and JIT-user migrations through version 9.',
   );
 }
 
