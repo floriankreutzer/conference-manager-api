@@ -26,6 +26,7 @@ function identity(overrides = {}) {
     providerIdentity: { provider: 'test_oidc', reference: 'provider-subject-123' },
     roles: ['employee'],
     permissions: ['request:read'],
+    securityVersion: 1,
     ...overrides,
   };
 }
@@ -38,7 +39,7 @@ function fakeRepository({ provisioned = true } = {}) {
     committedAuditEvents,
     async issue(record, auditEvent) {
       if (!provisioned) return null;
-      const stored = { ...record, securityVersion: 1, tenantStatus: 'active' };
+      const stored = { ...record, tenantStatus: 'active' };
       sessions.set(record.tokenHash, stored);
       committedAuditEvents.push(auditEvent);
       return stored;
@@ -59,7 +60,7 @@ function fakeRepository({ provisioned = true } = {}) {
       const current = [...sessions.values()].find((candidate) => candidate.id === currentSessionId && !candidate.revoked);
       if (!current) return null;
       current.revoked = true;
-      const stored = { ...session, securityVersion: 2, tenantStatus: 'active' };
+      const stored = { ...session, tenantStatus: 'active' };
       sessions.set(session.tokenHash, stored);
       committedAuditEvents.push(auditEvent);
       return stored;
@@ -114,6 +115,19 @@ test('trusted identity contract rejects provider/client-shaped malformed identit
   assert.throws(() => normalizeTrustedIdentity(identity({ tenantId: 'client-selected-tenant' })), TypeError);
   assert.throws(() => normalizeTrustedIdentity(identity({ roles: ['ADMIN ROLE'] })), TypeError);
   assert.throws(() => normalizeTrustedIdentity(identity({ permissions: ['bad permission'] })), TypeError);
+});
+
+test('session issuance requires a positive trusted security-version snapshot', async () => {
+  const repository = fakeRepository();
+  const context = sessionService(repository);
+  for (const securityVersion of [undefined, 0, -1, 1.5, '1']) {
+    await assert.rejects(
+      context.service.issue(identity({ securityVersion })),
+      /IDENTITY_SECURITY_VERSION_INVALID/,
+    );
+  }
+  assert.equal(repository.sessions.size, 0);
+  assert.equal(repository.committedAuditEvents.length, 0);
 });
 
 test('session service stores only token hashes and emits minimized issuance audit data', async () => {
