@@ -28,6 +28,7 @@ const TENANT_B = '20202020-2020-4020-8020-202020202020';
 const ADMIN_A = '30303030-3030-4030-8030-303030303030';
 const USER_A = '40404040-4040-4040-8040-404040404040';
 const USER_B = '50505050-5050-4050-8050-505050505050';
+const REPEAT_CANDIDATE_ID = '87878787-8787-4787-8787-878787878787';
 const BIND_A = '60606060-6060-4060-8060-606060606060';
 const BIND_B = '70707070-7070-4070-8070-707070707070';
 const CORR_A = '80808080-8080-4080-8080-808080808080';
@@ -137,7 +138,7 @@ test('tenant roles are claimant-bootstrapped, isolated, concurrent-safe and inva
     claimantProviderUserReference: null,
   });
 
-  const ids = [ADMIN_A, USER_A, USER_B];
+  const ids = [ADMIN_A, USER_A, USER_B, REPEAT_CANDIDATE_ID];
   const jit = createJitUserService({
     bindingRepository: onboardingRepository,
     userRepository: jitRepository,
