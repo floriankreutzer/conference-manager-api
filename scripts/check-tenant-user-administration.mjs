@@ -97,7 +97,7 @@ if (!app.includes("ELEVATED_TENANT_ROLES = new Set(['conference_manager', 'tenan
   throw new Error('Tenant role HTTP input must whitelist only elevated tenant roles.');
 }
 
-const migration = await readFile('migrations/010_tenant_user_roles.up.sql', 'utf8');
+const migration = await readFile('migrations/010_tenant_role_administration.up.sql', 'utf8');
 for (const required of [
   'claimant_provider_user_reference',
   'CREATE TABLE tenant_user_roles',
@@ -106,7 +106,7 @@ for (const required of [
 ]) {
   if (!migration.includes(required)) throw new Error(`Tenant role migration is missing ${required}.`);
 }
-const rollback = await readFile('migrations/010_tenant_user_roles.down.sql', 'utf8');
+const rollback = await readFile('migrations/010_tenant_role_administration.down.sql', 'utf8');
 for (const required of [
   'TENANT_USER_ROLE_ROWS_REQUIRE_REVIEW',
   'TENANT_ROLE_CLAIMANT_BINDINGS_REQUIRE_REVIEW',
