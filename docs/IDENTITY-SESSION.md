@@ -78,11 +78,11 @@ Session lookup hashes the presented cookie token and requires all of the followi
 
 Any failure returns no Principal and the request fails closed as unauthenticated.
 
-The Entra OIDC flow has separate short-lived authentication transactions. PostgreSQL stores only provider, hashed state, hashed nonce, creation time and expiry. It does not store authorization codes, provider tokens, plaintext state or plaintext nonce. A callback atomically consumes its state row before code redemption so the state is one-time across multiple API instances.
+The Entra OIDC flow has separate short-lived authentication transactions. PostgreSQL stores only provider, hashed state, hashed nonce, creation time and expiry. It does not store authorization codes, provider tokens, plaintext state, plaintext nonce, or browser-binding cookie values. A callback verifies a browser-bound HMAC value before atomically consuming its state row, so a callback is both bound to the initiating browser and one-time across multiple API instances.
 
 ## Cookie policy
 
-The session cookie is named `cm_session` and uses:
+The application session cookie is named `cm_session` and uses:
 
 - `HttpOnly`;
 - `SameSite=Lax`;
@@ -92,6 +92,8 @@ The session cookie is named `cm_session` and uses:
 - no broad `Domain` attribute.
 
 Logout clears the same cookie with `Max-Age=0` and an expired timestamp after server-side revocation.
+
+The Entra login flow additionally uses the transient `cm_oidc_tx` cookie. It is not an authenticated session and carries no Tenant/User/role authority. Its value is an HMAC-derived verifier bound to the server-generated OIDC state. It uses `HttpOnly`, `SameSite=Lax`, callback-only `Path=/api/v1/auth/microsoft/callback`, `Secure` in HTTPS, a maximum lifetime equal to the OIDC transaction TTL, and no `Domain` attribute. The callback clears it before returning authentication/onboarding results. A callback without the matching cookie cannot issue a Conference Manager session even if its state/code were captured from another browser.
 
 Authentication/access/refresh tokens from an external identity provider are not browser session credentials for this application and must not be stored in LocalStorage or sessionStorage.
 
@@ -138,6 +140,7 @@ Allowed session audit metadata is intentionally limited to non-secret facts such
 - session token hash;
 - internal session ID;
 - CSRF token;
+- transient OIDC browser-binding cookie;
 - provider subject/reference;
 - provider access/refresh/ID token;
 - cookie header;
@@ -187,11 +190,13 @@ SaaS 1 issue #58 implements the Microsoft Entra OIDC edge adapter using the fixe
 
 The adapter validates Microsoft protocol output and then resolves provider identity through a provider-neutral resolver before issuing a session. The browser cannot supply internal IDs, roles, permissions, Entra Tenant authority or an alternative provider destination.
 
+The OIDC state is additionally bound to the initiating browser through `cm_oidc_tx`. The binding is validated before the shared state row is consumed; this prevents a callback URL authenticated in one browser from being used to install that identity's session into another browser.
+
 A successfully authenticated Entra identity that is not yet claimed/provisioned is returned as `onboarding_required`; it receives no business session. This preserves the ownership split with #59 Tenant claiming and #60 JIT User provisioning.
 
 Any mapping output that eventually reaches session issuance must use only authorization values recognized by `docs/AUTHORIZATION.md`. Unknown mapping output fails closed at the business authorization boundary.
 
-See `docs/ENTRA-AUTHENTICATION.md` for registration, configuration, protocol validation, replay protection and live Pilot verification requirements.
+See `docs/ENTRA-AUTHENTICATION.md` for registration, configuration, protocol validation, browser binding, replay protection and live Pilot verification requirements.
 
 ## Operational considerations
 
@@ -201,6 +206,6 @@ Expired OIDC authentication transactions are rejected by the atomic consume quer
 
 CSRF secret rotation invalidates previously issued CSRF tokens but not the underlying authenticated session. A client can retrieve a new CSRF token with authenticated `GET /api/v1/session`.
 
-OIDC transaction-secret rotation invalidates PKCE derivation for authentication flows that were already started but not completed. It does not invalidate established application sessions.
+OIDC transaction-secret rotation invalidates PKCE derivation and browser-binding verification for authentication flows that were already started but not completed. It does not invalidate established application sessions.
 
 Audit HMAC-key rotation requires an explicit integrity-chain/key-version migration or archive design; silently replacing the key would make historical chain verification impossible. Issue #52 therefore fixes integrity version 1 and requires a stable externally managed `AUDIT_HMAC_SECRET` for the deployed chain until a reviewed key-rotation mechanism exists.
