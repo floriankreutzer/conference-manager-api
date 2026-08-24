@@ -38,6 +38,7 @@ function mapBinding(row) {
     tenantId: row.tenant_id,
     provider: row.provider,
     providerTenantReference: row.provider_tenant_reference,
+    claimantProviderUserReference: row.claimant_provider_user_reference ?? null,
     status: row.status,
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
@@ -291,15 +292,23 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
               tenant_id,
               provider,
               provider_tenant_reference,
+              claimant_provider_user_reference,
               status,
               created_at,
               updated_at
             )
-            VALUES ($1, $2, $3, $4, 'active', $5, $5)
+            VALUES ($1, $2, $3, $4, $5, 'active', $6, $6)
             ON CONFLICT DO NOTHING
             RETURNING id
           `,
-          values: [bindingId, row.tenant_id, claim.provider, claim.provider_tenant_reference, confirmedAt],
+          values: [
+            bindingId,
+            row.tenant_id,
+            claim.provider,
+            claim.provider_tenant_reference,
+            claim.provider_user_reference,
+            confirmedAt,
+          ],
         });
         if (binding.rowCount !== 1) return Object.freeze({ conflict: true });
         await client.query({
@@ -342,7 +351,15 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
       const result = await pool.query({
         name: 'onboarding-find-active-binding-by-tenant',
         text: `
-          SELECT id, tenant_id, provider, provider_tenant_reference, status, created_at, updated_at
+          SELECT
+            id,
+            tenant_id,
+            provider,
+            provider_tenant_reference,
+            claimant_provider_user_reference,
+            status,
+            created_at,
+            updated_at
           FROM tenant_identity_bindings
           WHERE tenant_id = $1 AND provider = $2 AND status = 'active'
         `,
@@ -357,7 +374,15 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
       const result = await pool.query({
         name: 'onboarding-find-active-binding-by-provider',
         text: `
-          SELECT id, tenant_id, provider, provider_tenant_reference, status, created_at, updated_at
+          SELECT
+            id,
+            tenant_id,
+            provider,
+            provider_tenant_reference,
+            claimant_provider_user_reference,
+            status,
+            created_at,
+            updated_at
           FROM tenant_identity_bindings
           WHERE provider = $1
             AND provider_tenant_reference = $2
@@ -393,7 +418,15 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
             WHERE tenant_id = $1
               AND provider = $2
               AND status = 'active'
-            RETURNING id, tenant_id, provider, provider_tenant_reference, status, created_at, updated_at
+            RETURNING
+              id,
+              tenant_id,
+              provider,
+              provider_tenant_reference,
+              claimant_provider_user_reference,
+              status,
+              created_at,
+              updated_at
           `,
           values: [tenantId, provider, changedAt],
         });
