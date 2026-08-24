@@ -16,11 +16,12 @@ Microsoft Entra OIDC
      -> active internal Tenant <-> provider-Tenant binding lookup
      -> JIT User resolver
         -> PostgreSQL User + provider identity binding
-        -> fixed Employee authorization snapshot
+        -> approved role/permission snapshot + current security_version
      -> existing server-side session service
+        -> session insert only while the User security_version still matches
 ```
 
-The browser never selects the internal Tenant, internal User, role, permission, provider Tenant, or provider User authority.
+The browser never selects the internal Tenant, internal User, role, permission, provider Tenant, provider User authority, or security version.
 
 An invitation-backed authentication transaction remains owned by the Tenant-claim flow from issue #59. JIT provisioning is used only for a normal login after the external Tenant has already been claimed.
 
@@ -68,7 +69,9 @@ The binding is Tenant-owned and uses the composite key:
 
 The row references the existing Tenant-owned `users` record through `(tenant_id, user_id)`.
 
-The existing `users.active` flag remains authoritative for local offboarding. The existing `users.security_version` remains authoritative for stale-session invalidation.
+The existing `users.active` flag remains authoritative for local offboarding. The existing `users.security_version` remains authoritative for authorization-snapshot freshness and stale-session invalidation.
+
+The JIT transaction returns the current `security_version` together with the server-derived role/permission snapshot. This value is an internal optimistic-concurrency precondition for session issuance. It is not browser authority and is not exposed by the public session endpoint.
 
 The JIT transaction uses a PostgreSQL advisory transaction lock derived from the complete identity tuple. Concurrent first logins for the same identity therefore serialize and resolve to one local User rather than creating duplicate identities.
 
@@ -82,13 +85,15 @@ For a validated external identity whose provider Tenant is actively bound:
 4. otherwise one local User is created;
 5. one `user_identity_bindings` row is created;
 6. `tenant.user.provisioned` audit evidence is appended in the same transaction;
-7. only after commit may session issuance proceed.
+7. the approved authorization snapshot and current `security_version` are returned together;
+8. only after commit may session issuance proceed;
+9. the session transaction locks the User/Tenant rows for share and inserts the session only when the current `security_version` still equals the JIT snapshot.
 
-If required audit persistence fails, User and identity-binding creation roll back.
+If required audit persistence fails, User and identity-binding creation roll back. If the User's authorization changes after JIT resolution but before session issuance, the version predicate fails and no session or `session.issued` audit event is committed. Authentication must resolve the User again before a session can be issued.
 
 ## Repeat login and profile refresh
 
-Repeat login resolves the existing local User deterministically.
+Repeat login resolves the existing local User deterministically and rebuilds authorization from the currently persisted Tenant roles.
 
 The validated bounded display name may refresh `users.display_name`. A display-name change:
 
@@ -108,6 +113,8 @@ No application session is issued when:
 - the provider Tenant has no active internal Tenant binding;
 - the internal Tenant is suspended, archived, pending, or otherwise not available for JIT login;
 - the resolved local User is disabled;
+- the JIT result lacks a positive integer `security_version`;
+- the User's `security_version` changes between JIT resolution and session issuance;
 - authoritative persistence fails;
 - required audit persistence fails;
 - the JIT repository returns an unknown state.
@@ -133,7 +140,7 @@ JIT security audit actions are:
 - `tenant.user.provisioned`;
 - `tenant.user.profile_updated`.
 
-Audit records use the internal Tenant and internal User as authority. Provider Tenant/User references, email, display name, raw OIDC claims, tokens, cookies, and secrets are not copied into JIT audit metadata.
+Audit records use the internal Tenant and internal User as authority. Provider Tenant/User references, email, display name, raw OIDC claims, tokens, cookies, secrets, and `security_version` values are not copied into JIT audit metadata.
 
 Operational logs must continue to follow the repository redaction and low-cardinality rules.
 
@@ -157,6 +164,10 @@ Required automated coverage includes:
 - unavailable Tenant;
 - malformed external identity;
 - attempted provider/client privilege injection;
+- missing or invalid JIT security-version snapshots;
+- role change between JIT resolution and session issuance;
+- rejection without session or issuance-audit persistence for stale snapshots;
+- successful issuance after fresh JIT resolution;
 - audit-atomic rollback;
 - migration rollback protection;
 - existing session, Tenant, onboarding, authorization, DAST, static, dependency, and secret-scan regression gates.
