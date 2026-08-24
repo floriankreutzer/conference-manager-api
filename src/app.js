@@ -1,4 +1,5 @@
 import { ApiError, asApiError } from './api-error.js';
+import { createAuthorizationPolicy } from './authorization/policy.js';
 import { assertProductionConfig } from './config.js';
 import {
   applySecurityHeaders,
@@ -9,6 +10,8 @@ import {
   createPrincipalGuard,
   createRateLimiter,
   createRequestId,
+  readJsonObjectBody,
+  validateExactObject,
 } from './security.js';
 import { createLogger } from './logger.js';
 import { createTenantContextGuard } from './tenancy/tenant-context.js';
@@ -17,6 +20,16 @@ const ROUTES = Object.freeze({
   live: '/api/v1/health/live',
   ready: '/api/v1/health/ready',
   principal: '/api/v1/session',
+});
+const REQUEST_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/;
+const REQUEST_TRANSITION_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/transitions$/;
+const TRANSITION_BODY_SCHEMA = Object.freeze({
+  required: Object.freeze({
+    transition: (value) => typeof value === 'string' && value.length >= 1 && value.length <= 32,
+  }),
+  optional: Object.freeze({
+    reason: (value) => typeof value === 'string' && value.length <= 1000,
+  }),
 });
 
 function pathnameOf(rawUrl, publicOrigin) {
@@ -37,6 +50,21 @@ function sendNoContent(response) {
   response.removeHeader('Content-Type');
   response.removeHeader('Content-Length');
   response.end();
+}
+
+function publicRequest(request) {
+  return Object.freeze({
+    id: request.id,
+    roomId: request.roomId,
+    status: request.status,
+    statusReason: request.statusReason,
+    startsAt: request.startsAt,
+    endsAt: request.endsAt,
+    internalParticipants: request.internalParticipants,
+    externalParticipants: request.externalParticipants,
+    statusChangedAt: request.statusChangedAt,
+    updatedAt: request.updatedAt,
+  });
 }
 
 async function withTimeout(task, timeoutMs) {
@@ -62,7 +90,9 @@ async function isReady(checks, timeoutMs) {
 export function createApp({
   config,
   readinessChecks = [],
+  authorizationPolicy = createAuthorizationPolicy(),
   sessionService,
+  requestService,
   resolvePrincipal,
   verifyCsrf,
   loadTenant,
@@ -74,6 +104,9 @@ export function createApp({
   assertProductionConfig(config);
   if (!Array.isArray(readinessChecks) || readinessChecks.some((check) => typeof check !== 'function')) {
     throw new TypeError('READINESS_CHECKS_INVALID');
+  }
+  if (!authorizationPolicy || typeof authorizationPolicy.assertRecognizedPrincipal !== 'function') {
+    throw new TypeError('AUTHORIZATION_POLICY_REQUIRED');
   }
 
   const rateLimiter = createRateLimiter({
@@ -123,6 +156,7 @@ export function createApp({
           throw new ApiError(405, 'METHOD_NOT_ALLOWED');
         }
         const principal = await principalGuard.require(request, { csrf: request.method === 'DELETE' });
+        authorizationPolicy.assertRecognizedPrincipal(principal);
         const tenantContext = await tenantGuard.requireKnown(principal);
 
         if (request.method === 'DELETE') {
@@ -150,6 +184,37 @@ export function createApp({
           ...(csrfToken ? { csrfToken } : {}),
           requestId,
         }, config.maxResponseBytes);
+        return;
+      }
+
+      const transitionMatch = path.match(REQUEST_TRANSITION_PATH);
+      const requestMatch = path.match(REQUEST_PATH);
+      if (transitionMatch || requestMatch) {
+        const isTransition = Boolean(transitionMatch);
+        const expectedMethod = isTransition ? 'POST' : 'GET';
+        if (request.method !== expectedMethod) throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+        const principal = await principalGuard.require(request, { csrf: isTransition });
+        const tenantContext = await tenantGuard.requireActive(principal);
+        if (!requestService) throw new ApiError(503, 'REQUEST_SERVICE_UNAVAILABLE');
+        const requestIdValue = (transitionMatch || requestMatch)[1];
+
+        const record = isTransition
+          ? await requestService.transitionRequest({
+            principal,
+            tenantContext,
+            requestId: requestIdValue,
+            ...validateExactObject(
+              await readJsonObjectBody(request, { maxBytes: config.maxBodyBytes }),
+              TRANSITION_BODY_SCHEMA,
+            ),
+          })
+          : await requestService.getRequest({
+            principal,
+            tenantContext,
+            requestId: requestIdValue,
+          });
+        statusCode = 200;
+        sendJson(response, statusCode, { request: publicRequest(record), requestId }, config.maxResponseBytes);
         return;
       }
 
