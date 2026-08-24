@@ -1,0 +1,58 @@
+name: Booking Architecture Patch
+
+on:
+  push:
+    branches:
+      - feature/provider-neutral-booking-contracts
+    paths:
+      - .github/workflows/booking-architecture-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feature/provider-neutral-booking-contracts
+      - name: Patch architecture gate
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('scripts/check-architecture.mjs')
+          text = path.read_text()
+          replacements = [
+              (
+                  "  'entitlement',\n  'audit_event',",
+                  "  'entitlement',\n  'booking_provider_reference',\n  'audit_event',",
+              ),
+              (
+                  "  'createPostgresEntitlementRepository',\n  'auditRepository',\n  'entitlementRepository',",
+                  "  'createPostgresEntitlementRepository',\n  'createPostgresBookingReferenceRepository',\n  'auditRepository',\n  'entitlementRepository',\n  'bookingReferenceRepository',",
+              ),
+              (
+                  "if (!pool.includes('CURRENT_SCHEMA_VERSION = 5')) {\n  throw new Error('Runtime schema readiness must require entitlement migration version 5.');\n}",
+                  "if (!pool.includes('CURRENT_SCHEMA_VERSION = 6')) {\n  throw new Error('Runtime schema readiness must require booking-reference migration version 6.');\n}",
+              ),
+              (
+                  "  'migrations/005_tenant_entitlements.up.sql',\n  'migrations/005_tenant_entitlements.down.sql',",
+                  "  'migrations/005_tenant_entitlements.up.sql',\n  'migrations/005_tenant_entitlements.down.sql',\n  'migrations/006_booking_provider_references.up.sql',\n  'migrations/006_booking_provider_references.down.sql',",
+              ),
+          ]
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f'architecture pattern mismatch: {old!r}')
+              text = text.replace(old, new)
+          path.write_text(text)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add scripts/check-architecture.mjs
+          git commit -m "Extend architecture gate for booking contracts"
+          git push origin HEAD:feature/provider-neutral-booking-contracts
