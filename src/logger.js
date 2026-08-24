@@ -5,6 +5,8 @@ const ROUTES = new Set([
   'health_status',
   'entra_login',
   'entra_callback',
+  'onboarding_start',
+  'onboarding_claim',
   'session',
   'audit',
   'request',
