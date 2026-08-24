@@ -2,50 +2,56 @@
 
 ## Decision
 
-Conference Manager uses PostgreSQL 18 as the relational production persistence platform. The application uses the pinned `pg` driver directly rather than an ORM so SQL, tenant predicates, transaction boundaries, constraints, and migrations remain explicit and reviewable.
+Conference Manager uses PostgreSQL 18 as the relational production persistence platform. The pinned `pg` driver is used directly so SQL, Tenant predicates, transaction boundaries, constraints and migrations remain explicit and reviewable.
 
-The production deployment should track supported PostgreSQL 18 minor releases and apply current security/bug-fix releases through the managed database lifecycle. Major-version upgrades require a separate compatibility and migration decision.
+Production should track supported PostgreSQL 18 minor releases through the managed database lifecycle. Major-version upgrades require a separate compatibility/migration decision.
 
 ## Security boundary
 
 Database access exists only under `src/persistence/postgres`. Application/domain/HTTP modules must not import `pg` or contain SQL.
 
-Production database requirements:
+Production requirements include:
 
-- `DATABASE_URL` is supplied through deployment secret/configuration management and never source control;
-- Pilot/Production requires `DATABASE_SSL=verify-full`;
-- TLS certificate verification must not be disabled in Pilot/Production;
-- connection strings and driver Error objects are not logged;
-- pool size, connection timeout, idle timeout, statement timeout, and query timeout are bounded;
-- SQL values from application/user data use PostgreSQL parameters (`$1`, `$2`, ...);
-- migration SQL is trusted, reviewed source code and is never selected or constructed from request input.
+- `DATABASE_URL` supplied through deployment secret/configuration management;
+- Pilot/Production `DATABASE_SSL=verify-full`;
+- bounded pool/connection/idle/statement/query timeouts;
+- PostgreSQL parameter binding for application/user values;
+- no logging of connection strings, session tokens or raw driver Error objects;
+- reviewed migration SQL selected only from the fixed source-controlled migration directory.
 
 ## Schema ownership
 
-`migrations/` is the source of truth for the database schema. The first migration establishes tenant-owned structural tables for:
+`migrations/` is the schema source of truth.
 
-- tenants;
-- users;
-- sites;
-- rooms;
-- services;
-- catering packages and items;
-- integrations;
-- requests;
-- notifications;
-- audit-event storage structure.
+Migration 001 establishes Tenant-owned product structures for tenants, users, sites, rooms, services, catering data, integrations, requests, notifications and audit-event relational storage.
 
-The audit table created here provides only relational ownership/referential structure. Append-only/tamper-evident audit behavior and event policy remain issue #52.
+Migration 002 establishes secure-session persistence:
 
-Tenant-owned tables use internal `tenant_id` ownership. Where entities reference another tenant-owned entity, composite foreign keys include `tenant_id` so a valid identifier from Tenant A cannot be attached to an object in Tenant B.
+- `users.security_version` for stale-privilege invalidation;
+- server-side `sessions` rows;
+- internal Tenant/User foreign-key ownership;
+- unique SHA-256 session token hash;
+- normalized provider identity reference;
+- approved role/permission snapshot;
+- session principal-version snapshot;
+- issue/expiry/revocation timestamps;
+- active-session lookup index.
 
-Business identifiers such as room/site/request IDs remain tenant-scoped text identifiers to preserve compatibility with the existing product contracts. Internal Tenant and User identifiers use UUIDs.
+The raw session token and CSRF token are never persisted.
 
-Machine timestamps use `timestamptz`. Locale-specific date, time, currency, and number presentation remains a frontend responsibility.
+The audit table provides relational ownership only. Append-only/tamper-evident audit behavior remains #52.
+
+## Tenant integrity
+
+Tenant-owned tables use non-null internal `tenant_id`. Composite keys/foreign keys include `tenant_id` where one Tenant-owned entity references another, preventing a valid identifier from another Tenant being attached accidentally.
+
+`ON DELETE RESTRICT` prevents physical Tenant deletion from orphaning retained data. Same business resource IDs may exist independently in separate Tenants while duplicates inside one Tenant fail deterministically.
+
+Session rows reference `(tenant_id, user_id)`, so a session cannot attach an internal User from another Tenant.
 
 ## Migration framework
 
-Migration files use reviewed pairs:
+Migrations are paired reviewed files:
 
 ```text
 NNN_name.up.sql
@@ -54,14 +60,14 @@ NNN_name.down.sql
 
 The migration runner:
 
-- discovers only the fixed source-controlled `migrations/` directory;
+- discovers only the fixed `migrations/` directory;
 - requires complete up/down pairs;
-- orders migrations by numeric version;
-- stores version, name, SHA-256 checksum, and application timestamp in `schema_migrations`;
-- refuses to continue if an already-applied migration source/checksum changes;
-- uses a PostgreSQL advisory lock so two deployment jobs cannot migrate concurrently;
-- executes each migration in a transaction;
-- supports repeatable `up` execution;
+- orders migrations numerically;
+- stores version/name/SHA-256 checksum/application time in `schema_migrations`;
+- rejects altered/missing applied migration source;
+- serializes concurrent runners with a PostgreSQL advisory lock;
+- runs each migration transactionally;
+- supports repeatable `up`;
 - rolls back only the latest applied migration.
 
 Commands:
@@ -71,63 +77,54 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The application process does not auto-migrate at startup. Deployment automation owns migration execution. Runtime readiness requires both database connectivity and the expected schema version, preventing a new application version from serving against a stale schema.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and the exact expected schema version.
 
 ## Transaction contract
 
-`withPostgresTransaction` is the common write-transaction boundary. It obtains a dedicated pooled client, begins a transaction, sets transaction-local time zone to UTC, runs the supplied write operation, commits only on success, and rolls back/discards the connection on failure.
+`withPostgresTransaction` obtains a dedicated client, begins a transaction, sets transaction-local UTC, executes work, commits only after success, and rolls back/discards the client after failure.
 
-Business services must not return successful write outcomes before the authoritative database transaction has committed.
+Business/session services must not report successful persistence before the authoritative transaction commits.
 
-Booking concurrency receives additional domain-specific atomic/exclusion controls in the booking implementation issues; the generic transaction helper is not by itself a double-booking guarantee.
+Session rotation is implemented as one transaction: the current session is locked, the replacement is inserted using the current User `security_version`, then the previous session is revoked. Failure prevents a partial rotation.
 
-## Tenant isolation and database constraints
+Booking concurrency will receive additional domain-specific exclusion/atomicity controls; the generic transaction helper alone is not a double-booking guarantee.
 
-The schema reinforces the #48 application boundary:
+## Backup, restore and deployment rollback
 
-- tenant-owned tables have non-null `tenant_id`;
-- tenant-owned primary keys are generally `(tenant_id, id)`;
-- cross-tenant child references use `(tenant_id, foreign_id)` composite foreign keys;
-- tenant deletion uses `ON DELETE RESTRICT` so referenced tenant data cannot become orphaned;
-- same business resource ID may exist independently in separate tenants;
-- duplicate resource IDs inside one tenant fail deterministically;
-- malformed capacities, schedules, prices, currencies, names, and lifecycle states are constrained where the schema owns those semantics.
+Pilot/Production must use managed encrypted backups and point-in-time recovery where supported by the selected hosting platform.
 
-Repository queries remain tenant-scoped by construction in addition to database constraints. Constraints are defense in depth, not a substitute for authorization.
+Before schema-changing production deployment:
 
-## Backup, restore, and deployment rollback
-
-Pilot and Production must use managed PostgreSQL backup capabilities with encrypted backups and point-in-time recovery where the selected hosting platform supports them.
-
-Before a schema-changing production deployment:
-
-1. verify the latest backup/PITR recovery point is healthy;
-2. run migration validation in a representative non-production environment;
-3. deploy/run migrations as a separately observable deployment step;
+1. verify a healthy backup/PITR recovery point;
+2. validate migrations in representative non-production;
+3. run migrations as an observable deployment step;
 4. verify schema readiness;
-5. deploy the application version;
-6. monitor database/application health before completing the release.
+5. deploy the application;
+6. monitor database/application health before release completion.
 
 Rollback policy:
 
-- application rollback is preferred when the schema change is backward-compatible;
-- `npm run db:rollback` may be used only when the down migration has been validated and its data-loss impact is explicitly acceptable;
-- the initial schema down migration drops tables and is therefore intended for bootstrap/test rollback, not as a blind rollback for a populated Pilot/Production database;
-- destructive or data-transforming migration failures in a populated environment require a reviewed forward-fix or restore/PITR decision rather than automatic down-migration;
-- restore procedures must be periodically exercised before General Availability; documentation alone is not sufficient evidence.
+- prefer application rollback for backward-compatible schema changes;
+- use `npm run db:rollback` only when the down migration was validated and data-loss impact is explicitly acceptable;
+- destructive down migrations are bootstrap/test tools unless separately approved for populated environments;
+- populated-environment destructive/data-transforming failures require reviewed forward-fix or restore/PITR decisions;
+- restore procedures must be exercised before General Availability.
+
+Migration 002 down removes the session table/security-version column and therefore invalidates all server sessions. It is not a transparent production rollback and requires an explicit authentication-impact decision.
 
 ## Testing evidence required
 
-Database changes require PostgreSQL integration tests covering, as applicable:
+Database changes require PostgreSQL integration coverage for applicable migration/version/checksum behavior, tenant-scoped repositories, composite FK isolation, invalid constraints, duplicate/concurrent writes, transaction rollback, schema readiness and cross-Tenant persistence.
 
-- migration up, repeat-up, rollback, and reapply;
-- migration checksum/version behavior;
-- tenant-scoped repositories;
-- composite foreign-key isolation;
-- duplicates and concurrent writes;
-- malformed/constraint-invalid data;
-- transaction rollback on failed writes;
-- schema readiness state;
-- cross-tenant persistence attempts.
+Session persistence additionally requires real PostgreSQL tests for:
 
-CI runs these tests against an isolated PostgreSQL 18 service after the normal quality/security gate.
+- raw-token non-persistence;
+- valid session resolution;
+- cross-Tenant/unprovisioned issuance rejection;
+- expiry;
+- revocation;
+- security-version stale-privilege invalidation;
+- rotation to the current approved role/permission snapshot;
+- migration 002 rollback/reapply.
+
+CI runs database tests against an isolated PostgreSQL 18 service after the normal quality/security gate.

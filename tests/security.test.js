@@ -12,12 +12,30 @@ import {
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const TENANT_ID = '22222222-2222-4222-8222-222222222222';
+const SESSION_ID = '55555555-5555-4555-8555-555555555555';
 
 function requestBody(value, headers = {}) {
   const body = Buffer.from(value);
   const stream = Readable.from([body]);
   stream.headers = headers;
   return stream;
+}
+
+function principal(overrides = {}) {
+  return {
+    userId: USER_ID,
+    tenantId: TENANT_ID,
+    providerIdentity: { provider: 'test_oidc', reference: 'subject-123' },
+    roles: ['employee', 'employee'],
+    permissions: ['request:read', 'request:read'],
+    session: {
+      id: SESSION_ID,
+      issuedAt: '2026-08-24T06:00:00.000Z',
+      expiresAt: '2026-08-24T14:00:00.000Z',
+      securityVersion: 1,
+    },
+    ...overrides,
+  };
 }
 
 test('request target accepts only safe origin-form paths', () => {
@@ -70,26 +88,43 @@ test('positive object validation rejects missing, unknown, and invalid fields', 
   assert.throws(() => validateExactObject({ name: '', capacity: -1 }, schema), ApiError);
 });
 
-test('principal guard validates server-side principal shape and CSRF for unsafe methods', async () => {
-  const principal = { userId: USER_ID, tenantId: TENANT_ID, roles: ['employee', 'employee'] };
+test('principal guard validates provider-neutral principal shape and CSRF for unsafe methods', async () => {
   const guard = createPrincipalGuard({
-    resolvePrincipal: async () => principal,
+    resolvePrincipal: async () => principal(),
     verifyCsrf: async () => true,
   });
   assert.deepEqual(await guard.require({ method: 'GET' }), {
     userId: USER_ID,
     tenantId: TENANT_ID,
+    providerIdentity: { provider: 'test_oidc', reference: 'subject-123' },
     roles: ['employee'],
+    permissions: ['request:read'],
+    session: {
+      id: SESSION_ID,
+      issuedAt: '2026-08-24T06:00:00.000Z',
+      expiresAt: '2026-08-24T14:00:00.000Z',
+      securityVersion: 1,
+    },
   });
   await assert.doesNotReject(guard.require({ method: 'POST' }, { csrf: true }));
 
   const denied = createPrincipalGuard({
-    resolvePrincipal: async () => principal,
+    resolvePrincipal: async () => principal(),
     verifyCsrf: async () => false,
   });
   await assert.rejects(denied.require({ method: 'POST' }, { csrf: true }), (error) => {
     return error instanceof ApiError && error.code === 'CSRF_INVALID';
   });
+
+  for (const malformed of [
+    principal({ providerIdentity: { provider: 'Bad Provider', reference: 'subject' } }),
+    principal({ session: { id: 'bad', issuedAt: 'bad', expiresAt: 'bad', securityVersion: 0 } }),
+  ]) {
+    const invalid = createPrincipalGuard({ resolvePrincipal: async () => malformed });
+    await assert.rejects(invalid.require({ method: 'GET' }), (error) => {
+      return error instanceof ApiError && error.code === 'UNAUTHENTICATED';
+    });
+  }
 
   const anonymous = createPrincipalGuard();
   await assert.rejects(anonymous.require({ method: 'GET' }), (error) => {

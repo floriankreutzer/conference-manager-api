@@ -32,6 +32,13 @@ function sendJson(response, statusCode, payload, maxResponseBytes) {
   response.end(body);
 }
 
+function sendNoContent(response) {
+  response.statusCode = 204;
+  response.removeHeader('Content-Type');
+  response.removeHeader('Content-Length');
+  response.end();
+}
+
 async function withTimeout(task, timeoutMs) {
   let timer;
   try {
@@ -55,6 +62,7 @@ async function isReady(checks, timeoutMs) {
 export function createApp({
   config,
   readinessChecks = [],
+  sessionService,
   resolvePrincipal,
   verifyCsrf,
   loadTenant,
@@ -73,7 +81,10 @@ export function createApp({
     windowMs: config.rateLimitWindowMs,
     clock,
   });
-  const principalGuard = createPrincipalGuard({ resolvePrincipal, verifyCsrf });
+  const principalGuard = createPrincipalGuard({
+    resolvePrincipal: resolvePrincipal || sessionService?.resolvePrincipal,
+    verifyCsrf: verifyCsrf || sessionService?.verifyCsrf,
+  });
   const tenantGuard = createTenantContextGuard({ loadTenant });
 
   return async function handle(request, response) {
@@ -108,9 +119,24 @@ export function createApp({
       }
 
       if (path === ROUTES.principal) {
-        if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
-        const principal = await principalGuard.require(request);
+        if (request.method !== 'GET' && request.method !== 'DELETE') {
+          throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+        }
+        const principal = await principalGuard.require(request, { csrf: request.method === 'DELETE' });
         const tenantContext = await tenantGuard.requireKnown(principal);
+
+        if (request.method === 'DELETE') {
+          if (!sessionService || typeof sessionService.revoke !== 'function') {
+            throw new ApiError(503, 'SESSION_SERVICE_UNAVAILABLE');
+          }
+          await sessionService.revoke(principal);
+          response.setHeader('Set-Cookie', sessionService.clearCookie());
+          statusCode = 204;
+          sendNoContent(response);
+          return;
+        }
+
+        const csrfToken = sessionService?.csrfTokenForPrincipal?.(principal);
         statusCode = 200;
         sendJson(response, statusCode, {
           user: { id: principal.userId },
@@ -119,6 +145,9 @@ export function createApp({
             status: tenantContext.status,
           },
           roles: principal.roles,
+          permissions: principal.permissions,
+          session: { expiresAt: principal.session.expiresAt },
+          ...(csrfToken ? { csrfToken } : {}),
           requestId,
         }, config.maxResponseBytes);
         return;

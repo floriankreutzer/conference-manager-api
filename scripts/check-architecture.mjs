@@ -15,7 +15,7 @@ async function sourceFiles(directory) {
 const packageJson = JSON.parse(await readFile('package.json', 'utf8'));
 const runtimeDependencies = packageJson.dependencies || {};
 if (JSON.stringify(runtimeDependencies) !== JSON.stringify({ pg: '8.23.0' })) {
-  throw new Error('The reviewed PostgreSQL driver must remain the only runtime dependency for this persistence slice.');
+  throw new Error('The reviewed PostgreSQL driver must remain the only runtime dependency.');
 }
 
 const files = await sourceFiles('src');
@@ -32,6 +32,9 @@ for (const file of files) {
   }
   if (/x-tenant-id|x-tenant-context/i.test(content)) {
     throw new Error(`${file} introduces a client-controlled tenant header into the trusted runtime.`);
+  }
+  if (/\b(?:localStorage|sessionStorage)\b/.test(content)) {
+    throw new Error(`${file} introduces browser storage into the trusted backend/session boundary.`);
   }
   if (/from ['"]pg['"]/.test(content) && !file.startsWith('src/persistence/postgres/')) {
     throw new Error(`${file} imports the database driver outside the PostgreSQL infrastructure adapter boundary.`);
@@ -50,6 +53,12 @@ if (!app.includes('createPrincipalGuard') || !app.includes('assertSameOrigin') |
 }
 if (!app.includes('createTenantContextGuard') || !app.includes('tenantGuard.requireKnown(principal)')) {
   throw new Error('Protected session context must resolve the tenant from the authenticated principal.');
+}
+if (!app.includes('sessionService?.resolvePrincipal') || !app.includes('sessionService?.verifyCsrf')) {
+  throw new Error('HTTP principal and CSRF resolution must use the server-side session service when configured.');
+}
+if (!app.includes("request.method === 'DELETE'") || !app.includes('sessionService.revoke(principal)')) {
+  throw new Error('Session logout must revoke the authenticated server-side session.');
 }
 
 const tenantContext = await readFile('src/tenancy/tenant-context.js', 'utf8');
@@ -97,10 +106,47 @@ const persistence = await readFile('src/persistence/postgres/index.js', 'utf8');
 if (!persistence.includes('isPostgresSchemaReady') || !persistence.includes('createPostgresTenantRepository')) {
   throw new Error('PostgreSQL persistence must enforce schema readiness and provide Tenant loading.');
 }
+if (!persistence.includes('createPostgresSessionRepository') || !persistence.includes('sessionRepository')) {
+  throw new Error('PostgreSQL persistence must expose the server-side session repository.');
+}
+
+const principal = await readFile('src/identity/principal.js', 'utf8');
+if (!principal.includes('providerIdentity') || !principal.includes('permissions') || !principal.includes('session')) {
+  throw new Error('Internal principal contract must remain provider-neutral and carry session metadata.');
+}
+
+const sessionCookie = await readFile('src/identity/session-cookie.js', 'utf8');
+for (const required of ['HttpOnly', 'SameSite=Lax', 'Path=/api', 'Secure']) {
+  if (!sessionCookie.includes(required)) throw new Error(`Session cookie contract is missing ${required}.`);
+}
+if (sessionCookie.includes('Domain=')) throw new Error('Session cookie must not set a broad Domain attribute.');
+
+const sessionService = await readFile('src/identity/session-service.js', 'utf8');
+for (const required of ['randomBytes(32)', "createHash('sha256')", "createHmac('sha256'", 'timingSafeEqual']) {
+  if (!sessionService.includes(required)) throw new Error(`Session service is missing security primitive ${required}.`);
+}
+if (/localStorage|sessionStorage/i.test(sessionService)) {
+  throw new Error('Session service must not depend on browser token storage.');
+}
+
+const sessionRepository = await readFile('src/persistence/postgres/session-repository.js', 'utf8');
+if (!sessionRepository.includes('u.security_version = s.principal_version')) {
+  throw new Error('Session resolution must invalidate stale privilege snapshots via security_version.');
+}
+if (!sessionRepository.includes('s.revoked_at IS NULL') || !sessionRepository.includes('s.expires_at > $2')) {
+  throw new Error('Session resolution must enforce revocation and expiration.');
+}
+
+const index = await readFile('src/index.js', 'utf8');
+if (!index.includes('createSessionService') || !index.includes('sessionService')) {
+  throw new Error('Process composition must wire PostgreSQL sessions into the HTTP boundary.');
+}
 
 for (const migration of [
   'migrations/001_core_tenant_schema.up.sql',
   'migrations/001_core_tenant_schema.down.sql',
+  'migrations/002_secure_sessions.up.sql',
+  'migrations/002_secure_sessions.down.sql',
 ]) {
   await readFile(migration, 'utf8');
 }

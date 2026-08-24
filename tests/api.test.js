@@ -9,6 +9,8 @@ import { TENANT_STATUS } from '../src/tenancy/tenant.js';
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const TENANT_ID = '22222222-2222-4222-8222-222222222222';
 const OTHER_TENANT_ID = '33333333-3333-4333-8333-333333333333';
+const SESSION_ID = '55555555-5555-4555-8555-555555555555';
+const CSRF_TOKEN = 'CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC';
 
 function request({ port, path, method = 'GET', headers = {}, body }) {
   return new Promise((resolve, reject) => {
@@ -66,6 +68,23 @@ function tenant(id = TENANT_ID, status = TENANT_STATUS.ACTIVE) {
     status,
     createdAt: '2026-08-24T00:00:00.000Z',
     updatedAt: '2026-08-24T00:00:00.000Z',
+  };
+}
+
+function principal(overrides = {}) {
+  return {
+    userId: USER_ID,
+    tenantId: TENANT_ID,
+    providerIdentity: { provider: 'test_oidc', reference: 'subject-123' },
+    roles: ['employee'],
+    permissions: ['request:read'],
+    session: {
+      id: SESSION_ID,
+      issuedAt: '2026-08-24T06:00:00.000Z',
+      expiresAt: '2026-08-24T14:00:00.000Z',
+      securityVersion: 1,
+    },
+    ...overrides,
   };
 }
 
@@ -144,11 +163,11 @@ test('protected session endpoint fails closed without principal', async () => {
   });
 });
 
-test('protected session resolves tenant only from the authenticated principal', async () => {
+test('protected session resolves tenant only from the authenticated principal and minimizes identity output', async () => {
   const config = testConfig();
   await withServer({
     config,
-    resolvePrincipal: async () => ({ userId: USER_ID, tenantId: TENANT_ID, roles: ['employee'] }),
+    resolvePrincipal: async () => principal(),
     loadTenant: async (tenantId) => tenantId === TENANT_ID ? tenant() : null,
   }, async ({ port }) => {
     const result = await request({
@@ -160,6 +179,50 @@ test('protected session resolves tenant only from the authenticated principal', 
     assert.deepEqual(result.body.user, { id: USER_ID });
     assert.deepEqual(result.body.tenant, { id: TENANT_ID, status: TENANT_STATUS.ACTIVE });
     assert.deepEqual(result.body.roles, ['employee']);
+    assert.deepEqual(result.body.permissions, ['request:read']);
+    assert.deepEqual(result.body.session, { expiresAt: '2026-08-24T14:00:00.000Z' });
+    assert.equal(result.body.providerIdentity, undefined);
+  });
+});
+
+test('session endpoint returns CSRF token and DELETE requires it before server-side revocation', async () => {
+  let revoked = false;
+  const sessionService = {
+    resolvePrincipal: async () => principal(),
+    verifyCsrf: async (req) => req.headers['x-csrf-token'] === CSRF_TOKEN,
+    csrfTokenForPrincipal: () => CSRF_TOKEN,
+    revoke: async () => {
+      revoked = true;
+      return true;
+    },
+    clearCookie: () => 'cm_session=; Path=/api; HttpOnly; SameSite=Lax; Max-Age=0',
+  };
+  const options = {
+    config: testConfig(),
+    sessionService,
+    loadTenant: async () => tenant(),
+  };
+  await withServer(options, async ({ port }) => {
+    const session = await request({ port, path: '/api/v1/session' });
+    assert.equal(session.statusCode, 200);
+    assert.equal(session.body.csrfToken, CSRF_TOKEN);
+
+    const denied = await request({ port, path: '/api/v1/session', method: 'DELETE' });
+    assert.equal(denied.statusCode, 403);
+    assert.equal(denied.body.error.code, 'CSRF_INVALID');
+    assert.equal(revoked, false);
+
+    const logout = await request({
+      port,
+      path: '/api/v1/session',
+      method: 'DELETE',
+      headers: { 'X-CSRF-Token': CSRF_TOKEN },
+    });
+    assert.equal(logout.statusCode, 204);
+    assert.equal(logout.body, null);
+    assert.equal(revoked, true);
+    assert.match(logout.headers['set-cookie'][0], /^cm_session=;/);
+    assert.match(logout.headers['set-cookie'][0], /Max-Age=0/);
   });
 });
 
@@ -172,7 +235,7 @@ test('unknown, suspended, and archived tenant contexts fail closed', async () =>
     const config = testConfig();
     await withServer({
       config,
-      resolvePrincipal: async () => ({ userId: USER_ID, tenantId: TENANT_ID, roles: ['employee'] }),
+      resolvePrincipal: async () => principal(),
       loadTenant: async () => tenantRecord,
     }, async ({ port }) => {
       const result = await request({ port, path: '/api/v1/session' });
@@ -190,12 +253,12 @@ test('logs contain only bounded metadata and do not copy authorization or cookie
       path: '/api/v1/health/live',
       headers: {
         Authorization: 'Bearer super-secret-token-value',
-        Cookie: 'session=super-secret-session-value',
+        Cookie: 'cm_session=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       },
     });
     const output = logs.join('');
     assert.doesNotMatch(output, /super-secret-token-value/);
-    assert.doesNotMatch(output, /super-secret-session-value/);
+    assert.doesNotMatch(output, /AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/);
     assert.match(output, /request_completed/);
   });
 });

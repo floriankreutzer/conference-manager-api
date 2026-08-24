@@ -1,4 +1,5 @@
 import { loadConfig } from './config.js';
+import { createSessionService } from './identity/session-service.js';
 import { createLogger } from './logger.js';
 import { createPostgresPersistence } from './persistence/postgres/index.js';
 import { createHttpServer } from './server.js';
@@ -6,9 +7,18 @@ import { createHttpServer } from './server.js';
 const config = loadConfig();
 const logger = createLogger();
 const persistence = config.databaseUrl ? createPostgresPersistence(config) : null;
+const sessionService = persistence
+  ? createSessionService({
+    repository: persistence.sessionRepository,
+    publicOrigin: config.publicOrigin,
+    csrfSecret: config.csrfSecret,
+    sessionTtlSeconds: config.sessionTtlSeconds,
+  })
+  : null;
 const server = createHttpServer({
   config,
   logger,
+  sessionService,
   loadTenant: persistence?.loadTenant,
   readinessChecks: persistence?.readinessChecks || [],
 });

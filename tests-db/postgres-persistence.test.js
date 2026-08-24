@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
+import { createSessionService, SessionServiceError } from '../src/identity/session-service.js';
 import { createPostgresRoomAdapter } from '../src/persistence/postgres/room-adapter.js';
 import {
   createPostgresPool,
   isPostgresSchemaReady,
 } from '../src/persistence/postgres/pool.js';
+import { createPostgresSessionRepository } from '../src/persistence/postgres/session-repository.js';
 import { createPostgresTenantRepository } from '../src/persistence/postgres/tenant-repository.js';
 import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
 import { createTenantScopedRepository } from '../src/tenancy/tenant-scoped-repository.js';
@@ -15,6 +17,13 @@ const TENANT_A = '22222222-2222-4222-8222-222222222222';
 const TENANT_B = '33333333-3333-4333-8333-333333333333';
 const USER_A = '11111111-1111-4111-8111-111111111111';
 const USER_B = '44444444-4444-4444-8444-444444444444';
+const SESSION_A = '55555555-5555-4555-8555-555555555555';
+const SESSION_B = '66666666-6666-4666-8666-666666666666';
+const SESSION_C = '77777777-7777-4777-8777-777777777777';
+const TOKEN_A = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+const TOKEN_B = 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
+const TOKEN_C = 'CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC';
+const CSRF_KEY = 's'.repeat(32);
 
 function databaseConfig() {
   const database = loadDatabaseConfig(process.env, 'test');
@@ -37,7 +46,22 @@ async function seedTenant(pool, tenantId, userId, siteId) {
   );
 }
 
-test('PostgreSQL migration and tenant persistence contract', async (t) => {
+function identity(overrides = {}) {
+  return {
+    userId: USER_A,
+    tenantId: TENANT_A,
+    providerIdentity: { provider: 'test_oidc', reference: 'subject-a' },
+    roles: ['employee'],
+    permissions: ['request:read'],
+    ...overrides,
+  };
+}
+
+function cookiePair(setCookie) {
+  return setCookie.split(';', 1)[0];
+}
+
+test('PostgreSQL migration, tenant persistence, and session security contract', async (t) => {
   const pool = createPostgresPool(databaseConfig());
   t.after(async () => pool.end());
 
@@ -46,7 +70,10 @@ test('PostgreSQL migration and tenant persistence contract', async (t) => {
     await migrateUp(pool);
     assert.equal(await isPostgresSchemaReady(pool), true);
     const result = await pool.query('SELECT version, name FROM schema_migrations ORDER BY version');
-    assert.deepEqual(result.rows, [{ version: 1, name: 'core_tenant_schema' }]);
+    assert.deepEqual(result.rows, [
+      { version: 1, name: 'core_tenant_schema' },
+      { version: 2, name: 'secure_sessions' },
+    ]);
   });
 
   await t.test('tenant and room repositories isolate real records across tenants', async () => {
@@ -163,9 +190,134 @@ test('PostgreSQL migration and tenant persistence contract', async (t) => {
     assert.equal(result.rows[0].count, 0);
   });
 
-  await t.test('rollback removes the schema and migration can be reapplied', async () => {
+  await t.test('session persistence stores only hashes and rejects cross-tenant identities', async () => {
+    const repository = createPostgresSessionRepository(pool);
+    const service = createSessionService({
+      repository,
+      publicOrigin: 'https://conference.example',
+      csrfSecret: CSRF_KEY,
+      clock: () => Date.parse('2026-08-24T06:00:00.000Z'),
+      tokenFactory: () => TOKEN_A,
+      idFactory: () => SESSION_A,
+    });
+
+    const issued = await service.issue(identity());
+    const persisted = await pool.query(
+      'SELECT token_hash, provider, provider_identity_reference FROM sessions WHERE id = $1',
+      [SESSION_A],
+    );
+    assert.match(persisted.rows[0].token_hash, /^[0-9a-f]{64}$/);
+    assert.notEqual(persisted.rows[0].token_hash, TOKEN_A);
+    assert.equal(persisted.rows[0].provider, 'test_oidc');
+    assert.equal(persisted.rows[0].provider_identity_reference, 'subject-a');
+    assert.doesNotMatch(JSON.stringify(persisted.rows[0]), new RegExp(TOKEN_A));
+
+    const resolved = await service.resolvePrincipal({ headers: { cookie: cookiePair(issued.setCookie) } });
+    assert.equal(resolved.userId, USER_A);
+    assert.equal(resolved.tenantId, TENANT_A);
+    assert.equal(await service.verifyCsrf({ headers: { 'x-csrf-token': issued.csrfToken } }, resolved), true);
+
+    await assert.rejects(service.issue(identity({ tenantId: TENANT_B })), (error) => {
+      return error instanceof SessionServiceError && error.code === 'IDENTITY_NOT_PROVISIONED';
+    });
+  });
+
+  await t.test('expired and revoked sessions fail closed against PostgreSQL', async () => {
+    let now = Date.parse('2026-08-24T07:00:00.000Z');
+    const repository = createPostgresSessionRepository(pool);
+    const service = createSessionService({
+      repository,
+      publicOrigin: 'https://conference.example',
+      csrfSecret: CSRF_KEY,
+      sessionTtlSeconds: 300,
+      clock: () => now,
+      tokenFactory: () => TOKEN_B,
+      idFactory: () => SESSION_B,
+    });
+
+    const issued = await service.issue(identity());
+    const request = { headers: { cookie: cookiePair(issued.setCookie) } };
+    assert.ok(await service.resolvePrincipal(request));
+    now += 301_000;
+    assert.equal(await service.resolvePrincipal(request), null);
+
+    now = Date.parse('2026-08-24T08:00:00.000Z');
+    const revocationService = createSessionService({
+      repository,
+      publicOrigin: 'https://conference.example',
+      csrfSecret: CSRF_KEY,
+      sessionTtlSeconds: 300,
+      clock: () => now,
+      tokenFactory: () => TOKEN_C,
+      idFactory: () => SESSION_C,
+    });
+    const revocable = await revocationService.issue(identity());
+    const revocableRequest = { headers: { cookie: cookiePair(revocable.setCookie) } };
+    assert.ok(await revocationService.resolvePrincipal(revocableRequest));
+    assert.equal(await revocationService.revoke(revocable.principal), true);
+    assert.equal(await revocationService.resolvePrincipal(revocableRequest), null);
+  });
+
+  await t.test('security-version change invalidates stale privileges and authorized rotation refreshes them', async () => {
+    let now = Date.parse('2026-08-24T09:00:00.000Z');
+    const repository = createPostgresSessionRepository(pool);
+    const tokens = [
+      'DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD',
+      'EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE',
+    ];
+    const ids = [
+      '88888888-8888-4888-8888-888888888888',
+      '99999999-9999-4999-8999-999999999999',
+    ];
+    const service = createSessionService({
+      repository,
+      publicOrigin: 'https://conference.example',
+      csrfSecret: CSRF_KEY,
+      clock: () => now,
+      tokenFactory: () => tokens.shift(),
+      idFactory: () => ids.shift(),
+    });
+
+    const original = await service.issue(identity());
+    const originalRequest = { headers: { cookie: cookiePair(original.setCookie) } };
+    assert.deepEqual((await service.resolvePrincipal(originalRequest)).roles, ['employee']);
+
+    await pool.query(
+      `UPDATE users
+       SET security_version = security_version + 1
+       WHERE tenant_id = $1 AND id = $2`,
+      [TENANT_A, USER_A],
+    );
+    assert.equal(await service.resolvePrincipal(originalRequest), null);
+
+    await assert.rejects(
+      pool.query(
+        `UPDATE users
+         SET security_version = security_version - 1
+         WHERE tenant_id = $1 AND id = $2`,
+        [TENANT_A, USER_A],
+      ),
+      (error) => error.code === '23514',
+    );
+
+    now += 1_000;
+    const rotated = await service.rotate(original.principal, identity({
+      roles: ['manager'],
+      permissions: ['request:read', 'request:approve'],
+    }));
+    const rotatedRequest = { headers: { cookie: cookiePair(rotated.setCookie) } };
+    const refreshed = await service.resolvePrincipal(rotatedRequest);
+    assert.deepEqual(refreshed.roles, ['manager']);
+    assert.deepEqual(refreshed.permissions, ['request:read', 'request:approve']);
+    assert.equal(refreshed.session.securityVersion, 2);
+    assert.equal(await service.resolvePrincipal(originalRequest), null);
+  });
+
+  await t.test('rollback removes only latest session schema and migration can be reapplied', async () => {
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await isPostgresSchemaReady(pool), false);
+    const remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
+    assert.deepEqual(remaining.rows, [{ version: 1 }]);
     await migrateUp(pool);
     assert.equal(await isPostgresSchemaReady(pool), true);
   });

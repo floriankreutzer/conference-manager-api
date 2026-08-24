@@ -2,55 +2,33 @@
 
 ## Base path
 
-The browser uses the same public HTTPS origin as the API. API paths are relative and live below `/api/`. The foundation version prefix is `/api/v1`.
+The browser and API share one public HTTPS origin in production. API paths are relative below `/api/`; the current version prefix is `/api/v1`.
 
-CORS is not enabled for the normal application flow.
+CORS is not enabled for the normal application flow. Browser credentials use same-origin cookies.
 
 ## Response contract
 
-Successful foundation responses are JSON with `Content-Type: application/json; charset=utf-8` and `Cache-Control: no-store`.
+Successful JSON responses use `Content-Type: application/json; charset=utf-8` and `Cache-Control: no-store`.
 
-Every response receives a server-generated `X-Request-Id`. JSON success/error payloads include the same request ID where useful for support correlation.
-
-Errors use:
-
-```json
-{
-  "error": {
-    "code": "STABLE_MACHINE_CODE",
-    "requestId": "server-generated-uuid"
-  }
-}
-```
-
-Stack traces, SQL details, provider payloads, credentials, tokens, environment configuration, and internal exception messages are not part of the public error contract.
+Every response receives a server-generated `X-Request-Id`. Public errors expose stable machine codes/request IDs only and never include stack traces, SQL, provider payloads, credentials, session tokens or configuration.
 
 ## Endpoints
 
 ### `GET /api/v1/health/live`
 
-Returns HTTP 200 while the service process can handle requests.
-
-```json
-{
-  "status": "ok",
-  "requestId": "..."
-}
-```
+Returns HTTP 200 while the process can handle requests. It exposes no dependency details.
 
 ### `GET /api/v1/health/ready`
 
-Returns HTTP 200 with `ready` when all registered dependency checks complete successfully within the configured bound. Returns HTTP 503 with `not_ready` on failure, rejection, or timeout.
-
-The response never enumerates internal dependency names or configuration.
+Returns HTTP 200 with `ready` only when registered readiness dependencies complete successfully within their bound. PostgreSQL deployments require connectivity and the exact expected schema version. Failure returns HTTP 503 with `not_ready` without naming internal dependencies.
 
 ### `GET /api/v1/session`
 
-Protected server-principal and Tenant context. The endpoint returns HTTP 401 until issue #50 installs a real principal/session resolver.
+Requires a valid `cm_session` HttpOnly cookie. Missing, malformed, expired, revoked or stale-privilege sessions return HTTP 401.
 
-After the principal is resolved, the API loads the canonical Tenant only from the validated internal `principal.tenantId`. Unknown, suspended, or archived tenants return HTTP 403 with `TENANT_UNAVAILABLE`.
+After Principal resolution, the canonical Tenant is loaded only from the internal `principal.tenantId`. Unknown, suspended or archived Tenant context returns HTTP 403 with `TENANT_UNAVAILABLE`.
 
-When the principal and Tenant context are valid:
+A successful response is presentation-safe and minimized:
 
 ```json
 {
@@ -60,29 +38,63 @@ When the principal and Tenant context are valid:
     "status": "active"
   },
   "roles": ["employee"],
-  "requestId": "..."
+  "permissions": ["request:read"],
+  "session": {
+    "expiresAt": "2026-08-24T14:00:00.000Z"
+  },
+  "csrfToken": "session-bound-synchronizer-token",
+  "requestId": "server-generated-uuid"
 }
 ```
 
-The browser may use this response for presentation. It does not become authorization input when values are sent back in later requests.
+The response intentionally omits:
 
-A client-supplied Tenant selector is never authoritative. Values such as `X-Tenant-Id`, `tenantId` query parameters, route values, or body fields cannot replace the Tenant derived from the authenticated server-side principal.
+- raw session token;
+- internal session ID;
+- token hash;
+- provider identity reference;
+- provider tokens/claims;
+- security-version/database metadata.
+
+The returned roles/permissions/Tenant values are presentation context. If the browser later sends them back, they do not become authorization input.
+
+`csrfToken` is held in frontend runtime memory and supplied through the existing `X-CSRF-Token` contract on protected unsafe requests. It must not be stored in LocalStorage/sessionStorage.
+
+### `DELETE /api/v1/session`
+
+Logs out the current session.
+
+Requirements:
+
+- valid authenticated `cm_session`;
+- valid server-derived Tenant context;
+- valid `X-CSRF-Token` for the current session.
+
+The server revokes the session in PostgreSQL, clears `cm_session`, and returns HTTP 204. A cleared client cookie without server-side revocation is not considered logout.
+
+## Session issuance
+
+There is intentionally no public client-controlled session-creation endpoint in SaaS 0.
+
+A future identity-provider callback/adapter validates the external authentication protocol and maps the provider identity to an internal trusted identity. Only that trusted server-side adapter calls `createSessionService.issue(...)` and sends its `Set-Cookie` result to the browser.
+
+This keeps Entra-specific claims and provider token formats outside business/API services.
 
 ## Tenant-scoped business endpoints
 
-Future tenant-owned endpoints must obtain Tenant context through the server-side Tenant guard before calling application services or repositories. Productive business operations must use the `active` Tenant requirement; onboarding/status endpoints may use the narrower documented lifecycle semantics where explicitly justified.
+Tenant-owned endpoints must derive Tenant context from the server Principal before application/repository access. Productive business operations require an active Tenant unless a narrower onboarding lifecycle rule is explicitly documented.
 
-Tenant-owned repository access must use the scoped repository contract documented in `docs/TENANCY.md`. A valid resource ID belonging to another tenant must not be globally resolved first and filtered afterwards.
+A valid resource ID belonging to another Tenant must not be globally resolved and filtered afterwards; repository access is scoped by construction.
 
 ## Request boundary
 
 - Allowed methods: GET, POST, PUT, PATCH, DELETE.
 - TRACE/CONNECT and other methods fail closed.
 - Host must match the configured public origin.
-- A present browser `Origin` header must match the configured public origin exactly.
-- Backslashes, encoded path separators, malformed percent encoding, dot-segment traversal, and absolute/protocol-relative request targets are rejected before routing.
-- State-changing JSON endpoints added later must use `readJsonObjectBody` plus an explicit positive schema such as `validateExactObject`.
-- Unknown fields are rejected by the positive-schema helper.
-- Request bodies are bounded before and during stream consumption.
-- Non-identity content encoding is rejected by the JSON parser until a reviewed decompression policy exists.
-- Client-controlled Tenant identifiers never establish Tenant context or ownership.
+- A present browser `Origin` must match the configured public origin exactly.
+- Traversal, encoded separators, malformed encoding, backslashes and absolute/protocol-relative targets are rejected before routing.
+- JSON state changes use bounded body parsing and positive schemas; unknown fields are rejected where the schema requires exact shape.
+- Client-controlled Tenant/User/role/permission/provider values never establish server authority.
+- Protected POST/PUT/PATCH/DELETE operations require authenticated Principal resolution and session-bound CSRF verification.
+
+See `docs/IDENTITY-SESSION.md`, `docs/TENANCY.md`, and `docs/SECURITY.md`.
