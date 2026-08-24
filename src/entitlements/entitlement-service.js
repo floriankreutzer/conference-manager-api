@@ -15,7 +15,7 @@ const DEFAULT_ROLLOUT_POLICY = Object.freeze({
   },
 });
 
-function assertTenantBinding(principal, tenantContext) {
+function hasActiveTenantBinding(principal, tenantContext) {
   return Boolean(
     principal
     && tenantContext
@@ -30,6 +30,7 @@ export function createEntitlementService({
   auditService,
   authorizeOperator = async () => false,
   rolloutPolicy = DEFAULT_ROLLOUT_POLICY,
+  clock = () => Date.now(),
 } = {}) {
   if (
     !repository
@@ -45,24 +46,32 @@ export function createEntitlementService({
   if (!rolloutPolicy || typeof rolloutPolicy.stateFor !== 'function') {
     throw new TypeError('ROLLOUT_POLICY_REQUIRED');
   }
+  if (typeof clock !== 'function') throw new TypeError('ENTITLEMENT_CLOCK_REQUIRED');
+
+  async function evaluateAccess({ principal, tenantContext, capabilityId, authorized }) {
+    if (!isKnownCapability(capabilityId) || authorized !== true || !hasActiveTenantBinding(principal, tenantContext)) {
+      return false;
+    }
+    const entitlement = await repository.findByTenantIdAndCapabilityId(tenantContext.tenantId, capabilityId);
+    let rolloutState;
+    try {
+      rolloutState = rolloutPolicy.stateFor(capabilityId);
+    } catch {
+      return false;
+    }
+    if (!isRolloutState(rolloutState)) return false;
+    return evaluateEffectiveCapability({
+      authorized,
+      entitled: entitlement?.enabled === true,
+      rolloutState,
+    });
+  }
 
   return Object.freeze({
-    async evaluateAccess({ principal, tenantContext, capabilityId, authorized }) {
-      if (!isKnownCapability(capabilityId) || authorized !== true || !assertTenantBinding(principal, tenantContext)) {
-        return false;
-      }
-      const entitlement = await repository.findByTenantIdAndCapabilityId(tenantContext.tenantId, capabilityId);
-      const rolloutState = rolloutPolicy.stateFor(capabilityId);
-      if (!isRolloutState(rolloutState)) return false;
-      return evaluateEffectiveCapability({
-        authorized,
-        entitled: entitlement?.enabled === true,
-        rolloutState,
-      });
-    },
+    evaluateAccess,
 
     async requireAccess(values) {
-      if (await this.evaluateAccess(values)) return true;
+      if (await evaluateAccess(values)) return true;
       throw new EntitlementDeniedError();
     },
 
@@ -78,12 +87,16 @@ export function createEntitlementService({
       }) !== true) {
         throw new EntitlementDeniedError('OPERATOR_NOT_AUTHORIZED');
       }
+      const changedAtMs = clock();
+      if (!Number.isSafeInteger(changedAtMs) || changedAtMs < 0) {
+        throw new EntitlementInputError('ENTITLEMENT_CLOCK_INVALID');
+      }
 
       const changed = await repository.changeByTenantIdAndCapabilityId({
         tenantId,
         capabilityId: normalizedCapabilityId,
         enabled,
-        changedAt: new Date(),
+        changedAt: new Date(changedAtMs),
         auditEventForPrevious(previousEnabled) {
           return auditService.createActorEvent({
             tenantId,
