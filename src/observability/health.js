@@ -11,7 +11,6 @@ async function withTimeout(check, timeoutMs) {
       Promise.resolve().then(check),
       new Promise((_, reject) => {
         timer = setTimeout(() => reject(new Error('HEALTH_CHECK_TIMEOUT')), timeoutMs);
-        timer.unref?.();
       }),
     ]);
   } finally {
