@@ -47,6 +47,7 @@ const entraAuthService = persistence && entraClient && sessionService
     identityResolver,
     sessionService,
     transactionSecret: config.oidcTransactionSecret,
+    publicOrigin: config.publicOrigin,
     transactionTtlSeconds: config.oidcTransactionTtlSeconds,
   })
   : null;
