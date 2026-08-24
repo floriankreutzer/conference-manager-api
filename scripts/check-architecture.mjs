@@ -263,6 +263,7 @@ for (const required of [
   'ConfidentialClientApplication',
   'msal.getAuthCodeUrl',
   'msal.acquireTokenByCode',
+  "codeChallengeMethod: 'S256'",
   'claims.aud !== clientId',
   'claims.iss !== expectedIssuer',
   'secureHashMatch(claims.nonce',
@@ -279,7 +280,7 @@ const entraAuthService = await readFile('src/identity/entra-auth-service.js', 'u
 for (const required of [
   "createHash('sha256')",
   "createHmac('sha256'",
-  'codeChallengeMethod',
+  'pkceChallenge',
   'repository.consume',
   'identityResolver.resolve',
   'sessionService.issue',
