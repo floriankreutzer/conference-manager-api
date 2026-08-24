@@ -36,6 +36,13 @@ function normalizedExternalIdentity(value) {
   });
 }
 
+function normalizedSecurityVersion(value) {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new TypeError('JIT_SECURITY_VERSION_INVALID');
+  }
+  return value;
+}
+
 export function createJitUserService({
   bindingRepository,
   userRepository,
@@ -144,21 +151,26 @@ export function createJitUserService({
         throw new TypeError('JIT_USER_RESOLUTION_INVALID');
       }
 
+      const securityVersion = normalizedSecurityVersion(result.identity.securityVersion);
       const snapshot = tenantAuthorizationSnapshot([
         TENANT_ROLE.EMPLOYEE,
         ...(result.identity.elevatedRoles || []),
       ]);
+      const trustedIdentity = normalizeTrustedIdentity({
+        userId: result.identity.userId,
+        tenantId: result.identity.tenantId,
+        providerIdentity: {
+          provider: external.provider,
+          reference: `${external.tenantReference}:${external.userReference}`,
+        },
+        roles: snapshot.roles,
+        permissions: snapshot.permissions,
+      });
       return Object.freeze({
         status: 'authenticated',
-        trustedIdentity: normalizeTrustedIdentity({
-          userId: result.identity.userId,
-          tenantId: result.identity.tenantId,
-          providerIdentity: {
-            provider: external.provider,
-            reference: `${external.tenantReference}:${external.userReference}`,
-          },
-          roles: snapshot.roles,
-          permissions: snapshot.permissions,
+        trustedIdentity: Object.freeze({
+          ...trustedIdentity,
+          securityVersion,
         }),
       });
     },
