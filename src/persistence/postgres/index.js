@@ -12,6 +12,7 @@ import { createPostgresRequestRepository } from './request-repository.js';
 import { createPostgresSessionRepository } from './session-repository.js';
 import { createPostgresTenantOnboardingRepository } from './tenant-onboarding-repository.js';
 import { createPostgresTenantRepository } from './tenant-repository.js';
+import { createPostgresTenantUserAdminRepository } from './tenant-user-admin-repository.js';
 
 export function createPostgresPersistence(config) {
   const pool = createPostgresPool(config);
@@ -26,6 +27,7 @@ export function createPostgresPersistence(config) {
   const sessionRepository = createPostgresSessionRepository(pool, { auditRepository });
   const requestRepository = createPostgresRequestRepository(pool, { auditRepository });
   const tenantOnboardingRepository = createPostgresTenantOnboardingRepository(pool, { auditRepository });
+  const tenantUserAdminRepository = createPostgresTenantUserAdminRepository(pool, { auditRepository });
 
   return Object.freeze({
     pool,
@@ -37,6 +39,7 @@ export function createPostgresPersistence(config) {
     sessionRepository,
     requestRepository,
     tenantOnboardingRepository,
+    tenantUserAdminRepository,
     loadTenant: (tenantId) => tenantRepository.findById(tenantId),
     readinessChecks: [
       () => isPostgresReady(pool),
