@@ -1,8 +1,15 @@
 import {
+  REQUEST_STATUS,
+  REQUEST_TRANSITION,
+  isRequestTransition,
+} from '../domain/request-workflow.js';
+import {
   AuthorizationDeniedError,
   AuthorizationInputError,
   RequestStateConflictError,
 } from './errors.js';
+
+export { REQUEST_STATUS, REQUEST_TRANSITION } from '../domain/request-workflow.js';
 
 export const TENANT_ROLE = Object.freeze({
   EMPLOYEE: 'employee',
@@ -17,23 +24,6 @@ export const PERMISSION = Object.freeze({
   TENANT_CONFIGURE: 'tenant:configure',
   TENANT_USERS_MANAGE: 'tenant:users:manage',
   TENANT_INTEGRATIONS_MANAGE: 'tenant:integrations:manage',
-});
-
-export const REQUEST_STATUS = Object.freeze({
-  SUBMITTED: 'Submitted',
-  IN_REVIEW: 'In Review',
-  CONFIRMED: 'Confirmed',
-  REJECTED: 'Rejected',
-  CHANGE_REQUESTED: 'Change Requested',
-  CANCELLED: 'Cancelled',
-});
-
-export const REQUEST_TRANSITION = Object.freeze({
-  START_REVIEW: 'start_review',
-  CONFIRM: 'confirm',
-  REJECT: 'reject',
-  REQUEST_CHANGE: 'request_change',
-  CANCEL: 'cancel',
 });
 
 const ROLE_PERMISSIONS = Object.freeze({
@@ -192,9 +182,7 @@ export function createAuthorizationPolicy() {
       assertPrincipalShape(principal);
       assertTenantBinding(principal, tenantContext, request?.tenantId);
       if (!request || typeof request !== 'object') deny('RESOURCE_NOT_AVAILABLE', { conceal: true });
-      if (!Object.values(REQUEST_TRANSITION).includes(transition)) {
-        throw new AuthorizationInputError('TRANSITION_INVALID');
-      }
+      if (!isRequestTransition(transition)) throw new AuthorizationInputError('TRANSITION_INVALID');
 
       const managerDecision = managerTransition(principal, request, transition, reason);
       if (managerDecision) return managerDecision;
