@@ -25,45 +25,23 @@ jobs:
 
           path = Path('tests-db/postgres-persistence.test.js')
           text = path.read_text()
-          old_versions = """      { version: 5, name: 'tenant_entitlements' },
-            ]);"""
-          new_versions = """      { version: 5, name: 'tenant_entitlements' },
-              { version: 6, name: 'booking_provider_references' },
-            ]);"""
-          if text.count(old_versions) != 1:
-              raise SystemExit('migration version assertion pattern mismatch')
-          text = text.replace(old_versions, new_versions)
 
-          old_block = """  await t.test('audit migration refuses unreviewed legacy rows before reapplication', async () => {
-              assert.equal(await rollbackLatest(pool), true);
-              assert.equal(await isPostgresSchemaReady(pool), false);
-              let remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
-              assert.deepEqual(remaining.rows, [
-                { version: 1 },
-                { version: 2 },
-                { version: 3 },
-                { version: 4 },
-              ]);
+          version_line = "      { version: 5, name: 'tenant_entitlements' },\n"
+          version_six = "      { version: 6, name: 'booking_provider_references' },\n"
+          if text.count(version_line) != 1 or version_six in text:
+              raise SystemExit('migration version assertion precondition mismatch')
+          text = text.replace(version_line, version_line + version_six, 1)
 
-              assert.equal(await rollbackLatest(pool), true);
-              remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
-              assert.deepEqual(remaining.rows, [{ version: 1 }, { version: 2 }, { version: 3 }]);
-              await assert.rejects(migrateUp(pool), (error) => error.code === '55000');
-              await pool.query('DELETE FROM audit_events');
-              await migrateUp(pool);
-              assert.equal(await isPostgresSchemaReady(pool), true);
+          marker = "  await t.test('audit migration refuses unreviewed legacy rows before reapplication', async () => {"
+          start = text.find(marker)
+          if start < 0:
+              raise SystemExit('rollback test marker missing')
+          end = text.find("\n  });", start)
+          if end < 0:
+              raise SystemExit('rollback test end missing')
+          end += len("\n  });")
 
-              assert.equal(await rollbackLatest(pool), true);
-              assert.equal(await rollbackLatest(pool), true);
-              assert.equal(await rollbackLatest(pool), true);
-              assert.equal(await rollbackLatest(pool), true);
-              remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
-              assert.deepEqual(remaining.rows, [{ version: 1 }]);
-
-              await migrateUp(pool);
-              assert.equal(await isPostgresSchemaReady(pool), true);
-            });"""
-          new_block = """  await t.test('audit migration refuses unreviewed legacy rows before reapplication', async () => {
+          replacement = """  await t.test('audit migration refuses unreviewed legacy rows before reapplication', async () => {
               assert.equal(await rollbackLatest(pool), true);
               assert.equal(await isPostgresSchemaReady(pool), false);
               let remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
@@ -103,9 +81,9 @@ jobs:
               await migrateUp(pool);
               assert.equal(await isPostgresSchemaReady(pool), true);
             });"""
-          if text.count(old_block) != 1:
-              raise SystemExit('rollback assertion pattern mismatch')
-          path.write_text(text.replace(old_block, new_block))
+
+          text = text[:start] + replacement + text[end:]
+          path.write_text(text)
           PY
       - name: Commit patch
         run: |
