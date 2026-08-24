@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { REQUEST_STATUS } from '../src/domain/request-workflow.js';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createSessionService, SessionServiceError } from '../src/identity/session-service.js';
-import { createPostgresRoomAdapter } from '../src/persistence/postgres/room-adapter.js';
 import {
   createPostgresPool,
   isPostgresSchemaReady,
 } from '../src/persistence/postgres/pool.js';
+import { createPostgresRequestRepository } from '../src/persistence/postgres/request-repository.js';
+import { createPostgresRoomAdapter } from '../src/persistence/postgres/room-adapter.js';
 import { createPostgresSessionRepository } from '../src/persistence/postgres/session-repository.js';
 import { createPostgresTenantRepository } from '../src/persistence/postgres/tenant-repository.js';
 import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
@@ -46,6 +48,29 @@ async function seedTenant(pool, tenantId, userId, siteId) {
   );
 }
 
+async function seedRequest(pool, {
+  tenantId,
+  requestId,
+  requesterUserId,
+  status = REQUEST_STATUS.SUBMITTED,
+}) {
+  await pool.query(
+    `INSERT INTO requests
+      (tenant_id, id, requester_user_id, status, starts_at, ends_at, internal_participants, external_participants)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      tenantId,
+      requestId,
+      requesterUserId,
+      status,
+      '2026-09-01T10:00:00.000Z',
+      '2026-09-01T11:00:00.000Z',
+      4,
+      1,
+    ],
+  );
+}
+
 function identity(overrides = {}) {
   return {
     userId: USER_A,
@@ -61,7 +86,7 @@ function cookiePair(setCookie) {
   return setCookie.split(';', 1)[0];
 }
 
-test('PostgreSQL migration, tenant persistence, and session security contract', async (t) => {
+test('PostgreSQL migration, tenant persistence, session, and authorization contract', async (t) => {
   const pool = createPostgresPool(databaseConfig());
   t.after(async () => pool.end());
 
@@ -73,6 +98,7 @@ test('PostgreSQL migration, tenant persistence, and session security contract', 
     assert.deepEqual(result.rows, [
       { version: 1, name: 'core_tenant_schema' },
       { version: 2, name: 'secure_sessions' },
+      { version: 3, name: 'request_authorization_workflow' },
     ]);
   });
 
@@ -137,7 +163,7 @@ test('PostgreSQL migration, tenant persistence, and session security contract', 
           'cross-room-request',
           USER_A,
           'shared-room',
-          'pending',
+          REQUEST_STATUS.SUBMITTED,
           '2026-09-01T10:00:00.000Z',
           '2026-09-01T11:00:00.000Z',
         ],
@@ -155,6 +181,76 @@ test('PostgreSQL migration, tenant persistence, and session security contract', 
         `INSERT INTO rooms (tenant_id, id, site_id, name, capacity)
          VALUES ($1, $2, $3, $4, $5)`,
         [TENANT_A, 'bad-capacity', 'site-a', 'Bad Capacity', 0],
+      ),
+      (error) => error.code === '23514',
+    );
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO requests (tenant_id, id, requester_user_id, status, starts_at, ends_at)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          TENANT_A,
+          'invalid-workflow-status',
+          USER_A,
+          'client-approved',
+          '2026-09-01T10:00:00.000Z',
+          '2026-09-01T11:00:00.000Z',
+        ],
+      ),
+      (error) => error.code === '23514',
+    );
+  });
+
+  await t.test('request repository is tenant-scoped and same IDs remain independent', async () => {
+    await seedRequest(pool, { tenantId: TENANT_A, requestId: 'shared-request', requesterUserId: USER_A });
+    await seedRequest(pool, { tenantId: TENANT_B, requestId: 'shared-request', requesterUserId: USER_B });
+    await seedRequest(pool, { tenantId: TENANT_A, requestId: 'alpha-request', requesterUserId: USER_A });
+
+    const requests = createPostgresRequestRepository(pool);
+    assert.equal((await requests.findByTenantIdAndId(TENANT_A, 'shared-request')).requesterUserId, USER_A);
+    assert.equal((await requests.findByTenantIdAndId(TENANT_B, 'shared-request')).requesterUserId, USER_B);
+    assert.equal(await requests.findByTenantIdAndId(TENANT_B, 'alpha-request'), null);
+
+    const changed = await requests.transitionByTenantIdAndId({
+      tenantId: TENANT_A,
+      requestId: 'shared-request',
+      expectedStatus: REQUEST_STATUS.SUBMITTED,
+      nextStatus: REQUEST_STATUS.IN_REVIEW,
+      reason: null,
+      changedAt: new Date('2026-08-24T10:00:00.000Z'),
+    });
+    assert.equal(changed.status, REQUEST_STATUS.IN_REVIEW);
+    assert.equal((await requests.findByTenantIdAndId(TENANT_B, 'shared-request')).status, REQUEST_STATUS.SUBMITTED);
+  });
+
+  await t.test('request transitions reject stale concurrent state instead of silently overwriting', async () => {
+    await seedRequest(pool, { tenantId: TENANT_A, requestId: 'race-request', requesterUserId: USER_A });
+    const requests = createPostgresRequestRepository(pool);
+    const transition = (nextStatus) => requests.transitionByTenantIdAndId({
+      tenantId: TENANT_A,
+      requestId: 'race-request',
+      expectedStatus: REQUEST_STATUS.SUBMITTED,
+      nextStatus,
+      reason: null,
+      changedAt: new Date('2026-08-24T10:05:00.000Z'),
+    });
+    const [first, second] = await Promise.all([
+      transition(REQUEST_STATUS.IN_REVIEW),
+      transition(REQUEST_STATUS.CONFIRMED),
+    ]);
+    assert.equal([first, second].filter(Boolean).length, 1);
+    const persisted = await requests.findByTenantIdAndId(TENANT_A, 'race-request');
+    assert.ok([REQUEST_STATUS.IN_REVIEW, REQUEST_STATUS.CONFIRMED].includes(persisted.status));
+  });
+
+  await t.test('workflow reason constraints reject client-style status/reason combinations', async () => {
+    await assert.rejects(
+      pool.query(
+        `UPDATE requests
+         SET status_reason = $3
+         WHERE tenant_id = $1 AND id = $2`,
+        [TENANT_A, 'alpha-request', 'Injected reason'],
       ),
       (error) => error.code === '23514',
     );
@@ -302,22 +398,30 @@ test('PostgreSQL migration, tenant persistence, and session security contract', 
 
     now += 1_000;
     const rotated = await service.rotate(original.principal, identity({
-      roles: ['manager'],
-      permissions: ['request:read', 'request:approve'],
+      roles: ['conference_manager'],
+      permissions: ['request:read', 'request:manage'],
     }));
     const rotatedRequest = { headers: { cookie: cookiePair(rotated.setCookie) } };
     const refreshed = await service.resolvePrincipal(rotatedRequest);
-    assert.deepEqual(refreshed.roles, ['manager']);
-    assert.deepEqual(refreshed.permissions, ['request:read', 'request:approve']);
+    assert.deepEqual(refreshed.roles, ['conference_manager']);
+    assert.deepEqual(refreshed.permissions, ['request:read', 'request:manage']);
     assert.equal(refreshed.session.securityVersion, 2);
     assert.equal(await service.resolvePrincipal(originalRequest), null);
   });
 
-  await t.test('rollback removes only latest session schema and migration can be reapplied', async () => {
+  await t.test('request and session migrations remain independently reversible and reapplicable', async () => {
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await isPostgresSchemaReady(pool), false);
-    const remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
+    let remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
+    assert.deepEqual(remaining.rows, [{ version: 1 }, { version: 2 }]);
+
+    await migrateUp(pool);
+    assert.equal(await isPostgresSchemaReady(pool), true);
+    assert.equal(await rollbackLatest(pool), true);
+    assert.equal(await rollbackLatest(pool), true);
+    remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(remaining.rows, [{ version: 1 }]);
+
     await migrateUp(pool);
     assert.equal(await isPostgresSchemaReady(pool), true);
   });
