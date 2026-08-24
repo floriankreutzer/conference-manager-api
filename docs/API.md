@@ -64,9 +64,10 @@ Logs out the current session.
 Requirements:
 
 - valid authenticated `cm_session`;
-- recognized internal role/permission set;
 - valid server-derived Tenant context;
 - valid `X-CSRF-Token` for the current session.
+
+Logout is credential revocation, not a business authorization grant. A syntactically valid authenticated session can therefore be revoked even if its role/permission snapshot is no longer recognized by the Tenant authorization policy. The same Principal remains denied for session presentation and all business access until a valid authorization mapping exists.
 
 The server revokes the session in PostgreSQL, clears `cm_session`, and returns HTTP 204. A cleared client cookie without server-side revocation is not considered logout.
 
@@ -75,6 +76,8 @@ The server revokes the session in PostgreSQL, clears `cm_session`, and returns H
 Returns one Request after active-Tenant and object-level authorization.
 
 Employee requires `request:read` and server-side ownership (`request.requester_user_id === principal.userId`). Conference Manager requires `request:read` and may read another Employee's Request only inside the authenticated Tenant. Tenant Admin does not inherit this capability.
+
+The authorization snapshot is validated before Request persistence is queried. An unknown role or permission therefore fails closed before object lookup.
 
 The repository lookup is scoped directly by the internal Tenant ID plus Request ID. A client Tenant header/query parameter cannot change the lookup scope.
 
@@ -102,7 +105,7 @@ The foundation response omits internal `tenantId` and `requesterUserId` to minim
 
 ### `POST /api/v1/requests/{requestId}/transitions`
 
-Executes a server-defined Request workflow transition. It requires authenticated Principal, active Tenant, valid session-bound CSRF token and explicit transition authorization.
+Executes a server-defined Request workflow transition. It requires authenticated Principal, recognized authorization snapshot, active Tenant, valid session-bound CSRF token and explicit transition authorization.
 
 Body without reason:
 
