@@ -46,7 +46,9 @@ npm run db:migrate
 npm start
 ```
 
-Development may leave `CSRF_SECRET` and `AUDIT_HMAC_SECRET` empty for non-persistent/test composition. Pilot/Production require externally managed values for both secrets, an HTTPS public origin, PostgreSQL and certificate-verifying database TLS.
+A non-persistent development composition may leave `CSRF_SECRET` and `AUDIT_HMAC_SECRET` empty. Any runtime configured with `DATABASE_URL` must provide a stable `AUDIT_HMAC_SECRET` of at least 32 bytes so persisted audit chains remain verifiable across restarts. Pilot/Production additionally require an externally managed `CSRF_SECRET`, an HTTPS public origin and certificate-verifying database TLS.
+
+Do not rotate `AUDIT_HMAC_SECRET` as an ordinary configuration change. Key rotation requires a reviewed audit-integrity migration/checkpoint strategy because existing events were signed with the previous key.
 
 ## API foundation
 
