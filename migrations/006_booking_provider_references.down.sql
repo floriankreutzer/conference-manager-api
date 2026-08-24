@@ -1,0 +1,9 @@
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM booking_provider_references LIMIT 1) THEN
+    RAISE EXCEPTION 'BOOKING_PROVIDER_REFERENCE_ROWS_REQUIRE_REVIEW' USING ERRCODE = '55000';
+  END IF;
+END
+$$;
+
+DROP TABLE booking_provider_references;
