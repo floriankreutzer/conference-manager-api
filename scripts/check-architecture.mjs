@@ -45,8 +45,8 @@ for (const file of files) {
 }
 
 const app = await readFile('src/app.js', 'utf8');
-if (!app.includes("'/api/v1/health/live'") || !app.includes("'/api/v1/health/ready'") || !app.includes("'/api/v1/session'")) {
-  throw new Error('Required foundation route contracts are missing.');
+for (const route of ["'/api/v1/health/live'", "'/api/v1/health/ready'", "'/api/v1/session'", "'/api/v1/audit'"]) {
+  if (!app.includes(route)) throw new Error(`Required route contract is missing: ${route}.`);
 }
 if (!app.includes('createPrincipalGuard') || !app.includes('assertSameOrigin') || !app.includes('createRateLimiter')) {
   throw new Error('Required API security boundaries are not composed in src/app.js.');
@@ -60,8 +60,14 @@ if (!app.includes('tenantGuard.requireActive(principal)') || !app.includes('requ
 if (!app.includes('sessionService?.resolvePrincipal') || !app.includes('sessionService?.verifyCsrf')) {
   throw new Error('HTTP principal and CSRF resolution must use the server-side session service when configured.');
 }
-if (!app.includes("request.method === 'DELETE'") || !app.includes('sessionService.revoke(principal)')) {
-  throw new Error('Session logout must revoke the authenticated server-side session.');
+if (!app.includes("request.method === 'DELETE'") || !app.includes('sessionService.revoke(principal,')) {
+  throw new Error('Session logout must revoke the authenticated server-side session with request correlation.');
+}
+if (!app.includes('auditService.listTenantEvents') || !app.includes('correlationId: requestId')) {
+  throw new Error('Tenant audit reads must use the audit service and server-generated request correlation.');
+}
+if (app.includes('tenantId: parsedUrl') || app.includes("searchParams.get('tenantId')")) {
+  throw new Error('Audit API must not accept client-selected Tenant authority.');
 }
 if (!app.includes('readJsonObjectBody') || !app.includes('validateExactObject')) {
   throw new Error('State-changing request routes must keep positive-schema bounded JSON validation.');
@@ -118,6 +124,7 @@ for (const required of [
   'request.requesterUserId !== principal.userId',
   'TENANT_ROLE.CONFERENCE_MANAGER',
   'TENANT_ROLE.TENANT_ADMIN',
+  "TENANT_AUDIT_READ: 'tenant:audit:read'",
 ]) {
   if (!authorizationPolicy.includes(required)) {
     throw new Error(`Authorization policy is missing deny-by-default invariant ${required}.`);
@@ -137,16 +144,30 @@ if (!requestService.includes('authorizationPolicy.authorizeRequestTransition')) 
 if (!requestService.includes('expectedStatus: decision.expectedStatus')) {
   throw new Error('Authorized workflow writes must preserve optimistic status concurrency.');
 }
+if (!requestService.includes('auditService.createEvent') || !requestService.includes('auditEvent,')) {
+  throw new Error('Request transitions must carry a server-generated audit event into persistence.');
+}
+
+const auditEvent = await readFile('src/audit/event.js', 'utf8');
+for (const required of ['FORBIDDEN_KEY', 'canonicalAuditPayload', 'retentionClass', 'correlationId']) {
+  if (!auditEvent.includes(required)) throw new Error(`Audit event contract is missing ${required}.`);
+}
+
+const auditService = await readFile('src/audit/audit-service.js', 'utf8');
+for (const required of ['PERMISSION.TENANT_AUDIT_READ', 'verifyTenantChain', 'recordAuthorizationDenied']) {
+  if (!auditService.includes(required)) throw new Error(`Audit service is missing ${required}.`);
+}
 
 const persistence = await readFile('src/persistence/postgres/index.js', 'utf8');
-if (!persistence.includes('isPostgresSchemaReady') || !persistence.includes('createPostgresTenantRepository')) {
-  throw new Error('PostgreSQL persistence must enforce schema readiness and provide Tenant loading.');
-}
-if (!persistence.includes('createPostgresSessionRepository') || !persistence.includes('sessionRepository')) {
-  throw new Error('PostgreSQL persistence must expose the server-side session repository.');
-}
-if (!persistence.includes('createPostgresRequestRepository') || !persistence.includes('requestRepository')) {
-  throw new Error('PostgreSQL persistence must expose the tenant-scoped request repository.');
+for (const required of [
+  'isPostgresSchemaReady',
+  'createPostgresTenantRepository',
+  'createPostgresSessionRepository',
+  'createPostgresRequestRepository',
+  'createPostgresAuditRepository',
+  'auditRepository',
+]) {
+  if (!persistence.includes(required)) throw new Error(`PostgreSQL persistence is missing ${required}.`);
 }
 
 const requestRepository = await readFile('src/persistence/postgres/request-repository.js', 'utf8');
@@ -155,6 +176,21 @@ if (!requestRepository.includes('WHERE tenant_id = $1') || !requestRepository.in
 }
 if (!requestRepository.includes('normalizeRequest')) {
   throw new Error('Request persistence must validate database output through the canonical domain contract.');
+}
+if (!requestRepository.includes('appendWithClient(client, auditEvent)')) {
+  throw new Error('Successful Request transitions must append audit evidence in the same database transaction.');
+}
+
+const auditRepository = await readFile('src/persistence/postgres/audit-repository.js', 'utf8');
+for (const required of [
+  "createHmac('sha256'",
+  'pg_advisory_xact_lock',
+  'previous_hash',
+  'event_hash',
+  'verifyTenantChain',
+  'timingSafeEqual',
+]) {
+  if (!auditRepository.includes(required)) throw new Error(`Audit persistence is missing ${required}.`);
 }
 
 const principal = await readFile('src/identity/principal.js', 'utf8');
@@ -169,8 +205,16 @@ for (const required of ['HttpOnly', 'SameSite=Lax', 'Path=/api', 'Secure']) {
 if (sessionCookie.includes('Domain=')) throw new Error('Session cookie must not set a broad Domain attribute.');
 
 const sessionService = await readFile('src/identity/session-service.js', 'utf8');
-for (const required of ['randomBytes(32)', "createHash('sha256')", "createHmac('sha256'", 'timingSafeEqual']) {
-  if (!sessionService.includes(required)) throw new Error(`Session service is missing security primitive ${required}.`);
+for (const required of [
+  'randomBytes(32)',
+  "createHash('sha256')",
+  "createHmac('sha256'",
+  'timingSafeEqual',
+  'AUDIT_ACTION.SESSION_ISSUED',
+  'AUDIT_ACTION.SESSION_REVOKED',
+  'AUDIT_ACTION.SESSION_ROTATED',
+]) {
+  if (!sessionService.includes(required)) throw new Error(`Session service is missing security/audit primitive ${required}.`);
 }
 if (/localStorage|sessionStorage/i.test(sessionService)) {
   throw new Error('Session service must not depend on browser token storage.');
@@ -183,13 +227,34 @@ if (!sessionRepository.includes('u.security_version = s.principal_version')) {
 if (!sessionRepository.includes('s.revoked_at IS NULL') || !sessionRepository.includes('s.expires_at > $2')) {
   throw new Error('Session resolution must enforce revocation and expiration.');
 }
+if (!sessionRepository.includes('appendAudit(client, auditRepository, auditEvent)')) {
+  throw new Error('Session mutations must append audit evidence inside their database transaction.');
+}
+
+const config = await readFile('src/config.js', 'utf8');
+if (!config.includes('AUDIT_HMAC_SECRET_REQUIRED') || !config.includes('auditHmacSecret')) {
+  throw new Error('Pilot/Production must require an external audit HMAC secret.');
+}
+
+const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
+if (!pool.includes('CURRENT_SCHEMA_VERSION = 4')) {
+  throw new Error('Runtime schema readiness must require audit migration version 4.');
+}
 
 const index = await readFile('src/index.js', 'utf8');
-if (!index.includes('createSessionService') || !index.includes('sessionService')) {
-  throw new Error('Process composition must wire PostgreSQL sessions into the HTTP boundary.');
+for (const required of ['createSessionService', 'createAuthorizationPolicy', 'createRequestService', 'createAuditService']) {
+  if (!index.includes(required)) throw new Error(`Process composition must wire ${required}.`);
 }
-if (!index.includes('createAuthorizationPolicy') || !index.includes('createRequestService')) {
-  throw new Error('Process composition must wire the central authorization policy and request application service.');
+
+const auditMigration = await readFile('migrations/004_tamper_evident_audit.up.sql', 'utf8');
+for (const required of [
+  'AUDIT_LEGACY_ROWS_REQUIRE_REVIEW',
+  'audit_events_append_only',
+  'BEFORE UPDATE OR DELETE',
+  'previous_hash',
+  'event_hash',
+]) {
+  if (!auditMigration.includes(required)) throw new Error(`Audit migration is missing ${required}.`);
 }
 
 for (const migration of [
@@ -199,6 +264,8 @@ for (const migration of [
   'migrations/002_secure_sessions.down.sql',
   'migrations/003_request_authorization_workflow.up.sql',
   'migrations/003_request_authorization_workflow.down.sql',
+  'migrations/004_tamper_evident_audit.up.sql',
+  'migrations/004_tamper_evident_audit.down.sql',
 ]) {
   await readFile(migration, 'utf8');
 }
