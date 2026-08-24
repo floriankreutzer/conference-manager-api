@@ -2,6 +2,23 @@ ALTER TABLE users
   ADD COLUMN security_version bigint NOT NULL DEFAULT 1,
   ADD CONSTRAINT users_security_version_valid CHECK (security_version >= 1);
 
+CREATE FUNCTION prevent_user_security_version_decrease()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.security_version < OLD.security_version THEN
+    RAISE EXCEPTION 'security_version cannot decrease' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER users_security_version_monotonic
+BEFORE UPDATE OF security_version ON users
+FOR EACH ROW
+EXECUTE FUNCTION prevent_user_security_version_decrease();
+
 CREATE TABLE sessions (
   id uuid PRIMARY KEY,
   tenant_id uuid NOT NULL,
