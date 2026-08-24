@@ -8,6 +8,7 @@ const SESSION_ID = '33333333-3333-4333-8333-333333333333';
 const ENTRA_CLIENT_ID = '55555555-5555-4555-8555-555555555555';
 const ORIGIN = 'https://security.test';
 const DAST_KEY_MATERIAL = 'd'.repeat(32);
+const AUTH_BYPASS_MARKER = 'DAST_AUTH_VALIDATION_BYPASSED';
 
 const config = Object.freeze({
   mode: 'pilot',
@@ -72,6 +73,15 @@ const requestService = Object.freeze({
   },
 });
 
+const entraAuthService = Object.freeze({
+  async start() {
+    throw new Error(AUTH_BYPASS_MARKER);
+  },
+  async complete() {
+    throw new Error(AUTH_BYPASS_MARKER);
+  },
+});
+
 function request(serverPort, {
   method = 'GET',
   path = '/api/v1/health/live',
@@ -127,12 +137,14 @@ function assertError(response, statusCode, code) {
   assert.equal(response.rawBody.includes('stack'), false);
   assert.equal(response.rawBody.includes('postgresql://'), false);
   assert.equal(response.rawBody.includes('DAST_VALIDATION_BYPASSED'), false);
+  assert.equal(response.rawBody.includes(AUTH_BYPASS_MARKER), false);
   assert.equal(response.rawBody.includes(DAST_KEY_MATERIAL), false);
 }
 
 const server = createHttpServer({
   config,
   logger,
+  entraAuthService,
   resolvePrincipal: async () => principal,
   verifyCsrf: async (incoming) => incoming.headers['x-csrf-token'] === 'valid-dast-csrf',
   loadTenant: async (tenantId) => (tenantId === TENANT_ID ? tenant : null),
