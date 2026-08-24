@@ -2,6 +2,7 @@ import { ApiError, asApiError } from './api-error.js';
 import { AuthorizationDeniedError } from './authorization/errors.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { assertProductionConfig } from './config.js';
+import { isInternalUuid } from './domain/identifiers.js';
 import { EntraAuthenticationError } from './identity/entra-errors.js';
 import { readEntraTransactionCookie } from './identity/entra-transaction-cookie.js';
 import { createLogger } from './logger.js';
@@ -32,11 +33,14 @@ const ROUTES = Object.freeze({
   onboardingClaim: '/api/v1/onboarding/claim',
   principal: '/api/v1/session',
   audit: '/api/v1/audit',
+  tenantUsers: '/api/v1/tenant/users',
 });
 const REQUEST_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/;
 const REQUEST_TRANSITION_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/transitions$/;
+const TENANT_USER_ROLES_PATH = /^\/api\/v1\/tenant\/users\/([0-9a-f-]{36})\/roles$/i;
 const ALLOWED_METRIC_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const INVITATION_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const ELEVATED_TENANT_ROLES = new Set(['conference_manager', 'tenant_admin']);
 const TRANSITION_BODY_SCHEMA = Object.freeze({
   required: Object.freeze({
     transition: (value) => typeof value === 'string' && value.length >= 1 && value.length <= 32,
@@ -55,7 +59,16 @@ const ONBOARDING_CONFIRM_BODY_SCHEMA = Object.freeze({
   required: Object.freeze({ confirm: (value) => value === true }),
   optional: Object.freeze({}),
 });
+const TENANT_USER_ROLES_BODY_SCHEMA = Object.freeze({
+  required: Object.freeze({
+    roles: (value) => Array.isArray(value)
+      && value.length <= 2
+      && value.every((role) => typeof role === 'string' && ELEVATED_TENANT_ROLES.has(role)),
+  }),
+  optional: Object.freeze({}),
+});
 const AUDIT_QUERY_KEYS = new Set(['limit', 'beforeId']);
+const TENANT_USERS_QUERY_KEYS = new Set(['limit', 'afterId']);
 const ENTRA_CALLBACK_QUERY_KEYS = new Set([
   'code',
   'state',
@@ -168,6 +181,23 @@ function auditPageFromUrl(parsedUrl) {
   });
 }
 
+function tenantUsersPageFromUrl(parsedUrl) {
+  for (const key of parsedUrl.searchParams.keys()) {
+    if (!TENANT_USERS_QUERY_KEYS.has(key) || parsedUrl.searchParams.getAll(key).length !== 1) {
+      throw new ApiError(400, 'VALIDATION_FAILED');
+    }
+  }
+  const limitValue = parsedUrl.searchParams.get('limit');
+  const afterId = parsedUrl.searchParams.get('afterId');
+  if (limitValue !== null && !/^\d{1,3}$/.test(limitValue)) {
+    throw new ApiError(400, 'VALIDATION_FAILED');
+  }
+  if (afterId !== null && !isInternalUuid(afterId)) throw new ApiError(400, 'VALIDATION_FAILED');
+  const limit = limitValue === null ? undefined : Number(limitValue);
+  if (limit !== undefined && (limit < 1 || limit > 100)) throw new ApiError(400, 'VALIDATION_FAILED');
+  return Object.freeze({ limit, afterUserId: afterId });
+}
+
 function routeKey(path) {
   if (path === ROUTES.live) return 'health_live';
   if (path === ROUTES.ready) return 'health_ready';
@@ -178,6 +208,8 @@ function routeKey(path) {
   if (path === ROUTES.onboardingClaim) return 'onboarding_claim';
   if (path === ROUTES.principal) return 'session';
   if (path === ROUTES.audit) return 'audit';
+  if (path === ROUTES.tenantUsers) return 'tenant_users';
+  if (TENANT_USER_ROLES_PATH.test(path)) return 'tenant_user_roles';
   if (REQUEST_TRANSITION_PATH.test(path)) return 'request_transition';
   if (REQUEST_PATH.test(path)) return 'request';
   return 'not_found';
@@ -197,6 +229,7 @@ export function createApp({
   entraAuthService,
   onboardingService,
   requestService,
+  tenantUserAdministrationService,
   resolvePrincipal,
   verifyCsrf,
   loadTenant,
@@ -494,6 +527,48 @@ export function createApp({
         sendJson(response, statusCode, {
           events: publicEvents,
           nextBeforeId: publicEvents.at(-1)?.id || null,
+          requestId,
+        }, config.maxResponseBytes);
+        return;
+      }
+
+      const tenantUserRoleMatch = path.match(TENANT_USER_ROLES_PATH);
+      if (path === ROUTES.tenantUsers || tenantUserRoleMatch) {
+        const isRoleMutation = Boolean(tenantUserRoleMatch);
+        const expectedMethod = isRoleMutation ? 'PUT' : 'GET';
+        if (request.method !== expectedMethod) throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+        if (!tenantUserAdministrationService) {
+          throw new ApiError(503, 'TENANT_USER_SERVICE_UNAVAILABLE');
+        }
+        const principal = await principalGuard.require(request, { csrf: isRoleMutation });
+        const tenantContext = await tenantGuard.requireKnown(principal);
+        if (isRoleMutation) {
+          assertNoQuery(parsedUrl);
+          const body = validateExactObject(
+            await readJsonObjectBody(request, { maxBytes: config.maxBodyBytes }),
+            TENANT_USER_ROLES_BODY_SCHEMA,
+          );
+          const user = await tenantUserAdministrationService.setRoles({
+            principal,
+            tenantContext,
+            targetUserId: tenantUserRoleMatch[1],
+            roles: body.roles,
+            correlationId: requestId,
+          });
+          statusCode = 200;
+          sendJson(response, statusCode, { user, requestId }, config.maxResponseBytes);
+          return;
+        }
+        const users = await tenantUserAdministrationService.listUsers({
+          principal,
+          tenantContext,
+          correlationId: requestId,
+          ...tenantUsersPageFromUrl(parsedUrl),
+        });
+        statusCode = 200;
+        sendJson(response, statusCode, {
+          users,
+          nextAfterId: users.length === 100 ? users.at(-1)?.id || null : null,
           requestId,
         }, config.maxResponseBytes);
         return;
