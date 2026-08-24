@@ -2,6 +2,9 @@ import { createRequestService } from './application/request-service.js';
 import { createAuditService } from './audit/audit-service.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { loadConfig } from './config.js';
+import { createEntraAuthService } from './identity/entra-auth-service.js';
+import { createEntraClient } from './identity/entra-client.js';
+import { createPendingProviderIdentityResolver } from './identity/provider-identity-resolver.js';
 import { createSessionService } from './identity/session-service.js';
 import { createLogger } from './logger.js';
 import { createMetricsRegistry } from './observability/metrics.js';
@@ -28,6 +31,25 @@ const sessionService = persistence
     sessionTtlSeconds: config.sessionTtlSeconds,
   })
   : null;
+const entraClient = config.entraClientId
+  ? createEntraClient({
+    clientId: config.entraClientId,
+    clientSecret: config.entraClientSecret,
+    authority: config.entraAuthority,
+    redirectUri: config.entraRedirectUri,
+  })
+  : null;
+const identityResolver = createPendingProviderIdentityResolver();
+const entraAuthService = persistence && entraClient && sessionService
+  ? createEntraAuthService({
+    repository: persistence.oidcTransactionRepository,
+    entraClient,
+    identityResolver,
+    sessionService,
+    transactionSecret: config.oidcTransactionSecret,
+    transactionTtlSeconds: config.oidcTransactionTtlSeconds,
+  })
+  : null;
 const requestService = persistence
   ? createRequestService({
     repository: persistence.requestRepository,
@@ -42,6 +64,7 @@ const server = createHttpServer({
   authorizationPolicy,
   auditService,
   sessionService,
+  entraAuthService,
   requestService,
   loadTenant: persistence?.loadTenant,
   readinessChecks: persistence?.readinessChecks || [],
