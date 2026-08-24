@@ -31,9 +31,14 @@ const tenantContext = Object.freeze({ tenantId: TENANT_ID, status: 'onboarding' 
 
 function auditService(capture = {}) {
   return {
-    createEvent(value) {
-      capture.created?.push(value);
-      return Object.freeze({ ...value });
+    createEvent({ principal: actor, tenantContext: context, ...value }) {
+      const event = Object.freeze({
+        tenantId: context.tenantId,
+        actorUserId: actor.userId,
+        ...value,
+      });
+      capture.created?.push(event);
+      return event;
     },
     async record(value) {
       capture.recorded?.push(value);
@@ -194,6 +199,7 @@ test('Tenant Admin role mutation is exact, audited and keeps Employee baseline',
   assert.deepEqual(updated.roles, ['employee', 'conference_manager', 'tenant_admin']);
   assert.equal(capture.created[0].action, 'tenant.user_permissions.changed');
   assert.equal(capture.created[0].actorUserId, ADMIN_ID);
+  assert.equal(capture.created[0].tenantId, TENANT_ID);
   assert.equal(capture.created[0].targetId, TARGET_ID);
 });
 
