@@ -5,10 +5,11 @@ import { createHttpServer } from '../src/server.js';
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const SESSION_ID = '33333333-3333-4333-8333-333333333333';
-const ORIGIN = 'http://security.test';
+const ORIGIN = 'https://security.test';
+const DAST_SECRET = 'security-dast-secret-value-at-least-32-bytes';
 
 const config = Object.freeze({
-  mode: 'test',
+  mode: 'pilot',
   serviceVersion: '0.1.0',
   buildId: 'security-dast',
   publicOrigin: ORIGIN,
@@ -23,10 +24,10 @@ const config = Object.freeze({
   keepAliveTimeoutMs: 1_000,
   readinessTimeoutMs: 500,
   sessionTtlSeconds: 3_600,
-  csrfSecret: null,
-  auditHmacSecret: null,
-  databaseUrl: null,
-  databaseSsl: 'disable',
+  csrfSecret: DAST_SECRET,
+  auditHmacSecret: DAST_SECRET,
+  databaseUrl: 'postgresql://security.test/conference_manager',
+  databaseSsl: 'verify-full',
 });
 
 const principal = Object.freeze({
@@ -119,6 +120,7 @@ function assertError(response, statusCode, code) {
   assert.equal(response.rawBody.includes('stack'), false);
   assert.equal(response.rawBody.includes('postgresql://'), false);
   assert.equal(response.rawBody.includes('DAST_VALIDATION_BYPASSED'), false);
+  assert.equal(response.rawBody.includes(DAST_SECRET), false);
 }
 
 const server = createHttpServer({
@@ -149,6 +151,7 @@ try {
   assert.equal(live.headers['referrer-policy'], 'no-referrer');
   assert.equal(live.headers['x-content-type-options'], 'nosniff');
   assert.equal(live.headers['x-frame-options'], 'DENY');
+  assert.equal(live.headers['strict-transport-security'], 'max-age=31536000; includeSubDomains');
   assert.equal(live.headers['access-control-allow-origin'], undefined);
   assert.equal(typeof live.headers['x-request-id'], 'string');
 
