@@ -8,7 +8,7 @@ Production should track supported PostgreSQL 18 minor releases through the manag
 
 ## Security boundary
 
-Database access exists only under `src/persistence/postgres`. Application/domain/HTTP modules must not import `pg` or contain SQL.
+Database access exists only under `src/persistence/postgres`. Application/domain/authorization/HTTP modules must not import `pg` or contain SQL.
 
 Production requirements include:
 
@@ -37,6 +37,14 @@ Migration 002 establishes secure-session persistence:
 - issue/expiry/revocation timestamps;
 - active-session lookup index.
 
+Migration 003 establishes authoritative Request workflow persistence:
+
+- allowlisted Request status constraint matching the server workflow;
+- `status_reason` with bounded/trimmed database validation;
+- reason storage restricted to `Rejected` and `Change Requested` states;
+- `status_changed_at` machine timestamp;
+- expected schema version 3.
+
 The raw session token and CSRF token are never persisted.
 
 The audit table provides relational ownership only. Append-only/tamper-evident audit behavior remains #52.
@@ -48,6 +56,25 @@ Tenant-owned tables use non-null internal `tenant_id`. Composite keys/foreign ke
 `ON DELETE RESTRICT` prevents physical Tenant deletion from orphaning retained data. Same business resource IDs may exist independently in separate Tenants while duplicates inside one Tenant fail deterministically.
 
 Session rows reference `(tenant_id, user_id)`, so a session cannot attach an internal User from another Tenant.
+
+Request lookup and workflow mutation are always parameterized by internal `tenant_id` plus Request ID. A Request ID from another Tenant therefore resolves as absent without a global lookup.
+
+## Request workflow concurrency
+
+`createPostgresRequestRepository` implements two Request operations for the #51 authorization slice:
+
+- `findByTenantIdAndId(tenantId, requestId)`;
+- `transitionByTenantIdAndId(...)`.
+
+A transition update includes the previously authorized current status in its `WHERE` predicate:
+
+```text
+tenant_id + request id + expected current status
+```
+
+This provides optimistic workflow concurrency. If another operation changes the Request between the authorized read and the write, the stale update affects zero rows and the application returns `409 REQUEST_STATE_CONFLICT` rather than overwriting the newer state.
+
+The repository persists only the server policy decision (`nextStatus`, validated reason and server timestamp). Client-supplied target status/owner/Tenant fields do not reach the repository contract.
 
 ## Migration framework
 
@@ -87,7 +114,9 @@ Business/session services must not report successful persistence before the auth
 
 Session rotation is implemented as one transaction: the current session is locked, the replacement is inserted using the current User `security_version`, then the previous session is revoked. Failure prevents a partial rotation.
 
-Booking concurrency will receive additional domain-specific exclusion/atomicity controls; the generic transaction helper alone is not a double-booking guarantee.
+Request workflow updates are single conditional SQL statements and therefore atomic at row-update level. Their expected-current-status predicate is the concurrency control for #51.
+
+Booking concurrency will receive additional domain-specific exclusion/atomicity controls; Request workflow state concurrency is not a room double-booking guarantee.
 
 ## Backup, restore and deployment rollback
 
@@ -112,19 +141,22 @@ Rollback policy:
 
 Migration 002 down removes the session table/security-version column and therefore invalidates all server sessions. It is not a transparent production rollback and requires an explicit authentication-impact decision.
 
+Migration 003 down removes `status_reason`, `status_changed_at` and the Request workflow constraints. Any populated-environment rollback would lose persisted status reasons/change timestamps and weaken database workflow validation, so it requires an explicit data/security-impact decision rather than automatic rollback.
+
 ## Testing evidence required
 
 Database changes require PostgreSQL integration coverage for applicable migration/version/checksum behavior, tenant-scoped repositories, composite FK isolation, invalid constraints, duplicate/concurrent writes, transaction rollback, schema readiness and cross-Tenant persistence.
 
-Session persistence additionally requires real PostgreSQL tests for:
+Session persistence additionally requires real PostgreSQL tests for raw-token non-persistence, session resolution, cross-Tenant issuance rejection, expiry, revocation, stale privilege invalidation, rotation and migration rollback/reapply.
 
-- raw-token non-persistence;
-- valid session resolution;
-- cross-Tenant/unprovisioned issuance rejection;
-- expiry;
-- revocation;
-- security-version stale-privilege invalidation;
-- rotation to the current approved role/permission snapshot;
-- migration 002 rollback/reapply.
+Request authorization persistence additionally requires real PostgreSQL tests for:
+
+- same Request ID isolation across different Tenants;
+- cross-Tenant Request lookup returning absent;
+- server workflow status constraints;
+- invalid status/reason combinations;
+- Tenant-specific transitions;
+- concurrent/stale expected-status writes allowing at most one winner;
+- migration 003 rollback/reapply while preserving independent migration 002 regression coverage.
 
 CI runs database tests against an isolated PostgreSQL 18 service after the normal quality/security gate.
