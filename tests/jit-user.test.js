@@ -77,6 +77,7 @@ test('first JIT login emits only the safe Employee authorization snapshot', asyn
     },
     roles: ['employee'],
     permissions: ['request:read', 'request:cancel'],
+    securityVersion: 1,
   });
   assert.deepEqual(capture.bindings, [{
     provider: 'microsoft_entra',
@@ -121,6 +122,24 @@ test('malformed provider identity fails closed before binding lookup', async () 
   for (const identity of invalid) {
     const resolved = await service().resolve(identity, { correlationId: CORRELATION_ID });
     assert.deepEqual(resolved, { status: 'authentication_denied' });
+  }
+});
+
+test('JIT rejects invalid persisted security versions before session handoff', async () => {
+  for (const securityVersion of [undefined, 0, -1, 1.5, '1']) {
+    const result = {
+      status: 'resolved',
+      identity: {
+        tenantId: TENANT_ID,
+        userId: USER_ID,
+        elevatedRoles: [],
+        securityVersion,
+      },
+    };
+    await assert.rejects(
+      service({ result }).resolve(external(), { correlationId: CORRELATION_ID }),
+      /JIT_SECURITY_VERSION_INVALID/,
+    );
   }
 });
 
