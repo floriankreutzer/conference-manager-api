@@ -68,8 +68,9 @@ async function seedRequest(pool, {
 }) {
   await pool.query(
     `INSERT INTO requests
-      (tenant_id, id, requester_user_id, status, starts_at, ends_at, internal_participants, external_participants)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      (tenant_id, id, requester_user_id, status, starts_at, ends_at,
+       internal_participants, external_participants, status_changed_at, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $9)`,
     [
       tenantId,
       requestId,
@@ -79,6 +80,7 @@ async function seedRequest(pool, {
       '2026-09-01T11:00:00.000Z',
       4,
       1,
+      '2026-08-24T09:00:00.000Z',
     ],
   );
 }
