@@ -1,12 +1,21 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import test from 'node:test';
+import { createRequestService } from '../src/application/request-service.js';
+import {
+  PERMISSION,
+  REQUEST_STATUS,
+  REQUEST_TRANSITION,
+  TENANT_ROLE,
+  createAuthorizationPolicy,
+} from '../src/authorization/policy.js';
 import { loadConfig } from '../src/config.js';
 import { createLogger } from '../src/logger.js';
 import { createHttpServer } from '../src/server.js';
 import { TENANT_STATUS } from '../src/tenancy/tenant.js';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
+const OTHER_USER_ID = '44444444-4444-4444-8444-444444444444';
 const TENANT_ID = '22222222-2222-4222-8222-222222222222';
 const OTHER_TENANT_ID = '33333333-3333-4333-8333-333333333333';
 const SESSION_ID = '55555555-5555-4555-8555-555555555555';
@@ -76,8 +85,8 @@ function principal(overrides = {}) {
     userId: USER_ID,
     tenantId: TENANT_ID,
     providerIdentity: { provider: 'test_oidc', reference: 'subject-123' },
-    roles: ['employee'],
-    permissions: ['request:read'],
+    roles: [TENANT_ROLE.EMPLOYEE],
+    permissions: [PERMISSION.REQUEST_READ],
     session: {
       id: SESSION_ID,
       issuedAt: '2026-08-24T06:00:00.000Z',
@@ -86,6 +95,52 @@ function principal(overrides = {}) {
     },
     ...overrides,
   };
+}
+
+function requestRecord(overrides = {}) {
+  return {
+    tenantId: TENANT_ID,
+    id: 'REQ-1',
+    requesterUserId: USER_ID,
+    roomId: 'room-a',
+    status: REQUEST_STATUS.SUBMITTED,
+    statusReason: null,
+    startsAt: '2026-09-01T10:00:00.000Z',
+    endsAt: '2026-09-01T11:00:00.000Z',
+    internalParticipants: 5,
+    externalParticipants: 1,
+    statusChangedAt: '2026-08-24T08:00:00.000Z',
+    createdAt: '2026-08-24T08:00:00.000Z',
+    updatedAt: '2026-08-24T08:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function requestServiceFor(initialRecord) {
+  let record = initialRecord;
+  return createRequestService({
+    authorizationPolicy: createAuthorizationPolicy(),
+    clock: () => Date.parse('2026-08-24T09:00:00.000Z'),
+    repository: {
+      async findByTenantIdAndId(tenantId, requestId) {
+        if (!record || record.tenantId !== tenantId || record.id !== requestId) return null;
+        return record;
+      },
+      async transitionByTenantIdAndId({ tenantId, requestId, expectedStatus, nextStatus, reason, changedAt }) {
+        if (!record || record.tenantId !== tenantId || record.id !== requestId || record.status !== expectedStatus) {
+          return null;
+        }
+        record = {
+          ...record,
+          status: nextStatus,
+          statusReason: reason,
+          statusChangedAt: changedAt.toISOString(),
+          updatedAt: changedAt.toISOString(),
+        };
+        return record;
+      },
+    },
+  });
 }
 
 test('liveness and readiness expose no configuration details and set security headers', async () => {
@@ -178,11 +233,28 @@ test('protected session resolves tenant only from the authenticated principal an
     assert.equal(result.statusCode, 200);
     assert.deepEqual(result.body.user, { id: USER_ID });
     assert.deepEqual(result.body.tenant, { id: TENANT_ID, status: TENANT_STATUS.ACTIVE });
-    assert.deepEqual(result.body.roles, ['employee']);
-    assert.deepEqual(result.body.permissions, ['request:read']);
+    assert.deepEqual(result.body.roles, [TENANT_ROLE.EMPLOYEE]);
+    assert.deepEqual(result.body.permissions, [PERMISSION.REQUEST_READ]);
     assert.deepEqual(result.body.session, { expiresAt: '2026-08-24T14:00:00.000Z' });
     assert.equal(result.body.providerIdentity, undefined);
   });
+});
+
+test('session endpoint rejects unknown tenant roles and permissions', async () => {
+  for (const identity of [
+    principal({ roles: ['platform_admin'] }),
+    principal({ permissions: [PERMISSION.REQUEST_READ, 'request:superuser'] }),
+  ]) {
+    await withServer({
+      config: testConfig(),
+      resolvePrincipal: async () => identity,
+      loadTenant: async () => tenant(),
+    }, async ({ port }) => {
+      const result = await request({ port, path: '/api/v1/session' });
+      assert.equal(result.statusCode, 403);
+      assert.equal(result.body.error.code, 'FORBIDDEN');
+    });
+  }
 });
 
 test('session endpoint returns CSRF token and DELETE requires it before server-side revocation', async () => {
@@ -243,6 +315,157 @@ test('unknown, suspended, and archived tenant contexts fail closed', async () =>
       assert.equal(result.body.error.code, 'TENANT_UNAVAILABLE');
     });
   }
+});
+
+test('employee request endpoint returns own object and conceals another employee object', async () => {
+  const baseOptions = {
+    config: testConfig(),
+    resolvePrincipal: async () => principal(),
+    loadTenant: async () => tenant(),
+  };
+  await withServer({ ...baseOptions, requestService: requestServiceFor(requestRecord()) }, async ({ port }) => {
+    const own = await request({
+      port,
+      path: `/api/v1/requests/REQ-1?tenantId=${OTHER_TENANT_ID}`,
+      headers: { 'X-Tenant-Id': OTHER_TENANT_ID },
+    });
+    assert.equal(own.statusCode, 200);
+    assert.equal(own.body.request.id, 'REQ-1');
+    assert.equal(own.body.request.status, REQUEST_STATUS.SUBMITTED);
+    assert.equal(own.body.request.tenantId, undefined);
+    assert.equal(own.body.request.requesterUserId, undefined);
+  });
+
+  await withServer({
+    ...baseOptions,
+    requestService: requestServiceFor(requestRecord({ requesterUserId: OTHER_USER_ID })),
+  }, async ({ port }) => {
+    const foreign = await request({ port, path: '/api/v1/requests/REQ-1' });
+    assert.equal(foreign.statusCode, 404);
+    assert.equal(foreign.body.error.code, 'NOT_FOUND');
+  });
+});
+
+test('conference manager can read tenant requests while tenant admin cannot inherit manager access', async () => {
+  const manager = principal({
+    roles: [TENANT_ROLE.CONFERENCE_MANAGER],
+    permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_MANAGE],
+  });
+  await withServer({
+    config: testConfig(),
+    resolvePrincipal: async () => manager,
+    loadTenant: async () => tenant(),
+    requestService: requestServiceFor(requestRecord({ requesterUserId: OTHER_USER_ID })),
+  }, async ({ port }) => {
+    const result = await request({ port, path: '/api/v1/requests/REQ-1' });
+    assert.equal(result.statusCode, 200);
+  });
+
+  const tenantAdmin = principal({
+    roles: [TENANT_ROLE.TENANT_ADMIN],
+    permissions: [PERMISSION.TENANT_CONFIGURE],
+  });
+  await withServer({
+    config: testConfig(),
+    resolvePrincipal: async () => tenantAdmin,
+    loadTenant: async () => tenant(),
+    requestService: requestServiceFor(requestRecord()),
+  }, async ({ port }) => {
+    const result = await request({ port, path: '/api/v1/requests/REQ-1' });
+    assert.equal(result.statusCode, 403);
+    assert.equal(result.body.error.code, 'FORBIDDEN');
+  });
+});
+
+test('request transitions require CSRF and reject client-controlled status or owner fields', async () => {
+  const employee = principal({
+    permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_CANCEL],
+  });
+  const options = {
+    config: testConfig(),
+    resolvePrincipal: async () => employee,
+    verifyCsrf: async (req) => req.headers['x-csrf-token'] === CSRF_TOKEN,
+    loadTenant: async () => tenant(),
+    requestService: requestServiceFor(requestRecord()),
+  };
+  await withServer(options, async ({ port }) => {
+    const body = JSON.stringify({ transition: REQUEST_TRANSITION.CANCEL });
+    const missingCsrf = await request({
+      port,
+      path: '/api/v1/requests/REQ-1/transitions',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+    assert.equal(missingCsrf.statusCode, 403);
+    assert.equal(missingCsrf.body.error.code, 'CSRF_INVALID');
+
+    const manipulated = await request({
+      port,
+      path: '/api/v1/requests/REQ-1/transitions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': CSRF_TOKEN,
+      },
+      body: JSON.stringify({
+        transition: REQUEST_TRANSITION.CANCEL,
+        status: REQUEST_STATUS.CONFIRMED,
+        requesterUserId: OTHER_USER_ID,
+      }),
+    });
+    assert.equal(manipulated.statusCode, 400);
+    assert.equal(manipulated.body.error.code, 'VALIDATION_FAILED');
+
+    const cancelled = await request({
+      port,
+      path: '/api/v1/requests/REQ-1/transitions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': CSRF_TOKEN,
+      },
+      body,
+    });
+    assert.equal(cancelled.statusCode, 200);
+    assert.equal(cancelled.body.request.status, REQUEST_STATUS.CANCELLED);
+  });
+});
+
+test('manager transition is authorized server-side while employee cannot invoke manager workflow action', async () => {
+  const manager = principal({
+    roles: [TENANT_ROLE.CONFERENCE_MANAGER],
+    permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_MANAGE],
+  });
+  const common = {
+    config: testConfig(),
+    verifyCsrf: async () => true,
+    loadTenant: async () => tenant(),
+    requestService: requestServiceFor(requestRecord()),
+  };
+  await withServer({ ...common, resolvePrincipal: async () => manager }, async ({ port }) => {
+    const confirmed = await request({
+      port,
+      path: '/api/v1/requests/REQ-1/transitions',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+      body: JSON.stringify({ transition: REQUEST_TRANSITION.CONFIRM }),
+    });
+    assert.equal(confirmed.statusCode, 200);
+    assert.equal(confirmed.body.request.status, REQUEST_STATUS.CONFIRMED);
+  });
+
+  await withServer({ ...common, resolvePrincipal: async () => principal() }, async ({ port }) => {
+    const denied = await request({
+      port,
+      path: '/api/v1/requests/REQ-1/transitions',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+      body: JSON.stringify({ transition: REQUEST_TRANSITION.CONFIRM }),
+    });
+    assert.equal(denied.statusCode, 403);
+    assert.equal(denied.body.error.code, 'FORBIDDEN');
+  });
 });
 
 test('logs contain only bounded metadata and do not copy authorization or cookie headers', async () => {

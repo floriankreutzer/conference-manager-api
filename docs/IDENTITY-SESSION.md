@@ -6,6 +6,8 @@ Root `AGENTS.md` remains authoritative. This document defines the provider-neutr
 
 Microsoft Entra ID is intentionally not part of the business-layer contract. A future Entra OIDC adapter validates provider tokens/claims and maps them to a trusted internal identity before calling the session issuance boundary.
 
+The recognized Tenant roles/permissions and object/workflow authorization rules are defined separately by `docs/AUTHORIZATION.md` and implemented by issue #51.
+
 ## Trust flow
 
 ```text
@@ -23,7 +25,7 @@ Browser request
         -> expiry/revocation/user security_version/Tenant lifecycle checks
            -> provider-neutral internal Principal
               -> Tenant context
-                 -> authorization/business layer
+                 -> deny-by-default authorization/business layer
 ```
 
 Browser input, provider claims received directly from the browser, email domains, tenant selectors, roles, permissions, or UI visibility never populate the internal Principal directly.
@@ -41,6 +43,8 @@ The trusted identity input contains only normalized server-side values:
 The provider identity reference is evidence/linkage for the identity adapter. It is not a Tenant ownership identifier and is not returned by the public session endpoint.
 
 Provider-specific fields such as Entra `tid`, `oid`, group claim formats, token types, issuer URLs, Graph objects, or Microsoft SDK types must remain inside the future identity adapter. Business services consume only the internal Principal.
+
+The session layer validates syntactic role/permission shape. The authorization layer additionally requires every role/permission value to belong to the recognized Tenant policy. Unknown authorization values fail closed instead of being ignored.
 
 ## Session token and persistence
 
@@ -90,7 +94,7 @@ Cookie-authenticated unsafe requests require a synchronizer token.
 
 The server derives a 256-bit CSRF token as HMAC-SHA-256 over the internal session ID using an external server-side secret. Pilot/Production require `CSRF_SECRET` to be supplied by deployment secret management.
 
-`GET /api/v1/session` returns the current CSRF token in JSON after the session and Tenant have been validated. The frontend may hold it in runtime memory and send it as `X-CSRF-Token` for POST/PUT/PATCH/DELETE requests. The existing frontend API client already supports this header contract.
+`GET /api/v1/session` returns the current CSRF token in JSON after the session, recognized authorization values and Tenant have been validated. The frontend may hold it in runtime memory and send it as `X-CSRF-Token` for POST/PUT/PATCH/DELETE requests. The existing frontend API client already supports this header contract.
 
 The CSRF token:
 
@@ -120,11 +124,11 @@ When an authorized role/permission mapping changes, the responsible server-side 
 
 If the user should remain signed in, an authorized identity/session orchestration path may rotate the known current session using the newly approved role/permission snapshot. The new session receives the new `security_version`; the old session remains unusable.
 
-Issue #51 defines the actual RBAC/object-ownership policy and the authorized operations that change roles/permissions. #50 only establishes the stale-privilege invalidation mechanism.
+Issue #51 defines the deny-by-default role/permission and object/workflow policy in `docs/AUTHORIZATION.md`. Operations that later mutate User role/permission assignments must use Tenant Admin authorization and increment `security_version`; the browser cannot rotate privileges by submitting new role values.
 
 ## Public session endpoint
 
-`GET /api/v1/session` returns only presentation-safe internal context:
+`GET /api/v1/session` returns only presentation-safe internal context after the role/permission snapshot is recognized by the authorization policy:
 
 - internal User ID;
 - internal Tenant ID and lifecycle status;
@@ -151,10 +155,12 @@ SaaS 1 will add the Microsoft Entra adapter. That adapter must validate the full
 
 The adapter must not allow browser-supplied internal IDs, roles, permissions, or Entra tenant IDs to override server-side mappings. Entra claims remain adapter input; the internal Principal remains the only business identity contract.
 
+The adapter's role/permission mapping output must use only authorization values recognized by `docs/AUTHORIZATION.md`. Unknown mapping output fails closed at the business authorization boundary.
+
 ## Operational considerations
 
 Expired/revoked session cleanup is an operational maintenance concern and may be implemented with bounded server-side cleanup once production job scheduling/observability is defined. Removing expired rows is not required for correctness because lookup always enforces expiration and revocation.
 
 CSRF secret rotation invalidates previously issued CSRF tokens but not the underlying authenticated session. A client can retrieve a new CSRF token with authenticated `GET /api/v1/session`.
 
-Session creation, revocation, rotation, authentication failures and security-version changes are security-relevant events. Persistent audit policy for those events is owned by issue #52.
+Session creation, revocation, rotation, authentication failures, authorization decisions and security-version changes are security-relevant events. Persistent audit policy for those events is owned by issue #52.

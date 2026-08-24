@@ -62,6 +62,25 @@ SameSite and Origin validation are defense in depth; they do not replace CSRF ve
 
 See `docs/IDENTITY-SESSION.md` for the full contract.
 
+## Authorization controls (#51)
+
+- Business authorization is deny-by-default after session Principal and Tenant resolution.
+- Recognized Tenant roles are `employee`, `conference_manager` and `tenant_admin`; `platform_admin` is not a Tenant role.
+- Any unknown role or permission invalidates the Principal for business authorization rather than being ignored.
+- A capability requires both the corresponding internal permission and a Tenant role allowed to use it.
+- Tenant Admin permissions do not imply Conference Manager request access.
+- Request lookup uses the authenticated internal Tenant ID plus request ID; there is no unscoped global Request lookup.
+- Employee Request reads/cancellation additionally require server-side owner equality with `principal.userId`.
+- Missing, cross-Tenant and same-Tenant/non-owned Employee Requests are concealed as `404 NOT_FOUND` to reduce BOLA/IDOR existence disclosure.
+- Conference Manager Request access remains restricted to the authenticated Tenant.
+- Client-controlled `tenantId`, requester/owner, role, permission, `status` and `nextStatus` fields are not accepted as workflow authority.
+- Request workflow transitions are allowlisted server-side with explicit role/permission, current-state, next-state and reason rules.
+- State-changing Request transitions require valid CSRF protection in addition to authorization.
+- PostgreSQL constrains Request workflow status/reason state and the update includes the previously authorized current status to prevent stale/racing writes from silently winning.
+- Public Request output omits internal Tenant ownership and requester User ID in this foundation contract.
+
+See `docs/AUTHORIZATION.md` for the complete permission/transition matrix.
+
 ## Supply-chain controls
 
 The repository uses locked installs without lifecycle scripts, `npm audit --audit-level=high`, Dependabot, full-history Gitleaks and the repository-local Dependency Policy gate.
@@ -72,9 +91,9 @@ GitHub-native Dependency Review is unavailable for this private user-owned repos
 
 ## Important limitations
 
-Issue #50 establishes authentication/session mechanics but does not define RBAC/object-level business authorization. Issue #51 owns those policies and permission matrices.
+Issue #51 establishes the Tenant role/permission and Request object/workflow policy. It does not create a platform-operator authorization model, and it does not infer site/location/department scope from provider or browser data. A finer Manager scope requires a future explicit server-side scope model.
 
-The `audit_events` table provides relational ownership only. Issue #52 owns append-only/tamper-evident audit behavior and security-event persistence, including session issuance/revocation/rotation events.
+The `audit_events` table provides relational ownership only. Issue #52 owns append-only/tamper-evident audit behavior and security-event persistence, including authorization decisions and workflow/security events.
 
 The local in-process rate limiter is not a distributed production quota solution. Trusted proxy/client-key semantics and shared/edge abuse controls remain operational/security-baseline work.
 
@@ -82,14 +101,15 @@ The Entra OIDC adapter is not implemented in SaaS 0. SaaS 1 must validate OIDC i
 
 ## OWASP/CWE mapping
 
-- Broken Access Control / BOLA / IDOR (CWE-639/CWE-862): Tenant/repository/DB boundaries are enforced; user/object business authorization remains #51.
+- Broken Access Control / BOLA / IDOR (CWE-639/CWE-862): Tenant-scoped lookup, Employee ownership, role/permission intersection, concealed non-owned objects and workflow authorization are implemented and negatively tested.
 - Authentication/session weaknesses: opaque high-entropy cookies, server-side expiry/revocation, rotation and security-version invalidation are implemented and negatively tested.
-- CSRF (CWE-352): unsafe protected cookie-authenticated requests require session-bound HMAC synchronizer tokens.
-- SQL injection (CWE-89): fixed SQL plus PostgreSQL parameter binding; real database integration tests execute the persistence paths.
+- CSRF (CWE-352): unsafe protected cookie-authenticated requests require session-bound HMAC synchronizer tokens, including Request transitions.
+- SQL injection (CWE-89): fixed SQL plus PostgreSQL parameter binding; real database integration tests execute Request/session persistence paths.
 - XSS (CWE-79): API emits JSON/no HTML and sets default-deny CSP; frontend rendering remains separately governed.
 - SSRF (CWE-918): no provider outbound transport exists yet; future destinations remain fixed/allowlisted requirements.
-- Information disclosure: session raw tokens, cookie headers, provider references and DB secrets are excluded from public output/logging.
-- Session fixation/stale privileges: successful rotation replaces the credential; User `security_version` invalidates stale privilege snapshots.
+- Information disclosure: session credentials/provider references/DB secrets are excluded from public output; Employee object probing conceals non-owned Request existence.
+- Privilege escalation/confused deputy: unknown roles/permissions fail closed, Tenant Admin does not inherit Manager rights and target workflow state is selected only by server policy.
+- Replay/stale state: session revocation/security-version checks protect credentials; Request workflow writes use expected-current-state predicates.
 - Resource exhaustion: HTTP, database pool/query and session TTL bounds are explicit; capacity/load tuning remains operational work.
 
 Automated checks are evidence only for the exercised controls. They are not a penetration test or complete OWASP/regulatory compliance statement.
