@@ -1,4 +1,5 @@
 import { createRequestService } from './application/request-service.js';
+import { createAuditService } from './audit/audit-service.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { loadConfig } from './config.js';
 import { createSessionService } from './identity/session-service.js';
@@ -10,9 +11,16 @@ const config = loadConfig();
 const logger = createLogger();
 const persistence = config.databaseUrl ? createPostgresPersistence(config) : null;
 const authorizationPolicy = createAuthorizationPolicy();
+const auditService = persistence
+  ? createAuditService({
+    repository: persistence.auditRepository,
+    authorizationPolicy,
+  })
+  : null;
 const sessionService = persistence
   ? createSessionService({
     repository: persistence.sessionRepository,
+    auditService,
     publicOrigin: config.publicOrigin,
     csrfSecret: config.csrfSecret,
     sessionTtlSeconds: config.sessionTtlSeconds,
@@ -22,12 +30,14 @@ const requestService = persistence
   ? createRequestService({
     repository: persistence.requestRepository,
     authorizationPolicy,
+    auditService,
   })
   : null;
 const server = createHttpServer({
   config,
   logger,
   authorizationPolicy,
+  auditService,
   sessionService,
   requestService,
   loadTenant: persistence?.loadTenant,
