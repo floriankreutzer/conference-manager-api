@@ -8,6 +8,8 @@ const ROUTES = new Set([
   'onboarding_claim',
   'session',
   'audit',
+  'tenant_users',
+  'tenant_user_roles',
   'request',
   'request_transition',
   'not_found',
