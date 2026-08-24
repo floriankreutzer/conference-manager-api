@@ -6,7 +6,7 @@ Trusted production backend for the Conference Manager SaaS application.
 
 This repository owns the server-side trust boundary defined by `conference-manager/docs/SAAS-PRODUCTION-TOPOLOGY.md`. The browser remains untrusted.
 
-The SaaS 0 foundation through issue #55 now provides:
+The SaaS 0 foundation through issue #57 now provides:
 
 - Node.js 22 native HTTP API with same-origin request hardening and secure error/health contracts;
 - canonical internal Tenant model and hard Tenant isolation;
@@ -43,10 +43,14 @@ The SaaS 0 foundation through issue #55 now provides:
 - aggregate support health with validated service version/build/environment metadata;
 - no browser LocalStorage/sessionStorage authentication, authorization, entitlement or provider authority;
 - secret/PII-minimized operational logging and audit payloads;
+- a complete browser/edge/API/database/Entra/Graph production threat model with OWASP/CWE mapping;
+- a fail-closed Pilot/Production secure-configuration baseline for TLS, headers, cookies, CORS, database TLS, secrets and logging;
+- explicit SAST/SCA/dependency/secret controls and a live HTTP DAST smoke release gate;
+- a defined independent Pilot penetration-test scope and readiness exit criteria;
 - regression/progression/adversarial tests for HTTP, Tenant, persistence, session, authorization, audit, entitlement,
-  booking-integration and observability boundaries.
+  booking-integration, observability and production-security boundaries.
 
-Production provider adapters, frontend production-persistence migration and the complete production threat/configuration baseline remain later SaaS 0/SaaS 1 work.
+The sibling frontend repository now owns the explicit demo versus production persistence migration under SaaS 0 issue #56. Production Entra/Microsoft Graph adapters remain SaaS 1 work and must satisfy the provider requirements in `docs/THREAT-MODEL.md` before enablement.
 
 ## Run locally
 
@@ -62,6 +66,8 @@ npm start
 A non-persistent development composition may leave `CSRF_SECRET` and `AUDIT_HMAC_SECRET` empty. Any runtime configured with `DATABASE_URL` must provide a stable `AUDIT_HMAC_SECRET` of at least 32 bytes so persisted audit chains remain verifiable across restarts. Pilot/Production additionally require an externally managed `CSRF_SECRET`, an HTTPS public origin, certificate-verifying database TLS, `SERVICE_VERSION` and `BUILD_ID`.
 
 Do not rotate `AUDIT_HMAC_SECRET` as an ordinary configuration change. Key rotation requires a reviewed audit-integrity migration/checkpoint strategy because existing events were signed with the previous key.
+
+The checked-in `.env.example` is a development template. Pilot/Production configuration and secrets must be supplied by protected deployment configuration according to `docs/PRODUCTION-SECURE-CONFIGURATION.md`.
 
 ## API foundation
 
@@ -87,8 +93,11 @@ See:
 - `docs/IDENTITY-SESSION.md`
 - `docs/OBSERVABILITY.md`
 - `docs/PERSISTENCE.md`
+- `docs/PILOT-PENETRATION-TEST.md`
+- `docs/PRODUCTION-SECURE-CONFIGURATION.md`
 - `docs/SECURITY.md`
 - `docs/TENANCY.md`
+- `docs/THREAT-MODEL.md`
 
 ## Required validation
 
@@ -97,6 +106,8 @@ npm run check
 npm run audit
 npm run test:db
 ```
+
+`npm run check` includes the security-baseline architecture gate and the live HTTP DAST smoke gate in addition to the existing syntax, architecture, SAST-oriented static, dependency, secret, style, unit, regression, progression and adversarial checks.
 
 CI performs locked installs without lifecycle scripts, high-severity audit, repository quality/security gates and PostgreSQL 18 integration tests. The separate Dependency Policy validates dependency/lock/license/lifecycle policy, and Gitleaks scans repository history.
 
