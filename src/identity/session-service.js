@@ -43,6 +43,17 @@ function safeEqual(left, right) {
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
+function normalizeSessionIdentity(value) {
+  const identity = normalizeTrustedIdentity(value);
+  if (!Number.isSafeInteger(value?.securityVersion) || value.securityVersion < 1) {
+    throw new TypeError('IDENTITY_SECURITY_VERSION_INVALID');
+  }
+  return Object.freeze({
+    ...identity,
+    securityVersion: value.securityVersion,
+  });
+}
+
 function sessionRecord(identity, { id, token, issuedAt, expiresAt }) {
   return Object.freeze({
     id,
@@ -52,6 +63,7 @@ function sessionRecord(identity, { id, token, issuedAt, expiresAt }) {
     providerIdentity: identity.providerIdentity,
     roles: identity.roles,
     permissions: identity.permissions,
+    securityVersion: identity.securityVersion,
     issuedAt,
     expiresAt,
   });
@@ -138,7 +150,7 @@ export function createSessionService({
 
   return Object.freeze({
     async issue(trustedIdentity, { correlationId } = {}) {
-      const identity = normalizeTrustedIdentity(trustedIdentity);
+      const identity = normalizeSessionIdentity(trustedIdentity);
       const generated = generateSession(identity);
       const auditEvent = auditService.createActorEvent({
         tenantId: identity.tenantId,
@@ -224,7 +236,7 @@ export function createSessionService({
 
     async rotate(principalValue, trustedIdentity, { correlationId } = {}) {
       const principal = normalizePrincipal(principalValue);
-      const identity = normalizeTrustedIdentity(trustedIdentity);
+      const identity = normalizeSessionIdentity(trustedIdentity);
       if (identity.userId !== principal.userId || identity.tenantId !== principal.tenantId) {
         throw new SessionServiceError('SESSION_ROTATION_SUBJECT_MISMATCH');
       }
