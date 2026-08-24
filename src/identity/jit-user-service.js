@@ -4,17 +4,15 @@ import {
   AUDIT_OUTCOME,
   AUDIT_RETENTION_CLASS,
 } from '../audit/event.js';
-import { PERMISSION, TENANT_ROLE } from '../authorization/policy.js';
+import {
+  TENANT_ROLE,
+  tenantAuthorizationSnapshot,
+} from '../authorization/policy.js';
 import { isInternalUuid } from '../domain/identifiers.js';
 import { normalizeTrustedIdentity } from './principal.js';
 
 const PROVIDER_PATTERN = /^[a-z][a-z0-9_-]{1,63}$/;
 const REFERENCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const DEFAULT_ROLES = Object.freeze([TENANT_ROLE.EMPLOYEE]);
-const DEFAULT_PERMISSIONS = Object.freeze([
-  PERMISSION.REQUEST_READ,
-  PERMISSION.REQUEST_CANCEL,
-]);
 
 function normalizedExternalIdentity(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -77,6 +75,7 @@ export function createJitUserService({
       const occurredAt = changedAt.toISOString();
       const newUserId = idFactory();
       if (!isInternalUuid(newUserId)) throw new TypeError('JIT_USER_ID_INVALID');
+      const bootstrapTenantAdmin = tenantBinding.claimantProviderUserReference === external.userReference;
 
       const provisionAuditEvent = auditService.createActorEvent({
         tenantId: tenantBinding.tenantId,
@@ -92,6 +91,22 @@ export function createJitUserService({
         retentionClass: AUDIT_RETENTION_CLASS.SECURITY,
         occurredAt,
       });
+      const bootstrapAuditEvent = bootstrapTenantAdmin
+        ? auditService.createActorEvent({
+          tenantId: tenantBinding.tenantId,
+          actorUserId: newUserId,
+          correlationId,
+          action: AUDIT_ACTION.TENANT_USER_PERMISSIONS_CHANGED,
+          targetType: 'user',
+          targetId: newUserId,
+          previousState: { conferenceManager: false, tenantAdmin: false },
+          newState: { conferenceManager: false, tenantAdmin: true },
+          outcome: AUDIT_OUTCOME.SUCCESS,
+          metadata: { operation: 'bootstrap_tenant_admin', source: 'tenant_claimant' },
+          retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
+          occurredAt,
+        })
+        : null;
 
       const result = await userRepository.resolveOrProvision({
         tenantId: tenantBinding.tenantId,
@@ -102,6 +117,8 @@ export function createJitUserService({
         newUserId,
         changedAt,
         provisionAuditEvent,
+        bootstrapTenantAdmin,
+        bootstrapAuditEvent,
         profileAuditEventFor(userId) {
           return auditService.createActorEvent({
             tenantId: tenantBinding.tenantId,
@@ -127,6 +144,10 @@ export function createJitUserService({
         throw new TypeError('JIT_USER_RESOLUTION_INVALID');
       }
 
+      const snapshot = tenantAuthorizationSnapshot([
+        TENANT_ROLE.EMPLOYEE,
+        ...(result.identity.elevatedRoles || []),
+      ]);
       return Object.freeze({
         status: 'authenticated',
         trustedIdentity: normalizeTrustedIdentity({
@@ -136,8 +157,8 @@ export function createJitUserService({
             provider: external.provider,
             reference: `${external.tenantReference}:${external.userReference}`,
           },
-          roles: DEFAULT_ROLES,
-          permissions: DEFAULT_PERMISSIONS,
+          roles: snapshot.roles,
+          permissions: snapshot.permissions,
         }),
       });
     },

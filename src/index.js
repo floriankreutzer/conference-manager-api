@@ -1,4 +1,5 @@
 import { createRequestService } from './application/request-service.js';
+import { createTenantUserAdministrationService } from './application/tenant-user-administration-service.js';
 import { createAuditService } from './audit/audit-service.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { loadConfig } from './config.js';
@@ -75,6 +76,13 @@ const requestService = persistence
     auditService,
   })
   : null;
+const tenantUserAdministrationService = persistence && auditService
+  ? createTenantUserAdministrationService({
+    repository: persistence.tenantUserAdminRepository,
+    authorizationPolicy,
+    auditService,
+  })
+  : null;
 const server = createHttpServer({
   config,
   logger,
@@ -85,6 +93,7 @@ const server = createHttpServer({
   entraAuthService,
   onboardingService,
   requestService,
+  tenantUserAdministrationService,
   loadTenant: persistence?.loadTenant,
   readinessChecks: persistence?.readinessChecks || [],
 });

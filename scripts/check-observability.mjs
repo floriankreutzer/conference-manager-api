@@ -29,6 +29,8 @@ for (const required of [
   'recordAuthenticationFailure',
   'recordAuthorizationDenied',
   'recordApiRequest',
+  "return 'tenant_users'",
+  "return 'tenant_user_roles'",
   "return 'request_transition'",
   "return 'request'",
 ]) {
@@ -44,8 +46,12 @@ for (const forbidden of ['cookie', 'csrf', 'providerReference', 'tenantId', 'use
     throw new Error(`Operational logger must not accept sensitive or tenant/object identifier ${forbidden}.`);
   }
 }
-if (!logger.includes('route: assertEnum(route, ROUTES')) {
-  throw new Error('Operational request logging must constrain route labels.');
+for (const required of [
+  "'tenant_users'",
+  "'tenant_user_roles'",
+  'route: assertEnum(route, ROUTES',
+]) {
+  if (!logger.includes(required)) throw new Error(`Operational request logging is missing bounded route contract ${required}.`);
 }
 
 const booking = await readFile('src/application/booking-integration-service.js', 'utf8');

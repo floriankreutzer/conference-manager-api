@@ -44,6 +44,11 @@ const ROLE_PERMISSIONS = Object.freeze({
   ]),
 });
 
+const TENANT_ROLE_ORDER = Object.freeze([
+  TENANT_ROLE.EMPLOYEE,
+  TENANT_ROLE.CONFERENCE_MANAGER,
+  TENANT_ROLE.TENANT_ADMIN,
+]);
 const KNOWN_ROLES = new Set(Object.keys(ROLE_PERMISSIONS));
 const KNOWN_PERMISSIONS = new Set(Object.values(PERMISSION));
 const MANAGER_TRANSITIONS = Object.freeze({
@@ -146,6 +151,31 @@ function employeeCancellation(principal, request, transition, reason) {
     expectedStatus: request.status,
     nextStatus: REQUEST_STATUS.CANCELLED,
     reason: normalizeReason(reason, 'forbidden'),
+  });
+}
+
+export function tenantAuthorizationSnapshot(roles) {
+  if (!Array.isArray(roles) || roles.length < 1 || roles.length > TENANT_ROLE_ORDER.length) {
+    deny('ROLE_NOT_AUTHORIZED');
+  }
+  if (new Set(roles).size !== roles.length || roles.some((role) => !KNOWN_ROLES.has(role))) {
+    deny('ROLE_NOT_AUTHORIZED');
+  }
+  const normalizedRoles = TENANT_ROLE_ORDER.filter((role) => roles.includes(role));
+  if (normalizedRoles.length !== roles.length) deny('ROLE_NOT_AUTHORIZED');
+  const permissions = [];
+  const seen = new Set();
+  for (const role of normalizedRoles) {
+    for (const permission of ROLE_PERMISSIONS[role]) {
+      if (!seen.has(permission)) {
+        seen.add(permission);
+        permissions.push(permission);
+      }
+    }
+  }
+  return Object.freeze({
+    roles: Object.freeze(normalizedRoles),
+    permissions: Object.freeze(permissions),
   });
 }
 

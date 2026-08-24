@@ -3,8 +3,9 @@ import { readFile } from 'node:fs/promises';
 const service = await readFile('src/identity/jit-user-service.js', 'utf8');
 for (const required of [
   'TENANT_ROLE.EMPLOYEE',
-  'PERMISSION.REQUEST_READ',
-  'PERMISSION.REQUEST_CANCEL',
+  'tenantAuthorizationSnapshot',
+  'snapshot.roles',
+  'snapshot.permissions',
   'external.tenantReference',
   'providerTenantReference: external.tenantReference',
   'tenantBinding.tenantId',
@@ -15,6 +16,18 @@ for (const required of [
 }
 if (/\b(?:email|groups)\b/i.test(service)) {
   throw new Error('JIT authorization must not derive authority from email or provider groups.');
+}
+
+const authorizationPolicy = await readFile('src/authorization/policy.js', 'utf8');
+for (const required of [
+  "EMPLOYEE: 'employee'",
+  "REQUEST_READ: 'request:read'",
+  "REQUEST_CANCEL: 'request:cancel'",
+  'tenantAuthorizationSnapshot',
+]) {
+  if (!authorizationPolicy.includes(required)) {
+    throw new Error(`Central authorization policy is missing JIT baseline invariant ${required}.`);
+  }
 }
 
 const repository = await readFile('src/persistence/postgres/jit-user-repository.js', 'utf8');
@@ -69,8 +82,9 @@ if (!tenantModel.includes("'user_identity_binding'")) {
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!pool.includes('CURRENT_SCHEMA_VERSION = 9')) {
-  throw new Error('Runtime schema readiness must include JIT user migration version 9.');
+const schemaMatch = pool.match(/CURRENT_SCHEMA_VERSION\s*=\s*(\d+)/);
+if (!schemaMatch || Number(schemaMatch[1]) < 9) {
+  throw new Error('Runtime schema readiness must include JIT user migration version 9 or later.');
 }
 
 console.log('JIT user provisioning boundary check passed.');

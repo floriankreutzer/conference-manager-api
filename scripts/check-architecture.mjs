@@ -443,8 +443,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!pool.includes('CURRENT_SCHEMA_VERSION = 9')) {
-  throw new Error('Runtime schema readiness must require JIT User migration version 9.');
+if (!pool.includes('CURRENT_SCHEMA_VERSION = 10')) {
+  throw new Error('Runtime schema readiness must require Tenant role administration migration version 10.');
 }
 
 const index = await readFile('src/index.js', 'utf8');
@@ -524,6 +524,8 @@ for (const migration of [
   'migrations/008_tenant_onboarding_identity_claims.down.sql',
   'migrations/009_jit_user_identity_bindings.up.sql',
   'migrations/009_jit_user_identity_bindings.down.sql',
+  'migrations/010_tenant_role_administration.up.sql',
+  'migrations/010_tenant_role_administration.down.sql',
 ]) {
   await readFile(migration, 'utf8');
 }
