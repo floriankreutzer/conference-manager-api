@@ -47,15 +47,18 @@ function request({ port, path, method = 'GET', headers = {}, body = null }) {
 }
 
 async function withServer({ onboardingService, entraAuthService }, run) {
-  const config = loadConfig({ NODE_ENV: 'test', PUBLIC_ORIGIN: 'http://localhost:3000' });
+  const config = { ...loadConfig({ NODE_ENV: 'test', PUBLIC_ORIGIN: 'http://localhost:3000' }) };
   const server = createHttpServer({ config, onboardingService, entraAuthService });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const port = server.address().port;
-  config.publicOrigin = `http://localhost:${port}`;
   try {
-    await run(port);
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('TEST_SERVER_ADDRESS_INVALID');
+    config.publicOrigin = `http://localhost:${address.port}`;
+    await run(address.port);
   } finally {
-    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    if (server.listening) {
+      await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
   }
 }
 
