@@ -32,8 +32,8 @@ Pilot and Production require all of:
 
 - `ENTRA_CLIENT_ID`: application/client ID of the multi-tenant SaaS registration;
 - `ENTRA_CLIENT_SECRET`: deployment-managed confidential-client credential;
-- `OIDC_TRANSACTION_SECRET`: independent high-entropy server secret used to derive PKCE verifiers;
-- `PUBLIC_ORIGIN`: the exact HTTPS origin used to derive the redirect URI;
+- `OIDC_TRANSACTION_SECRET`: independent high-entropy server secret used to derive PKCE verifiers and browser-binding values;
+- `PUBLIC_ORIGIN`: the exact HTTPS origin used to derive the redirect URI and secure-cookie policy;
 - PostgreSQL and the existing session/audit secrets required by the production baseline.
 
 `ENTRA_CLIENT_SECRET` and `OIDC_TRANSACTION_SECRET` must be supplied by the deployment secret store. They must not be committed, returned to the browser, logged, placed in URLs, or copied into Tenant configuration.
@@ -52,17 +52,36 @@ The backend:
 2. stores only SHA-256 hashes of `state` and `nonce` in the short-lived PostgreSQL OIDC transaction table;
 3. derives a PKCE verifier using the server-only OIDC transaction secret and the random state;
 4. derives the S256 PKCE challenge;
-5. asks MSAL Node to generate the authorization URL for `openid profile`;
-6. verifies that the resulting authorization URL remains on the configured Microsoft authority and expected authorization path;
-7. redirects the browser to Microsoft.
+5. derives a separate HMAC-SHA-256 browser-binding value from the same random state using the server-only OIDC transaction secret;
+6. sets that binding in the transient `cm_oidc_tx` cookie;
+7. asks MSAL Node to generate the authorization URL for `openid profile`;
+8. verifies that the resulting authorization URL remains on the configured Microsoft authority and expected authorization path;
+9. redirects the browser to Microsoft.
 
 The transaction expires after a bounded interval; the default is 600 seconds and the accepted configuration range is 120-900 seconds.
+
+The transient browser-binding cookie is not an application session and contains no Tenant/User/provider claim. It uses:
+
+- `HttpOnly`;
+- `SameSite=Lax`, which allows the top-level authorization redirect back from Microsoft while reducing cross-site request exposure;
+- callback-only `Path=/api/v1/auth/microsoft/callback`;
+- `Secure` for HTTPS, which is mandatory in Pilot/Production;
+- bounded `Max-Age` equal to the OIDC transaction TTL;
+- no `Domain` attribute.
+
+The cookie value is an HMAC-derived verifier and is not the plaintext OIDC state. It is not persisted in PostgreSQL.
 
 ### 2. Callback
 
 `GET /api/v1/auth/microsoft/callback` accepts only the bounded Microsoft callback fields documented by the HTTP route. Unknown or duplicate fields fail validation.
 
-Before authorization-code redemption, the backend atomically consumes the hashed state from PostgreSQL. A state therefore succeeds at most once across multiple API instances. Expired, unknown, malformed, or replayed states fail closed.
+Before the globally stored OIDC state can be consumed, the backend requires the transient `cm_oidc_tx` value presented by the callback browser to match the server-derived binding for that exact state using a timing-safe comparison. Missing, malformed, duplicated, or mismatched browser binding fails authentication without consuming the stored state.
+
+This additional browser proof prevents a valid callback initiated and authenticated in one browser from being replayed as a login-CSRF/session-swap link into a different browser. Knowledge of the callback URL and state alone is insufficient to establish a Conference Manager session.
+
+After the browser binding succeeds, the backend atomically consumes the hashed state from PostgreSQL. A state therefore succeeds at most once across multiple API instances. Expired, unknown, malformed, or replayed states fail closed.
+
+The transient browser-binding cookie is cleared on every syntactically valid callback attempt before a final application result is returned. On successful authentication, the response clears `cm_oidc_tx` and separately sets the normal `cm_session` cookie. On provider rejection, authentication failure, or onboarding-required outcome, no application session cookie is issued.
 
 Provider rejection is converted to the fixed same-origin result `/?auth=authentication_failed`; Microsoft error descriptions or provider payloads are not reflected to the browser or logs.
 
@@ -123,17 +142,21 @@ A validated Entra Tenant reference remains external identity metadata; it never 
 
 Logout remains `DELETE /api/v1/session` and uses the existing server-side session revocation and CSRF contract. Clearing a browser cookie alone is not considered logout.
 
-## Replay and concurrency properties
+## Replay, login-CSRF, and concurrency properties
 
-`oidc_auth_transactions` is shared PostgreSQL state rather than process-local memory. The callback consumes a transaction with one atomic `DELETE ... RETURNING` statement constrained by provider, state hash, and expiration time.
+`oidc_auth_transactions` is shared PostgreSQL state rather than process-local memory. The callback consumes a transaction with one atomic `DELETE ... RETURNING` statement constrained by provider, state hash, and expiration time, but only after the initiating-browser HMAC binding has been validated.
 
 Consequences:
 
+- a callback URL/state captured from one browser cannot establish a session in another browser without the matching HttpOnly transaction cookie;
+- a wrong/missing browser binding does not consume the valid server transaction;
 - the same callback state cannot succeed twice;
 - two API instances cannot both consume the same state;
 - expired state cannot be redeemed;
-- state and nonce plaintext are not persisted;
+- state, nonce, and browser-binding plaintext are not persisted;
 - no Tenant/User identity is persisted before provider authentication succeeds.
+
+The browser-binding cookie deliberately serializes one active Microsoft login transaction per browser cookie path. Starting a later login replaces the earlier transient cookie; an older callback then fails safely and the user can restart login.
 
 ## Operational registration checklist
 
@@ -147,7 +170,7 @@ Before enabling Pilot authentication in a real environment:
 6. Configure an independent `OIDC_TRANSACTION_SECRET` with at least 32 bytes of entropy-equivalent secret material.
 7. Deploy schema migration 007 before routing authentication traffic.
 8. Verify login from at least two independent organizational Entra test tenants.
-9. Verify wrong-audience, wrong-issuer, expired-token, nonce/state replay, consent/rejection, logout, and unsupported-Tenant behavior.
+9. Verify wrong-audience, wrong-issuer, expired-token, nonce/state replay, missing/wrong browser binding, consent/rejection, logout, and unsupported-Tenant behavior.
 10. Record the application registration/credential owner, expiry/rotation procedure, and evidence without storing the credential itself.
 
 Steps involving an actual Microsoft tenant/application registration are external operational verification. Repository tests use deterministic provider doubles and do not constitute evidence that a specific production Entra registration is configured correctly.
@@ -161,6 +184,7 @@ Repository coverage for this boundary includes:
 - expired/not-yet-valid/invalid-version claims;
 - nonce mismatch;
 - state expiry and replay;
+- initiating-browser binding, missing/mismatched binding, and cookie parser hardening;
 - provider rejection;
 - manipulated callback/query values;
 - two independent external Tenant identities;
