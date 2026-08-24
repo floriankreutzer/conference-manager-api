@@ -5,6 +5,10 @@ import { loadConfig } from '../src/config.js';
 import { EntraAuthenticationError } from '../src/identity/entra-errors.js';
 import { createHttpServer } from '../src/server.js';
 
+const BROWSER_BINDING = 'B'.repeat(43);
+const TRANSACTION_COOKIE = `cm_oidc_tx=${BROWSER_BINDING}; Path=/api/v1/auth/microsoft/callback; HttpOnly; SameSite=Lax; Max-Age=600`;
+const CLEARED_TRANSACTION_COOKIE = 'cm_oidc_tx=; Path=/api/v1/auth/microsoft/callback; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT';
+
 function request({ port, path, method = 'GET', headers = {} }) {
   return new Promise((resolve, reject) => {
     const req = http.request({
@@ -48,16 +52,26 @@ async function withServer(entraAuthService, run) {
   }
 }
 
-test('Microsoft login route redirects only to the provider-generated authorization URL', async () => {
+function callbackService(complete) {
+  return {
+    async complete(value) { return complete(value); },
+    clearCookie() { return CLEARED_TRANSACTION_COOKIE; },
+  };
+}
+
+test('Microsoft login route sets only a transient browser-bound transaction cookie and redirects', async () => {
   const authorizationUrl = 'https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?client_id=test';
   await withServer({
-    async start() { return { authorizationUrl }; },
+    async start() { return { authorizationUrl, setCookie: TRANSACTION_COOKIE }; },
   }, async (port) => {
     const response = await request({ port, path: '/api/v1/auth/microsoft/login' });
     assert.equal(response.statusCode, 302);
     assert.equal(response.headers.location, authorizationUrl);
     assert.equal(response.headers['cache-control'], 'no-store');
     assert.equal(response.body, null);
+    assert.equal(response.headers['set-cookie'].length, 1);
+    assert.match(response.headers['set-cookie'][0], /^cm_oidc_tx=/);
+    assert.equal(response.headers['set-cookie'][0].includes('cm_session='), false);
   });
 });
 
@@ -71,72 +85,91 @@ test('Microsoft login route rejects browser-selected tenant or other query input
   });
 });
 
-test('successful Entra callback sets only the server session cookie and redirects to a fixed local path', async () => {
+test('successful Entra callback requires browser binding, clears it, then sets the server session cookie', async () => {
   let callback;
-  await withServer({
-    async complete(value) {
-      callback = value;
-      return { status: 'authenticated', setCookie: 'cm_session=opaque; Path=/api; HttpOnly; SameSite=Lax' };
-    },
-  }, async (port) => {
+  await withServer(callbackService(async (value) => {
+    callback = value;
+    return { status: 'authenticated', setCookie: 'cm_session=opaque; Path=/api; HttpOnly; SameSite=Lax' };
+  }), async (port) => {
     const response = await request({
       port,
       path: '/api/v1/auth/microsoft/callback?code=valid-code&state=valid-state',
+      headers: { Cookie: `cm_oidc_tx=${BROWSER_BINDING}` },
     });
     assert.equal(response.statusCode, 303);
     assert.equal(response.headers.location, '/');
-    assert.match(response.headers['set-cookie'][0], /^cm_session=opaque;/);
+    assert.equal(response.headers['set-cookie'].length, 2);
+    assert.match(response.headers['set-cookie'][0], /^cm_oidc_tx=;/);
+    assert.match(response.headers['set-cookie'][1], /^cm_session=opaque;/);
     assert.equal(callback.code, 'valid-code');
     assert.equal(callback.state, 'valid-state');
     assert.equal(callback.providerError, false);
+    assert.equal(callback.browserBinding, BROWSER_BINDING);
     assert.match(callback.correlationId, /^[0-9a-f-]{36}$/i);
   });
 });
 
-test('valid but unresolved Entra identity routes to tenant onboarding without a session cookie', async () => {
-  await withServer({
-    async complete() { return { status: 'onboarding_required' }; },
-  }, async (port) => {
+test('valid but unresolved Entra identity clears the transaction cookie without issuing a session', async () => {
+  await withServer(callbackService(async () => ({ status: 'onboarding_required' })), async (port) => {
     const response = await request({
       port,
       path: '/api/v1/auth/microsoft/callback?code=valid-code&state=valid-state',
+      headers: { Cookie: `cm_oidc_tx=${BROWSER_BINDING}` },
     });
     assert.equal(response.statusCode, 303);
     assert.equal(response.headers.location, '/?auth=tenant_onboarding_required');
-    assert.equal(response.headers['set-cookie'], undefined);
+    assert.equal(response.headers['set-cookie'].length, 1);
+    assert.match(response.headers['set-cookie'][0], /^cm_oidc_tx=;/);
+    assert.equal(response.headers['set-cookie'][0].includes('cm_session='), false);
   });
 });
 
-test('provider rejection and invalid state use fixed safe failure redirects without provider details', async () => {
-  await withServer({
-    async complete({ providerError }) {
-      if (providerError) return { status: 'authentication_rejected' };
-      throw new EntraAuthenticationError('OIDC_STATE_INVALID');
-    },
-  }, async (port) => {
+test('provider rejection, missing browser binding, and invalid state clear OIDC state and use fixed safe redirects', async () => {
+  await withServer(callbackService(async ({ providerError, browserBinding }) => {
+    if (!browserBinding) throw new EntraAuthenticationError('OIDC_BROWSER_BINDING_INVALID');
+    if (providerError) return { status: 'authentication_rejected' };
+    throw new EntraAuthenticationError('OIDC_STATE_INVALID');
+  }), async (port) => {
     const providerRejected = await request({
       port,
       path: '/api/v1/auth/microsoft/callback?error=access_denied&error_description=sensitive-details&state=valid-state',
+      headers: { Cookie: `cm_oidc_tx=${BROWSER_BINDING}` },
     });
     assert.equal(providerRejected.statusCode, 303);
     assert.equal(providerRejected.headers.location, '/?auth=authentication_failed');
     assert.equal(providerRejected.headers.location.includes('sensitive-details'), false);
+    assert.match(providerRejected.headers['set-cookie'][0], /^cm_oidc_tx=;/);
+
+    const missingBinding = await request({
+      port,
+      path: '/api/v1/auth/microsoft/callback?code=valid-code&state=valid-state',
+    });
+    assert.equal(missingBinding.statusCode, 303);
+    assert.equal(missingBinding.headers.location, '/?auth=authentication_failed');
+    assert.match(missingBinding.headers['set-cookie'][0], /^cm_oidc_tx=;/);
 
     const invalidState = await request({
       port,
       path: '/api/v1/auth/microsoft/callback?code=valid-code&state=invalid-state',
+      headers: { Cookie: `cm_oidc_tx=${BROWSER_BINDING}` },
     });
     assert.equal(invalidState.statusCode, 303);
     assert.equal(invalidState.headers.location, '/?auth=authentication_failed');
+    assert.match(invalidState.headers['set-cookie'][0], /^cm_oidc_tx=;/);
   });
 });
 
 test('callback rejects unknown, duplicate, and browser-controlled tenant parameters before auth completion', async () => {
   let calls = 0;
+  let clearCalls = 0;
   await withServer({
     async complete() {
       calls += 1;
       return { status: 'onboarding_required' };
+    },
+    clearCookie() {
+      clearCalls += 1;
+      return CLEARED_TRANSACTION_COOKIE;
     },
   }, async (port) => {
     for (const path of [
@@ -149,5 +182,6 @@ test('callback rejects unknown, duplicate, and browser-controlled tenant paramet
       assert.equal(response.body.error.code, 'VALIDATION_FAILED');
     }
     assert.equal(calls, 0);
+    assert.equal(clearCalls, 0);
   });
 });
