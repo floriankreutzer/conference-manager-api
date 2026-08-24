@@ -6,6 +6,7 @@ import {
 import { createPostgresAuditRepository } from './audit-repository.js';
 import { createPostgresBookingReferenceRepository } from './booking-reference-repository.js';
 import { createPostgresEntitlementRepository } from './entitlement-repository.js';
+import { createPostgresOidcTransactionRepository } from './oidc-transaction-repository.js';
 import { createPostgresRequestRepository } from './request-repository.js';
 import { createPostgresSessionRepository } from './session-repository.js';
 import { createPostgresTenantRepository } from './tenant-repository.js';
@@ -18,6 +19,7 @@ export function createPostgresPersistence(config) {
   const tenantRepository = createPostgresTenantRepository(pool);
   const bookingReferenceRepository = createPostgresBookingReferenceRepository(pool, { auditRepository });
   const entitlementRepository = createPostgresEntitlementRepository(pool, { auditRepository });
+  const oidcTransactionRepository = createPostgresOidcTransactionRepository(pool);
   const sessionRepository = createPostgresSessionRepository(pool, { auditRepository });
   const requestRepository = createPostgresRequestRepository(pool, { auditRepository });
 
@@ -26,6 +28,7 @@ export function createPostgresPersistence(config) {
     auditRepository,
     bookingReferenceRepository,
     entitlementRepository,
+    oidcTransactionRepository,
     sessionRepository,
     requestRepository,
     loadTenant: (tenantId) => tenantRepository.findById(tenantId),
