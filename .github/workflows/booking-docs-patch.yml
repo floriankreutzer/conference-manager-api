@@ -1,0 +1,91 @@
+name: Booking Documentation Patch
+
+on:
+  push:
+    branches:
+      - feature/provider-neutral-booking-contracts
+    paths:
+      - .github/workflows/booking-docs-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feature/provider-neutral-booking-contracts
+      - name: Align documentation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+            'docs/ARCHITECTURE.md': [
+              ('Issues #47-#53 establish the trusted HTTP boundary, hard Tenant isolation, PostgreSQL persistence, provider-neutral server-side sessions, deny-by-default Tenant authorization, tenant-scoped tamper-evident audit evidence and server-side Tenant entitlements.',
+               'Issues #47-#54 establish the trusted HTTP boundary, hard Tenant isolation, PostgreSQL persistence, provider-neutral server-side sessions, deny-by-default Tenant authorization, tenant-scoped tamper-evident audit evidence, server-side Tenant entitlements and provider-neutral booking/calendar integration contracts.'),
+              ('- `src/entitlements/entitlement-service.js` owns fail-closed Tenant capability evaluation and deny-by-default operator entitlement changes.\n',
+               '- `src/entitlements/entitlement-service.js` owns fail-closed Tenant capability evaluation and deny-by-default operator entitlement changes.\n- `src/integrations/calendar-contract.js` owns the provider-neutral calendar port, response validation and stable provider failure taxonomy.\n- `src/integrations/booking-reference.js` owns the opaque provider-reference persistence model.\n- `src/application/booking-integration-service.js` coordinates authorized/entitled availability, reservation validation and idempotent calendar operations without provider-specific SDK types.\n'),
+              ('- `src/persistence/postgres/entitlement-repository.js` owns Tenant-scoped entitlement reads and audit-atomic entitlement changes.\n',
+               '- `src/persistence/postgres/entitlement-repository.js` owns Tenant-scoped entitlement reads and audit-atomic entitlement changes.\n- `src/persistence/postgres/booking-reference-repository.js` owns Tenant-scoped room-conflict lookup and audit-atomic opaque provider-reference persistence.\n'),
+              ('- `src/persistence/postgres/index.js` composes pool, Tenant loading, Session/Request/Audit/Entitlement repositories and readiness.',
+               '- `src/persistence/postgres/index.js` composes pool, Tenant loading, Session/Request/Audit/Entitlement/Booking-reference repositories and readiness.'),
+              ('PostgreSQL adapters implement repository contracts using fixed source-controlled SQL and parameter binding. Identity-provider adapters added later translate validated provider claims to internal identity contracts before business/session code sees them.',
+               'PostgreSQL adapters implement repository contracts using fixed source-controlled SQL and parameter binding. Identity-provider adapters added later translate validated provider claims to internal identity contracts before business/session code sees them. Calendar/provider adapters translate fixed provider APIs and provider-specific resource identifiers into the URL-free provider-neutral booking contract before application services consume them.'),
+              ('Migration 001 establishes tenant-owned product structures. Migration 002 adds User security-version state and server-side sessions. Migration 003 constrains authoritative Request workflow state and adds workflow reason/change timestamps. Migration 004 upgrades audit storage to the append-only, HMAC-chained event contract. Migration 005 adds allowlisted Tenant entitlements, extends the audit taxonomy for entitlement changes and advances runtime schema readiness to version 5.',
+               'Migration 001 establishes tenant-owned product structures. Migration 002 adds User security-version state and server-side sessions. Migration 003 constrains authoritative Request workflow state and adds workflow reason/change timestamps. Migration 004 upgrades audit storage to the append-only, HMAC-chained event contract. Migration 005 adds allowlisted Tenant entitlements and extends the audit taxonomy for entitlement changes. Migration 006 adds Tenant-scoped opaque booking-provider references and advances runtime schema readiness to version 6.'),
+              ('## Foundation endpoints\n',
+               '## Booking and calendar integration architecture\n\n`src/application/booking-integration-service.js` is an internal use-case boundary, not a new browser endpoint. It preserves the existing Employee/Manager Request workflow semantics and requires same-active-Tenant binding, an explicit server authorization decision and the configured Tenant entitlement before provider access.\n\nAvailability and provisional/final reservation validation first apply the Tenant-scoped local overlap rule. Provider-specific room/resource mapping remains inside future provider adapters. Calendar create uses a deterministic server-derived SHA-256 idempotency key so a retry after external success plus local persistence failure can recover the same provider event rather than create a duplicate.\n\nMigration 006 persists only the internal Tenant/Request/Integration binding, opaque provider reference, idempotency key, state and correlation metadata. Local provider-reference mutations and `calendar.operation` success evidence commit atomically. External provider work cannot participate in the PostgreSQL transaction; recovery therefore uses idempotency rather than claiming distributed atomicity.\n\nThe provider-neutral contract contains no URL. Future outbound adapters must use fixed/allowlisted destinations, bounded timeouts, constrained redirects, validated responses and explicit retry classification.\n\nSee `docs/BOOKING-INTEGRATION.md` for the normative contract.\n\n## Foundation endpoints\n'),
+              ('- #54: Provider-neutral booking/calendar contracts and provider adapters.\n', ''),
+            ],
+            'docs/PERSISTENCE.md': [
+              ('- exact runtime schema readiness version 5.\n\nNo entitlement row means disabled.',
+               '- establishes the entitlement persistence boundary consumed by later integrations.\n\nMigration 006 establishes booking-provider reference persistence:\n\n- internal Tenant/Request/Integration composite ownership;\n- opaque provider reference storage without provider-specific schema columns;\n- deterministic create idempotency-key uniqueness per Tenant/Integration;\n- `active`/`cancelled` local reference state;\n- create correlation and timestamps;\n- exact runtime schema readiness version 6.\n\nNo entitlement row means disabled.'),
+              ('Entitlement rows use `(tenant_id, capability_id)` as their primary key. The same capability can therefore be enabled independently for separate Tenants, while unknown capability IDs are rejected by the database allowlist.\n',
+               'Entitlement rows use `(tenant_id, capability_id)` as their primary key. The same capability can therefore be enabled independently for separate Tenants, while unknown capability IDs are rejected by the database allowlist.\n\nBooking-provider references use `(tenant_id, request_id, integration_id)` as their primary key and Tenant-composite foreign keys to both Request and Integration. A provider reference or idempotency key is unique only within one Tenant/Integration boundary, so identical opaque provider values in separate Tenants cannot cross-link ownership.\n'),
+              ('Runtime readiness requires connectivity and exact schema version 5 for this foundation.',
+               'Runtime readiness requires connectivity and exact schema version 6 for this foundation.'),
+              ('Entitlement changes are serialized per Tenant/capability, update the allowlisted entitlement row and append `tenant.entitlement.changed` in the same transaction. A failed audit append rolls the entitlement change back; setting an already-effective value is idempotent and creates no false change event.\n',
+               'Entitlement changes are serialized per Tenant/capability, update the allowlisted entitlement row and append `tenant.entitlement.changed` in the same transaction. A failed audit append rolls the entitlement change back; setting an already-effective value is idempotent and creates no false change event.\n\nBooking-provider reference creation is serialized per Tenant/Request/Integration. An identical stored provider-reference/idempotency pair is an idempotent repeat and does not append duplicate success evidence; a conflicting pair fails closed. Create/update/cancel local reference mutations append the required `calendar.operation` success event in the same PostgreSQL transaction.\n\nThe external calendar system is not part of that database transaction. A provider success followed by local persistence failure returns failure and is recovered by retrying the deterministic create idempotency key; the provider contract must return the same existing external event instead of creating a duplicate.\n'),
+              ('Booking concurrency will receive additional domain-specific exclusion/atomicity controls; Request workflow state concurrency is not a room double-booking guarantee.',
+               'The booking integration boundary performs Tenant-scoped overlap validation using the same baseline blocking statuses as the Employee/Manager domain. Until #56 composes Request creation/confirmation with this server boundary, the existing Request workflow-state transaction alone is not a complete room double-booking guarantee; no parallel reservation authority is introduced by #54.'),
+              ('Migration 005 down fails closed when entitlement rows or entitlement-change audit evidence exists. Populated-environment rollback therefore requires an explicit entitlement/evidence migration decision rather than silently deleting commercial access state or its audit trail.\n',
+               'Migration 005 down fails closed when entitlement rows or entitlement-change audit evidence exists. Populated-environment rollback therefore requires an explicit entitlement/evidence migration decision rather than silently deleting commercial access state or its audit trail.\n\nMigration 006 down fails closed when booking-provider reference rows exist. A populated rollback requires reviewed reconciliation because deleting the local mapping could orphan an external calendar event.\n'),
+              ('Entitlement persistence additionally requires real PostgreSQL tests for schema version 5, absent-is-disabled behavior, cross-Tenant independence, database capability allowlisting, rollout/entitlement intersection, audit-atomic changes and fail-closed populated rollback.\n',
+               'Entitlement persistence additionally requires real PostgreSQL tests for schema version 5, absent-is-disabled behavior, cross-Tenant independence, database capability allowlisting, rollout/entitlement intersection, audit-atomic changes and fail-closed populated rollback.\n\nBooking-provider persistence additionally requires real PostgreSQL tests for schema version 6, Tenant-composite Request/Integration ownership, same-provider-value cross-Tenant independence, idempotent create persistence, overlap lookup, audit-atomic mutations and fail-closed populated rollback.\n'),
+            ],
+            'docs/SECURITY.md': [
+              ('See `docs/ENTITLEMENTS.md` for the complete capability/rollout separation.\n\n## Supply-chain controls',
+               'See `docs/ENTITLEMENTS.md` for the complete capability/rollout separation.\n\n## Booking and calendar integration controls (#54)\n\n- Booking/calendar application code is provider-neutral and contains no outbound URL or Microsoft Graph SDK/type dependency.\n- Every provider operation requires same-active-Tenant Principal/Request binding, explicit server authorization and the configured Tenant entitlement; the authorization port defaults to deny.\n- Provider-specific identifiers remain behind the integration boundary. PostgreSQL stores only an opaque provider reference bound to the internal Tenant, Request and Integration.\n- Local room-conflict checks are Tenant-scoped and preserve the baseline blocking rule; cross-Tenant identifiers cannot become booking authority.\n- Calendar create uses a deterministic server-derived SHA-256 idempotency key. The browser cannot supply it, and the provider contract requires the same logical retry to return the existing event rather than create a duplicate.\n- Provider responses are positively validated. Malformed/unknown responses fail closed. Timeout, throttling and transient unavailability are explicitly distinguished from non-retryable authorization/validation/conflict/unknown failures.\n- #54 adds no automatic retry loop and does not blindly retry non-idempotent writes.\n- Provider references, raw provider errors/payloads and credentials are excluded from Tenant audit metadata.\n- There is no public direct calendar-provider HTTP endpoint in #54, preventing a parallel browser-controlled workflow before the authorized production Request migration.\n- Future outbound adapters must use fixed/allowlisted destinations, constrained redirects, explicit timeouts, server-side credentials and validated response mapping.\n\nSee `docs/BOOKING-INTEGRATION.md` for the complete provider-neutral contract.\n\n## Supply-chain controls'),
+              ('- Broken Access Control / BOLA / IDOR (CWE-639/CWE-862): Tenant-scoped lookup, Employee ownership, role/permission intersection, concealed non-owned objects, workflow authorization, Tenant-scoped audit reads and Tenant-scoped entitlement evaluation are implemented and negatively tested.',
+               '- Broken Access Control / BOLA / IDOR (CWE-639/CWE-862): Tenant-scoped lookup, Employee ownership, role/permission intersection, concealed non-owned objects, workflow authorization, Tenant-scoped audit reads, Tenant-scoped entitlement evaluation and Tenant-bound booking/provider references are implemented and negatively tested.'),
+              ('- SSRF (CWE-918): no provider outbound transport exists yet; future destinations remain fixed/allowlisted requirements.',
+               '- SSRF (CWE-918): the #54 provider-neutral contract is URL-free and no real outbound transport is introduced; future provider adapters must use fixed/allowlisted destinations with constrained redirects and explicit timeouts.'),
+              ('- Replay/stale state: session revocation/security-version checks protect credentials; Request workflow writes use expected-current-state predicates.',
+               '- Replay/stale state: session revocation/security-version checks protect credentials; Request workflow writes use expected-current-state predicates; calendar create uses a deterministic server-derived idempotency key with provider and local deduplication contracts.'),
+            ],
+            'docs/AUDIT.md': [
+              ('#52 actively emits events for supported session lifecycle operations, Request workflow outcomes/denials and tenant audit reads. #53 additionally emits `tenant.entitlement.changed` for real operator-controlled entitlement state changes. Tenant/User-permission, integration, calendar and provider-authentication actions remain reserved for their owning future services; reserving an action name does not claim that workflow is already implemented.',
+               '#52 actively emits events for supported session lifecycle operations, Request workflow outcomes/denials and tenant audit reads. #53 additionally emits `tenant.entitlement.changed` for real operator-controlled entitlement state changes. #54 emits `calendar.operation` for supported provider-neutral calendar write successes/failures; success metadata is limited to operation, provisional/final phase and disposition, while failure metadata contains only stable provider error classification and retryability. Provider references, raw provider errors/payloads and credentials are excluded. Tenant/User-permission, integration-connect/admin-consent and provider-authentication actions remain reserved for their owning future services; reserving an action name does not claim that workflow is already implemented.'),
+            ],
+          }
+
+          for filename, pairs in replacements.items():
+              path = Path(filename)
+              text = path.read_text()
+              for old, new in pairs:
+                  if text.count(old) != 1:
+                      raise SystemExit(f'{filename}: pattern mismatch: {old[:90]!r}')
+                  text = text.replace(old, new)
+              path.write_text(text)
+          PY
+      - name: Commit documentation
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/ARCHITECTURE.md docs/PERSISTENCE.md docs/SECURITY.md docs/AUDIT.md
+          git commit -m "Document provider-neutral booking boundary"
+          git push origin HEAD:feature/provider-neutral-booking-contracts
