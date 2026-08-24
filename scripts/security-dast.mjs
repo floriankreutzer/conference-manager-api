@@ -6,7 +6,7 @@ const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const SESSION_ID = '33333333-3333-4333-8333-333333333333';
 const ORIGIN = 'https://security.test';
-const DAST_SECRET = 'security-dast-secret-value-at-least-32-bytes';
+const DAST_KEY_MATERIAL = 'd'.repeat(32);
 
 const config = Object.freeze({
   mode: 'pilot',
@@ -24,8 +24,8 @@ const config = Object.freeze({
   keepAliveTimeoutMs: 1_000,
   readinessTimeoutMs: 500,
   sessionTtlSeconds: 3_600,
-  csrfSecret: DAST_SECRET,
-  auditHmacSecret: DAST_SECRET,
+  csrfSecret: DAST_KEY_MATERIAL,
+  auditHmacSecret: DAST_KEY_MATERIAL,
   databaseUrl: 'postgresql://security.test/conference_manager',
   databaseSsl: 'verify-full',
 });
@@ -120,7 +120,7 @@ function assertError(response, statusCode, code) {
   assert.equal(response.rawBody.includes('stack'), false);
   assert.equal(response.rawBody.includes('postgresql://'), false);
   assert.equal(response.rawBody.includes('DAST_VALIDATION_BYPASSED'), false);
-  assert.equal(response.rawBody.includes(DAST_SECRET), false);
+  assert.equal(response.rawBody.includes(DAST_KEY_MATERIAL), false);
 }
 
 const server = createHttpServer({
