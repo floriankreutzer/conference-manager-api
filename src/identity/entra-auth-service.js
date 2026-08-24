@@ -76,6 +76,9 @@ function validateIdentityResolution(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new TypeError('IDENTITY_RESOLUTION_INVALID');
   }
+  if (value.status === 'authentication_denied') {
+    return Object.freeze({ status: 'authentication_denied' });
+  }
   if (value.status === 'onboarding_required') {
     return Object.freeze({ status: 'onboarding_required' });
   }
@@ -174,6 +177,9 @@ export function createEntraAuthService({
         correlationId,
         onboardingInvitationId: transaction.onboardingInvitationId,
       }));
+      if (resolution.status === 'authentication_denied') {
+        return Object.freeze({ status: 'authentication_rejected' });
+      }
       if (resolution.status === 'onboarding_required' || resolution.status === 'claim_confirmation_required') {
         return resolution;
       }
