@@ -27,7 +27,7 @@ export const BOOKING_PROVIDER_OPERATION = Object.freeze({
   AVAILABILITY: 'availability',
   RESERVATION_VALIDATION: 'reservation_validation',
   CREATE: 'create',
-  UPDATE: 'update',
+  MODIFY: 'update',
   CANCEL: 'cancel',
 });
 
@@ -262,7 +262,7 @@ export function createBookingIntegrationService({
     },
 
     async updateCalendarEvent(context) {
-      const request = await prepare(context, BOOKING_PROVIDER_OPERATION.UPDATE);
+      const request = await prepare(context, BOOKING_PROVIDER_OPERATION.MODIFY);
       const reference = await repository.findProviderReferenceByRequest(
         context.tenantContext.tenantId,
         request.id,
@@ -271,7 +271,7 @@ export function createBookingIntegrationService({
       if (!reference || reference.state !== 'active') {
         throw new BookingIntegrationInputError('BOOKING_REFERENCE_NOT_ACTIVE');
       }
-      const updated = await providerCall(context, request, BOOKING_PROVIDER_OPERATION.UPDATE, async () => {
+      const updated = await providerCall(context, request, BOOKING_PROVIDER_OPERATION.MODIFY, async () => {
         const input = {
           ...providerInput(request, context.tenantContext, context.correlationId, context.phase),
           providerReference: reference.providerReference,
@@ -284,7 +284,7 @@ export function createBookingIntegrationService({
       const auditEvent = successAudit(
         context,
         request,
-        BOOKING_PROVIDER_OPERATION.UPDATE,
+        BOOKING_PROVIDER_OPERATION.MODIFY,
         context.phase,
         { calendarState: 'active' },
         { calendarState: 'active' },
