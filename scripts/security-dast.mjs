@@ -5,6 +5,7 @@ import { createHttpServer } from '../src/server.js';
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const SESSION_ID = '33333333-3333-4333-8333-333333333333';
+const ENTRA_CLIENT_ID = '55555555-5555-4555-8555-555555555555';
 const ORIGIN = 'https://security.test';
 const DAST_KEY_MATERIAL = 'd'.repeat(32);
 
@@ -26,6 +27,12 @@ const config = Object.freeze({
   sessionTtlSeconds: 3_600,
   csrfSecret: DAST_KEY_MATERIAL,
   auditHmacSecret: DAST_KEY_MATERIAL,
+  entraClientId: ENTRA_CLIENT_ID,
+  entraClientSecret: DAST_KEY_MATERIAL,
+  oidcTransactionSecret: DAST_KEY_MATERIAL,
+  entraAuthority: 'https://login.microsoftonline.com/organizations',
+  entraRedirectUri: `${ORIGIN}/api/v1/auth/microsoft/callback`,
+  oidcTransactionTtlSeconds: 600,
   databaseUrl: 'postgresql://security.test/conference_manager',
   databaseSsl: 'verify-full',
 });
@@ -160,6 +167,13 @@ try {
   assertError(await request(port, { method: 'TRACE' }), 405, 'METHOD_NOT_ALLOWED');
   assertError(await request(port, { path: 'http://security.test/api/v1/health/live' }), 400, 'REQUEST_TARGET_INVALID');
   assertError(await request(port, { path: '/api/%2e%2e/v1/health/live' }), 400, 'REQUEST_TARGET_INVALID');
+
+  assertError(await request(port, {
+    path: `/api/v1/auth/microsoft/login?tenantId=${TENANT_ID}`,
+  }), 400, 'VALIDATION_FAILED');
+  assertError(await request(port, {
+    path: `/api/v1/auth/microsoft/callback?state=${'s'.repeat(43)}&code=code&tid=${TENANT_ID}`,
+  }), 400, 'VALIDATION_FAILED');
 
   const transitionPath = '/api/v1/requests/REQ-1/transitions';
   const validHeaders = { 'Content-Type': 'application/json; charset=utf-8' };
