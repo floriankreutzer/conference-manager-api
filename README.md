@@ -6,7 +6,7 @@ Trusted production backend for the Conference Manager SaaS application.
 
 This repository owns the server-side trust boundary defined by `conference-manager/docs/SAAS-PRODUCTION-TOPOLOGY.md`. The browser remains untrusted.
 
-The SaaS 0 foundation through issue #54 now provides:
+The SaaS 0 foundation through issue #55 now provides:
 
 - Node.js 22 native HTTP API with same-origin request hardening and secure error/health contracts;
 - canonical internal Tenant model and hard Tenant isolation;
@@ -36,12 +36,17 @@ The SaaS 0 foundation through issue #54 now provides:
 - provider-neutral availability, provisional/final reservation-validation and calendar create/update/cancel contracts;
 - Tenant-scoped opaque provider-reference persistence separated from Employee/Manager workflow semantics;
 - deterministic server-side calendar-create idempotency and explicit provider failure/retryability classification;
-- recovery semantics that prevent repeated create retries from producing duplicate provider bookings when an adapter honors the idempotency contract;
+- recovery semantics that prevent duplicate provider bookings when adapters honor the idempotency contract;
+- server-generated request correlation and fixed route-key structured operational logs;
+- bounded low-cardinality API/auth/authz/booking/integration/dependency metrics emitted as structured telemetry;
+- separate liveness, required-dependency readiness and optional-provider degradation semantics;
+- aggregate support health with validated service version/build/environment metadata;
 - no browser LocalStorage/sessionStorage authentication, authorization, entitlement or provider authority;
-- safe metadata-only operational logging and secret-minimized audit payloads;
-- regression/progression/adversarial tests for HTTP, Tenant, persistence, session, authorization, audit, entitlement and booking-integration boundaries.
+- secret/PII-minimized operational logging and audit payloads;
+- regression/progression/adversarial tests for HTTP, Tenant, persistence, session, authorization, audit, entitlement,
+  booking-integration and observability boundaries.
 
-Production provider adapters, full observability, frontend production-persistence migration and the complete production threat/configuration baseline remain later SaaS 0/SaaS 1 work.
+Production provider adapters, frontend production-persistence migration and the complete production threat/configuration baseline remain later SaaS 0/SaaS 1 work.
 
 ## Run locally
 
@@ -54,21 +59,22 @@ npm run db:migrate
 npm start
 ```
 
-A non-persistent development composition may leave `CSRF_SECRET` and `AUDIT_HMAC_SECRET` empty. Any runtime configured with `DATABASE_URL` must provide a stable `AUDIT_HMAC_SECRET` of at least 32 bytes so persisted audit chains remain verifiable across restarts. Pilot/Production additionally require an externally managed `CSRF_SECRET`, an HTTPS public origin and certificate-verifying database TLS.
+A non-persistent development composition may leave `CSRF_SECRET` and `AUDIT_HMAC_SECRET` empty. Any runtime configured with `DATABASE_URL` must provide a stable `AUDIT_HMAC_SECRET` of at least 32 bytes so persisted audit chains remain verifiable across restarts. Pilot/Production additionally require an externally managed `CSRF_SECRET`, an HTTPS public origin, certificate-verifying database TLS, `SERVICE_VERSION` and `BUILD_ID`.
 
 Do not rotate `AUDIT_HMAC_SECRET` as an ordinary configuration change. Key rotation requires a reviewed audit-integrity migration/checkpoint strategy because existing events were signed with the previous key.
 
 ## API foundation
 
 - `GET /api/v1/health/live` — process liveness only.
-- `GET /api/v1/health/ready` — readiness aggregate including PostgreSQL/schema readiness when configured.
+- `GET /api/v1/health/ready` — required-dependency readiness aggregate including PostgreSQL/schema readiness when configured.
+- `GET /api/v1/health/status` — aggregate `ready`/`degraded`/`not_ready` state plus bounded support metadata; no dependency details.
 - `GET /api/v1/session` — resolves the server-side session/Tenant context and returns minimized presentation context plus a runtime CSRF token.
 - `DELETE /api/v1/session` — CSRF-protected server-side logout/revocation and cookie clearing.
 - `GET /api/v1/requests/{requestId}` — active-Tenant and object-authorized Request read.
 - `POST /api/v1/requests/{requestId}/transitions` — CSRF-protected, server-authorized Request workflow transition.
 - `GET /api/v1/audit` — Tenant Admin audit read after Tenant authorization and integrity-chain verification.
 
-There is intentionally no public browser-controlled session issuance, entitlement-administration or direct calendar-provider endpoint in SaaS 0. Future Entra OIDC code validates/maps provider identity server-side before session issuance. Future Platform Admin tooling must use a separately authorized server-side operator contract before changing Tenant entitlements. Production Request/calendar wiring must reuse the existing authorized Request use cases rather than create a parallel browser-controlled provider flow.
+There is intentionally no public browser-controlled session issuance, entitlement-administration, metrics or direct calendar-provider endpoint in SaaS 0. Future Entra OIDC code validates/maps provider identity server-side before session issuance. Future Platform Admin tooling must use a separately authorized server-side operator contract before changing Tenant entitlements. Production Request/calendar wiring must reuse the existing authorized Request use cases rather than create a parallel browser-controlled provider flow.
 
 See:
 
@@ -79,6 +85,7 @@ See:
 - `docs/BOOKING-INTEGRATION.md`
 - `docs/ENTITLEMENTS.md`
 - `docs/IDENTITY-SESSION.md`
+- `docs/OBSERVABILITY.md`
 - `docs/PERSISTENCE.md`
 - `docs/SECURITY.md`
 - `docs/TENANCY.md`

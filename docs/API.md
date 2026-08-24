@@ -22,7 +22,39 @@ Returns HTTP 200 while the process can handle requests. It exposes no dependency
 
 ### `GET /api/v1/health/ready`
 
-Returns HTTP 200 with `ready` only when registered readiness dependencies complete successfully within their bound. PostgreSQL deployments require connectivity and exact schema version 4. Failure returns HTTP 503 with `not_ready` without naming internal dependencies.
+Returns HTTP 200 with `ready` only when registered required readiness dependencies complete successfully within their bound. PostgreSQL deployments require connectivity and exact schema version 6. Failure returns HTTP 503 with `not_ready` without naming internal dependencies.
+
+Optional provider/dependency degradation does not change this endpoint to 503 while the core API can still safely serve traffic.
+
+### `GET /api/v1/health/status`
+
+Returns an aggregate operational state without revealing dependency names or configuration details.
+
+Possible states are:
+
+- `ready`: required dependencies and registered optional degradation checks are healthy;
+- `degraded`: required dependencies are healthy, but at least one optional provider/dependency is degraded;
+- `not_ready`: at least one required dependency failed or timed out.
+
+`ready` and `degraded` return HTTP 200. `not_ready` returns HTTP 503.
+
+Example:
+
+```json
+{
+  "status": "degraded",
+  "service": {
+    "version": "1.2.3",
+    "buildId": "20260824.1",
+    "environment": "pilot"
+  },
+  "requestId": "server-generated-uuid"
+}
+```
+
+The endpoint does not expose dependency names, hosts, provider references, Tenant/User context, connection information, provider payloads or failure text. Pilot/Production service version and build ID are bounded deployment metadata supplied by trusted configuration.
+
+See `docs/OBSERVABILITY.md` for logging, metrics, SLO candidates and alerting semantics.
 
 ### `GET /api/v1/session`
 
@@ -211,5 +243,7 @@ Tenant-visible audit access follows the same Tenant boundary but uses its own `t
 - Audit pagination accepts only bounded explicit query fields.
 - Client-controlled Tenant/User/role/permission/provider/owner/workflow-status/audit-authority values never establish server authority.
 - Protected POST/PUT/PATCH/DELETE operations require authenticated Principal resolution and session-bound CSRF verification.
+- Operational request logs use fixed route keys rather than dynamic URL paths.
+- Metrics accept only fixed low-cardinality labels; Tenant/User/Request/provider identifiers are prohibited dimensions.
 
-See `docs/AUDIT.md`, `docs/AUTHORIZATION.md`, `docs/IDENTITY-SESSION.md`, `docs/TENANCY.md`, and `docs/SECURITY.md`.
+See `docs/AUDIT.md`, `docs/AUTHORIZATION.md`, `docs/IDENTITY-SESSION.md`, `docs/OBSERVABILITY.md`, `docs/TENANCY.md`, and `docs/SECURITY.md`.

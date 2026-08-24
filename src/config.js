@@ -2,6 +2,7 @@ import { ApiError } from './api-error.js';
 
 const MODES = new Set(['development', 'test', 'pilot', 'production']);
 const DATABASE_SSL_MODES = new Set(['disable', 'verify-full']);
+const SUPPORT_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const DEFAULTS = Object.freeze({
   host: '127.0.0.1',
   port: 3000,
@@ -40,6 +41,13 @@ function parseMode(env) {
   const mode = env.NODE_ENV || 'development';
   if (!MODES.has(mode)) throw new ConfigurationError('NODE_ENV_INVALID');
   return mode;
+}
+
+function parseSupportIdentifier(value, fallback, { requiredCode, invalidCode }) {
+  const candidate = value || fallback;
+  if (!candidate) throw new ConfigurationError(requiredCode);
+  if (!SUPPORT_IDENTIFIER.test(candidate)) throw new ConfigurationError(invalidCode);
+  return candidate;
 }
 
 function parseOrigin(value, mode) {
@@ -136,6 +144,7 @@ export function loadDatabaseConfig(env = process.env, mode = parseMode(env)) {
 
 export function loadConfig(env = process.env) {
   const mode = parseMode(env);
+  const supportFallback = mode === 'development' || mode === 'test';
   const publicOrigin = parseOrigin(env.PUBLIC_ORIGIN, mode);
   const database = loadDatabaseConfig(env, mode);
   const csrfSecret = parseServerSecret(env.CSRF_SECRET, mode, {
@@ -152,6 +161,14 @@ export function loadConfig(env = process.env) {
 
   return Object.freeze({
     mode,
+    serviceVersion: parseSupportIdentifier(env.SERVICE_VERSION, supportFallback ? '0.1.0' : null, {
+      requiredCode: 'SERVICE_VERSION_REQUIRED',
+      invalidCode: 'SERVICE_VERSION_INVALID',
+    }),
+    buildId: parseSupportIdentifier(env.BUILD_ID, supportFallback ? 'local' : null, {
+      requiredCode: 'BUILD_ID_REQUIRED',
+      invalidCode: 'BUILD_ID_INVALID',
+    }),
     publicOrigin,
     host: env.HOST || DEFAULTS.host,
     port: parseInteger(env.PORT, DEFAULTS.port, { min: 1, max: 65_535, code: 'PORT_INVALID' }),

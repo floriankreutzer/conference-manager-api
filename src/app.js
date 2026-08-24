@@ -2,6 +2,9 @@ import { ApiError, asApiError } from './api-error.js';
 import { AuthorizationDeniedError } from './authorization/errors.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { assertProductionConfig } from './config.js';
+import { createLogger } from './logger.js';
+import { createHealthMonitor } from './observability/health.js';
+import { createMetricsRegistry } from './observability/metrics.js';
 import {
   applySecurityHeaders,
   assertAllowedMethod,
@@ -14,17 +17,18 @@ import {
   readJsonObjectBody,
   validateExactObject,
 } from './security.js';
-import { createLogger } from './logger.js';
 import { createTenantContextGuard } from './tenancy/tenant-context.js';
 
 const ROUTES = Object.freeze({
   live: '/api/v1/health/live',
   ready: '/api/v1/health/ready',
+  status: '/api/v1/health/status',
   principal: '/api/v1/session',
   audit: '/api/v1/audit',
 });
 const REQUEST_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/;
 const REQUEST_TRANSITION_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/transitions$/;
+const ALLOWED_METRIC_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const TRANSITION_BODY_SCHEMA = Object.freeze({
   required: Object.freeze({
     transition: (value) => typeof value === 'string' && value.length >= 1 && value.length <= 32,
@@ -104,29 +108,25 @@ function auditPageFromUrl(parsedUrl) {
   });
 }
 
-async function withTimeout(task, timeoutMs) {
-  let timer;
-  try {
-    return await Promise.race([
-      Promise.resolve().then(task),
-      new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error('READINESS_TIMEOUT')), timeoutMs);
-        timer.unref?.();
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
+function routeKey(path) {
+  if (path === ROUTES.live) return 'health_live';
+  if (path === ROUTES.ready) return 'health_ready';
+  if (path === ROUTES.status) return 'health_status';
+  if (path === ROUTES.principal) return 'session';
+  if (path === ROUTES.audit) return 'audit';
+  if (REQUEST_TRANSITION_PATH.test(path)) return 'request_transition';
+  if (REQUEST_PATH.test(path)) return 'request';
+  return 'not_found';
 }
 
-async function isReady(checks, timeoutMs) {
-  const results = await Promise.allSettled(checks.map((check) => withTimeout(check, timeoutMs)));
-  return results.every((result) => result.status === 'fulfilled' && result.value === true);
+function metricMethod(method) {
+  return ALLOWED_METRIC_METHODS.has(method) ? method : 'OTHER';
 }
 
 export function createApp({
   config,
   readinessChecks = [],
+  degradationChecks = [],
   authorizationPolicy = createAuthorizationPolicy(),
   auditService,
   sessionService,
@@ -136,15 +136,16 @@ export function createApp({
   loadTenant,
   clientKey = (request) => request.socket.remoteAddress || 'unknown',
   logger = createLogger(),
+  metrics = createMetricsRegistry(),
   clock = () => Date.now(),
 } = {}) {
   if (!config) throw new TypeError('CONFIG_REQUIRED');
   assertProductionConfig(config);
-  if (!Array.isArray(readinessChecks) || readinessChecks.some((check) => typeof check !== 'function')) {
-    throw new TypeError('READINESS_CHECKS_INVALID');
-  }
   if (!authorizationPolicy || typeof authorizationPolicy.assertRecognizedPrincipal !== 'function') {
     throw new TypeError('AUTHORIZATION_POLICY_REQUIRED');
+  }
+  if (!metrics || typeof metrics.recordApiRequest !== 'function') {
+    throw new TypeError('METRICS_REQUIRED');
   }
 
   const rateLimiter = createRateLimiter({
@@ -157,6 +158,12 @@ export function createApp({
     verifyCsrf: verifyCsrf || sessionService?.verifyCsrf,
   });
   const tenantGuard = createTenantContextGuard({ loadTenant });
+  const healthMonitor = createHealthMonitor({
+    readinessChecks,
+    degradationChecks,
+    timeoutMs: config.readinessTimeoutMs,
+    metrics,
+  });
 
   return async function handle(request, response) {
     const startedAt = clock();
@@ -165,7 +172,7 @@ export function createApp({
     applySecurityHeaders(response, config);
 
     let statusCode = 500;
-    let path = '/';
+    let route = 'invalid_request';
     try {
       assertAllowedMethod(request.method);
       assertSafeRequestTarget(request.url);
@@ -173,7 +180,8 @@ export function createApp({
       assertSameOrigin(request.headers, config.publicOrigin);
       rateLimiter.consume(clientKey(request));
       const parsedUrl = urlOf(request.url, config.publicOrigin);
-      path = parsedUrl.pathname;
+      const path = parsedUrl.pathname;
+      route = routeKey(path);
 
       if (path === ROUTES.live) {
         if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
@@ -182,11 +190,30 @@ export function createApp({
         return;
       }
 
-      if (path === ROUTES.ready) {
+      if (path === ROUTES.ready || path === ROUTES.status) {
         if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
-        const ready = await isReady(readinessChecks, config.readinessTimeoutMs);
-        statusCode = ready ? 200 : 503;
-        sendJson(response, statusCode, { status: ready ? 'ready' : 'not_ready', requestId }, config.maxResponseBytes);
+        const health = await healthMonitor.evaluate();
+        logger.healthEvaluated({ requestId, status: health.status });
+        if (path === ROUTES.ready) {
+          statusCode = health.ready ? 200 : 503;
+          sendJson(
+            response,
+            statusCode,
+            { status: health.ready ? 'ready' : 'not_ready', requestId },
+            config.maxResponseBytes,
+          );
+          return;
+        }
+        statusCode = health.ready ? 200 : 503;
+        sendJson(response, statusCode, {
+          status: health.status,
+          service: {
+            version: config.serviceVersion,
+            buildId: config.buildId,
+            environment: config.mode,
+          },
+          requestId,
+        }, config.maxResponseBytes);
         return;
       }
 
@@ -302,6 +329,13 @@ export function createApp({
     } catch (error) {
       const apiError = asApiError(error);
       statusCode = apiError.statusCode;
+      if (statusCode === 401) {
+        metrics.recordAuthenticationFailure();
+        logger.securityOutcome({ requestId, category: 'authentication' });
+      } else if (statusCode === 403) {
+        metrics.recordAuthorizationDenied();
+        logger.securityOutcome({ requestId, category: 'authorization' });
+      }
       if (statusCode === 500) {
         logger.unhandledError({ requestId, errorName: error?.name || 'Error' });
       }
@@ -311,12 +345,19 @@ export function createApp({
         response.destroy();
       }
     } finally {
+      const durationMs = Math.max(0, clock() - startedAt);
+      metrics.recordApiRequest({
+        route,
+        method: metricMethod(request.method),
+        statusCode,
+        durationMs,
+      });
       logger.requestCompleted({
         requestId,
         method: request.method,
-        path,
+        route,
         statusCode,
-        durationMs: Math.max(0, clock() - startedAt),
+        durationMs,
       });
     }
   };

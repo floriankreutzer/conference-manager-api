@@ -4,6 +4,14 @@ import { ConfigurationError, loadConfig, loadDatabaseConfig } from '../src/confi
 
 const VALID_CSRF_SECRET = 'production-csrf-secret-at-least-32-bytes-long';
 const VALID_AUDIT_SECRET = 'production-audit-hmac-secret-at-least-32-bytes';
+const PRODUCTION_BASE = Object.freeze({
+  NODE_ENV: 'production',
+  PUBLIC_ORIGIN: 'https://example.com',
+  DATABASE_URL: 'postgresql://db.example.com/conference_manager',
+  DATABASE_SSL: 'verify-full',
+  CSRF_SECRET: VALID_CSRF_SECRET,
+  AUDIT_HMAC_SECRET: VALID_AUDIT_SECRET,
+});
 
 test('development configuration has safe bounded defaults', () => {
   const config = loadConfig({ NODE_ENV: 'development' });
@@ -15,6 +23,8 @@ test('development configuration has safe bounded defaults', () => {
   assert.equal(config.sessionTtlSeconds, 28_800);
   assert.equal(config.csrfSecret, null);
   assert.equal(config.auditHmacSecret, null);
+  assert.equal(config.serviceVersion, '0.1.0');
+  assert.equal(config.buildId, 'local');
   assert.ok(Object.isFrozen(config));
 });
 
@@ -102,18 +112,36 @@ test('production requires PostgreSQL, verified TLS, CSRF secret, and stable audi
   );
 
   const config = loadConfig({
-    NODE_ENV: 'production',
-    PUBLIC_ORIGIN: 'https://example.com',
-    DATABASE_URL: 'postgresql://db.example.com/conference_manager',
-    DATABASE_SSL: 'verify-full',
-    CSRF_SECRET: VALID_CSRF_SECRET,
-    AUDIT_HMAC_SECRET: VALID_AUDIT_SECRET,
+    ...PRODUCTION_BASE,
+    SERVICE_VERSION: '1.4.0',
+    BUILD_ID: '20260824.1',
     SESSION_TTL_SECONDS: '3600',
   });
   assert.equal(config.databaseSsl, 'verify-full');
   assert.equal(config.csrfSecret, VALID_CSRF_SECRET);
   assert.equal(config.auditHmacSecret, VALID_AUDIT_SECRET);
   assert.equal(config.sessionTtlSeconds, 3600);
+  assert.equal(config.serviceVersion, '1.4.0');
+  assert.equal(config.buildId, '20260824.1');
+});
+
+test('pilot and production require bounded support metadata', () => {
+  assert.throws(
+    () => loadConfig(PRODUCTION_BASE),
+    (error) => error instanceof ConfigurationError && error.code === 'SERVICE_VERSION_REQUIRED',
+  );
+  assert.throws(
+    () => loadConfig({ ...PRODUCTION_BASE, SERVICE_VERSION: '1.0.0' }),
+    (error) => error instanceof ConfigurationError && error.code === 'BUILD_ID_REQUIRED',
+  );
+  assert.throws(
+    () => loadConfig({ ...PRODUCTION_BASE, SERVICE_VERSION: '../unsafe', BUILD_ID: 'build-1' }),
+    (error) => error instanceof ConfigurationError && error.code === 'SERVICE_VERSION_INVALID',
+  );
+  assert.throws(
+    () => loadConfig({ ...PRODUCTION_BASE, SERVICE_VERSION: '1.0.0', BUILD_ID: 'build id' }),
+    (error) => error instanceof ConfigurationError && error.code === 'BUILD_ID_INVALID',
+  );
 });
 
 test('database URL rejects unsupported schemes, fragments, and connection-string overrides', () => {
