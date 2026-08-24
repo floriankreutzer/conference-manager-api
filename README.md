@@ -6,7 +6,7 @@ Trusted production backend for the Conference Manager SaaS application.
 
 This repository owns the server-side trust boundary defined by `conference-manager/docs/SAAS-PRODUCTION-TOPOLOGY.md`. The browser remains untrusted.
 
-The SaaS 0 foundation through issue #50 now provides:
+The SaaS 0 foundation through issue #51 now provides:
 
 - Node.js 22 native HTTP API with same-origin request hardening and secure error/health contracts;
 - canonical internal Tenant model and hard Tenant isolation;
@@ -19,11 +19,17 @@ The SaaS 0 foundation through issue #50 now provides:
 - User `security_version` invalidation for stale privilege snapshots;
 - HMAC-derived session-bound CSRF tokens compatible with the frontend `X-CSRF-Token` contract;
 - authenticated session introspection and server-side logout;
-- no browser LocalStorage/sessionStorage authentication authority;
+- deny-by-default Tenant RBAC for Employee, Conference Manager and Tenant Admin;
+- explicit separation of Platform Admin from the Tenant role model;
+- Employee Request ownership checks and concealed BOLA/IDOR failures;
+- Tenant-scoped Conference Manager Request access;
+- server-authorized Request workflow transitions with optimistic status concurrency;
+- PostgreSQL workflow status/reason constraints;
+- no browser LocalStorage/sessionStorage authentication or authorization authority;
 - safe metadata-only operational logging;
-- regression/progression/adversarial tests for HTTP, Tenant, persistence and session boundaries.
+- regression/progression/adversarial tests for HTTP, Tenant, persistence, session and authorization boundaries.
 
-RBAC/object ownership, append-only audit behavior, entitlements, booking/provider contracts, full observability and the complete production threat/configuration baseline remain later SaaS 0 issues.
+Append-only audit behavior, entitlements, booking/provider contracts, full observability and the complete production threat/configuration baseline remain later SaaS 0 issues.
 
 ## Run locally
 
@@ -44,6 +50,8 @@ Development may leave `CSRF_SECRET` empty; the process then uses an ephemeral CS
 - `GET /api/v1/health/ready` — readiness aggregate including PostgreSQL/schema readiness when configured.
 - `GET /api/v1/session` — resolves the server-side session/Tenant context and returns minimized presentation context plus a runtime CSRF token.
 - `DELETE /api/v1/session` — CSRF-protected server-side logout/revocation and cookie clearing.
+- `GET /api/v1/requests/{requestId}` — active-Tenant and object-authorized Request read.
+- `POST /api/v1/requests/{requestId}/transitions` — CSRF-protected, server-authorized Request workflow transition.
 
 There is intentionally no public browser-controlled session issuance endpoint in SaaS 0. Future Entra OIDC code validates/maps provider identity server-side and then calls the provider-neutral session issuance boundary.
 
@@ -51,6 +59,7 @@ See:
 
 - `docs/API.md`
 - `docs/ARCHITECTURE.md`
+- `docs/AUTHORIZATION.md`
 - `docs/IDENTITY-SESSION.md`
 - `docs/PERSISTENCE.md`
 - `docs/SECURITY.md`
