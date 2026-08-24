@@ -14,11 +14,14 @@ const packageJson = JSON.parse(await text('package.json'));
 const security = await text('src/security.js');
 const config = await text('src/config.js');
 const cookie = await text('src/identity/session-cookie.js');
+const entraClient = await text('src/identity/entra-client.js');
+const entraAuth = await text('src/identity/entra-auth-service.js');
 const ci = await text('.github/workflows/ci.yml');
 const dependencyPolicy = await text('.github/workflows/dependency-review.yml');
 const secretScan = await text('.github/workflows/secret-scan.yml');
 const threatModel = await text('docs/THREAT-MODEL.md');
 const secureConfig = await text('docs/PRODUCTION-SECURE-CONFIGURATION.md');
+const entraContract = await text('docs/ENTRA-AUTHENTICATION.md');
 const pentest = await text('docs/PILOT-PENETRATION-TEST.md');
 
 requireContains(security, [
@@ -41,6 +44,9 @@ requireContains(config, [
   'DATABASE_SSL_REQUIRED',
   'CSRF_SECRET_REQUIRED',
   'AUDIT_HMAC_SECRET_REQUIRED',
+  'ENTRA_CLIENT_ID_REQUIRED',
+  'ENTRA_CLIENT_SECRET_REQUIRED',
+  'OIDC_TRANSACTION_SECRET_REQUIRED',
   'SERVICE_VERSION_REQUIRED',
   'BUILD_ID_REQUIRED',
 ], 'Production configuration');
@@ -53,6 +59,29 @@ requireContains(cookie, [
 ], 'Session cookie');
 
 if (cookie.includes('Domain=')) throw new Error('Session cookie must not use a broad Domain attribute.');
+
+requireContains(entraClient, [
+  'ConfidentialClientApplication',
+  "codeChallengeMethod: 'S256'",
+  'claims.aud !== clientId',
+  'claims.iss !== expectedIssuer',
+  'secureHashMatch(claims.nonce',
+], 'Microsoft Entra adapter');
+requireContains(entraAuth, [
+  "createHash('sha256')",
+  "createHmac('sha256'",
+  'repository.consume',
+  'identityResolver.resolve',
+  'sessionService.issue',
+], 'Microsoft Entra authentication orchestration');
+requireContains(entraContract, [
+  'organizational directory',
+  'PKCE',
+  'state',
+  'nonce',
+  'Tenant claiming',
+  'Live authentication',
+], 'Microsoft Entra security contract');
 
 requireContains(ci, [
   'npm ci --ignore-scripts --no-fund',

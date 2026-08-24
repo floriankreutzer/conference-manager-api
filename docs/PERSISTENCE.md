@@ -70,10 +70,19 @@ Migration 006 establishes booking-provider reference persistence:
 - opaque provider reference storage without provider-specific schema columns;
 - deterministic create idempotency-key uniqueness per Tenant/Integration;
 - `active`/`cancelled` local reference state;
-- create correlation and timestamps;
-- exact runtime schema readiness version 6.
+- create correlation and timestamps.
 
-No entitlement row means disabled. The raw session token, CSRF token and audit HMAC key are never persisted.
+Migration 007 establishes short-lived OIDC authentication transaction persistence:
+
+- provider-scoped SHA-256 state hash as the one-time lookup key;
+- SHA-256 nonce hash for callback validation;
+- explicit creation/expiry timestamps;
+- bounded provider/hash constraints;
+- expiry index for cleanup;
+- no authorization code, provider token, plaintext state or plaintext nonce persistence;
+- exact runtime schema readiness version 7.
+
+No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
 
 ## Tenant integrity
 
@@ -90,6 +99,28 @@ Audit rows are likewise Tenant-owned. Append/list/verification operations receiv
 Entitlement rows use `(tenant_id, capability_id)` as their primary key. The same capability can therefore be enabled independently for separate Tenants, while unknown capability IDs are rejected by the database allowlist.
 
 Booking-provider references use `(tenant_id, request_id, integration_id)` as their primary key and Tenant-composite foreign keys to both Request and Integration. A provider reference or idempotency key is unique only within one Tenant/Integration boundary, so identical opaque provider values in separate Tenants cannot cross-link ownership.
+
+OIDC authentication transactions exist before an internal Tenant is known and therefore deliberately do not carry a Tenant ID. They are not business records and cannot authorize Tenant access. Their authority is limited to one short-lived provider/state-hash pair used to complete the external authentication protocol.
+
+## OIDC replay and concurrency
+
+`createPostgresOidcTransactionRepository` owns the shared pre-authentication replay boundary.
+
+Login start inserts one short-lived provider/state-hash/nonce-hash transaction. Before each insert, expired transactions are removed opportunistically.
+
+Callback completion atomically executes the equivalent of:
+
+```text
+DELETE FROM oidc_auth_transactions
+WHERE provider = expected_provider
+  AND state_hash = expected_state_hash
+  AND expires_at > callback_time
+RETURNING nonce_hash
+```
+
+Only one concurrent consumer can receive the nonce hash. A second callback using the same state returns no row and fails authentication. This works across multiple API processes because the one-time decision is made in PostgreSQL rather than process memory.
+
+The repository never accepts or stores a Tenant ID from the browser or provider callback. Tenant/User claiming happens only after the external identity has been validated by the provider adapter.
 
 ## Request workflow concurrency
 
@@ -153,7 +184,7 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 6 for this foundation.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 7 for the current SaaS 1 authentication slice.
 
 ## Transaction contract
 
@@ -206,11 +237,15 @@ Migration 005 down fails closed when entitlement rows or entitlement-change audi
 
 Migration 006 down fails closed when booking-provider reference rows exist. A populated rollback requires reviewed reconciliation because deleting the local mapping could orphan an external calendar event.
 
+Migration 007 down removes only short-lived pre-authentication transaction state. Rolling it back invalidates any Entra sign-in flow already in progress, so authentication traffic must be drained or users must restart login after rollback. It does not delete established sessions or Tenant/User records.
+
 ## Testing evidence required
 
 Database changes require PostgreSQL integration coverage for applicable migration/version/checksum behavior, tenant-scoped repositories, composite FK isolation, invalid constraints, duplicate/concurrent writes, transaction rollback, schema readiness and cross-Tenant persistence.
 
 Session persistence additionally requires real PostgreSQL tests for raw-token non-persistence, session resolution, cross-Tenant issuance rejection, expiry, revocation, stale privilege invalidation, rotation and migration rollback/reapply.
+
+OIDC transaction persistence additionally requires real PostgreSQL tests for schema version 7, plaintext non-persistence, valid one-time consume, expiry rejection, replay rejection, provider scoping, concurrent consume behavior and rollback/reapply.
 
 Request authorization persistence additionally requires real PostgreSQL tests for same-ID Tenant isolation, cross-Tenant absence, workflow constraints, invalid status/reason combinations and stale/concurrent transition protection.
 

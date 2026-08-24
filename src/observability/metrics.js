@@ -2,6 +2,8 @@ const ROUTES = new Set([
   'health_live',
   'health_ready',
   'health_status',
+  'entra_login',
+  'entra_callback',
   'session',
   'audit',
   'request',

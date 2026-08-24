@@ -2,6 +2,8 @@ import { ApiError, asApiError } from './api-error.js';
 import { AuthorizationDeniedError } from './authorization/errors.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { assertProductionConfig } from './config.js';
+import { EntraAuthenticationError } from './identity/entra-errors.js';
+import { readEntraTransactionCookie } from './identity/entra-transaction-cookie.js';
 import { createLogger } from './logger.js';
 import { createHealthMonitor } from './observability/health.js';
 import { createMetricsRegistry } from './observability/metrics.js';
@@ -23,6 +25,8 @@ const ROUTES = Object.freeze({
   live: '/api/v1/health/live',
   ready: '/api/v1/health/ready',
   status: '/api/v1/health/status',
+  entraLogin: '/api/v1/auth/microsoft/login',
+  entraCallback: '/api/v1/auth/microsoft/callback',
   principal: '/api/v1/session',
   audit: '/api/v1/audit',
 });
@@ -38,6 +42,18 @@ const TRANSITION_BODY_SCHEMA = Object.freeze({
   }),
 });
 const AUDIT_QUERY_KEYS = new Set(['limit', 'beforeId']);
+const ENTRA_CALLBACK_QUERY_KEYS = new Set([
+  'code',
+  'state',
+  'session_state',
+  'error',
+  'error_description',
+  'error_codes',
+  'timestamp',
+  'trace_id',
+  'correlation_id',
+  'error_uri',
+]);
 
 function urlOf(rawUrl, publicOrigin) {
   return new URL(rawUrl, publicOrigin);
@@ -57,6 +73,36 @@ function sendNoContent(response) {
   response.removeHeader('Content-Type');
   response.removeHeader('Content-Length');
   response.end();
+}
+
+function sendRedirect(response, statusCode, location) {
+  response.statusCode = statusCode;
+  response.setHeader('Location', location);
+  response.setHeader('Content-Length', '0');
+  response.removeHeader('Content-Type');
+  response.end();
+}
+
+function assertNoQuery(parsedUrl) {
+  if ([...parsedUrl.searchParams.keys()].length > 0) throw new ApiError(400, 'VALIDATION_FAILED');
+}
+
+function entraCallbackFromUrl(parsedUrl) {
+  for (const key of parsedUrl.searchParams.keys()) {
+    if (!ENTRA_CALLBACK_QUERY_KEYS.has(key) || parsedUrl.searchParams.getAll(key).length !== 1) {
+      throw new ApiError(400, 'VALIDATION_FAILED');
+    }
+  }
+  const state = parsedUrl.searchParams.get('state');
+  const code = parsedUrl.searchParams.get('code');
+  const error = parsedUrl.searchParams.get('error');
+  if (typeof state !== 'string' || !state || state.length > 256) throw new ApiError(400, 'VALIDATION_FAILED');
+  if (error !== null) {
+    if (!error || error.length > 128 || code !== null) throw new ApiError(400, 'VALIDATION_FAILED');
+    return Object.freeze({ state, providerError: true });
+  }
+  if (typeof code !== 'string' || !code || code.length > 4096) throw new ApiError(400, 'VALIDATION_FAILED');
+  return Object.freeze({ state, code, providerError: false });
 }
 
 function publicRequest(request) {
@@ -112,6 +158,8 @@ function routeKey(path) {
   if (path === ROUTES.live) return 'health_live';
   if (path === ROUTES.ready) return 'health_ready';
   if (path === ROUTES.status) return 'health_status';
+  if (path === ROUTES.entraLogin) return 'entra_login';
+  if (path === ROUTES.entraCallback) return 'entra_callback';
   if (path === ROUTES.principal) return 'session';
   if (path === ROUTES.audit) return 'audit';
   if (REQUEST_TRANSITION_PATH.test(path)) return 'request_transition';
@@ -130,6 +178,7 @@ export function createApp({
   authorizationPolicy = createAuthorizationPolicy(),
   auditService,
   sessionService,
+  entraAuthService,
   requestService,
   resolvePrincipal,
   verifyCsrf,
@@ -214,6 +263,71 @@ export function createApp({
           },
           requestId,
         }, config.maxResponseBytes);
+        return;
+      }
+
+      if (path === ROUTES.entraLogin) {
+        if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+        assertNoQuery(parsedUrl);
+        if (!entraAuthService || typeof entraAuthService.start !== 'function') {
+          throw new ApiError(503, 'AUTHENTICATION_SERVICE_UNAVAILABLE');
+        }
+        const started = await entraAuthService.start({ correlationId: requestId });
+        if (typeof started?.authorizationUrl !== 'string' || typeof started?.setCookie !== 'string') {
+          throw new ApiError(500, 'AUTHENTICATION_RESULT_INVALID');
+        }
+        response.setHeader('Set-Cookie', started.setCookie);
+        statusCode = 302;
+        sendRedirect(response, statusCode, started.authorizationUrl);
+        return;
+      }
+
+      if (path === ROUTES.entraCallback) {
+        if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+        if (
+          !entraAuthService
+          || typeof entraAuthService.complete !== 'function'
+          || typeof entraAuthService.clearCookie !== 'function'
+        ) {
+          throw new ApiError(503, 'AUTHENTICATION_SERVICE_UNAVAILABLE');
+        }
+        const callback = entraCallbackFromUrl(parsedUrl);
+        const browserBinding = readEntraTransactionCookie(request.headers);
+        const clearedTransactionCookie = entraAuthService.clearCookie();
+        response.setHeader('Set-Cookie', clearedTransactionCookie);
+        let completed;
+        try {
+          completed = await entraAuthService.complete({
+            ...callback,
+            browserBinding,
+            correlationId: requestId,
+          });
+        } catch (error) {
+          if (!(error instanceof EntraAuthenticationError)) throw error;
+          metrics.recordAuthenticationFailure();
+          logger.securityOutcome({ requestId, category: 'authentication' });
+          statusCode = 303;
+          sendRedirect(response, statusCode, '/?auth=authentication_failed');
+          return;
+        }
+        if (completed.status === 'authentication_rejected') {
+          metrics.recordAuthenticationFailure();
+          logger.securityOutcome({ requestId, category: 'authentication' });
+          statusCode = 303;
+          sendRedirect(response, statusCode, '/?auth=authentication_failed');
+          return;
+        }
+        if (completed.status === 'onboarding_required') {
+          statusCode = 303;
+          sendRedirect(response, statusCode, '/?auth=tenant_onboarding_required');
+          return;
+        }
+        if (completed.status !== 'authenticated' || typeof completed.setCookie !== 'string') {
+          throw new ApiError(500, 'AUTHENTICATION_RESULT_INVALID');
+        }
+        response.setHeader('Set-Cookie', [clearedTransactionCookie, completed.setCookie]);
+        statusCode = 303;
+        sendRedirect(response, statusCode, '/');
         return;
       }
 

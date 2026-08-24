@@ -14,8 +14,12 @@ async function sourceFiles(directory) {
 
 const packageJson = JSON.parse(await readFile('package.json', 'utf8'));
 const runtimeDependencies = packageJson.dependencies || {};
-if (JSON.stringify(runtimeDependencies) !== JSON.stringify({ pg: '8.23.0' })) {
-  throw new Error('The reviewed PostgreSQL driver must remain the only runtime dependency.');
+const approvedRuntimeDependencies = {
+  '@azure/msal-node': '5.4.3',
+  pg: '8.23.0',
+};
+if (JSON.stringify(runtimeDependencies) !== JSON.stringify(approvedRuntimeDependencies)) {
+  throw new Error('Runtime dependencies must remain exactly the reviewed PostgreSQL and Microsoft identity adapters.');
 }
 
 const files = await sourceFiles('src');
@@ -45,11 +49,36 @@ for (const file of files) {
 }
 
 const app = await readFile('src/app.js', 'utf8');
-for (const route of ["'/api/v1/health/live'", "'/api/v1/health/ready'", "'/api/v1/session'", "'/api/v1/audit'"]) {
+for (const route of [
+  "'/api/v1/health/live'",
+  "'/api/v1/health/ready'",
+  "'/api/v1/auth/microsoft/login'",
+  "'/api/v1/auth/microsoft/callback'",
+  "'/api/v1/session'",
+  "'/api/v1/audit'",
+]) {
   if (!app.includes(route)) throw new Error(`Required route contract is missing: ${route}.`);
 }
 if (!app.includes('createPrincipalGuard') || !app.includes('assertSameOrigin') || !app.includes('createRateLimiter')) {
   throw new Error('Required API security boundaries are not composed in src/app.js.');
+}
+if (!app.includes('entraAuthService.start') || !app.includes('entraAuthService.complete')) {
+  throw new Error('Microsoft authentication routes must delegate to the Entra authentication service.');
+}
+for (const required of [
+  'readEntraTransactionCookie',
+  'entraAuthService.clearCookie',
+  'browserBinding,',
+]) {
+  if (!app.includes(required)) {
+    throw new Error(`Microsoft callback must preserve initiating-browser binding contract ${required}.`);
+  }
+}
+if (app.includes("searchParams.get('tenantId')") || app.includes("searchParams.get('tid')")) {
+  throw new Error('Microsoft authentication routes must not accept browser-selected Tenant authority.');
+}
+if (!app.includes("'/?auth=authentication_failed'") || !app.includes("'/?auth=tenant_onboarding_required'")) {
+  throw new Error('Authentication callbacks must use fixed same-origin result redirects.');
 }
 if (!app.includes('createTenantContextGuard') || !app.includes('tenantGuard.requireKnown(principal)')) {
   throw new Error('Protected session context must resolve the tenant from the authenticated principal.');
@@ -66,7 +95,7 @@ if (!app.includes("request.method === 'DELETE'") || !app.includes('sessionServic
 if (!app.includes('auditService.listTenantEvents') || !app.includes('correlationId: requestId')) {
   throw new Error('Tenant audit reads must use the audit service and server-generated request correlation.');
 }
-if (app.includes('tenantId: parsedUrl') || app.includes("searchParams.get('tenantId')")) {
+if (app.includes('tenantId: parsedUrl')) {
   throw new Error('Audit API must not accept client-selected Tenant authority.');
 }
 if (!app.includes('readJsonObjectBody') || !app.includes('validateExactObject')) {
@@ -168,9 +197,11 @@ for (const required of [
   'createPostgresAuditRepository',
   'createPostgresEntitlementRepository',
   'createPostgresBookingReferenceRepository',
+  'createPostgresOidcTransactionRepository',
   'auditRepository',
   'entitlementRepository',
   'bookingReferenceRepository',
+  'oidcTransactionRepository',
 ]) {
   if (!persistence.includes(required)) throw new Error(`PostgreSQL persistence is missing ${required}.`);
 }
@@ -209,6 +240,23 @@ for (const required of ['HttpOnly', 'SameSite=Lax', 'Path=/api', 'Secure']) {
 }
 if (sessionCookie.includes('Domain=')) throw new Error('Session cookie must not set a broad Domain attribute.');
 
+const entraTransactionCookie = await readFile('src/identity/entra-transaction-cookie.js', 'utf8');
+for (const required of [
+  "'cm_oidc_tx'",
+  "'HttpOnly'",
+  "'SameSite=Lax'",
+  "'Secure'",
+  "'/api/v1/auth/microsoft/callback'",
+  'Max-Age=',
+]) {
+  if (!entraTransactionCookie.includes(required)) {
+    throw new Error(`Entra transaction cookie contract is missing ${required}.`);
+  }
+}
+if (entraTransactionCookie.includes('Domain=')) {
+  throw new Error('Entra transaction cookie must not set a broad Domain attribute.');
+}
+
 const sessionService = await readFile('src/identity/session-service.js', 'utf8');
 for (const required of [
   'randomBytes(32)',
@@ -236,18 +284,84 @@ if (!sessionRepository.includes('appendAudit(client, auditRepository, auditEvent
   throw new Error('Session mutations must append audit evidence inside their database transaction.');
 }
 
+const entraClient = await readFile('src/identity/entra-client.js', 'utf8');
+for (const required of [
+  'ConfidentialClientApplication',
+  'msal.getAuthCodeUrl',
+  'msal.acquireTokenByCode',
+  "codeChallengeMethod: 'S256'",
+  'claims.aud !== clientId',
+  'claims.iss !== expectedIssuer',
+  'secureHashMatch(claims.nonce',
+  'tenantReference',
+  'userReference',
+]) {
+  if (!entraClient.includes(required)) throw new Error(`Entra adapter is missing validation boundary ${required}.`);
+}
+if (/\b(?:groups|roles|email)\b/i.test(entraClient)) {
+  throw new Error('Entra authentication adapter must not infer application authorization from provider group/role/email claims.');
+}
+
+const entraAuthService = await readFile('src/identity/entra-auth-service.js', 'utf8');
+for (const required of [
+  "createHash('sha256')",
+  "createHmac('sha256'",
+  'pkceChallenge',
+  'browserBinding(secret, state)',
+  'safeTokenEqual',
+  'serializeEntraTransactionCookie',
+  'serializeClearedEntraTransactionCookie',
+  'repository.consume',
+  'identityResolver.resolve',
+  'sessionService.issue',
+]) {
+  if (!entraAuthService.includes(required)) {
+    throw new Error(`Entra authentication service is missing protocol/session invariant ${required}.`);
+  }
+}
+const browserBindingCheck = entraAuthService.indexOf('safeTokenEqual(presentedBinding');
+const oidcStateConsume = entraAuthService.indexOf('const transaction = await repository.consume({');
+if (browserBindingCheck < 0 || oidcStateConsume < 0 || browserBindingCheck > oidcStateConsume) {
+  throw new Error('Entra browser binding must be validated before shared OIDC state is consumed.');
+}
+
+const oidcRepository = await readFile('src/persistence/postgres/oidc-transaction-repository.js', 'utf8');
+for (const required of [
+  'DELETE FROM oidc_auth_transactions',
+  'WHERE provider = $1',
+  'AND state_hash = $2',
+  'AND expires_at > $3',
+  'RETURNING nonce_hash',
+]) {
+  if (!oidcRepository.includes(required)) throw new Error(`OIDC transaction repository is missing replay invariant ${required}.`);
+}
+
 const config = await readFile('src/config.js', 'utf8');
-if (!config.includes('AUDIT_HMAC_SECRET_REQUIRED') || !config.includes('auditHmacSecret')) {
-  throw new Error('Pilot/Production must require an external audit HMAC secret.');
+for (const required of [
+  'AUDIT_HMAC_SECRET_REQUIRED',
+  'auditHmacSecret',
+  'ENTRA_AUTHORITY',
+  'ENTRA_CLIENT_ID_REQUIRED',
+  'ENTRA_CLIENT_SECRET_REQUIRED',
+  'OIDC_TRANSACTION_SECRET_REQUIRED',
+]) {
+  if (!config.includes(required)) throw new Error(`Pilot/Production configuration is missing ${required}.`);
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!pool.includes('CURRENT_SCHEMA_VERSION = 6')) {
-  throw new Error('Runtime schema readiness must require booking-reference migration version 6.');
+if (!pool.includes('CURRENT_SCHEMA_VERSION = 7')) {
+  throw new Error('Runtime schema readiness must require OIDC transaction migration version 7.');
 }
 
 const index = await readFile('src/index.js', 'utf8');
-for (const required of ['createSessionService', 'createAuthorizationPolicy', 'createRequestService', 'createAuditService']) {
+for (const required of [
+  'createSessionService',
+  'createAuthorizationPolicy',
+  'createRequestService',
+  'createAuditService',
+  'createEntraClient',
+  'createEntraAuthService',
+]) {
   if (!index.includes(required)) throw new Error(`Process composition must wire ${required}.`);
 }
 
@@ -275,6 +389,8 @@ for (const migration of [
   'migrations/005_tenant_entitlements.down.sql',
   'migrations/006_booking_provider_references.up.sql',
   'migrations/006_booking_provider_references.down.sql',
+  'migrations/007_oidc_auth_transactions.up.sql',
+  'migrations/007_oidc_auth_transactions.down.sql',
 ]) {
   await readFile(migration, 'utf8');
 }

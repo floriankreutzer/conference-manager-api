@@ -73,13 +73,17 @@ function bookingRequest() {
 test('metrics use bounded low-cardinality labels and reject arbitrary dimensions', () => {
   const metrics = createMetricsRegistry();
   metrics.recordApiRequest({ route: 'request', method: 'GET', statusCode: 200, durationMs: 17 });
+  metrics.recordApiRequest({ route: 'entra_login', method: 'GET', statusCode: 302, durationMs: 4 });
+  metrics.recordApiRequest({ route: 'entra_callback', method: 'GET', statusCode: 303, durationMs: 9 });
   metrics.recordAuthenticationFailure();
   metrics.recordAuthorizationDenied();
   metrics.recordDependencyState({ state: 'degraded', required: false });
 
   const snapshot = metrics.snapshot();
-  assert.equal(snapshot.counters.length, 4);
+  assert.equal(snapshot.counters.length, 6);
   assert.match(JSON.stringify(snapshot), /api_requests_total/);
+  assert.match(JSON.stringify(snapshot), /entra_login/);
+  assert.match(JSON.stringify(snapshot), /entra_callback/);
   assert.doesNotMatch(JSON.stringify(snapshot), new RegExp(TENANT_ID));
   assert.throws(
     () => metrics.recordApiRequest({ route: TENANT_ID, method: 'GET', statusCode: 200, durationMs: 1 }),

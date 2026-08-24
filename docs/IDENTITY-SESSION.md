@@ -4,22 +4,23 @@
 
 Root `AGENTS.md` remains authoritative. This document defines the provider-neutral server-side identity/session boundary implemented by SaaS 0 issue #50 and its durable session-audit integration added by issue #52.
 
-Microsoft Entra ID is intentionally not part of the business-layer contract. A future Entra OIDC adapter validates provider tokens/claims and maps them to a trusted internal identity before calling the session issuance boundary.
+Microsoft Entra ID is implemented as a provider adapter at the edge of this contract. The Entra adapter validates the OIDC protocol and provider claims and emits only a provider-neutral external identity. Tenant claiming and local User provisioning then resolve that external identity into a trusted internal identity before session issuance.
 
-The recognized Tenant roles/permissions and object/workflow authorization rules are defined separately by `docs/AUTHORIZATION.md`. The durable audit event/integrity contract is defined by `docs/AUDIT.md`.
+The recognized Tenant roles/permissions and object/workflow authorization rules are defined separately by `docs/AUTHORIZATION.md`. The durable audit event/integrity contract is defined by `docs/AUDIT.md`. The Microsoft protocol-specific boundary is defined by `docs/ENTRA-AUTHENTICATION.md`.
 
 ## Trust flow
 
 ```text
-External identity provider
+Microsoft Entra / external identity provider
   -> provider adapter validates protocol, issuer, audience, signature, nonce/state and provider claims
-     -> server-side identity mapping resolves internal Tenant/User and approved roles/permissions
-        -> normalizeTrustedIdentity(...)
-           -> createSessionService.issue(...)
-              -> one PostgreSQL transaction:
-                   session row containing only token hash
-                   + session.issued audit event
-                 -> HttpOnly session cookie returned to browser
+     -> provider-neutral external identity
+        -> server-side identity mapping resolves internal Tenant/User and approved roles/permissions
+           -> normalizeTrustedIdentity(...)
+              -> createSessionService.issue(...)
+                 -> one PostgreSQL transaction:
+                      session row containing only token hash
+                      + session.issued audit event
+                    -> HttpOnly session cookie returned to browser
 
 Browser request
   -> opaque cm_session cookie
@@ -44,7 +45,9 @@ The trusted identity input contains only normalized server-side values:
 
 The provider identity reference is evidence/linkage for the identity adapter. It is not a Tenant ownership identifier and is not returned by the public session endpoint or copied into Tenant audit metadata.
 
-Provider-specific fields such as Entra `tid`, `oid`, group claim formats, token types, issuer URLs, Graph objects, or Microsoft SDK types must remain inside the future identity adapter. Business services consume only the internal Principal.
+Provider-specific fields such as Entra `tid`, `oid`, group claim formats, token types, issuer URLs, Graph objects, or Microsoft SDK types remain inside the identity adapter and identity-mapping boundary. Business services consume only the internal Principal.
+
+The current Entra authentication slice deliberately emits only validated external `tenantReference`, `userReference`, provider and an optional bounded display name. It does not import provider group, role or email claims as Conference Manager authorization. Issues #59 and #60 own the binding of those external references to internal Tenant/User records.
 
 The session layer validates syntactic role/permission shape. The authorization layer additionally requires every role/permission value to belong to the recognized Tenant policy. Unknown authorization values fail closed instead of being ignored.
 
@@ -75,9 +78,11 @@ Session lookup hashes the presented cookie token and requires all of the followi
 
 Any failure returns no Principal and the request fails closed as unauthenticated.
 
+The Entra OIDC flow has separate short-lived authentication transactions. PostgreSQL stores only provider, hashed state, hashed nonce, creation time and expiry. It does not store authorization codes, provider tokens, plaintext state, plaintext nonce, or browser-binding cookie values. A callback verifies a browser-bound HMAC value before atomically consuming its state row, so a callback is both bound to the initiating browser and one-time across multiple API instances.
+
 ## Cookie policy
 
-The session cookie is named `cm_session` and uses:
+The application session cookie is named `cm_session` and uses:
 
 - `HttpOnly`;
 - `SameSite=Lax`;
@@ -87,6 +92,8 @@ The session cookie is named `cm_session` and uses:
 - no broad `Domain` attribute.
 
 Logout clears the same cookie with `Max-Age=0` and an expired timestamp after server-side revocation.
+
+The Entra login flow additionally uses the transient `cm_oidc_tx` cookie. It is not an authenticated session and carries no Tenant/User/role authority. Its value is an HMAC-derived verifier bound to the server-generated OIDC state. It uses `HttpOnly`, `SameSite=Lax`, callback-only `Path=/api/v1/auth/microsoft/callback`, `Secure` in HTTPS, a maximum lifetime equal to the OIDC transaction TTL, and no `Domain` attribute. The callback clears it before returning authentication/onboarding results. A callback without the matching cookie cannot issue a Conference Manager session even if its state/code were captured from another browser.
 
 Authentication/access/refresh tokens from an external identity provider are not browser session credentials for this application and must not be stored in LocalStorage or sessionStorage.
 
@@ -133,10 +140,13 @@ Allowed session audit metadata is intentionally limited to non-secret facts such
 - session token hash;
 - internal session ID;
 - CSRF token;
+- transient OIDC browser-binding cookie;
 - provider subject/reference;
 - provider access/refresh/ID token;
 - cookie header;
 - secret material.
+
+Pre-Tenant Entra authentication failures are not forced into an arbitrary Tenant audit chain. They use bounded operational authentication telemetry without provider payloads or token/claim data. Tenant-scoped claim/provisioning audit begins only when a valid internal Tenant context exists.
 
 See `docs/AUDIT.md` for the common event validation and HMAC-chain contract.
 
@@ -174,20 +184,28 @@ It does not return:
 
 `DELETE /api/v1/session` revokes the server-side session, atomically persists its success audit event, and returns HTTP 204 while clearing the cookie.
 
-## Future Entra OIDC adapter
+## Microsoft Entra OIDC adapter
 
-SaaS 1 will add the Microsoft Entra adapter. That adapter must validate the full OIDC flow and then resolve provider identity into internal Tenant/User records before issuing a session.
+SaaS 1 issue #58 implements the Microsoft Entra OIDC edge adapter using the fixed Microsoft organizational multi-tenant authority and the authorization-code flow with PKCE, state and nonce.
 
-The adapter must not allow browser-supplied internal IDs, roles, permissions, or Entra tenant IDs to override server-side mappings. Entra claims remain adapter input; the internal Principal remains the only business identity contract.
+The adapter validates Microsoft protocol output and then resolves provider identity through a provider-neutral resolver before issuing a session. The browser cannot supply internal IDs, roles, permissions, Entra Tenant authority or an alternative provider destination.
 
-The adapter's role/permission mapping output must use only authorization values recognized by `docs/AUTHORIZATION.md`. Unknown mapping output fails closed at the business authorization boundary.
+The OIDC state is additionally bound to the initiating browser through `cm_oidc_tx`. The binding is validated before the shared state row is consumed; this prevents a callback URL authenticated in one browser from being used to install that identity's session into another browser.
 
-Authentication failures that cannot be mapped safely to a valid internal Tenant/actor must not be forced into another Tenant's audit chain. Platform/security telemetry for such pre-Tenant failures remains a separate future boundary.
+A successfully authenticated Entra identity that is not yet claimed/provisioned is returned as `onboarding_required`; it receives no business session. This preserves the ownership split with #59 Tenant claiming and #60 JIT User provisioning.
+
+Any mapping output that eventually reaches session issuance must use only authorization values recognized by `docs/AUTHORIZATION.md`. Unknown mapping output fails closed at the business authorization boundary.
+
+See `docs/ENTRA-AUTHENTICATION.md` for registration, configuration, protocol validation, browser binding, replay protection and live Pilot verification requirements.
 
 ## Operational considerations
 
 Expired/revoked session cleanup is an operational maintenance concern and may be implemented with bounded server-side cleanup once production job scheduling/observability is defined. Removing expired rows is not required for correctness because lookup always enforces expiration and revocation.
 
+Expired OIDC authentication transactions are rejected by the atomic consume query and are opportunistically deleted before new authentication transactions are created. Their lifetime is bounded independently from application sessions.
+
 CSRF secret rotation invalidates previously issued CSRF tokens but not the underlying authenticated session. A client can retrieve a new CSRF token with authenticated `GET /api/v1/session`.
+
+OIDC transaction-secret rotation invalidates PKCE derivation and browser-binding verification for authentication flows that were already started but not completed. It does not invalidate established application sessions.
 
 Audit HMAC-key rotation requires an explicit integrity-chain/key-version migration or archive design; silently replacing the key would make historical chain verification impossible. Issue #52 therefore fixes integrity version 1 and requires a stable externally managed `AUDIT_HMAC_SECRET` for the deployed chain until a reviewed key-rotation mechanism exists.
