@@ -1,3 +1,4 @@
+import { TenantUserRoleConflictError } from './application/tenant-user-errors.js';
 import {
   AuditInputError,
   AuditIntegrityError,
@@ -40,6 +41,7 @@ export function asApiError(error) {
   }
   if (error instanceof OnboardingDeniedError) return new ApiError(403, 'ONBOARDING_UNAVAILABLE');
   if (error instanceof OnboardingConflictError) return new ApiError(409, 'ONBOARDING_CONFLICT');
+  if (error instanceof TenantUserRoleConflictError) return new ApiError(409, error.code);
   if (error instanceof TenantUnavailableError) return new ApiError(403, 'TENANT_UNAVAILABLE');
   if (error instanceof AuthorizationDeniedError) {
     return error.conceal
