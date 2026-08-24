@@ -200,6 +200,7 @@ test('OIDC migration rolls back and reapplies without touching established sessi
   assert.equal(await isPostgresSchemaReady(pool), false);
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatest(pool), true);
   const missing = await pool.query("SELECT to_regclass('public.oidc_auth_transactions') AS table_name");
   assert.equal(missing.rows[0].table_name, null);
   const sessions = await pool.query("SELECT to_regclass('public.sessions') AS table_name");
