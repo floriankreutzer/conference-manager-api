@@ -9,6 +9,9 @@ for (const required of [
   'external.tenantReference',
   'providerTenantReference: external.tenantReference',
   'tenantBinding.tenantId',
+  'result.identity.securityVersion',
+  'normalizedSecurityVersion',
+  'JIT_SECURITY_VERSION_INVALID',
   "status: 'authentication_denied'",
   "status: 'onboarding_required'",
 ]) {
@@ -43,6 +46,41 @@ for (const required of [
   'appendWithClient(client, profileAuditEvent)',
 ]) {
   if (!repository.includes(required)) throw new Error(`JIT persistence is missing invariant ${required}.`);
+}
+
+const sessionService = await readFile('src/identity/session-service.js', 'utf8');
+for (const required of [
+  'normalizeSessionIdentity',
+  'IDENTITY_SECURITY_VERSION_INVALID',
+  'securityVersion: identity.securityVersion',
+]) {
+  if (!sessionService.includes(required)) {
+    throw new Error(`Session service is missing JIT snapshot invariant ${required}.`);
+  }
+}
+
+const sessionRepository = await readFile('src/persistence/postgres/session-repository.js', 'utf8');
+for (const required of [
+  'session-security-context-by-version',
+  'u.security_version = $4',
+  'session.securityVersion',
+  'FOR SHARE OF u, t',
+]) {
+  if (!sessionRepository.includes(required)) {
+    throw new Error(`Session persistence is missing JIT snapshot invariant ${required}.`);
+  }
+}
+
+const raceTest = await readFile('tests-db/session-role-snapshot-race.test.js', 'utf8');
+for (const required of [
+  'role changes between JIT resolution and session issuance reject stale privilege snapshots',
+  'staleResolution.trustedIdentity',
+  "error.code === 'IDENTITY_NOT_PROVISIONED'",
+  'freshResolution.trustedIdentity.securityVersion',
+]) {
+  if (!raceTest.includes(required)) {
+    throw new Error(`JIT session race regression coverage is missing ${required}.`);
+  }
 }
 
 const migration = await readFile('migrations/009_jit_user_identity_bindings.up.sql', 'utf8');
