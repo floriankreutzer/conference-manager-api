@@ -137,7 +137,8 @@ export function createPostgresTenantUserAdminRepository(pool, { auditRepository 
         if (sameRoles(currentRoles, desiredRoles)) {
           return Object.freeze({ status: 'unchanged', user: mapUser(user, currentRoles) });
         }
-        if (user.active !== true && desiredRoles.length > 0) {
+        const addsElevatedRole = desiredRoles.some((role) => !currentRoles.includes(role));
+        if (user.active !== true && addsElevatedRole) {
           return Object.freeze({ status: 'user_inactive' });
         }
 
