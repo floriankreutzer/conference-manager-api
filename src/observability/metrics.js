@@ -2,6 +2,8 @@ const ROUTES = new Set([
   'health_live',
   'health_ready',
   'health_status',
+  'auth_microsoft_login',
+  'auth_microsoft_callback',
   'session',
   'audit',
   'request',
