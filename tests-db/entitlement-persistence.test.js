@@ -41,7 +41,17 @@ function serviceFor(repository, auditService, rolloutState = ROLLOUT_STATE.NOT_C
 
 test('PostgreSQL entitlements are tenant-scoped, constrained, and audit-atomic', async (t) => {
   const pool = createPostgresPool(databaseConfig());
-  t.after(async () => pool.end());
+  t.after(async () => {
+    await pool.query('ALTER TABLE audit_events DISABLE TRIGGER audit_events_append_only');
+    try {
+      await pool.query('DELETE FROM audit_events WHERE tenant_id = ANY($1::uuid[])', [[TENANT_A, TENANT_B]]);
+    } finally {
+      await pool.query('ALTER TABLE audit_events ENABLE TRIGGER audit_events_append_only');
+    }
+    await pool.query('DELETE FROM tenant_entitlements WHERE tenant_id = ANY($1::uuid[])', [[TENANT_A, TENANT_B]]);
+    await pool.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [[TENANT_A, TENANT_B]]);
+    await pool.end();
+  });
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
   await seedTenant(pool, TENANT_A, 'Entitlement Tenant A');
