@@ -92,6 +92,7 @@ function identity(overrides = {}) {
     providerIdentity: { provider: 'test_oidc', reference: 'subject-a' },
     roles: ['employee'],
     permissions: ['request:read'],
+    securityVersion: 1,
     ...overrides,
   };
 }
@@ -579,6 +580,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
     const rotated = await service.rotate(original.principal, identity({
       roles: ['conference_manager'],
       permissions: ['request:read', 'request:manage'],
+      securityVersion: 2,
     }));
     const rotatedRequest = { headers: { cookie: cookiePair(rotated.setCookie) } };
     const refreshed = await service.resolvePrincipal(rotatedRequest);
