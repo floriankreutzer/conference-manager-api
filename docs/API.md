@@ -22,7 +22,7 @@ Returns HTTP 200 while the process can handle requests. It exposes no dependency
 
 ### `GET /api/v1/health/ready`
 
-Returns HTTP 200 with `ready` only when registered required readiness dependencies complete successfully within their bound. PostgreSQL deployments require connectivity and exact schema version 6. Failure returns HTTP 503 with `not_ready` without naming internal dependencies.
+Returns HTTP 200 with `ready` only when registered required readiness dependencies complete successfully within their bound. PostgreSQL deployments require connectivity and exact schema version 7. Failure returns HTTP 503 with `not_ready` without naming internal dependencies.
 
 Optional provider/dependency degradation does not change this endpoint to 503 while the core API can still safely serve traffic.
 
@@ -55,6 +55,45 @@ Example:
 The endpoint does not expose dependency names, hosts, provider references, Tenant/User context, connection information, provider payloads or failure text. Pilot/Production service version and build ID are bounded deployment metadata supplied by trusted configuration.
 
 See `docs/OBSERVABILITY.md` for logging, metrics, SLO candidates and alerting semantics.
+
+### `GET /api/v1/auth/microsoft/login`
+
+Starts the Microsoft Entra organizational multi-tenant OIDC authorization-code flow.
+
+Requirements and behavior:
+
+- GET only;
+- accepts no query parameters;
+- requires the Entra authentication service to be configured;
+- creates random state/nonce and a PKCE S256 challenge server-side;
+- persists only hashed short-lived OIDC transaction material in PostgreSQL;
+- redirects only to the fixed configured Microsoft organizational authority.
+
+The route never accepts a Tenant ID, authority URL, redirect URI, role, permission, email domain, or other identity authority from browser input.
+
+### `GET /api/v1/auth/microsoft/callback`
+
+Completes the Microsoft Entra authorization-code flow.
+
+The callback accepts one copy of the bounded Microsoft callback fields only. Unknown or duplicate query parameters return HTTP 400 `VALIDATION_FAILED`.
+
+The state is atomically consumed from PostgreSQL before authorization-code redemption. Expired, unknown, malformed, or replayed state fails closed. The Entra adapter then relies on MSAL for the Microsoft protocol/token validation and additionally validates the application audience, Tenant-specific v2 issuer, nonce, expiry/time claims, token version, and required stable `tid`/`oid` GUID claims.
+
+Provider errors and failed authentication use a fixed same-origin redirect:
+
+`/?auth=authentication_failed`
+
+A validated Entra identity that is not yet bound/provisioned by the Tenant/User resolver uses:
+
+`/?auth=tenant_onboarding_required`
+
+No business session is created in that case.
+
+When a trusted provider-neutral resolver returns an internal Tenant/User identity, the existing server-side SessionService creates the HttpOnly session and the callback returns a fixed same-origin redirect to `/` with `Set-Cookie`.
+
+Provider error descriptions, provider tokens, raw claims and secrets are never reflected to the browser.
+
+See `docs/ENTRA-AUTHENTICATION.md` for the complete protocol and trust-boundary contract.
 
 ### `GET /api/v1/session`
 
@@ -216,11 +255,13 @@ See `docs/AUDIT.md` for the full audit/integrity contract.
 
 ## Session issuance
 
-There is intentionally no public client-controlled session-creation endpoint in SaaS 0.
+A browser cannot create a session directly.
 
-A future identity-provider callback/adapter validates the external authentication protocol and maps the provider identity to an internal trusted identity. Only that trusted server-side adapter calls `createSessionService.issue(...)` and sends its `Set-Cookie` result to the browser.
+The Microsoft Entra callback validates the external authentication protocol and translates the validated provider identity through the provider-neutral identity resolver. Only a resolver result containing a trusted internal Tenant/User identity can call `createSessionService.issue(...)` and send its `Set-Cookie` result to the browser.
 
-Successful session issuance and its `session.issued` event are persisted atomically. Provider tokens/subjects and raw session credentials are not audit metadata.
+SaaS 1 issue #58 intentionally leaves unclaimed/unprovisioned identities in `onboarding_required`; issues #59 and #60 own Tenant claiming and JIT User provisioning. Authentication by itself therefore creates no application role or privilege.
+
+Successful session issuance and its `session.issued` event are persisted atomically. Provider access/refresh tokens, raw claims, Entra Tenant IDs and Entra object IDs are not audit metadata.
 
 ## Tenant-scoped business endpoints
 
@@ -240,10 +281,11 @@ Tenant-visible audit access follows the same Tenant boundary but uses its own `t
 - A present browser `Origin` must match the configured public origin exactly.
 - Traversal, encoded separators, malformed encoding, backslashes and absolute/protocol-relative targets are rejected before routing.
 - JSON state changes use bounded body parsing and positive schemas; unknown fields are rejected.
+- Authentication callbacks accept only their bounded documented query fields and never accept Tenant authority.
 - Audit pagination accepts only bounded explicit query fields.
 - Client-controlled Tenant/User/role/permission/provider/owner/workflow-status/audit-authority values never establish server authority.
 - Protected POST/PUT/PATCH/DELETE operations require authenticated Principal resolution and session-bound CSRF verification.
 - Operational request logs use fixed route keys rather than dynamic URL paths.
 - Metrics accept only fixed low-cardinality labels; Tenant/User/Request/provider identifiers are prohibited dimensions.
 
-See `docs/AUDIT.md`, `docs/AUTHORIZATION.md`, `docs/IDENTITY-SESSION.md`, `docs/OBSERVABILITY.md`, `docs/TENANCY.md`, and `docs/SECURITY.md`.
+See `docs/AUDIT.md`, `docs/AUTHORIZATION.md`, `docs/ENTRA-AUTHENTICATION.md`, `docs/IDENTITY-SESSION.md`, `docs/OBSERVABILITY.md`, `docs/TENANCY.md`, and `docs/SECURITY.md`.
