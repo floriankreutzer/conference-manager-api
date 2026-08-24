@@ -1,0 +1,97 @@
+name: Entitlement Regression Patch
+
+on:
+  push:
+    branches:
+      - feature/tenant-entitlements
+    paths:
+      - .github/workflows/entitlement-regression-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feature/tenant-entitlements
+      - name: Patch migration regression
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests-db/postgres-persistence.test.js')
+          text = path.read_text()
+          old_versions = """      { version: 4, name: 'tamper_evident_audit' },
+              ]);"""
+          new_versions = """      { version: 4, name: 'tamper_evident_audit' },
+                { version: 5, name: 'tenant_entitlements' },
+              ]);"""
+          if text.count(old_versions) != 1:
+              raise SystemExit('version assertion pattern mismatch')
+          text = text.replace(old_versions, new_versions)
+
+          old_block = """  await t.test('audit migration refuses unreviewed legacy rows before reapplication', async () => {
+              assert.equal(await rollbackLatest(pool), true);
+              assert.equal(await isPostgresSchemaReady(pool), false);
+              let remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
+              assert.deepEqual(remaining.rows, [{ version: 1 }, { version: 2 }, { version: 3 }]);
+
+              await assert.rejects(migrateUp(pool), (error) => error.code === '55000');
+              await pool.query('DELETE FROM audit_events');
+              await migrateUp(pool);
+              assert.equal(await isPostgresSchemaReady(pool), true);
+
+              assert.equal(await rollbackLatest(pool), true);
+              await pool.query('DELETE FROM audit_events');
+              assert.equal(await rollbackLatest(pool), true);
+              assert.equal(await rollbackLatest(pool), true);
+              remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
+              assert.deepEqual(remaining.rows, [{ version: 1 }]);
+
+              await migrateUp(pool);
+              assert.equal(await isPostgresSchemaReady(pool), true);
+            });"""
+          new_block = """  await t.test('audit migration refuses unreviewed legacy rows before reapplication', async () => {
+              assert.equal(await rollbackLatest(pool), true);
+              assert.equal(await isPostgresSchemaReady(pool), false);
+              let remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
+              assert.deepEqual(remaining.rows, [
+                { version: 1 },
+                { version: 2 },
+                { version: 3 },
+                { version: 4 },
+              ]);
+
+              assert.equal(await rollbackLatest(pool), true);
+              remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
+              assert.deepEqual(remaining.rows, [{ version: 1 }, { version: 2 }, { version: 3 }]);
+              await assert.rejects(migrateUp(pool), (error) => error.code === '55000');
+              await pool.query('DELETE FROM audit_events');
+              await migrateUp(pool);
+              assert.equal(await isPostgresSchemaReady(pool), true);
+
+              assert.equal(await rollbackLatest(pool), true);
+              assert.equal(await rollbackLatest(pool), true);
+              assert.equal(await rollbackLatest(pool), true);
+              assert.equal(await rollbackLatest(pool), true);
+              remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
+              assert.deepEqual(remaining.rows, [{ version: 1 }]);
+
+              await migrateUp(pool);
+              assert.equal(await isPostgresSchemaReady(pool), true);
+            });"""
+          if text.count(old_block) != 1:
+              raise SystemExit('rollback assertion pattern mismatch')
+          path.write_text(text.replace(old_block, new_block))
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add tests-db/postgres-persistence.test.js
+          git commit -m "Update migration regression for entitlements"
+          git push origin HEAD:feature/tenant-entitlements
