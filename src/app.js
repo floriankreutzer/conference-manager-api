@@ -3,6 +3,7 @@ import { AuthorizationDeniedError } from './authorization/errors.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { assertProductionConfig } from './config.js';
 import { EntraAuthenticationError } from './identity/entra-errors.js';
+import { readEntraTransactionCookie } from './identity/entra-transaction-cookie.js';
 import { createLogger } from './logger.js';
 import { createHealthMonitor } from './observability/health.js';
 import { createMetricsRegistry } from './observability/metrics.js';
@@ -272,6 +273,10 @@ export function createApp({
           throw new ApiError(503, 'AUTHENTICATION_SERVICE_UNAVAILABLE');
         }
         const started = await entraAuthService.start({ correlationId: requestId });
+        if (typeof started?.authorizationUrl !== 'string' || typeof started?.setCookie !== 'string') {
+          throw new ApiError(500, 'AUTHENTICATION_RESULT_INVALID');
+        }
+        response.setHeader('Set-Cookie', started.setCookie);
         statusCode = 302;
         sendRedirect(response, statusCode, started.authorizationUrl);
         return;
@@ -279,13 +284,24 @@ export function createApp({
 
       if (path === ROUTES.entraCallback) {
         if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
-        if (!entraAuthService || typeof entraAuthService.complete !== 'function') {
+        if (
+          !entraAuthService
+          || typeof entraAuthService.complete !== 'function'
+          || typeof entraAuthService.clearCookie !== 'function'
+        ) {
           throw new ApiError(503, 'AUTHENTICATION_SERVICE_UNAVAILABLE');
         }
         const callback = entraCallbackFromUrl(parsedUrl);
+        const browserBinding = readEntraTransactionCookie(request.headers);
+        const clearedTransactionCookie = entraAuthService.clearCookie();
+        response.setHeader('Set-Cookie', clearedTransactionCookie);
         let completed;
         try {
-          completed = await entraAuthService.complete({ ...callback, correlationId: requestId });
+          completed = await entraAuthService.complete({
+            ...callback,
+            browserBinding,
+            correlationId: requestId,
+          });
         } catch (error) {
           if (!(error instanceof EntraAuthenticationError)) throw error;
           metrics.recordAuthenticationFailure();
@@ -309,7 +325,7 @@ export function createApp({
         if (completed.status !== 'authenticated' || typeof completed.setCookie !== 'string') {
           throw new ApiError(500, 'AUTHENTICATION_RESULT_INVALID');
         }
-        response.setHeader('Set-Cookie', completed.setCookie);
+        response.setHeader('Set-Cookie', [clearedTransactionCookie, completed.setCookie]);
         statusCode = 303;
         sendRedirect(response, statusCode, '/');
         return;
