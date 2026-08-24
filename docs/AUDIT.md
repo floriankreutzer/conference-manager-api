@@ -101,9 +101,9 @@ The current taxonomy reserves server-controlled actions for:
 - authentication failure where a valid Tenant scope is available;
 - authorization denial;
 - Request transition success/failure;
-- Tenant configuration and User-permission changes;
+- Tenant configuration, User-permission and entitlement changes;
 - integration connect/disconnect/admin-consent changes;
 - calendar operations;
 - tenant audit reads.
 
-#52 actively emits events for supported session lifecycle operations, Request workflow outcomes/denials and tenant audit reads. Tenant/User-permission, integration, calendar and provider-authentication actions are reserved for their owning future services; reserving an action name does not claim that workflow is already implemented.
+#52 actively emits events for supported session lifecycle operations, Request workflow outcomes/denials and tenant audit reads. #53 additionally emits `tenant.entitlement.changed` for real operator-controlled entitlement state changes. Tenant/User-permission, integration, calendar and provider-authentication actions remain reserved for their owning future services; reserving an action name does not claim that workflow is already implemented.

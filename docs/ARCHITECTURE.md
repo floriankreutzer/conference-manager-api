@@ -8,7 +8,7 @@ The cross-repository production topology is defined in `floriankreutzer/conferen
 
 ## Current foundation
 
-The service uses Node.js 22 native HTTP and ECMAScript modules. Issues #47-#52 establish the trusted HTTP boundary, hard Tenant isolation, PostgreSQL persistence, provider-neutral server-side sessions, deny-by-default Tenant authorization and tenant-scoped tamper-evident audit evidence. `pg` remains the only runtime dependency.
+The service uses Node.js 22 native HTTP and ECMAScript modules. Issues #47-#53 establish the trusted HTTP boundary, hard Tenant isolation, PostgreSQL persistence, provider-neutral server-side sessions, deny-by-default Tenant authorization, tenant-scoped tamper-evident audit evidence and server-side Tenant entitlements. `pg` remains the only runtime dependency.
 
 ```text
 Browser (untrusted)
@@ -54,12 +54,15 @@ Provider-specific identity claims and SDK types do not cross into business servi
 - `src/application/request-service.js` coordinates Tenant-scoped Request loading, authorization, optimistic workflow writes and correlated audit outcomes.
 - `src/audit/event.js` owns the fixed event taxonomy, bounded secret-minimized event validation and canonical integrity payload.
 - `src/audit/audit-service.js` derives Tenant/actor/time from trusted context, authorizes tenant audit reads and records denial/read evidence.
+- `src/entitlements/capabilities.js` owns stable product capability IDs and the authorization/entitlement/rollout intersection.
+- `src/entitlements/entitlement-service.js` owns fail-closed Tenant capability evaluation and deny-by-default operator entitlement changes.
 - `src/persistence/postgres/pool.js` owns bounded PostgreSQL pooling, TLS policy and database/schema readiness.
 - `src/persistence/postgres/session-repository.js` owns session persistence and authoritative expiry/revocation/security-version checks; successful lifecycle mutations append audit evidence in the same transaction.
 - `src/persistence/postgres/request-repository.js` owns Tenant-scoped Request lookup and status-conditional workflow updates; successful transitions append audit evidence in the same transaction.
 - `src/persistence/postgres/audit-repository.js` owns per-Tenant append serialization, HMAC signing, tenant-scoped listing and chain verification.
+- `src/persistence/postgres/entitlement-repository.js` owns Tenant-scoped entitlement reads and audit-atomic entitlement changes.
 - `src/persistence/postgres/transaction.js` owns the common commit/rollback transaction boundary.
-- `src/persistence/postgres/index.js` composes pool, Tenant loading, Session/Request/Audit repositories and readiness.
+- `src/persistence/postgres/index.js` composes pool, Tenant loading, Session/Request/Audit/Entitlement repositories and readiness.
 - `scripts/db-migrations.mjs` owns source-controlled migration discovery, checksums, advisory locking and transactional up/down execution.
 - `src/logger.js` owns bounded non-sensitive operational logs, separate from durable audit evidence.
 - `src/app.js` composes transport, session, CSRF, Tenant, audit and application boundaries without importing PostgreSQL or provider SDKs.
@@ -129,7 +132,7 @@ Schema ownership lives in `migrations/`. Migrations are paired up/down files, nu
 
 The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and the exact expected schema version.
 
-Migration 001 establishes tenant-owned product structures. Migration 002 adds User security-version state and server-side sessions. Migration 003 constrains authoritative Request workflow state and adds workflow reason/change timestamps. Migration 004 upgrades audit storage to the append-only, HMAC-chained event contract and advances runtime schema readiness to version 4.
+Migration 001 establishes tenant-owned product structures. Migration 002 adds User security-version state and server-side sessions. Migration 003 constrains authoritative Request workflow state and adds workflow reason/change timestamps. Migration 004 upgrades audit storage to the append-only, HMAC-chained event contract. Migration 005 adds allowlisted Tenant entitlements, extends the audit taxonomy for entitlement changes and advances runtime schema readiness to version 5.
 
 ## Foundation endpoints
 
@@ -153,7 +156,6 @@ The foundation rate limiter is local/in-memory and bounded. It is not a multi-in
 
 ## Deferred ownership
 
-- #53: Tenant entitlements.
 - #54: Provider-neutral booking/calendar contracts and provider adapters.
 - #55: Production observability and SLO-oriented diagnostics.
 - #56: Frontend production-persistence migration onto API/database authority.
