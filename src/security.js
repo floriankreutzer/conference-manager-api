@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { ApiError } from './api-error.js';
-import { isInternalUuid } from './domain/identifiers.js';
+import { normalizePrincipal as normalizePrincipalContract } from './identity/principal.js';
 
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-const ROLE_PATTERN = /^[a-z][a-z0-9:_-]{1,63}$/;
 const JSON_CONTENT_TYPE = /^application\/json(?:\s*;\s*charset=utf-8)?$/i;
 const REQUEST_TARGET_LIMIT = 8_192;
 
@@ -156,15 +155,11 @@ export function validateExactObject(value, { required = {}, optional = {} }) {
 }
 
 export function normalizePrincipal(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ApiError(401, 'UNAUTHENTICATED');
-  const { userId, tenantId, roles } = value;
-  if (!isInternalUuid(userId) || !isInternalUuid(tenantId)) {
+  try {
+    return normalizePrincipalContract(value);
+  } catch {
     throw new ApiError(401, 'UNAUTHENTICATED');
   }
-  if (!Array.isArray(roles) || roles.length === 0 || roles.length > 16 || roles.some((role) => !ROLE_PATTERN.test(role))) {
-    throw new ApiError(401, 'UNAUTHENTICATED');
-  }
-  return Object.freeze({ userId, tenantId, roles: Object.freeze([...new Set(roles)]) });
 }
 
 export function createPrincipalGuard({ resolvePrincipal = async () => null, verifyCsrf = async () => false } = {}) {
