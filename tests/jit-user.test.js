@@ -71,7 +71,10 @@ test('first JIT login emits only the safe Employee authorization snapshot', asyn
   assert.deepEqual(resolved.trustedIdentity, {
     userId: USER_ID,
     tenantId: TENANT_ID,
-    providerIdentity: { provider: 'microsoft_entra', reference: USER_REFERENCE },
+    providerIdentity: {
+      provider: 'microsoft_entra',
+      reference: `${TENANT_REFERENCE}:${USER_REFERENCE}`,
+    },
     roles: ['employee'],
     permissions: ['request:read', 'request:cancel'],
   });
@@ -79,6 +82,7 @@ test('first JIT login emits only the safe Employee authorization snapshot', asyn
     provider: 'microsoft_entra',
     tenantReference: TENANT_REFERENCE,
   }]);
+  assert.equal(capture.provision[0].providerTenantReference, TENANT_REFERENCE);
   assert.equal(Object.hasOwn(capture.provision[0], 'email'), false);
   assert.equal(Object.hasOwn(capture.provision[0], 'roles'), false);
   assert.equal(capture.provision[0].provisionAuditEvent.action, 'tenant.user.provisioned');
