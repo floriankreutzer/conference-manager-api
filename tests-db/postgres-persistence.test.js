@@ -141,6 +141,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 2, name: 'secure_sessions' },
       { version: 3, name: 'request_authorization_workflow' },
       { version: 4, name: 'tamper_evident_audit' },
+      { version: 5, name: 'tenant_entitlements' },
     ]);
   });
 
@@ -584,15 +585,23 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await isPostgresSchemaReady(pool), false);
     let remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
-    assert.deepEqual(remaining.rows, [{ version: 1 }, { version: 2 }, { version: 3 }]);
+    assert.deepEqual(remaining.rows, [
+      { version: 1 },
+      { version: 2 },
+      { version: 3 },
+      { version: 4 },
+    ]);
 
+    assert.equal(await rollbackLatest(pool), true);
+    remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
+    assert.deepEqual(remaining.rows, [{ version: 1 }, { version: 2 }, { version: 3 }]);
     await assert.rejects(migrateUp(pool), (error) => error.code === '55000');
     await pool.query('DELETE FROM audit_events');
     await migrateUp(pool);
     assert.equal(await isPostgresSchemaReady(pool), true);
 
     assert.equal(await rollbackLatest(pool), true);
-    await pool.query('DELETE FROM audit_events');
+    assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
     remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
