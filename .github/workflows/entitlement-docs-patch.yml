@@ -1,0 +1,85 @@
+name: Entitlement Documentation Patch
+
+on:
+  push:
+    branches:
+      - feature/tenant-entitlements
+    paths:
+      - .github/workflows/entitlement-docs-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feature/tenant-entitlements
+      - name: Align documentation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+            'docs/ARCHITECTURE.md': [
+              ('Issues #47-#52 establish the trusted HTTP boundary, hard Tenant isolation, PostgreSQL persistence, provider-neutral server-side sessions, deny-by-default Tenant authorization and tenant-scoped tamper-evident audit evidence.',
+               'Issues #47-#53 establish the trusted HTTP boundary, hard Tenant isolation, PostgreSQL persistence, provider-neutral server-side sessions, deny-by-default Tenant authorization, tenant-scoped tamper-evident audit evidence and server-side Tenant entitlements.'),
+              ('- `src/audit/audit-service.js` derives Tenant/actor/time from trusted context, authorizes tenant audit reads and records denial/read evidence.\n',
+               '- `src/audit/audit-service.js` derives Tenant/actor/time from trusted context, authorizes tenant audit reads and records denial/read evidence.\n- `src/entitlements/capabilities.js` owns stable product capability IDs and the authorization/entitlement/rollout intersection.\n- `src/entitlements/entitlement-service.js` owns fail-closed Tenant capability evaluation and deny-by-default operator entitlement changes.\n'),
+              ('- `src/persistence/postgres/audit-repository.js` owns per-Tenant append serialization, HMAC signing, tenant-scoped listing and chain verification.\n',
+               '- `src/persistence/postgres/audit-repository.js` owns per-Tenant append serialization, HMAC signing, tenant-scoped listing and chain verification.\n- `src/persistence/postgres/entitlement-repository.js` owns Tenant-scoped entitlement reads and audit-atomic entitlement changes.\n'),
+              ('- `src/persistence/postgres/index.js` composes pool, Tenant loading, Session/Request/Audit repositories and readiness.',
+               '- `src/persistence/postgres/index.js` composes pool, Tenant loading, Session/Request/Audit/Entitlement repositories and readiness.'),
+              ('Migration 001 establishes tenant-owned product structures. Migration 002 adds User security-version state and server-side sessions. Migration 003 constrains authoritative Request workflow state and adds workflow reason/change timestamps. Migration 004 upgrades audit storage to the append-only, HMAC-chained event contract and advances runtime schema readiness to version 4.',
+               'Migration 001 establishes tenant-owned product structures. Migration 002 adds User security-version state and server-side sessions. Migration 003 constrains authoritative Request workflow state and adds workflow reason/change timestamps. Migration 004 upgrades audit storage to the append-only, HMAC-chained event contract. Migration 005 adds allowlisted Tenant entitlements, extends the audit taxonomy for entitlement changes and advances runtime schema readiness to version 5.'),
+              ('- #53: Tenant entitlements.\n', ''),
+            ],
+            'docs/PERSISTENCE.md': [
+              ('- advances expected runtime schema readiness to version 4.\n\nThe raw session token, CSRF token and audit HMAC key are never persisted.',
+               '- establishes the audit integrity boundary consumed by later migrations.\n\nMigration 005 establishes Tenant entitlement persistence:\n\n- allowlisted stable capability IDs for the Microsoft-first pilot;\n- explicit boolean entitlement state keyed by `(tenant_id, capability_id)`;\n- Tenant foreign-key ownership with `ON DELETE RESTRICT`;\n- `tenant.entitlement.changed` in the database audit-action allowlist;\n- exact runtime schema readiness version 5.\n\nNo entitlement row means disabled. The raw session token, CSRF token and audit HMAC key are never persisted.'),
+              ('Audit rows are likewise Tenant-owned. Append/list/verification operations receive one internal Tenant ID, and each Tenant has an independent HMAC chain beginning with `previous_hash = NULL`.\n',
+               'Audit rows are likewise Tenant-owned. Append/list/verification operations receive one internal Tenant ID, and each Tenant has an independent HMAC chain beginning with `previous_hash = NULL`.\n\nEntitlement rows use `(tenant_id, capability_id)` as their primary key. The same capability can therefore be enabled independently for separate Tenants, while unknown capability IDs are rejected by the database allowlist.\n'),
+              ('Runtime readiness requires connectivity and exact schema version 4 for this foundation.',
+               'Runtime readiness requires connectivity and exact schema version 5 for this foundation.'),
+              ('Request workflow transitions conditionally update the row and append the success audit event in the same transaction. A failed audit insert therefore prevents a successful Request transition from becoming authoritative.\n',
+               'Request workflow transitions conditionally update the row and append the success audit event in the same transaction. A failed audit insert therefore prevents a successful Request transition from becoming authoritative.\n\nEntitlement changes are serialized per Tenant/capability, update the allowlisted entitlement row and append `tenant.entitlement.changed` in the same transaction. A failed audit append rolls the entitlement change back; setting an already-effective value is idempotent and creates no false change event.\n'),
+              ('Migration 004 down removes the append-only trigger, integrity chain fields and retention/state extensions. On a populated environment this would weaken evidentiary controls and discard integrity metadata, so production rollback requires an explicit security/audit decision; a forward fix is preferred.\n',
+               'Migration 004 down removes the append-only trigger, integrity chain fields and retention/state extensions. On a populated environment this would weaken evidentiary controls and discard integrity metadata, so production rollback requires an explicit security/audit decision; a forward fix is preferred.\n\nMigration 005 down fails closed when entitlement rows or entitlement-change audit evidence exists. Populated-environment rollback therefore requires an explicit entitlement/evidence migration decision rather than silently deleting commercial access state or its audit trail.\n'),
+              ('- schema version 4 migration behavior;', '- schema version 4 audit migration behavior;'),
+              ('- migration rollback/reapply where applicable.\n\nThe DB suites share migration state',
+               '- migration rollback/reapply where applicable.\n\nEntitlement persistence additionally requires real PostgreSQL tests for schema version 5, absent-is-disabled behavior, cross-Tenant independence, database capability allowlisting, rollout/entitlement intersection, audit-atomic changes and fail-closed populated rollback.\n\nThe DB suites share migration state'),
+            ],
+            'docs/SECURITY.md': [
+              ('See `docs/AUDIT.md` for the event taxonomy, integrity model and limitations.\n\n## Supply-chain controls',
+               'See `docs/AUDIT.md` for the event taxonomy, integrity model and limitations.\n\n## Entitlement controls (#53)\n\n- Product capability access is a server-side intersection of business authorization and Tenant entitlement; an optional trusted rollout gate may only restrict that result.\n- The initial allowlisted capability IDs are `microsoft.directory` and `microsoft.calendar`; unknown capability IDs fail closed in application and database layers.\n- Missing entitlement rows mean disabled. A browser flag, UI visibility, header/query/body value or rollout override cannot grant a missing entitlement.\n- Entitlement reads and writes are scoped by internal Tenant ID plus capability ID. Cross-Tenant or inactive-Tenant evaluation fails closed.\n- Commercial entitlement mutation uses a separate server-internal operator authorization port whose default is deny-all; Tenant Admin is not implicitly a commercial entitlement administrator.\n- Real entitlement changes and `tenant.entitlement.changed` audit evidence commit atomically; audit failure rolls the entitlement mutation back.\n- The frontend centralized feature-flag registry remains an untrusted rollout/UI mechanism and is not duplicated as backend entitlement authority.\n\nSee `docs/ENTITLEMENTS.md` for the complete capability/rollout separation.\n\n## Supply-chain controls'),
+              ('- Broken Access Control / BOLA / IDOR (CWE-639/CWE-862): Tenant-scoped lookup, Employee ownership, role/permission intersection, concealed non-owned objects, workflow authorization and Tenant-scoped audit reads are implemented and negatively tested.',
+               '- Broken Access Control / BOLA / IDOR (CWE-639/CWE-862): Tenant-scoped lookup, Employee ownership, role/permission intersection, concealed non-owned objects, workflow authorization, Tenant-scoped audit reads and Tenant-scoped entitlement evaluation are implemented and negatively tested.'),
+              ('- Privilege escalation/confused deputy: unknown roles/permissions fail closed, Tenant Admin does not inherit Manager rights, audit read is a separate permission, and target workflow state is selected only by server policy.',
+               '- Privilege escalation/confused deputy: unknown roles/permissions and capabilities fail closed, Tenant Admin does not inherit Manager or commercial entitlement-administration rights, rollout state cannot grant missing entitlement, audit read is a separate permission, and target workflow state is selected only by server policy.'),
+            ],
+            'docs/AUDIT.md': [
+              ('- Tenant configuration and User-permission changes;\n', '- Tenant configuration, User-permission and entitlement changes;\n'),
+              ('#52 actively emits events for supported session lifecycle operations, Request workflow outcomes/denials and tenant audit reads. Tenant/User-permission, integration, calendar and provider-authentication actions are reserved for their owning future services; reserving an action name does not claim that workflow is already implemented.',
+               '#52 actively emits events for supported session lifecycle operations, Request workflow outcomes/denials and tenant audit reads. #53 additionally emits `tenant.entitlement.changed` for real operator-controlled entitlement state changes. Tenant/User-permission, integration, calendar and provider-authentication actions remain reserved for their owning future services; reserving an action name does not claim that workflow is already implemented.'),
+            ],
+          }
+
+          for filename, pairs in replacements.items():
+              path = Path(filename)
+              text = path.read_text()
+              for old, new in pairs:
+                  if text.count(old) != 1:
+                      raise SystemExit(f'{filename}: pattern mismatch: {old[:80]!r}')
+                  text = text.replace(old, new)
+              path.write_text(text)
+          PY
+      - name: Commit documentation
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/ARCHITECTURE.md docs/PERSISTENCE.md docs/SECURITY.md docs/AUDIT.md
+          git commit -m "Document tenant entitlement boundary"
+          git push origin HEAD:feature/tenant-entitlements
