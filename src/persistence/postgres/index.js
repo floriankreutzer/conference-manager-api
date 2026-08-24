@@ -3,18 +3,23 @@ import {
   isPostgresReady,
   isPostgresSchemaReady,
 } from './pool.js';
+import { createPostgresAuditRepository } from './audit-repository.js';
 import { createPostgresRequestRepository } from './request-repository.js';
 import { createPostgresSessionRepository } from './session-repository.js';
 import { createPostgresTenantRepository } from './tenant-repository.js';
 
 export function createPostgresPersistence(config) {
   const pool = createPostgresPool(config);
+  const auditRepository = createPostgresAuditRepository(pool, {
+    hmacSecret: config.auditHmacSecret,
+  });
   const tenantRepository = createPostgresTenantRepository(pool);
-  const sessionRepository = createPostgresSessionRepository(pool);
-  const requestRepository = createPostgresRequestRepository(pool);
+  const sessionRepository = createPostgresSessionRepository(pool, { auditRepository });
+  const requestRepository = createPostgresRequestRepository(pool, { auditRepository });
 
   return Object.freeze({
     pool,
+    auditRepository,
     sessionRepository,
     requestRepository,
     loadTenant: (tenantId) => tenantRepository.findById(tenantId),
