@@ -15,13 +15,14 @@
     "check:architecture": "node scripts/check-architecture.mjs",
     "check:entitlements": "node scripts/check-entitlements.mjs",
     "check:booking": "node scripts/check-booking-integration.mjs",
+    "check:observability": "node scripts/check-observability.mjs",
     "check:dependencies": "node scripts/check-dependencies.mjs",
     "check:static": "node scripts/check-static.mjs",
     "check:secrets": "node scripts/check-secrets.mjs",
     "check:style": "node scripts/check-style.mjs",
     "test": "node --test tests/*.test.js",
     "test:db": "node --test --test-concurrency=1 tests-db/*.test.js",
-    "check": "npm run check:syntax && npm run check:agents && npm run check:architecture && npm run check:entitlements && npm run check:booking && npm run check:dependencies && npm run check:static && npm run check:secrets && npm run check:style && npm test",
+    "check": "npm run check:syntax && npm run check:agents && npm run check:architecture && npm run check:entitlements && npm run check:booking && npm run check:observability && npm run check:dependencies && npm run check:static && npm run check:secrets && npm run check:style && npm test",
     "audit": "npm audit --audit-level=high"
   },
   "dependencies": {
