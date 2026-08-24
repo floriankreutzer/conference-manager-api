@@ -30,6 +30,14 @@ function cookieValue(setCookie) {
   return pair.slice(pair.indexOf('=') + 1);
 }
 
+function externalIdentity() {
+  return {
+    provider: ENTRA_IDENTITY_PROVIDER,
+    tenantReference: TENANT_ID,
+    userReference: USER_ID,
+  };
+}
+
 function memoryRepository() {
   const records = new Map();
   return {
@@ -101,13 +109,19 @@ function authService({ repository, client, resolver, sessionService } = {}) {
   return createEntraAuthService({
     repository: repository || memoryRepository(),
     entraClient: client || {
-      async authorizationUrl() { return `${AUTHORITY}/organizations/oauth2/v2.0/authorize`; },
+      async authorizationUrl() {
+        return `${AUTHORITY}/organizations/oauth2/v2.0/authorize`;
+      },
       async redeemAuthorizationCode() {
-        return { provider: ENTRA_IDENTITY_PROVIDER, tenantReference: TENANT_ID, userReference: USER_ID };
+        return externalIdentity();
       },
     },
-    identityResolver: resolver || { async resolve() { return { status: 'onboarding_required' }; } },
-    sessionService: sessionService || { async issue() { throw new Error('not used'); } },
+    identityResolver: resolver || {
+      async resolve() { return { status: 'onboarding_required' }; },
+    },
+    sessionService: sessionService || {
+      async issue() { throw new Error('not used'); },
+    },
     transactionSecret: TRANSACTION_SECRET,
     publicOrigin: PUBLIC_ORIGIN,
     clock: () => NOW_MS,
@@ -132,7 +146,11 @@ test('Entra adapter rejects an authorization URL outside the fixed Microsoft aut
   const application = providerApplication();
   application.getAuthCodeUrl = async () => 'https://attacker.example/oauth2/v2.0/authorize';
   await assert.rejects(
-    entraClient(application).authorizationUrl({ state: STATE, nonce: NONCE, codeChallenge: 'C'.repeat(43) }),
+    entraClient(application).authorizationUrl({
+      state: STATE,
+      nonce: NONCE,
+      codeChallenge: 'C'.repeat(43),
+    }),
     (error) => error instanceof EntraAuthenticationError,
   );
 });
@@ -157,10 +175,11 @@ test('two Entra organizations resolve to distinct provider-neutral tenant refere
     codeVerifier: 'V'.repeat(43),
     expectedNonceHash: hash(NONCE),
   });
-  const second = await entraClient(providerApplication({
+  const secondClient = entraClient(providerApplication({
     tid: OTHER_TENANT_ID,
     iss: `https://login.microsoftonline.com/${OTHER_TENANT_ID}/v2.0`,
-  })).redeemAuthorizationCode({
+  }));
+  const second = await secondClient.redeemAuthorizationCode({
     code: 'second-code',
     codeVerifier: 'V'.repeat(43),
     expectedNonceHash: hash(NONCE),
@@ -201,11 +220,14 @@ test('provider token validation or signature failure is normalized to a safe aut
       codeVerifier: 'V'.repeat(43),
       expectedNonceHash: hash(NONCE),
     }),
-    (error) => error instanceof EntraAuthenticationError && error.code === 'ENTRA_CODE_REDEMPTION_FAILED',
+    (error) => (
+      error instanceof EntraAuthenticationError
+      && error.code === 'ENTRA_CODE_REDEMPTION_FAILED'
+    ),
   );
 });
 
-test('auth service stores only hashed state and nonce, creates PKCE, and binds the initiating browser', async () => {
+test('auth service stores hashed state/nonce, creates PKCE, and binds the initiating browser', async () => {
   const repository = memoryRepository();
   const captured = {};
   const service = authService({
@@ -225,22 +247,28 @@ test('auth service stores only hashed state and nonce, creates PKCE, and binds t
   assert.equal(captured.state, STATE);
   assert.equal(captured.nonce, NONCE);
   assert.match(captured.codeChallenge, /^[A-Za-z0-9_-]{43}$/);
-  assert.match(
-    started.setCookie,
-    /^cm_oidc_tx=[A-Za-z0-9_-]{43}; Path=\/api\/v1\/auth\/microsoft\/callback; HttpOnly; SameSite=Lax; Secure; Max-Age=600$/,
-  );
+  const transactionCookiePattern = new RegExp([
+    '^cm_oidc_tx=[A-Za-z0-9_-]{43}',
+    '; Path=/api/v1/auth/microsoft/callback',
+    '; HttpOnly; SameSite=Lax; Secure; Max-Age=600$',
+  ].join(''));
+  assert.match(started.setCookie, transactionCookiePattern);
   assert.notEqual(cookieValue(started.setCookie), STATE);
-  assert.equal(readEntraTransactionCookie({ cookie: started.setCookie }), cookieValue(started.setCookie));
+  assert.equal(
+    readEntraTransactionCookie({ cookie: started.setCookie }),
+    cookieValue(started.setCookie),
+  );
   const stored = [...repository.records.values()][0];
   assert.equal(stored.stateHash, hash(STATE));
   assert.equal(stored.nonceHash, hash(NONCE));
   assert.equal(JSON.stringify(stored).includes(STATE), false);
   assert.equal(JSON.stringify(stored).includes(NONCE), false);
   assert.equal(JSON.stringify(stored).includes(cookieValue(started.setCookie)), false);
-  assert.match(service.clearCookie(), /^cm_oidc_tx=; .*Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT$/);
+  const clearCookiePattern = /^cm_oidc_tx=; .*Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT$/;
+  assert.match(service.clearCookie(), clearCookiePattern);
 });
 
-test('callback requires the initiating browser binding before consuming globally stored state', async () => {
+test('callback requires initiating-browser binding before consuming globally stored state', async () => {
   const repository = memoryRepository();
   const service = authService({ repository });
   const started = await service.start();
@@ -249,7 +277,10 @@ test('callback requires the initiating browser binding before consuming globally
   for (const browserBinding of [undefined, 'B'.repeat(43)]) {
     await assert.rejects(
       service.complete({ state: STATE, code: 'valid-code', browserBinding }),
-      (error) => error instanceof EntraAuthenticationError && error.code === 'OIDC_BROWSER_BINDING_INVALID',
+      (error) => (
+        error instanceof EntraAuthenticationError
+        && error.code === 'OIDC_BROWSER_BINDING_INVALID'
+      ),
     );
     assert.equal(repository.records.size, 1);
   }
@@ -269,40 +300,55 @@ test('OIDC state is one-time, replay safe, and provider rejection consumes it', 
   const service = authService({
     repository,
     client: {
-      async authorizationUrl() { return `${AUTHORITY}/organizations/oauth2/v2.0/authorize`; },
+      async authorizationUrl() {
+        return `${AUTHORITY}/organizations/oauth2/v2.0/authorize`;
+      },
       async redeemAuthorizationCode() {
         redeemed += 1;
-        return { provider: ENTRA_IDENTITY_PROVIDER, tenantReference: TENANT_ID, userReference: USER_ID };
+        return externalIdentity();
       },
     },
   });
 
   const started = await service.start();
   const browserBinding = cookieValue(started.setCookie);
-  const first = await service.complete({ state: STATE, providerError: true, browserBinding });
+  const first = await service.complete({
+    state: STATE,
+    providerError: true,
+    browserBinding,
+  });
   assert.equal(first.status, 'authentication_rejected');
   assert.equal(redeemed, 0);
   await assert.rejects(
     service.complete({ state: STATE, code: 'replayed-code', browserBinding }),
-    (error) => error instanceof EntraAuthenticationError && error.code === 'OIDC_STATE_INVALID',
+    (error) => (
+      error instanceof EntraAuthenticationError
+      && error.code === 'OIDC_STATE_INVALID'
+    ),
   );
 });
 
 test('transaction cookie parser rejects duplicates, malformed values, and oversized cookie input', () => {
   const valid = 'V'.repeat(43);
   assert.equal(
-    readEntraTransactionCookie({ cookie: `other=1; ${ENTRA_TRANSACTION_COOKIE_NAME}=${valid}` }),
+    readEntraTransactionCookie({
+      cookie: `other=1; ${ENTRA_TRANSACTION_COOKIE_NAME}=${valid}`,
+    }),
     valid,
   );
+  const duplicateCookie = [
+    `${ENTRA_TRANSACTION_COOKIE_NAME}=${valid}`,
+    `${ENTRA_TRANSACTION_COOKIE_NAME}=${valid}`,
+  ].join('; ');
+  assert.equal(readEntraTransactionCookie({ cookie: duplicateCookie }), null);
   assert.equal(
-    readEntraTransactionCookie({ cookie: `${ENTRA_TRANSACTION_COOKIE_NAME}=${valid}; ${ENTRA_TRANSACTION_COOKIE_NAME}=${valid}` }),
+    readEntraTransactionCookie({ cookie: `${ENTRA_TRANSACTION_COOKIE_NAME}=invalid` }),
     null,
   );
-  assert.equal(readEntraTransactionCookie({ cookie: `${ENTRA_TRANSACTION_COOKIE_NAME}=invalid` }), null);
   assert.equal(readEntraTransactionCookie({ cookie: 'x'.repeat(8_193) }), null);
 });
 
-test('valid but unresolved Entra identity routes to onboarding without issuing an application session', async () => {
+test('valid unresolved Entra identity routes to onboarding without issuing an application session', async () => {
   const repository = memoryRepository();
   let issued = false;
   const service = authService({
@@ -325,17 +371,25 @@ test('resolved provider identity is handed to the existing server-side session s
   const trustedIdentity = {
     tenantId: '77777777-7777-4777-8777-777777777777',
     userId: '88888888-8888-4888-8888-888888888888',
-    providerIdentity: { provider: ENTRA_IDENTITY_PROVIDER, reference: `${TENANT_ID}:${USER_ID}` },
+    providerIdentity: {
+      provider: ENTRA_IDENTITY_PROVIDER,
+      reference: `${TENANT_ID}:${USER_ID}`,
+    },
     roles: ['employee'],
     permissions: ['request:read'],
   };
   const service = authService({
     repository,
-    resolver: { async resolve() { return { status: 'authenticated', trustedIdentity }; } },
+    resolver: {
+      async resolve() { return { status: 'authenticated', trustedIdentity }; },
+    },
     sessionService: {
       async issue(identity) {
         assert.equal(identity, trustedIdentity);
-        return { principal: { userId: trustedIdentity.userId }, setCookie: 'cm_session=opaque; HttpOnly' };
+        return {
+          principal: { userId: trustedIdentity.userId },
+          setCookie: 'cm_session=opaque; HttpOnly',
+        };
       },
     },
   });
