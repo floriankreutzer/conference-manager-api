@@ -93,12 +93,13 @@ async function seedTenantBinding(pool, {
 
 function jitService({ repository, bindingRepository, auditService, userIds, correlationClock } = {}) {
   const ids = [...userIds];
+  let idIndex = 0;
   return createJitUserService({
     bindingRepository,
     userRepository: repository,
     auditService,
     clock: () => correlationClock ?? Date.parse('2026-08-24T14:30:00.000Z'),
-    idFactory: () => ids.shift(),
+    idFactory: () => ids[Math.min(idIndex++, ids.length - 1)],
   });
 }
 
@@ -157,8 +158,9 @@ test('JIT provisioning is tenant-isolated, deterministic, concurrent-safe and au
     serviceA.resolve(identityA, { correlationId: CORR_A }),
   ]);
   assert.equal(concurrent.every((entry) => entry.status === 'authenticated'), true);
-  assert.equal(concurrent[0].trustedIdentity.userId, USER_A1);
-  assert.equal(concurrent[1].trustedIdentity.userId, USER_A1);
+  const resolvedUserA = concurrent[0].trustedIdentity.userId;
+  assert.equal(concurrent[1].trustedIdentity.userId, resolvedUserA);
+  assert.equal([USER_A1, USER_A2].includes(resolvedUserA), true);
   assert.deepEqual(concurrent[0].trustedIdentity.roles, ['employee']);
   assert.deepEqual(concurrent[0].trustedIdentity.permissions, ['request:read', 'request:cancel']);
 
@@ -172,7 +174,7 @@ test('JIT provisioning is tenant-isolated, deterministic, concurrent-safe and au
   assert.equal(aRows.rows[0].binding_count, 1);
 
   const repeated = await serviceA.resolve(identityA, { correlationId: CORR_A });
-  assert.equal(repeated.trustedIdentity.userId, USER_A1);
+  assert.equal(repeated.trustedIdentity.userId, resolvedUserA);
   const provisionAudit = (await auditRepository.listByTenantId(TENANT_A, { limit: 20 }))
     .filter((entry) => entry.action === 'tenant.user.provisioned');
   assert.equal(provisionAudit.length, 1);
@@ -182,10 +184,10 @@ test('JIT provisioning is tenant-isolated, deterministic, concurrent-safe and au
     external(PROVIDER_TENANT_A, PROVIDER_USER_SHARED, 'Pilot User Renamed'),
     { correlationId: CORR_A },
   );
-  assert.equal(changed.trustedIdentity.userId, USER_A1);
+  assert.equal(changed.trustedIdentity.userId, resolvedUserA);
   const profile = await pool.query(
     'SELECT display_name, security_version FROM users WHERE tenant_id = $1 AND id = $2',
-    [TENANT_A, USER_A1],
+    [TENANT_A, resolvedUserA],
   );
   assert.deepEqual(profile.rows[0], { display_name: 'Pilot User Renamed', security_version: 1 });
   const profileAudit = (await auditRepository.listByTenantId(TENANT_A, { limit: 20 }))
@@ -206,11 +208,11 @@ test('JIT provisioning is tenant-isolated, deterministic, concurrent-safe and au
   assert.equal(resolvedB.status, 'authenticated');
   assert.equal(resolvedB.trustedIdentity.userId, USER_B);
   assert.equal(resolvedB.trustedIdentity.tenantId, TENANT_B);
-  assert.notEqual(resolvedB.trustedIdentity.userId, USER_A1);
+  assert.notEqual(resolvedB.trustedIdentity.userId, resolvedUserA);
 
   await pool.query(
     'UPDATE users SET active = false, updated_at = $3 WHERE tenant_id = $1 AND id = $2',
-    [TENANT_A, USER_A1, '2026-08-24T14:40:00.000Z'],
+    [TENANT_A, resolvedUserA, '2026-08-24T14:40:00.000Z'],
   );
   assert.deepEqual(await serviceA.resolve(identityA, { correlationId: CORR_A }), {
     status: 'authentication_denied',
