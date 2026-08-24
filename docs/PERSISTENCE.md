@@ -62,7 +62,16 @@ Migration 005 establishes Tenant entitlement persistence:
 - explicit boolean entitlement state keyed by `(tenant_id, capability_id)`;
 - Tenant foreign-key ownership with `ON DELETE RESTRICT`;
 - `tenant.entitlement.changed` in the database audit-action allowlist;
-- exact runtime schema readiness version 5.
+- establishes the entitlement persistence boundary consumed by later integrations.
+
+Migration 006 establishes booking-provider reference persistence:
+
+- internal Tenant/Request/Integration composite ownership;
+- opaque provider reference storage without provider-specific schema columns;
+- deterministic create idempotency-key uniqueness per Tenant/Integration;
+- `active`/`cancelled` local reference state;
+- create correlation and timestamps;
+- exact runtime schema readiness version 6.
 
 No entitlement row means disabled. The raw session token, CSRF token and audit HMAC key are never persisted.
 
@@ -79,6 +88,8 @@ Request lookup and workflow mutation are always parameterized by internal `tenan
 Audit rows are likewise Tenant-owned. Append/list/verification operations receive one internal Tenant ID, and each Tenant has an independent HMAC chain beginning with `previous_hash = NULL`.
 
 Entitlement rows use `(tenant_id, capability_id)` as their primary key. The same capability can therefore be enabled independently for separate Tenants, while unknown capability IDs are rejected by the database allowlist.
+
+Booking-provider references use `(tenant_id, request_id, integration_id)` as their primary key and Tenant-composite foreign keys to both Request and Integration. A provider reference or idempotency key is unique only within one Tenant/Integration boundary, so identical opaque provider values in separate Tenants cannot cross-link ownership.
 
 ## Request workflow concurrency
 
@@ -142,7 +153,7 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 5 for this foundation.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 6 for this foundation.
 
 ## Transaction contract
 
@@ -156,9 +167,13 @@ Request workflow transitions conditionally update the row and append the success
 
 Entitlement changes are serialized per Tenant/capability, update the allowlisted entitlement row and append `tenant.entitlement.changed` in the same transaction. A failed audit append rolls the entitlement change back; setting an already-effective value is idempotent and creates no false change event.
 
+Booking-provider reference creation is serialized per Tenant/Request/Integration. An identical stored provider-reference/idempotency pair is an idempotent repeat and does not append duplicate success evidence; a conflicting pair fails closed. Create/update/cancel local reference mutations append the required `calendar.operation` success event in the same PostgreSQL transaction.
+
+The external calendar system is not part of that database transaction. A provider success followed by local persistence failure returns failure and is recovered by retrying the deterministic create idempotency key; the provider contract must return the same existing external event instead of creating a duplicate.
+
 Failure/denial events for operations that did not commit an authoritative mutation are separate audit appends because there is no successful business transaction to join.
 
-Booking concurrency will receive additional domain-specific exclusion/atomicity controls; Request workflow state concurrency is not a room double-booking guarantee.
+The booking integration boundary performs Tenant-scoped overlap validation using the same baseline blocking statuses as the Employee/Manager domain. Until #56 composes Request creation/confirmation with this server boundary, the existing Request workflow-state transaction alone is not a complete room double-booking guarantee; no parallel reservation authority is introduced by #54.
 
 ## Backup, restore and deployment rollback
 
@@ -189,6 +204,8 @@ Migration 004 down removes the append-only trigger, integrity chain fields and r
 
 Migration 005 down fails closed when entitlement rows or entitlement-change audit evidence exists. Populated-environment rollback therefore requires an explicit entitlement/evidence migration decision rather than silently deleting commercial access state or its audit trail.
 
+Migration 006 down fails closed when booking-provider reference rows exist. A populated rollback requires reviewed reconciliation because deleting the local mapping could orphan an external calendar event.
+
 ## Testing evidence required
 
 Database changes require PostgreSQL integration coverage for applicable migration/version/checksum behavior, tenant-scoped repositories, composite FK isolation, invalid constraints, duplicate/concurrent writes, transaction rollback, schema readiness and cross-Tenant persistence.
@@ -210,6 +227,8 @@ Audit persistence additionally requires real PostgreSQL tests for:
 - migration rollback/reapply where applicable.
 
 Entitlement persistence additionally requires real PostgreSQL tests for schema version 5, absent-is-disabled behavior, cross-Tenant independence, database capability allowlisting, rollout/entitlement intersection, audit-atomic changes and fail-closed populated rollback.
+
+Booking-provider persistence additionally requires real PostgreSQL tests for schema version 6, Tenant-composite Request/Integration ownership, same-provider-value cross-Tenant independence, idempotent create persistence, overlap lookup, audit-atomic mutations and fail-closed populated rollback.
 
 The DB suites share migration state and are therefore executed serially with `--test-concurrency=1` to prevent test-runner races from weakening the migration/integrity evidence.
 

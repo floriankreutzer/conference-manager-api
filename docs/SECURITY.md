@@ -109,6 +109,21 @@ See `docs/AUDIT.md` for the event taxonomy, integrity model and limitations.
 
 See `docs/ENTITLEMENTS.md` for the complete capability/rollout separation.
 
+## Booking and calendar integration controls (#54)
+
+- Booking/calendar application code is provider-neutral and contains no outbound URL or Microsoft Graph SDK/type dependency.
+- Every provider operation requires same-active-Tenant Principal/Request binding, explicit server authorization and the configured Tenant entitlement; the authorization port defaults to deny.
+- Provider-specific identifiers remain behind the integration boundary. PostgreSQL stores only an opaque provider reference bound to the internal Tenant, Request and Integration.
+- Local room-conflict checks are Tenant-scoped and preserve the baseline blocking rule; cross-Tenant identifiers cannot become booking authority.
+- Calendar create uses a deterministic server-derived SHA-256 idempotency key. The browser cannot supply it, and the provider contract requires the same logical retry to return the existing event rather than create a duplicate.
+- Provider responses are positively validated. Malformed/unknown responses fail closed. Timeout, throttling and transient unavailability are explicitly distinguished from non-retryable authorization/validation/conflict/unknown failures.
+- #54 adds no automatic retry loop and does not blindly retry non-idempotent writes.
+- Provider references, raw provider errors/payloads and credentials are excluded from Tenant audit metadata.
+- There is no public direct calendar-provider HTTP endpoint in #54, preventing a parallel browser-controlled workflow before the authorized production Request migration.
+- Future outbound adapters must use fixed/allowlisted destinations, constrained redirects, explicit timeouts, server-side credentials and validated response mapping.
+
+See `docs/BOOKING-INTEGRATION.md` for the complete provider-neutral contract.
+
 ## Supply-chain controls
 
 The repository uses locked installs without lifecycle scripts, `npm audit --audit-level=high`, Dependabot, full-history Gitleaks and the repository-local Dependency Policy gate.
@@ -129,15 +144,15 @@ The Entra OIDC adapter is not implemented in SaaS 0. SaaS 1 must validate OIDC i
 
 ## OWASP/CWE mapping
 
-- Broken Access Control / BOLA / IDOR (CWE-639/CWE-862): Tenant-scoped lookup, Employee ownership, role/permission intersection, concealed non-owned objects, workflow authorization, Tenant-scoped audit reads and Tenant-scoped entitlement evaluation are implemented and negatively tested.
+- Broken Access Control / BOLA / IDOR (CWE-639/CWE-862): Tenant-scoped lookup, Employee ownership, role/permission intersection, concealed non-owned objects, workflow authorization, Tenant-scoped audit reads, Tenant-scoped entitlement evaluation and Tenant-bound booking/provider references are implemented and negatively tested.
 - Authentication/session weaknesses: opaque high-entropy cookies, server-side expiry/revocation, rotation and security-version invalidation are implemented and negatively tested; session lifecycle mutations carry atomic audit evidence.
 - CSRF (CWE-352): unsafe protected cookie-authenticated requests require session-bound HMAC synchronizer tokens, including Request transitions and logout.
 - SQL injection (CWE-89): fixed SQL plus PostgreSQL parameter binding; real database integration tests execute Request/session/audit persistence paths.
 - XSS (CWE-79): API emits JSON/no HTML and sets default-deny CSP; frontend rendering remains separately governed.
-- SSRF (CWE-918): no provider outbound transport exists yet; future destinations remain fixed/allowlisted requirements.
+- SSRF (CWE-918): the #54 provider-neutral contract is URL-free and no real outbound transport is introduced; future provider adapters must use fixed/allowlisted destinations with constrained redirects and explicit timeouts.
 - Information disclosure: session credentials/provider references/DB secrets are excluded from public output; audit metadata rejects sensitive key classes and Employee object probing conceals non-owned Request existence.
 - Privilege escalation/confused deputy: unknown roles/permissions and capabilities fail closed, Tenant Admin does not inherit Manager or commercial entitlement-administration rights, rollout state cannot grant missing entitlement, audit read is a separate permission, and target workflow state is selected only by server policy.
-- Replay/stale state: session revocation/security-version checks protect credentials; Request workflow writes use expected-current-state predicates.
+- Replay/stale state: session revocation/security-version checks protect credentials; Request workflow writes use expected-current-state predicates; calendar create uses a deterministic server-derived idempotency key with provider and local deduplication contracts.
 - Integrity/tampering: audit writes are append-only, per-Tenant HMAC chained and verified before tenant-visible reads; external completeness anchoring remains explicitly out of scope.
 - Resource exhaustion: HTTP, database pool/query, audit payload/page and session TTL bounds are explicit; capacity/load tuning remains operational work.
 
