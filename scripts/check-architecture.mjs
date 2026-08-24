@@ -165,7 +165,9 @@ for (const required of [
   'createPostgresSessionRepository',
   'createPostgresRequestRepository',
   'createPostgresAuditRepository',
+  'createPostgresEntitlementRepository',
   'auditRepository',
+  'entitlementRepository',
 ]) {
   if (!persistence.includes(required)) throw new Error(`PostgreSQL persistence is missing ${required}.`);
 }
@@ -237,8 +239,8 @@ if (!config.includes('AUDIT_HMAC_SECRET_REQUIRED') || !config.includes('auditHma
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!pool.includes('CURRENT_SCHEMA_VERSION = 4')) {
-  throw new Error('Runtime schema readiness must require audit migration version 4.');
+if (!pool.includes('CURRENT_SCHEMA_VERSION = 5')) {
+  throw new Error('Runtime schema readiness must require entitlement migration version 5.');
 }
 
 const index = await readFile('src/index.js', 'utf8');
@@ -266,6 +268,8 @@ for (const migration of [
   'migrations/003_request_authorization_workflow.down.sql',
   'migrations/004_tamper_evident_audit.up.sql',
   'migrations/004_tamper_evident_audit.down.sql',
+  'migrations/005_tenant_entitlements.up.sql',
+  'migrations/005_tenant_entitlements.down.sql',
 ]) {
   await readFile(migration, 'utf8');
 }
