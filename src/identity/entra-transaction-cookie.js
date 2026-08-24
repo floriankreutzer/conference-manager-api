@@ -37,9 +37,11 @@ export function serializeEntraTransactionCookie(token, { secure, maxAgeSeconds }
   if (typeof token !== 'string' || !ENTRA_TRANSACTION_COOKIE_PATTERN.test(token)) {
     throw new TypeError('OIDC_BROWSER_BINDING_INVALID');
   }
-  return `${ENTRA_TRANSACTION_COOKIE_NAME}=${token}; ${cookieAttributes({ secure, maxAgeSeconds }).join('; ')}`;
+  const attributes = cookieAttributes({ secure, maxAgeSeconds }).join('; ');
+  return `${ENTRA_TRANSACTION_COOKIE_NAME}=${token}; ${attributes}`;
 }
 
 export function serializeClearedEntraTransactionCookie({ secure }) {
-  return `${ENTRA_TRANSACTION_COOKIE_NAME}=; ${cookieAttributes({ secure, maxAgeSeconds: 0 }).join('; ')}; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+  const attributes = cookieAttributes({ secure, maxAgeSeconds: 0 }).join('; ');
+  return `${ENTRA_TRANSACTION_COOKIE_NAME}=; ${attributes}; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
 }
