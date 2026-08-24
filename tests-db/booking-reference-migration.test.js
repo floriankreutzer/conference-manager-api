@@ -21,7 +21,10 @@ test('booking reference migration rollback fails closed when provider links exis
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
 
-  await pool.query('INSERT INTO tenants (id, display_name, status) VALUES ($1, $2, $3)', [TENANT_ID, 'Migration Tenant', 'active']);
+  await pool.query(
+    'INSERT INTO tenants (id, display_name, status) VALUES ($1, $2, $3)',
+    [TENANT_ID, 'Migration Tenant', 'active'],
+  );
   await pool.query(
     'INSERT INTO users (tenant_id, id, display_name) VALUES ($1, $2, $3)',
     [TENANT_ID, USER_ID, 'Migration User'],
@@ -69,6 +72,7 @@ test('booking reference migration rollback fails closed when provider links exis
 
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
+  assert.equal(await rollbackLatest(pool), true);
   await assert.rejects(rollbackLatest(pool), (error) => error.code === '55000');
 
   await pool.query('DELETE FROM booking_provider_references WHERE tenant_id = $1', [TENANT_ID]);
