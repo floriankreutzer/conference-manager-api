@@ -22,13 +22,13 @@ Returns HTTP 200 while the process can handle requests. It exposes no dependency
 
 ### `GET /api/v1/health/ready`
 
-Returns HTTP 200 with `ready` only when registered readiness dependencies complete successfully within their bound. PostgreSQL deployments require connectivity and the exact expected schema version. Failure returns HTTP 503 with `not_ready` without naming internal dependencies.
+Returns HTTP 200 with `ready` only when registered readiness dependencies complete successfully within their bound. PostgreSQL deployments require connectivity and exact schema version 4. Failure returns HTTP 503 with `not_ready` without naming internal dependencies.
 
 ### `GET /api/v1/session`
 
 Requires a valid `cm_session` HttpOnly cookie. Missing, malformed, expired, revoked or stale-privilege sessions return HTTP 401.
 
-After Principal resolution, the server validates that every role and permission belongs to the recognized Tenant authorization model. Unknown role/permission values fail closed with HTTP 403.
+After Principal resolution, the server validates that every role and permission belongs to the recognized Tenant authorization model. Unknown role/permission values fail closed with HTTP 403. A correlated authorization-denial audit event is recorded when a valid Tenant/actor context exists.
 
 The canonical Tenant is loaded only from the internal `principal.tenantId`. Unknown, suspended or archived Tenant context returns HTTP 403 with `TENANT_UNAVAILABLE`.
 
@@ -69,7 +69,7 @@ Requirements:
 
 Logout is credential revocation, not a business authorization grant. A syntactically valid authenticated session can therefore be revoked even if its role/permission snapshot is no longer recognized by the Tenant authorization policy. The same Principal remains denied for session presentation and all business access until a valid authorization mapping exists.
 
-The server revokes the session in PostgreSQL, clears `cm_session`, and returns HTTP 204. A cleared client cookie without server-side revocation is not considered logout.
+The server revokes the session and appends the correlated `session.revoked` success event in one PostgreSQL transaction, then clears `cm_session` and returns HTTP 204. A cleared client cookie without server-side revocation is not considered logout.
 
 ### `GET /api/v1/requests/{requestId}`
 
@@ -79,7 +79,7 @@ Employee requires `request:read` and server-side ownership (`request.requester_u
 
 The authorization snapshot is validated before Request persistence is queried. An unknown role or permission therefore fails closed before object lookup.
 
-The repository lookup is scoped directly by the internal Tenant ID plus Request ID. A client Tenant header/query parameter cannot change the lookup scope.
+The repository lookup is scoped directly by the internal Tenant ID plus Request ID. A client Tenant header/query parameter cannot change the lookup scope. Valid absent/non-owned probes are correlated through server-generated authorization-denial audit evidence where the server has a valid Tenant/actor context.
 
 Response example:
 
@@ -101,7 +101,7 @@ Response example:
 }
 ```
 
-The foundation response omits internal `tenantId` and `requesterUserId` to minimize unnecessary authority/identity metadata in browser output.
+The response omits internal `tenantId` and `requesterUserId` to minimize unnecessary authority/identity metadata in browser output.
 
 ### `POST /api/v1/requests/{requestId}/transitions`
 
@@ -126,9 +126,61 @@ Body for a transition that requires a reason:
 
 Accepted transition names are `start_review`, `confirm`, `reject`, `request_change` and `cancel`. The browser never sends the target status. Unknown body fields are rejected, including `tenantId`, `requesterUserId`, `owner`, `role`, `permission`, `status` and `nextStatus`.
 
+A successful transition and its `request.transition` audit event are committed in the same PostgreSQL transaction. If required audit persistence fails, the workflow mutation is rolled back. Validation, authorization and concurrent-state failures record correlated no-mutation failure/denial evidence where applicable.
+
 A valid transition from an ineligible current state or a concurrent status change returns HTTP 409 with `REQUEST_STATE_CONFLICT`.
 
 See `docs/AUTHORIZATION.md` for the role/permission and transition matrix.
+
+### `GET /api/v1/audit`
+
+Returns presentation-safe audit/security events for the authenticated Tenant only.
+
+Requirements:
+
+- valid server-side session;
+- known Tenant context derived from `principal.tenantId`;
+- recognized authorization snapshot;
+- Tenant Admin role;
+- explicit `tenant:audit:read` permission.
+
+The endpoint never accepts a Tenant ID. Supported optional query parameters are:
+
+- `limit`: integer 1-100, default 50;
+- `beforeId`: positive numeric cursor from a previous page.
+
+Unknown query fields, duplicate query fields, malformed limits and malformed cursors return HTTP 400 `VALIDATION_FAILED`.
+
+Before any event is returned, the server verifies the complete HMAC chain for the authenticated Tenant. A verification failure returns HTTP 503 `AUDIT_INTEGRITY_UNAVAILABLE`; unverified events are not exposed.
+
+Example response:
+
+```json
+{
+  "events": [
+    {
+      "id": "42",
+      "actorUserId": "internal-user-uuid",
+      "action": "request.transition",
+      "targetType": "request",
+      "targetId": "REQ-1",
+      "previousState": { "status": "Submitted" },
+      "newState": { "status": "Confirmed" },
+      "occurredAt": "2026-08-24T09:00:00.000Z",
+      "correlationId": "server-request-uuid",
+      "outcome": "success",
+      "metadata": { "reasonProvided": false, "transition": "confirm" },
+      "retentionClass": "business"
+    }
+  ],
+  "nextBeforeId": "42",
+  "requestId": "server-generated-uuid"
+}
+```
+
+Public output intentionally omits Tenant ID, `previousHash`, `eventHash` and `integrityVersion`. Every successful audit read appends an `audit.read` security event. Denied audit-read attempts with a valid Tenant/actor context append `authorization.denied`.
+
+See `docs/AUDIT.md` for the full audit/integrity contract.
 
 ## Session issuance
 
@@ -136,7 +188,7 @@ There is intentionally no public client-controlled session-creation endpoint in 
 
 A future identity-provider callback/adapter validates the external authentication protocol and maps the provider identity to an internal trusted identity. Only that trusted server-side adapter calls `createSessionService.issue(...)` and sends its `Set-Cookie` result to the browser.
 
-This keeps Entra-specific claims and provider token formats outside business/API services.
+Successful session issuance and its `session.issued` event are persisted atomically. Provider tokens/subjects and raw session credentials are not audit metadata.
 
 ## Tenant-scoped business endpoints
 
@@ -146,6 +198,8 @@ A valid resource ID belonging to another Tenant must not be globally resolved an
 
 Roles and permissions are not interchangeable. A business capability requires a recognized permission plus a recognized role allowed to use that permission. `platform_admin` is not a Tenant role.
 
+Tenant-visible audit access follows the same Tenant boundary but uses its own `tenant:audit:read` capability. Platform/operator audit is a separate authorization domain.
+
 ## Request boundary
 
 - Allowed methods: GET, POST, PUT, PATCH, DELETE.
@@ -154,7 +208,8 @@ Roles and permissions are not interchangeable. A business capability requires a 
 - A present browser `Origin` must match the configured public origin exactly.
 - Traversal, encoded separators, malformed encoding, backslashes and absolute/protocol-relative targets are rejected before routing.
 - JSON state changes use bounded body parsing and positive schemas; unknown fields are rejected.
-- Client-controlled Tenant/User/role/permission/provider/owner/workflow-status values never establish server authority.
+- Audit pagination accepts only bounded explicit query fields.
+- Client-controlled Tenant/User/role/permission/provider/owner/workflow-status/audit-authority values never establish server authority.
 - Protected POST/PUT/PATCH/DELETE operations require authenticated Principal resolution and session-bound CSRF verification.
 
-See `docs/AUTHORIZATION.md`, `docs/IDENTITY-SESSION.md`, `docs/TENANCY.md`, and `docs/SECURITY.md`.
+See `docs/AUDIT.md`, `docs/AUTHORIZATION.md`, `docs/IDENTITY-SESSION.md`, `docs/TENANCY.md`, and `docs/SECURITY.md`.
