@@ -4,7 +4,6 @@ import { createEntraAuthService } from '../src/identity/entra-auth-service.js';
 
 const STATE = 'S'.repeat(43);
 const NONCE = 'N'.repeat(43);
-const BROWSER = 'B'.repeat(43);
 const CORRELATION_ID = '11111111-1111-4111-8111-111111111111';
 const SECRET = 'jit-entra-auth-test-secret-at-least-32-bytes';
 
