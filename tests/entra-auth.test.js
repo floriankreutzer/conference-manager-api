@@ -4,13 +4,18 @@ import test from 'node:test';
 import { createEntraAuthService } from '../src/identity/entra-auth-service.js';
 import { createEntraClient, ENTRA_IDENTITY_PROVIDER } from '../src/identity/entra-client.js';
 import { EntraAuthenticationError } from '../src/identity/entra-errors.js';
+import {
+  ENTRA_TRANSACTION_COOKIE_NAME,
+  readEntraTransactionCookie,
+} from '../src/identity/entra-transaction-cookie.js';
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
 const TENANT_ID = '22222222-2222-4222-8222-222222222222';
 const OTHER_TENANT_ID = '33333333-3333-4333-8333-333333333333';
 const USER_ID = '44444444-4444-4444-8444-444444444444';
 const AUTHORITY = 'https://login.microsoftonline.com/organizations';
-const REDIRECT_URI = 'https://app.example.com/api/v1/auth/microsoft/callback';
+const PUBLIC_ORIGIN = 'https://app.example.com';
+const REDIRECT_URI = `${PUBLIC_ORIGIN}/api/v1/auth/microsoft/callback`;
 const TRANSACTION_SECRET = 'test-oidc-transaction-secret-at-least-32-bytes';
 const NOW_MS = Date.parse('2026-08-24T12:00:00.000Z');
 const STATE = 'S'.repeat(43);
@@ -18,6 +23,11 @@ const NONCE = 'N'.repeat(43);
 
 function hash(value) {
   return createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+function cookieValue(setCookie) {
+  const pair = setCookie.split(';', 1)[0];
+  return pair.slice(pair.indexOf('=') + 1);
 }
 
 function memoryRepository() {
@@ -79,6 +89,29 @@ function entraClient(application = providerApplication()) {
     redirectUri: REDIRECT_URI,
     clock: () => NOW_MS,
     application,
+  });
+}
+
+function deterministicTokens() {
+  const values = [STATE, NONCE];
+  return () => values.shift();
+}
+
+function authService({ repository, client, resolver, sessionService } = {}) {
+  return createEntraAuthService({
+    repository: repository || memoryRepository(),
+    entraClient: client || {
+      async authorizationUrl() { return `${AUTHORITY}/organizations/oauth2/v2.0/authorize`; },
+      async redeemAuthorizationCode() {
+        return { provider: ENTRA_IDENTITY_PROVIDER, tenantReference: TENANT_ID, userReference: USER_ID };
+      },
+    },
+    identityResolver: resolver || { async resolve() { return { status: 'onboarding_required' }; } },
+    sessionService: sessionService || { async issue() { throw new Error('not used'); } },
+    transactionSecret: TRANSACTION_SECRET,
+    publicOrigin: PUBLIC_ORIGIN,
+    clock: () => NOW_MS,
+    randomToken: deterministicTokens(),
   });
 }
 
@@ -172,12 +205,12 @@ test('provider token validation or signature failure is normalized to a safe aut
   );
 });
 
-test('auth service stores only hashed state and nonce and creates a PKCE challenge', async () => {
+test('auth service stores only hashed state and nonce, creates PKCE, and binds the initiating browser', async () => {
   const repository = memoryRepository();
   const captured = {};
-  const service = createEntraAuthService({
+  const service = authService({
     repository,
-    entraClient: {
+    client: {
       async authorizationUrl(input) {
         Object.assign(captured, input);
         return `${AUTHORITY}/oauth2/v2.0/authorize?state=${input.state}`;
@@ -186,82 +219,103 @@ test('auth service stores only hashed state and nonce and creates a PKCE challen
         throw new Error('not used');
       },
     },
-    identityResolver: { async resolve() { return { status: 'onboarding_required' }; } },
-    sessionService: { async issue() { throw new Error('not used'); } },
-    transactionSecret: TRANSACTION_SECRET,
-    clock: () => NOW_MS,
-    randomToken: (() => {
-      const values = [STATE, NONCE];
-      return () => values.shift();
-    })(),
   });
 
-  await service.start({ correlationId: 'corr-1' });
+  const started = await service.start({ correlationId: 'corr-1' });
   assert.equal(captured.state, STATE);
   assert.equal(captured.nonce, NONCE);
   assert.match(captured.codeChallenge, /^[A-Za-z0-9_-]{43}$/);
+  assert.match(
+    started.setCookie,
+    /^cm_oidc_tx=[A-Za-z0-9_-]{43}; Path=\/api\/v1\/auth\/microsoft\/callback; HttpOnly; SameSite=Lax; Secure; Max-Age=600$/,
+  );
+  assert.notEqual(cookieValue(started.setCookie), STATE);
+  assert.equal(readEntraTransactionCookie({ cookie: started.setCookie }), cookieValue(started.setCookie));
   const stored = [...repository.records.values()][0];
   assert.equal(stored.stateHash, hash(STATE));
   assert.equal(stored.nonceHash, hash(NONCE));
   assert.equal(JSON.stringify(stored).includes(STATE), false);
   assert.equal(JSON.stringify(stored).includes(NONCE), false);
+  assert.equal(JSON.stringify(stored).includes(cookieValue(started.setCookie)), false);
+  assert.match(service.clearCookie(), /^cm_oidc_tx=; .*Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT$/);
+});
+
+test('callback requires the initiating browser binding before consuming globally stored state', async () => {
+  const repository = memoryRepository();
+  const service = authService({ repository });
+  const started = await service.start();
+  const correctBinding = cookieValue(started.setCookie);
+
+  for (const browserBinding of [undefined, 'B'.repeat(43)]) {
+    await assert.rejects(
+      service.complete({ state: STATE, code: 'valid-code', browserBinding }),
+      (error) => error instanceof EntraAuthenticationError && error.code === 'OIDC_BROWSER_BINDING_INVALID',
+    );
+    assert.equal(repository.records.size, 1);
+  }
+
+  const completed = await service.complete({
+    state: STATE,
+    code: 'valid-code',
+    browserBinding: correctBinding,
+  });
+  assert.deepEqual(completed, { status: 'onboarding_required' });
+  assert.equal(repository.records.size, 0);
 });
 
 test('OIDC state is one-time, replay safe, and provider rejection consumes it', async () => {
   const repository = memoryRepository();
   let redeemed = 0;
-  const service = createEntraAuthService({
+  const service = authService({
     repository,
-    entraClient: {
+    client: {
       async authorizationUrl() { return `${AUTHORITY}/organizations/oauth2/v2.0/authorize`; },
       async redeemAuthorizationCode() {
         redeemed += 1;
         return { provider: ENTRA_IDENTITY_PROVIDER, tenantReference: TENANT_ID, userReference: USER_ID };
       },
     },
-    identityResolver: { async resolve() { return { status: 'onboarding_required' }; } },
-    sessionService: { async issue() { throw new Error('not used'); } },
-    transactionSecret: TRANSACTION_SECRET,
-    clock: () => NOW_MS,
-    randomToken: (() => {
-      const values = [STATE, NONCE];
-      return () => values.shift();
-    })(),
   });
 
-  await service.start();
-  const first = await service.complete({ state: STATE, providerError: true });
+  const started = await service.start();
+  const browserBinding = cookieValue(started.setCookie);
+  const first = await service.complete({ state: STATE, providerError: true, browserBinding });
   assert.equal(first.status, 'authentication_rejected');
   assert.equal(redeemed, 0);
   await assert.rejects(
-    service.complete({ state: STATE, code: 'replayed-code' }),
+    service.complete({ state: STATE, code: 'replayed-code', browserBinding }),
     (error) => error instanceof EntraAuthenticationError && error.code === 'OIDC_STATE_INVALID',
   );
+});
+
+test('transaction cookie parser rejects duplicates, malformed values, and oversized cookie input', () => {
+  const valid = 'V'.repeat(43);
+  assert.equal(
+    readEntraTransactionCookie({ cookie: `other=1; ${ENTRA_TRANSACTION_COOKIE_NAME}=${valid}` }),
+    valid,
+  );
+  assert.equal(
+    readEntraTransactionCookie({ cookie: `${ENTRA_TRANSACTION_COOKIE_NAME}=${valid}; ${ENTRA_TRANSACTION_COOKIE_NAME}=${valid}` }),
+    null,
+  );
+  assert.equal(readEntraTransactionCookie({ cookie: `${ENTRA_TRANSACTION_COOKIE_NAME}=invalid` }), null);
+  assert.equal(readEntraTransactionCookie({ cookie: 'x'.repeat(8_193) }), null);
 });
 
 test('valid but unresolved Entra identity routes to onboarding without issuing an application session', async () => {
   const repository = memoryRepository();
   let issued = false;
-  const service = createEntraAuthService({
+  const service = authService({
     repository,
-    entraClient: {
-      async authorizationUrl() { return `${AUTHORITY}/organizations/oauth2/v2.0/authorize`; },
-      async redeemAuthorizationCode() {
-        return { provider: ENTRA_IDENTITY_PROVIDER, tenantReference: TENANT_ID, userReference: USER_ID };
-      },
-    },
-    identityResolver: { async resolve() { return { status: 'onboarding_required' }; } },
     sessionService: { async issue() { issued = true; } },
-    transactionSecret: TRANSACTION_SECRET,
-    clock: () => NOW_MS,
-    randomToken: (() => {
-      const values = [STATE, NONCE];
-      return () => values.shift();
-    })(),
   });
 
-  await service.start();
-  const completed = await service.complete({ state: STATE, code: 'valid-code' });
+  const started = await service.start();
+  const completed = await service.complete({
+    state: STATE,
+    code: 'valid-code',
+    browserBinding: cookieValue(started.setCookie),
+  });
   assert.deepEqual(completed, { status: 'onboarding_required' });
   assert.equal(issued, false);
 });
@@ -275,31 +329,24 @@ test('resolved provider identity is handed to the existing server-side session s
     roles: ['employee'],
     permissions: ['request:read'],
   };
-  const service = createEntraAuthService({
+  const service = authService({
     repository,
-    entraClient: {
-      async authorizationUrl() { return `${AUTHORITY}/organizations/oauth2/v2.0/authorize`; },
-      async redeemAuthorizationCode() {
-        return { provider: ENTRA_IDENTITY_PROVIDER, tenantReference: TENANT_ID, userReference: USER_ID };
-      },
-    },
-    identityResolver: { async resolve() { return { status: 'authenticated', trustedIdentity }; } },
+    resolver: { async resolve() { return { status: 'authenticated', trustedIdentity }; } },
     sessionService: {
       async issue(identity) {
         assert.equal(identity, trustedIdentity);
         return { principal: { userId: trustedIdentity.userId }, setCookie: 'cm_session=opaque; HttpOnly' };
       },
     },
-    transactionSecret: TRANSACTION_SECRET,
-    clock: () => NOW_MS,
-    randomToken: (() => {
-      const values = [STATE, NONCE];
-      return () => values.shift();
-    })(),
   });
 
-  await service.start();
-  const completed = await service.complete({ state: STATE, code: 'valid-code', correlationId: 'corr-2' });
+  const started = await service.start();
+  const completed = await service.complete({
+    state: STATE,
+    code: 'valid-code',
+    browserBinding: cookieValue(started.setCookie),
+    correlationId: 'corr-2',
+  });
   assert.equal(completed.status, 'authenticated');
   assert.equal(completed.setCookie, 'cm_session=opaque; HttpOnly');
 });
