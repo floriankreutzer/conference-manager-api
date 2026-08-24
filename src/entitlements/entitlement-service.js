@@ -91,12 +91,14 @@ export function createEntitlementService({
       if (!Number.isSafeInteger(changedAtMs) || changedAtMs < 0) {
         throw new EntitlementInputError('ENTITLEMENT_CLOCK_INVALID');
       }
+      const changedAt = new Date(changedAtMs);
+      const occurredAt = changedAt.toISOString();
 
       const changed = await repository.changeByTenantIdAndCapabilityId({
         tenantId,
         capabilityId: normalizedCapabilityId,
         enabled,
-        changedAt: new Date(changedAtMs),
+        changedAt,
         auditEventForPrevious(previousEnabled) {
           return auditService.createActorEvent({
             tenantId,
@@ -110,6 +112,7 @@ export function createEntitlementService({
             outcome: AUDIT_OUTCOME.SUCCESS,
             metadata: { actorType: 'platform_operator' },
             retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
+            occurredAt,
           });
         },
       });
