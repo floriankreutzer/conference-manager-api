@@ -559,16 +559,18 @@ export function createApp({
           sendJson(response, statusCode, { user, requestId }, config.maxResponseBytes);
           return;
         }
+        const page = tenantUsersPageFromUrl(parsedUrl);
         const users = await tenantUserAdministrationService.listUsers({
           principal,
           tenantContext,
           correlationId: requestId,
-          ...tenantUsersPageFromUrl(parsedUrl),
+          ...page,
         });
+        const effectiveLimit = page.limit ?? 100;
         statusCode = 200;
         sendJson(response, statusCode, {
           users,
-          nextAfterId: users.length === 100 ? users.at(-1)?.id || null : null,
+          nextAfterId: users.length === effectiveLimit ? users.at(-1)?.id || null : null,
           requestId,
         }, config.maxResponseBytes);
         return;
