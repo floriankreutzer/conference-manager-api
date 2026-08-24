@@ -17,6 +17,7 @@ const DEFAULTS = Object.freeze({
   databaseConnectionTimeoutMs: 5_000,
   databaseIdleTimeoutMs: 30_000,
   databaseStatementTimeoutMs: 10_000,
+  sessionTtlSeconds: 28_800,
 });
 
 export class ConfigurationError extends Error {
@@ -92,6 +93,18 @@ function parseDatabaseSsl(value, mode) {
     throw new ConfigurationError('DATABASE_SSL_REQUIRED');
   }
   return selected;
+}
+
+function parseCsrfSecret(value, mode) {
+  if (!value) {
+    if (mode === 'pilot' || mode === 'production') throw new ConfigurationError('CSRF_SECRET_REQUIRED');
+    return null;
+  }
+  const bytes = Buffer.byteLength(value, 'utf8');
+  if (bytes < 32 || bytes > 512 || /[\u0000-\u001f\u007f]/.test(value)) {
+    throw new ConfigurationError('CSRF_SECRET_INVALID');
+  }
+  return value;
 }
 
 export function loadDatabaseConfig(env = process.env, mode = parseMode(env)) {
@@ -171,6 +184,12 @@ export function loadConfig(env = process.env) {
       max: 10_000,
       code: 'READINESS_TIMEOUT_MS_INVALID',
     }),
+    sessionTtlSeconds: parseInteger(env.SESSION_TTL_SECONDS, DEFAULTS.sessionTtlSeconds, {
+      min: 300,
+      max: 86_400,
+      code: 'SESSION_TTL_SECONDS_INVALID',
+    }),
+    csrfSecret: parseCsrfSecret(env.CSRF_SECRET, mode),
     ...database,
   });
 }
@@ -184,5 +203,8 @@ export function assertProductionConfig(config) {
   }
   if ((config.mode === 'pilot' || config.mode === 'production') && config.databaseSsl !== 'verify-full') {
     throw new ApiError(500, 'DATABASE_TLS_REQUIRED');
+  }
+  if ((config.mode === 'pilot' || config.mode === 'production') && !config.csrfSecret) {
+    throw new ApiError(500, 'CSRF_SECRET_REQUIRED');
   }
 }
