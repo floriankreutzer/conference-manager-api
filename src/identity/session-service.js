@@ -5,6 +5,11 @@ import {
   randomUUID,
   timingSafeEqual,
 } from 'node:crypto';
+import {
+  AUDIT_ACTION,
+  AUDIT_OUTCOME,
+  AUDIT_RETENTION_CLASS,
+} from '../audit/event.js';
 import { normalizePrincipal, normalizeTrustedIdentity } from './principal.js';
 import {
   SESSION_TOKEN_PATTERN,
@@ -70,6 +75,7 @@ function principalFromSession(session) {
 
 export function createSessionService({
   repository,
+  auditService,
   publicOrigin,
   csrfSecret,
   sessionTtlSeconds = DEFAULT_SESSION_TTL_SECONDS,
@@ -79,6 +85,14 @@ export function createSessionService({
 } = {}) {
   if (!repository || typeof repository.issue !== 'function' || typeof repository.resolveByTokenHash !== 'function') {
     throw new TypeError('SESSION_REPOSITORY_REQUIRED');
+  }
+  if (
+    !auditService
+    || typeof auditService.createActorEvent !== 'function'
+    || typeof auditService.createEvent !== 'function'
+    || typeof auditService.record !== 'function'
+  ) {
+    throw new TypeError('AUDIT_SERVICE_REQUIRED');
   }
   if (typeof publicOrigin !== 'string') throw new TypeError('PUBLIC_ORIGIN_REQUIRED');
   const secure = new URL(publicOrigin).protocol === 'https:';
@@ -118,11 +132,30 @@ export function createSessionService({
     });
   }
 
+  function principalTenantContext(principal) {
+    return Object.freeze({ tenantId: principal.tenantId });
+  }
+
   return Object.freeze({
-    async issue(trustedIdentity) {
+    async issue(trustedIdentity, { correlationId } = {}) {
       const identity = normalizeTrustedIdentity(trustedIdentity);
       const generated = generateSession(identity);
-      const stored = await repository.issue(generated.record);
+      const auditEvent = auditService.createActorEvent({
+        tenantId: identity.tenantId,
+        actorUserId: identity.userId,
+        correlationId,
+        action: AUDIT_ACTION.SESSION_ISSUED,
+        targetType: 'user',
+        targetId: identity.userId,
+        outcome: AUDIT_OUTCOME.SUCCESS,
+        occurredAt: generated.record.issuedAt,
+        metadata: {
+          permissionCount: identity.permissions.length,
+          roleCount: identity.roles.length,
+        },
+        retentionClass: AUDIT_RETENTION_CLASS.SECURITY,
+      });
+      const stored = await repository.issue(generated.record, auditEvent);
       if (!stored) throw new SessionServiceError('IDENTITY_NOT_PROVISIONED');
       return resultFor(generated.token, stored);
     },
@@ -147,29 +180,96 @@ export function createSessionService({
       return safeEqual(presented, csrfToken(secret, principal.session.id));
     },
 
-    async revoke(principalValue) {
+    async revoke(principalValue, { correlationId } = {}) {
       const principal = normalizePrincipal(principalValue);
-      return repository.revoke({
+      const revokedMs = clock();
+      if (!Number.isSafeInteger(revokedMs) || revokedMs < 0) throw new TypeError('SESSION_CLOCK_INVALID');
+      const revokedAt = new Date(revokedMs);
+      const tenantContext = principalTenantContext(principal);
+      const auditEvent = auditService.createEvent({
+        principal,
+        tenantContext,
+        correlationId,
+        action: AUDIT_ACTION.SESSION_REVOKED,
+        targetType: 'user',
+        targetId: principal.userId,
+        previousState: { sessionState: 'active' },
+        newState: { sessionState: 'revoked' },
+        outcome: AUDIT_OUTCOME.SUCCESS,
+        occurredAt: revokedAt.toISOString(),
+        retentionClass: AUDIT_RETENTION_CLASS.SECURITY,
+      });
+      const revoked = await repository.revoke({
         sessionId: principal.session.id,
         tenantId: principal.tenantId,
         userId: principal.userId,
-        revokedAt: new Date(clock()),
+        revokedAt,
+        auditEvent,
       });
+      if (!revoked) {
+        await auditService.record({
+          principal,
+          tenantContext,
+          correlationId,
+          action: AUDIT_ACTION.SESSION_REVOKED,
+          targetType: 'user',
+          targetId: principal.userId,
+          outcome: AUDIT_OUTCOME.FAILURE,
+          metadata: { reasonCode: 'session_not_active' },
+          retentionClass: AUDIT_RETENTION_CLASS.SECURITY,
+        });
+      }
+      return revoked;
     },
 
-    async rotate(principalValue, trustedIdentity) {
+    async rotate(principalValue, trustedIdentity, { correlationId } = {}) {
       const principal = normalizePrincipal(principalValue);
       const identity = normalizeTrustedIdentity(trustedIdentity);
       if (identity.userId !== principal.userId || identity.tenantId !== principal.tenantId) {
         throw new SessionServiceError('SESSION_ROTATION_SUBJECT_MISMATCH');
       }
       const generated = generateSession(identity);
+      const revokedMs = clock();
+      if (!Number.isSafeInteger(revokedMs) || revokedMs < 0) throw new TypeError('SESSION_CLOCK_INVALID');
+      const revokedAt = new Date(revokedMs);
+      const tenantContext = principalTenantContext(principal);
+      const auditEvent = auditService.createEvent({
+        principal,
+        tenantContext,
+        correlationId,
+        action: AUDIT_ACTION.SESSION_ROTATED,
+        targetType: 'user',
+        targetId: principal.userId,
+        outcome: AUDIT_OUTCOME.SUCCESS,
+        occurredAt: generated.record.issuedAt,
+        metadata: {
+          newPermissionCount: identity.permissions.length,
+          newRoleCount: identity.roles.length,
+          previousPermissionCount: principal.permissions.length,
+          previousRoleCount: principal.roles.length,
+        },
+        retentionClass: AUDIT_RETENTION_CLASS.SECURITY,
+      });
       const stored = await repository.rotate({
         currentSessionId: principal.session.id,
         session: generated.record,
-        revokedAt: new Date(clock()),
+        revokedAt,
+        auditEvent,
       });
-      if (!stored) throw new SessionServiceError('SESSION_ROTATION_REJECTED');
+      if (!stored) {
+        await auditService.record({
+          principal,
+          tenantContext,
+          correlationId,
+          action: AUDIT_ACTION.SESSION_ROTATED,
+          targetType: 'user',
+          targetId: principal.userId,
+          outcome: AUDIT_OUTCOME.FAILURE,
+          metadata: { reasonCode: 'rotation_rejected' },
+          retentionClass: AUDIT_RETENTION_CLASS.SECURITY,
+        });
+        throw new SessionServiceError('SESSION_ROTATION_REJECTED');
+      }
       return resultFor(generated.token, stored);
     },
 
