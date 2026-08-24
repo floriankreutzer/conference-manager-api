@@ -159,6 +159,7 @@ for (const resourceType of [
   'booking_provider_reference',
   'tenant_onboarding_invitation',
   'tenant_identity_binding',
+  'user_identity_binding',
   'audit_event',
 ]) {
   if (!tenantModel.includes(`'${resourceType}'`)) {
@@ -206,6 +207,8 @@ for (const required of [
   'TENANT_ONBOARDING_INVITED',
   'TENANT_IDENTITY_CLAIMED',
   'TENANT_IDENTITY_UNBOUND',
+  'TENANT_USER_PROVISIONED',
+  'TENANT_USER_PROFILE_UPDATED',
 ]) {
   if (!auditEvent.includes(required)) throw new Error(`Audit event contract is missing ${required}.`);
 }
@@ -226,11 +229,13 @@ for (const required of [
   'createPostgresBookingReferenceRepository',
   'createPostgresOidcTransactionRepository',
   'createPostgresTenantOnboardingRepository',
+  'createPostgresJitUserRepository',
   'auditRepository',
   'entitlementRepository',
   'bookingReferenceRepository',
   'oidcTransactionRepository',
   'tenantOnboardingRepository',
+  'jitUserRepository',
 ]) {
   if (!persistence.includes(required)) throw new Error(`PostgreSQL persistence is missing ${required}.`);
 }
@@ -371,9 +376,14 @@ if (browserBindingCheck < 0 || oidcStateConsume < 0 || browserBindingCheck > oid
 }
 
 const identityResolver = await readFile('src/identity/provider-identity-resolver.js', 'utf8');
-for (const required of ['onboardingInvitationId', 'onboardingService.prepareClaim', "status: 'onboarding_required'"]) {
+for (const required of [
+  'onboardingInvitationId',
+  'onboardingService.prepareClaim',
+  'jitUserService.resolve',
+  "status: 'onboarding_required'",
+]) {
   if (!identityResolver.includes(required)) {
-    throw new Error(`Provider identity resolver is missing onboarding invariant ${required}.`);
+    throw new Error(`Provider identity resolver is missing identity-routing invariant ${required}.`);
   }
 }
 
@@ -433,8 +443,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!pool.includes('CURRENT_SCHEMA_VERSION = 8')) {
-  throw new Error('Runtime schema readiness must require tenant onboarding migration version 8.');
+if (!pool.includes('CURRENT_SCHEMA_VERSION = 9')) {
+  throw new Error('Runtime schema readiness must require JIT User migration version 9.');
 }
 
 const index = await readFile('src/index.js', 'utf8');
@@ -446,7 +456,8 @@ for (const required of [
   'createEntraClient',
   'createEntraAuthService',
   'createTenantOnboardingService',
-  'createPendingProviderIdentityResolver({ onboardingService })',
+  'createJitUserService',
+  'createPendingProviderIdentityResolver({ onboardingService, jitUserService })',
 ]) {
   if (!index.includes(required)) throw new Error(`Process composition must wire ${required}.`);
 }
@@ -478,6 +489,22 @@ if (!onboardingRollback.includes('TENANT_ONBOARDING_ROWS_REQUIRE_REVIEW')) {
   throw new Error('Tenant onboarding rollback must fail closed when claim/binding evidence exists.');
 }
 
+const jitMigration = await readFile('migrations/009_jit_user_identity_bindings.up.sql', 'utf8');
+for (const required of [
+  'CREATE TABLE user_identity_bindings',
+  'provider_tenant_reference varchar(128) NOT NULL',
+  'provider_user_reference varchar(128) NOT NULL',
+  'PRIMARY KEY (tenant_id, provider, provider_tenant_reference, provider_user_reference)',
+  'tenant.user.provisioned',
+  'tenant.user.profile_updated',
+]) {
+  if (!jitMigration.includes(required)) throw new Error(`JIT User migration is missing ${required}.`);
+}
+const jitRollback = await readFile('migrations/009_jit_user_identity_bindings.down.sql', 'utf8');
+for (const required of ['JIT_USER_BINDINGS_REQUIRE_REVIEW', 'JIT_USER_AUDIT_REQUIRES_REVIEW']) {
+  if (!jitRollback.includes(required)) throw new Error(`JIT User rollback is missing ${required}.`);
+}
+
 for (const migration of [
   'migrations/001_core_tenant_schema.up.sql',
   'migrations/001_core_tenant_schema.down.sql',
@@ -495,6 +522,8 @@ for (const migration of [
   'migrations/007_oidc_auth_transactions.down.sql',
   'migrations/008_tenant_onboarding_identity_claims.up.sql',
   'migrations/008_tenant_onboarding_identity_claims.down.sql',
+  'migrations/009_jit_user_identity_bindings.up.sql',
+  'migrations/009_jit_user_identity_bindings.down.sql',
 ]) {
   await readFile(migration, 'utf8');
 }

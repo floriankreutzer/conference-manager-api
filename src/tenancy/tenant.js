@@ -23,6 +23,7 @@ export const TENANT_OWNED_RESOURCE_TYPES = Object.freeze([
   'booking_provider_reference',
   'tenant_onboarding_invitation',
   'tenant_identity_binding',
+  'user_identity_binding',
   'audit_event',
   'tenant_configuration',
 ]);

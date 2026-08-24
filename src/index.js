@@ -4,6 +4,7 @@ import { createAuthorizationPolicy } from './authorization/policy.js';
 import { loadConfig } from './config.js';
 import { createEntraAuthService } from './identity/entra-auth-service.js';
 import { createEntraClient } from './identity/entra-client.js';
+import { createJitUserService } from './identity/jit-user-service.js';
 import { createPendingProviderIdentityResolver } from './identity/provider-identity-resolver.js';
 import { createSessionService } from './identity/session-service.js';
 import { createLogger } from './logger.js';
@@ -40,6 +41,13 @@ const onboardingService = persistence && auditService
     publicOrigin: config.publicOrigin,
   })
   : null;
+const jitUserService = persistence && auditService
+  ? createJitUserService({
+    bindingRepository: persistence.tenantOnboardingRepository,
+    userRepository: persistence.jitUserRepository,
+    auditService,
+  })
+  : null;
 const entraClient = config.entraClientId
   ? createEntraClient({
     clientId: config.entraClientId,
@@ -48,7 +56,7 @@ const entraClient = config.entraClientId
     redirectUri: config.entraRedirectUri,
   })
   : null;
-const identityResolver = createPendingProviderIdentityResolver({ onboardingService });
+const identityResolver = createPendingProviderIdentityResolver({ onboardingService, jitUserService });
 const entraAuthService = persistence && entraClient && sessionService
   ? createEntraAuthService({
     repository: persistence.oidcTransactionRepository,
