@@ -145,8 +145,8 @@ test('invitation and validated Entra identity become a short-lived browser claim
   assert.equal(claim.status, 'claim_confirmation_required');
   assert.equal(prepared.providerTenantReference, PROVIDER_TENANT);
   assert.equal(prepared.providerUserReference, PROVIDER_USER);
-  assert.equal(prepared.tokenHash, sha256(CLAIM_TOKEN));
-  assert.equal(JSON.stringify(prepared).includes(CLAIM_TOKEN), false);
+  assert.equal(prepared.tokenHash, sha256(INVITATION_TOKEN));
+  assert.equal(JSON.stringify(prepared).includes(INVITATION_TOKEN), false);
   assert.match(claim.setCookie, /^cm_tenant_claim=/);
   assert.match(claim.setCookie, /HttpOnly/);
   assert.match(claim.setCookie, /SameSite=Strict/);
