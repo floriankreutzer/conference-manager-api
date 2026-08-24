@@ -312,10 +312,11 @@ test('JIT provisioning is tenant-isolated, deterministic, concurrent-safe and au
   );
   assert.deepEqual(rollbackRows.rows[0], { user_count: 0, binding_count: 0 });
 
+  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await isPostgresSchemaReady(pool), false);
   await assert.rejects(rollbackLatest(pool), (error) => error.code === '55000');
   await cleanup(pool);
   assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await isPostgresSchemaReady(pool), false);
   const dropped = await pool.query("SELECT to_regclass('public.user_identity_bindings') AS relation");
   assert.equal(dropped.rows[0].relation, null);
   await migrateUp(pool);
