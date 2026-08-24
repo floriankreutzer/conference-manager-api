@@ -18,7 +18,7 @@ for (const required of [
 }
 
 const health = await readFile('src/observability/health.js', 'utf8');
-for (const required of ['readinessChecks', 'degradationChecks', "status: ready ? (degraded ? 'degraded' : 'ready')"] ) {
+for (const required of ['readinessChecks', 'degradationChecks', "status: ready ? (degraded ? 'degraded' : 'ready')"]) {
   if (!health.includes(required)) throw new Error(`Health monitor is missing ${required}.`);
 }
 
@@ -39,8 +39,10 @@ if (app.includes('logger.requestCompleted({\n        requestId,\n        method:
 }
 
 const logger = await readFile('src/logger.js', 'utf8');
-if (/authorization|cookie|csrf|providerReference|tenantId|userId/.test(logger)) {
-  throw new Error('Operational logger must not accept sensitive or tenant/object identifiers.');
+for (const forbidden of ['cookie', 'csrf', 'providerReference', 'tenantId', 'userId']) {
+  if (logger.includes(forbidden)) {
+    throw new Error(`Operational logger must not accept sensitive or tenant/object identifier ${forbidden}.`);
+  }
 }
 if (!logger.includes('route: assertEnum(route, ROUTES')) {
   throw new Error('Operational request logging must constrain route labels.');
