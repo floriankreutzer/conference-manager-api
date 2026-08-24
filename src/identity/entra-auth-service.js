@@ -6,6 +6,11 @@ import {
 } from 'node:crypto';
 import { EntraAuthenticationError } from './entra-errors.js';
 import { ENTRA_IDENTITY_PROVIDER } from './entra-client.js';
+import {
+  ENTRA_TRANSACTION_COOKIE_PATTERN,
+  serializeClearedEntraTransactionCookie,
+  serializeEntraTransactionCookie,
+} from './entra-transaction-cookie.js';
 
 const STATE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const CODE_PATTERN = /^[A-Za-z0-9._~-]{1,4096}$/;
@@ -21,6 +26,10 @@ function pkceVerifier(secret, state) {
 
 function pkceChallenge(verifier) {
   return createHash('sha256').update(verifier, 'ascii').digest('base64url');
+}
+
+function browserBinding(secret, state) {
+  return createHmac('sha256', secret).update(`browser:${state}`, 'utf8').digest('base64url');
 }
 
 function normalizeTransactionSecret(value) {
@@ -43,6 +52,18 @@ function requireCode(value) {
   return value;
 }
 
+function safeTokenEqual(left, right) {
+  if (
+    typeof left !== 'string'
+    || typeof right !== 'string'
+    || !ENTRA_TRANSACTION_COOKIE_PATTERN.test(left)
+    || !ENTRA_TRANSACTION_COOKIE_PATTERN.test(right)
+  ) {
+    return false;
+  }
+  return timingSafeEqual(Buffer.from(left, 'ascii'), Buffer.from(right, 'ascii'));
+}
+
 function validateIdentityResolution(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new TypeError('IDENTITY_RESOLUTION_INVALID');
@@ -62,6 +83,7 @@ export function createEntraAuthService({
   identityResolver,
   sessionService,
   transactionSecret,
+  publicOrigin,
   transactionTtlSeconds = DEFAULT_TRANSACTION_TTL_SECONDS,
   clock = () => Date.now(),
   randomToken = () => randomBytes(32).toString('base64url'),
@@ -74,6 +96,8 @@ export function createEntraAuthService({
   }
   if (!identityResolver || typeof identityResolver.resolve !== 'function') throw new TypeError('IDENTITY_RESOLVER_REQUIRED');
   if (!sessionService || typeof sessionService.issue !== 'function') throw new TypeError('SESSION_SERVICE_REQUIRED');
+  if (typeof publicOrigin !== 'string') throw new TypeError('PUBLIC_ORIGIN_REQUIRED');
+  const secureCookie = new URL(publicOrigin).protocol === 'https:';
   if (!Number.isSafeInteger(transactionTtlSeconds) || transactionTtlSeconds < 120 || transactionTtlSeconds > 900) {
     throw new TypeError('OIDC_TRANSACTION_TTL_INVALID');
   }
@@ -101,11 +125,20 @@ export function createEntraAuthService({
         nonce,
         codeChallenge: pkceChallenge(verifier),
       });
-      return Object.freeze({ authorizationUrl });
+      return Object.freeze({
+        authorizationUrl,
+        setCookie: serializeEntraTransactionCookie(browserBinding(secret, state), {
+          secure: secureCookie,
+          maxAgeSeconds: transactionTtlSeconds,
+        }),
+      });
     },
 
-    async complete({ state: stateValue, code: codeValue, providerError, correlationId } = {}) {
+    async complete({ state: stateValue, code: codeValue, providerError, browserBinding: presentedBinding, correlationId } = {}) {
       const state = requireState(stateValue);
+      if (!safeTokenEqual(presentedBinding, browserBinding(secret, state))) {
+        throw new EntraAuthenticationError('OIDC_BROWSER_BINDING_INVALID');
+      }
       const nowMs = clock();
       if (!Number.isSafeInteger(nowMs) || nowMs < 0) throw new TypeError('OIDC_CLOCK_INVALID');
       const transaction = await repository.consume({
@@ -133,6 +166,10 @@ export function createEntraAuthService({
         principal: issued.principal,
         setCookie: issued.setCookie,
       });
+    },
+
+    clearCookie() {
+      return serializeClearedEntraTransactionCookie({ secure: secureCookie });
     },
   });
 }
