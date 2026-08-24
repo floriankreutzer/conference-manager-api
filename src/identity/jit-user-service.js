@@ -96,6 +96,7 @@ export function createJitUserService({
       const result = await userRepository.resolveOrProvision({
         tenantId: tenantBinding.tenantId,
         provider: external.provider,
+        providerTenantReference: external.tenantReference,
         providerUserReference: external.userReference,
         displayName: external.displayName,
         newUserId,
@@ -133,7 +134,7 @@ export function createJitUserService({
           tenantId: result.identity.tenantId,
           providerIdentity: {
             provider: external.provider,
-            reference: external.userReference,
+            reference: `${external.tenantReference}:${external.userReference}`,
           },
           roles: DEFAULT_ROLES,
           permissions: DEFAULT_PERMISSIONS,
