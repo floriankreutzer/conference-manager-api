@@ -115,7 +115,8 @@ test('session service stores only token hashes and resolves opaque cookies into 
   assert.deepEqual(resolved.permissions, ['request:read']);
   assert.equal(service.csrfTokenForPrincipal(resolved), issued.csrfToken);
   assert.equal(await service.verifyCsrf({ headers: { 'x-csrf-token': issued.csrfToken } }, resolved), true);
-  assert.equal(await service.verifyCsrf({ headers: { 'x-csrf-token': `${issued.csrfToken.slice(0, -1)}A` } }, resolved), false);
+  const wrongCsrf = `${issued.csrfToken[0] === 'A' ? 'B' : 'A'}${issued.csrfToken.slice(1)}`;
+  assert.equal(await service.verifyCsrf({ headers: { 'x-csrf-token': wrongCsrf } }, resolved), false);
   assert.equal(await service.resolvePrincipal({ headers: { cookie: `cm_session=${TOKEN_ONE.slice(0, -1)}!` } }), null);
 });
 
