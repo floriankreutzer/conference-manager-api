@@ -81,6 +81,22 @@ See `docs/IDENTITY-SESSION.md` for the full contract.
 
 See `docs/AUTHORIZATION.md` for the complete permission/transition matrix.
 
+## Audit and security-event controls (#52)
+
+- Audit tenant, actor, timestamp, correlation, action, outcome and integrity values are produced from trusted server context, not browser authority.
+- Audit state/metadata is bounded to flat primitive objects; nested structures and credential-sensitive key names are rejected.
+- Session tokens/hashes, internal session IDs, CSRF tokens, provider credentials/subjects, cookies, private keys and connection strings are not included in audit payloads.
+- Migration 004 makes `audit_events` append-only with a PostgreSQL trigger rejecting `UPDATE` and `DELETE`.
+- Events are HMAC-SHA-256 chained independently per internal Tenant using canonical payloads and the previous event hash.
+- Pilot/Production require an externally managed `AUDIT_HMAC_SECRET`; the key is not stored in PostgreSQL/source.
+- Tenant audit reads verify the full Tenant chain before returning data and fail closed with `AUDIT_INTEGRITY_UNAVAILABLE` if verification fails.
+- Tenant-visible reads require Tenant Admin plus explicit `tenant:audit:read`; Platform/operator audit remains outside this Tenant role model.
+- Successful Request transitions and session issue/revoke/rotation append their audit success event inside the same PostgreSQL transaction as the authoritative state mutation.
+- Authorization denials and supported no-mutation failure paths are recorded separately with the server request correlation ID.
+- Public audit output omits Tenant ID and HMAC chain fields.
+
+See `docs/AUDIT.md` for the event taxonomy, integrity model and limitations.
+
 ## Supply-chain controls
 
 The repository uses locked installs without lifecycle scripts, `npm audit --audit-level=high`, Dependabot, full-history Gitleaks and the repository-local Dependency Policy gate.
@@ -93,7 +109,7 @@ GitHub-native Dependency Review is unavailable for this private user-owned repos
 
 Issue #51 establishes the Tenant role/permission and Request object/workflow policy. It does not create a platform-operator authorization model, and it does not infer site/location/department scope from provider or browser data. A finer Manager scope requires a future explicit server-side scope model.
 
-The `audit_events` table provides relational ownership only. Issue #52 owns append-only/tamper-evident audit behavior and security-event persistence, including authorization decisions and workflow/security events.
+The audit chain is tamper-evident for modified/reordered rows while the HMAC key is protected, but it is not an external completeness proof against privileged deletion of an entire chain suffix or restoration of an older database snapshot. External anchoring/WORM export, independently controlled retention and recovery verification remain production-hardening work for the later operational/security baseline.
 
 The local in-process rate limiter is not a distributed production quota solution. Trusted proxy/client-key semantics and shared/edge abuse controls remain operational/security-baseline work.
 
@@ -101,15 +117,16 @@ The Entra OIDC adapter is not implemented in SaaS 0. SaaS 1 must validate OIDC i
 
 ## OWASP/CWE mapping
 
-- Broken Access Control / BOLA / IDOR (CWE-639/CWE-862): Tenant-scoped lookup, Employee ownership, role/permission intersection, concealed non-owned objects and workflow authorization are implemented and negatively tested.
-- Authentication/session weaknesses: opaque high-entropy cookies, server-side expiry/revocation, rotation and security-version invalidation are implemented and negatively tested.
-- CSRF (CWE-352): unsafe protected cookie-authenticated requests require session-bound HMAC synchronizer tokens, including Request transitions.
-- SQL injection (CWE-89): fixed SQL plus PostgreSQL parameter binding; real database integration tests execute Request/session persistence paths.
+- Broken Access Control / BOLA / IDOR (CWE-639/CWE-862): Tenant-scoped lookup, Employee ownership, role/permission intersection, concealed non-owned objects, workflow authorization and Tenant-scoped audit reads are implemented and negatively tested.
+- Authentication/session weaknesses: opaque high-entropy cookies, server-side expiry/revocation, rotation and security-version invalidation are implemented and negatively tested; session lifecycle mutations carry atomic audit evidence.
+- CSRF (CWE-352): unsafe protected cookie-authenticated requests require session-bound HMAC synchronizer tokens, including Request transitions and logout.
+- SQL injection (CWE-89): fixed SQL plus PostgreSQL parameter binding; real database integration tests execute Request/session/audit persistence paths.
 - XSS (CWE-79): API emits JSON/no HTML and sets default-deny CSP; frontend rendering remains separately governed.
 - SSRF (CWE-918): no provider outbound transport exists yet; future destinations remain fixed/allowlisted requirements.
-- Information disclosure: session credentials/provider references/DB secrets are excluded from public output; Employee object probing conceals non-owned Request existence.
-- Privilege escalation/confused deputy: unknown roles/permissions fail closed, Tenant Admin does not inherit Manager rights and target workflow state is selected only by server policy.
+- Information disclosure: session credentials/provider references/DB secrets are excluded from public output; audit metadata rejects sensitive key classes and Employee object probing conceals non-owned Request existence.
+- Privilege escalation/confused deputy: unknown roles/permissions fail closed, Tenant Admin does not inherit Manager rights, audit read is a separate permission, and target workflow state is selected only by server policy.
 - Replay/stale state: session revocation/security-version checks protect credentials; Request workflow writes use expected-current-state predicates.
-- Resource exhaustion: HTTP, database pool/query and session TTL bounds are explicit; capacity/load tuning remains operational work.
+- Integrity/tampering: audit writes are append-only, per-Tenant HMAC chained and verified before tenant-visible reads; external completeness anchoring remains explicitly out of scope.
+- Resource exhaustion: HTTP, database pool/query, audit payload/page and session TTL bounds are explicit; capacity/load tuning remains operational work.
 
 Automated checks are evidence only for the exercised controls. They are not a penetration test or complete OWASP/regulatory compliance statement.
