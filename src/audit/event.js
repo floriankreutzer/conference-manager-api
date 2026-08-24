@@ -51,7 +51,7 @@ function validateSafeObject(value, code) {
   if (value === null) return null;
   if (!value || typeof value !== 'object' || Array.isArray(value)) invalid(code);
   const normalized = {};
-  const entries = Object.entries(value);
+  const entries = Object.entries(value).sort(([left], [right]) => left.localeCompare(right));
   if (entries.length > 16) invalid(code);
   for (const [key, entry] of entries) {
     if (!SAFE_KEY_PATTERN.test(key) || FORBIDDEN_KEY.test(key)) invalid(code);
