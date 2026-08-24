@@ -151,6 +151,11 @@ test('Tenant Admin can list tenant users without a browser-selected tenant', asy
       roles: ['employee', 'conference_manager'],
     }]);
     assert.equal(Object.hasOwn(response.body.users[0], 'tenantId'), false);
+    assert.equal(response.body.nextAfterId, null);
+
+    const fullCustomPage = await request({ port, path: '/api/v1/tenant/users?limit=1' });
+    assert.equal(fullCustomPage.statusCode, 200);
+    assert.equal(fullCustomPage.body.nextAfterId, TARGET_ID);
 
     const injectedTenant = await request({
       port,
