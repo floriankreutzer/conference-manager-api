@@ -10,10 +10,10 @@ import { createPostgresEntitlementRepository } from '../src/persistence/postgres
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
 import { migrateUp } from '../scripts/db-migrations.mjs';
 
-const TENANT_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-const TENANT_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
-const CORRELATION_A = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
-const CORRELATION_B = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const TENANT_A = '12121212-1212-4212-8212-121212121212';
+const TENANT_B = '13131313-1313-4313-8313-131313131313';
+const CORRELATION_A = '14141414-1414-4414-8414-141414141414';
+const CORRELATION_B = '15151515-1515-4515-8515-151515151515';
 const AUDIT_KEY = 'entitlement-audit-key-at-least-32-bytes';
 
 function databaseConfig() {
