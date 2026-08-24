@@ -47,8 +47,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!pool.includes('CURRENT_SCHEMA_VERSION = 5')) {
-  throw new Error('Runtime schema readiness must require entitlement migration version 5.');
+if (!pool.includes('CURRENT_SCHEMA_VERSION = 6')) {
+  throw new Error('Runtime schema readiness must include entitlement migration 5 and booking-reference migration 6.');
 }
 
 const audit = await readFile('src/audit/event.js', 'utf8');
