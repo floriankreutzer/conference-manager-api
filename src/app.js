@@ -7,6 +7,7 @@ import { readEntraTransactionCookie } from './identity/entra-transaction-cookie.
 import { createLogger } from './logger.js';
 import { createHealthMonitor } from './observability/health.js';
 import { createMetricsRegistry } from './observability/metrics.js';
+import { readTenantClaimCookie } from './onboarding/claim-cookie.js';
 import {
   applySecurityHeaders,
   assertAllowedMethod,
@@ -27,12 +28,15 @@ const ROUTES = Object.freeze({
   status: '/api/v1/health/status',
   entraLogin: '/api/v1/auth/microsoft/login',
   entraCallback: '/api/v1/auth/microsoft/callback',
+  onboardingStart: '/api/v1/onboarding/invitations/start',
+  onboardingClaim: '/api/v1/onboarding/claim',
   principal: '/api/v1/session',
   audit: '/api/v1/audit',
 });
 const REQUEST_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/;
 const REQUEST_TRANSITION_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/transitions$/;
 const ALLOWED_METRIC_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
+const INVITATION_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const TRANSITION_BODY_SCHEMA = Object.freeze({
   required: Object.freeze({
     transition: (value) => typeof value === 'string' && value.length >= 1 && value.length <= 32,
@@ -40,6 +44,16 @@ const TRANSITION_BODY_SCHEMA = Object.freeze({
   optional: Object.freeze({
     reason: (value) => typeof value === 'string' && value.length <= 1000,
   }),
+});
+const ONBOARDING_START_BODY_SCHEMA = Object.freeze({
+  required: Object.freeze({
+    invitationToken: (value) => typeof value === 'string' && INVITATION_TOKEN_PATTERN.test(value),
+  }),
+  optional: Object.freeze({}),
+});
+const ONBOARDING_CONFIRM_BODY_SCHEMA = Object.freeze({
+  required: Object.freeze({ confirm: (value) => value === true }),
+  optional: Object.freeze({}),
 });
 const AUDIT_QUERY_KEYS = new Set(['limit', 'beforeId']);
 const ENTRA_CALLBACK_QUERY_KEYS = new Set([
@@ -160,6 +174,8 @@ function routeKey(path) {
   if (path === ROUTES.status) return 'health_status';
   if (path === ROUTES.entraLogin) return 'entra_login';
   if (path === ROUTES.entraCallback) return 'entra_callback';
+  if (path === ROUTES.onboardingStart) return 'onboarding_start';
+  if (path === ROUTES.onboardingClaim) return 'onboarding_claim';
   if (path === ROUTES.principal) return 'session';
   if (path === ROUTES.audit) return 'audit';
   if (REQUEST_TRANSITION_PATH.test(path)) return 'request_transition';
@@ -179,6 +195,7 @@ export function createApp({
   auditService,
   sessionService,
   entraAuthService,
+  onboardingService,
   requestService,
   resolvePrincipal,
   verifyCsrf,
@@ -282,6 +299,33 @@ export function createApp({
         return;
       }
 
+      if (path === ROUTES.onboardingStart) {
+        if (request.method !== 'POST') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+        assertNoQuery(parsedUrl);
+        if (!onboardingService || typeof onboardingService.beginInvitation !== 'function') {
+          throw new ApiError(503, 'ONBOARDING_SERVICE_UNAVAILABLE');
+        }
+        if (!entraAuthService || typeof entraAuthService.start !== 'function') {
+          throw new ApiError(503, 'AUTHENTICATION_SERVICE_UNAVAILABLE');
+        }
+        const body = validateExactObject(
+          await readJsonObjectBody(request, { maxBytes: config.maxBodyBytes }),
+          ONBOARDING_START_BODY_SCHEMA,
+        );
+        const invitation = await onboardingService.beginInvitation(body);
+        const started = await entraAuthService.start({
+          correlationId: requestId,
+          onboardingInvitationId: invitation.invitationId,
+        });
+        if (typeof started?.authorizationUrl !== 'string' || typeof started?.setCookie !== 'string') {
+          throw new ApiError(500, 'AUTHENTICATION_RESULT_INVALID');
+        }
+        response.setHeader('Set-Cookie', started.setCookie);
+        statusCode = 200;
+        sendJson(response, statusCode, { authorizationUrl: started.authorizationUrl, requestId }, config.maxResponseBytes);
+        return;
+      }
+
       if (path === ROUTES.entraCallback) {
         if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
         if (
@@ -322,12 +366,62 @@ export function createApp({
           sendRedirect(response, statusCode, '/?auth=tenant_onboarding_required');
           return;
         }
+        if (completed.status === 'claim_confirmation_required' && typeof completed.setCookie === 'string') {
+          response.setHeader('Set-Cookie', [clearedTransactionCookie, completed.setCookie]);
+          statusCode = 303;
+          sendRedirect(response, statusCode, '/onboarding?auth=confirm');
+          return;
+        }
         if (completed.status !== 'authenticated' || typeof completed.setCookie !== 'string') {
           throw new ApiError(500, 'AUTHENTICATION_RESULT_INVALID');
         }
         response.setHeader('Set-Cookie', [clearedTransactionCookie, completed.setCookie]);
         statusCode = 303;
         sendRedirect(response, statusCode, '/');
+        return;
+      }
+
+      if (path === ROUTES.onboardingClaim) {
+        if (request.method !== 'GET' && request.method !== 'POST') {
+          throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+        }
+        assertNoQuery(parsedUrl);
+        if (
+          !onboardingService
+          || typeof onboardingService.claimStatus !== 'function'
+          || typeof onboardingService.confirmClaim !== 'function'
+          || typeof onboardingService.clearClaimCookie !== 'function'
+        ) {
+          throw new ApiError(503, 'ONBOARDING_SERVICE_UNAVAILABLE');
+        }
+        const claimToken = readTenantClaimCookie(request.headers);
+        if (request.method === 'GET') {
+          const claim = await onboardingService.claimStatus({ claimToken });
+          statusCode = 200;
+          sendJson(response, statusCode, {
+            tenant: claim.tenant,
+            expiresAt: claim.expiresAt,
+            csrfToken: claim.csrfToken,
+            requestId,
+          }, config.maxResponseBytes);
+          return;
+        }
+        validateExactObject(
+          await readJsonObjectBody(request, { maxBytes: config.maxBodyBytes }),
+          ONBOARDING_CONFIRM_BODY_SCHEMA,
+        );
+        const confirmed = await onboardingService.confirmClaim({
+          claimToken,
+          csrfToken: request.headers['x-csrf-token'],
+          correlationId: requestId,
+        });
+        response.setHeader('Set-Cookie', onboardingService.clearClaimCookie());
+        statusCode = 200;
+        sendJson(response, statusCode, {
+          status: confirmed.status,
+          tenant: { status: confirmed.tenantStatus },
+          requestId,
+        }, config.maxResponseBytes);
         return;
       }
 
