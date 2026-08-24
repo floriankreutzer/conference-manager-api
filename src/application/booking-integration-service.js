@@ -83,6 +83,7 @@ export function createBookingIntegrationService({
   capabilityId,
   auditService,
   authorizeOperation = async () => false,
+  metrics,
   clock = () => Date.now(),
 } = {}) {
   if (
@@ -108,6 +109,12 @@ export function createBookingIntegrationService({
     throw new TypeError('AUDIT_SERVICE_REQUIRED');
   }
   if (typeof authorizeOperation !== 'function') throw new TypeError('BOOKING_AUTHORIZATION_REQUIRED');
+  if (metrics && (
+    typeof metrics.recordBookingOperation !== 'function'
+    || typeof metrics.recordIntegrationCall !== 'function'
+  )) {
+    throw new TypeError('BOOKING_METRICS_INVALID');
+  }
   if (typeof clock !== 'function') throw new TypeError('BOOKING_CLOCK_REQUIRED');
 
   async function requireAccess(context, operation, request) {
@@ -126,14 +133,24 @@ export function createBookingIntegrationService({
     });
   }
 
-  function changedAt() {
+  function now() {
     const value = clock();
     if (!Number.isSafeInteger(value) || value < 0) throw new BookingIntegrationInputError('BOOKING_CLOCK_INVALID');
-    return new Date(value);
+    return value;
   }
 
-  async function recordProviderFailure(context, request, operation, error) {
+  function changedAt() {
+    return new Date(now());
+  }
+
+  async function recordProviderFailure(context, request, operation, error, durationMs) {
     const classification = classifyProviderError(error, operation);
+    metrics?.recordIntegrationCall({
+      operation,
+      outcome: 'failure',
+      retryable: classification.retryable,
+      durationMs,
+    });
     await auditService.record({
       principal: context.principal,
       tenantContext: context.tenantContext,
@@ -153,10 +170,38 @@ export function createBookingIntegrationService({
   }
 
   async function providerCall(context, request, operation, call) {
+    const startedAt = now();
     try {
-      return await call();
+      const result = await call();
+      metrics?.recordIntegrationCall({
+        operation,
+        outcome: 'success',
+        retryable: false,
+        durationMs: Math.max(0, now() - startedAt),
+      });
+      return result;
     } catch (error) {
-      return recordProviderFailure(context, request, operation, error);
+      return recordProviderFailure(
+        context,
+        request,
+        operation,
+        error,
+        Math.max(0, now() - startedAt),
+      );
+    }
+  }
+
+  async function observedBooking(operation, execute) {
+    try {
+      const result = await execute();
+      metrics?.recordBookingOperation({ operation, outcome: 'success' });
+      return result;
+    } catch (error) {
+      metrics?.recordBookingOperation({
+        operation,
+        outcome: error instanceof BookingIntegrationDeniedError ? 'denied' : 'failure',
+      });
+      throw error;
     }
   }
 
@@ -195,151 +240,161 @@ export function createBookingIntegrationService({
 
   return Object.freeze({
     async lookupAvailability(context) {
-      const request = await prepare(context, BOOKING_PROVIDER_OPERATION.AVAILABILITY);
-      if (await localConflict(request)) return Object.freeze({ available: false, conflictCount: 1 });
-      return providerCall(context, request, BOOKING_PROVIDER_OPERATION.AVAILABILITY, async () => {
-        return normalizeAvailabilityResult(await calendarProvider.lookupAvailability(
-          providerInput(request, context.tenantContext, context.correlationId, context.phase),
-        ));
+      return observedBooking(BOOKING_PROVIDER_OPERATION.AVAILABILITY, async () => {
+        const request = await prepare(context, BOOKING_PROVIDER_OPERATION.AVAILABILITY);
+        if (await localConflict(request)) return Object.freeze({ available: false, conflictCount: 1 });
+        return providerCall(context, request, BOOKING_PROVIDER_OPERATION.AVAILABILITY, async () => {
+          return normalizeAvailabilityResult(await calendarProvider.lookupAvailability(
+            providerInput(request, context.tenantContext, context.correlationId, context.phase),
+          ));
+        });
       });
     },
 
     async validateReservation(context) {
-      const request = await prepare(context, BOOKING_PROVIDER_OPERATION.RESERVATION_VALIDATION);
-      if (await localConflict(request)) return Object.freeze({ valid: false, reason: 'conflict' });
-      return providerCall(context, request, BOOKING_PROVIDER_OPERATION.RESERVATION_VALIDATION, async () => {
-        return normalizeReservationValidation(await calendarProvider.validateReservation(
-          providerInput(request, context.tenantContext, context.correlationId, context.phase),
-        ));
+      return observedBooking(BOOKING_PROVIDER_OPERATION.RESERVATION_VALIDATION, async () => {
+        const request = await prepare(context, BOOKING_PROVIDER_OPERATION.RESERVATION_VALIDATION);
+        if (await localConflict(request)) return Object.freeze({ valid: false, reason: 'conflict' });
+        return providerCall(context, request, BOOKING_PROVIDER_OPERATION.RESERVATION_VALIDATION, async () => {
+          return normalizeReservationValidation(await calendarProvider.validateReservation(
+            providerInput(request, context.tenantContext, context.correlationId, context.phase),
+          ));
+        });
       });
     },
 
     async createCalendarEvent(context) {
-      const request = await prepare(context, BOOKING_PROVIDER_OPERATION.CREATE);
-      const existing = await repository.findProviderReferenceByRequest(
-        context.tenantContext.tenantId,
-        request.id,
-        calendarProvider.integrationId,
-      );
-      if (existing?.state === 'active') return Object.freeze({ disposition: 'existing', state: 'active' });
-      if (existing) throw new BookingIntegrationInputError('BOOKING_REFERENCE_CANCELLED');
+      return observedBooking(BOOKING_PROVIDER_OPERATION.CREATE, async () => {
+        const request = await prepare(context, BOOKING_PROVIDER_OPERATION.CREATE);
+        const existing = await repository.findProviderReferenceByRequest(
+          context.tenantContext.tenantId,
+          request.id,
+          calendarProvider.integrationId,
+        );
+        if (existing?.state === 'active') return Object.freeze({ disposition: 'existing', state: 'active' });
+        if (existing) throw new BookingIntegrationInputError('BOOKING_REFERENCE_CANCELLED');
 
-      const idempotencyKey = createIdempotencyKey(
-        context.tenantContext.tenantId,
-        request.id,
-        calendarProvider.integrationId,
-      );
-      const created = await providerCall(context, request, BOOKING_PROVIDER_OPERATION.CREATE, async () => {
-        const input = {
-          ...providerInput(request, context.tenantContext, context.correlationId, context.phase),
+        const idempotencyKey = createIdempotencyKey(
+          context.tenantContext.tenantId,
+          request.id,
+          calendarProvider.integrationId,
+        );
+        const created = await providerCall(context, request, BOOKING_PROVIDER_OPERATION.CREATE, async () => {
+          const input = {
+            ...providerInput(request, context.tenantContext, context.correlationId, context.phase),
+            idempotencyKey,
+          };
+          return normalizeCreateResult(await calendarProvider.createCalendarEvent(Object.freeze(input)));
+        });
+        const auditEvent = successAudit(
+          context,
+          request,
+          BOOKING_PROVIDER_OPERATION.CREATE,
+          context.phase,
+          null,
+          { calendarState: 'active' },
+          created.disposition,
+        );
+        const stored = await repository.createProviderReference({
+          tenantId: context.tenantContext.tenantId,
+          requestId: request.id,
+          integrationId: calendarProvider.integrationId,
+          providerReference: created.providerReference,
           idempotencyKey,
-        };
-        return normalizeCreateResult(await calendarProvider.createCalendarEvent(Object.freeze(input)));
-      });
-      const auditEvent = successAudit(
-        context,
-        request,
-        BOOKING_PROVIDER_OPERATION.CREATE,
-        context.phase,
-        null,
-        { calendarState: 'active' },
-        created.disposition,
-      );
-      const stored = await repository.createProviderReference({
-        tenantId: context.tenantContext.tenantId,
-        requestId: request.id,
-        integrationId: calendarProvider.integrationId,
-        providerReference: created.providerReference,
-        idempotencyKey,
-        correlationId: context.correlationId,
-        changedAt: new Date(auditEvent.occurredAt),
-        auditEvent,
-      });
-      return Object.freeze({
-        disposition: stored.created ? created.disposition : 'existing',
-        state: stored.reference.state,
+          correlationId: context.correlationId,
+          changedAt: new Date(auditEvent.occurredAt),
+          auditEvent,
+        });
+        return Object.freeze({
+          disposition: stored.created ? created.disposition : 'existing',
+          state: stored.reference.state,
+        });
       });
     },
 
     async updateCalendarEvent(context) {
-      const request = await prepare(context, BOOKING_PROVIDER_OPERATION.MODIFY);
-      const reference = await repository.findProviderReferenceByRequest(
-        context.tenantContext.tenantId,
-        request.id,
-        calendarProvider.integrationId,
-      );
-      if (!reference || reference.state !== 'active') {
-        throw new BookingIntegrationInputError('BOOKING_REFERENCE_NOT_ACTIVE');
-      }
-      const updated = await providerCall(context, request, BOOKING_PROVIDER_OPERATION.MODIFY, async () => {
-        const input = {
-          ...providerInput(request, context.tenantContext, context.correlationId, context.phase),
-          providerReference: reference.providerReference,
-        };
-        return normalizeUpdateResult(
-          await calendarProvider.updateCalendarEvent(Object.freeze(input)),
-          reference.providerReference,
+      return observedBooking(BOOKING_PROVIDER_OPERATION.MODIFY, async () => {
+        const request = await prepare(context, BOOKING_PROVIDER_OPERATION.MODIFY);
+        const reference = await repository.findProviderReferenceByRequest(
+          context.tenantContext.tenantId,
+          request.id,
+          calendarProvider.integrationId,
         );
+        if (!reference || reference.state !== 'active') {
+          throw new BookingIntegrationInputError('BOOKING_REFERENCE_NOT_ACTIVE');
+        }
+        const updated = await providerCall(context, request, BOOKING_PROVIDER_OPERATION.MODIFY, async () => {
+          const input = {
+            ...providerInput(request, context.tenantContext, context.correlationId, context.phase),
+            providerReference: reference.providerReference,
+          };
+          return normalizeUpdateResult(
+            await calendarProvider.updateCalendarEvent(Object.freeze(input)),
+            reference.providerReference,
+          );
+        });
+        const auditEvent = successAudit(
+          context,
+          request,
+          BOOKING_PROVIDER_OPERATION.MODIFY,
+          context.phase,
+          { calendarState: 'active' },
+          { calendarState: 'active' },
+          updated.disposition,
+        );
+        await repository.touchProviderReference({
+          tenantId: context.tenantContext.tenantId,
+          requestId: request.id,
+          integrationId: calendarProvider.integrationId,
+          providerReference: reference.providerReference,
+          changedAt: new Date(auditEvent.occurredAt),
+          auditEvent,
+        });
+        return Object.freeze({ disposition: updated.disposition, state: 'active' });
       });
-      const auditEvent = successAudit(
-        context,
-        request,
-        BOOKING_PROVIDER_OPERATION.MODIFY,
-        context.phase,
-        { calendarState: 'active' },
-        { calendarState: 'active' },
-        updated.disposition,
-      );
-      await repository.touchProviderReference({
-        tenantId: context.tenantContext.tenantId,
-        requestId: request.id,
-        integrationId: calendarProvider.integrationId,
-        providerReference: reference.providerReference,
-        changedAt: new Date(auditEvent.occurredAt),
-        auditEvent,
-      });
-      return Object.freeze({ disposition: updated.disposition, state: 'active' });
     },
 
     async cancelCalendarEvent(context) {
-      const request = await prepare(context, BOOKING_PROVIDER_OPERATION.CANCEL);
-      const reference = await repository.findProviderReferenceByRequest(
-        context.tenantContext.tenantId,
-        request.id,
-        calendarProvider.integrationId,
-      );
-      if (!reference) return Object.freeze({ disposition: 'not_present', state: 'cancelled' });
-      if (reference.state === 'cancelled') {
-        return Object.freeze({ disposition: 'already_cancelled', state: 'cancelled' });
-      }
-      const cancelled = await providerCall(context, request, BOOKING_PROVIDER_OPERATION.CANCEL, async () => {
-        const input = {
-          ...providerInput(request, context.tenantContext, context.correlationId, context.phase),
-          providerReference: reference.providerReference,
-        };
-        return normalizeCancelResult(
-          await calendarProvider.cancelCalendarEvent(Object.freeze(input)),
-          reference.providerReference,
+      return observedBooking(BOOKING_PROVIDER_OPERATION.CANCEL, async () => {
+        const request = await prepare(context, BOOKING_PROVIDER_OPERATION.CANCEL);
+        const reference = await repository.findProviderReferenceByRequest(
+          context.tenantContext.tenantId,
+          request.id,
+          calendarProvider.integrationId,
         );
+        if (!reference) return Object.freeze({ disposition: 'not_present', state: 'cancelled' });
+        if (reference.state === 'cancelled') {
+          return Object.freeze({ disposition: 'already_cancelled', state: 'cancelled' });
+        }
+        const cancelled = await providerCall(context, request, BOOKING_PROVIDER_OPERATION.CANCEL, async () => {
+          const input = {
+            ...providerInput(request, context.tenantContext, context.correlationId, context.phase),
+            providerReference: reference.providerReference,
+          };
+          return normalizeCancelResult(
+            await calendarProvider.cancelCalendarEvent(Object.freeze(input)),
+            reference.providerReference,
+          );
+        });
+        const auditEvent = successAudit(
+          context,
+          request,
+          BOOKING_PROVIDER_OPERATION.CANCEL,
+          context.phase,
+          { calendarState: 'active' },
+          { calendarState: 'cancelled' },
+          cancelled.disposition,
+        );
+        await repository.cancelProviderReference({
+          tenantId: context.tenantContext.tenantId,
+          requestId: request.id,
+          integrationId: calendarProvider.integrationId,
+          providerReference: reference.providerReference,
+          changedAt: new Date(auditEvent.occurredAt),
+          auditEvent,
+        });
+        return Object.freeze({ disposition: cancelled.disposition, state: 'cancelled' });
       });
-      const auditEvent = successAudit(
-        context,
-        request,
-        BOOKING_PROVIDER_OPERATION.CANCEL,
-        context.phase,
-        { calendarState: 'active' },
-        { calendarState: 'cancelled' },
-        cancelled.disposition,
-      );
-      await repository.cancelProviderReference({
-        tenantId: context.tenantContext.tenantId,
-        requestId: request.id,
-        integrationId: calendarProvider.integrationId,
-        providerReference: reference.providerReference,
-        changedAt: new Date(auditEvent.occurredAt),
-        auditEvent,
-      });
-      return Object.freeze({ disposition: cancelled.disposition, state: 'cancelled' });
     },
   });
 }
