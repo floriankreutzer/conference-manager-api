@@ -1,6 +1,5 @@
 import {
   createHmac,
-  randomBytes,
   timingSafeEqual,
 } from 'node:crypto';
 import {
@@ -58,9 +57,8 @@ function mapAuditRow(row) {
 }
 
 function createSigner(secretValue) {
-  const secret = secretValue === undefined || secretValue === null
-    ? randomBytes(32)
-    : Buffer.from(secretValue, 'utf8');
+  if (typeof secretValue !== 'string') throw new TypeError('AUDIT_HMAC_SECRET_REQUIRED');
+  const secret = Buffer.from(secretValue, 'utf8');
   if (secret.byteLength < 32 || secret.byteLength > 512) throw new TypeError('AUDIT_HMAC_SECRET_INVALID');
   return (event, previousHash) => {
     return createHmac('sha256', secret)
@@ -77,9 +75,14 @@ export function createPostgresAuditRepository(pool, { hmacSecret } = {}) {
 
   async function appendWithClient(client, eventValue) {
     const event = normalizeAuditEvent(eventValue);
-    const tenant = await client.query({
+    await client.query({
       name: 'audit-lock-tenant-chain',
-      text: 'SELECT id FROM tenants WHERE id = $1 FOR UPDATE',
+      text: 'SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))',
+      values: [event.tenantId],
+    });
+    const tenant = await client.query({
+      name: 'audit-tenant-exists',
+      text: 'SELECT id FROM tenants WHERE id = $1',
       values: [event.tenantId],
     });
     if (tenant.rowCount !== 1) return null;
