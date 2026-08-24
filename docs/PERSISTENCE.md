@@ -18,7 +18,9 @@ Production requirements include:
 - PostgreSQL parameter binding for application/user values;
 - no logging of connection strings, session tokens or raw driver Error objects;
 - reviewed migration SQL selected only from the fixed source-controlled migration directory;
-- externally managed `AUDIT_HMAC_SECRET` in Pilot/Production; the HMAC key is not stored in PostgreSQL.
+- a stable externally managed `AUDIT_HMAC_SECRET` for every DB-backed deployment; the HMAC key is not stored in PostgreSQL.
+
+A configured `DATABASE_URL` without `AUDIT_HMAC_SECRET` fails configuration before persistence composition. The key must remain stable while existing audit rows depend on it. Key rotation requires an explicit audit-integrity migration/checkpoint design rather than a normal secret replacement.
 
 ## Schema ownership
 
@@ -192,5 +194,7 @@ Audit persistence additionally requires real PostgreSQL tests for:
 - unaffected integrity of another Tenant after one Tenant is tampered;
 - atomic rollback when required audit persistence fails;
 - migration rollback/reapply where applicable.
+
+The DB suites share migration state and are therefore executed serially with `--test-concurrency=1` to prevent test-runner races from weakening the migration/integrity evidence.
 
 CI runs database tests against an isolated PostgreSQL 18 service after the normal quality/security gate.
