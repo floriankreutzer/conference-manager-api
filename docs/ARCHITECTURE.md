@@ -8,7 +8,7 @@ The cross-repository production topology is defined in `floriankreutzer/conferen
 
 ## Current foundation
 
-The service uses Node.js 22 native HTTP and ECMAScript modules. Issues #47-#54 establish the trusted HTTP boundary, hard Tenant isolation, PostgreSQL persistence, provider-neutral server-side sessions, deny-by-default Tenant authorization, tenant-scoped tamper-evident audit evidence, server-side Tenant entitlements and provider-neutral booking/calendar integration contracts. `pg` remains the only runtime dependency.
+The service uses Node.js 22 native HTTP and ECMAScript modules. Issues #47-#57 establish the trusted HTTP boundary, hard Tenant isolation, PostgreSQL persistence, provider-neutral server-side sessions, deny-by-default Tenant authorization, tenant-scoped tamper-evident audit evidence, server-side Tenant entitlements, provider-neutral booking/calendar integration contracts, production observability, and the production threat/configuration security baseline. `pg` remains the only runtime dependency.
 
 ```text
 Browser (untrusted)
@@ -32,9 +32,14 @@ Future identity provider
   -> provider-specific OIDC adapter
      -> validated/mapped trusted identity
         -> provider-neutral session issuance
+
+Future Microsoft Graph adapter
+  -> fixed/allowlisted Microsoft destination
+     -> validated provider-neutral calendar result
+        -> existing booking integration service
 ```
 
-Provider-specific identity claims and SDK types do not cross into business services. The future Entra adapter validates and maps external identity before session issuance.
+Provider-specific identity claims and SDK types do not cross into business services. The future Entra adapter validates and maps external identity before session issuance. The future Microsoft Graph adapter must preserve the URL-free provider-neutral booking contract and the outbound controls defined by `docs/THREAT-MODEL.md`.
 
 ## Module responsibilities
 
@@ -71,12 +76,19 @@ Provider-specific identity claims and SDK types do not cross into business servi
 - `src/logger.js` owns bounded non-sensitive operational logs, separate from durable audit evidence.
 - `src/app.js` composes transport, session, CSRF, Tenant, audit and application boundaries without importing PostgreSQL or provider SDKs.
 - `src/index.js` is the runtime composition root and graceful-shutdown owner.
+- `scripts/check-security-baseline.mjs` prevents drift between the documented Pilot/Production security baseline and the executable HTTP/config/cookie/CI controls.
+- `scripts/security-dast.mjs` starts the real HTTP server in isolated Test mode and exercises the exposed transport/security boundary with live HTTP requests.
+- `docs/THREAT-MODEL.md` is the canonical SaaS threat/control/residual-risk model for browser, edge, API, database, Entra and Graph boundaries.
+- `docs/PRODUCTION-SECURE-CONFIGURATION.md` is the canonical Pilot/Production deployment security configuration baseline.
+- `docs/PILOT-PENETRATION-TEST.md` defines the independent Pilot security-assessment scope and exit criteria.
 
 ## Dependency direction
 
 HTTP handlers call security/identity/Tenant/application/audit contracts. Application services call authorization/domain policies and repository ports. Application/domain/authorization code must not depend on Node HTTP objects, `pg`, migrations, provider claims or provider SDK types.
 
 PostgreSQL adapters implement repository contracts using fixed source-controlled SQL and parameter binding. Identity-provider adapters added later translate validated provider claims to internal identity contracts before business/session code sees them. Calendar/provider adapters translate fixed provider APIs and provider-specific resource identifiers into the URL-free provider-neutral booking contract before application services consume them.
+
+Security governance/test scripts may inspect repository source and configuration, but they do not become runtime dependencies and must not introduce alternate business rules.
 
 ## Tenant and identity trust boundary
 
@@ -85,6 +97,8 @@ Tenant identity is never selected from a client header, query parameter, route p
 The internal Principal contains internal User/Tenant IDs, a normalized provider identity reference, approved roles/permissions and bounded session metadata. Provider-specific claim structures remain outside this contract.
 
 The public session endpoint intentionally omits provider identity references, internal session IDs, token hashes and provider tokens.
+
+Microsoft Entra is external and remains untrusted until a provider adapter validates OIDC signature, issuer, audience, state, nonce, time and approved Tenant/account policy before mapping to the internal trusted-identity contract. That adapter is SaaS 1 work and does not weaken the SaaS 0 session boundary.
 
 ## Authorization architecture
 
@@ -126,7 +140,7 @@ Tenant audit evidence is a durable security/business data model, not an operatio
 
 Migration 004 installs a database trigger that rejects `UPDATE` and `DELETE` against `audit_events`. This prevents ordinary in-database mutation while the HMAC chain detects modified/reordered rows if the key remains protected.
 
-The integrity model does not provide external completeness proof against privileged deletion of an entire suffix or restoration of an older database snapshot. External anchoring/WORM export and independent retention remain later production-hardening work.
+The integrity model does not provide external completeness proof against privileged deletion of an entire suffix or restoration of an older database snapshot. External anchoring/WORM export and independent retention remain deployment/governance decisions and must be resolved before stronger completeness claims are made.
 
 See `docs/AUDIT.md` for the normative event/integrity contract.
 
@@ -146,7 +160,7 @@ Availability and provisional/final reservation validation first apply the Tenant
 
 Migration 006 persists only the internal Tenant/Request/Integration binding, opaque provider reference, idempotency key, state and correlation metadata. Local provider-reference mutations and `calendar.operation` success evidence commit atomically. External provider work cannot participate in the PostgreSQL transaction; recovery therefore uses idempotency rather than claiming distributed atomicity.
 
-The provider-neutral contract contains no URL. Future outbound adapters must use fixed/allowlisted destinations, bounded timeouts, constrained redirects, validated responses and explicit retry classification.
+The provider-neutral contract contains no URL. Future outbound adapters must use fixed/allowlisted destinations, bounded timeouts, constrained redirects, validated responses and explicit retry classification. Microsoft Graph enablement must additionally satisfy the provider controls in `docs/THREAT-MODEL.md` and the secure deployment configuration in `docs/PRODUCTION-SECURE-CONFIGURATION.md`.
 
 See `docs/BOOKING-INTEGRATION.md` for the normative contract.
 
@@ -155,6 +169,8 @@ See `docs/BOOKING-INTEGRATION.md` for the normative contract.
 `GET /api/v1/health/live` proves only process liveness.
 
 `GET /api/v1/health/ready` exposes only `ready`/`not_ready`; PostgreSQL connectivity and expected schema version are readiness dependencies when persistence is configured.
+
+`GET /api/v1/health/status` exposes only aggregate operational state and bounded service/build/environment support metadata.
 
 `GET /api/v1/session` resolves the PostgreSQL-backed session, validates recognized roles/permissions and Tenant context, then returns minimized internal presentation context plus the current CSRF token.
 
@@ -166,12 +182,22 @@ See `docs/BOOKING-INTEGRATION.md` for the normative contract.
 
 `GET /api/v1/audit` requires Tenant Admin plus `tenant:audit:read`, verifies Tenant audit integrity, returns only Tenant-scoped presentation-safe event data and records the audit read itself.
 
-## Rate limiting
+## Rate limiting and edge responsibility
 
-The foundation rate limiter is local/in-memory and bounded. It is not a multi-instance quota service. A trusted edge/shared limiter design remains required before horizontally scaled production abuse controls are claimed complete.
+The foundation rate limiter is local/in-memory and bounded. It is not a multi-instance quota service. Pilot/Production therefore require trusted edge/shared abuse controls as a deployment prerequisite. Forwarded client-address headers are not currently trusted by the application; introducing a trusted-proxy client-key model requires separate review.
 
-## Deferred ownership
+## Production security release boundary
 
-- #55: Production observability and SLO-oriented diagnostics.
-- #56: Frontend production-persistence migration onto API/database authority.
-- #57: Complete threat model and production secure-configuration baseline, including independent audit anchoring/retention decisions.
+`docs/THREAT-MODEL.md` maps the current implementation and future Entra/Graph boundaries to concrete threats, OWASP/CWE classes, executable evidence and residual risks.
+
+`docs/PRODUCTION-SECURE-CONFIGURATION.md` defines the deployable Pilot/Production baseline for HTTPS/TLS, HSTS/security headers, cookies/CSRF, CORS, database TLS, secrets, environment separation, observability, outbound provider controls and deployment blockers.
+
+`npm run check` includes `check:security-baseline` and a live HTTP `test:dast` smoke gate. The latter starts the real HTTP server and validates security behavior through network requests. It does not replace DAST against the actual Pilot edge or the independent penetration test defined in `docs/PILOT-PENETRATION-TEST.md`.
+
+## Deferred ownership after SaaS 0
+
+- Microsoft Entra OIDC/provider implementation, including protocol validation and identity mapping, remains SaaS 1 issue #58.
+- Microsoft Graph provider adapter implementation remains SaaS 1 and must preserve the existing provider-neutral contract.
+- Platform Admin/developer operator Principal/audit APIs remain a separate authorization domain.
+- Exact cloud hosting/IaC/container artifacts remain deployment choices; when introduced they require configuration/container/IaC scanning.
+- External audit anchoring/WORM retention and the selected platform's backup/restore evidence remain operational/governance decisions before stronger completeness/recovery claims are made.
