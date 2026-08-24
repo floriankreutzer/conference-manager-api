@@ -7,6 +7,7 @@ import {
   AuthorizationInputError,
   RequestStateConflictError,
 } from './authorization/errors.js';
+import { EntraAuthenticationError } from './identity/entra-errors.js';
 import {
   TenantInputError,
   TenantUnavailableError,
@@ -23,6 +24,7 @@ export class ApiError extends Error {
 
 export function asApiError(error) {
   if (error instanceof ApiError) return error;
+  if (error instanceof EntraAuthenticationError) return new ApiError(401, 'AUTHENTICATION_FAILED');
   if (
     error instanceof TenantInputError
     || error instanceof AuthorizationInputError
