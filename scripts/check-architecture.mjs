@@ -65,6 +65,15 @@ if (!app.includes('createPrincipalGuard') || !app.includes('assertSameOrigin') |
 if (!app.includes('entraAuthService.start') || !app.includes('entraAuthService.complete')) {
   throw new Error('Microsoft authentication routes must delegate to the Entra authentication service.');
 }
+for (const required of [
+  'readEntraTransactionCookie',
+  'entraAuthService.clearCookie',
+  'browserBinding,',
+]) {
+  if (!app.includes(required)) {
+    throw new Error(`Microsoft callback must preserve initiating-browser binding contract ${required}.`);
+  }
+}
 if (app.includes("searchParams.get('tenantId')") || app.includes("searchParams.get('tid')")) {
   throw new Error('Microsoft authentication routes must not accept browser-selected Tenant authority.');
 }
@@ -231,6 +240,23 @@ for (const required of ['HttpOnly', 'SameSite=Lax', 'Path=/api', 'Secure']) {
 }
 if (sessionCookie.includes('Domain=')) throw new Error('Session cookie must not set a broad Domain attribute.');
 
+const entraTransactionCookie = await readFile('src/identity/entra-transaction-cookie.js', 'utf8');
+for (const required of [
+  "'cm_oidc_tx'",
+  "'HttpOnly'",
+  "'SameSite=Lax'",
+  "'Secure'",
+  "'/api/v1/auth/microsoft/callback'",
+  'Max-Age=',
+]) {
+  if (!entraTransactionCookie.includes(required)) {
+    throw new Error(`Entra transaction cookie contract is missing ${required}.`);
+  }
+}
+if (entraTransactionCookie.includes('Domain=')) {
+  throw new Error('Entra transaction cookie must not set a broad Domain attribute.');
+}
+
 const sessionService = await readFile('src/identity/session-service.js', 'utf8');
 for (const required of [
   'randomBytes(32)',
@@ -281,6 +307,10 @@ for (const required of [
   "createHash('sha256')",
   "createHmac('sha256'",
   'pkceChallenge',
+  'browserBinding(secret, state)',
+  'safeTokenEqual',
+  'serializeEntraTransactionCookie',
+  'serializeClearedEntraTransactionCookie',
   'repository.consume',
   'identityResolver.resolve',
   'sessionService.issue',
@@ -288,6 +318,11 @@ for (const required of [
   if (!entraAuthService.includes(required)) {
     throw new Error(`Entra authentication service is missing protocol/session invariant ${required}.`);
   }
+}
+const browserBindingCheck = entraAuthService.indexOf('safeTokenEqual(presentedBinding');
+const oidcStateConsume = entraAuthService.indexOf('repository.consume');
+if (browserBindingCheck < 0 || oidcStateConsume < 0 || browserBindingCheck > oidcStateConsume) {
+  throw new Error('Entra browser binding must be validated before shared OIDC state is consumed.');
 }
 
 const oidcRepository = await readFile('src/persistence/postgres/oidc-transaction-repository.js', 'utf8');
