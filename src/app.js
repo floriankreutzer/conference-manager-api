@@ -156,7 +156,6 @@ export function createApp({
           throw new ApiError(405, 'METHOD_NOT_ALLOWED');
         }
         const principal = await principalGuard.require(request, { csrf: request.method === 'DELETE' });
-        authorizationPolicy.assertRecognizedPrincipal(principal);
         const tenantContext = await tenantGuard.requireKnown(principal);
 
         if (request.method === 'DELETE') {
@@ -170,6 +169,7 @@ export function createApp({
           return;
         }
 
+        authorizationPolicy.assertRecognizedPrincipal(principal);
         const csrfToken = sessionService?.csrfTokenForPrincipal?.(principal);
         statusCode = 200;
         sendJson(response, statusCode, {
@@ -194,6 +194,7 @@ export function createApp({
         const expectedMethod = isTransition ? 'POST' : 'GET';
         if (request.method !== expectedMethod) throw new ApiError(405, 'METHOD_NOT_ALLOWED');
         const principal = await principalGuard.require(request, { csrf: isTransition });
+        authorizationPolicy.assertRecognizedPrincipal(principal);
         const tenantContext = await tenantGuard.requireActive(principal);
         if (!requestService) throw new ApiError(503, 'REQUEST_SERVICE_UNAVAILABLE');
         const requestIdValue = (transitionMatch || requestMatch)[1];
