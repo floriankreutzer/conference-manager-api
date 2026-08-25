@@ -8,6 +8,7 @@ import { createPostgresBookingReferenceRepository } from './booking-reference-re
 import { createPostgresEntitlementRepository } from './entitlement-repository.js';
 import { createPostgresJitUserRepository } from './jit-user-repository.js';
 import { createPostgresMicrosoft365ConnectionRepository } from './microsoft365-connection-repository.js';
+import { createPostgresMicrosoft365RoomMappingRepository } from './microsoft365-room-mapping-repository.js';
 import { createPostgresOidcTransactionRepository } from './oidc-transaction-repository.js';
 import { createPostgresRequestRepository } from './request-repository.js';
 import { createPostgresSessionRepository } from './session-repository.js';
@@ -25,6 +26,7 @@ export function createPostgresPersistence(config) {
   const entitlementRepository = createPostgresEntitlementRepository(pool, { auditRepository });
   const jitUserRepository = createPostgresJitUserRepository(pool, { auditRepository });
   const microsoft365ConnectionRepository = createPostgresMicrosoft365ConnectionRepository(pool, { auditRepository });
+  const microsoft365RoomMappingRepository = createPostgresMicrosoft365RoomMappingRepository(pool, { auditRepository });
   const oidcTransactionRepository = createPostgresOidcTransactionRepository(pool);
   const sessionRepository = createPostgresSessionRepository(pool, { auditRepository });
   const requestRepository = createPostgresRequestRepository(pool, { auditRepository });
@@ -38,6 +40,7 @@ export function createPostgresPersistence(config) {
     entitlementRepository,
     jitUserRepository,
     microsoft365ConnectionRepository,
+    microsoft365RoomMappingRepository,
     oidcTransactionRepository,
     sessionRepository,
     requestRepository,
