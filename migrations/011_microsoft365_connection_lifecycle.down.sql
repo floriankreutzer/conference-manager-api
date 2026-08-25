@@ -14,9 +14,12 @@ DROP INDEX integrations_microsoft365_tenant_unique;
 
 ALTER TABLE integrations
   DROP CONSTRAINT integrations_microsoft365_verified_order,
+  DROP CONSTRAINT integrations_microsoft365_verified_state_valid,
   DROP CONSTRAINT integrations_microsoft365_reason_valid,
   DROP CONSTRAINT integrations_microsoft365_permission_status_valid,
   DROP CONSTRAINT integrations_microsoft365_status_valid,
+  DROP CONSTRAINT integrations_microsoft365_version_valid,
+  DROP CONSTRAINT integrations_microsoft365_reference_valid,
   DROP COLUMN calendars_permission_status,
   DROP COLUMN places_permission_status,
   DROP COLUMN connection_reason,
