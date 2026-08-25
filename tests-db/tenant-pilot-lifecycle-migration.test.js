@@ -46,7 +46,7 @@ test('Tenant pilot lifecycle change is optimistic, audit-atomic, and rollback-pr
     authorizationPolicy: createAuthorizationPolicy(),
   });
   const repository = createPostgresTenantRepository(pool, { auditRepository });
-  const changedAt = new Date('2026-08-25T22:00:00.000Z');
+  const changedAt = new Date(Date.now() + 60_000);
   const auditEvent = auditService.createActorEvent({
     tenantId: TENANT_ID,
     actorUserId: null,
