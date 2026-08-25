@@ -17,6 +17,10 @@ function assertDate(value, code) {
   if (!(value instanceof Date) || Number.isNaN(value.getTime())) throw new TypeError(code);
 }
 
+function assertNullableDate(value, code) {
+  if (value !== null) assertDate(value, code);
+}
+
 function assertProviderTenant(value) {
   if (typeof value !== 'string' || !GUID_PATTERN.test(value)) throw new TypeError('MICROSOFT365_PROVIDER_TENANT_INVALID');
 }
@@ -146,11 +150,11 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
             text: `
               INSERT INTO integrations (
                 tenant_id, id, provider, provider_reference, status,
-                connection_version, connection_reason,
+                connection_version, connection_reason, last_verified_at,
                 places_permission_status, calendars_permission_status,
                 created_at, updated_at
               )
-              VALUES ($1, $2, '${PROVIDER}', $3, 'pending', $4, NULL, 'unknown', 'unknown', $5, $5)
+              VALUES ($1, $2, '${PROVIDER}', $3, 'pending', $4, NULL, NULL, 'unknown', 'unknown', $5, $5)
             `,
             values: [tenantId, id, providerTenantReference, version, createdAt],
           });
@@ -165,6 +169,7 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
               SET status = 'pending',
                   connection_version = $3,
                   connection_reason = NULL,
+                  last_verified_at = NULL,
                   places_permission_status = 'unknown',
                   calendars_permission_status = 'unknown',
                   updated_at = $4
@@ -246,6 +251,7 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
       placesPermission,
       calendarsPermission,
       reason,
+      lastVerifiedAt,
       changedAt,
       auditEvents = [],
     }) {
@@ -256,7 +262,9 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
       const normalizedPlaces = normalizePermission(placesPermission, PLACES_PERMISSION, 'MICROSOFT365_PLACES_PERMISSION_INVALID');
       const normalizedCalendars = normalizePermission(calendarsPermission, CALENDARS_PERMISSION, 'MICROSOFT365_CALENDARS_PERMISSION_INVALID');
       const normalizedReason = normalizeReason(reason);
+      assertNullableDate(lastVerifiedAt, 'MICROSOFT365_VERIFIED_AT_INVALID');
       assertDate(changedAt, 'MICROSOFT365_CHANGED_AT_INVALID');
+      if (lastVerifiedAt && lastVerifiedAt > changedAt) throw new TypeError('MICROSOFT365_VERIFIED_AT_INVALID');
       if (!Array.isArray(auditEvents) || auditEvents.length > 3) throw new TypeError('MICROSOFT365_AUDIT_EVENTS_INVALID');
 
       return withPostgresTransaction(pool, async (client) => {
@@ -270,7 +278,7 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
                 calendars_permission_status = $6,
                 connection_reason = $7,
                 last_verified_at = $8,
-                updated_at = $8
+                updated_at = $9
             WHERE tenant_id = $1
               AND id = $2
               AND provider = '${PROVIDER}'
@@ -288,6 +296,7 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
             normalizedPlaces,
             normalizedCalendars,
             normalizedReason,
+            lastVerifiedAt,
             changedAt,
           ],
         });
@@ -307,7 +316,10 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
         const current = await client.query({
           name: 'microsoft365-connection-disconnect-lock',
           text: `
-            SELECT id, status, connection_version
+            SELECT
+              tenant_id, id, provider_reference, status, connection_version,
+              last_verified_at, connection_reason, places_permission_status,
+              calendars_permission_status, updated_at
             FROM integrations
             WHERE tenant_id = $1 AND provider = '${PROVIDER}'
             FOR UPDATE
@@ -316,9 +328,8 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
         });
         const row = current.rows[0];
         if (!row) return null;
-        if (row.status === 'disconnected') {
-          return this.findByTenantId(tenantId);
-        }
+        if (row.status === 'disconnected') return mapConnection(row);
+
         const version = Number(row.connection_version) + 1;
         await client.query({
           name: 'microsoft365-consent-delete-on-disconnect',
@@ -332,6 +343,9 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
             SET status = 'disconnected',
                 connection_version = $3,
                 connection_reason = NULL,
+                last_verified_at = NULL,
+                places_permission_status = 'unknown',
+                calendars_permission_status = 'unknown',
                 updated_at = $4
             WHERE tenant_id = $1 AND id = $2
             RETURNING
