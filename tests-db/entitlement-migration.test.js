@@ -61,20 +61,10 @@ test('entitlement migration rollback fails closed when state or evidence exists'
     correlationId: CORRELATION_ID,
   });
 
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await isPostgresSchemaReady(pool), false);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await isPostgresSchemaReady(pool), false);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await isPostgresSchemaReady(pool), false);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await isPostgresSchemaReady(pool), false);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await isPostgresSchemaReady(pool), false);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await isPostgresSchemaReady(pool), false);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await isPostgresSchemaReady(pool), false);
+  for (let version = 13; version >= 6; version -= 1) {
+    assert.equal(await rollbackLatest(pool), true);
+    assert.equal(await isPostgresSchemaReady(pool), false);
+  }
   await assert.rejects(rollbackLatest(pool), (error) => error.code === '55000');
   assert.equal(await isPostgresSchemaReady(pool), false);
   const stored = await repository.findByTenantIdAndCapabilityId(
