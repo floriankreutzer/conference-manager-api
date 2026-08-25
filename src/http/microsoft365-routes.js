@@ -14,8 +14,17 @@ export const MICROSOFT365_ROUTES = Object.freeze({
 });
 
 const CALLBACK_QUERY_KEYS = new Set([
-  'admin_consent', 'tenant', 'state', 'scope', 'error', 'error_description', 'error_codes',
-  'timestamp', 'trace_id', 'correlation_id', 'error_uri',
+  'admin_consent',
+  'tenant',
+  'state',
+  'scope',
+  'error',
+  'error_description',
+  'error_codes',
+  'timestamp',
+  'trace_id',
+  'correlation_id',
+  'error_uri',
 ]);
 const CALLBACK_VALUE_LIMITS = Object.freeze({
   admin_consent: 8,
@@ -65,7 +74,9 @@ function sendRedirect(response, location) {
 }
 
 function assertNoQuery(parsedUrl) {
-  if ([...parsedUrl.searchParams.keys()].length > 0) throw new ApiError(400, 'VALIDATION_FAILED');
+  if ([...parsedUrl.searchParams.keys()].length > 0) {
+    throw new ApiError(400, 'VALIDATION_FAILED');
+  }
 }
 
 async function assertEmptyBody(request) {
@@ -75,8 +86,10 @@ async function assertEmptyBody(request) {
       throw new ApiError(400, 'REQUEST_BODY_NOT_ALLOWED');
     }
   }
+  let bytes = 0;
   for await (const chunk of request) {
-    if (chunk.length > 0) throw new ApiError(400, 'REQUEST_BODY_NOT_ALLOWED');
+    bytes += chunk.length;
+    if (bytes > 0) throw new ApiError(400, 'REQUEST_BODY_NOT_ALLOWED');
   }
 }
 
@@ -84,8 +97,13 @@ function assertCallbackQueryValues(parsedUrl) {
   for (const key of parsedUrl.searchParams.keys()) {
     const values = parsedUrl.searchParams.getAll(key);
     const value = values[0];
-    if (!CALLBACK_QUERY_KEYS.has(key) || values.length !== 1 || typeof value !== 'string'
-      || value.length > CALLBACK_VALUE_LIMITS[key] || CONTROL_CHARACTER.test(value)) {
+    if (
+      !CALLBACK_QUERY_KEYS.has(key)
+      || values.length !== 1
+      || typeof value !== 'string'
+      || value.length > CALLBACK_VALUE_LIMITS[key]
+      || CONTROL_CHARACTER.test(value)
+    ) {
       throw new ApiError(400, 'VALIDATION_FAILED');
     }
   }
@@ -93,22 +111,41 @@ function assertCallbackQueryValues(parsedUrl) {
 
 function callbackFromUrl(parsedUrl) {
   assertCallbackQueryValues(parsedUrl);
+
   const state = parsedUrl.searchParams.get('state');
   const tenant = parsedUrl.searchParams.get('tenant');
   const adminConsent = parsedUrl.searchParams.get('admin_consent');
   const providerError = parsedUrl.searchParams.get('error');
-  if (typeof state !== 'string' || !STATE_PATTERN.test(state)) throw new ApiError(400, 'VALIDATION_FAILED');
-  if (tenant !== null && !GUID_PATTERN.test(tenant)) throw new ApiError(400, 'VALIDATION_FAILED');
-  if (providerError !== null && !PROVIDER_ERROR_PATTERN.test(providerError)) throw new ApiError(400, 'VALIDATION_FAILED');
+  if (typeof state !== 'string' || !STATE_PATTERN.test(state)) {
+    throw new ApiError(400, 'VALIDATION_FAILED');
+  }
+  if (tenant !== null && !GUID_PATTERN.test(tenant)) {
+    throw new ApiError(400, 'VALIDATION_FAILED');
+  }
+  if (providerError !== null && !PROVIDER_ERROR_PATTERN.test(providerError)) {
+    throw new ApiError(400, 'VALIDATION_FAILED');
+  }
+
   if (providerError !== null) {
     if (adminConsent !== null) throw new ApiError(400, 'VALIDATION_FAILED');
-    return Object.freeze({ state, providerTenantReference: tenant?.toLowerCase() ?? null, approved: false });
+    return Object.freeze({
+      state,
+      providerTenantReference: tenant?.toLowerCase() ?? null,
+      approved: false,
+    });
   }
-  if (ERROR_DETAIL_KEYS.some((key) => parsedUrl.searchParams.has(key))) throw new ApiError(400, 'VALIDATION_FAILED');
+
+  if (ERROR_DETAIL_KEYS.some((key) => parsedUrl.searchParams.has(key))) {
+    throw new ApiError(400, 'VALIDATION_FAILED');
+  }
   if (typeof adminConsent !== 'string' || adminConsent.toLowerCase() !== 'true' || tenant === null) {
     throw new ApiError(400, 'VALIDATION_FAILED');
   }
-  return Object.freeze({ state, providerTenantReference: tenant.toLowerCase(), approved: true });
+  return Object.freeze({
+    state,
+    providerTenantReference: tenant.toLowerCase(),
+    approved: true,
+  });
 }
 
 function callbackFailure(error) {
@@ -128,12 +165,29 @@ export function microsoft365RouteKey(path) {
   return null;
 }
 
-export function createMicrosoft365HttpHandler({ service, principalGuard, tenantGuard, maxResponseBytes } = {}) {
-  if (!principalGuard || typeof principalGuard.require !== 'function') throw new TypeError('PRINCIPAL_GUARD_REQUIRED');
-  if (!tenantGuard || typeof tenantGuard.requireKnown !== 'function') throw new TypeError('TENANT_GUARD_REQUIRED');
-  if (!Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1_024) throw new TypeError('MAX_RESPONSE_BYTES_INVALID');
+export function createMicrosoft365HttpHandler({
+  service,
+  principalGuard,
+  tenantGuard,
+  maxResponseBytes,
+} = {}) {
+  if (!principalGuard || typeof principalGuard.require !== 'function') {
+    throw new TypeError('PRINCIPAL_GUARD_REQUIRED');
+  }
+  if (!tenantGuard || typeof tenantGuard.requireKnown !== 'function') {
+    throw new TypeError('TENANT_GUARD_REQUIRED');
+  }
+  if (!Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1_024) {
+    throw new TypeError('MAX_RESPONSE_BYTES_INVALID');
+  }
 
-  return async function handleMicrosoft365({ request, response, parsedUrl, path, requestId }) {
+  return async function handleMicrosoft365({
+    request,
+    response,
+    parsedUrl,
+    path,
+    requestId,
+  }) {
     if (!isMicrosoft365Path(path)) return null;
     if (!service) throw new ApiError(503, 'MICROSOFT365_CONNECTION_SERVICE_UNAVAILABLE');
 
@@ -143,8 +197,16 @@ export function createMicrosoft365HttpHandler({ service, principalGuard, tenantG
       const tenantContext = await tenantGuard.requireKnown(principal);
       const callback = callbackFromUrl(parsedUrl);
       try {
-        const connection = await service.completeConsent({ principal, tenantContext, correlationId: requestId, ...callback });
-        sendRedirect(response, CALLBACK_REDIRECTS[connection.status] || '/?integration=microsoft365_connection_failed');
+        const connection = await service.completeConsent({
+          principal,
+          tenantContext,
+          correlationId: requestId,
+          ...callback,
+        });
+        sendRedirect(
+          response,
+          CALLBACK_REDIRECTS[connection.status] || '/?integration=microsoft365_connection_failed',
+        );
       } catch (error) {
         if (!callbackFailure(error)) throw error;
         sendRedirect(response, '/?integration=microsoft365_connection_failed');
@@ -155,16 +217,24 @@ export function createMicrosoft365HttpHandler({ service, principalGuard, tenantG
     if (path === MICROSOFT365_ROUTES.rooms) {
       if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
       assertNoQuery(parsedUrl);
-      if (typeof service.discoverRooms !== 'function') throw new ApiError(503, 'MICROSOFT365_ROOM_DISCOVERY_UNAVAILABLE');
+      if (typeof service.discoverRooms !== 'function') {
+        throw new ApiError(503, 'MICROSOFT365_ROOM_DISCOVERY_UNAVAILABLE');
+      }
       const principal = await principalGuard.require(request);
       const tenantContext = await tenantGuard.requireKnown(principal);
-      const rooms = await service.discoverRooms({ principal, tenantContext, correlationId: requestId });
+      const rooms = await service.discoverRooms({
+        principal,
+        tenantContext,
+        correlationId: requestId,
+      });
       sendJson(response, 200, { rooms, requestId }, maxResponseBytes);
       return 200;
     }
 
     const method = request.method;
-    const allowed = path === MICROSOFT365_ROUTES.connection ? new Set(['GET', 'DELETE']) : new Set(['POST']);
+    const allowed = path === MICROSOFT365_ROUTES.connection
+      ? new Set(['GET', 'DELETE'])
+      : new Set(['POST']);
     if (!allowed.has(method)) throw new ApiError(405, 'METHOD_NOT_ALLOWED');
     assertNoQuery(parsedUrl);
     const mutation = method !== 'GET';
@@ -173,21 +243,38 @@ export function createMicrosoft365HttpHandler({ service, principalGuard, tenantG
     if (mutation) await assertEmptyBody(request);
 
     if (path === MICROSOFT365_ROUTES.connection && method === 'GET') {
-      const connection = await service.getConnection({ principal, tenantContext, correlationId: requestId });
+      const connection = await service.getConnection({
+        principal,
+        tenantContext,
+        correlationId: requestId,
+      });
       sendJson(response, 200, { connection, requestId }, maxResponseBytes);
       return 200;
     }
     if (path === MICROSOFT365_ROUTES.connect) {
-      const started = await service.startConnection({ principal, tenantContext, correlationId: requestId });
+      const started = await service.startConnection({
+        principal,
+        tenantContext,
+        correlationId: requestId,
+      });
       sendJson(response, 200, { ...started, requestId }, maxResponseBytes);
       return 200;
     }
     if (path === MICROSOFT365_ROUTES.verify) {
-      const connection = await service.verifyConnection({ principal, tenantContext, correlationId: requestId });
+      const connection = await service.verifyConnection({
+        principal,
+        tenantContext,
+        correlationId: requestId,
+      });
       sendJson(response, 200, { connection, requestId }, maxResponseBytes);
       return 200;
     }
-    const connection = await service.disconnect({ principal, tenantContext, correlationId: requestId });
+
+    const connection = await service.disconnect({
+      principal,
+      tenantContext,
+      correlationId: requestId,
+    });
     sendJson(response, 200, { connection, requestId }, maxResponseBytes);
     return 200;
   };
