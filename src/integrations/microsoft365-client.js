@@ -1,9 +1,10 @@
 import { ConfidentialClientApplication } from '@azure/msal-node';
+import { APPROVED_OUTBOUND_ORIGINS } from '../config.js';
 
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STATE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
-const LOGIN_ORIGIN = 'https://login.microsoftonline.com';
-const GRAPH_ORIGIN = 'https://graph.microsoft.com';
+const LOGIN_ORIGIN = APPROVED_OUTBOUND_ORIGINS.microsoftIdentity;
+const GRAPH_ORIGIN = APPROVED_OUTBOUND_ORIGINS.microsoftGraph;
 const GRAPH_SCOPE = `${GRAPH_ORIGIN}/.default`;
 const CONSENT_PATH_SUFFIX = '/v2.0/adminconsent';
 const DEFAULT_TIMEOUT_MS = 10_000;
