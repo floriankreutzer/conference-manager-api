@@ -6,7 +6,9 @@ async function text(path) {
 
 function requireContains(content, values, label) {
   for (const value of values) {
-    if (!content.includes(value)) throw new Error(`${label} is missing required security baseline marker: ${value}`);
+    if (!content.includes(value)) {
+      throw new Error(`${label} is missing required security baseline marker: ${value}`);
+    }
   }
 }
 
@@ -16,12 +18,15 @@ const config = await text('src/config.js');
 const cookie = await text('src/identity/session-cookie.js');
 const entraClient = await text('src/identity/entra-client.js');
 const entraAuth = await text('src/identity/entra-auth-service.js');
+const microsoft365Client = await text('src/integrations/microsoft365-client.js');
+const microsoft365Routes = await text('src/http/microsoft365-routes.js');
 const ci = await text('.github/workflows/ci.yml');
 const dependencyPolicy = await text('.github/workflows/dependency-review.yml');
 const secretScan = await text('.github/workflows/secret-scan.yml');
 const threatModel = await text('docs/THREAT-MODEL.md');
 const secureConfig = await text('docs/PRODUCTION-SECURE-CONFIGURATION.md');
 const entraContract = await text('docs/ENTRA-AUTHENTICATION.md');
+const microsoft365Contract = await text('docs/MICROSOFT365-CONNECTION.md');
 const pentest = await text('docs/PILOT-PENETRATION-TEST.md');
 
 requireContains(security, [
@@ -47,6 +52,10 @@ requireContains(config, [
   'ENTRA_CLIENT_ID_REQUIRED',
   'ENTRA_CLIENT_SECRET_REQUIRED',
   'OIDC_TRANSACTION_SECRET_REQUIRED',
+  'MICROSOFT365_CONSENT_TTL_SECONDS',
+  'MICROSOFT365_GRAPH_TIMEOUT_MS',
+  "microsoftIdentity: 'https://login.microsoftonline.com'",
+  "microsoftGraph: 'https://graph.microsoft.com'",
   'SERVICE_VERSION_REQUIRED',
   'BUILD_ID_REQUIRED',
 ], 'Production configuration');
@@ -58,7 +67,9 @@ requireContains(cookie, [
   "['Secure']",
 ], 'Session cookie');
 
-if (cookie.includes('Domain=')) throw new Error('Session cookie must not use a broad Domain attribute.');
+if (cookie.includes('Domain=')) {
+  throw new Error('Session cookie must not use a broad Domain attribute.');
+}
 
 requireContains(entraClient, [
   'ConfidentialClientApplication',
@@ -83,6 +94,33 @@ requireContains(entraContract, [
   'Live authentication',
 ], 'Microsoft Entra security contract');
 
+requireContains(microsoft365Client, [
+  'APPROVED_OUTBOUND_ORIGINS.microsoftIdentity',
+  'APPROVED_OUTBOUND_ORIGINS.microsoftGraph',
+  "const GRAPH_SCOPE = `${GRAPH_ORIGIN}/.default`",
+  "redirect: 'error'",
+  'AbortSignal.timeout(timeoutMs)',
+  'GRAPH_RESPONSE_MAX_BYTES',
+  "'Place.Read.All'",
+  "'Calendars.ReadBasic.All'",
+], 'Microsoft 365 provider client');
+requireContains(microsoft365Routes, [
+  "callback: '/api/v1/integrations/microsoft365/callback'",
+  'CALLBACK_QUERY_KEYS',
+  'searchParams.getAll(key).length !== 1',
+  'principalGuard.require(request, { csrf: mutation })',
+  'assertEmptyBody(request)',
+  "sendRedirect(response, '/?integration=microsoft365_connection_failed')",
+], 'Microsoft 365 HTTP boundary');
+requireContains(microsoft365Contract, [
+  'one-time server-side consent transaction',
+  'browser-selected internal Tenant ID',
+  'Place.Read.All',
+  'Calendars.ReadBasic.All',
+  'Exchange Online Application RBAC',
+  'Migration `011_microsoft365_connection_lifecycle`',
+], 'Microsoft 365 security contract');
+
 requireContains(ci, [
   'npm ci --ignore-scripts --no-fund',
   'npm run audit',
@@ -106,6 +144,7 @@ requireContains(threatModel, [
   'CWE-79',
   'CWE-89',
   'CWE-918',
+  'Consent callback forgery/replay',
   'Mandatory release security gates',
 ], 'Threat model');
 requireContains(secureConfig, [
@@ -115,6 +154,8 @@ requireContains(secureConfig, [
   'DATABASE_SSL',
   'CSRF_SECRET',
   'AUDIT_HMAC_SECRET',
+  'MICROSOFT365_CONSENT_TTL_SECONDS',
+  'MICROSOFT365_GRAPH_TIMEOUT_MS',
 ], 'Production secure configuration');
 requireContains(pentest, [
   'Tenant isolation / BOLA / IDOR',
