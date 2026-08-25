@@ -24,6 +24,7 @@ test('tenant onboarding migration refuses rollback when invitation or binding ev
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatest(pool), true);
 
   await pool.query(
     'INSERT INTO tenants (id, display_name, status) VALUES ($1, $2, $3)',
