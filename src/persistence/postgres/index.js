@@ -3,6 +3,7 @@ import {
   isPostgresReady,
   isPostgresSchemaReady,
 } from './pool.js';
+import { createPostgresApplicationRepository } from './application-repository.js';
 import { createPostgresAuditRepository } from './audit-repository.js';
 import { createPostgresBookingReferenceRepository } from './booking-reference-repository.js';
 import { createPostgresEntitlementRepository } from './entitlement-repository.js';
@@ -24,6 +25,7 @@ export function createPostgresPersistence(config) {
   const auditRepository = createPostgresAuditRepository(pool, {
     hmacSecret: config.auditHmacSecret,
   });
+  const applicationRepository = createPostgresApplicationRepository(pool, { auditRepository });
   const tenantRepository = createPostgresTenantRepository(pool);
   const bookingReferenceRepository = createPostgresBookingReferenceRepository(pool, { auditRepository });
   const entitlementRepository = createPostgresEntitlementRepository(pool, { auditRepository });
@@ -39,6 +41,7 @@ export function createPostgresPersistence(config) {
 
   return Object.freeze({
     pool,
+    applicationRepository,
     auditRepository,
     bookingReferenceRepository,
     entitlementRepository,
