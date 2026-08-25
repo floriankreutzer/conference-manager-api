@@ -270,10 +270,15 @@ test('successful and denied provider callbacks are authenticated, fixed-redirect
 test('callback query pollution and provider-state conflicts fail closed without leaking provider details', async () => {
   const polluted = options();
   await withServer(polluted.serverOptions, async (port) => {
+    const overlongDescription = 'a'.repeat(1_025);
     for (const path of [
       `/api/v1/integrations/microsoft365/callback?state=${STATE}&state=${STATE}&error=access_denied`,
       `/api/v1/integrations/microsoft365/callback?state=${STATE}&error=access_denied&tenantId=${TENANT_ID}`,
       `/api/v1/integrations/microsoft365/callback?state=short&error=access_denied`,
+      `/api/v1/integrations/microsoft365/callback?state=${STATE}&error=access_denied&admin_consent=True`,
+      `/api/v1/integrations/microsoft365/callback?state=${STATE}&error=access_denied&error_description=${overlongDescription}`,
+      `/api/v1/integrations/microsoft365/callback?state=${STATE}&error=access_denied&error_description=line%0Abreak`,
+      `/api/v1/integrations/microsoft365/callback?state=${STATE}&tenant=${PROVIDER_TENANT_ID}&admin_consent=True&error_description=unexpected`,
     ]) {
       const response = await request({ port, path });
       assert.equal(response.statusCode, 400);
