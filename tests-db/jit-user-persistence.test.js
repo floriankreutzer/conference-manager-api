@@ -316,6 +316,7 @@ test('JIT provisioning is tenant-isolated, deterministic, concurrent-safe and au
   assert.equal(await isPostgresSchemaReady(pool), false);
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatest(pool), true);
   await assert.rejects(rollbackLatest(pool), (error) => error.code === '55000');
   await cleanup(pool);
   assert.equal(await rollbackLatest(pool), true);
