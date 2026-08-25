@@ -8,11 +8,12 @@ const GRAPH_SCOPE = `${GRAPH_ORIGIN}/.default`;
 const CONSENT_PATH_SUFFIX = '/v2.0/adminconsent';
 const DEFAULT_TIMEOUT_MS = 10_000;
 const ACCESS_TOKEN_MAX = 32_768;
+const GRAPH_RESPONSE_MAX_BYTES = 65_536;
 
 export const MICROSOFT365_PROVIDER = 'microsoft365';
 export const MICROSOFT365_BASE_PERMISSIONS = Object.freeze([
   'Place.Read.All',
-  'Calendars.ReadBasic',
+  'Calendars.ReadBasic.All',
 ]);
 
 export const MICROSOFT365_VERIFICATION = Object.freeze({
@@ -76,12 +77,18 @@ function classifyGraphStatus(status) {
   return status >= 200 && status < 300 ? 'ok' : 'invalid';
 }
 
-async function readBoundedJson(response, maxBytes = 65_536) {
+async function readBoundedJson(response, maxBytes = GRAPH_RESPONSE_MAX_BYTES) {
   const length = response.headers?.get?.('content-length');
   if (length && /^\d+$/.test(length) && Number(length) > maxBytes) {
     throw new Microsoft365ProviderError('MICROSOFT365_RESPONSE_TOO_LARGE');
   }
-  const text = await response.text();
+
+  let text;
+  try {
+    text = await response.text();
+  } catch {
+    throw new Microsoft365ProviderError('MICROSOFT365_RESPONSE_INVALID');
+  }
   if (Buffer.byteLength(text, 'utf8') > maxBytes) {
     throw new Microsoft365ProviderError('MICROSOFT365_RESPONSE_TOO_LARGE');
   }
@@ -89,6 +96,15 @@ async function readBoundedJson(response, maxBytes = 65_536) {
     return JSON.parse(text);
   } catch {
     throw new Microsoft365ProviderError('MICROSOFT365_RESPONSE_INVALID');
+  }
+}
+
+async function validGraphPayload(response, validate) {
+  try {
+    return validate(await readBoundedJson(response));
+  } catch (error) {
+    if (error instanceof Microsoft365ProviderError) return false;
+    throw error;
   }
 }
 
@@ -110,6 +126,7 @@ function validCalendarPayload(payload) {
 }
 
 async function fetchGraph(fetchImpl, url, accessToken, timeoutMs) {
+  if (url.origin !== GRAPH_ORIGIN) throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_ORIGIN_INVALID');
   let response;
   try {
     response = await fetchImpl(url, {
@@ -124,7 +141,28 @@ async function fetchGraph(fetchImpl, url, accessToken, timeoutMs) {
   } catch {
     throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_UNAVAILABLE');
   }
+  if (!response || !Number.isInteger(response.status)) {
+    throw new Microsoft365ProviderError('MICROSOFT365_RESPONSE_INVALID');
+  }
   return response;
+}
+
+function revoked(reason = 'provider_unauthorized', places = 'unknown') {
+  return Object.freeze({
+    status: MICROSOFT365_VERIFICATION.REVOKED,
+    places,
+    calendars: 'unknown',
+    reason,
+  });
+}
+
+function degraded({ places = 'unknown', calendars = 'unknown', reason }) {
+  return Object.freeze({
+    status: MICROSOFT365_VERIFICATION.DEGRADED,
+    places,
+    calendars,
+    reason,
+  });
 }
 
 export function createMicrosoft365Client({
@@ -194,68 +232,82 @@ export function createMicrosoft365Client({
       try {
         accessToken = await acquireAccessToken(tenant);
       } catch (error) {
-        if (error instanceof Microsoft365ProviderError) {
-          return Object.freeze({
-            status: MICROSOFT365_VERIFICATION.REVOKED,
-            places: 'unknown',
-            calendars: 'unknown',
-            reason: 'token_unavailable',
-          });
-        }
+        if (error instanceof Microsoft365ProviderError) return revoked('token_unavailable');
         throw error;
       }
 
       const placesUrl = new URL('/v1.0/places/microsoft.graph.room', GRAPH_ORIGIN);
       placesUrl.searchParams.set('$top', '1');
       placesUrl.searchParams.set('$select', 'id');
-      const placesResponse = await fetchGraph(fetchImpl, placesUrl, accessToken, timeoutMs);
+      let placesResponse;
+      try {
+        placesResponse = await fetchGraph(fetchImpl, placesUrl, accessToken, timeoutMs);
+      } catch (error) {
+        if (error instanceof Microsoft365ProviderError) {
+          return degraded({ reason: 'provider_unavailable' });
+        }
+        throw error;
+      }
       const placesClass = classifyGraphStatus(placesResponse.status);
-      if (placesClass === 'revoked') {
-        return Object.freeze({ status: MICROSOFT365_VERIFICATION.REVOKED, places: 'unknown', calendars: 'unknown', reason: 'provider_unauthorized' });
-      }
-      if (placesClass === 'transient') {
-        return Object.freeze({ status: MICROSOFT365_VERIFICATION.DEGRADED, places: 'unknown', calendars: 'unknown', reason: 'provider_unavailable' });
-      }
+      if (placesClass === 'revoked') return revoked();
+      if (placesClass === 'transient') return degraded({ reason: 'provider_unavailable' });
       if (placesClass === 'permission_missing') {
-        return Object.freeze({ status: MICROSOFT365_VERIFICATION.DEGRADED, places: 'missing', calendars: 'unknown', reason: 'places_permission_missing' });
+        return degraded({ places: 'missing', reason: 'places_permission_missing' });
       }
-      if (placesClass !== 'ok') {
-        return Object.freeze({ status: MICROSOFT365_VERIFICATION.DEGRADED, places: 'unknown', calendars: 'unknown', reason: 'provider_response_invalid' });
-      }
-      const placesPayload = await readBoundedJson(placesResponse);
-      if (!validCollectionPayload(placesPayload)) {
-        return Object.freeze({ status: MICROSOFT365_VERIFICATION.DEGRADED, places: 'unknown', calendars: 'unknown', reason: 'provider_response_invalid' });
+      if (placesClass !== 'ok' || !await validGraphPayload(placesResponse, validCollectionPayload)) {
+        return degraded({ reason: 'provider_response_invalid' });
       }
 
       if (claimantUserReference === null) {
-        return Object.freeze({ status: MICROSOFT365_VERIFICATION.CONNECTED, places: 'granted', calendars: 'unverified', reason: null });
+        return Object.freeze({
+          status: MICROSOFT365_VERIFICATION.CONNECTED,
+          places: 'granted',
+          calendars: 'unverified',
+          reason: null,
+        });
       }
 
       const claimant = requireGuid(claimantUserReference, 'MICROSOFT365_USER_INVALID');
       const calendarUrl = new URL(`/v1.0/users/${claimant}/calendar`, GRAPH_ORIGIN);
       calendarUrl.searchParams.set('$select', 'id');
-      const calendarResponse = await fetchGraph(fetchImpl, calendarUrl, accessToken, timeoutMs);
-      const calendarClass = classifyGraphStatus(calendarResponse.status);
-      if (calendarClass === 'revoked') {
-        return Object.freeze({ status: MICROSOFT365_VERIFICATION.REVOKED, places: 'granted', calendars: 'unknown', reason: 'provider_unauthorized' });
+      let calendarResponse;
+      try {
+        calendarResponse = await fetchGraph(fetchImpl, calendarUrl, accessToken, timeoutMs);
+      } catch (error) {
+        if (error instanceof Microsoft365ProviderError) {
+          return degraded({ places: 'granted', reason: 'provider_unavailable' });
+        }
+        throw error;
       }
+      const calendarClass = classifyGraphStatus(calendarResponse.status);
+      if (calendarClass === 'revoked') return revoked('provider_unauthorized', 'granted');
       if (calendarClass === 'permission_missing') {
-        return Object.freeze({ status: MICROSOFT365_VERIFICATION.DEGRADED, places: 'granted', calendars: 'missing', reason: 'calendars_permission_missing' });
+        return degraded({
+          places: 'granted',
+          calendars: 'missing',
+          reason: 'calendars_permission_missing',
+        });
       }
       if (calendarClass === 'transient') {
-        return Object.freeze({ status: MICROSOFT365_VERIFICATION.DEGRADED, places: 'granted', calendars: 'unknown', reason: 'provider_unavailable' });
+        return degraded({ places: 'granted', reason: 'provider_unavailable' });
       }
       if (calendarClass === 'not_found') {
-        return Object.freeze({ status: MICROSOFT365_VERIFICATION.CONNECTED, places: 'granted', calendars: 'unverified', reason: null });
+        return Object.freeze({
+          status: MICROSOFT365_VERIFICATION.CONNECTED,
+          places: 'granted',
+          calendars: 'unverified',
+          reason: null,
+        });
       }
-      if (calendarClass !== 'ok') {
-        return Object.freeze({ status: MICROSOFT365_VERIFICATION.DEGRADED, places: 'granted', calendars: 'unknown', reason: 'provider_response_invalid' });
+      if (calendarClass !== 'ok' || !await validGraphPayload(calendarResponse, validCalendarPayload)) {
+        return degraded({ places: 'granted', reason: 'provider_response_invalid' });
       }
-      const calendarPayload = await readBoundedJson(calendarResponse);
-      if (!validCalendarPayload(calendarPayload)) {
-        return Object.freeze({ status: MICROSOFT365_VERIFICATION.DEGRADED, places: 'granted', calendars: 'unknown', reason: 'provider_response_invalid' });
-      }
-      return Object.freeze({ status: MICROSOFT365_VERIFICATION.CONNECTED, places: 'granted', calendars: 'granted', reason: null });
+      return Object.freeze({
+        status: MICROSOFT365_VERIFICATION.CONNECTED,
+        places: 'granted',
+        calendars: 'granted',
+        reason: null,
+      });
     },
   });
 }
