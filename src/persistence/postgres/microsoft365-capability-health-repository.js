@@ -95,14 +95,17 @@ export function createPostgresMicrosoft365CapabilityHealthRepository(pool) {
           INSERT INTO microsoft365_capability_health (
             tenant_id, integration_id, capability, status, reason, last_checked_at, last_success_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $7 THEN $6 ELSE NULL END)
+          VALUES (
+            $1, $2, $3, $4, $5, $6::timestamptz,
+            CASE WHEN $7::boolean THEN $6::timestamptz ELSE NULL END
+          )
           ON CONFLICT (tenant_id, integration_id, capability)
           DO UPDATE SET
             status = EXCLUDED.status,
             reason = EXCLUDED.reason,
             last_checked_at = EXCLUDED.last_checked_at,
             last_success_at = CASE
-              WHEN $7 THEN EXCLUDED.last_checked_at
+              WHEN $7::boolean THEN EXCLUDED.last_checked_at
               ELSE microsoft365_capability_health.last_success_at
             END
           RETURNING capability, status, reason, last_checked_at, last_success_at
