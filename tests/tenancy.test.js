@@ -86,6 +86,7 @@ test('canonical tenant model separates internal ownership from external provider
     'integration',
     'entitlement',
     'booking_provider_reference',
+    'microsoft365_room_mapping',
     'tenant_onboarding_invitation',
     'tenant_identity_binding',
     'user_identity_binding',

@@ -1,5 +1,6 @@
 import { createMicrosoft365ConnectionService } from './application/microsoft365-connection-service.js';
 import { createMicrosoft365RoomDiscoveryService } from './application/microsoft365-room-discovery-service.js';
+import { createMicrosoft365RoomMappingService } from './application/microsoft365-room-mapping-service.js';
 import { createRequestService } from './application/request-service.js';
 import { createTenantUserAdministrationService } from './application/tenant-user-administration-service.js';
 import { createAuditService } from './audit/audit-service.js';
@@ -114,11 +115,27 @@ const microsoft365RoomDiscoveryService = persistence && auditService && microsof
     providerClient: microsoft365Client,
   })
   : null;
+const microsoft365RoomMappingService = persistence && auditService && microsoft365RoomDiscoveryService
+  ? createMicrosoft365RoomMappingService({
+    mappingRepository: persistence.microsoft365RoomMappingRepository,
+    connectionRepository: persistence.microsoft365ConnectionRepository,
+    discoveryService: microsoft365RoomDiscoveryService,
+    authorizationPolicy,
+    auditService,
+  })
+  : null;
 const microsoft365Service = microsoft365ConnectionService
   ? Object.freeze({
     ...microsoft365ConnectionService,
     ...(microsoft365RoomDiscoveryService
       ? { discoverRooms: (args) => microsoft365RoomDiscoveryService.discoverRooms(args) }
+      : {}),
+    ...(microsoft365RoomMappingService
+      ? {
+        listRoomMappings: (args) => microsoft365RoomMappingService.listMappings(args),
+        importSelectedRooms: (args) => microsoft365RoomMappingService.importSelectedRooms(args),
+        synchronizeRoomMappings: (args) => microsoft365RoomMappingService.synchronize(args),
+      }
       : {}),
   })
   : null;

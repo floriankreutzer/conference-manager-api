@@ -268,6 +268,7 @@ export function createApp({
     service: microsoft365ConnectionService,
     principalGuard,
     tenantGuard,
+    maxBodyBytes: config.maxBodyBytes,
     maxResponseBytes: config.maxResponseBytes,
   });
   const healthMonitor = createHealthMonitor({
