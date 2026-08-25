@@ -7,6 +7,7 @@ import { createPostgresAuditRepository } from './audit-repository.js';
 import { createPostgresBookingReferenceRepository } from './booking-reference-repository.js';
 import { createPostgresEntitlementRepository } from './entitlement-repository.js';
 import { createPostgresJitUserRepository } from './jit-user-repository.js';
+import { createPostgresMicrosoft365ConnectionRepository } from './microsoft365-connection-repository.js';
 import { createPostgresOidcTransactionRepository } from './oidc-transaction-repository.js';
 import { createPostgresRequestRepository } from './request-repository.js';
 import { createPostgresSessionRepository } from './session-repository.js';
@@ -23,6 +24,7 @@ export function createPostgresPersistence(config) {
   const bookingReferenceRepository = createPostgresBookingReferenceRepository(pool, { auditRepository });
   const entitlementRepository = createPostgresEntitlementRepository(pool, { auditRepository });
   const jitUserRepository = createPostgresJitUserRepository(pool, { auditRepository });
+  const microsoft365ConnectionRepository = createPostgresMicrosoft365ConnectionRepository(pool, { auditRepository });
   const oidcTransactionRepository = createPostgresOidcTransactionRepository(pool);
   const sessionRepository = createPostgresSessionRepository(pool, { auditRepository });
   const requestRepository = createPostgresRequestRepository(pool, { auditRepository });
@@ -35,6 +37,7 @@ export function createPostgresPersistence(config) {
     bookingReferenceRepository,
     entitlementRepository,
     jitUserRepository,
+    microsoft365ConnectionRepository,
     oidcTransactionRepository,
     sessionRepository,
     requestRepository,
