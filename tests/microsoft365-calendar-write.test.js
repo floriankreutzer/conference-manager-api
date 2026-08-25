@@ -1,11 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createFinalRoomConfirmationService, FinalRoomAvailabilityError } from '../src/application/final-room-confirmation-service.js';
+import {
+  FinalRoomAvailabilityError,
+  createFinalRoomConfirmationService,
+} from '../src/application/final-room-confirmation-service.js';
 import { createRequestService } from '../src/application/request-service.js';
 import { createAuthorizationPolicy } from '../src/authorization/policy.js';
 import { RequestStateConflictError } from '../src/authorization/errors.js';
 import { REQUEST_STATUS } from '../src/domain/request-workflow.js';
-import { createMicrosoft365Client, Microsoft365ProviderError } from '../src/integrations/microsoft365-client.js';
+import {
+  Microsoft365ProviderError,
+  createMicrosoft365Client,
+} from '../src/integrations/microsoft365-client.js';
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
 const PROVIDER_TENANT = '22222222-2222-4222-8222-222222222222';
@@ -76,8 +82,12 @@ test('Microsoft Graph calendar create update and delete use fixed resource paths
   const calls = [];
   const api = client(async (url, options) => {
     calls.push({ url: new URL(url), options });
-    if (options.method === 'POST') return jsonResponse(201, { id: EVENT_ID, body: { content: 'ignored' } });
-    if (options.method === 'PATCH') return jsonResponse(200, { id: EVENT_ID, subject: 'ignored' });
+    if (options.method === 'POST') {
+      return jsonResponse(201, { id: EVENT_ID, body: { content: 'ignored' } });
+    }
+    if (options.method === 'PATCH') {
+      return jsonResponse(200, { id: EVENT_ID, subject: 'ignored' });
+    }
     if (options.method === 'DELETE') return new Response(null, { status: 204 });
     throw new Error('unexpected method');
   });
@@ -106,27 +116,47 @@ test('Microsoft Graph calendar create update and delete use fixed resource paths
 
   assert.equal(calls.length, 3);
   assert.equal(calls[0].url.origin, 'https://graph.microsoft.com');
-  assert.equal(calls[0].url.pathname, '/v1.0/users/room-a%40example.com/calendar/events');
+  assert.equal(
+    calls[0].url.pathname,
+    '/v1.0/users/room-a%40example.com/calendar/events',
+  );
   assert.equal(calls[0].options.redirect, 'error');
   const createdBody = JSON.parse(calls[0].options.body);
-  assert.deepEqual(Object.keys(createdBody).sort(), ['end', 'showAs', 'start', 'subject', 'transactionId']);
+  assert.deepEqual(
+    Object.keys(createdBody).sort(),
+    ['end', 'showAs', 'start', 'subject', 'transactionId'],
+  );
   assert.equal(createdBody.subject, 'Conference Manager room reservation');
   assert.equal(createdBody.showAs, 'busy');
   assert.equal(createdBody.transactionId, IDEMPOTENCY_KEY);
-  assert.deepEqual(createdBody.start, { dateTime: '2026-09-01T10:00:00', timeZone: 'UTC' });
-  assert.deepEqual(createdBody.end, { dateTime: '2026-09-01T11:00:00', timeZone: 'UTC' });
+  assert.deepEqual(
+    createdBody.start,
+    { dateTime: '2026-09-01T10:00:00', timeZone: 'UTC' },
+  );
+  assert.deepEqual(
+    createdBody.end,
+    { dateTime: '2026-09-01T11:00:00', timeZone: 'UTC' },
+  );
   assert.equal(Object.hasOwn(createdBody, 'attendees'), false);
   assert.equal(Object.hasOwn(createdBody, 'body'), false);
 
   assert.equal(calls[1].options.method, 'PATCH');
-  assert.equal(calls[1].url.pathname, '/v1.0/users/room-a%40example.com/events/event-123');
-  assert.equal(Object.hasOwn(JSON.parse(calls[1].options.body), 'transactionId'), false);
+  assert.equal(
+    calls[1].url.pathname,
+    '/v1.0/users/room-a%40example.com/events/event-123',
+  );
+  assert.equal(
+    Object.hasOwn(JSON.parse(calls[1].options.body), 'transactionId'),
+    false,
+  );
   assert.equal(calls[2].options.method, 'DELETE');
   assert.equal(calls[2].options.body, undefined);
 });
 
 test('calendar write provider failures are stable and do not expose raw Graph payloads', async () => {
-  const api = client(async () => jsonResponse(409, { error: { message: 'sensitive detail' } }));
+  const api = client(async () => jsonResponse(409, {
+    error: { message: 'sensitive detail' },
+  }));
   await assert.rejects(
     api.createCalendarEvent({
       tenantReference: PROVIDER_TENANT,
@@ -155,7 +185,12 @@ test('final confirmation creates calendar before local commit and compensates a 
     authorizationPolicy: {
       authorizeRequestRead() { return true; },
       authorizeRequestTransition() {
-        return { transition: 'confirm', expectedStatus: REQUEST_STATUS.IN_REVIEW, nextStatus: REQUEST_STATUS.CONFIRMED, reason: null };
+        return {
+          transition: 'confirm',
+          expectedStatus: REQUEST_STATUS.IN_REVIEW,
+          nextStatus: REQUEST_STATUS.CONFIRMED,
+          reason: null,
+        };
       },
     },
     auditService: {
@@ -166,14 +201,25 @@ test('final confirmation creates calendar before local commit and compensates a 
     entitlementService: { async requireAccess() { return true; } },
     calendarProviderFactory: {
       async forRoom() {
-        return { async validateReservation() { calls.push('validate'); return { valid: true, reason: 'available' }; } };
+        return {
+          async validateReservation() {
+            calls.push('validate');
+            return { valid: true, reason: 'available' };
+          },
+        };
       },
     },
     bookingServiceFactory: {
       async forRequest() {
         return {
-          async createCalendarEvent() { calls.push('create'); return { disposition: 'created', state: 'active' }; },
-          async cancelCalendarEvent() { calls.push('cancel'); return { disposition: 'cancelled', state: 'cancelled' }; },
+          async createCalendarEvent() {
+            calls.push('create');
+            return { disposition: 'created', state: 'active' };
+          },
+          async cancelCalendarEvent() {
+            calls.push('cancel');
+            return { disposition: 'cancelled', state: 'cancelled' };
+          },
         };
       },
     },
@@ -181,7 +227,12 @@ test('final confirmation creates calendar before local commit and compensates a 
   });
 
   await assert.rejects(
-    service.confirm({ principal, tenantContext, requestId: loaded.id, correlationId: CORRELATION_ID }),
+    service.confirm({
+      principal,
+      tenantContext,
+      requestId: loaded.id,
+      correlationId: CORRELATION_ID,
+    }),
     RequestStateConflictError,
   );
   assert.deepEqual(calls, ['validate', 'create', 'commit', 'cancel']);
@@ -197,25 +248,50 @@ test('failed compensation surfaces a dedicated synchronization failure', async (
     authorizationPolicy: {
       authorizeRequestRead() { return true; },
       authorizeRequestTransition() {
-        return { transition: 'confirm', expectedStatus: REQUEST_STATUS.IN_REVIEW, nextStatus: REQUEST_STATUS.CONFIRMED, reason: null };
+        return {
+          transition: 'confirm',
+          expectedStatus: REQUEST_STATUS.IN_REVIEW,
+          nextStatus: REQUEST_STATUS.CONFIRMED,
+          reason: null,
+        };
       },
     },
-    auditService: { createEvent(v) { return v; }, async record() {}, async recordAuthorizationDenied() {} },
+    auditService: {
+      createEvent(values) { return values; },
+      async record() {},
+      async recordAuthorizationDenied() {},
+    },
     entitlementService: { async requireAccess() { return true; } },
-    calendarProviderFactory: { async forRoom() { return { async validateReservation() { return { valid: true, reason: 'available' }; } }; } },
+    calendarProviderFactory: {
+      async forRoom() {
+        return {
+          async validateReservation() {
+            return { valid: true, reason: 'available' };
+          },
+        };
+      },
+    },
     bookingServiceFactory: {
       async forRequest() {
         return {
           async createCalendarEvent() {},
-          async cancelCalendarEvent() { throw new Error('provider compensation failure'); },
+          async cancelCalendarEvent() {
+            throw new Error('provider compensation failure');
+          },
         };
       },
     },
     clock: () => Date.parse('2026-08-25T17:00:00.000Z'),
   });
   await assert.rejects(
-    service.confirm({ principal, tenantContext, requestId: loaded.id, correlationId: CORRELATION_ID }),
-    (error) => error instanceof FinalRoomAvailabilityError && error.code === 'FINAL_ROOM_COMPENSATION_FAILED',
+    service.confirm({
+      principal,
+      tenantContext,
+      requestId: loaded.id,
+      correlationId: CORRELATION_ID,
+    }),
+    (error) => error instanceof FinalRoomAvailabilityError
+      && error.code === 'FINAL_ROOM_COMPENSATION_FAILED',
   );
 });
 
@@ -231,24 +307,38 @@ test('request cancellation retries external reconciliation after local cancellat
       },
     },
     authorizationPolicy: createAuthorizationPolicy(),
-    auditService: { createEvent(v) { return v; }, async record() {}, async recordAuthorizationDenied() {} },
+    auditService: {
+      createEvent(values) { return values; },
+      async record() {},
+      async recordAuthorizationDenied() {},
+    },
     bookingServiceFactory: {
       async forRequest() {
-        return { async cancelCalendarEvent() { cancels += 1; return { disposition: 'cancelled', state: 'cancelled' }; } };
+        return {
+          async cancelCalendarEvent() {
+            cancels += 1;
+            return { disposition: 'cancelled', state: 'cancelled' };
+          },
+        };
       },
     },
     clock: () => Date.parse('2026-08-25T17:00:00.000Z'),
   });
+  const employeePrincipal = {
+    ...principal,
+    roles: ['employee'],
+    permissions: ['request:read', 'request:cancel'],
+  };
 
   await service.transitionRequest({
-    principal: { ...principal, roles: ['employee'], permissions: ['request:read', 'request:cancel'] },
+    principal: employeePrincipal,
     tenantContext,
     requestId: current.id,
     transition: 'cancel',
     correlationId: CORRELATION_ID,
   });
   await service.transitionRequest({
-    principal: { ...principal, roles: ['employee'], permissions: ['request:read', 'request:cancel'] },
+    principal: employeePrincipal,
     tenantContext,
     requestId: current.id,
     transition: 'cancel',
