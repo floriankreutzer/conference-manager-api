@@ -92,7 +92,7 @@ test('base permission verification uses fixed Graph destinations and validates b
   assert.equal(calls[0].options.signal instanceof AbortSignal, true);
 });
 
-test('a missing claimant identity leaves calendar permission unverified without making a broad Graph call', async () => {
+test('a missing claimant identity degrades calendar verification without making a broad Graph call', async () => {
   const calls = [];
   const api = client({
     fetchImpl: async (url) => {
@@ -103,10 +103,10 @@ test('a missing claimant identity leaves calendar permission unverified without 
   assert.deepEqual(
     await api.verifyBasePermissions({ tenantReference: TENANT_ID }),
     {
-      status: MICROSOFT365_VERIFICATION.CONNECTED,
+      status: MICROSOFT365_VERIFICATION.DEGRADED,
       places: 'granted',
       calendars: 'unverified',
-      reason: null,
+      reason: 'calendars_permission_unverified',
     },
   );
   assert.equal(calls.length, 1);
@@ -157,7 +157,7 @@ test('permission and authorization failures are classified without returning pro
   );
 });
 
-test('calendar probe distinguishes permission denial from a claimant without an Exchange calendar', async () => {
+test('calendar probe distinguishes permission denial from an unavailable Exchange calendar', async () => {
   let call = 0;
   const missingCalendar = client({
     fetchImpl: async () => {
@@ -191,10 +191,10 @@ test('calendar probe distinguishes permission denial from a claimant without an 
       claimantUserReference: USER_ID,
     }),
     {
-      status: MICROSOFT365_VERIFICATION.CONNECTED,
+      status: MICROSOFT365_VERIFICATION.DEGRADED,
       places: 'granted',
       calendars: 'unverified',
-      reason: null,
+      reason: 'calendars_permission_unverified',
     },
   );
 });
