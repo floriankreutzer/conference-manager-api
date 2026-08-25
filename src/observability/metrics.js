@@ -14,6 +14,7 @@ const ROUTES = new Set([
   'microsoft365_connect',
   'microsoft365_callback',
   'microsoft365_verify',
+  'microsoft365_rooms',
   'request',
   'request_transition',
   'not_found',

@@ -15,6 +15,9 @@ const PROVIDER_URL_MAX_LENGTH = 4_096;
 const PROVIDER_HEADER_COUNT_MAX = 64;
 const PROVIDER_HEADER_NAME_MAX = 128;
 const PROVIDER_HEADER_VALUE_MAX = 16_384;
+const ROOM_PAGE_SIZE = 100;
+const ROOM_PAGE_LIMIT = 100;
+const ROOM_STRING_MAX = 512;
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 export const MICROSOFT365_PROVIDER = 'microsoft365';
@@ -130,7 +133,12 @@ function createMsalApplication({
   const authority = `${LOGIN_ORIGIN}/${tenantReference}`;
   const networkClient = createBoundedMicrosoftIdentityNetworkClient({ fetchImpl, timeoutMs });
   if (applicationFactory) {
-    const application = applicationFactory({ clientId, clientSecret, authority, networkClient });
+    const application = applicationFactory({
+      clientId,
+      clientSecret,
+      authority,
+      networkClient,
+    });
     if (!application || typeof application.acquireTokenByClientCredential !== 'function') {
       throw new TypeError('MICROSOFT365_MSAL_APPLICATION_INVALID');
     }
@@ -353,6 +361,119 @@ async function fetchGraph(fetchImpl, url, accessToken, timeoutMs) {
   return response;
 }
 
+function boundedOptionalString(value) {
+  if (value === null || value === undefined) return null;
+  if (
+    typeof value !== 'string'
+    || value.length > ROOM_STRING_MAX
+    || /[\u0000-\u001f\u007f]/.test(value)
+  ) {
+    return null;
+  }
+  return value;
+}
+
+function boundedCapacity(value) {
+  if (value === null || value === undefined) return null;
+  return Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000
+    ? value
+    : null;
+}
+
+function boundedFloorNumber(value) {
+  if (value === null || value === undefined) return null;
+  return Number.isSafeInteger(value) && Math.abs(value) <= 10_000
+    ? value
+    : null;
+}
+
+function normalizeRoom(item) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) {
+    throw new Microsoft365ProviderError('MICROSOFT365_ROOM_RESPONSE_INVALID');
+  }
+  const externalRoomId = boundedOptionalString(item.id);
+  const displayName = boundedOptionalString(item.displayName);
+  const resourceAddress = boundedOptionalString(item.emailAddress);
+  if (!externalRoomId || !displayName || !resourceAddress) {
+    throw new Microsoft365ProviderError('MICROSOFT365_ROOM_RESPONSE_INVALID');
+  }
+  return Object.freeze({
+    externalRoomId,
+    displayName,
+    resourceAddress,
+    capacity: boundedCapacity(item.capacity),
+    building: boundedOptionalString(item.building),
+    floorNumber: boundedFloorNumber(item.floorNumber),
+    floorLabel: boundedOptionalString(item.floorLabel),
+    label: boundedOptionalString(item.label),
+    nickname: boundedOptionalString(item.nickname),
+    phone: boundedOptionalString(item.phone),
+    audioDeviceName: boundedOptionalString(item.audioDeviceName),
+    videoDeviceName: boundedOptionalString(item.videoDeviceName),
+    displayDeviceName: boundedOptionalString(item.displayDeviceName),
+    bookingType: boundedOptionalString(item.bookingType),
+  });
+}
+
+function roomDiscoveryUrl(skip) {
+  const url = new URL('/v1.0/places/microsoft.graph.room', GRAPH_ORIGIN);
+  url.searchParams.set('$top', String(ROOM_PAGE_SIZE));
+  url.searchParams.set('$skip', String(skip));
+  url.searchParams.set('$select', [
+    'id',
+    'displayName',
+    'emailAddress',
+    'capacity',
+    'building',
+    'floorNumber',
+    'floorLabel',
+    'label',
+    'nickname',
+    'phone',
+    'audioDeviceName',
+    'videoDeviceName',
+    'displayDeviceName',
+    'bookingType',
+  ].join(','));
+  return url;
+}
+
+async function roomPage({ fetchImpl, accessToken, timeoutMs, skip }) {
+  const response = await fetchGraph(
+    fetchImpl,
+    roomDiscoveryUrl(skip),
+    accessToken,
+    timeoutMs,
+  );
+  const classification = classifyGraphStatus(response.status);
+  if (classification === 'revoked') {
+    throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_UNAUTHORIZED');
+  }
+  if (classification === 'permission_missing') {
+    throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_PERMISSION_MISSING');
+  }
+  if (response.status === 429) {
+    throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_THROTTLED');
+  }
+  if (classification === 'transient') {
+    throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_UNAVAILABLE');
+  }
+  if (classification !== 'ok') {
+    throw new Microsoft365ProviderError('MICROSOFT365_ROOM_RESPONSE_INVALID');
+  }
+  const payload = await readBoundedJson(response);
+  if (
+    !payload
+    || typeof payload !== 'object'
+    || Array.isArray(payload)
+    || !Array.isArray(payload.value)
+    || payload.value.length > ROOM_PAGE_SIZE
+  ) {
+    throw new Microsoft365ProviderError('MICROSOFT365_ROOM_RESPONSE_INVALID');
+  }
+  return payload.value.map(normalizeRoom);
+}
+
 function revoked(reason = 'provider_unauthorized', places = 'unknown') {
   return Object.freeze({
     status: MICROSOFT365_VERIFICATION.REVOKED,
@@ -372,7 +493,13 @@ function degraded({ places = 'unknown', calendars = 'unknown', reason }) {
 }
 
 function isValidCallbackOrigin(origin, allowInsecureLocalhost) {
-  if (origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) {
+  if (
+    origin.username
+    || origin.password
+    || origin.pathname !== '/'
+    || origin.search
+    || origin.hash
+  ) {
     return false;
   }
   if (origin.protocol === 'https:') return true;
@@ -390,7 +517,10 @@ export function createMicrosoft365Client({
   timeoutMs = DEFAULT_TIMEOUT_MS,
   allowInsecureLocalhost = false,
 } = {}) {
-  const normalizedClientId = requireGuid(clientId, 'MICROSOFT365_CLIENT_ID_INVALID');
+  const normalizedClientId = requireGuid(
+    clientId,
+    'MICROSOFT365_CLIENT_ID_INVALID',
+  );
   if (typeof clientSecret !== 'string' || clientSecret.length < 1) {
     throw new TypeError('MICROSOFT365_CLIENT_SECRET_REQUIRED');
   }
@@ -398,7 +528,11 @@ export function createMicrosoft365Client({
   if (typeof allowInsecureLocalhost !== 'boolean') {
     throw new TypeError('MICROSOFT365_LOCALHOST_MODE_INVALID');
   }
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 30_000) {
+  if (
+    !Number.isSafeInteger(timeoutMs)
+    || timeoutMs < 1_000
+    || timeoutMs > 30_000
+  ) {
     throw new TypeError('MICROSOFT365_TIMEOUT_INVALID');
   }
 
@@ -411,10 +545,16 @@ export function createMicrosoft365Client({
   if (!isValidCallbackOrigin(origin, allowInsecureLocalhost)) {
     throw new TypeError('MICROSOFT365_PUBLIC_ORIGIN_INVALID');
   }
-  const redirectUri = new URL('/api/v1/integrations/microsoft365/callback', origin).toString();
+  const redirectUri = new URL(
+    '/api/v1/integrations/microsoft365/callback',
+    origin,
+  ).toString();
 
   async function acquireAccessToken(tenantReference) {
-    const tenant = requireGuid(tenantReference, 'MICROSOFT365_TENANT_INVALID');
+    const tenant = requireGuid(
+      tenantReference,
+      'MICROSOFT365_TENANT_INVALID',
+    );
     const application = createMsalApplication({
       clientId: normalizedClientId,
       clientSecret,
@@ -425,7 +565,9 @@ export function createMicrosoft365Client({
     });
     let result;
     try {
-      result = await application.acquireTokenByClientCredential({ scopes: [GRAPH_SCOPE] });
+      result = await application.acquireTokenByClientCredential({
+        scopes: [GRAPH_SCOPE],
+      });
     } catch {
       throw new Microsoft365ProviderError('MICROSOFT365_TOKEN_ACQUISITION_FAILED');
     }
@@ -439,7 +581,10 @@ export function createMicrosoft365Client({
     redirectUri,
 
     adminConsentUrl({ tenantReference, state }) {
-      const tenant = requireGuid(tenantReference, 'MICROSOFT365_TENANT_INVALID');
+      const tenant = requireGuid(
+        tenantReference,
+        'MICROSOFT365_TENANT_INVALID',
+      );
       const url = new URL(`${LOGIN_ORIGIN}/${tenant}${CONSENT_PATH_SUFFIX}`);
       url.searchParams.set('client_id', normalizedClientId);
       url.searchParams.set('scope', GRAPH_SCOPE);
@@ -448,13 +593,44 @@ export function createMicrosoft365Client({
       return url.toString();
     },
 
-    async verifyBasePermissions({ tenantReference, claimantUserReference = null }) {
-      const tenant = requireGuid(tenantReference, 'MICROSOFT365_TENANT_INVALID');
+    async discoverRooms({ tenantReference }) {
+      const tenant = requireGuid(
+        tenantReference,
+        'MICROSOFT365_TENANT_INVALID',
+      );
+      const accessToken = await acquireAccessToken(tenant);
+      const rooms = [];
+      for (let page = 0; page < ROOM_PAGE_LIMIT; page += 1) {
+        const values = await roomPage({
+          fetchImpl,
+          accessToken,
+          timeoutMs,
+          skip: page * ROOM_PAGE_SIZE,
+        });
+        rooms.push(...values);
+        if (values.length < ROOM_PAGE_SIZE) return Object.freeze(rooms);
+      }
+      throw new Microsoft365ProviderError(
+        'MICROSOFT365_ROOM_PAGE_LIMIT_EXCEEDED',
+      );
+    },
+
+    async verifyBasePermissions({
+      tenantReference,
+      claimantUserReference = null,
+    }) {
+      const tenant = requireGuid(
+        tenantReference,
+        'MICROSOFT365_TENANT_INVALID',
+      );
       let accessToken;
       try {
         accessToken = await acquireAccessToken(tenant);
       } catch (error) {
-        if (error instanceof Microsoft365ProviderError && error.code === 'MICROSOFT365_TOKEN_INVALID') {
+        if (
+          error instanceof Microsoft365ProviderError
+          && error.code === 'MICROSOFT365_TOKEN_INVALID'
+        ) {
           return revoked('token_invalid');
         }
         if (error instanceof Microsoft365ProviderError) {
@@ -463,12 +639,20 @@ export function createMicrosoft365Client({
         throw error;
       }
 
-      const placesUrl = new URL('/v1.0/places/microsoft.graph.room', GRAPH_ORIGIN);
+      const placesUrl = new URL(
+        '/v1.0/places/microsoft.graph.room',
+        GRAPH_ORIGIN,
+      );
       placesUrl.searchParams.set('$top', '1');
       placesUrl.searchParams.set('$select', 'id');
       let placesResponse;
       try {
-        placesResponse = await fetchGraph(fetchImpl, placesUrl, accessToken, timeoutMs);
+        placesResponse = await fetchGraph(
+          fetchImpl,
+          placesUrl,
+          accessToken,
+          timeoutMs,
+        );
       } catch (error) {
         if (error instanceof Microsoft365ProviderError) {
           return degraded({ reason: 'provider_unavailable' });
@@ -477,11 +661,19 @@ export function createMicrosoft365Client({
       }
       const placesClass = classifyGraphStatus(placesResponse.status);
       if (placesClass === 'revoked') return revoked();
-      if (placesClass === 'transient') return degraded({ reason: 'provider_unavailable' });
-      if (placesClass === 'permission_missing') {
-        return degraded({ places: 'missing', reason: 'places_permission_missing' });
+      if (placesClass === 'transient') {
+        return degraded({ reason: 'provider_unavailable' });
       }
-      if (placesClass !== 'ok' || !await validGraphPayload(placesResponse, validCollectionPayload)) {
+      if (placesClass === 'permission_missing') {
+        return degraded({
+          places: 'missing',
+          reason: 'places_permission_missing',
+        });
+      }
+      if (
+        placesClass !== 'ok'
+        || !await validGraphPayload(placesResponse, validCollectionPayload)
+      ) {
         return degraded({ reason: 'provider_response_invalid' });
       }
 
@@ -493,20 +685,36 @@ export function createMicrosoft365Client({
         });
       }
 
-      const claimant = requireGuid(claimantUserReference, 'MICROSOFT365_USER_INVALID');
-      const calendarUrl = new URL(`/v1.0/users/${claimant}/calendar`, GRAPH_ORIGIN);
+      const claimant = requireGuid(
+        claimantUserReference,
+        'MICROSOFT365_USER_INVALID',
+      );
+      const calendarUrl = new URL(
+        `/v1.0/users/${claimant}/calendar`,
+        GRAPH_ORIGIN,
+      );
       calendarUrl.searchParams.set('$select', 'id');
       let calendarResponse;
       try {
-        calendarResponse = await fetchGraph(fetchImpl, calendarUrl, accessToken, timeoutMs);
+        calendarResponse = await fetchGraph(
+          fetchImpl,
+          calendarUrl,
+          accessToken,
+          timeoutMs,
+        );
       } catch (error) {
         if (error instanceof Microsoft365ProviderError) {
-          return degraded({ places: 'granted', reason: 'provider_unavailable' });
+          return degraded({
+            places: 'granted',
+            reason: 'provider_unavailable',
+          });
         }
         throw error;
       }
       const calendarClass = classifyGraphStatus(calendarResponse.status);
-      if (calendarClass === 'revoked') return revoked('provider_unauthorized', 'granted');
+      if (calendarClass === 'revoked') {
+        return revoked('provider_unauthorized', 'granted');
+      }
       if (calendarClass === 'permission_missing') {
         return degraded({
           places: 'granted',
@@ -515,7 +723,10 @@ export function createMicrosoft365Client({
         });
       }
       if (calendarClass === 'transient') {
-        return degraded({ places: 'granted', reason: 'provider_unavailable' });
+        return degraded({
+          places: 'granted',
+          reason: 'provider_unavailable',
+        });
       }
       if (calendarClass === 'not_found') {
         return degraded({
@@ -524,8 +735,14 @@ export function createMicrosoft365Client({
           reason: 'calendars_permission_unverified',
         });
       }
-      if (calendarClass !== 'ok' || !await validGraphPayload(calendarResponse, validCalendarPayload)) {
-        return degraded({ places: 'granted', reason: 'provider_response_invalid' });
+      if (
+        calendarClass !== 'ok'
+        || !await validGraphPayload(calendarResponse, validCalendarPayload)
+      ) {
+        return degraded({
+          places: 'granted',
+          reason: 'provider_response_invalid',
+        });
       }
       return Object.freeze({
         status: MICROSOFT365_VERIFICATION.CONNECTED,

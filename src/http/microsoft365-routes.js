@@ -10,6 +10,7 @@ export const MICROSOFT365_ROUTES = Object.freeze({
   connect: '/api/v1/integrations/microsoft365/connect',
   callback: '/api/v1/integrations/microsoft365/callback',
   verify: '/api/v1/integrations/microsoft365/verify',
+  rooms: '/api/v1/integrations/microsoft365/rooms',
 });
 
 const CALLBACK_QUERY_KEYS = new Set([
@@ -160,6 +161,7 @@ export function microsoft365RouteKey(path) {
   if (path === MICROSOFT365_ROUTES.connect) return 'microsoft365_connect';
   if (path === MICROSOFT365_ROUTES.callback) return 'microsoft365_callback';
   if (path === MICROSOFT365_ROUTES.verify) return 'microsoft365_verify';
+  if (path === MICROSOFT365_ROUTES.rooms) return 'microsoft365_rooms';
   return null;
 }
 
@@ -210,6 +212,23 @@ export function createMicrosoft365HttpHandler({
         sendRedirect(response, '/?integration=microsoft365_connection_failed');
       }
       return 303;
+    }
+
+    if (path === MICROSOFT365_ROUTES.rooms) {
+      if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+      assertNoQuery(parsedUrl);
+      if (typeof service.discoverRooms !== 'function') {
+        throw new ApiError(503, 'MICROSOFT365_ROOM_DISCOVERY_UNAVAILABLE');
+      }
+      const principal = await principalGuard.require(request);
+      const tenantContext = await tenantGuard.requireKnown(principal);
+      const rooms = await service.discoverRooms({
+        principal,
+        tenantContext,
+        correlationId: requestId,
+      });
+      sendJson(response, 200, { rooms, requestId }, maxResponseBytes);
+      return 200;
     }
 
     const method = request.method;
