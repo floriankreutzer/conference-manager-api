@@ -216,6 +216,7 @@ test('Microsoft 365 connection persistence is tenant-isolated, replay-safe and r
   });
   assert.equal(finalized.status, 'updated');
   assert.equal(finalized.connection.status, 'connected');
+  assert.equal(finalized.connection.connectionVersion, 2);
   assert.equal(finalized.connection.lastVerifiedAt, VERIFIED_AT.toISOString());
 
   const reconnectAt = new Date('2026-08-25T07:06:00.000Z');
@@ -233,7 +234,7 @@ test('Microsoft 365 connection persistence is tenant-isolated, replay-safe and r
   assert.deepEqual(reconnect, {
     status: 'pending',
     integrationId: INTEGRATION_A,
-    connectionVersion: 2,
+    connectionVersion: 3,
   });
 
   const stale = await repository.finalizeConsent({
@@ -250,6 +251,55 @@ test('Microsoft 365 connection persistence is tenant-isolated, replay-safe and r
   });
   assert.deepEqual(stale, { status: 'stale' });
 
+  const raceAt = new Date('2026-08-25T07:07:00.000Z');
+  const race = await Promise.all([
+    repository.finalizeConsent({
+      tenantId: TENANT_A,
+      integrationId: INTEGRATION_A,
+      connectionVersion: 3,
+      status: 'connected',
+      placesPermission: 'granted',
+      calendarsPermission: 'granted',
+      reason: null,
+      lastVerifiedAt: raceAt,
+      changedAt: raceAt,
+      auditEvents: [auditEvent({
+        action: AUDIT_ACTION.INTEGRATION_VERIFIED,
+        previousStatus: 'pending',
+        nextStatus: 'connected',
+        occurredAt: raceAt,
+        operation: 'verify',
+      })],
+    }),
+    repository.finalizeConsent({
+      tenantId: TENANT_A,
+      integrationId: INTEGRATION_A,
+      connectionVersion: 3,
+      status: 'degraded',
+      placesPermission: 'granted',
+      calendarsPermission: 'missing',
+      reason: 'calendars_permission_missing',
+      lastVerifiedAt: raceAt,
+      changedAt: raceAt,
+      auditEvents: [auditEvent({
+        action: AUDIT_ACTION.INTEGRATION_VERIFIED,
+        previousStatus: 'pending',
+        nextStatus: 'degraded',
+        occurredAt: raceAt,
+        outcome: AUDIT_OUTCOME.FAILURE,
+        operation: 'verify',
+      })],
+    }),
+  ]);
+  assert.deepEqual(race.map((entry) => entry.status).sort(), ['stale', 'updated']);
+  assert.equal(race.find((entry) => entry.status === 'updated').connection.connectionVersion, 4);
+  assert.equal(await repository.consumeConsent({
+    tenantId: TENANT_A,
+    actorUserId: ADMIN_A,
+    stateHash: 'c'.repeat(64),
+    now: raceAt,
+  }), null);
+
   const disconnected = await repository.disconnect({
     tenantId: TENANT_A,
     changedAt: DISCONNECTED_AT,
@@ -263,16 +313,10 @@ test('Microsoft 365 connection persistence is tenant-isolated, replay-safe and r
     }),
   });
   assert.equal(disconnected.status, 'disconnected');
-  assert.equal(disconnected.connectionVersion, 3);
+  assert.equal(disconnected.connectionVersion, 5);
   assert.equal(disconnected.lastVerifiedAt, null);
   assert.equal(disconnected.placesPermission, 'unknown');
   assert.equal(disconnected.calendarsPermission, 'unknown');
-  assert.equal(await repository.consumeConsent({
-    tenantId: TENANT_A,
-    actorUserId: ADMIN_A,
-    stateHash: 'c'.repeat(64),
-    now: DISCONNECTED_AT,
-  }), null);
 
   const idempotent = await repository.disconnect({
     tenantId: TENANT_A,
@@ -281,7 +325,7 @@ test('Microsoft 365 connection persistence is tenant-isolated, replay-safe and r
       throw new Error('AUDIT_MUST_NOT_RUN_FOR_IDEMPOTENT_DISCONNECT');
     },
   });
-  assert.equal(idempotent.connectionVersion, 3);
+  assert.equal(idempotent.connectionVersion, 5);
 
   const auditRows = await pool.query({
     text: `
@@ -298,6 +342,7 @@ test('Microsoft 365 connection persistence is tenant-isolated, replay-safe and r
       'integration.admin_consent.changed',
       'integration.connected',
       'integration.admin_consent.changed',
+      'integration.verified',
       'integration.disconnected',
     ],
   );
