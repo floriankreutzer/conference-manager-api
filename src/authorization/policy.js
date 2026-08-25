@@ -234,9 +234,36 @@ export function createAuthorizationPolicy() {
       return principal;
     },
 
+    authorizeTenantApplicationRead(principal, tenantContext) {
+      assertPrincipalShape(principal);
+      assertTenantBinding(principal, tenantContext);
+      return true;
+    },
+
     requireTenantPermission(principal, tenantContext, permission) {
       assertTenantBinding(principal, tenantContext);
       requirePermission(principal, permission, [TENANT_ROLE.TENANT_ADMIN]);
+      return true;
+    },
+
+    requestListScope(principal, tenantContext) {
+      assertPrincipalShape(principal);
+      assertTenantBinding(principal, tenantContext);
+      if (
+        principal.roles.includes(TENANT_ROLE.CONFERENCE_MANAGER)
+        && principal.permissions.includes(PERMISSION.REQUEST_MANAGE)
+      ) {
+        requirePermission(principal, PERMISSION.REQUEST_MANAGE, [TENANT_ROLE.CONFERENCE_MANAGER]);
+        return Object.freeze({ requesterUserId: null });
+      }
+      requirePermission(principal, PERMISSION.REQUEST_READ, [TENANT_ROLE.EMPLOYEE]);
+      return Object.freeze({ requesterUserId: principal.userId });
+    },
+
+    authorizeRequestCreate(principal, tenantContext) {
+      assertPrincipalShape(principal);
+      assertTenantBinding(principal, tenantContext);
+      requirePermission(principal, PERMISSION.REQUEST_READ, [TENANT_ROLE.EMPLOYEE]);
       return true;
     },
 
