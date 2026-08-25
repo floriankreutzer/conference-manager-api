@@ -3,6 +3,10 @@ import { AuthorizationDeniedError } from './authorization/errors.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { assertProductionConfig } from './config.js';
 import { isInternalUuid } from './domain/identifiers.js';
+import {
+  createMicrosoft365HttpHandler,
+  microsoft365RouteKey,
+} from './http/microsoft365-routes.js';
 import { EntraAuthenticationError } from './identity/entra-errors.js';
 import { readEntraTransactionCookie } from './identity/entra-transaction-cookie.js';
 import { createLogger } from './logger.js';
@@ -210,6 +214,8 @@ function routeKey(path) {
   if (path === ROUTES.audit) return 'audit';
   if (path === ROUTES.tenantUsers) return 'tenant_users';
   if (TENANT_USER_ROLES_PATH.test(path)) return 'tenant_user_roles';
+  const microsoft365Route = microsoft365RouteKey(path);
+  if (microsoft365Route) return microsoft365Route;
   if (REQUEST_TRANSITION_PATH.test(path)) return 'request_transition';
   if (REQUEST_PATH.test(path)) return 'request';
   return 'not_found';
@@ -230,6 +236,7 @@ export function createApp({
   onboardingService,
   requestService,
   tenantUserAdministrationService,
+  microsoft365ConnectionService,
   resolvePrincipal,
   verifyCsrf,
   loadTenant,
@@ -257,6 +264,12 @@ export function createApp({
     verifyCsrf: verifyCsrf || sessionService?.verifyCsrf,
   });
   const tenantGuard = createTenantContextGuard({ loadTenant });
+  const microsoft365Handler = createMicrosoft365HttpHandler({
+    service: microsoft365ConnectionService,
+    principalGuard,
+    tenantGuard,
+    maxResponseBytes: config.maxResponseBytes,
+  });
   const healthMonitor = createHealthMonitor({
     readinessChecks,
     degradationChecks,
@@ -529,6 +542,18 @@ export function createApp({
           nextBeforeId: publicEvents.at(-1)?.id || null,
           requestId,
         }, config.maxResponseBytes);
+        return;
+      }
+
+      const microsoft365Status = await microsoft365Handler({
+        request,
+        response,
+        parsedUrl,
+        path,
+        requestId,
+      });
+      if (microsoft365Status !== null) {
+        statusCode = microsoft365Status;
         return;
       }
 
