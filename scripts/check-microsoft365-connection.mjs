@@ -16,6 +16,7 @@ const migrationUp = await text('migrations/011_microsoft365_connection_lifecycle
 const migrationDown = await text('migrations/011_microsoft365_connection_lifecycle.down.sql');
 const service = await text('src/application/microsoft365-connection-service.js');
 const providerClient = await text('src/integrations/microsoft365-client.js');
+const providerClientTests = await text('tests/microsoft365-client.test.js');
 const routes = await text('src/http/microsoft365-routes.js');
 const repository = await text('src/persistence/postgres/microsoft365-connection-repository.js');
 const contract = await text('docs/MICROSOFT365-CONNECTION.md');
@@ -57,11 +58,27 @@ requireContains(service, [
 requireContains(providerClient, [
   'APPROVED_OUTBOUND_ORIGINS.microsoftIdentity',
   'APPROVED_OUTBOUND_ORIGINS.microsoftGraph',
+  'createBoundedMicrosoftIdentityNetworkClient',
+  'requireMicrosoftIdentityUrl',
+  'MICROSOFT365_IDENTITY_URL_INVALID',
+  'sendPostRequestAsync',
+  'boundedIdentityTimeout',
+  'PROVIDER_REQUEST_MAX_BYTES',
+  'PROVIDER_RESPONSE_MAX_BYTES',
   "redirect: 'error'",
   'AbortSignal.timeout(timeoutMs)',
   "'Place.Read.All'",
   "'Calendars.ReadBasic.All'",
+  "'calendars_permission_unverified'",
 ], 'Microsoft 365 provider client');
+
+requireContains(providerClientTests, [
+  'MSAL identity transport is fixed-origin',
+  "networkClient.sendPostRequestAsync('https://attacker.example/token'",
+  "error.code === 'MICROSOFT365_IDENTITY_REQUEST_INVALID'",
+  "error.code === 'MICROSOFT365_RESPONSE_TOO_LARGE'",
+  "error.code === 'MICROSOFT365_IDENTITY_UNAVAILABLE'",
+], 'Microsoft 365 provider client tests');
 
 requireContains(routes, [
   'CALLBACK_QUERY_KEYS',
@@ -87,6 +104,7 @@ requireContains(contract, [
   'one-time server-side consent transaction',
   'Place.Read.All',
   'Calendars.ReadBasic.All',
+  'bounded custom MSAL network client',
   'Migration `011_microsoft365_connection_lifecycle`',
 ], 'Microsoft 365 lifecycle contract');
 
