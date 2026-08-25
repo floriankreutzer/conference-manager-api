@@ -32,6 +32,7 @@ function request(overrides = {}) {
 }
 
 function dependencies({
+  loadedRequest = request(),
   providerValidation = { valid: true, reason: 'available' },
   repositoryResult = { status: 'confirmed', request: request({ status: REQUEST_STATUS.CONFIRMED }) },
 } = {}) {
@@ -39,7 +40,7 @@ function dependencies({
   const repository = {
     async findByTenantIdAndId(tenantId, requestId) {
       calls.push(['find', tenantId, requestId]);
-      return request();
+      return loadedRequest;
     },
     async confirmIfRoomAvailable(input) {
       calls.push(['commit', input]);
@@ -47,6 +48,10 @@ function dependencies({
     },
   };
   const authorizationPolicy = {
+    authorizeRequestRead(principal, tenantContext, loaded) {
+      calls.push(['authorize-read', principal, tenantContext, loaded.id]);
+      return true;
+    },
     authorizeRequestTransition(principal, tenantContext, loaded, transition, reason) {
       calls.push(['authorize', principal, tenantContext, loaded.id, transition, reason]);
       return { transition: 'confirm', expectedStatus: loaded.status, nextStatus: REQUEST_STATUS.CONFIRMED, reason: null };
@@ -120,6 +125,14 @@ test('final confirmation performs live final provider validation before atomic l
   assert.equal(commit.requestId, REQUEST_ID);
   assert.equal(commit.expectedStatus, REQUEST_STATUS.IN_REVIEW);
   assert.equal(commit.auditEvent.newState.status, REQUEST_STATUS.CONFIRMED);
+});
+
+test('an already confirmed request is an authorized idempotent retry without provider or mutation side effects', async () => {
+  const confirmedRequest = request({ status: REQUEST_STATUS.CONFIRMED });
+  const { service: finalService, deps } = service({ loadedRequest: confirmedRequest });
+  const repeated = await finalService.confirm(context);
+  assert.equal(repeated, confirmedRequest);
+  assert.deepEqual(deps.calls.map((entry) => entry[0]), ['find', 'authorize-read']);
 });
 
 test('provider conflict and provider outage fail closed before authoritative mutation', async () => {
