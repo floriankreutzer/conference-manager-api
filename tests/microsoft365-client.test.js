@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  MICROSOFT365_BASE_PERMISSIONS,
   MICROSOFT365_VERIFICATION,
   Microsoft365ProviderError,
   createMicrosoft365Client,
@@ -12,20 +13,25 @@ const USER_ID = '33333333-3333-4333-8333-333333333333';
 const STATE = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 const ACCESS_TOKEN = 'T'.repeat(128);
 
-function response(status, payload) {
-  const text = JSON.stringify(payload);
+function response(status, payload, { contentLength, raw } = {}) {
+  const text = raw ?? JSON.stringify(payload);
   return {
     status,
-    headers: { get: (name) => name.toLowerCase() === 'content-length' ? String(Buffer.byteLength(text)) : null },
+    headers: {
+      get: (name) => name.toLowerCase() === 'content-length'
+        ? String(contentLength ?? Buffer.byteLength(text))
+        : null,
+    },
     async text() { return text; },
   };
 }
 
-function client({ fetchImpl, acquire } = {}) {
+function client({ fetchImpl, acquire, publicOrigin = 'https://conference.example', allowInsecureLocalhost } = {}) {
   return createMicrosoft365Client({
     clientId: CLIENT_ID,
     clientSecret: 'secret-value-for-test-only-not-a-production-credential',
-    publicOrigin: 'https://conference.example',
+    publicOrigin,
+    allowInsecureLocalhost,
     fetchImpl: fetchImpl || (async () => response(200, { value: [] })),
     applicationFactory({ authority }) {
       assert.equal(authority, `https://login.microsoftonline.com/${TENANT_ID}`);
@@ -39,7 +45,11 @@ function client({ fetchImpl, acquire } = {}) {
   });
 }
 
-test('admin consent URL is tenant-specific, fixed-origin and requests Graph application permissions through .default', () => {
+test('admin consent URL is tenant-specific, fixed-origin and requests reviewed Graph application permissions', () => {
+  assert.deepEqual(MICROSOFT365_BASE_PERMISSIONS, [
+    'Place.Read.All',
+    'Calendars.ReadBasic.All',
+  ]);
   const api = client();
   const value = new URL(api.adminConsentUrl({ tenantReference: TENANT_ID, state: STATE }));
   assert.equal(value.origin, 'https://login.microsoftonline.com');
@@ -71,6 +81,27 @@ test('base permission verification uses fixed Graph destinations and validates b
   assert.equal(calls[0].options.method, 'GET');
   assert.equal(calls[0].options.redirect, 'error');
   assert.equal(calls[0].options.headers.Authorization, `Bearer ${ACCESS_TOKEN}`);
+  assert.equal(calls[0].options.signal instanceof AbortSignal, true);
+});
+
+test('a missing claimant identity leaves calendar permission unverified without making a broad Graph call', async () => {
+  const calls = [];
+  const api = client({
+    fetchImpl: async (url) => {
+      calls.push(String(url));
+      return response(200, { value: [] });
+    },
+  });
+  assert.deepEqual(
+    await api.verifyBasePermissions({ tenantReference: TENANT_ID }),
+    {
+      status: MICROSOFT365_VERIFICATION.CONNECTED,
+      places: 'granted',
+      calendars: 'unverified',
+      reason: null,
+    },
+  );
+  assert.equal(calls.length, 1);
 });
 
 test('permission and authorization failures are classified without returning provider payloads', async () => {
@@ -139,7 +170,29 @@ test('calendar probe distinguishes permission denial from a claimant without an 
   );
 });
 
-test('malformed tenant, state and insecure callback origin fail before provider transport', () => {
+test('transport, malformed and oversized provider responses degrade without escaping provider detail', async () => {
+  for (const fetchImpl of [
+    async () => { throw new Error('network with secret'); },
+    async () => response(200, null, { raw: '<html>provider error</html>' }),
+    async () => response(200, { value: [] }, { contentLength: 65_537 }),
+    async () => response(200, { unexpected: [] }),
+    async () => response(429, { error: { message: 'throttled' } }),
+    async () => response(503, { error: { message: 'downstream' } }),
+  ]) {
+    const result = await client({ fetchImpl }).verifyBasePermissions({ tenantReference: TENANT_ID });
+    assert.deepEqual(result, {
+      status: MICROSOFT365_VERIFICATION.DEGRADED,
+      places: 'unknown',
+      calendars: 'unknown',
+      reason: 'provider_unavailable',
+      ...(result.reason === 'provider_response_invalid' ? { reason: 'provider_response_invalid' } : {}),
+    });
+    assert.equal(JSON.stringify(result).includes('secret'), false);
+    assert.equal(JSON.stringify(result).includes('provider error'), false);
+  }
+});
+
+test('malformed tenant, state and unapproved callback origins fail before provider transport', () => {
   const api = client();
   assert.throws(
     () => api.adminConsentUrl({ tenantReference: 'browser-tenant', state: STATE }),
@@ -149,13 +202,27 @@ test('malformed tenant, state and insecure callback origin fail before provider 
     () => api.adminConsentUrl({ tenantReference: TENANT_ID, state: 'short' }),
     (error) => error instanceof Microsoft365ProviderError && error.code === 'MICROSOFT365_CONSENT_STATE_INVALID',
   );
-  assert.throws(
-    () => createMicrosoft365Client({
-      clientId: CLIENT_ID,
-      clientSecret: 'secret',
-      publicOrigin: 'http://conference.example',
-      fetchImpl: async () => response(200, {}),
-    }),
-    /MICROSOFT365_PUBLIC_ORIGIN_INVALID/,
+  for (const publicOrigin of [
+    'http://conference.example',
+    'https://conference.example/path',
+    'https://user:password@conference.example',
+  ]) {
+    assert.throws(
+      () => createMicrosoft365Client({
+        clientId: CLIENT_ID,
+        clientSecret: 'secret',
+        publicOrigin,
+        fetchImpl: async () => response(200, {}),
+      }),
+      /MICROSOFT365_PUBLIC_ORIGIN_INVALID/,
+    );
+  }
+
+  assert.equal(
+    client({
+      publicOrigin: 'http://localhost:3000',
+      allowInsecureLocalhost: true,
+    }).redirectUri,
+    'http://localhost:3000/api/v1/integrations/microsoft365/callback',
   );
 });
