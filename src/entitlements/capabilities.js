@@ -3,6 +3,7 @@ import { EntitlementInputError } from './errors.js';
 export const CAPABILITY = Object.freeze({
   MICROSOFT_DIRECTORY: 'microsoft.directory',
   MICROSOFT_CALENDAR: 'microsoft.calendar',
+  MICROSOFT_CALENDAR_WRITE: 'microsoft.calendar.write',
 });
 
 export const ROLLOUT_STATE = Object.freeze({
