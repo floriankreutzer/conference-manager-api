@@ -353,6 +353,17 @@ test('Microsoft 365 connection persistence is tenant-isolated, replay-safe and r
   );
   assert.equal(await isPostgresSchemaReady(pool), true);
 
+  await pool.query(
+    "DELETE FROM integrations WHERE tenant_id = $1 AND provider = 'microsoft365'",
+    [TENANT_A],
+  );
+  assert.equal(await repository.findByTenantId(TENANT_A), null);
+  await assert.rejects(
+    rollbackLatest(pool),
+    /MICROSOFT365_CONNECTION_ROWS_REQUIRE_REVIEW/,
+  );
+  assert.equal(await isPostgresSchemaReady(pool), true);
+
   await clean(pool);
   await rollbackLatest(pool);
   assert.equal(await isPostgresSchemaReady(pool), false);
