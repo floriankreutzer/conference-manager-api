@@ -177,11 +177,13 @@ test('request creation rejects authority-shaped fields and derives identity/stat
       externalParticipants: 1,
     },
   });
-  assert.equal(created.tenantId, TENANT_A);
-  assert.equal(created.requesterUserId, USER_A);
   assert.equal(created.id, REQUEST_ID);
   assert.equal(created.status, 'Submitted');
+  assert.equal(Object.hasOwn(created, 'tenantId'), false);
+  assert.equal(Object.hasOwn(created, 'requesterUserId'), false);
   const createCall = calls.at(-1)[1];
+  assert.equal(createCall.tenantId, TENANT_A);
+  assert.equal(createCall.requesterUserId, USER_A);
   assert.equal(createCall.auditEvent.tenantId, TENANT_A);
   assert.equal(createCall.auditEvent.actorUserId, USER_A);
   assert.deepEqual(createCall.auditEvent.newState, { status: 'Submitted' });
