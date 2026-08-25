@@ -1,10 +1,15 @@
 import { ApiError } from './api-error.js';
 
+export const APPROVED_OUTBOUND_ORIGINS = Object.freeze({
+  microsoftIdentity: 'https://login.microsoftonline.com',
+  microsoftGraph: 'https://graph.microsoft.com',
+});
+
 const MODES = new Set(['development', 'test', 'pilot', 'production']);
 const DATABASE_SSL_MODES = new Set(['disable', 'verify-full']);
 const SUPPORT_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ENTRA_AUTHORITY = 'https://login.microsoftonline.com/organizations';
+const ENTRA_AUTHORITY = `${APPROVED_OUTBOUND_ORIGINS.microsoftIdentity}/organizations`;
 const ENTRA_CALLBACK_PATH = '/api/v1/auth/microsoft/callback';
 const DEFAULTS = Object.freeze({
   host: '127.0.0.1',
