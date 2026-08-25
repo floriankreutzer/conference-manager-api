@@ -3,6 +3,8 @@ import { PERMISSION } from '../authorization/policy.js';
 import { isInternalUuid } from '../domain/identifiers.js';
 import { ENTRA_IDENTITY_PROVIDER } from '../identity/entra-client.js';
 import { Microsoft365ProviderError } from '../integrations/microsoft365-client.js';
+import { executeSafeProviderOperation } from '../integrations/provider-retry.js';
+import { MICROSOFT365_CAPABILITY } from './microsoft365-capability-health-service.js';
 import {
   Microsoft365ConnectionConflictError,
   Microsoft365ConnectionInputError,
@@ -36,12 +38,26 @@ function providerFailure(error) {
   return new Microsoft365ConnectionUnavailableError('MICROSOFT365_ROOM_DISCOVERY_UNAVAILABLE');
 }
 
+function retryClassification(error) {
+  if (!(error instanceof Microsoft365ProviderError)) return { retryable: false, retryAfterMs: null };
+  return {
+    retryable: [
+      'MICROSOFT365_GRAPH_THROTTLED',
+      'MICROSOFT365_GRAPH_UNAVAILABLE',
+      'MICROSOFT365_TOKEN_ACQUISITION_FAILED',
+    ].includes(error.code),
+    retryAfterMs: null,
+  };
+}
+
 export function createMicrosoft365RoomDiscoveryService({
   connectionRepository,
   bindingRepository,
   authorizationPolicy,
   auditService,
   providerClient,
+  capabilityHealthService = null,
+  retrySleep,
 } = {}) {
   if (!connectionRepository || typeof connectionRepository.findByTenantId !== 'function') {
     throw new TypeError('MICROSOFT365_CONNECTION_REPOSITORY_REQUIRED');
@@ -57,6 +73,18 @@ export function createMicrosoft365RoomDiscoveryService({
   }
   if (!providerClient || typeof providerClient.discoverRooms !== 'function') {
     throw new TypeError('MICROSOFT365_PROVIDER_CLIENT_REQUIRED');
+  }
+  if (
+    capabilityHealthService
+    && (
+      typeof capabilityHealthService.recordSuccess !== 'function'
+      || typeof capabilityHealthService.recordFailure !== 'function'
+    )
+  ) {
+    throw new TypeError('MICROSOFT365_HEALTH_SERVICE_INVALID');
+  }
+  if (retrySleep !== undefined && typeof retrySleep !== 'function') {
+    throw new TypeError('MICROSOFT365_RETRY_SLEEP_INVALID');
   }
 
   async function authorize({ principal, tenantContext, correlationId }) {
@@ -110,8 +138,26 @@ export function createMicrosoft365RoomDiscoveryService({
       }
 
       try {
-        return await providerClient.discoverRooms({ tenantReference: bindingTenant });
+        const rooms = await executeSafeProviderOperation(
+          () => providerClient.discoverRooms({ tenantReference: bindingTenant }),
+          {
+            classifyError: retryClassification,
+            ...(retrySleep ? { sleep: retrySleep } : {}),
+          },
+        );
+        await capabilityHealthService?.recordSuccess({
+          tenantId: tenantContext.tenantId,
+          integrationId: connection.integrationId,
+          capability: MICROSOFT365_CAPABILITY.PLACES,
+        });
+        return rooms;
       } catch (error) {
+        await capabilityHealthService?.recordFailure({
+          tenantId: tenantContext.tenantId,
+          integrationId: connection.integrationId,
+          capability: MICROSOFT365_CAPABILITY.PLACES,
+          error,
+        });
         const mapped = providerFailure(error);
         if (mapped) throw mapped;
         throw error;

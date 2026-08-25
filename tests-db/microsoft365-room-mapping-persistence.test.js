@@ -269,6 +269,7 @@ test('Microsoft 365 room mapping is idempotent, tenant-isolated and preserves lo
   assert.equal((await repository.listByTenantIdAndIntegrationId(TENANT_A, INTEGRATION_A))[0].roomId, ROOM_A);
 
   assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatest(pool), true);
   await assert.rejects(
     () => rollbackLatest(pool),
     /Cannot roll back Microsoft 365 room mappings while mapping rows exist/,

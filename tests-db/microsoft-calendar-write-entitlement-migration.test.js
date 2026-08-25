@@ -32,19 +32,19 @@ test('calendar write entitlement migration is fail-closed and reversible without
     [TENANT_ID, 'microsoft.calendar.write'],
   );
 
+  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await isPostgresSchemaReady(pool), false);
   await assert.rejects(
     rollbackLatest(pool),
     (error) => error.code === '55000'
       && error.message.includes('MICROSOFT_CALENDAR_WRITE_ENTITLEMENT_ROWS_REQUIRE_REVIEW'),
   );
-  assert.equal(await isPostgresSchemaReady(pool), true);
 
   await pool.query(
     'DELETE FROM tenant_entitlements WHERE tenant_id = $1 AND capability_id = $2',
     [TENANT_ID, 'microsoft.calendar.write'],
   );
   assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await isPostgresSchemaReady(pool), false);
 
   await assert.rejects(
     pool.query(

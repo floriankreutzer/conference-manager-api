@@ -241,6 +241,7 @@ for (const required of [
   'createPostgresJitUserRepository',
   'createPostgresMicrosoft365ConnectionRepository',
   'createPostgresMicrosoft365RoomMappingRepository',
+  'createPostgresMicrosoft365CapabilityHealthRepository',
   'auditRepository',
   'entitlementRepository',
   'bookingReferenceRepository',
@@ -249,6 +250,7 @@ for (const required of [
   'jitUserRepository',
   'microsoft365ConnectionRepository',
   'microsoft365RoomMappingRepository',
+  'microsoft365CapabilityHealthRepository',
 ]) {
   if (!persistence.includes(required)) throw new Error(`PostgreSQL persistence is missing ${required}.`);
 }
@@ -461,8 +463,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!pool.includes('CURRENT_SCHEMA_VERSION = 13')) {
-  throw new Error('Runtime schema readiness must require calendar-write entitlement migration version 13.');
+if (!pool.includes('CURRENT_SCHEMA_VERSION = 14')) {
+  throw new Error('Runtime schema readiness must require Microsoft 365 capability-health migration version 14.');
 }
 
 const index = await readFile('src/index.js', 'utf8');
@@ -478,8 +480,11 @@ for (const required of [
   'createPendingProviderIdentityResolver({ onboardingService, jitUserService })',
   'createMicrosoft365Client',
   'createMicrosoft365ConnectionService',
+  'createMicrosoft365ConnectionHealthView',
+  'createMicrosoft365CapabilityHealthService',
   'createMicrosoft365RoomMappingService',
   'createMicrosoft365BookingServiceFactory',
+  'capabilityHealthService',
   'microsoft365ConnectionService',
   'microsoft365RoomMappingService',
   'microsoft365BookingServiceFactory',
@@ -574,6 +579,23 @@ if (!calendarWriteRollback.includes('CALENDAR_WRITE_ENTITLEMENT_ROWS_REQUIRE_REV
   throw new Error('Calendar-write entitlement rollback must fail closed while write grants exist.');
 }
 
+const capabilityHealthMigration = await readFile('migrations/014_microsoft365_capability_health.up.sql', 'utf8');
+for (const required of [
+  'CREATE TABLE microsoft365_capability_health',
+  'PRIMARY KEY (tenant_id, integration_id, capability)',
+  'FOREIGN KEY (tenant_id, integration_id)',
+  "capability IN ('places', 'free_busy', 'calendar_write')",
+  'last_success_at IS NULL OR last_success_at <= last_checked_at',
+]) {
+  if (!capabilityHealthMigration.includes(required)) {
+    throw new Error(`Microsoft 365 capability-health migration is missing ${required}.`);
+  }
+}
+const capabilityHealthRollback = await readFile('migrations/014_microsoft365_capability_health.down.sql', 'utf8');
+if (!capabilityHealthRollback.includes('MICROSOFT365_CAPABILITY_HEALTH_ROWS_REQUIRE_REVIEW')) {
+  throw new Error('Microsoft 365 capability-health rollback must fail closed while diagnostics exist.');
+}
+
 for (const migration of [
   'migrations/001_core_tenant_schema.up.sql',
   'migrations/001_core_tenant_schema.down.sql',
@@ -601,6 +623,8 @@ for (const migration of [
   'migrations/012_microsoft365_room_mappings.down.sql',
   'migrations/013_microsoft_calendar_write_entitlement.up.sql',
   'migrations/013_microsoft_calendar_write_entitlement.down.sql',
+  'migrations/014_microsoft365_capability_health.up.sql',
+  'migrations/014_microsoft365_capability_health.down.sql',
 ]) {
   await readFile(migration, 'utf8');
 }

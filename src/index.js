@@ -1,5 +1,9 @@
 import { createFinalRoomConfirmationService } from './application/final-room-confirmation-service.js';
 import { createMicrosoft365BookingServiceFactory } from './application/microsoft365-booking-service-factory.js';
+import {
+  createMicrosoft365CapabilityHealthService,
+} from './application/microsoft365-capability-health-service.js';
+import { createMicrosoft365ConnectionHealthView } from './application/microsoft365-connection-health-view.js';
 import { createMicrosoft365ConnectionService } from './application/microsoft365-connection-service.js';
 import { createMicrosoft365RoomDiscoveryService } from './application/microsoft365-room-discovery-service.js';
 import { createMicrosoft365RoomMappingService } from './application/microsoft365-room-mapping-service.js';
@@ -37,6 +41,11 @@ const entitlementService = persistence && auditService
   ? createEntitlementService({
     repository: persistence.entitlementRepository,
     auditService,
+  })
+  : null;
+const capabilityHealthService = persistence
+  ? createMicrosoft365CapabilityHealthService({
+    repository: persistence.microsoft365CapabilityHealthRepository,
   })
   : null;
 const sessionService = persistence
@@ -85,6 +94,7 @@ const microsoft365CalendarProviderFactory = persistence && microsoft365Client
     connectionRepository: persistence.microsoft365ConnectionRepository,
     mappingRepository: persistence.microsoft365RoomMappingRepository,
     providerClient: microsoft365Client,
+    capabilityHealthService,
   })
   : null;
 const microsoft365BookingServiceFactory = persistence
@@ -141,7 +151,7 @@ const tenantUserAdministrationService = persistence && auditService
     auditService,
   })
   : null;
-const microsoft365ConnectionService = persistence && auditService && microsoft365Client
+const microsoft365ConnectionLifecycleService = persistence && auditService && microsoft365Client
   ? createMicrosoft365ConnectionService({
     repository: persistence.microsoft365ConnectionRepository,
     bindingRepository: persistence.tenantOnboardingRepository,
@@ -151,6 +161,13 @@ const microsoft365ConnectionService = persistence && auditService && microsoft36
     consentTtlSeconds: config.microsoft365ConsentTtlSeconds,
   })
   : null;
+const microsoft365ConnectionService = microsoft365ConnectionLifecycleService && capabilityHealthService
+  ? createMicrosoft365ConnectionHealthView({
+    connectionService: microsoft365ConnectionLifecycleService,
+    connectionRepository: persistence.microsoft365ConnectionRepository,
+    capabilityHealthService,
+  })
+  : microsoft365ConnectionLifecycleService;
 const microsoft365RoomDiscoveryService = persistence && auditService && microsoft365Client
   ? createMicrosoft365RoomDiscoveryService({
     connectionRepository: persistence.microsoft365ConnectionRepository,
@@ -158,6 +175,7 @@ const microsoft365RoomDiscoveryService = persistence && auditService && microsof
     authorizationPolicy,
     auditService,
     providerClient: microsoft365Client,
+    capabilityHealthService,
   })
   : null;
 const microsoft365RoomMappingService = persistence && auditService && microsoft365RoomDiscoveryService
