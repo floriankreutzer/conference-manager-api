@@ -332,11 +332,10 @@ export function createMicrosoft365Client({
       }
 
       if (claimantUserReference === null) {
-        return Object.freeze({
-          status: MICROSOFT365_VERIFICATION.CONNECTED,
+        return degraded({
           places: 'granted',
           calendars: 'unverified',
-          reason: null,
+          reason: 'calendars_permission_unverified',
         });
       }
 
@@ -365,11 +364,10 @@ export function createMicrosoft365Client({
         return degraded({ places: 'granted', reason: 'provider_unavailable' });
       }
       if (calendarClass === 'not_found') {
-        return Object.freeze({
-          status: MICROSOFT365_VERIFICATION.CONNECTED,
+        return degraded({
           places: 'granted',
           calendars: 'unverified',
-          reason: null,
+          reason: 'calendars_permission_unverified',
         });
       }
       if (calendarClass !== 'ok' || !await validGraphPayload(calendarResponse, validCalendarPayload)) {
