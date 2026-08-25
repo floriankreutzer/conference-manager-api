@@ -3,6 +3,7 @@ import { APPROVED_OUTBOUND_ORIGINS } from '../config.js';
 
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STATE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const UTC_ISO_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 const LOGIN_ORIGIN = APPROVED_OUTBOUND_ORIGINS.microsoftIdentity;
 const GRAPH_ORIGIN = APPROVED_OUTBOUND_ORIGINS.microsoftGraph;
 const GRAPH_SCOPE = `${GRAPH_ORIGIN}/.default`;
@@ -18,6 +19,11 @@ const PROVIDER_HEADER_VALUE_MAX = 16_384;
 const ROOM_PAGE_SIZE = 100;
 const ROOM_PAGE_LIMIT = 100;
 const ROOM_STRING_MAX = 512;
+const FREE_BUSY_SCHEDULE_LIMIT = 20;
+const FREE_BUSY_SCHEDULE_MAX = 320;
+const FREE_BUSY_INTERVAL_MINUTES = 5;
+const FREE_BUSY_MAX_WINDOW_MS = 7 * 24 * 60 * 60 * 1_000;
+const FREE_BUSY_VIEW_MAX = FREE_BUSY_MAX_WINDOW_MS / (FREE_BUSY_INTERVAL_MINUTES * 60 * 1_000);
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 export const MICROSOFT365_PROVIDER = 'microsoft365';
@@ -361,6 +367,37 @@ async function fetchGraph(fetchImpl, url, accessToken, timeoutMs) {
   return response;
 }
 
+async function postGraph(fetchImpl, url, accessToken, timeoutMs, payload) {
+  if (url.origin !== GRAPH_ORIGIN) {
+    throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_ORIGIN_INVALID');
+  }
+  const body = JSON.stringify(payload);
+  if (Buffer.byteLength(body) > PROVIDER_REQUEST_MAX_BYTES) {
+    throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_REQUEST_INVALID');
+  }
+  let response;
+  try {
+    response = await fetchImpl(url, {
+      method: 'POST',
+      redirect: 'error',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        Prefer: 'outlook.timezone="UTC"',
+      },
+      body,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch {
+    throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_UNAVAILABLE');
+  }
+  if (!response || !Number.isInteger(response.status)) {
+    throw new Microsoft365ProviderError('MICROSOFT365_RESPONSE_INVALID');
+  }
+  return response;
+}
+
 function boundedOptionalString(value) {
   if (value === null || value === undefined) return null;
   if (
@@ -472,6 +509,107 @@ async function roomPage({ fetchImpl, accessToken, timeoutMs, skip }) {
     throw new Microsoft365ProviderError('MICROSOFT365_ROOM_RESPONSE_INVALID');
   }
   return payload.value.map(normalizeRoom);
+}
+
+function requireFreeBusySchedules(value) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > FREE_BUSY_SCHEDULE_LIMIT) {
+    throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_REQUEST_INVALID');
+  }
+  const seen = new Set();
+  return Object.freeze(value.map((schedule) => {
+    if (
+      typeof schedule !== 'string'
+      || schedule.length < 3
+      || schedule.length > FREE_BUSY_SCHEDULE_MAX
+      || schedule.trim() !== schedule
+      || /[\u0000-\u001f\u007f]/.test(schedule)
+    ) {
+      throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_REQUEST_INVALID');
+    }
+    const key = schedule.toLowerCase();
+    if (seen.has(key)) throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_REQUEST_INVALID');
+    seen.add(key);
+    return schedule;
+  }));
+}
+
+function requireFreeBusyWindow(startsAt, endsAt) {
+  if (
+    typeof startsAt !== 'string'
+    || typeof endsAt !== 'string'
+    || !UTC_ISO_PATTERN.test(startsAt)
+    || !UTC_ISO_PATTERN.test(endsAt)
+  ) {
+    throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_REQUEST_INVALID');
+  }
+  const start = Date.parse(startsAt);
+  const end = Date.parse(endsAt);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || end - start > FREE_BUSY_MAX_WINDOW_MS) {
+    throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_REQUEST_INVALID');
+  }
+  return Object.freeze({
+    startsAt: new Date(start),
+    endsAt: new Date(end),
+  });
+}
+
+function graphUtcDateTime(value) {
+  return value.toISOString().replace(/\.\d{3}Z$/, '');
+}
+
+function normalizeFreeBusyPayload(payload, schedules) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !Array.isArray(payload.value)) {
+    throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_RESPONSE_INVALID');
+  }
+  if (payload.value.length !== schedules.length) {
+    throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_RESPONSE_INVALID');
+  }
+  return Object.freeze(payload.value.map((item, index) => {
+    const expectedSchedule = schedules[index];
+    if (
+      !item
+      || typeof item !== 'object'
+      || Array.isArray(item)
+      || typeof item.scheduleId !== 'string'
+      || item.scheduleId.toLowerCase() !== expectedSchedule.toLowerCase()
+      || item.error !== undefined && item.error !== null
+      || typeof item.availabilityView !== 'string'
+      || item.availabilityView.length > FREE_BUSY_VIEW_MAX
+      || !/^[0-4]*$/.test(item.availabilityView)
+    ) {
+      throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_RESPONSE_INVALID');
+    }
+    const available = !/[1-4]/.test(item.availabilityView);
+    return Object.freeze({
+      schedule: expectedSchedule,
+      available,
+      conflictCount: available ? 0 : 1,
+    });
+  }));
+}
+
+async function freeBusy({ fetchImpl, accessToken, timeoutMs, schedules, startsAt, endsAt }) {
+  const window = requireFreeBusyWindow(startsAt, endsAt);
+  const normalizedSchedules = requireFreeBusySchedules(schedules);
+  const url = new URL(
+    `/v1.0/users/${encodeURIComponent(normalizedSchedules[0])}/calendar/getSchedule`,
+    GRAPH_ORIGIN,
+  );
+  const response = await postGraph(fetchImpl, url, accessToken, timeoutMs, {
+    schedules: normalizedSchedules,
+    startTime: { dateTime: graphUtcDateTime(window.startsAt), timeZone: 'UTC' },
+    endTime: { dateTime: graphUtcDateTime(window.endsAt), timeZone: 'UTC' },
+    availabilityViewInterval: FREE_BUSY_INTERVAL_MINUTES,
+  });
+  const classification = classifyGraphStatus(response.status);
+  if (classification === 'revoked') throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_UNAUTHORIZED');
+  if (classification === 'permission_missing') {
+    throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_PERMISSION_MISSING');
+  }
+  if (response.status === 429) throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_THROTTLED');
+  if (classification === 'transient') throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_UNAVAILABLE');
+  if (classification !== 'ok') throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_RESPONSE_INVALID');
+  return normalizeFreeBusyPayload(await readBoundedJson(response), normalizedSchedules);
 }
 
 function revoked(reason = 'provider_unauthorized', places = 'unknown') {
@@ -613,6 +751,19 @@ export function createMicrosoft365Client({
       throw new Microsoft365ProviderError(
         'MICROSOFT365_ROOM_PAGE_LIMIT_EXCEEDED',
       );
+    },
+
+    async lookupFreeBusy({ tenantReference, schedules, startsAt, endsAt }) {
+      const tenant = requireGuid(tenantReference, 'MICROSOFT365_TENANT_INVALID');
+      const accessToken = await acquireAccessToken(tenant);
+      return freeBusy({
+        fetchImpl,
+        accessToken,
+        timeoutMs,
+        schedules,
+        startsAt,
+        endsAt,
+      });
     },
 
     async verifyBasePermissions({
