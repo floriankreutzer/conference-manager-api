@@ -4,6 +4,7 @@ import {
   Microsoft365ConnectionInputError,
   Microsoft365ConnectionUnavailableError,
 } from '../application/microsoft365-connection-errors.js';
+import { readJsonObjectBody, validateExactObject } from '../security.js';
 
 export const MICROSOFT365_ROUTES = Object.freeze({
   connection: '/api/v1/integrations/microsoft365',
@@ -11,8 +12,12 @@ export const MICROSOFT365_ROUTES = Object.freeze({
   callback: '/api/v1/integrations/microsoft365/callback',
   verify: '/api/v1/integrations/microsoft365/verify',
   rooms: '/api/v1/integrations/microsoft365/rooms',
+  roomMappings: '/api/v1/integrations/microsoft365/room-mappings',
+  roomImport: '/api/v1/integrations/microsoft365/room-mappings/import',
+  roomSync: '/api/v1/integrations/microsoft365/room-mappings/sync',
 });
 
+const ROOM_IMPORT_BODY_MAX_BYTES = 65_536;
 const CALLBACK_QUERY_KEYS = new Set([
   'admin_consent',
   'tenant',
@@ -156,12 +161,24 @@ function isMicrosoft365Path(path) {
   return Object.values(MICROSOFT365_ROUTES).includes(path);
 }
 
+function importPayload(value) {
+  validateExactObject(value, {
+    required: {
+      selections: (selections) => Array.isArray(selections),
+    },
+  });
+  return value.selections;
+}
+
 export function microsoft365RouteKey(path) {
   if (path === MICROSOFT365_ROUTES.connection) return 'microsoft365_connection';
   if (path === MICROSOFT365_ROUTES.connect) return 'microsoft365_connect';
   if (path === MICROSOFT365_ROUTES.callback) return 'microsoft365_callback';
   if (path === MICROSOFT365_ROUTES.verify) return 'microsoft365_verify';
   if (path === MICROSOFT365_ROUTES.rooms) return 'microsoft365_rooms';
+  if (path === MICROSOFT365_ROUTES.roomMappings) return 'microsoft365_room_mappings';
+  if (path === MICROSOFT365_ROUTES.roomImport) return 'microsoft365_room_import';
+  if (path === MICROSOFT365_ROUTES.roomSync) return 'microsoft365_room_sync';
   return null;
 }
 
@@ -228,6 +245,60 @@ export function createMicrosoft365HttpHandler({
         correlationId: requestId,
       });
       sendJson(response, 200, { rooms, requestId }, maxResponseBytes);
+      return 200;
+    }
+
+    if (path === MICROSOFT365_ROUTES.roomMappings) {
+      if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+      assertNoQuery(parsedUrl);
+      if (typeof service.listRoomMappings !== 'function') {
+        throw new ApiError(503, 'MICROSOFT365_ROOM_MAPPING_UNAVAILABLE');
+      }
+      const principal = await principalGuard.require(request);
+      const tenantContext = await tenantGuard.requireKnown(principal);
+      const mappings = await service.listRoomMappings({
+        principal,
+        tenantContext,
+        correlationId: requestId,
+      });
+      sendJson(response, 200, { mappings, requestId }, maxResponseBytes);
+      return 200;
+    }
+
+    if (path === MICROSOFT365_ROUTES.roomImport) {
+      if (request.method !== 'POST') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+      assertNoQuery(parsedUrl);
+      if (typeof service.importSelectedRooms !== 'function') {
+        throw new ApiError(503, 'MICROSOFT365_ROOM_MAPPING_UNAVAILABLE');
+      }
+      const principal = await principalGuard.require(request, { csrf: true });
+      const tenantContext = await tenantGuard.requireKnown(principal);
+      const body = await readJsonObjectBody(request, { maxBytes: ROOM_IMPORT_BODY_MAX_BYTES });
+      const mappings = await service.importSelectedRooms({
+        principal,
+        tenantContext,
+        correlationId: requestId,
+        selections: importPayload(body),
+      });
+      sendJson(response, 200, { mappings, requestId }, maxResponseBytes);
+      return 200;
+    }
+
+    if (path === MICROSOFT365_ROUTES.roomSync) {
+      if (request.method !== 'POST') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+      assertNoQuery(parsedUrl);
+      if (typeof service.synchronizeRoomMappings !== 'function') {
+        throw new ApiError(503, 'MICROSOFT365_ROOM_MAPPING_UNAVAILABLE');
+      }
+      const principal = await principalGuard.require(request, { csrf: true });
+      const tenantContext = await tenantGuard.requireKnown(principal);
+      await assertEmptyBody(request);
+      const mappings = await service.synchronizeRoomMappings({
+        principal,
+        tenantContext,
+        correlationId: requestId,
+      });
+      sendJson(response, 200, { mappings, requestId }, maxResponseBytes);
       return 200;
     }
 
