@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!pool.includes('CURRENT_SCHEMA_VERSION = 14 + 1')) {
-  throw new Error('Production application contract requires schema migration version 15.');
+if (!pool.includes('CURRENT_SCHEMA_VERSION = 14 + 2')) {
+  throw new Error('Production application contract requires request-created migration 15 and current schema 16.');
 }
 
 const auditEvent = await readFile('src/audit/event.js', 'utf8');
