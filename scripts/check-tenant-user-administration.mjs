@@ -115,8 +115,9 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!pool.includes('CURRENT_SCHEMA_VERSION = 10')) {
-  throw new Error('Runtime schema readiness must include tenant role administration migration version 10.');
+const schemaVersion = pool.match(/CURRENT_SCHEMA_VERSION\s*=\s*(\d+)/)?.[1];
+if (!schemaVersion || Number(schemaVersion) < 10) {
+  throw new Error('Runtime schema readiness must include tenant role administration migration version 10 or later.');
 }
 
 const runtime = await readFile('src/index.js', 'utf8');
