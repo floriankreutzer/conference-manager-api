@@ -71,7 +71,9 @@ The chain detects record modification and reordering when the HMAC key is not co
 
 ## Atomic business and security mutations
 
-Successful Request transitions, session issue/revoke/rotation, entitlement changes, Tenant onboarding and identity-claim changes, JIT User provisioning, Tenant role changes and Microsoft 365 connection lifecycle changes append their corresponding success audit evidence in the same PostgreSQL transaction as the authoritative mutation. If the audit append fails, the mutation rolls back.
+Successful Request creation and transitions, session issue/revoke/rotation, entitlement changes, Tenant onboarding and identity-claim changes, JIT User provisioning, Tenant role changes and Microsoft 365 connection lifecycle changes append their corresponding success audit evidence in the same PostgreSQL transaction as the authoritative mutation. If the audit append fails, the mutation rolls back.
+
+Production Request creation emits `request.created` only after the server derives the internal Tenant, requester, request identifier, initial workflow status and correlation context. The browser cannot supply audit actor/Tenant/outcome data or an authoritative workflow status. Migration 015 adds `request.created` to the database action allowlist and refuses rollback while such durable evidence exists.
 
 For Microsoft 365, the atomic boundary covers consent-state persistence, connection-state/version changes and local disconnect. External Microsoft consent or Graph calls cannot participate in the PostgreSQL transaction and are never described as transactionally atomic with local state.
 
@@ -104,7 +106,7 @@ The fixed server-controlled taxonomy covers:
 - `session.issued`, `session.revoked` and `session.rotated`;
 - `authentication.failed` where a valid Tenant scope is available;
 - `authorization.denied`;
-- `request.transition` and `request.transition_failed`;
+- `request.created`, `request.transition` and `request.transition_failed`;
 - `tenant.configuration.changed` and `tenant.user_permissions.changed`;
 - `tenant.entitlement.changed`;
 - `tenant.onboarding.invited`, `tenant.identity.claimed` and `tenant.identity.unbound`;

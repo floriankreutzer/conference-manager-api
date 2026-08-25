@@ -7,6 +7,7 @@ import { createMicrosoft365ConnectionHealthView } from './application/microsoft3
 import { createMicrosoft365ConnectionService } from './application/microsoft365-connection-service.js';
 import { createMicrosoft365RoomDiscoveryService } from './application/microsoft365-room-discovery-service.js';
 import { createMicrosoft365RoomMappingService } from './application/microsoft365-room-mapping-service.js';
+import { createProductionApplicationService } from './application/production-application-service.js';
 import { createRequestService } from './application/request-service.js';
 import { createTenantUserAdministrationService } from './application/tenant-user-administration-service.js';
 import { createAuditService } from './audit/audit-service.js';
@@ -144,6 +145,14 @@ const requestService = persistence
     bookingServiceFactory: microsoft365BookingServiceFactory,
   })
   : null;
+const productionApplicationService = persistence && auditService
+  ? createProductionApplicationService({
+    repository: persistence.applicationRepository,
+    requestRepository: persistence.requestRepository,
+    authorizationPolicy,
+    auditService,
+  })
+  : null;
 const tenantUserAdministrationService = persistence && auditService
   ? createTenantUserAdministrationService({
     repository: persistence.tenantUserAdminRepository,
@@ -212,6 +221,7 @@ const server = createHttpServer({
   entraAuthService,
   onboardingService,
   requestService,
+  productionApplicationService,
   tenantUserAdministrationService,
   microsoft365ConnectionService: microsoft365Service,
   loadTenant: persistence?.loadTenant,

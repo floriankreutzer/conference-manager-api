@@ -13,6 +13,7 @@
     "check:syntax": "node scripts/check-syntax.mjs",
     "check:agents": "node scripts/check-agent-instructions.mjs",
     "check:architecture": "node scripts/check-architecture.mjs",
+    "check:application-contract": "node scripts/check-production-application-contract.mjs",
     "check:jit": "node scripts/check-jit-user-provisioning.mjs",
     "check:roles": "node scripts/check-tenant-user-administration.mjs",
     "check:microsoft365": "node scripts/check-microsoft365-connection.mjs",
@@ -27,7 +28,7 @@
     "test": "node --test tests/*.test.js",
     "test:db": "node --test --test-concurrency=1 tests-db/*.test.js",
     "test:dast": "node scripts/security-dast.mjs",
-    "check": "npm run check:syntax && npm run check:agents && npm run check:architecture && npm run check:jit && npm run check:roles && npm run check:microsoft365 && npm run check:entitlements && npm run check:booking && npm run check:observability && npm run check:security-baseline && npm run check:dependencies && npm run check:static && npm run check:secrets && npm run check:style && npm test && npm run test:dast",
+    "check": "npm run check:syntax && npm run check:agents && npm run check:architecture && npm run check:application-contract && npm run check:jit && npm run check:roles && npm run check:microsoft365 && npm run check:entitlements && npm run check:booking && npm run check:observability && npm run check:security-baseline && npm run check:dependencies && npm run check:static && npm run check:secrets && npm run check:style && npm test && npm run test:dast",
     "audit": "npm audit --audit-level=high"
   },
   "dependencies": {

@@ -4,6 +4,10 @@ import { createAuthorizationPolicy } from './authorization/policy.js';
 import { assertProductionConfig } from './config.js';
 import { isInternalUuid } from './domain/identifiers.js';
 import {
+  applicationRouteKey,
+  createApplicationHttpHandler,
+} from './http/application-routes.js';
+import {
   createMicrosoft365HttpHandler,
   microsoft365RouteKey,
 } from './http/microsoft365-routes.js';
@@ -214,6 +218,8 @@ function routeKey(path) {
   if (path === ROUTES.audit) return 'audit';
   if (path === ROUTES.tenantUsers) return 'tenant_users';
   if (TENANT_USER_ROLES_PATH.test(path)) return 'tenant_user_roles';
+  const applicationRoute = applicationRouteKey(path);
+  if (applicationRoute) return applicationRoute;
   const microsoft365Route = microsoft365RouteKey(path);
   if (microsoft365Route) return microsoft365Route;
   if (REQUEST_TRANSITION_PATH.test(path)) return 'request_transition';
@@ -235,6 +241,7 @@ export function createApp({
   entraAuthService,
   onboardingService,
   requestService,
+  productionApplicationService,
   tenantUserAdministrationService,
   microsoft365ConnectionService,
   resolvePrincipal,
@@ -264,6 +271,13 @@ export function createApp({
     verifyCsrf: verifyCsrf || sessionService?.verifyCsrf,
   });
   const tenantGuard = createTenantContextGuard({ loadTenant });
+  const applicationHandler = createApplicationHttpHandler({
+    service: productionApplicationService,
+    principalGuard,
+    tenantGuard,
+    maxBodyBytes: config.maxBodyBytes,
+    maxResponseBytes: config.maxResponseBytes,
+  });
   const microsoft365Handler = createMicrosoft365HttpHandler({
     service: microsoft365ConnectionService,
     principalGuard,
@@ -543,6 +557,18 @@ export function createApp({
           nextBeforeId: publicEvents.at(-1)?.id || null,
           requestId,
         }, config.maxResponseBytes);
+        return;
+      }
+
+      const applicationStatus = await applicationHandler({
+        request,
+        response,
+        parsedUrl,
+        path,
+        requestId,
+      });
+      if (applicationStatus !== null) {
+        statusCode = applicationStatus;
         return;
       }
 

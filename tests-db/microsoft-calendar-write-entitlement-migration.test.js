@@ -34,6 +34,7 @@ test('calendar write entitlement migration is fail-closed and reversible without
 
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
+  assert.equal(await rollbackLatest(pool), true);
   await assert.rejects(
     rollbackLatest(pool),
     (error) => error.code === '55000'
