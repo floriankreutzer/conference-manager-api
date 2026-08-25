@@ -22,7 +22,7 @@ The service uses Node.js 22 native HTTP and ECMAScript modules. The implemented 
 - a Tenant-scoped Microsoft 365 admin-consent, verification, reconnect and disconnect lifecycle;
 - production observability, threat-model and secure-configuration gates.
 
-`pg` remains the only runtime dependency. Provider-specific Microsoft handling is implemented with bounded native HTTP and the existing Microsoft identity dependency used by the Entra adapter; Microsoft SDK types do not enter application or domain contracts.
+Runtime dependencies are limited to exact-pinned `pg` and `@azure/msal-node`. Provider-specific Microsoft handling uses bounded native HTTP plus a bounded MSAL transport isolated inside identity/integration adapters; Microsoft SDK types do not enter application or domain contracts.
 
 ```text
 Browser (untrusted)
@@ -207,7 +207,7 @@ Every migration that removes security/business evidence includes a fail-closed r
 
 The browser cannot supply an internal Tenant ID or provider Tenant authority. Consent state is 256-bit random data; only its SHA-256 hash is stored. The transaction is bound to internal Tenant, actor User, Integration, provider Tenant, optimistic connection version and expiry. Starting a new connection invalidates older pending consent state. Callback replay, actor mismatch, expiry, changed binding and stale connection versions fail closed.
 
-The provider client uses fixed Microsoft identity and Graph origins, disables redirects, bounds time and response size, validates provider response shapes and maps provider failures to stable internal classifications. The base connection verifies `Place.Read.All` and `Calendars.ReadBasic.All`; it does not claim calendar write access.
+The provider client uses fixed Microsoft identity and Graph origins, disables redirects, bounds request time and provider request/response size, validates provider response shapes and maps provider failures to stable internal classifications. The base connection verifies `Place.Read.All` and `Calendars.ReadBasic.All`; it does not claim calendar write access.
 
 See `docs/MICROSOFT365-CONNECTION.md` for the normative contract.
 
