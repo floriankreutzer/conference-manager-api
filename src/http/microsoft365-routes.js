@@ -173,7 +173,7 @@ export function createMicrosoft365HttpHandler({
       return 303;
     }
 
-    const method = path === MICROSOFT365_ROUTES.connection ? request.method : request.method;
+    const method = request.method;
     const allowed = path === MICROSOFT365_ROUTES.connection
       ? new Set(['GET', 'DELETE'])
       : new Set(['POST']);
