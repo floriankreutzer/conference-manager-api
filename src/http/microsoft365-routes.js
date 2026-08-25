@@ -11,6 +11,7 @@ export const MICROSOFT365_ROUTES = Object.freeze({
   connect: '/api/v1/integrations/microsoft365/connect',
   callback: '/api/v1/integrations/microsoft365/callback',
   verify: '/api/v1/integrations/microsoft365/verify',
+  pilotReadiness: '/api/v1/integrations/microsoft365/pilot-readiness',
   rooms: '/api/v1/integrations/microsoft365/rooms',
   roomMappings: '/api/v1/integrations/microsoft365/room-mappings',
   roomImport: '/api/v1/integrations/microsoft365/room-mappings/import',
@@ -175,6 +176,7 @@ export function microsoft365RouteKey(path) {
   if (path === MICROSOFT365_ROUTES.connect) return 'microsoft365_connect';
   if (path === MICROSOFT365_ROUTES.callback) return 'microsoft365_callback';
   if (path === MICROSOFT365_ROUTES.verify) return 'microsoft365_verify';
+  if (path === MICROSOFT365_ROUTES.pilotReadiness) return 'microsoft365_pilot_readiness';
   if (path === MICROSOFT365_ROUTES.rooms) return 'microsoft365_rooms';
   if (path === MICROSOFT365_ROUTES.roomMappings) return 'microsoft365_room_mappings';
   if (path === MICROSOFT365_ROUTES.roomImport) return 'microsoft365_room_import';
@@ -234,6 +236,19 @@ export function createMicrosoft365HttpHandler({
         sendRedirect(response, '/?integration=microsoft365_connection_failed');
       }
       return 303;
+    }
+
+    if (path === MICROSOFT365_ROUTES.pilotReadiness) {
+      if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+      assertNoQuery(parsedUrl);
+      if (typeof service.getPilotReadiness !== 'function') {
+        throw new ApiError(503, 'TENANT_PILOT_SERVICE_UNAVAILABLE');
+      }
+      const principal = await principalGuard.require(request);
+      const tenantContext = await tenantGuard.requireKnown(principal);
+      const readiness = await service.getPilotReadiness({ principal, tenantContext });
+      sendJson(response, 200, { readiness, requestId }, maxResponseBytes);
+      return 200;
     }
 
     if (path === MICROSOFT365_ROUTES.rooms) {
