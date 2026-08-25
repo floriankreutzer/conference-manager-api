@@ -1,10 +1,15 @@
 import { ApiError } from './api-error.js';
 
+export const APPROVED_OUTBOUND_ORIGINS = Object.freeze({
+  microsoftIdentity: 'https://login.microsoftonline.com',
+  microsoftGraph: 'https://graph.microsoft.com',
+});
+
 const MODES = new Set(['development', 'test', 'pilot', 'production']);
 const DATABASE_SSL_MODES = new Set(['disable', 'verify-full']);
 const SUPPORT_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ENTRA_AUTHORITY = 'https://login.microsoftonline.com/organizations';
+const ENTRA_AUTHORITY = `${APPROVED_OUTBOUND_ORIGINS.microsoftIdentity}/organizations`;
 const ENTRA_CALLBACK_PATH = '/api/v1/auth/microsoft/callback';
 const DEFAULTS = Object.freeze({
   host: '127.0.0.1',
@@ -23,6 +28,8 @@ const DEFAULTS = Object.freeze({
   databaseStatementTimeoutMs: 10_000,
   sessionTtlSeconds: 28_800,
   oidcTransactionTtlSeconds: 600,
+  microsoft365ConsentTtlSeconds: 600,
+  microsoft365GraphTimeoutMs: 10_000,
 });
 
 export class ConfigurationError extends Error {
@@ -266,6 +273,16 @@ export function loadConfig(env = process.env) {
       max: 86_400,
       code: 'SESSION_TTL_SECONDS_INVALID',
     }),
+    microsoft365ConsentTtlSeconds: parseInteger(
+      env.MICROSOFT365_CONSENT_TTL_SECONDS,
+      DEFAULTS.microsoft365ConsentTtlSeconds,
+      { min: 120, max: 900, code: 'MICROSOFT365_CONSENT_TTL_SECONDS_INVALID' },
+    ),
+    microsoft365GraphTimeoutMs: parseInteger(
+      env.MICROSOFT365_GRAPH_TIMEOUT_MS,
+      DEFAULTS.microsoft365GraphTimeoutMs,
+      { min: 1_000, max: 30_000, code: 'MICROSOFT365_GRAPH_TIMEOUT_MS_INVALID' },
+    ),
     csrfSecret,
     auditHmacSecret,
     ...entra,

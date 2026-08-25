@@ -1,159 +1,179 @@
 # Security Foundation
 
-## Trust statement
+## Authority and trust statement
 
-The browser is untrusted. This service is the first trusted business boundary for the production SaaS deployment.
+Root `AGENTS.md` and `docs/CODING-STANDARDS.md` are authoritative. This service is the first trusted business boundary for the production SaaS deployment.
 
-Client-controlled tenant IDs, user IDs, roles, permissions, ownership, workflow state, prices, entitlements, provider IDs, provider claims and browser storage never establish authority.
+The browser and all provider responses are untrusted. Client-controlled Tenant IDs, User IDs, roles, permissions, ownership, workflow state, prices, entitlements, provider identifiers, callback values and browser storage never establish authority.
 
 ## HTTP boundary controls (#47)
 
-- Pilot/Production require an explicit HTTPS public origin.
-- Host and present Origin headers are validated against the configured public origin; normal CORS is disabled.
-- Request targets reject traversal, malformed encoding, encoded separators, backslashes and absolute/protocol-relative targets.
-- Methods, headers, request/response sizes, timeouts and local rate-limit state are bounded.
-- Security headers include default-deny CSP, frame protections, no-sniff/no-referrer, same-origin isolation headers and HSTS in Pilot/Production.
+- Pilot and Production require an explicit HTTPS public origin.
+- Host and any present Origin are validated against the configured public origin; normal browser operation is same-origin and CORS is disabled.
+- Request targets reject traversal, malformed encoding, encoded separators, backslashes and absolute or protocol-relative targets.
+- Methods, headers, request and response sizes, timeouts and local rate-limit state are bounded.
+- Security headers include default-deny CSP, frame protection, no-sniff, no-referrer, same-origin isolation headers and HSTS for Pilot and Production.
 - Correlation IDs are server-generated.
-- Public errors expose stable codes/request IDs, not implementation details.
-- Operational logs accept bounded metadata and do not copy authorization/cookie/body values.
+- Public errors expose stable codes and request IDs, not stack traces, SQL, provider bodies or implementation details.
+- Operational logs accept bounded metadata and never copy authorization, cookie, body, Tenant, User, provider or credential values.
 
 ## Tenant-isolation controls (#48)
 
-- Canonical Tenant ownership uses an internal UUID distinct from provider tenant identifiers.
+- Canonical Tenant ownership uses an internal UUID distinct from every provider Tenant identifier.
 - Tenant context is derived only from the validated internal Principal.
-- Client headers/query/route/body values cannot establish or replace Tenant context.
-- Suspended/archived Tenants fail closed.
+- Client headers, query, route and body values cannot establish or replace Tenant context.
+- Suspended or archived Tenants fail closed.
 - Tenant-owned repositories are scoped by construction and revalidate returned ownership.
+- Composite Tenant keys and foreign keys reinforce ownership in PostgreSQL.
 - Cross-Tenant object identifiers resolve as absent within the caller Tenant scope rather than revealing global existence.
 
 ## Persistence controls (#49)
 
-- PostgreSQL 18 is authoritative production persistence; `pg` is pinned as the only runtime dependency.
-- Pilot/Production require external DB configuration and `verify-full` TLS.
+- PostgreSQL 18 is authoritative production persistence.
+- Exact runtime dependencies are limited to `pg` and `@azure/msal-node`; provider SDK types do not cross into application or domain contracts.
+- Pilot and Production require external database configuration and `verify-full` TLS.
 - SQL application values use PostgreSQL parameters and SQL remains inside PostgreSQL infrastructure adapters.
-- Non-null Tenant ownership plus composite Tenant keys/foreign keys reinforce isolation in the database.
 - Migration pairs are versioned, checksum-protected, advisory-lock serialized and transactional.
-- Runtime readiness requires database connectivity and the expected schema version.
-- Transaction helpers commit only after successful work and roll back/discard on failure.
-- PostgreSQL integration CI covers migration, cross-Tenant constraints, invalid data, duplicate concurrency and transaction rollback.
+- Runtime readiness requires database connectivity and the exact repository-defined schema version.
+- Transaction helpers commit only after successful work and roll back and discard failed work.
+- Evidence-bearing migrations include fail-closed rollback guards.
+- PostgreSQL integration CI covers migration, rollback, cross-Tenant constraints, invalid data, concurrency and transaction rollback.
 
-## Identity and session controls (#50)
+## Microsoft Entra identity and session controls (#50, #58-#61)
 
-- External identity providers do not define the business Principal directly. A provider adapter must validate provider protocol/claims and map them to internal User/Tenant identity before session issuance.
-- The trusted identity contract contains internal User/Tenant UUIDs, a normalized provider identity reference and server-approved role/permission snapshots.
-- The browser session credential is a server-generated 256-bit opaque token.
-- Only SHA-256 of the session token is stored in PostgreSQL; the raw token is not persisted or returned in JSON.
-- `cm_session` is `HttpOnly`, `SameSite=Lax`, `Path=/api`, has bounded `Max-Age`, sets no broad `Domain`, and is `Secure` for HTTPS. Pilot/Production require HTTPS.
-- Session resolution fails closed for malformed/missing cookies, unknown token hashes, expired/revoked sessions, inactive Users, stale `security_version`, or unavailable Tenant lifecycle state.
-- Session expiration is enforced server-side even if a browser retains a cookie.
-- Logout requires authenticated `DELETE /api/v1/session`, valid CSRF verification, server-side revocation and cookie clearing.
-- Session rotation creates a new random token/session ID and revokes the old session atomically.
-- User `security_version` changes invalidate all older role/permission snapshots immediately; authorized rotation may establish a replacement snapshot.
-- Provider identity references are retained server-side for adapter linkage but are not exposed by `GET /api/v1/session`.
-- Provider access/refresh/ID tokens are not application session credentials and must not be stored in LocalStorage/sessionStorage.
+- The Entra adapter uses the fixed Microsoft organizational multi-Tenant authority and authorization-code flow with PKCE, state and nonce.
+- Microsoft protocol output is validated for signature, issuer, audience, time and organizational-account policy before it becomes a provider-neutral external identity.
+- External identity is resolved through a server-side Tenant claim or active Tenant binding and JIT User mapping before session issuance.
+- Email domains, display names, browser Tenant values, raw Entra roles and group claims are not Conference Manager authorization authority.
+- The browser session credential is a server-generated 256-bit opaque token. Only its SHA-256 hash is stored in PostgreSQL.
+- `cm_session` is `HttpOnly`, `SameSite=Lax`, `Path=/api`, has bounded `Max-Age`, sets no broad `Domain` and is `Secure` for HTTPS.
+- Session resolution fails closed for malformed or missing cookies, unknown hashes, expiry, revocation, inactive Users, stale `security_version` and unavailable Tenant lifecycle state.
+- Logout and session rotation require server authority and commit their audit evidence atomically with the session mutation.
+- Role changes increment User `security_version`, invalidating all stale session authorization snapshots immediately.
+- Provider access, refresh and ID tokens are not application sessions and never enter LocalStorage or sessionStorage.
+- The transient OIDC transaction stores only hashed state and nonce and is additionally bound to the initiating browser through the `cm_oidc_tx` HttpOnly cookie.
 
 ### CSRF
 
-Cookie-authenticated unsafe operations use a synchronizer token derived as HMAC-SHA-256 over the internal session ID. Pilot/Production require the HMAC secret from external secret management.
+Cookie-authenticated unsafe operations require a synchronizer token derived as HMAC-SHA-256 over the internal session ID. Pilot and Production require the HMAC secret from external secret management.
 
-`GET /api/v1/session` returns the current token after session/Tenant validation. The frontend may hold it in runtime memory and sends it as `X-CSRF-Token`. The token is not persisted in PostgreSQL or browser storage and comparison is timing-safe.
+`GET /api/v1/session` returns the current token only after session, Tenant and authorization validation. The frontend may retain it in runtime memory and send it as `X-CSRF-Token`. It is not persisted in PostgreSQL or browser storage and is compared using a timing-safe operation.
 
 SameSite and Origin validation are defense in depth; they do not replace CSRF verification for protected state changes.
 
-See `docs/IDENTITY-SESSION.md` for the full contract.
+See `docs/IDENTITY-SESSION.md` and `docs/ENTRA-AUTHENTICATION.md`.
 
-## Authorization controls (#51)
+## Authorization controls (#51, #61)
 
 - Business authorization is deny-by-default after session Principal and Tenant resolution.
 - Recognized Tenant roles are `employee`, `conference_manager` and `tenant_admin`; `platform_admin` is not a Tenant role.
-- Any unknown role or permission invalidates the Principal for business authorization rather than being ignored.
+- Any unknown role or permission invalidates the Principal rather than being ignored.
 - A capability requires both the corresponding internal permission and a Tenant role allowed to use it.
-- Tenant Admin permissions do not imply Conference Manager request access.
-- Request lookup uses the authenticated internal Tenant ID plus request ID; there is no unscoped global Request lookup.
-- Employee Request reads/cancellation additionally require server-side owner equality with `principal.userId`.
-- Missing, cross-Tenant and same-Tenant/non-owned Employee Requests are concealed as `404 NOT_FOUND` to reduce BOLA/IDOR existence disclosure.
-- Conference Manager Request access remains restricted to the authenticated Tenant.
-- Client-controlled `tenantId`, requester/owner, role, permission, `status` and `nextStatus` fields are not accepted as workflow authority.
-- Request workflow transitions are allowlisted server-side with explicit role/permission, current-state, next-state and reason rules.
-- State-changing Request transitions require valid CSRF protection in addition to authorization.
-- PostgreSQL constrains Request workflow status/reason state and the update includes the previously authorized current status to prevent stale/racing writes from silently winning.
-- Public Request output omits internal Tenant ownership and requester User ID in this foundation contract.
+- Conference Manager Request authority and Tenant Admin configuration authority remain separate.
+- Request lookup uses internal Tenant ID plus Request ID; Employee access also requires server-side owner equality.
+- Missing, cross-Tenant and same-Tenant non-owned Employee Requests are concealed as `404 NOT_FOUND`.
+- Tenant role administration is Tenant-scoped, prevents removal of the final Tenant Admin and invalidates stale sessions through `security_version`.
+- Client-controlled Tenant, owner, role, permission and workflow-state fields are rejected as authority.
+- State-changing operations require authorization and CSRF.
+- Optimistic predicates and advisory locks prevent stale or concurrent writes from silently overriding newer state.
 
-See `docs/AUTHORIZATION.md` for the complete permission/transition matrix.
+See `docs/AUTHORIZATION.md`.
 
 ## Audit and security-event controls (#52)
 
-- Audit tenant, actor, timestamp, correlation, action, outcome and integrity values are produced from trusted server context, not browser authority.
-- Audit state/metadata is bounded to flat primitive objects; nested structures and credential-sensitive key names are rejected.
-- Session tokens/hashes, internal session IDs, CSRF tokens, provider credentials/subjects, cookies, private keys and connection strings are not included in audit payloads.
-- Migration 004 makes `audit_events` append-only with a PostgreSQL trigger rejecting `UPDATE` and `DELETE`.
-- Events are HMAC-SHA-256 chained independently per internal Tenant using canonical payloads and the previous event hash.
-- Every DB-backed runtime requires a stable `AUDIT_HMAC_SECRET`; Pilot/Production source it from external secret management. The key is not stored in PostgreSQL/source and must not be rotated without a reviewed integrity migration/checkpoint strategy.
-- Tenant audit reads verify the full Tenant chain before returning data and fail closed with `AUDIT_INTEGRITY_UNAVAILABLE` if verification fails.
-- Tenant-visible reads require Tenant Admin plus explicit `tenant:audit:read`; Platform/operator audit remains outside this Tenant role model.
-- Successful Request transitions and session issue/revoke/rotation append their audit success event inside the same PostgreSQL transaction as the authoritative state mutation.
-- Authorization denials and supported no-mutation failure paths are recorded separately with the server request correlation ID.
-- Public audit output omits Tenant ID and HMAC chain fields.
+- Audit Tenant, actor, timestamp, correlation, action, outcome and integrity values come from trusted server context.
+- State and metadata are bounded flat primitive objects; nested values and credential-sensitive key names are rejected.
+- Session credentials, CSRF, OIDC or consent state, provider credentials and identifiers, cookies, private keys, connection strings and provider payloads are excluded.
+- Migration 004 makes `audit_events` append-only with a trigger rejecting `UPDATE` and `DELETE`.
+- Events are HMAC-SHA-256 chained independently per internal Tenant.
+- Every database runtime requires a stable externally managed `AUDIT_HMAC_SECRET`.
+- Tenant-visible reads verify the complete Tenant chain and require Tenant Admin plus `tenant:audit:read`.
+- Supported authoritative mutations append their success event in the same PostgreSQL transaction; audit failure rolls the mutation back.
+- Migration 011 extends the database taxonomy for `integration.verified` and refuses rollback while verification evidence remains.
+- External Microsoft operations are not falsely described as transactionally atomic with local PostgreSQL state.
 
-See `docs/AUDIT.md` for the event taxonomy, integrity model and limitations.
+See `docs/AUDIT.md`.
 
 ## Entitlement controls (#53)
 
-- Product capability access is a server-side intersection of business authorization and Tenant entitlement; an optional trusted rollout gate may only restrict that result.
-- The initial allowlisted capability IDs are `microsoft.directory` and `microsoft.calendar`; unknown capability IDs fail closed in application and database layers.
-- Missing entitlement rows mean disabled. A browser flag, UI visibility, header/query/body value or rollout override cannot grant a missing entitlement.
-- Entitlement reads and writes are scoped by internal Tenant ID plus capability ID. Cross-Tenant or inactive-Tenant evaluation fails closed.
-- Commercial entitlement mutation uses a separate server-internal operator authorization port whose default is deny-all; Tenant Admin is not implicitly a commercial entitlement administrator.
-- Real entitlement changes and `tenant.entitlement.changed` audit evidence commit atomically; audit failure rolls the entitlement mutation back.
-- The frontend centralized feature-flag registry remains an untrusted rollout/UI mechanism and is not duplicated as backend entitlement authority.
+- Product access is the server-side intersection of authorization and Tenant entitlement; a trusted rollout gate may only restrict that result.
+- The allowlisted capabilities are `microsoft.directory` and `microsoft.calendar`; unknown capabilities fail closed.
+- Missing entitlement rows mean disabled. Browser flags, visibility and submitted values cannot grant access.
+- Entitlement reads and writes are scoped by internal Tenant ID plus capability ID.
+- Commercial entitlement mutation uses a separate deny-by-default operator authorization port; Tenant Admin is not a commercial administrator.
+- Real entitlement changes and audit evidence commit atomically.
 
-See `docs/ENTITLEMENTS.md` for the complete capability/rollout separation.
+See `docs/ENTITLEMENTS.md`.
 
 ## Booking and calendar integration controls (#54)
 
-- Booking/calendar application code is provider-neutral and contains no outbound URL or Microsoft Graph SDK/type dependency.
-- Every provider operation requires same-active-Tenant Principal/Request binding, explicit server authorization and the configured Tenant entitlement; the authorization port defaults to deny.
-- Provider-specific identifiers remain behind the integration boundary. PostgreSQL stores only an opaque provider reference bound to the internal Tenant, Request and Integration.
-- Local room-conflict checks are Tenant-scoped and preserve the baseline blocking rule; cross-Tenant identifiers cannot become booking authority.
-- Calendar create uses a deterministic server-derived SHA-256 idempotency key. The browser cannot supply it, and the provider contract requires the same logical retry to return the existing event rather than create a duplicate.
-- Provider responses are positively validated. Malformed/unknown responses fail closed. Timeout, throttling and transient unavailability are explicitly distinguished from non-retryable authorization/validation/conflict/unknown failures.
-- #54 adds no automatic retry loop and does not blindly retry non-idempotent writes.
-- Provider references, raw provider errors/payloads and credentials are excluded from Tenant audit metadata.
-- There is no public direct calendar-provider HTTP endpoint in #54, preventing a parallel browser-controlled workflow before the authorized production Request migration.
-- Future outbound adapters must use fixed/allowlisted destinations, constrained redirects, explicit timeouts, server-side credentials and validated response mapping.
+- Booking and calendar application code is provider-neutral and accepts no provider URL or SDK type.
+- Every provider operation requires same-active-Tenant Principal and Request binding, explicit server authorization and the configured Tenant entitlement.
+- PostgreSQL stores only opaque provider references bound to internal Tenant, Request and Integration.
+- Local room-conflict checks are Tenant-scoped.
+- Calendar create uses a deterministic server-derived SHA-256 idempotency key; the browser cannot supply it.
+- Provider responses are positively validated and mapped to stable retryable or non-retryable classifications.
+- Raw provider errors, payloads, credentials and references are excluded from Tenant audit metadata.
+- Provider write retries must remain bounded and idempotency-aware.
 
-See `docs/BOOKING-INTEGRATION.md` for the complete provider-neutral contract.
+See `docs/BOOKING-INTEGRATION.md`.
+
+## Microsoft 365 connection controls (#62)
+
+- Only an authenticated `tenant_admin` with `tenant:integrations:manage` may read or mutate connection state.
+- The provider Tenant is derived from the active server-side Entra Tenant binding. Browser and callback Tenant values never select the internal Tenant.
+- Connect, verify and disconnect require CSRF and reject request bodies or Tenant selectors.
+- Admin consent uses a 256-bit state value; only SHA-256 is persisted.
+- Consent transactions are bound to internal Tenant, actor User, Integration, provider Tenant, connection version and expiry.
+- Callback keys and values are positively allowlisted; duplicates, pollution, control characters and inconsistent provider states fail closed.
+- State is consumed atomically and once. Replay, expiry, actor mismatch, cross-Tenant use, provider-Tenant mismatch, changed binding and stale version fail closed.
+- Microsoft identity and Graph origins are fixed in server configuration. Adapter paths are constructed internally and redirects are disabled.
+- Provider calls and response bodies are bounded; provider responses are positively validated and raw details are concealed.
+- The base lifecycle checks `Place.Read.All` and `Calendars.ReadBasic.All` application access only. It does not claim free/busy or calendar-write authorization.
+- Connection states are `pending`, `connected`, `degraded`, `revoked` and `disconnected` with fixed reason and permission indicators.
+- Connection, consent and local disconnect state is Tenant-scoped, versioned and audit-atomic.
+- Local disconnect does not claim that Entra administrator consent was externally revoked.
+
+See `docs/MICROSOFT365-CONNECTION.md`.
+
+## Secret, token and PII minimization
+
+- Secrets are supplied only through protected runtime configuration and are environment-separated.
+- Source, history, lockfile and workflow secret gates run for every final commit.
+- Provider tokens remain in process memory only for the bounded provider operation and are never persisted or returned.
+- Public session and integration responses omit provider identity references, internal session IDs, token hashes and provider payloads.
+- Logs and metrics use fixed low-cardinality labels and omit Tenant, User, provider and resource identifiers.
+- Audit payload validation rejects sensitive concepts and oversized or nested values.
+- Provider error descriptions are never reflected into public redirects or JSON.
 
 ## Supply-chain controls
 
-The repository uses locked installs without lifecycle scripts, `npm audit --audit-level=high`, Dependabot, full-history Gitleaks and the repository-local Dependency Policy gate.
+The repository uses locked installs without lifecycle scripts, exact direct versions, `npm audit --audit-level=high`, Dependabot, full-history Gitleaks and the repository-local Dependency Policy gate.
 
-The Dependency Policy gate enforces manifest/lock consistency, exact direct versions, license metadata, GPL-3.0/AGPL-3.0 deny rules, lifecycle-script rejection and high-severity vulnerability blocking.
+The Dependency Policy gate enforces manifest and lock consistency, exact direct versions, license metadata, GPL-3.0 and AGPL-3.0 deny rules, lifecycle-script rejection and high-severity vulnerability blocking.
 
-GitHub-native Dependency Review is unavailable for this private user-owned repository without GitHub Code Security/Advanced Security; the repository-local policy remains the enforced equivalent control.
+GitHub-native security feature availability depends on repository/account entitlements. Repository-local required gates remain mandatory regardless of native feature availability.
 
-## Important limitations
+## Important limitations and external evidence
 
-Issue #51 establishes the Tenant role/permission and Request object/workflow policy. It does not create a platform-operator authorization model, and it does not infer site/location/department scope from provider or browser data. A finer Manager scope requires a future explicit server-side scope model.
+- Repository tests do not prove a real Entra app registration, customer administrator consent, Graph call, credential rotation, HTTPS edge or Exchange Online Application RBAC policy.
+- Real Pilot acceptance must use controlled independent Entra Tenants and record exact redirect URI, app ownership, permission grants, success, denial, missing-permission, revocation and reconnect evidence.
+- The audit chain is tamper-evident but is not external completeness proof against privileged suffix deletion or stale backup restoration.
+- The in-process limiter is not a distributed quota solution; Pilot and Production require trusted shared edge abuse controls.
+- Places synchronization, free/busy, calendar event writes, operational recovery, deployment IaC and independent penetration testing remain separate completion scopes.
 
-The audit chain is tamper-evident for modified/reordered rows while the HMAC key is protected, but it is not an external completeness proof against privileged deletion of an entire chain suffix or restoration of an older database snapshot. External anchoring/WORM export, independently controlled retention, key-rotation lifecycle and recovery verification remain production-hardening work for the later operational/security baseline.
+## OWASP and CWE mapping
 
-The local in-process rate limiter is not a distributed production quota solution. Trusted proxy/client-key semantics and shared/edge abuse controls remain operational/security-baseline work.
+- Broken Access Control, BOLA and IDOR (CWE-639, CWE-862): Principal-derived Tenant context, Tenant-scoped repositories, object ownership, deny-by-default roles and cross-Tenant negative tests.
+- Authentication and session weaknesses (CWE-287, CWE-384): validated OIDC, browser-bound one-time transactions, opaque hash-only sessions, expiry, revocation and security-version invalidation.
+- CSRF (CWE-352): unsafe cookie-authenticated requests require session-bound HMAC synchronizer tokens.
+- Injection (CWE-89): fixed SQL, parameter binding, positive schemas and PostgreSQL integration tests.
+- XSS (CWE-79): the API emits JSON and a default-deny CSP; frontend rendering remains separately governed.
+- SSRF (CWE-918): fixed provider origins and endpoint templates, validated GUID references, disabled redirects and no browser-supplied URL authority.
+- Information disclosure (CWE-200): minimized public contracts, fixed errors and provider, secret and PII redaction.
+- Privilege escalation (CWE-269): role and permission intersection, separated administrative domains and stale-session invalidation.
+- Replay and race conditions (CWE-294, CWE-362): one-time state, actor/Tenant binding, optimistic versions, advisory locks and idempotency.
+- Integrity and logging failures: append-only HMAC-chained Tenant audit and audit-atomic local mutations.
+- Resource exhaustion (CWE-400): bounded HTTP, database, provider, audit and pagination resources.
 
-The Entra OIDC adapter is not implemented in SaaS 0. SaaS 1 must validate OIDC issuer/audience/signature/state/nonce and provider claims before mapping them to the provider-neutral trusted identity contract.
-
-## OWASP/CWE mapping
-
-- Broken Access Control / BOLA / IDOR (CWE-639/CWE-862): Tenant-scoped lookup, Employee ownership, role/permission intersection, concealed non-owned objects, workflow authorization, Tenant-scoped audit reads, Tenant-scoped entitlement evaluation and Tenant-bound booking/provider references are implemented and negatively tested.
-- Authentication/session weaknesses: opaque high-entropy cookies, server-side expiry/revocation, rotation and security-version invalidation are implemented and negatively tested; session lifecycle mutations carry atomic audit evidence.
-- CSRF (CWE-352): unsafe protected cookie-authenticated requests require session-bound HMAC synchronizer tokens, including Request transitions and logout.
-- SQL injection (CWE-89): fixed SQL plus PostgreSQL parameter binding; real database integration tests execute Request/session/audit persistence paths.
-- XSS (CWE-79): API emits JSON/no HTML and sets default-deny CSP; frontend rendering remains separately governed.
-- SSRF (CWE-918): the #54 provider-neutral contract is URL-free and no real outbound transport is introduced; future provider adapters must use fixed/allowlisted destinations with constrained redirects and explicit timeouts.
-- Information disclosure: session credentials/provider references/DB secrets are excluded from public output; audit metadata rejects sensitive key classes and Employee object probing conceals non-owned Request existence.
-- Privilege escalation/confused deputy: unknown roles/permissions and capabilities fail closed, Tenant Admin does not inherit Manager or commercial entitlement-administration rights, rollout state cannot grant missing entitlement, audit read is a separate permission, and target workflow state is selected only by server policy.
-- Replay/stale state: session revocation/security-version checks protect credentials; Request workflow writes use expected-current-state predicates; calendar create uses a deterministic server-derived idempotency key with provider and local deduplication contracts.
-- Integrity/tampering: audit writes are append-only, per-Tenant HMAC chained and verified before tenant-visible reads; external completeness anchoring remains explicitly out of scope.
-- Resource exhaustion: HTTP, database pool/query, audit payload/page and session TTL bounds are explicit; capacity/load tuning remains operational work.
-
-Automated checks are evidence only for the exercised controls. They are not a penetration test or complete OWASP/regulatory compliance statement.
+Automated checks are evidence only for exercised controls. They are not a penetration test or a complete OWASP, regulatory or infrastructure compliance statement.

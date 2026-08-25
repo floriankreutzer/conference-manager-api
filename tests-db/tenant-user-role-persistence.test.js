@@ -278,6 +278,8 @@ test('tenant roles are claimant-bootstrapped, isolated, concurrent-safe and inva
   assert.equal(activeAdmins.rows[0].count, 1);
   assert.equal(await auditRepository.verifyTenantChain(TENANT_A), true);
 
+  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await isPostgresSchemaReady(pool), false);
   await assert.rejects(rollbackLatest(pool), (error) => error.code === '55000');
-  assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await isPostgresSchemaReady(pool), false);
 });

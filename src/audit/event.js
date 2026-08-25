@@ -20,6 +20,7 @@ export const AUDIT_ACTION = Object.freeze({
   INTEGRATION_CONNECTED: 'integration.connected',
   INTEGRATION_DISCONNECTED: 'integration.disconnected',
   INTEGRATION_ADMIN_CONSENT_CHANGED: 'integration.admin_consent.changed',
+  INTEGRATION_VERIFIED: 'integration.verified',
   CALENDAR_OPERATION: 'calendar.operation',
   AUDIT_READ: 'audit.read',
 });

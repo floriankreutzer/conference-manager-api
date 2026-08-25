@@ -1,3 +1,8 @@
+import {
+  Microsoft365ConnectionConflictError,
+  Microsoft365ConnectionInputError,
+  Microsoft365ConnectionUnavailableError,
+} from './application/microsoft365-connection-errors.js';
 import { TenantUserRoleConflictError } from './application/tenant-user-errors.js';
 import {
   AuditInputError,
@@ -36,12 +41,17 @@ export function asApiError(error) {
     || error instanceof AuthorizationInputError
     || error instanceof AuditInputError
     || error instanceof OnboardingInputError
+    || error instanceof Microsoft365ConnectionInputError
   ) {
     return new ApiError(400, 'VALIDATION_FAILED');
   }
   if (error instanceof OnboardingDeniedError) return new ApiError(403, 'ONBOARDING_UNAVAILABLE');
   if (error instanceof OnboardingConflictError) return new ApiError(409, 'ONBOARDING_CONFLICT');
   if (error instanceof TenantUserRoleConflictError) return new ApiError(409, error.code);
+  if (error instanceof Microsoft365ConnectionConflictError) return new ApiError(409, error.code);
+  if (error instanceof Microsoft365ConnectionUnavailableError) {
+    return new ApiError(503, 'MICROSOFT365_CONNECTION_UNAVAILABLE');
+  }
   if (error instanceof TenantUnavailableError) return new ApiError(403, 'TENANT_UNAVAILABLE');
   if (error instanceof AuthorizationDeniedError) {
     return error.conceal
