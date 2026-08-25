@@ -11,7 +11,7 @@ Room discovery is a Tenant Admin use case layered on the existing Microsoft 365 
 Validated against current Microsoft Graph v1.0 documentation on 2026-08-25:
 
 - room collection: `GET https://graph.microsoft.com/v1.0/places/microsoft.graph.room`;
-- least-privilege delegated and application permission: `Place.Read.All`;
+- least-privilege application permission: `Place.Read.All`;
 - room/workspace/room-list default page size: 100;
 - supported list query controls include `$select`, `$top`, and `$skip`.
 
@@ -74,6 +74,6 @@ Room import and synchronization ownership are intentionally outside this contrac
 
 ## Test evidence
 
-Automated coverage must include nominal normalization, missing optional data, malformed required data, bounded pagination, permission and throttling errors, fixed Graph destination, provider-Tenant mismatch, authorization denial and token/redaction checks. Repository quality, dependency, secret and PostgreSQL integration gates remain mandatory.
+Automated coverage includes nominal normalization, malformed required data, bounded pagination, permission and throttling errors, fixed Graph destination, provider-Tenant mismatch, authorization/authentication boundaries, browser-selected Tenant/query rejection, and token/redaction checks. Repository quality, dependency, secret and PostgreSQL integration gates pass on the reviewed PR head.
 
 Real room discovery against customer Microsoft tenants remains an external Pilot acceptance step and must not be claimed until executed with actual Entra consent.
