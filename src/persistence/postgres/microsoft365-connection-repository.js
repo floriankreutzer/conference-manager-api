@@ -296,6 +296,7 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
           text: `
             UPDATE integrations
             SET status = $4,
+                connection_version = connection_version + 1,
                 places_permission_status = $5,
                 calendars_permission_status = $6,
                 connection_reason = $7,
@@ -323,6 +324,11 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
           ],
         });
         if (updated.rowCount !== 1) return Object.freeze({ status: 'stale' });
+        await client.query({
+          name: 'microsoft365-consent-delete-finalized',
+          text: 'DELETE FROM microsoft365_consent_transactions WHERE tenant_id = $1 AND integration_id = $2',
+          values: [tenantId, integrationId],
+        });
         for (const event of auditEvents) await appendAudit(client, auditRepository, event);
         return Object.freeze({ status: 'updated', connection: mapConnection(updated.rows[0]) });
       });
