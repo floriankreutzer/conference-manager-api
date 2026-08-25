@@ -9,7 +9,12 @@ const GRAPH_SCOPE = `${GRAPH_ORIGIN}/.default`;
 const CONSENT_PATH_SUFFIX = '/v2.0/adminconsent';
 const DEFAULT_TIMEOUT_MS = 10_000;
 const ACCESS_TOKEN_MAX = 32_768;
-const GRAPH_RESPONSE_MAX_BYTES = 65_536;
+const PROVIDER_REQUEST_MAX_BYTES = 65_536;
+const PROVIDER_RESPONSE_MAX_BYTES = 65_536;
+const PROVIDER_URL_MAX_LENGTH = 4_096;
+const PROVIDER_HEADER_COUNT_MAX = 64;
+const PROVIDER_HEADER_NAME_MAX = 128;
+const PROVIDER_HEADER_VALUE_MAX = 16_384;
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 export const MICROSOFT365_PROVIDER = 'microsoft365';
@@ -53,10 +58,79 @@ function validAccessToken(value) {
     && !/[\u0000-\u001f\u007f]/.test(value);
 }
 
-function createMsalApplication({ clientId, clientSecret, tenantReference, applicationFactory }) {
+function requireMicrosoftIdentityUrl(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Microsoft365ProviderError('MICROSOFT365_IDENTITY_URL_INVALID');
+  }
+  if (
+    url.origin !== LOGIN_ORIGIN
+    || url.username
+    || url.password
+    || url.hash
+    || url.href.length > PROVIDER_URL_MAX_LENGTH
+  ) {
+    throw new Microsoft365ProviderError('MICROSOFT365_IDENTITY_URL_INVALID');
+  }
+  return url;
+}
+
+function boundedRequestHeaders(options) {
+  if (options?.headers === undefined) return undefined;
+  if (!options.headers || typeof options.headers !== 'object' || Array.isArray(options.headers)) {
+    throw new Microsoft365ProviderError('MICROSOFT365_IDENTITY_REQUEST_INVALID');
+  }
+  const entries = Object.entries(options.headers);
+  if (entries.length > PROVIDER_HEADER_COUNT_MAX) {
+    throw new Microsoft365ProviderError('MICROSOFT365_IDENTITY_REQUEST_INVALID');
+  }
+  const headers = {};
+  for (const [name, value] of entries) {
+    if (
+      name.length < 1
+      || name.length > PROVIDER_HEADER_NAME_MAX
+      || typeof value !== 'string'
+      || value.length > PROVIDER_HEADER_VALUE_MAX
+      || /[\r\n]/.test(name)
+      || /[\r\n]/.test(value)
+    ) {
+      throw new Microsoft365ProviderError('MICROSOFT365_IDENTITY_REQUEST_INVALID');
+    }
+    headers[name] = value;
+  }
+  return headers;
+}
+
+function boundedRequestBody(options) {
+  const body = options?.body ?? '';
+  if (typeof body !== 'string' || Buffer.byteLength(body) > PROVIDER_REQUEST_MAX_BYTES) {
+    throw new Microsoft365ProviderError('MICROSOFT365_IDENTITY_REQUEST_INVALID');
+  }
+  return body;
+}
+
+function boundedIdentityTimeout(requestedTimeoutMs, configuredTimeoutMs) {
+  if (requestedTimeoutMs === undefined) return configuredTimeoutMs;
+  if (!Number.isSafeInteger(requestedTimeoutMs) || requestedTimeoutMs < 1) {
+    throw new Microsoft365ProviderError('MICROSOFT365_IDENTITY_TIMEOUT_INVALID');
+  }
+  return Math.min(requestedTimeoutMs, configuredTimeoutMs);
+}
+
+function createMsalApplication({
+  clientId,
+  clientSecret,
+  tenantReference,
+  fetchImpl,
+  timeoutMs,
+  applicationFactory,
+}) {
   const authority = `${LOGIN_ORIGIN}/${tenantReference}`;
+  const networkClient = createBoundedMicrosoftIdentityNetworkClient({ fetchImpl, timeoutMs });
   if (applicationFactory) {
-    const application = applicationFactory({ clientId, clientSecret, authority });
+    const application = applicationFactory({ clientId, clientSecret, authority, networkClient });
     if (!application || typeof application.acquireTokenByClientCredential !== 'function') {
       throw new TypeError('MICROSOFT365_MSAL_APPLICATION_INVALID');
     }
@@ -65,6 +139,7 @@ function createMsalApplication({ clientId, clientSecret, tenantReference, applic
   return new ConfidentialClientApplication({
     auth: { clientId, clientSecret, authority },
     system: {
+      networkClient,
       loggerOptions: {
         piiLoggingEnabled: false,
         loggerCallback: () => {},
@@ -130,7 +205,7 @@ async function readBoundedText(response, maxBytes) {
   return Buffer.concat(chunks, bytes).toString('utf8');
 }
 
-async function readBoundedJson(response, maxBytes = GRAPH_RESPONSE_MAX_BYTES) {
+async function readBoundedJson(response, maxBytes = PROVIDER_RESPONSE_MAX_BYTES) {
   let text;
   try {
     text = await readBoundedText(response, maxBytes);
@@ -143,6 +218,83 @@ async function readBoundedJson(response, maxBytes = GRAPH_RESPONSE_MAX_BYTES) {
   } catch {
     throw new Microsoft365ProviderError('MICROSOFT365_RESPONSE_INVALID');
   }
+}
+
+function boundedResponseHeaders(response) {
+  if (!response.headers || typeof response.headers.forEach !== 'function') {
+    throw new Microsoft365ProviderError('MICROSOFT365_RESPONSE_INVALID');
+  }
+  const headers = {};
+  let count = 0;
+  response.headers.forEach((value, name) => {
+    count += 1;
+    if (
+      count > PROVIDER_HEADER_COUNT_MAX
+      || name.length < 1
+      || name.length > PROVIDER_HEADER_NAME_MAX
+      || value.length > PROVIDER_HEADER_VALUE_MAX
+      || /[\r\n]/.test(name)
+      || /[\r\n]/.test(value)
+    ) {
+      throw new Microsoft365ProviderError('MICROSOFT365_RESPONSE_INVALID');
+    }
+    headers[name] = value;
+  });
+  return headers;
+}
+
+async function fetchMicrosoftIdentity({
+  fetchImpl,
+  value,
+  method,
+  options,
+  timeoutMs,
+}) {
+  const url = requireMicrosoftIdentityUrl(value);
+  let response;
+  try {
+    response = await fetchImpl(url, {
+      method,
+      redirect: 'error',
+      headers: boundedRequestHeaders(options),
+      body: method === 'POST' ? boundedRequestBody(options) : undefined,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    if (error instanceof Microsoft365ProviderError) throw error;
+    throw new Microsoft365ProviderError('MICROSOFT365_IDENTITY_UNAVAILABLE');
+  }
+  if (!response || !Number.isInteger(response.status)) {
+    throw new Microsoft365ProviderError('MICROSOFT365_RESPONSE_INVALID');
+  }
+  return {
+    headers: boundedResponseHeaders(response),
+    body: await readBoundedJson(response),
+    status: response.status,
+  };
+}
+
+function createBoundedMicrosoftIdentityNetworkClient({ fetchImpl, timeoutMs }) {
+  return Object.freeze({
+    sendGetRequestAsync(value, options, requestedTimeoutMs) {
+      return fetchMicrosoftIdentity({
+        fetchImpl,
+        value,
+        method: 'GET',
+        options,
+        timeoutMs: boundedIdentityTimeout(requestedTimeoutMs, timeoutMs),
+      });
+    },
+    sendPostRequestAsync(value, options) {
+      return fetchMicrosoftIdentity({
+        fetchImpl,
+        value,
+        method: 'POST',
+        options,
+        timeoutMs,
+      });
+    },
+  });
 }
 
 async function validGraphPayload(response, validate) {
@@ -267,6 +419,8 @@ export function createMicrosoft365Client({
       clientId: normalizedClientId,
       clientSecret,
       tenantReference: tenant,
+      fetchImpl,
+      timeoutMs,
       applicationFactory,
     });
     let result;

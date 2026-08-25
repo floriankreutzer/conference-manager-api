@@ -22,15 +22,22 @@ function response(status, payload, { contentLength, raw, omitContentLength = fal
   return new Response(text, { status, headers });
 }
 
-function client({ fetchImpl, acquire, publicOrigin = 'https://conference.example', allowInsecureLocalhost } = {}) {
+function client({
+  fetchImpl,
+  acquire,
+  publicOrigin = 'https://conference.example',
+  allowInsecureLocalhost,
+  onApplicationConfiguration,
+} = {}) {
   return createMicrosoft365Client({
     clientId: CLIENT_ID,
     clientSecret: 'secret-value-for-test-only-not-a-production-credential',
     publicOrigin,
     allowInsecureLocalhost,
     fetchImpl: fetchImpl || (async () => response(200, { value: [] })),
-    applicationFactory({ authority }) {
-      assert.equal(authority, `https://login.microsoftonline.com/${TENANT_ID}`);
+    applicationFactory(configuration) {
+      assert.equal(configuration.authority, `https://login.microsoftonline.com/${TENANT_ID}`);
+      onApplicationConfiguration?.(configuration);
       return {
         async acquireTokenByClientCredential(request) {
           assert.deepEqual(request.scopes, ['https://graph.microsoft.com/.default']);
@@ -57,6 +64,96 @@ test('admin consent URL is tenant-specific, fixed-origin and requests reviewed G
     'https://conference.example/api/v1/integrations/microsoft365/callback',
   );
   assert.equal(value.searchParams.get('state'), STATE);
+});
+
+test('MSAL identity transport is fixed-origin, redirect-disabled, timeout-bound and response-bounded', async () => {
+  const calls = [];
+  let identityMode = 'ok';
+  let networkClient;
+  const api = client({
+    onApplicationConfiguration(configuration) {
+      networkClient = configuration.networkClient;
+    },
+    fetchImpl: async (url, options) => {
+      const target = new URL(url);
+      calls.push({ target, options });
+      if (target.origin === 'https://graph.microsoft.com') {
+        return response(200, { value: [] });
+      }
+      if (identityMode === 'oversized') {
+        return response(200, { ok: true }, { contentLength: 65_537 });
+      }
+      if (identityMode === 'wait') {
+        return new Promise((resolve, reject) => {
+          const fallback = setTimeout(() => resolve(response(200, { late: true })), 100);
+          options.signal.addEventListener('abort', () => {
+            clearTimeout(fallback);
+            reject(options.signal.reason);
+          }, { once: true });
+        });
+      }
+      return response(200, { ok: true });
+    },
+  });
+
+  await api.verifyBasePermissions({ tenantReference: TENANT_ID });
+  assert.equal(typeof networkClient?.sendPostRequestAsync, 'function');
+
+  const tokenUrl = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`;
+  const tokenResponse = await networkClient.sendPostRequestAsync(tokenUrl, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'client_id=test',
+  });
+  assert.equal(tokenResponse.status, 200);
+  assert.deepEqual(tokenResponse.body, { ok: true });
+  const identityCall = calls.at(-1);
+  assert.equal(identityCall.target.origin, 'https://login.microsoftonline.com');
+  assert.equal(identityCall.options.method, 'POST');
+  assert.equal(identityCall.options.redirect, 'error');
+  assert.equal(identityCall.options.signal instanceof AbortSignal, true);
+
+  const callCount = calls.length;
+  await assert.rejects(
+    networkClient.sendPostRequestAsync('https://attacker.example/token', { body: '' }),
+    (error) => error instanceof Microsoft365ProviderError
+      && error.code === 'MICROSOFT365_IDENTITY_URL_INVALID',
+  );
+  assert.equal(calls.length, callCount);
+
+  await assert.rejects(
+    networkClient.sendPostRequestAsync(tokenUrl, { body: 'x'.repeat(65_537) }),
+    (error) => error instanceof Microsoft365ProviderError
+      && error.code === 'MICROSOFT365_IDENTITY_REQUEST_INVALID',
+  );
+  assert.equal(calls.length, callCount);
+
+  await assert.rejects(
+    networkClient.sendPostRequestAsync(tokenUrl, {
+      headers: { 'X-Test': 'value\r\ninjected: true' },
+      body: '',
+    }),
+    (error) => error instanceof Microsoft365ProviderError
+      && error.code === 'MICROSOFT365_IDENTITY_REQUEST_INVALID',
+  );
+  assert.equal(calls.length, callCount);
+
+  identityMode = 'oversized';
+  await assert.rejects(
+    networkClient.sendPostRequestAsync(tokenUrl, { body: '' }),
+    (error) => error instanceof Microsoft365ProviderError
+      && error.code === 'MICROSOFT365_RESPONSE_TOO_LARGE',
+  );
+
+  identityMode = 'wait';
+  await assert.rejects(
+    networkClient.sendGetRequestAsync(
+      `https://login.microsoftonline.com/${TENANT_ID}/v2.0/.well-known/openid-configuration`,
+      undefined,
+      1,
+    ),
+    (error) => error instanceof Microsoft365ProviderError
+      && error.code === 'MICROSOFT365_IDENTITY_UNAVAILABLE',
+  );
 });
 
 test('base permission verification uses fixed Graph destinations and validates both read capabilities', async () => {

@@ -101,16 +101,20 @@ requireContains(microsoft365Client, [
   'APPROVED_OUTBOUND_ORIGINS.microsoftIdentity',
   'APPROVED_OUTBOUND_ORIGINS.microsoftGraph',
   "const GRAPH_SCOPE = `${GRAPH_ORIGIN}/.default`",
+  'createBoundedMicrosoftIdentityNetworkClient',
+  'requireMicrosoftIdentityUrl',
+  'PROVIDER_REQUEST_MAX_BYTES',
+  'PROVIDER_RESPONSE_MAX_BYTES',
+  'sendPostRequestAsync',
   "redirect: 'error'",
   'AbortSignal.timeout(timeoutMs)',
-  'GRAPH_RESPONSE_MAX_BYTES',
   'response.body?.getReader?.()',
   'await cancelReader(reader)',
   "'Place.Read.All'",
   "'Calendars.ReadBasic.All'",
 ], 'Microsoft 365 provider client');
 if (microsoft365Client.includes('await response.text()')) {
-  throw new Error('Microsoft Graph responses must be bounded while streaming, not after response.text().');
+  throw new Error('Microsoft provider responses must be bounded while streaming, not after response.text().');
 }
 requireContains(microsoft365Routes, [
   "callback: '/api/v1/integrations/microsoft365/callback'",
@@ -133,6 +137,7 @@ requireContains(microsoft365Contract, [
   'browser-selected internal Tenant ID',
   'Place.Read.All',
   'Calendars.ReadBasic.All',
+  'bounded custom MSAL network client',
   'Exchange Online Application RBAC',
   'Migration `011_microsoft365_connection_lifecycle`',
 ], 'Microsoft 365 security contract');

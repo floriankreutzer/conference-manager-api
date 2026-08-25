@@ -29,6 +29,8 @@ The base connection verifies only these Microsoft Graph application permissions:
 
 The admin-consent URL uses the Tenant-specific Microsoft identity endpoint and the Microsoft Graph `/.default` scope. The configured application registration therefore defines the exact application permissions presented to the customer administrator.
 
+`connected` requires positive bounded verification of both base permissions. If no validated claimant User reference is available, or the claimant does not expose a verifiable Exchange calendar, Calendar permission remains `unverified` and the lifecycle is `degraded` with `calendars_permission_unverified`. The service must not infer Calendar permission from successful token acquisition or Places access.
+
 Calendar event creation, update, and cancellation require a separately reviewed write permission and Exchange Online Application RBAC scoping before those capabilities can be enabled. The base connection lifecycle must not infer or claim write access.
 
 ## HTTP contract
@@ -103,8 +105,8 @@ Disconnecting the local lifecycle record does not claim that Microsoft administr
 
 - `disconnected`: no active local connection; permissions are unknown.
 - `pending`: an unexpired one-time admin-consent transaction exists.
-- `connected`: the bounded base permission checks succeeded.
-- `degraded`: Microsoft responded, but one or more required base permissions are missing or the verification result is incomplete.
+- `connected`: both bounded base permission checks succeeded.
+- `degraded`: Microsoft responded, but one or more required base permissions are missing, unavailable, or unverified.
 - `revoked`: Microsoft rejects the application credential or consent in a way classified as revoked.
 
 Reason values are fixed, bounded machine codes. Provider messages are never stored or exposed.
@@ -129,15 +131,19 @@ Migration rollback fails closed while Microsoft 365 connection or consent rows e
 The provider client must:
 
 - use fixed Microsoft identity and Graph origins;
+- use a bounded custom MSAL network client for identity metadata and client-credential token requests;
 - accept only validated GUID provider Tenant and User references;
 - construct paths internally rather than accepting URLs;
-- disable redirects;
-- use bounded connect/request timeouts;
-- bound response size before parsing;
+- disable redirects for Microsoft identity and Graph requests;
+- use bounded connect/request timeouts and cancellation for Microsoft identity and Graph requests;
+- bound outbound identity request headers and bodies;
+- bound provider response headers and bodies before parsing;
 - validate JSON response shape;
 - classify retryable, revoked, degraded, and unavailable failures without exposing provider details;
 - use the configured confidential-client credential from deployment secret management only;
 - never log credentials, tokens, state, provider response bodies, provider Tenant identifiers, or User identifiers.
+
+The custom MSAL transport rejects every origin other than the fixed Microsoft identity origin before network execution. It applies the configured Microsoft 365 timeout to token POSTs as well as metadata GETs. Microsoft Graph transport separately enforces the fixed Graph origin with the same configured bound.
 
 ## Audit evidence
 
@@ -166,7 +172,10 @@ Required automated evidence includes:
 - rejection of browser-selected Tenant authority and request bodies;
 - callback query allowlisting, duplicate rejection, state expiry, replay, actor mismatch, and provider-Tenant mismatch;
 - fixed redirect destinations and provider-error concealment;
-- bounded provider origins, redirects, timeouts, responses, and error classification;
+- fixed Microsoft identity and Graph destinations;
+- custom MSAL transport rejection of foreign origins, overlarge requests/responses, redirects, and unbounded waits;
+- bounded provider responses and stable error classification;
+- fail-closed Calendar `unverified` behavior;
 - Tenant-scoped connection persistence and cross-Tenant isolation;
 - reconnect/version races and stale callback rejection;
 - audit-atomic lifecycle persistence;
