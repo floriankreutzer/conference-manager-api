@@ -62,6 +62,13 @@ function mapProviderError(error, operation) {
   return new CalendarProviderError(PROVIDER_ERROR_KIND.UNKNOWN, { operation });
 }
 
+function requireWriteMethod(providerClient, method, operation) {
+  if (typeof providerClient[method] !== 'function') {
+    throw new CalendarProviderError(PROVIDER_ERROR_KIND.VALIDATION, { operation });
+  }
+  return providerClient[method].bind(providerClient);
+}
+
 function createBoundProvider({
   tenantId,
   integrationId,
@@ -88,10 +95,11 @@ function createBoundProvider({
     }
   }
 
-  async function write(operation, input, invoke) {
+  async function write(operation, input, method, values) {
     assertTenantRoomInput(input, tenantId, roomId, operation);
     try {
-      return await invoke();
+      const invoke = requireWriteMethod(providerClient, method, operation);
+      return await invoke(values);
     } catch (error) {
       throw mapProviderError(error, operation);
     }
@@ -110,29 +118,29 @@ function createBoundProvider({
       });
     },
     createCalendarEvent(input) {
-      return write('create', input, () => providerClient.createCalendarEvent({
+      return write('create', input, 'createCalendarEvent', {
         tenantReference: providerTenantReference,
         resourceAddress,
         startsAt: input.startsAt,
         endsAt: input.endsAt,
         idempotencyKey: input.idempotencyKey,
-      }));
+      });
     },
     updateCalendarEvent(input) {
-      return write('update', input, () => providerClient.updateCalendarEvent({
+      return write('update', input, 'updateCalendarEvent', {
         tenantReference: providerTenantReference,
         resourceAddress,
         providerReference: input.providerReference,
         startsAt: input.startsAt,
         endsAt: input.endsAt,
-      }));
+      });
     },
     cancelCalendarEvent(input) {
-      return write('cancel', input, () => providerClient.cancelCalendarEvent({
+      return write('cancel', input, 'cancelCalendarEvent', {
         tenantReference: providerTenantReference,
         resourceAddress,
         providerReference: input.providerReference,
-      }));
+      });
     },
   });
 }
@@ -148,14 +156,8 @@ export function createMicrosoft365CalendarProviderFactory({
   if (!mappingRepository || typeof mappingRepository.listByTenantIdAndIntegrationId !== 'function') {
     throw new TypeError('MICROSOFT365_ROOM_MAPPING_REPOSITORY_REQUIRED');
   }
-  if (
-    !providerClient
-    || typeof providerClient.lookupFreeBusy !== 'function'
-    || typeof providerClient.createCalendarEvent !== 'function'
-    || typeof providerClient.updateCalendarEvent !== 'function'
-    || typeof providerClient.cancelCalendarEvent !== 'function'
-  ) {
-    throw new TypeError('MICROSOFT365_CALENDAR_CLIENT_REQUIRED');
+  if (!providerClient || typeof providerClient.lookupFreeBusy !== 'function') {
+    throw new TypeError('MICROSOFT365_FREE_BUSY_CLIENT_REQUIRED');
   }
 
   return Object.freeze({
