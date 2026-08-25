@@ -30,6 +30,7 @@ export function createFinalRoomConfirmationService({
   auditService,
   entitlementService,
   calendarProviderFactory,
+  bookingServiceFactory = null,
   clock = () => Date.now(),
 } = {}) {
   if (
@@ -60,6 +61,9 @@ export function createFinalRoomConfirmationService({
   if (!calendarProviderFactory || typeof calendarProviderFactory.forRoom !== 'function') {
     throw new TypeError('FINAL_CONFIRMATION_PROVIDER_FACTORY_REQUIRED');
   }
+  if (bookingServiceFactory && typeof bookingServiceFactory.forRequest !== 'function') {
+    throw new TypeError('FINAL_CONFIRMATION_BOOKING_FACTORY_INVALID');
+  }
   if (typeof clock !== 'function') throw new TypeError('FINAL_CONFIRMATION_CLOCK_REQUIRED');
 
   async function recordFailure({ principal, tenantContext, requestId, correlationId, request, reasonCode }) {
@@ -86,6 +90,26 @@ export function createFinalRoomConfirmationService({
       targetId: requestId,
       metadata: { operation: 'final_confirm' },
     });
+  }
+
+  function bookingContext(principal, tenantContext, request, correlationId) {
+    return Object.freeze({
+      principal,
+      tenantContext,
+      request,
+      correlationId,
+      phase: RESERVATION_PHASE.FINAL,
+    });
+  }
+
+  async function compensateCreatedCalendarEvent(service, context, originalError) {
+    try {
+      await service.cancelCalendarEvent(context);
+    } catch (compensationError) {
+      throw new FinalRoomAvailabilityError('FINAL_ROOM_COMPENSATION_FAILED', {
+        cause: new AggregateError([originalError, compensationError], 'FINAL_ROOM_CONFIRMATION_AND_COMPENSATION_FAILED'),
+      });
+    }
   }
 
   return Object.freeze({
@@ -184,6 +208,15 @@ export function createFinalRoomConfirmationService({
         throw new RequestStateConflictError('ROOM_AVAILABILITY_CONFLICT');
       }
 
+      let bookingService = null;
+      let calendarCreated = false;
+      const context = bookingContext(principal, tenantContext, request, correlationId);
+      if (bookingServiceFactory) {
+        bookingService = await bookingServiceFactory.forRequest(request);
+        await bookingService.createCalendarEvent(context);
+        calendarCreated = true;
+      }
+
       const changedMs = clock();
       if (!Number.isSafeInteger(changedMs) || changedMs < 0) throw new TypeError('FINAL_CONFIRMATION_CLOCK_INVALID');
       const changedAt = new Date(changedMs);
@@ -201,15 +234,26 @@ export function createFinalRoomConfirmationService({
         metadata: { reasonProvided: false, transition: decision.transition },
         retentionClass: AUDIT_RETENTION_CLASS.BUSINESS,
       });
-      const result = await repository.confirmIfRoomAvailable({
-        tenantId: tenantContext.tenantId,
-        requestId,
-        expectedStatus: decision.expectedStatus,
-        changedAt,
-        auditEvent,
-      });
+
+      let result;
+      try {
+        result = await repository.confirmIfRoomAvailable({
+          tenantId: tenantContext.tenantId,
+          requestId,
+          expectedStatus: decision.expectedStatus,
+          changedAt,
+          auditEvent,
+        });
+      } catch (error) {
+        if (calendarCreated) await compensateCreatedCalendarEvent(bookingService, context, error);
+        throw error;
+      }
       if (result.status === 'confirmed') return result.request;
 
+      const conflict = new RequestStateConflictError(
+        result.status === 'room_conflict' ? 'ROOM_AVAILABILITY_CONFLICT' : 'REQUEST_STATE_CONFLICT',
+      );
+      if (calendarCreated) await compensateCreatedCalendarEvent(bookingService, context, conflict);
       await recordFailure({
         principal,
         tenantContext,
@@ -218,9 +262,7 @@ export function createFinalRoomConfirmationService({
         request,
         reasonCode: result.status === 'room_conflict' ? 'concurrent_room_conflict' : 'concurrent_state_change',
       });
-      throw new RequestStateConflictError(
-        result.status === 'room_conflict' ? 'ROOM_AVAILABILITY_CONFLICT' : 'REQUEST_STATE_CONFLICT',
-      );
+      throw conflict;
     },
   });
 }

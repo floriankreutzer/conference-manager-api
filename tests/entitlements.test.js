@@ -76,6 +76,7 @@ function harness({ authorizedOperator = false } = {}) {
 test('stable capability IDs and effective access fail closed', () => {
   assert.equal(normalizeCapabilityId(CAPABILITY.MICROSOFT_DIRECTORY), 'microsoft.directory');
   assert.equal(normalizeCapabilityId(CAPABILITY.MICROSOFT_CALENDAR), 'microsoft.calendar');
+  assert.equal(normalizeCapabilityId(CAPABILITY.MICROSOFT_CALENDAR_WRITE), 'microsoft.calendar.write');
   assert.throws(() => normalizeCapabilityId('microsoft.unknown'), EntitlementInputError);
 
   for (const [authorized, entitled, rolloutState, expected] of [
@@ -87,6 +88,43 @@ test('stable capability IDs and effective access fail closed', () => {
   ]) {
     assert.equal(evaluateEffectiveCapability({ authorized, entitled, rolloutState }), expected);
   }
+});
+
+test('calendar write entitlement remains independent from read/free-busy entitlement', async () => {
+  const state = harness({ authorizedOperator: true });
+  await state.service.setEntitlement({
+    operatorContext: { kind: 'trusted' },
+    tenantId: TENANT_A,
+    capabilityId: CAPABILITY.MICROSOFT_CALENDAR,
+    enabled: true,
+    correlationId: CORRELATION,
+  });
+  assert.equal(await state.service.evaluateAccess({
+    principal: principal(),
+    tenantContext: tenantContext(),
+    capabilityId: CAPABILITY.MICROSOFT_CALENDAR,
+    authorized: true,
+  }), true);
+  assert.equal(await state.service.evaluateAccess({
+    principal: principal(),
+    tenantContext: tenantContext(),
+    capabilityId: CAPABILITY.MICROSOFT_CALENDAR_WRITE,
+    authorized: true,
+  }), false);
+
+  await state.service.setEntitlement({
+    operatorContext: { kind: 'trusted' },
+    tenantId: TENANT_A,
+    capabilityId: CAPABILITY.MICROSOFT_CALENDAR_WRITE,
+    enabled: true,
+    correlationId: CORRELATION,
+  });
+  assert.equal(await state.service.evaluateAccess({
+    principal: principal(),
+    tenantContext: tenantContext(),
+    capabilityId: CAPABILITY.MICROSOFT_CALENDAR_WRITE,
+    authorized: true,
+  }), true);
 });
 
 test('entitlement evaluation requires authorization, active tenant binding, entitlement, and rollout state', async () => {

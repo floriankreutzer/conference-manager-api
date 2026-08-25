@@ -37,14 +37,36 @@ function mapProviderError(error, operation) {
   ) {
     return new CalendarProviderError(PROVIDER_ERROR_KIND.AUTHORIZATION, { operation });
   }
-  if (error.code === 'MICROSOFT365_FREE_BUSY_RESPONSE_INVALID') {
+  if (error.code === 'MICROSOFT365_CALENDAR_CONFLICT') {
+    return new CalendarProviderError(PROVIDER_ERROR_KIND.CONFLICT, { operation });
+  }
+  if (error.code === 'MICROSOFT365_CALENDAR_NOT_FOUND') {
+    return new CalendarProviderError(PROVIDER_ERROR_KIND.NOT_FOUND, { operation });
+  }
+  if (
+    error.code === 'MICROSOFT365_FREE_BUSY_RESPONSE_INVALID'
+    || error.code === 'MICROSOFT365_CALENDAR_WRITE_RESPONSE_INVALID'
+    || error.code === 'MICROSOFT365_RESPONSE_TOO_LARGE'
+    || error.code === 'MICROSOFT365_RESPONSE_INVALID'
+  ) {
     return new CalendarProviderError(PROVIDER_ERROR_KIND.MALFORMED_RESPONSE, { operation });
+  }
+  if (
+    error.code === 'MICROSOFT365_GRAPH_REQUEST_INVALID'
+    || error.code === 'MICROSOFT365_CALENDAR_REFERENCE_INVALID'
+    || error.code === 'MICROSOFT365_CALENDAR_IDEMPOTENCY_INVALID'
+    || error.code === 'MICROSOFT365_FREE_BUSY_REQUEST_INVALID'
+  ) {
+    return new CalendarProviderError(PROVIDER_ERROR_KIND.VALIDATION, { operation });
   }
   return new CalendarProviderError(PROVIDER_ERROR_KIND.UNKNOWN, { operation });
 }
 
-function unsupportedWrite(operation) {
-  throw new CalendarProviderError(PROVIDER_ERROR_KIND.VALIDATION, { operation });
+function requireWriteMethod(providerClient, method, operation) {
+  if (typeof providerClient[method] !== 'function') {
+    throw new CalendarProviderError(PROVIDER_ERROR_KIND.AUTHORIZATION, { operation });
+  }
+  return providerClient[method].bind(providerClient);
 }
 
 function createBoundProvider({
@@ -73,6 +95,15 @@ function createBoundProvider({
     }
   }
 
+  async function write(operation, input, method, values) {
+    assertTenantRoomInput(input, tenantId, roomId, operation);
+    try {
+      return await requireWriteMethod(providerClient, method, operation)(values);
+    } catch (error) {
+      throw mapProviderError(error, operation);
+    }
+  }
+
   return Object.freeze({
     integrationId,
     lookupAvailability(input) {
@@ -85,14 +116,30 @@ function createBoundProvider({
         reason: result.available ? 'available' : 'conflict',
       });
     },
-    createCalendarEvent() {
-      return unsupportedWrite('create');
+    createCalendarEvent(input) {
+      return write('create', input, 'createCalendarEvent', {
+        tenantReference: providerTenantReference,
+        resourceAddress,
+        startsAt: input.startsAt,
+        endsAt: input.endsAt,
+        idempotencyKey: input.idempotencyKey,
+      });
     },
-    updateCalendarEvent() {
-      return unsupportedWrite('update');
+    updateCalendarEvent(input) {
+      return write('update', input, 'updateCalendarEvent', {
+        tenantReference: providerTenantReference,
+        resourceAddress,
+        providerReference: input.providerReference,
+        startsAt: input.startsAt,
+        endsAt: input.endsAt,
+      });
     },
-    cancelCalendarEvent() {
-      return unsupportedWrite('cancel');
+    cancelCalendarEvent(input) {
+      return write('cancel', input, 'cancelCalendarEvent', {
+        tenantReference: providerTenantReference,
+        resourceAddress,
+        providerReference: input.providerReference,
+      });
     },
   });
 }

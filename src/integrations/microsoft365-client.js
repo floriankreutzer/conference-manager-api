@@ -4,6 +4,7 @@ import { APPROVED_OUTBOUND_ORIGINS } from '../config.js';
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STATE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const UTC_ISO_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
+const IDEMPOTENCY_KEY_PATTERN = /^[0-9a-f]{64}$/;
 const LOGIN_ORIGIN = APPROVED_OUTBOUND_ORIGINS.microsoftIdentity;
 const GRAPH_ORIGIN = APPROVED_OUTBOUND_ORIGINS.microsoftGraph;
 const GRAPH_SCOPE = `${GRAPH_ORIGIN}/.default`;
@@ -24,6 +25,8 @@ const FREE_BUSY_SCHEDULE_MAX = 320;
 const FREE_BUSY_INTERVAL_MINUTES = 5;
 const FREE_BUSY_MAX_WINDOW_MS = 7 * 24 * 60 * 60 * 1_000;
 const FREE_BUSY_VIEW_MAX = FREE_BUSY_MAX_WINDOW_MS / (FREE_BUSY_INTERVAL_MINUTES * 60 * 1_000);
+const EVENT_REFERENCE_MAX = 512;
+const CALENDAR_EVENT_SUBJECT = 'Conference Manager room reservation';
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 export const MICROSOFT365_PROVIDER = 'microsoft365';
@@ -31,6 +34,7 @@ export const MICROSOFT365_BASE_PERMISSIONS = Object.freeze([
   'Place.Read.All',
   'Calendars.ReadBasic.All',
 ]);
+export const MICROSOFT365_CALENDAR_WRITE_PERMISSION = 'Calendars.ReadWrite';
 
 export const MICROSOFT365_VERIFICATION = Object.freeze({
   CONNECTED: 'connected',
@@ -167,6 +171,7 @@ function classifyGraphStatus(status) {
   if (status === 403) return 'permission_missing';
   if (status === 429 || status >= 500) return 'transient';
   if (status === 404) return 'not_found';
+  if (status === 409 || status === 412) return 'conflict';
   return status >= 200 && status < 300 ? 'ok' : 'invalid';
 }
 
@@ -340,7 +345,7 @@ function validCalendarPayload(payload) {
     && !Array.isArray(payload)
     && typeof payload.id === 'string'
     && payload.id.length >= 1
-    && payload.id.length <= 512;
+    && payload.id.length <= EVENT_REFERENCE_MAX;
 }
 
 async function fetchGraph(fetchImpl, url, accessToken, timeoutMs) {
@@ -367,26 +372,51 @@ async function fetchGraph(fetchImpl, url, accessToken, timeoutMs) {
   return response;
 }
 
-async function postGraph(fetchImpl, url, accessToken, timeoutMs, payload) {
+async function graphJsonRequest({ fetchImpl, url, accessToken, timeoutMs, method, payload, preferUtc = false }) {
   if (url.origin !== GRAPH_ORIGIN) {
     throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_ORIGIN_INVALID');
   }
   const body = JSON.stringify(payload);
   if (Buffer.byteLength(body) > PROVIDER_REQUEST_MAX_BYTES) {
-    throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_REQUEST_INVALID');
+    throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_REQUEST_INVALID');
+  }
+  const headers = {
+    Accept: 'application/json',
+    Authorization: `Bearer ${accessToken}`,
+    'Content-Type': 'application/json',
+  };
+  if (preferUtc) headers.Prefer = 'outlook.timezone="UTC"';
+  let response;
+  try {
+    response = await fetchImpl(url, {
+      method,
+      redirect: 'error',
+      headers,
+      body,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch {
+    throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_UNAVAILABLE');
+  }
+  if (!response || !Number.isInteger(response.status)) {
+    throw new Microsoft365ProviderError('MICROSOFT365_RESPONSE_INVALID');
+  }
+  return response;
+}
+
+async function graphDeleteRequest({ fetchImpl, url, accessToken, timeoutMs }) {
+  if (url.origin !== GRAPH_ORIGIN) {
+    throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_ORIGIN_INVALID');
   }
   let response;
   try {
     response = await fetchImpl(url, {
-      method: 'POST',
+      method: 'DELETE',
       redirect: 'error',
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-        Prefer: 'outlook.timezone="UTC"',
       },
-      body,
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
@@ -574,8 +604,9 @@ function normalizeFreeBusyPayload(payload, schedules) {
       || item.scheduleId.toLowerCase() !== expectedSchedule.toLowerCase()
       || item.error !== undefined && item.error !== null
       || typeof item.availabilityView !== 'string'
+      || item.availabilityView.length < 1
       || item.availabilityView.length > FREE_BUSY_VIEW_MAX
-      || !/^[0-4]*$/.test(item.availabilityView)
+      || !/^[0-4]+$/.test(item.availabilityView)
     ) {
       throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_RESPONSE_INVALID');
     }
@@ -595,11 +626,19 @@ async function freeBusy({ fetchImpl, accessToken, timeoutMs, schedules, startsAt
     `/v1.0/users/${encodeURIComponent(normalizedSchedules[0])}/calendar/getSchedule`,
     GRAPH_ORIGIN,
   );
-  const response = await postGraph(fetchImpl, url, accessToken, timeoutMs, {
-    schedules: normalizedSchedules,
-    startTime: { dateTime: graphUtcDateTime(window.startsAt), timeZone: 'UTC' },
-    endTime: { dateTime: graphUtcDateTime(window.endsAt), timeZone: 'UTC' },
-    availabilityViewInterval: FREE_BUSY_INTERVAL_MINUTES,
+  const response = await graphJsonRequest({
+    fetchImpl,
+    url,
+    accessToken,
+    timeoutMs,
+    method: 'POST',
+    payload: {
+      schedules: normalizedSchedules,
+      startTime: { dateTime: graphUtcDateTime(window.startsAt), timeZone: 'UTC' },
+      endTime: { dateTime: graphUtcDateTime(window.endsAt), timeZone: 'UTC' },
+      availabilityViewInterval: FREE_BUSY_INTERVAL_MINUTES,
+    },
+    preferUtc: true,
   });
   const classification = classifyGraphStatus(response.status);
   if (classification === 'revoked') throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_UNAUTHORIZED');
@@ -610,6 +649,126 @@ async function freeBusy({ fetchImpl, accessToken, timeoutMs, schedules, startsAt
   if (classification === 'transient') throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_UNAVAILABLE');
   if (classification !== 'ok') throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_RESPONSE_INVALID');
   return normalizeFreeBusyPayload(await readBoundedJson(response), normalizedSchedules);
+}
+
+function requireResourceAddress(value) {
+  const schedules = requireFreeBusySchedules([value]);
+  return schedules[0];
+}
+
+function requireCalendarWindow(startsAt, endsAt) {
+  const window = requireFreeBusyWindow(startsAt, endsAt);
+  return Object.freeze({
+    startTime: { dateTime: graphUtcDateTime(window.startsAt), timeZone: 'UTC' },
+    endTime: { dateTime: graphUtcDateTime(window.endsAt), timeZone: 'UTC' },
+  });
+}
+
+function requireProviderReference(value) {
+  if (
+    typeof value !== 'string'
+    || value.length < 1
+    || value.length > EVENT_REFERENCE_MAX
+    || value.trim() !== value
+    || /[\u0000-\u001f\u007f]/.test(value)
+  ) {
+    throw new Microsoft365ProviderError('MICROSOFT365_CALENDAR_REFERENCE_INVALID');
+  }
+  return value;
+}
+
+function requireIdempotencyKey(value) {
+  if (typeof value !== 'string' || !IDEMPOTENCY_KEY_PATTERN.test(value)) {
+    throw new Microsoft365ProviderError('MICROSOFT365_CALENDAR_IDEMPOTENCY_INVALID');
+  }
+  return value;
+}
+
+function calendarEventUrl(resourceAddress, providerReference = null) {
+  const address = requireResourceAddress(resourceAddress);
+  const path = providerReference === null
+    ? `/v1.0/users/${encodeURIComponent(address)}/calendar/events`
+    : `/v1.0/users/${encodeURIComponent(address)}/events/${encodeURIComponent(requireProviderReference(providerReference))}`;
+  return new URL(path, GRAPH_ORIGIN);
+}
+
+function calendarEventPayload({ startsAt, endsAt, idempotencyKey = null }) {
+  const window = requireCalendarWindow(startsAt, endsAt);
+  const payload = {
+    subject: CALENDAR_EVENT_SUBJECT,
+    start: window.startTime,
+    end: window.endTime,
+    showAs: 'busy',
+  };
+  if (idempotencyKey !== null) payload.transactionId = requireIdempotencyKey(idempotencyKey);
+  return payload;
+}
+
+function calendarWriteErrorFor(response, invalidResponseCode = 'MICROSOFT365_CALENDAR_WRITE_RESPONSE_INVALID') {
+  const classification = classifyGraphStatus(response.status);
+  if (classification === 'revoked') return 'MICROSOFT365_GRAPH_UNAUTHORIZED';
+  if (classification === 'permission_missing') return 'MICROSOFT365_GRAPH_PERMISSION_MISSING';
+  if (response.status === 429) return 'MICROSOFT365_GRAPH_THROTTLED';
+  if (classification === 'transient') return 'MICROSOFT365_GRAPH_UNAVAILABLE';
+  if (classification === 'conflict') return 'MICROSOFT365_CALENDAR_CONFLICT';
+  if (classification === 'not_found') return 'MICROSOFT365_CALENDAR_NOT_FOUND';
+  return classification === 'ok' ? null : invalidResponseCode;
+}
+
+async function createCalendarEvent({ fetchImpl, accessToken, timeoutMs, resourceAddress, startsAt, endsAt, idempotencyKey }) {
+  const response = await graphJsonRequest({
+    fetchImpl,
+    url: calendarEventUrl(resourceAddress),
+    accessToken,
+    timeoutMs,
+    method: 'POST',
+    payload: calendarEventPayload({ startsAt, endsAt, idempotencyKey }),
+  });
+  const code = calendarWriteErrorFor(response);
+  if (code) throw new Microsoft365ProviderError(code);
+  if (response.status !== 201) throw new Microsoft365ProviderError('MICROSOFT365_CALENDAR_WRITE_RESPONSE_INVALID');
+  const payload = await readBoundedJson(response);
+  if (!validCalendarPayload(payload)) {
+    throw new Microsoft365ProviderError('MICROSOFT365_CALENDAR_WRITE_RESPONSE_INVALID');
+  }
+  return Object.freeze({ providerReference: payload.id, disposition: 'created' });
+}
+
+async function updateCalendarEvent({ fetchImpl, accessToken, timeoutMs, resourceAddress, providerReference, startsAt, endsAt }) {
+  const expectedReference = requireProviderReference(providerReference);
+  const response = await graphJsonRequest({
+    fetchImpl,
+    url: calendarEventUrl(resourceAddress, expectedReference),
+    accessToken,
+    timeoutMs,
+    method: 'PATCH',
+    payload: calendarEventPayload({ startsAt, endsAt }),
+  });
+  const code = calendarWriteErrorFor(response);
+  if (code) throw new Microsoft365ProviderError(code);
+  if (response.status !== 200) throw new Microsoft365ProviderError('MICROSOFT365_CALENDAR_WRITE_RESPONSE_INVALID');
+  const payload = await readBoundedJson(response);
+  if (!validCalendarPayload(payload) || payload.id !== expectedReference) {
+    throw new Microsoft365ProviderError('MICROSOFT365_CALENDAR_WRITE_RESPONSE_INVALID');
+  }
+  return Object.freeze({ providerReference: expectedReference, disposition: 'updated' });
+}
+
+async function cancelCalendarEvent({ fetchImpl, accessToken, timeoutMs, resourceAddress, providerReference }) {
+  const expectedReference = requireProviderReference(providerReference);
+  const response = await graphDeleteRequest({
+    fetchImpl,
+    url: calendarEventUrl(resourceAddress, expectedReference),
+    accessToken,
+    timeoutMs,
+  });
+  if (response.status === 404) {
+    return Object.freeze({ providerReference: expectedReference, disposition: 'already_cancelled' });
+  }
+  const code = calendarWriteErrorFor(response);
+  if (code) throw new Microsoft365ProviderError(code);
+  if (response.status !== 204) throw new Microsoft365ProviderError('MICROSOFT365_CALENDAR_WRITE_RESPONSE_INVALID');
+  return Object.freeze({ providerReference: expectedReference, disposition: 'cancelled' });
 }
 
 function revoked(reason = 'provider_unauthorized', places = 'unknown') {
@@ -763,6 +922,46 @@ export function createMicrosoft365Client({
         schedules,
         startsAt,
         endsAt,
+      });
+    },
+
+    async createCalendarEvent({ tenantReference, resourceAddress, startsAt, endsAt, idempotencyKey }) {
+      const tenant = requireGuid(tenantReference, 'MICROSOFT365_TENANT_INVALID');
+      const accessToken = await acquireAccessToken(tenant);
+      return createCalendarEvent({
+        fetchImpl,
+        accessToken,
+        timeoutMs,
+        resourceAddress,
+        startsAt,
+        endsAt,
+        idempotencyKey,
+      });
+    },
+
+    async updateCalendarEvent({ tenantReference, resourceAddress, providerReference, startsAt, endsAt }) {
+      const tenant = requireGuid(tenantReference, 'MICROSOFT365_TENANT_INVALID');
+      const accessToken = await acquireAccessToken(tenant);
+      return updateCalendarEvent({
+        fetchImpl,
+        accessToken,
+        timeoutMs,
+        resourceAddress,
+        providerReference,
+        startsAt,
+        endsAt,
+      });
+    },
+
+    async cancelCalendarEvent({ tenantReference, resourceAddress, providerReference }) {
+      const tenant = requireGuid(tenantReference, 'MICROSOFT365_TENANT_INVALID');
+      const accessToken = await acquireAccessToken(tenant);
+      return cancelCalendarEvent({
+        fetchImpl,
+        accessToken,
+        timeoutMs,
+        resourceAddress,
+        providerReference,
       });
     },
 

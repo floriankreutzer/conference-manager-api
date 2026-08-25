@@ -175,6 +175,8 @@ for (const required of [
   'TENANT_ROLE.CONFERENCE_MANAGER',
   'TENANT_ROLE.TENANT_ADMIN',
   "TENANT_AUDIT_READ: 'tenant:audit:read'",
+  'authorizeBookingOperation',
+  'BOOKING_OPERATION',
 ]) {
   if (!authorizationPolicy.includes(required)) {
     throw new Error(`Authorization policy is missing deny-by-default invariant ${required}.`);
@@ -196,6 +198,9 @@ if (!requestService.includes('expectedStatus: decision.expectedStatus')) {
 }
 if (!requestService.includes('auditService.createEvent') || !requestService.includes('auditEvent,')) {
   throw new Error('Request transitions must carry a server-generated audit event into persistence.');
+}
+if (!requestService.includes('synchronizeCancellation')) {
+  throw new Error('Confirmed booking cancellation must retain external calendar reconciliation semantics.');
 }
 
 const auditEvent = await readFile('src/audit/event.js', 'utf8');
@@ -456,8 +461,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!pool.includes('CURRENT_SCHEMA_VERSION = 12')) {
-  throw new Error('Runtime schema readiness must require Microsoft 365 room mapping migration version 12.');
+if (!pool.includes('CURRENT_SCHEMA_VERSION = 13')) {
+  throw new Error('Runtime schema readiness must require calendar-write entitlement migration version 13.');
 }
 
 const index = await readFile('src/index.js', 'utf8');
@@ -474,8 +479,10 @@ for (const required of [
   'createMicrosoft365Client',
   'createMicrosoft365ConnectionService',
   'createMicrosoft365RoomMappingService',
+  'createMicrosoft365BookingServiceFactory',
   'microsoft365ConnectionService',
   'microsoft365RoomMappingService',
+  'microsoft365BookingServiceFactory',
 ]) {
   if (!index.includes(required)) throw new Error(`Process composition must wire ${required}.`);
 }
@@ -558,6 +565,15 @@ if (!roomMappingRollback.includes('Cannot roll back Microsoft 365 room mappings 
   throw new Error('Microsoft 365 room mapping rollback must fail closed while mapping evidence exists.');
 }
 
+const calendarWriteMigration = await readFile('migrations/013_microsoft_calendar_write_entitlement.up.sql', 'utf8');
+if (!calendarWriteMigration.includes("'microsoft.calendar.write'")) {
+  throw new Error('Calendar-write migration must add the dedicated server-side write entitlement.');
+}
+const calendarWriteRollback = await readFile('migrations/013_microsoft_calendar_write_entitlement.down.sql', 'utf8');
+if (!calendarWriteRollback.includes('CALENDAR_WRITE_ENTITLEMENT_ROWS_REQUIRE_REVIEW')) {
+  throw new Error('Calendar-write entitlement rollback must fail closed while write grants exist.');
+}
+
 for (const migration of [
   'migrations/001_core_tenant_schema.up.sql',
   'migrations/001_core_tenant_schema.down.sql',
@@ -583,6 +599,8 @@ for (const migration of [
   'migrations/011_microsoft365_connection_lifecycle.down.sql',
   'migrations/012_microsoft365_room_mappings.up.sql',
   'migrations/012_microsoft365_room_mappings.down.sql',
+  'migrations/013_microsoft_calendar_write_entitlement.up.sql',
+  'migrations/013_microsoft_calendar_write_entitlement.down.sql',
 ]) {
   await readFile(migration, 'utf8');
 }

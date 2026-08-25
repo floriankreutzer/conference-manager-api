@@ -39,7 +39,7 @@ const CLAIMANT_REFERENCE = '84848484-8484-4484-8484-848484848484';
 const USER_REFERENCE = '85858585-8585-4585-8585-858585858585';
 const AUDIT_KEY = 'tenant-role-persistence-audit-key-at-least-32-bytes';
 const CSRF_KEY = 'tenant-role-persistence-csrf-key-at-least-32-bytes';
-const SESSION_ID = '86868686-8686-4686-8686-868686868686';
+const SESSION_ID = '86868686-8686-4686-8666-868686868686';
 const SESSION_TOKEN = 'SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS';
 const TENANT_IDS = [TENANT_A, TENANT_B];
 
@@ -280,6 +280,7 @@ test('tenant roles are claimant-bootstrapped, isolated, concurrent-safe and inva
 
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
+  assert.equal(await rollbackLatest(pool), true);
   assert.equal(await rollbackLatest(pool), true);
   await assert.rejects(rollbackLatest(pool), (error) => error.code === '55000');
   assert.equal(await isPostgresSchemaReady(pool), false);
