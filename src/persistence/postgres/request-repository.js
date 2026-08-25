@@ -36,6 +36,14 @@ function mapRequestRow(row) {
   });
 }
 
+async function lockFinalRoom(client, tenantId, roomId) {
+  await client.query({
+    name: 'request-final-room-lock',
+    text: 'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+    values: [`final-room-confirmation:${tenantId}:${roomId}`],
+  });
+}
+
 export function createPostgresRequestRepository(pool, { auditRepository } = {}) {
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
@@ -90,6 +98,72 @@ export function createPostgresRequestRepository(pool, { auditRepository } = {}) 
         const audit = await auditRepository.appendWithClient(client, auditEvent);
         if (!audit) throw new Error('AUDIT_APPEND_FAILED');
         return request;
+      });
+    },
+
+    async confirmIfRoomAvailable({
+      tenantId,
+      requestId,
+      expectedStatus,
+      changedAt,
+      auditEvent,
+    }) {
+      return withPostgresTransaction(pool, async (client) => {
+        const locked = await client.query({
+          name: 'request-final-confirm-lock-request',
+          text: `
+            SELECT ${REQUEST_COLUMNS}
+            FROM requests
+            WHERE tenant_id = $1 AND id = $2
+            FOR UPDATE
+          `,
+          values: [tenantId, requestId],
+        });
+        const current = mapRequestRow(locked.rows[0]);
+        if (!current || current.status !== expectedStatus || !current.roomId) {
+          return Object.freeze({ status: 'state_conflict', request: current });
+        }
+
+        await lockFinalRoom(client, tenantId, current.roomId);
+        const conflict = await client.query({
+          name: 'request-final-confirm-room-conflict',
+          text: `
+            SELECT 1
+            FROM requests
+            WHERE tenant_id = $1
+              AND room_id = $2
+              AND id <> $3
+              AND status = 'Confirmed'
+              AND starts_at < $5
+              AND ends_at > $4
+            LIMIT 1
+          `,
+          values: [tenantId, current.roomId, requestId, current.startsAt, current.endsAt],
+        });
+        if (conflict.rowCount > 0) {
+          return Object.freeze({ status: 'room_conflict', request: current });
+        }
+
+        const result = await client.query({
+          name: 'request-final-confirm-update',
+          text: `
+            UPDATE requests
+            SET status = 'Confirmed',
+                status_reason = NULL,
+                status_changed_at = $4,
+                updated_at = $4
+            WHERE tenant_id = $1
+              AND id = $2
+              AND status = $3
+            RETURNING ${REQUEST_COLUMNS}
+          `,
+          values: [tenantId, requestId, expectedStatus, changedAt],
+        });
+        const confirmed = mapRequestRow(result.rows[0]);
+        if (!confirmed) return Object.freeze({ status: 'state_conflict', request: current });
+        const audit = await auditRepository.appendWithClient(client, auditEvent);
+        if (!audit) throw new Error('AUDIT_APPEND_FAILED');
+        return Object.freeze({ status: 'confirmed', request: confirmed });
       });
     },
   });
