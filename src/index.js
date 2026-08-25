@@ -1,3 +1,4 @@
+import { createMicrosoft365ConnectionService } from './application/microsoft365-connection-service.js';
 import { createRequestService } from './application/request-service.js';
 import { createTenantUserAdministrationService } from './application/tenant-user-administration-service.js';
 import { createAuditService } from './audit/audit-service.js';
@@ -8,6 +9,7 @@ import { createEntraClient } from './identity/entra-client.js';
 import { createJitUserService } from './identity/jit-user-service.js';
 import { createPendingProviderIdentityResolver } from './identity/provider-identity-resolver.js';
 import { createSessionService } from './identity/session-service.js';
+import { createMicrosoft365Client } from './integrations/microsoft365-client.js';
 import { createLogger } from './logger.js';
 import { createMetricsRegistry } from './observability/metrics.js';
 import { createTenantOnboardingService } from './onboarding/tenant-onboarding-service.js';
@@ -57,6 +59,15 @@ const entraClient = config.entraClientId
     redirectUri: config.entraRedirectUri,
   })
   : null;
+const microsoft365Client = config.entraClientId
+  ? createMicrosoft365Client({
+    clientId: config.entraClientId,
+    clientSecret: config.entraClientSecret,
+    publicOrigin: config.publicOrigin,
+    timeoutMs: config.microsoft365GraphTimeoutMs,
+    allowInsecureLocalhost: config.mode === 'development' || config.mode === 'test',
+  })
+  : null;
 const identityResolver = createPendingProviderIdentityResolver({ onboardingService, jitUserService });
 const entraAuthService = persistence && entraClient && sessionService
   ? createEntraAuthService({
@@ -83,6 +94,16 @@ const tenantUserAdministrationService = persistence && auditService
     auditService,
   })
   : null;
+const microsoft365ConnectionService = persistence && auditService && microsoft365Client
+  ? createMicrosoft365ConnectionService({
+    repository: persistence.microsoft365ConnectionRepository,
+    bindingRepository: persistence.tenantOnboardingRepository,
+    authorizationPolicy,
+    auditService,
+    providerClient: microsoft365Client,
+    consentTtlSeconds: config.microsoft365ConsentTtlSeconds,
+  })
+  : null;
 const server = createHttpServer({
   config,
   logger,
@@ -94,6 +115,7 @@ const server = createHttpServer({
   onboardingService,
   requestService,
   tenantUserAdministrationService,
+  microsoft365ConnectionService,
   loadTenant: persistence?.loadTenant,
   readinessChecks: persistence?.readinessChecks || [],
 });
