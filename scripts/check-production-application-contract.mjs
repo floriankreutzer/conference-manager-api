@@ -28,9 +28,10 @@ for (const required of [
 
 const service = await readFile('src/application/production-application-service.js', 'utf8');
 for (const required of [
-  'authorizationPolicy.authorizeApplicationRead',
+  'authorizationPolicy.authorizeTenantApplicationRead',
   'authorizationPolicy.authorizeRequestCreate',
-  'authorizationPolicy.authorizeRequestList',
+  'authorizationPolicy.requestListScope',
+  'authorizationPolicy.requireTenantPermission',
   'AUDIT_ACTION.REQUEST_CREATED',
 ]) {
   if (!service.includes(required)) throw new Error(`Production application service is missing ${required}.`);
@@ -38,13 +39,15 @@ for (const required of [
 
 const routes = await readFile('src/http/application-routes.js', 'utf8');
 for (const required of [
-  "'/api/v1/application/profile'",
-  "'/api/v1/application/catalog'",
-  "'/api/v1/application/site-info'",
-  "'/api/v1/application/requests'",
-  "'/api/v1/application/notifications'",
-  "'/api/v1/application/configuration'",
-  'sessionService.verifyCsrf',
+  "profile: '/api/v1/application/profile'",
+  "catalog: '/api/v1/application/catalog'",
+  "siteInfo: '/api/v1/application/site-info'",
+  "requests: '/api/v1/application/requests'",
+  "notifications: '/api/v1/application/notifications'",
+  "configuration: '/api/v1/application/configuration'",
+  "principalGuard.require(request, { csrf: mutation })",
+  'tenantGuard.requireActive(principal)',
+  'validateExactObject',
 ]) {
   if (!routes.includes(required)) throw new Error(`Production application HTTP contract is missing ${required}.`);
 }
@@ -53,9 +56,10 @@ const repository = await readFile('src/persistence/postgres/application-reposito
 for (const required of [
   'tenant_id = $1',
   'loadCatalog',
-  'loadSiteInfo',
   'listNotifications',
-  'updateNotification',
+  'markNotificationRead',
+  'updateSites',
+  'auditRepository.appendWithClient(client, auditEvent)',
 ]) {
   if (!repository.includes(required)) throw new Error(`Production application persistence is missing ${required}.`);
 }
