@@ -84,8 +84,12 @@ test('MSAL identity transport is fixed-origin, redirect-disabled, timeout-bound 
         return response(200, { ok: true }, { contentLength: 65_537 });
       }
       if (identityMode === 'wait') {
-        return new Promise((_, reject) => {
-          options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+        return new Promise((resolve, reject) => {
+          const fallback = setTimeout(() => resolve(response(200, { late: true })), 100);
+          options.signal.addEventListener('abort', () => {
+            clearTimeout(fallback);
+            reject(options.signal.reason);
+          }, { once: true });
         });
       }
       return response(200, { ok: true });
