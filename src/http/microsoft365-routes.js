@@ -186,6 +186,7 @@ export function createMicrosoft365HttpHandler({
   service,
   principalGuard,
   tenantGuard,
+  maxBodyBytes,
   maxResponseBytes,
 } = {}) {
   if (!principalGuard || typeof principalGuard.require !== 'function') {
@@ -194,9 +195,13 @@ export function createMicrosoft365HttpHandler({
   if (!tenantGuard || typeof tenantGuard.requireKnown !== 'function') {
     throw new TypeError('TENANT_GUARD_REQUIRED');
   }
+  if (!Number.isSafeInteger(maxBodyBytes) || maxBodyBytes < 1_024) {
+    throw new TypeError('MAX_BODY_BYTES_INVALID');
+  }
   if (!Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1_024) {
     throw new TypeError('MAX_RESPONSE_BYTES_INVALID');
   }
+  const roomImportMaxBytes = Math.min(maxBodyBytes, ROOM_IMPORT_BODY_MAX_BYTES);
 
   return async function handleMicrosoft365({
     request,
@@ -273,7 +278,7 @@ export function createMicrosoft365HttpHandler({
       }
       const principal = await principalGuard.require(request, { csrf: true });
       const tenantContext = await tenantGuard.requireKnown(principal);
-      const body = await readJsonObjectBody(request, { maxBytes: ROOM_IMPORT_BODY_MAX_BYTES });
+      const body = await readJsonObjectBody(request, { maxBytes: roomImportMaxBytes });
       const mappings = await service.importSelectedRooms({
         principal,
         tenantContext,
