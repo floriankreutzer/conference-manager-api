@@ -9,6 +9,7 @@ const CONSENT_PATH_SUFFIX = '/v2.0/adminconsent';
 const DEFAULT_TIMEOUT_MS = 10_000;
 const ACCESS_TOKEN_MAX = 32_768;
 const GRAPH_RESPONSE_MAX_BYTES = 65_536;
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 export const MICROSOFT365_PROVIDER = 'microsoft365';
 export const MICROSOFT365_BASE_PERMISSIONS = Object.freeze([
@@ -165,6 +166,14 @@ function degraded({ places = 'unknown', calendars = 'unknown', reason }) {
   });
 }
 
+function isValidCallbackOrigin(origin, allowInsecureLocalhost) {
+  if (origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) return false;
+  if (origin.protocol === 'https:') return true;
+  return allowInsecureLocalhost === true
+    && origin.protocol === 'http:'
+    && LOCAL_HOSTS.has(origin.hostname);
+}
+
 export function createMicrosoft365Client({
   clientId,
   clientSecret,
@@ -172,12 +181,14 @@ export function createMicrosoft365Client({
   fetchImpl = globalThis.fetch,
   applicationFactory,
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  allowInsecureLocalhost = false,
 } = {}) {
   const normalizedClientId = requireGuid(clientId, 'MICROSOFT365_CLIENT_ID_INVALID');
   if (typeof clientSecret !== 'string' || clientSecret.length < 1) {
     throw new TypeError('MICROSOFT365_CLIENT_SECRET_REQUIRED');
   }
   if (typeof fetchImpl !== 'function') throw new TypeError('MICROSOFT365_FETCH_REQUIRED');
+  if (typeof allowInsecureLocalhost !== 'boolean') throw new TypeError('MICROSOFT365_LOCALHOST_MODE_INVALID');
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 30_000) {
     throw new TypeError('MICROSOFT365_TIMEOUT_INVALID');
   }
@@ -188,7 +199,7 @@ export function createMicrosoft365Client({
   } catch {
     throw new TypeError('MICROSOFT365_PUBLIC_ORIGIN_INVALID');
   }
-  if (origin.protocol !== 'https:' || origin.pathname !== '/' || origin.search || origin.hash) {
+  if (!isValidCallbackOrigin(origin, allowInsecureLocalhost)) {
     throw new TypeError('MICROSOFT365_PUBLIC_ORIGIN_INVALID');
   }
   const redirectUri = new URL('/api/v1/integrations/microsoft365/callback', origin).toString();
