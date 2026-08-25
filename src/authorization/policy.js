@@ -27,6 +27,14 @@ export const PERMISSION = Object.freeze({
   TENANT_AUDIT_READ: 'tenant:audit:read',
 });
 
+export const BOOKING_OPERATION = Object.freeze({
+  AVAILABILITY: 'availability',
+  RESERVATION_VALIDATION: 'reservation_validation',
+  CREATE: 'create',
+  UPDATE: 'update',
+  CANCEL: 'cancel',
+});
+
 const ROLE_PERMISSIONS = Object.freeze({
   [TENANT_ROLE.EMPLOYEE]: Object.freeze([
     PERMISSION.REQUEST_READ,
@@ -51,6 +59,7 @@ const TENANT_ROLE_ORDER = Object.freeze([
 ]);
 const KNOWN_ROLES = new Set(Object.keys(ROLE_PERMISSIONS));
 const KNOWN_PERMISSIONS = new Set(Object.values(PERMISSION));
+const KNOWN_BOOKING_OPERATIONS = new Set(Object.values(BOOKING_OPERATION));
 const MANAGER_TRANSITIONS = Object.freeze({
   [REQUEST_TRANSITION.START_REVIEW]: Object.freeze({
     from: Object.freeze([REQUEST_STATUS.SUBMITTED]),
@@ -154,6 +163,45 @@ function employeeCancellation(principal, request, transition, reason) {
   });
 }
 
+function authorizeBookingOperation(principal, tenantContext, request, operation) {
+  assertPrincipalShape(principal);
+  assertTenantBinding(principal, tenantContext, request?.tenantId);
+  if (!request || typeof request !== 'object') deny('RESOURCE_NOT_AVAILABLE', { conceal: true });
+  if (!KNOWN_BOOKING_OPERATIONS.has(operation)) throw new AuthorizationInputError('BOOKING_OPERATION_INVALID');
+
+  if (
+    operation === BOOKING_OPERATION.CREATE
+    || operation === BOOKING_OPERATION.UPDATE
+  ) {
+    requirePermission(principal, PERMISSION.REQUEST_MANAGE, [TENANT_ROLE.CONFERENCE_MANAGER]);
+    return true;
+  }
+
+  if (operation === BOOKING_OPERATION.CANCEL) {
+    if (
+      principal.roles.includes(TENANT_ROLE.CONFERENCE_MANAGER)
+      && principal.permissions.includes(PERMISSION.REQUEST_MANAGE)
+    ) {
+      requirePermission(principal, PERMISSION.REQUEST_MANAGE, [TENANT_ROLE.CONFERENCE_MANAGER]);
+      return true;
+    }
+    requirePermission(principal, PERMISSION.REQUEST_CANCEL, [TENANT_ROLE.EMPLOYEE]);
+    if (request.requesterUserId !== principal.userId) deny('RESOURCE_NOT_AVAILABLE', { conceal: true });
+    return true;
+  }
+
+  if (
+    principal.roles.includes(TENANT_ROLE.CONFERENCE_MANAGER)
+    && principal.permissions.includes(PERMISSION.REQUEST_READ)
+  ) {
+    requirePermission(principal, PERMISSION.REQUEST_READ, [TENANT_ROLE.CONFERENCE_MANAGER]);
+    return true;
+  }
+  requirePermission(principal, PERMISSION.REQUEST_READ, [TENANT_ROLE.EMPLOYEE]);
+  if (request.requesterUserId !== principal.userId) deny('RESOURCE_NOT_AVAILABLE', { conceal: true });
+  return true;
+}
+
 export function tenantAuthorizationSnapshot(roles) {
   if (!Array.isArray(roles) || roles.length < 1 || roles.length > TENANT_ROLE_ORDER.length) {
     deny('ROLE_NOT_AUTHORIZED');
@@ -191,6 +239,8 @@ export function createAuthorizationPolicy() {
       requirePermission(principal, permission, [TENANT_ROLE.TENANT_ADMIN]);
       return true;
     },
+
+    authorizeBookingOperation,
 
     authorizeRequestRead(principal, tenantContext, request) {
       assertPrincipalShape(principal);
