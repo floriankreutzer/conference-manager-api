@@ -64,15 +64,39 @@ test('Microsoft capability health is tenant-scoped, preserves last success and r
   const successAt = new Date('2026-08-25T18:00:00.000Z');
   const failureAt = new Date('2026-08-25T18:01:00.000Z');
 
-  await repository.record({ tenantId: TENANT_A, integrationId: INTEGRATION_A, capability: 'free_busy', status: 'healthy', checkedAt: successAt, successful: true });
-  await repository.record({ tenantId: TENANT_A, integrationId: INTEGRATION_A, capability: 'free_busy', status: 'unavailable', reason: 'provider_unavailable', checkedAt: failureAt });
+  await repository.record({
+    tenantId: TENANT_A,
+    integrationId: INTEGRATION_A,
+    capability: 'free_busy',
+    status: 'healthy',
+    checkedAt: successAt,
+    successful: true,
+  });
+  await repository.record({
+    tenantId: TENANT_A,
+    integrationId: INTEGRATION_A,
+    capability: 'free_busy',
+    status: 'unavailable',
+    reason: 'provider_unavailable',
+    checkedAt: failureAt,
+  });
   const [health] = await repository.listByTenantIdAndIntegrationId(TENANT_A, INTEGRATION_A);
   assert.equal(health.status, 'unavailable');
   assert.equal(health.lastSuccessAt, successAt.toISOString());
-  assert.deepEqual(await repository.listByTenantIdAndIntegrationId(TENANT_B, INTEGRATION_B), []);
+  assert.deepEqual(
+    await repository.listByTenantIdAndIntegrationId(TENANT_B, INTEGRATION_B),
+    [],
+  );
 
   await assert.rejects(
-    repository.record({ tenantId: TENANT_A, integrationId: INTEGRATION_B, capability: 'places', status: 'healthy', checkedAt: successAt, successful: true }),
+    repository.record({
+      tenantId: TENANT_A,
+      integrationId: INTEGRATION_B,
+      capability: 'places',
+      status: 'healthy',
+      checkedAt: successAt,
+      successful: true,
+    }),
     (error) => error.code === '23503',
   );
   assert.equal(await rollbackLatest(pool), true);
