@@ -9,6 +9,7 @@ import {
   RequestStateConflictError,
 } from '../authorization/errors.js';
 import { isRequestId } from '../domain/request.js';
+import { REQUEST_TRANSITION } from '../domain/request-workflow.js';
 
 function concealedNotFound() {
   return new AuthorizationDeniedError('RESOURCE_NOT_AVAILABLE', { conceal: true });
@@ -22,6 +23,7 @@ export function createRequestService({
   repository,
   authorizationPolicy,
   auditService,
+  finalRoomConfirmationService = null,
   clock = () => Date.now(),
 } = {}) {
   if (
@@ -45,6 +47,9 @@ export function createRequestService({
     || typeof auditService.recordAuthorizationDenied !== 'function'
   ) {
     throw new TypeError('AUDIT_SERVICE_REQUIRED');
+  }
+  if (finalRoomConfirmationService !== null && typeof finalRoomConfirmationService?.confirm !== 'function') {
+    throw new TypeError('FINAL_ROOM_CONFIRMATION_SERVICE_INVALID');
   }
   if (typeof clock !== 'function') throw new TypeError('CLOCK_REQUIRED');
 
@@ -128,6 +133,19 @@ export function createRequestService({
       reason,
       correlationId,
     }) {
+      assertRequestId(requestId);
+      if (transition === REQUEST_TRANSITION.CONFIRM && finalRoomConfirmationService) {
+        if (reason !== undefined && reason !== null) {
+          throw new AuthorizationInputError('TRANSITION_REASON_FORBIDDEN');
+        }
+        return finalRoomConfirmationService.confirm({
+          principal,
+          tenantContext,
+          requestId,
+          correlationId,
+        });
+      }
+
       const request = await loadRequest(tenantContext, requestId);
       if (!request) {
         await recordDenied({
