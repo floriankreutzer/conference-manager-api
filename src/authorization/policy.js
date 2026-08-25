@@ -31,7 +31,7 @@ export const BOOKING_OPERATION = Object.freeze({
   AVAILABILITY: 'availability',
   RESERVATION_VALIDATION: 'reservation_validation',
   CREATE: 'create',
-  UPDATE: 'update',
+  MODIFY: 'update',
   CANCEL: 'cancel',
 });
 
@@ -171,7 +171,7 @@ function authorizeBookingOperation(principal, tenantContext, request, operation)
 
   if (
     operation === BOOKING_OPERATION.CREATE
-    || operation === BOOKING_OPERATION.UPDATE
+    || operation === BOOKING_OPERATION.MODIFY
   ) {
     requirePermission(principal, PERMISSION.REQUEST_MANAGE, [TENANT_ROLE.CONFERENCE_MANAGER]);
     return true;
