@@ -22,11 +22,15 @@ function assertNullableDate(value, code) {
 }
 
 function assertProviderTenant(value) {
-  if (typeof value !== 'string' || !GUID_PATTERN.test(value)) throw new TypeError('MICROSOFT365_PROVIDER_TENANT_INVALID');
+  if (typeof value !== 'string' || !GUID_PATTERN.test(value)) {
+    throw new TypeError('MICROSOFT365_PROVIDER_TENANT_INVALID');
+  }
 }
 
 function assertHash(value) {
-  if (typeof value !== 'string' || !HASH_PATTERN.test(value)) throw new TypeError('MICROSOFT365_STATE_HASH_INVALID');
+  if (typeof value !== 'string' || !HASH_PATTERN.test(value)) {
+    throw new TypeError('MICROSOFT365_STATE_HASH_INVALID');
+  }
 }
 
 function normalizeStatus(value) {
@@ -36,7 +40,9 @@ function normalizeStatus(value) {
 
 function normalizeReason(value) {
   if (value === null) return null;
-  if (typeof value !== 'string' || !REASON_PATTERN.test(value)) throw new TypeError('MICROSOFT365_CONNECTION_REASON_INVALID');
+  if (typeof value !== 'string' || !REASON_PATTERN.test(value)) {
+    throw new TypeError('MICROSOFT365_CONNECTION_REASON_INVALID');
+  }
   return value;
 }
 
@@ -121,7 +127,9 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
       assertDate(createdAt, 'MICROSOFT365_CREATED_AT_INVALID');
       assertDate(expiresAt, 'MICROSOFT365_EXPIRES_AT_INVALID');
       if (expiresAt <= createdAt) throw new TypeError('MICROSOFT365_EXPIRY_INVALID');
-      if (typeof auditEventFor !== 'function') throw new TypeError('MICROSOFT365_AUDIT_FACTORY_REQUIRED');
+      if (typeof auditEventFor !== 'function') {
+        throw new TypeError('MICROSOFT365_AUDIT_FACTORY_REQUIRED');
+      }
 
       return withPostgresTransaction(pool, async (client) => {
         await tenantLock(client, tenantId);
@@ -257,15 +265,29 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
     }) {
       assertUuid(tenantId, 'MICROSOFT365_TENANT_ID_INVALID');
       assertUuid(integrationId, 'MICROSOFT365_INTEGRATION_ID_INVALID');
-      if (!Number.isSafeInteger(connectionVersion) || connectionVersion < 1) throw new TypeError('MICROSOFT365_VERSION_INVALID');
+      if (!Number.isSafeInteger(connectionVersion) || connectionVersion < 1) {
+        throw new TypeError('MICROSOFT365_VERSION_INVALID');
+      }
       const normalizedStatus = normalizeStatus(status);
-      const normalizedPlaces = normalizePermission(placesPermission, PLACES_PERMISSION, 'MICROSOFT365_PLACES_PERMISSION_INVALID');
-      const normalizedCalendars = normalizePermission(calendarsPermission, CALENDARS_PERMISSION, 'MICROSOFT365_CALENDARS_PERMISSION_INVALID');
+      const normalizedPlaces = normalizePermission(
+        placesPermission,
+        PLACES_PERMISSION,
+        'MICROSOFT365_PLACES_PERMISSION_INVALID',
+      );
+      const normalizedCalendars = normalizePermission(
+        calendarsPermission,
+        CALENDARS_PERMISSION,
+        'MICROSOFT365_CALENDARS_PERMISSION_INVALID',
+      );
       const normalizedReason = normalizeReason(reason);
       assertNullableDate(lastVerifiedAt, 'MICROSOFT365_VERIFIED_AT_INVALID');
       assertDate(changedAt, 'MICROSOFT365_CHANGED_AT_INVALID');
-      if (lastVerifiedAt && lastVerifiedAt > changedAt) throw new TypeError('MICROSOFT365_VERIFIED_AT_INVALID');
-      if (!Array.isArray(auditEvents) || auditEvents.length > 3) throw new TypeError('MICROSOFT365_AUDIT_EVENTS_INVALID');
+      if (lastVerifiedAt && lastVerifiedAt > changedAt) {
+        throw new TypeError('MICROSOFT365_VERIFIED_AT_INVALID');
+      }
+      if (!Array.isArray(auditEvents) || auditEvents.length > 3) {
+        throw new TypeError('MICROSOFT365_AUDIT_EVENTS_INVALID');
+      }
 
       return withPostgresTransaction(pool, async (client) => {
         await tenantLock(client, tenantId);
@@ -309,7 +331,9 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
     async disconnect({ tenantId, changedAt, auditEventFor }) {
       assertUuid(tenantId, 'MICROSOFT365_TENANT_ID_INVALID');
       assertDate(changedAt, 'MICROSOFT365_CHANGED_AT_INVALID');
-      if (typeof auditEventFor !== 'function') throw new TypeError('MICROSOFT365_AUDIT_FACTORY_REQUIRED');
+      if (typeof auditEventFor !== 'function') {
+        throw new TypeError('MICROSOFT365_AUDIT_FACTORY_REQUIRED');
+      }
 
       return withPostgresTransaction(pool, async (client) => {
         await tenantLock(client, tenantId);
