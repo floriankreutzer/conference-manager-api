@@ -2,7 +2,7 @@
 
 ## Authority
 
-Root `AGENTS.md` is authoritative. This document defines the minimum deployable security configuration for Pilot and Production. It is not an infrastructure-specific runbook; whichever hosting platform is selected must provide evidence that the equivalent controls are active.
+Root `AGENTS.md` is authoritative. This document defines the minimum deployable security configuration for Pilot and Production. It is not an infrastructure-specific runbook; the selected hosting platform must provide evidence that equivalent controls are active.
 
 The application must fail closed when security-sensitive configuration is missing or malformed. Production must never fall back to demo, in-memory, browser or unencrypted persistence authority.
 
@@ -17,68 +17,78 @@ https://<public-host>/api/*   -> conference-manager-api
 
 Required edge properties:
 
-- HTTPS only for Pilot/Production; HTTP is redirected at the edge before application traffic is served.
-- TLS certificate and hostname validation are mandatory. TLS 1.2 or newer is the minimum operational policy; prefer the platform's current secure TLS 1.3-capable profile.
+- HTTPS only for Pilot/Production; HTTP redirects before application traffic is served.
+- TLS certificate and hostname validation are mandatory. TLS 1.2 or newer is the minimum; prefer the platform's current TLS 1.3-capable profile.
 - `/api/*` routes only to the trusted API service. User input cannot select an alternate upstream.
-- CORS is not enabled for the normal browser path. Do not add wildcard or reflected `Access-Control-Allow-Origin` headers.
-- Edge request/header/time limits must be equal to or stricter than the application limits where practical.
-- A distributed/shared edge abuse-control policy is required for multi-instance Pilot/Production because the application limiter is process-local.
-- The edge must not rewrite or inject Tenant/User/role/permission authority.
-- Client-provided request/correlation identifiers may be forwarded for troubleshooting only if separately named; the application's `X-Request-Id` remains server-generated.
-- `X-Forwarded-For` or similar forwarded client-address headers are not authorization inputs and are not currently trusted by the application limiter.
+- CORS is not enabled for the normal browser path. Do not add wildcard or reflected `Access-Control-Allow-Origin`.
+- Edge request, header and time limits should be equal to or stricter than application limits.
+- Distributed/shared edge abuse control is required for multi-instance Pilot/Production because the application limiter is process-local.
+- The edge must not rewrite or inject Tenant, User, role, permission or provider authority.
+- The application's `X-Request-Id` remains server-generated.
+- Forwarded client-address headers are not authorization inputs and are not currently trusted by the application limiter.
 
 ## Required runtime configuration
 
-The application configuration parser is `src/config.js`. Values below are deployment configuration, not per-Tenant code changes.
+The parser is `src/config.js`. Values below are protected deployment configuration, not per-Tenant code changes.
 
 | Variable | Pilot / Production baseline | Security rationale |
 | --- | --- | --- |
 | `NODE_ENV` | `pilot` or `production` | Enables fail-closed production requirements |
-| `SERVICE_VERSION` | Required, 1-64 safe identifier chars | Support/release evidence; no secret/Tenant names |
-| `BUILD_ID` | Required, 1-64 safe identifier chars | Deployment traceability; no secret/Tenant names |
-| `PUBLIC_ORIGIN` | Required exact `https://` origin, no path/query/credentials | Host/Origin validation and same-origin trust boundary |
-| `HOST` | Platform-controlled bind address | Runtime binding only; not public authority |
-| `PORT` | 1-65535, platform-controlled | Bounded listener configuration |
+| `SERVICE_VERSION` | Required, 1-64 safe identifier chars | Release evidence without secrets/Tenant names |
+| `BUILD_ID` | Required, 1-64 safe identifier chars | Deployment traceability |
+| `PUBLIC_ORIGIN` | Required exact `https://` origin, no path/query/credentials | Host/Origin validation, callbacks and same-origin boundary |
+| `HOST` | Platform-controlled bind address | Runtime binding only |
+| `PORT` | 1-65535 | Bounded listener configuration |
 | `MAX_BODY_BYTES` | Default 65536; max 1048576 | Request exhaustion bound |
-| `MAX_RESPONSE_BYTES` | Default 1048576; max 4194304 | Response exhaustion / accidental data exposure bound |
-| `RATE_LIMIT_MAX` | Default 120; tune from Pilot evidence | Process-local defense-in-depth only |
+| `MAX_RESPONSE_BYTES` | Default 1048576; max 4194304 | Response exhaustion and accidental disclosure bound |
+| `RATE_LIMIT_MAX` | Default 120 | Process-local defense-in-depth |
 | `RATE_LIMIT_WINDOW_MS` | Default 60000 | Bounded rate window |
 | `REQUEST_TIMEOUT_MS` | Default 15000; max 120000 | Slow-request bound |
-| `HEADERS_TIMEOUT_MS` | Default 10000; max 60000 | Slowloris/header bound |
+| `HEADERS_TIMEOUT_MS` | Default 10000; max 60000 | Slow-header bound |
 | `KEEP_ALIVE_TIMEOUT_MS` | Default 5000; max 60000 | Connection-resource bound |
 | `READINESS_TIMEOUT_MS` | Default 1000; max 10000 | Dependency-health bound |
-| `SESSION_TTL_SECONDS` | Default 28800; max 86400 | Session lifetime bound; shorter values preferred for Pilot/admin flows where usable |
-| `DATABASE_URL` | Required from protected deployment secret/config | Authoritative PostgreSQL endpoint/credential reference |
-| `DATABASE_SSL` | Exactly `verify-full` | Certificate + hostname verified database TLS |
+| `SESSION_TTL_SECONDS` | Default 28800; max 86400 | Server-side session lifetime |
+| `DATABASE_URL` | Required protected connection value | Authoritative PostgreSQL endpoint and credential reference |
+| `DATABASE_SSL` | Exactly `verify-full` | Certificate and hostname verified database TLS |
 | `DATABASE_POOL_MAX` | Default 10; max 50 | Database resource bound |
 | `DATABASE_CONNECTION_TIMEOUT_MS` | Default 5000; max 30000 | Connect bound |
 | `DATABASE_IDLE_TIMEOUT_MS` | Default 30000; max 300000 | Idle connection bound |
 | `DATABASE_STATEMENT_TIMEOUT_MS` | Default 10000; max 120000 | Query/resource bound |
-| `CSRF_SECRET` | Required, externally managed, 32-512 bytes | Session-bound HMAC synchronizer token secret |
+| `CSRF_SECRET` | Required, externally managed, 32-512 bytes | Session-bound HMAC synchronizer token |
 | `AUDIT_HMAC_SECRET` | Required, externally managed, stable, 32-512 bytes | Audit integrity chain key |
+| `ENTRA_CLIENT_ID` | Required GUID | Pilot/Production Entra application identifier |
+| `ENTRA_CLIENT_SECRET` | Required protected secret, 32-512 bytes | Confidential-client authentication |
+| `OIDC_TRANSACTION_SECRET` | Required protected secret, 32-512 bytes | OIDC browser-transaction binding integrity |
+| `OIDC_TRANSACTION_TTL_SECONDS` | Default 600; 120-900 | Bounded one-time authentication transaction |
+| `MICROSOFT365_CONSENT_TTL_SECONDS` | Default 600; 120-900 | Bounded actor/Tenant-bound admin-consent state |
+| `MICROSOFT365_GRAPH_TIMEOUT_MS` | Default 10000; 1000-30000 | Microsoft identity/Graph outbound request bound |
 
-The checked-in `.env.example` is a development template only. Pilot/Production values must come from the deployment platform's protected configuration/secret mechanism.
+The Entra authority is fixed to the Microsoft organizational-account authority. The Entra callback URI is derived from `PUBLIC_ORIGIN` as `/api/v1/auth/microsoft/callback`; it is not supplied by the browser. The Microsoft 365 admin-consent callback is likewise fixed under the same public origin.
+
+The checked-in `.env.example` is a development template only. Pilot/Production values must come from the deployment platform's protected configuration or secret mechanism.
 
 ## Secrets and credential handling
 
 Secrets include at minimum:
 
-- PostgreSQL credentials/connection secret material;
+- PostgreSQL credential material;
 - `CSRF_SECRET`;
 - `AUDIT_HMAC_SECRET`;
-- future Entra application/client credentials;
-- future Microsoft Graph access/refresh tokens or credential references;
+- `ENTRA_CLIENT_SECRET`;
+- `OIDC_TRANSACTION_SECRET`;
+- Microsoft access tokens acquired by the server;
 - future signing/private keys.
 
 Rules:
 
-1. Never commit secrets to Git, test fixtures, images, workflow YAML, documentation examples, browser code or issue/PR text.
-2. Production/Pilot secrets are separate from development/test and from each other.
-3. Application logs, metrics, audit metadata and public errors must not contain secret values.
-4. Secret rotation must preserve service semantics. `CSRF_SECRET` rotation invalidates current CSRF material and therefore requires coordinated session handling.
-5. `AUDIT_HMAC_SECRET` must not be rotated as an ordinary secret change. Existing audit records depend on it; rotation requires a reviewed integrity checkpoint/migration strategy.
-6. Future provider access/refresh tokens remain server-side and are never placed in LocalStorage/sessionStorage.
+1. Never commit secrets to Git, fixtures, images, workflow YAML, documentation examples, browser code or issue/PR text.
+2. Development, Test, Pilot and Production credentials are separate.
+3. Logs, metrics, audit metadata and public errors must not contain secrets, raw OIDC state, consent state or provider response bodies.
+4. `CSRF_SECRET` rotation invalidates current CSRF material and requires coordinated session handling.
+5. `AUDIT_HMAC_SECRET` rotation requires a reviewed integrity checkpoint/migration strategy because existing audit records depend on it.
+6. Provider access tokens remain server-side and are never placed in LocalStorage/sessionStorage or returned through public APIs.
 7. Secret-store access is least-privilege to the runtime identity and deployment automation that requires it.
+8. Entra client-secret rotation must be rehearsed in Pilot and must include provider verification, session/authentication behavior and rollback evidence.
 
 ## HTTP security baseline
 
@@ -92,149 +102,183 @@ Rules:
 - `Referrer-Policy: no-referrer`;
 - `X-Content-Type-Options: nosniff`;
 - `X-Frame-Options: DENY`;
-- `Strict-Transport-Security: max-age=31536000; includeSubDomains` in Pilot/Production.
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains`.
 
-The API does not emit HTML. The default-deny CSP therefore protects the API origin without needing script/style exceptions. Frontend CSP remains owned by the frontend/edge deployment and must not be weakened to satisfy the API.
+The API emits JSON, not HTML. Frontend CSP remains owned by the frontend/edge deployment and must not be weakened to satisfy the API.
 
 Request hardening must preserve:
 
 - method allowlist: GET, POST, PUT, PATCH, DELETE;
-- rejection of absolute/protocol-relative request targets, traversal, malformed percent encoding and encoded path separators;
+- rejection of absolute/protocol-relative targets, traversal, malformed percent encoding and encoded path separators;
 - strict JSON content type for JSON bodies;
 - rejection of compressed request bodies until a bounded decompression policy exists;
-- positive-schema validation and unknown-field rejection for state-changing payloads;
+- positive-schema validation and unknown-field rejection;
 - exact Host match and exact match for any present Origin;
-- bounded request/response/header/connection processing.
+- bounded request, response, header and connection processing.
 
 ## Session and CSRF baseline
 
-The application session cookie is `cm_session` and must preserve:
+The `cm_session` cookie must preserve:
 
 - `HttpOnly`;
 - `Secure` for Pilot/Production;
 - `SameSite=Lax`;
 - `Path=/api`;
-- no broad `Domain` attribute;
-- bounded `Max-Age` backed by server-side expiry/revocation.
+- no broad `Domain`;
+- bounded `Max-Age` backed by server-side expiry, revocation and User security version.
 
-Cookie authentication does not replace CSRF protection. Every protected POST/PUT/PATCH/DELETE operation must require a valid server-generated/session-bound CSRF token unless a reviewed endpoint is explicitly designed without cookie authentication.
+Every protected POST, PUT, PATCH and DELETE operation using cookie authentication requires a valid server-generated, session-bound CSRF token unless a reviewed endpoint is explicitly designed without cookie authentication.
 
-The browser may hold the CSRF token in runtime memory. It must not persist the session credential or provider tokens in LocalStorage/sessionStorage.
+The browser may hold the CSRF token in runtime memory. It must not persist the session credential, provider tokens, roles, permissions or Tenant authority in browser storage.
 
 ## Database baseline
 
-- PostgreSQL 18 is authoritative production persistence for the current baseline.
-- Pilot/Production use `DATABASE_SSL=verify-full` and a hostname/certificate-valid connection endpoint.
-- SQL application values remain parameterized; do not interpolate client values into SQL text.
-- Migrations are applied by deployment automation before application rollout; the application does not auto-migrate at startup.
-- Readiness requires database connectivity and the exact expected schema version.
-- Tenant ownership/referential integrity remains reinforced at database level where practical.
-- Backups, restore tests, rollback evidence and retention are deployment responsibilities. A Pilot readiness decision requires evidence that restore is tested against the selected hosting platform.
+- PostgreSQL 18 is authoritative production persistence.
+- Pilot/Production use `DATABASE_SSL=verify-full` with a certificate/hostname-valid endpoint.
+- SQL application values remain parameterized.
+- Deployment automation applies migrations before application rollout; startup does not auto-migrate.
+- Readiness requires connectivity and exact schema version 11 or the current repository-defined version after later migrations.
+- Tenant ownership and referential integrity are reinforced at database level.
+- Advisory locks and optimistic versions protect concurrent security/business transitions.
+- Migration rollback guards prevent silent removal of security/business evidence.
+- Backups, restore tests, retention and point-in-time recovery evidence are deployment responsibilities.
 
 ## CORS, redirects and callbacks
 
-Normal browser operation is same-origin and requires no CORS response headers. Introducing cross-origin browser API access is an architecture change.
+Normal browser operation is same-origin and requires no CORS response headers. Cross-origin browser API access is an architecture change.
 
-The current API exposes no general redirect endpoint. Future Entra callbacks must use an exact server-configured registered redirect URI; browser query/body data cannot select the post-authentication authority or arbitrary redirect target.
+Entra and Microsoft 365 callbacks use exact server-controlled paths. Browser query/body data cannot select post-authentication authority or an arbitrary redirect destination.
 
-Future outbound provider redirects are disabled by default or restricted to an explicit server-side allowlist and revalidated on each hop.
+Entra and Microsoft 365 result redirects are fixed same-origin paths. Provider error descriptions are never reflected into redirect URLs or public JSON.
 
-## Microsoft Entra and Graph secure configuration
+Outbound provider redirects are disabled. Enabling any redirect requires an explicit allowlist and revalidation on every hop.
 
-These settings become mandatory only when the corresponding SaaS 1 adapter is implemented. Their absence in SaaS 0 is not an error because the adapters are not enabled.
+## Microsoft Entra secure configuration
 
-Entra baseline:
+Pilot and Production require:
 
-- separate application registration for Pilot and Production;
-- fixed tenant/authority policy appropriate to the onboarding model;
-- exact redirect URI per environment;
-- least-privilege application permissions/scopes;
-- provider client credential or certificate in managed secret storage;
+- separate Entra application registrations and credentials unless an explicit reviewed exception exists;
+- organizational-account support appropriate to the multi-Tenant onboarding model;
+- exact environment-specific redirect URI matching `PUBLIC_ORIGIN` plus `/api/v1/auth/microsoft/callback`;
+- authorization-code flow with PKCE;
+- server-side confidential-client credential from managed secret storage;
 - issuer, audience, signature, state, nonce and time validation;
-- explicit mapping from approved provider identity to internal Tenant/User records.
+- explicit mapping from validated provider identity to internal Tenant/User records;
+- no role derivation from email domain, display name or unreviewed group claims;
+- no provider token or application session in browser storage;
+- registration owners, credential expiry and rotation alerts recorded in the operational runbook.
 
-Graph baseline:
+Real Tenant acceptance must include independent Entra Tenants, wrong-Tenant and personal-account rejection, invalid/replayed callback behavior and credential revocation/rotation.
 
-- fixed/allowlisted Microsoft Graph origin(s) and endpoint templates;
-- least-privilege permissions for enabled capabilities only;
-- server-side credential/token handling;
-- explicit connect/read/write timeouts;
-- bounded retry policy for safe/idempotent operations only;
-- throttling handling without unbounded retry;
-- provider response validation before business use;
-- no user-controlled URL, provider reference or integration secret as authority.
+## Microsoft 365 and Microsoft Graph secure configuration
+
+The base Microsoft 365 connection uses the same reviewed confidential application registration and verifies only:
+
+- `Place.Read.All` application permission;
+- `Calendars.ReadBasic.All` application permission.
+
+Required controls:
+
+- Tenant-specific Microsoft admin-consent endpoint with Microsoft Graph `/.default`;
+- exact callback URI under `PUBLIC_ORIGIN`;
+- active internal Entra Tenant binding before connection;
+- fixed Microsoft identity and Graph origins;
+- no user-controlled URL, Tenant, mailbox or provider resource authority;
+- actor/Tenant-bound one-time consent state with bounded expiry;
+- disabled redirects;
+- `MICROSOFT365_GRAPH_TIMEOUT_MS` and bounded response size;
+- positive provider response validation;
+- stable provider-error classification without raw response disclosure;
+- server-side application-token handling only;
+- Tenant-scoped connection persistence and audit evidence.
+
+`Calendars.ReadWrite` or another event-write permission must not be added merely to simplify the base connection. Calendar create/update/cancel requires a separate reviewed capability, Exchange Online Application RBAC scoping, Pilot acceptance and activation decision.
+
+Local disconnect invalidates Conference Manager connection state and pending consent transactions. It does not by itself prove that Microsoft administrator consent was externally revoked; the operational runbook must cover service-principal permission revocation.
+
+See `docs/MICROSOFT365-CONNECTION.md`.
 
 ## Logging, metrics and audit
 
 Operational logging follows `docs/OBSERVABILITY.md`:
 
-- structured JSON to stdout for collection;
+- structured JSON to stdout;
 - server-generated correlation ID;
 - fixed route keys, not dynamic paths;
-- no Tenant ID, User ID, session/cookie/CSRF values, provider tokens/references, connection strings or raw provider bodies;
+- no Tenant ID, User ID, provider Tenant/User ID, session/cookie/CSRF/OIDC/consent values, token, credential, connection string or provider body;
 - bounded low-cardinality metrics only.
 
-Business/security audit follows `docs/AUDIT.md` and is separate from normal logs. Tenant-visible audit reads remain Tenant-scoped and integrity-verified.
+Business/security audit follows `docs/AUDIT.md` and remains separate from operational logs. Tenant-visible reads are Tenant-scoped and integrity-verified.
+
+Microsoft lifecycle audit metadata may contain only bounded operation and reason codes, never raw provider identifiers, state, tokens or provider messages.
 
 ## SAST, SCA, dependency and secret controls
 
 Repository release controls are:
 
-- SAST-oriented repository check: `npm run check:static` plus architecture-specific gates;
-- SCA/high-severity vulnerability blocking: `npm run audit`;
-- dependency/lock/license/lifecycle policy: `npm run check:dependencies` and the `Dependency Policy` workflow;
-- source/high-confidence secret checks: `npm run check:secrets`;
+- SAST-oriented checks: `npm run check:static` plus architecture-specific gates;
+- high-severity vulnerability blocking: `npm run audit`;
+- dependency/lock/license/lifecycle policy: `npm run check:dependencies` and `Dependency Policy` workflow;
+- source secret checks: `npm run check:secrets`;
 - full-history secret scanning: Gitleaks `Secret Scan` workflow;
-- deterministic locked install: `npm ci --ignore-scripts --no-fund`;
-- pinned GitHub Actions by commit SHA.
+- deterministic install: `npm ci --ignore-scripts --no-fund`;
+- pinned GitHub Actions by commit SHA;
+- provider-boundary unit/API tests and PostgreSQL integration tests.
 
-GitHub-native Dependency Review/CodeQL capabilities depend on repository/account security entitlements. The enforced repository-local gates are the current equivalent controls and must not be removed merely because a native feature is unavailable.
+GitHub-native Dependency Review or CodeQL availability depends on repository/account entitlements. Enforced repository-local gates are the current required controls and must not be removed because a native feature is unavailable.
 
 ## Dynamic security testing
 
 Two DAST levels are required:
 
-1. `npm run test:dast` is the repository release smoke gate. It starts the real HTTP server in isolated Test mode and verifies transport/security behavior through real HTTP requests, including Host/Origin, methods, request targets, security headers, CSRF, JSON validation/size limits and safe error responses.
-2. Before an external Pilot readiness decision, run an authenticated DAST scan against the deployed non-production/Pilot candidate environment. It must cover all externally reachable routes, the actual edge/TLS/header configuration and the enabled Entra/Graph flows. Findings are triaged and high/critical findings block readiness unless an explicit risk decision exists.
+1. `npm run test:dast` starts the real HTTP server in isolated Test mode and verifies transport/security behavior including Host/Origin, methods, request targets, headers, CSRF, JSON validation, size limits and safe errors.
+2. Before external Pilot readiness, run authenticated DAST against the deployed Pilot candidate. It must cover the actual edge/TLS/header configuration, all enabled routes and the Entra/Microsoft consent flows.
 
-A local DAST smoke test does not prove the selected cloud edge, TLS policy, WAF/rate limiting or provider registration is configured correctly.
+High or critical findings block readiness unless an explicit approved risk decision exists. Repository DAST does not prove cloud edge, WAF, shared rate limiting or provider registration is configured correctly.
 
 ## Environment separation
 
-Development, Test, Pilot and Production must use separate data/credentials appropriate to their purpose.
-
 - Never copy Production credentials into automated Test or developer environments.
-- Pilot and Production use separate provider registrations/secrets unless an explicit reviewed architecture decision states otherwise.
-- Pilot and Production databases are separate unless a reviewed data-promotion/migration plan exists.
-- Test tenants intentionally include at least two independent tenants so cross-Tenant negative tests can execute.
-- Production data is not used as generic security-test data.
+- Pilot and Production use separate provider registrations and secrets unless explicitly reviewed.
+- Pilot and Production databases are separate unless a reviewed promotion/migration plan exists.
+- Automated tests include at least two independent internal Tenants for cross-Tenant negative coverage.
+- Real Microsoft acceptance uses controlled non-production Tenants and non-production mail/resource data.
+- Production data is not generic security-test data.
 
 ## Deployment preflight
 
 Before marking a Pilot/Production release candidate ready:
 
-1. Confirm the release commit/PR has all required repository checks green.
+1. Confirm the final commit has all required repository checks green.
 2. Run `npm ci --ignore-scripts --no-fund`.
 3. Run `npm run check`.
 4. Run `npm run audit`.
-5. Run PostgreSQL integration/migration tests against the supported database version when persistence changed.
+5. Run PostgreSQL 18 integration and migration tests when persistence changed.
 6. Confirm Secret Scan and Dependency Policy passed for the final commit.
-7. Supply `NODE_ENV`, HTTPS `PUBLIC_ORIGIN`, `SERVICE_VERSION`, `BUILD_ID`, database configuration and required secrets from protected deployment configuration.
-8. Apply migrations before rollout and verify readiness reports only aggregate safe state.
-9. Verify edge TLS, HSTS/header preservation, `/api/*` routing, distributed/shared rate limiting and no wildcard CORS.
-10. Run deployed-environment DAST and the Pilot penetration-test scope before the external Pilot readiness decision.
-11. Record backup/restore evidence and rollback owner/procedure for the selected hosting/database platform.
+7. Supply all required runtime and secret configuration from protected deployment configuration.
+8. Confirm exact Entra redirect URI, organizational account model, application owners and credential rotation policy.
+9. Confirm only approved Microsoft Graph application permissions are present.
+10. Apply migrations before rollout and verify readiness exposes only aggregate state.
+11. Verify edge TLS, HSTS/header preservation, `/api/*` routing, shared rate limiting and no wildcard CORS.
+12. Execute independent Tenant sign-in, Tenant claim, admin consent, missing-permission, revocation, reconnect and wrong-Tenant acceptance scenarios.
+13. Run deployed-environment DAST and the Pilot penetration-test scope.
+14. Record backup/restore evidence and rollback owner/procedure.
+15. For calendar writes, record Exchange Online Application RBAC scope evidence before activation.
 
 ## Fail-closed deployment blockers
 
 Do not deploy as Pilot/Production when any of the following is true:
 
 - `PUBLIC_ORIGIN` is missing or not HTTPS;
-- PostgreSQL is missing or TLS is not `verify-full`;
+- PostgreSQL is absent or TLS is not `verify-full`;
 - `CSRF_SECRET`, `AUDIT_HMAC_SECRET`, release version or build ID is missing/invalid;
+- `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` or `OIDC_TRANSACTION_SECRET` is missing/invalid;
 - required migrations/schema readiness are not current;
-- required repository security/test checks are failing or pending;
+- repository security/test checks are failing or pending;
 - Tenant isolation tests for a changed Tenant-owned resource are absent/failing;
-- enabled outbound provider destinations are not fixed/allowlisted or lack timeout/response validation;
-- high/critical unresolved dependency, DAST or penetration-test findings lack an explicit approved risk decision;
-- deployment would re-enable browser storage, client roles or client Tenant values as production authority.
+- enabled provider destinations are not fixed or lack timeout/response validation;
+- the Entra redirect URI or Microsoft application registration differs from reviewed configuration;
+- Microsoft application permissions exceed the enabled capability without explicit review;
+- calendar write capability lacks Exchange Application RBAC scope evidence;
+- high/critical dependency, DAST or penetration-test findings lack approved risk acceptance;
+- deployment would re-enable browser storage, client roles, client Tenant values or provider callback values as authority.
