@@ -1,4 +1,5 @@
 import { createFinalRoomConfirmationService } from './application/final-room-confirmation-service.js';
+import { createMicrosoft365BookingServiceFactory } from './application/microsoft365-booking-service-factory.js';
 import { createMicrosoft365ConnectionService } from './application/microsoft365-connection-service.js';
 import { createMicrosoft365RoomDiscoveryService } from './application/microsoft365-room-discovery-service.js';
 import { createMicrosoft365RoomMappingService } from './application/microsoft365-room-mapping-service.js';
@@ -86,6 +87,19 @@ const microsoft365CalendarProviderFactory = persistence && microsoft365Client
     providerClient: microsoft365Client,
   })
   : null;
+const microsoft365BookingServiceFactory = persistence
+  && auditService
+  && entitlementService
+  && microsoft365CalendarProviderFactory
+  ? createMicrosoft365BookingServiceFactory({
+    repository: persistence.bookingReferenceRepository,
+    calendarProviderFactory: microsoft365CalendarProviderFactory,
+    entitlementService,
+    auditService,
+    authorizationPolicy,
+    metrics,
+  })
+  : null;
 const identityResolver = createPendingProviderIdentityResolver({ onboardingService, jitUserService });
 const entraAuthService = persistence && entraClient && sessionService
   ? createEntraAuthService({
@@ -108,6 +122,7 @@ const finalRoomConfirmationService = persistence
     auditService,
     entitlementService,
     calendarProviderFactory: microsoft365CalendarProviderFactory,
+    bookingServiceFactory: microsoft365BookingServiceFactory,
   })
   : null;
 const requestService = persistence
@@ -116,6 +131,7 @@ const requestService = persistence
     authorizationPolicy,
     auditService,
     finalRoomConfirmationService,
+    bookingServiceFactory: microsoft365BookingServiceFactory,
   })
   : null;
 const tenantUserAdministrationService = persistence && auditService
