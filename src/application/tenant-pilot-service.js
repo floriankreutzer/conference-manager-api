@@ -1,4 +1,5 @@
 import { AUDIT_ACTION, AUDIT_OUTCOME, AUDIT_RETENTION_CLASS } from '../audit/event.js';
+import { PERMISSION } from '../authorization/policy.js';
 import { isInternalUuid } from '../domain/identifiers.js';
 
 const REQUIRED_ENTITLEMENTS = Object.freeze([
@@ -37,6 +38,7 @@ export function createTenantPilotService({
   roomMappingRepository,
   capabilityHealthRepository,
   entitlementRepository,
+  authorizationPolicy,
   auditService,
   authorizeOperator = async () => false,
   clock = () => Date.now(),
@@ -52,6 +54,9 @@ export function createTenantPilotService({
   ];
   if (required.some(([target, method]) => !target || typeof target[method] !== 'function')) {
     throw new TypeError('TENANT_PILOT_REPOSITORIES_REQUIRED');
+  }
+  if (!authorizationPolicy || typeof authorizationPolicy.requireTenantPermission !== 'function') {
+    throw new TypeError('AUTHORIZATION_POLICY_REQUIRED');
   }
   if (!auditService || typeof auditService.createActorEvent !== 'function') {
     throw new TypeError('AUDIT_SERVICE_REQUIRED');
@@ -101,9 +106,11 @@ export function createTenantPilotService({
 
   return Object.freeze({
     async getReadiness({ principal, tenantContext }) {
-      if (!principal || principal.tenantId !== tenantContext?.tenantId) {
-        throw new TypeError('TENANT_PILOT_CONTEXT_INVALID');
-      }
+      authorizationPolicy.requireTenantPermission(
+        principal,
+        tenantContext,
+        PERMISSION.TENANT_INTEGRATIONS_MANAGE,
+      );
       return readinessForTenant(tenantContext.tenantId);
     },
 
