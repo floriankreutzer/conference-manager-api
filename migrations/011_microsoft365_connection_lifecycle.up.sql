@@ -4,6 +4,13 @@ ALTER TABLE integrations
   ADD COLUMN connection_reason varchar(64),
   ADD COLUMN places_permission_status varchar(16),
   ADD COLUMN calendars_permission_status varchar(16),
+  ADD CONSTRAINT integrations_microsoft365_reference_valid CHECK (
+    provider <> 'microsoft365'
+    OR provider_reference ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+  ),
+  ADD CONSTRAINT integrations_microsoft365_version_valid CHECK (
+    provider <> 'microsoft365' OR connection_version > 0
+  ),
   ADD CONSTRAINT integrations_microsoft365_status_valid CHECK (
     provider <> 'microsoft365'
     OR status IN ('pending', 'connected', 'degraded', 'revoked', 'disconnected')
@@ -11,18 +18,29 @@ ALTER TABLE integrations
   ADD CONSTRAINT integrations_microsoft365_permission_status_valid CHECK (
     provider <> 'microsoft365'
     OR (
-      places_permission_status IS NULL OR places_permission_status IN ('granted', 'missing', 'unknown')
-    )
-    AND (
-      calendars_permission_status IS NULL OR calendars_permission_status IN ('granted', 'missing', 'unknown', 'unverified')
+      places_permission_status IN ('granted', 'missing', 'unknown')
+      AND calendars_permission_status IN ('granted', 'missing', 'unknown', 'unverified')
     )
   ),
   ADD CONSTRAINT integrations_microsoft365_reason_valid CHECK (
-    connection_reason IS NULL
+    provider <> 'microsoft365'
+    OR connection_reason IS NULL
     OR connection_reason ~ '^[a-z][a-z0-9_]{0,63}$'
   ),
+  ADD CONSTRAINT integrations_microsoft365_verified_state_valid CHECK (
+    provider <> 'microsoft365'
+    OR (
+      status IN ('pending', 'disconnected')
+      AND last_verified_at IS NULL
+    )
+    OR (
+      status IN ('connected', 'degraded', 'revoked')
+      AND last_verified_at IS NOT NULL
+    )
+  ),
   ADD CONSTRAINT integrations_microsoft365_verified_order CHECK (
-    last_verified_at IS NULL OR last_verified_at >= created_at
+    last_verified_at IS NULL
+    OR (last_verified_at >= created_at AND last_verified_at <= updated_at)
   );
 
 CREATE UNIQUE INDEX integrations_microsoft365_tenant_unique
