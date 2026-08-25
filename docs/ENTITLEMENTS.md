@@ -2,9 +2,9 @@
 
 ## Authority and scope
 
-Root `AGENTS.md` is authoritative. This document defines the SaaS 0 entitlement boundary introduced by issue #53.
+Root `AGENTS.md` is authoritative. This document defines the server-side entitlement boundary introduced by issue #53 and extended for the Microsoft Enterprise Pilot.
 
-Entitlements are server-side Tenant product/commercial access controls. They are not authentication, RBAC permissions, UI visibility, or rollout feature flags.
+Entitlements are server-side Tenant product/commercial access controls. They are not authentication, RBAC permissions, UI visibility, provider consent, or rollout feature flags.
 
 ## Required access intersection
 
@@ -22,14 +22,30 @@ Unknown capability identifiers fail closed.
 
 ## Stable capability IDs
 
-The initial SaaS 0 registry contains only capabilities needed for the Microsoft-first pilot path:
+The Microsoft-first pilot registry contains:
 
-- `microsoft.directory`
-- `microsoft.calendar`
+- `microsoft.directory` — Microsoft Places/directory capability;
+- `microsoft.calendar` — calendar read/free-busy capability;
+- `microsoft.calendar.write` — productive calendar create/update/cancel capability.
+
+Calendar write is deliberately separate from free/busy. A Tenant entitled for `microsoft.calendar` does not receive `microsoft.calendar.write`. This permits real room discovery and availability while productive Exchange mutations remain disabled.
 
 These identifiers describe product capability boundaries, not provider claims, OAuth scopes, UI labels, or feature-flag names. Adding another commercial capability requires a reviewed domain change, database migration, tests and documentation.
 
 Baseline Conference Manager functionality is intentionally not represented as an entitlement merely because persistence moves to the backend.
+
+## Microsoft permission boundary
+
+The entitlement is not the Microsoft consent itself. In the confidential-client/application-permission model, Microsoft Graph access tokens use the configured application roles through the `/.default` scope. Productive calendar writes require the reviewed Microsoft application role `Calendars.ReadWrite` on the central SaaS app registration.
+
+Because application roles are configured on the app registration and administrator-consented at the provider boundary, the backend must not pretend that an internal Tenant entitlement dynamically adds or removes a Microsoft application role. Instead:
+
+1. Microsoft consent establishes the provider permission boundary.
+2. `microsoft.calendar.write` independently determines whether Conference Manager is allowed to invoke productive write operations for an internal Tenant.
+3. The owning business use case must still pass explicit RBAC/object authorization.
+4. Exchange Application RBAC may additionally constrain the central application to intended resource mailboxes where supported.
+
+Provider permission and Tenant entitlement are therefore both necessary controls; neither substitutes for the other.
 
 ## Separation from frontend feature flags
 
@@ -41,7 +57,7 @@ When a future backend rollout system is introduced, it may supply `enabled` or `
 
 ## Persistence model
 
-Migration 005 adds `tenant_entitlements`:
+Migration 005 adds `tenant_entitlements` with:
 
 - internal non-null `tenant_id`;
 - stable allowlisted `capability_id`;
@@ -52,7 +68,7 @@ Migration 005 adds `tenant_entitlements`:
 
 No row means not entitled. This is a fail-closed default.
 
-The database allowlist currently accepts only the two registered Microsoft pilot capability IDs. Application and database allowlists must remain synchronized through the entitlement architecture gate and migration tests.
+Migration 013 extends the database capability allowlist with `microsoft.calendar.write`. Application and database allowlists must remain synchronized through architecture/entitlement gates and migration tests. Migration 013 rollback fails closed while a calendar-write entitlement row exists so productive grants cannot be silently reinterpreted or lost.
 
 ## Tenant isolation
 
@@ -62,7 +78,7 @@ Runtime capability evaluation additionally requires the authenticated Principal 
 
 ## Operator-controlled changes
 
-Commercial entitlement mutation is not a Tenant Admin permission. #53 exposes a server-internal operator authorization port rather than creating a public Platform Admin HTTP endpoint before the platform-operator authorization domain exists.
+Commercial entitlement mutation is not a Tenant Admin permission. The entitlement service exposes a server-internal operator authorization port rather than creating a public Platform Admin HTTP endpoint before the platform-operator authorization domain exists.
 
 The default operator authorization is deny-all. A future developer/platform administration service must provide a trusted server-side authorization function before it can call `setEntitlement`.
 
@@ -81,18 +97,20 @@ The Tenant-visible event contains:
 - administrative retention class;
 - non-secret `actorType=platform_operator` metadata.
 
-The Tenant audit actor User ID is null because the platform/operator identity belongs to the separate platform authorization/audit domain. #53 does not pretend that a platform operator is a Tenant User. A future platform audit system must retain the actual operator identity independently.
+The Tenant audit actor User ID is null because the platform/operator identity belongs to the separate platform authorization/audit domain. The Tenant model does not pretend that a platform operator is a Tenant User. A future platform audit system must retain the actual operator identity independently.
 
 The entitlement write and Tenant audit append commit in one PostgreSQL transaction. If audit persistence fails, the entitlement change rolls back. Repeating the same effective value is idempotent and does not emit a misleading `changed` event.
 
 ## Rollback and recovery
 
-Migration 005 down is fail-closed when entitlement rows or `tenant.entitlement.changed` events exist. Populated-environment rollback therefore requires an explicit reviewed migration/retention decision rather than silent data or evidence deletion.
+Migration 005 down remains fail-closed when entitlement rows or `tenant.entitlement.changed` events exist. Migration 013 additionally refuses rollback while `microsoft.calendar.write` rows exist. Populated-environment rollback therefore requires an explicit reviewed migration/retention decision rather than silent data or evidence deletion.
 
 ## Security properties
 
 - unknown capabilities fail closed;
 - missing entitlement fails closed;
+- calendar read/free-busy entitlement never implies calendar write;
+- provider consent never substitutes for internal Tenant entitlement;
 - unknown/malformed rollout state fails closed;
 - unauthorized/cross-Tenant/inactive-Tenant capability evaluation fails closed before entitlement lookup where practical;
 - rollout enablement never overrides missing authorization or entitlement;
@@ -106,8 +124,7 @@ Migration 005 down is fail-closed when entitlement rows or `tenant.entitlement.c
 
 - a public Platform Admin/developer administration API and its operator Principal model;
 - a server-side operational rollout service, if needed beyond deployment/configuration controls;
-- provider-specific Entra/Microsoft Graph consent and scope mapping;
-- capability-specific business endpoints, which must perform their own RBAC/object authorization before entitlement evaluation;
+- Exchange Application RBAC verification and customer hardening guidance;
 - billing/subscription lifecycle.
 
 Future provider endpoints must not treat `evaluateAccess()` as a substitute for business authorization. Their owning use case first determines authorization, then requires the Tenant entitlement, with an optional rollout gate as an additional restriction.
