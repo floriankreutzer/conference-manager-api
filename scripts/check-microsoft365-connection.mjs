@@ -19,6 +19,9 @@ const providerClient = await text('src/integrations/microsoft365-client.js');
 const routes = await text('src/http/microsoft365-routes.js');
 const repository = await text('src/persistence/postgres/microsoft365-connection-repository.js');
 const contract = await text('docs/MICROSOFT365-CONNECTION.md');
+const apiContract = await text('docs/API.md');
+const auditContract = await text('docs/AUDIT.md');
+const securityContract = await text('docs/SECURITY.md');
 
 requireContains(migrationUp, [
   'microsoft365_consent_transactions',
@@ -42,7 +45,7 @@ if (restoredAuditConstraint.includes("'integration.verified'")) {
 }
 
 requireContains(service, [
-  "PERMISSION.TENANT_INTEGRATIONS_MANAGE",
+  'PERMISSION.TENANT_INTEGRATIONS_MANAGE',
   "createHash('sha256')",
   'actorUserId: principal.userId',
   'bindingRepository.findActiveBindingByTenantId',
@@ -86,5 +89,26 @@ requireContains(contract, [
   'Calendars.ReadBasic.All',
   'Migration `011_microsoft365_connection_lifecycle`',
 ], 'Microsoft 365 lifecycle contract');
+
+requireContains(apiContract, [
+  'currently version 11',
+  'GET /api/v1/integrations/microsoft365',
+  'POST /api/v1/integrations/microsoft365/connect',
+  'GET /api/v1/integrations/microsoft365/callback',
+  'POST /api/v1/integrations/microsoft365/verify',
+  'DELETE /api/v1/integrations/microsoft365',
+], 'API contract');
+
+requireContains(auditContract, [
+  '`integration.verified`',
+  'Migration 011 extends the PostgreSQL action constraint',
+  'verification evidence remains',
+], 'Audit contract');
+
+requireContains(securityContract, [
+  '## Microsoft 365 connection controls (#62)',
+  'Replay, expiry, actor mismatch, cross-Tenant use',
+  'Local disconnect does not claim',
+], 'Security contract');
 
 console.log('Microsoft 365 connection lifecycle gate passed.');
