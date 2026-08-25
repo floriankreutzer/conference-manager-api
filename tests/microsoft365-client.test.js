@@ -171,21 +171,40 @@ test('calendar probe distinguishes permission denial from a claimant without an 
 });
 
 test('transport, malformed and oversized provider responses degrade without escaping provider detail', async () => {
-  for (const fetchImpl of [
-    async () => { throw new Error('network with secret'); },
-    async () => response(200, null, { raw: '<html>provider error</html>' }),
-    async () => response(200, { value: [] }, { contentLength: 65_537 }),
-    async () => response(200, { unexpected: [] }),
-    async () => response(429, { error: { message: 'throttled' } }),
-    async () => response(503, { error: { message: 'downstream' } }),
-  ]) {
-    const result = await client({ fetchImpl }).verifyBasePermissions({ tenantReference: TENANT_ID });
+  const cases = [
+    {
+      fetchImpl: async () => { throw new Error('network with secret'); },
+      reason: 'provider_unavailable',
+    },
+    {
+      fetchImpl: async () => response(200, null, { raw: '<html>provider error</html>' }),
+      reason: 'provider_response_invalid',
+    },
+    {
+      fetchImpl: async () => response(200, { value: [] }, { contentLength: 65_537 }),
+      reason: 'provider_response_invalid',
+    },
+    {
+      fetchImpl: async () => response(200, { unexpected: [] }),
+      reason: 'provider_response_invalid',
+    },
+    {
+      fetchImpl: async () => response(429, { error: { message: 'throttled' } }),
+      reason: 'provider_unavailable',
+    },
+    {
+      fetchImpl: async () => response(503, { error: { message: 'downstream' } }),
+      reason: 'provider_unavailable',
+    },
+  ];
+
+  for (const value of cases) {
+    const result = await client({ fetchImpl: value.fetchImpl }).verifyBasePermissions({ tenantReference: TENANT_ID });
     assert.deepEqual(result, {
       status: MICROSOFT365_VERIFICATION.DEGRADED,
       places: 'unknown',
       calendars: 'unknown',
-      reason: 'provider_unavailable',
-      ...(result.reason === 'provider_response_invalid' ? { reason: 'provider_response_invalid' } : {}),
+      reason: value.reason,
     });
     assert.equal(JSON.stringify(result).includes('secret'), false);
     assert.equal(JSON.stringify(result).includes('provider error'), false);
