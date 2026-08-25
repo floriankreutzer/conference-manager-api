@@ -25,6 +25,21 @@ const CALLBACK_QUERY_KEYS = new Set([
   'correlation_id',
   'error_uri',
 ]);
+const CALLBACK_VALUE_LIMITS = Object.freeze({
+  admin_consent: 8,
+  tenant: 36,
+  state: 43,
+  scope: 2_048,
+  error: 128,
+  error_description: 1_024,
+  error_codes: 512,
+  timestamp: 64,
+  trace_id: 64,
+  correlation_id: 64,
+  error_uri: 2_048,
+});
+const ERROR_DETAIL_KEYS = Object.freeze(['error_description', 'error_codes', 'error_uri']);
+const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/;
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STATE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const PROVIDER_ERROR_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
@@ -58,7 +73,9 @@ function sendRedirect(response, location) {
 }
 
 function assertNoQuery(parsedUrl) {
-  if ([...parsedUrl.searchParams.keys()].length > 0) throw new ApiError(400, 'VALIDATION_FAILED');
+  if ([...parsedUrl.searchParams.keys()].length > 0) {
+    throw new ApiError(400, 'VALIDATION_FAILED');
+  }
 }
 
 async function assertEmptyBody(request) {
@@ -75,12 +92,24 @@ async function assertEmptyBody(request) {
   }
 }
 
-function callbackFromUrl(parsedUrl) {
+function assertCallbackQueryValues(parsedUrl) {
   for (const key of parsedUrl.searchParams.keys()) {
-    if (!CALLBACK_QUERY_KEYS.has(key) || parsedUrl.searchParams.getAll(key).length !== 1) {
+    const values = parsedUrl.searchParams.getAll(key);
+    const value = values[0];
+    if (
+      !CALLBACK_QUERY_KEYS.has(key)
+      || values.length !== 1
+      || typeof value !== 'string'
+      || value.length > CALLBACK_VALUE_LIMITS[key]
+      || CONTROL_CHARACTER.test(value)
+    ) {
       throw new ApiError(400, 'VALIDATION_FAILED');
     }
   }
+}
+
+function callbackFromUrl(parsedUrl) {
+  assertCallbackQueryValues(parsedUrl);
 
   const state = parsedUrl.searchParams.get('state');
   const tenant = parsedUrl.searchParams.get('tenant');
@@ -89,17 +118,24 @@ function callbackFromUrl(parsedUrl) {
   if (typeof state !== 'string' || !STATE_PATTERN.test(state)) {
     throw new ApiError(400, 'VALIDATION_FAILED');
   }
-  if (tenant !== null && !GUID_PATTERN.test(tenant)) throw new ApiError(400, 'VALIDATION_FAILED');
+  if (tenant !== null && !GUID_PATTERN.test(tenant)) {
+    throw new ApiError(400, 'VALIDATION_FAILED');
+  }
   if (providerError !== null && !PROVIDER_ERROR_PATTERN.test(providerError)) {
     throw new ApiError(400, 'VALIDATION_FAILED');
   }
 
   if (providerError !== null) {
+    if (adminConsent !== null) throw new ApiError(400, 'VALIDATION_FAILED');
     return Object.freeze({
       state,
       providerTenantReference: tenant?.toLowerCase() ?? null,
       approved: false,
     });
+  }
+
+  if (ERROR_DETAIL_KEYS.some((key) => parsedUrl.searchParams.has(key))) {
+    throw new ApiError(400, 'VALIDATION_FAILED');
   }
   if (typeof adminConsent !== 'string' || adminConsent.toLowerCase() !== 'true' || tenant === null) {
     throw new ApiError(400, 'VALIDATION_FAILED');
@@ -165,7 +201,10 @@ export function createMicrosoft365HttpHandler({
           correlationId: requestId,
           ...callback,
         });
-        sendRedirect(response, CALLBACK_REDIRECTS[connection.status] || '/?integration=microsoft365_connection_failed');
+        sendRedirect(
+          response,
+          CALLBACK_REDIRECTS[connection.status] || '/?integration=microsoft365_connection_failed',
+        );
       } catch (error) {
         if (!callbackFailure(error)) throw error;
         sendRedirect(response, '/?integration=microsoft365_connection_failed');
