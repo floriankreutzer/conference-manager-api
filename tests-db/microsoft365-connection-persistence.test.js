@@ -49,12 +49,16 @@ async function clean(pool) {
     "DELETE FROM integrations WHERE tenant_id = ANY($1::uuid[]) AND provider = 'microsoft365'",
     [TENANT_IDS],
   );
+  await pool.query('DELETE FROM sessions WHERE tenant_id = ANY($1::uuid[])', [TENANT_IDS]);
+  await pool.query('DELETE FROM tenant_user_roles WHERE tenant_id = ANY($1::uuid[])', [TENANT_IDS]);
+  await pool.query('DELETE FROM user_identity_bindings WHERE tenant_id = ANY($1::uuid[])', [TENANT_IDS]);
   await pool.query('ALTER TABLE audit_events DISABLE TRIGGER audit_events_append_only');
   try {
     await pool.query('DELETE FROM audit_events WHERE tenant_id = ANY($1::uuid[])', [TENANT_IDS]);
   } finally {
     await pool.query('ALTER TABLE audit_events ENABLE TRIGGER audit_events_append_only');
   }
+  await pool.query('DELETE FROM tenant_identity_bindings WHERE tenant_id = ANY($1::uuid[])', [TENANT_IDS]);
   await pool.query('DELETE FROM users WHERE tenant_id = ANY($1::uuid[])', [TENANT_IDS]);
   await pool.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [TENANT_IDS]);
 }
