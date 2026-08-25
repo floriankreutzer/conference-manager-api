@@ -33,7 +33,9 @@ export class Microsoft365ProviderError extends Error {
 }
 
 function requireGuid(value, code) {
-  if (typeof value !== 'string' || !GUID_PATTERN.test(value)) throw new Microsoft365ProviderError(code);
+  if (typeof value !== 'string' || !GUID_PATTERN.test(value)) {
+    throw new Microsoft365ProviderError(code);
+  }
   return value.toLowerCase();
 }
 
@@ -79,20 +81,62 @@ function classifyGraphStatus(status) {
   return status >= 200 && status < 300 ? 'ok' : 'invalid';
 }
 
-async function readBoundedJson(response, maxBytes = GRAPH_RESPONSE_MAX_BYTES) {
+async function cancelReader(reader) {
+  try {
+    await reader.cancel();
+  } catch {
+    // Cancellation is best-effort after the response has already failed validation.
+  }
+}
+
+async function readBoundedText(response, maxBytes) {
   const length = response.headers?.get?.('content-length');
   if (length && /^\d+$/.test(length) && Number(length) > maxBytes) {
     throw new Microsoft365ProviderError('MICROSOFT365_RESPONSE_TOO_LARGE');
   }
 
-  let text;
-  try {
-    text = await response.text();
-  } catch {
+  const reader = response.body?.getReader?.();
+  if (!reader || typeof reader.read !== 'function') {
     throw new Microsoft365ProviderError('MICROSOFT365_RESPONSE_INVALID');
   }
-  if (Buffer.byteLength(text, 'utf8') > maxBytes) {
-    throw new Microsoft365ProviderError('MICROSOFT365_RESPONSE_TOO_LARGE');
+
+  const chunks = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      let result;
+      try {
+        result = await reader.read();
+      } catch {
+        throw new Microsoft365ProviderError('MICROSOFT365_RESPONSE_INVALID');
+      }
+      if (!result || typeof result.done !== 'boolean') {
+        throw new Microsoft365ProviderError('MICROSOFT365_RESPONSE_INVALID');
+      }
+      if (result.done) break;
+      if (!(result.value instanceof Uint8Array)) {
+        throw new Microsoft365ProviderError('MICROSOFT365_RESPONSE_INVALID');
+      }
+      bytes += result.value.byteLength;
+      if (bytes > maxBytes) {
+        await cancelReader(reader);
+        throw new Microsoft365ProviderError('MICROSOFT365_RESPONSE_TOO_LARGE');
+      }
+      chunks.push(Buffer.from(result.value));
+    }
+  } finally {
+    reader.releaseLock?.();
+  }
+  return Buffer.concat(chunks, bytes).toString('utf8');
+}
+
+async function readBoundedJson(response, maxBytes = GRAPH_RESPONSE_MAX_BYTES) {
+  let text;
+  try {
+    text = await readBoundedText(response, maxBytes);
+  } catch (error) {
+    if (error instanceof Microsoft365ProviderError) throw error;
+    throw new Microsoft365ProviderError('MICROSOFT365_RESPONSE_INVALID');
   }
   try {
     return JSON.parse(text);
@@ -115,7 +159,13 @@ function validCollectionPayload(payload) {
     && typeof payload === 'object'
     && !Array.isArray(payload)
     && Array.isArray(payload.value)
-    && payload.value.length <= 100;
+    && payload.value.length <= 100
+    && payload.value.every((item) => item
+      && typeof item === 'object'
+      && !Array.isArray(item)
+      && typeof item.id === 'string'
+      && item.id.length >= 1
+      && item.id.length <= 512);
 }
 
 function validCalendarPayload(payload) {
@@ -128,7 +178,9 @@ function validCalendarPayload(payload) {
 }
 
 async function fetchGraph(fetchImpl, url, accessToken, timeoutMs) {
-  if (url.origin !== GRAPH_ORIGIN) throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_ORIGIN_INVALID');
+  if (url.origin !== GRAPH_ORIGIN) {
+    throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_ORIGIN_INVALID');
+  }
   let response;
   try {
     response = await fetchImpl(url, {
@@ -168,7 +220,9 @@ function degraded({ places = 'unknown', calendars = 'unknown', reason }) {
 }
 
 function isValidCallbackOrigin(origin, allowInsecureLocalhost) {
-  if (origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) return false;
+  if (origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) {
+    return false;
+  }
   if (origin.protocol === 'https:') return true;
   return allowInsecureLocalhost === true
     && origin.protocol === 'http:'
@@ -189,7 +243,9 @@ export function createMicrosoft365Client({
     throw new TypeError('MICROSOFT365_CLIENT_SECRET_REQUIRED');
   }
   if (typeof fetchImpl !== 'function') throw new TypeError('MICROSOFT365_FETCH_REQUIRED');
-  if (typeof allowInsecureLocalhost !== 'boolean') throw new TypeError('MICROSOFT365_LOCALHOST_MODE_INVALID');
+  if (typeof allowInsecureLocalhost !== 'boolean') {
+    throw new TypeError('MICROSOFT365_LOCALHOST_MODE_INVALID');
+  }
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 30_000) {
     throw new TypeError('MICROSOFT365_TIMEOUT_INVALID');
   }
@@ -244,7 +300,12 @@ export function createMicrosoft365Client({
       try {
         accessToken = await acquireAccessToken(tenant);
       } catch (error) {
-        if (error instanceof Microsoft365ProviderError) return revoked('token_unavailable');
+        if (error instanceof Microsoft365ProviderError && error.code === 'MICROSOFT365_TOKEN_INVALID') {
+          return revoked('token_invalid');
+        }
+        if (error instanceof Microsoft365ProviderError) {
+          return degraded({ reason: 'provider_unavailable' });
+        }
         throw error;
       }
 
