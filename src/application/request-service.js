@@ -9,7 +9,8 @@ import {
   RequestStateConflictError,
 } from '../authorization/errors.js';
 import { isRequestId } from '../domain/request.js';
-import { REQUEST_TRANSITION } from '../domain/request-workflow.js';
+import { REQUEST_STATUS, REQUEST_TRANSITION } from '../domain/request-workflow.js';
+import { RESERVATION_PHASE } from '../integrations/calendar-contract.js';
 
 function concealedNotFound() {
   return new AuthorizationDeniedError('RESOURCE_NOT_AVAILABLE', { conceal: true });
@@ -24,6 +25,7 @@ export function createRequestService({
   authorizationPolicy,
   auditService,
   finalRoomConfirmationService = null,
+  bookingServiceFactory = null,
   clock = () => Date.now(),
 } = {}) {
   if (
@@ -50,6 +52,9 @@ export function createRequestService({
   }
   if (finalRoomConfirmationService !== null && typeof finalRoomConfirmationService?.confirm !== 'function') {
     throw new TypeError('FINAL_ROOM_CONFIRMATION_SERVICE_INVALID');
+  }
+  if (bookingServiceFactory !== null && typeof bookingServiceFactory?.forRequest !== 'function') {
+    throw new TypeError('BOOKING_SERVICE_FACTORY_INVALID');
   }
   if (typeof clock !== 'function') throw new TypeError('CLOCK_REQUIRED');
 
@@ -93,6 +98,27 @@ export function createRequestService({
       },
       retentionClass: AUDIT_RETENTION_CLASS.BUSINESS,
     });
+  }
+
+  function bookingContext(principal, tenantContext, request, correlationId) {
+    return Object.freeze({
+      principal,
+      tenantContext,
+      request,
+      correlationId,
+      phase: RESERVATION_PHASE.FINAL,
+    });
+  }
+
+  async function synchronizeCancellation({ principal, tenantContext, request, correlationId }) {
+    if (!bookingServiceFactory || !request.roomId) return;
+    const service = await bookingServiceFactory.forRequest(request);
+    await service.cancelCalendarEvent(bookingContext(
+      principal,
+      tenantContext,
+      request,
+      correlationId,
+    ));
   }
 
   return Object.freeze({
@@ -156,6 +182,25 @@ export function createRequestService({
           operation: 'transition',
         });
         throw concealedNotFound();
+      }
+
+      if (transition === REQUEST_TRANSITION.CANCEL && request.status === REQUEST_STATUS.CANCELLED) {
+        try {
+          authorizationPolicy.authorizeRequestRead(principal, tenantContext, request);
+        } catch (error) {
+          if (error instanceof AuthorizationDeniedError) {
+            await recordDenied({
+              principal,
+              tenantContext,
+              requestId,
+              correlationId,
+              operation: 'transition',
+            });
+          }
+          throw error;
+        }
+        await synchronizeCancellation({ principal, tenantContext, request, correlationId });
+        return request;
       }
 
       let decision;
@@ -240,6 +285,14 @@ export function createRequestService({
           reasonCode: 'concurrent_state_change',
         });
         throw new RequestStateConflictError();
+      }
+      if (decision.nextStatus === REQUEST_STATUS.CANCELLED) {
+        await synchronizeCancellation({
+          principal,
+          tenantContext,
+          request: updated,
+          correlationId,
+        });
       }
       return updated;
     },
