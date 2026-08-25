@@ -209,6 +209,10 @@ for (const required of [
   'TENANT_IDENTITY_UNBOUND',
   'TENANT_USER_PROVISIONED',
   'TENANT_USER_PROFILE_UPDATED',
+  'INTEGRATION_CONNECTED',
+  'INTEGRATION_DISCONNECTED',
+  'INTEGRATION_ADMIN_CONSENT_CHANGED',
+  'INTEGRATION_VERIFIED',
 ]) {
   if (!auditEvent.includes(required)) throw new Error(`Audit event contract is missing ${required}.`);
 }
@@ -230,12 +234,14 @@ for (const required of [
   'createPostgresOidcTransactionRepository',
   'createPostgresTenantOnboardingRepository',
   'createPostgresJitUserRepository',
+  'createPostgresMicrosoft365ConnectionRepository',
   'auditRepository',
   'entitlementRepository',
   'bookingReferenceRepository',
   'oidcTransactionRepository',
   'tenantOnboardingRepository',
   'jitUserRepository',
+  'microsoft365ConnectionRepository',
 ]) {
   if (!persistence.includes(required)) throw new Error(`PostgreSQL persistence is missing ${required}.`);
 }
@@ -438,13 +444,18 @@ for (const required of [
   'ENTRA_CLIENT_ID_REQUIRED',
   'ENTRA_CLIENT_SECRET_REQUIRED',
   'OIDC_TRANSACTION_SECRET_REQUIRED',
+  'APPROVED_OUTBOUND_ORIGINS',
+  "microsoftIdentity: 'https://login.microsoftonline.com'",
+  "microsoftGraph: 'https://graph.microsoft.com'",
+  'MICROSOFT365_CONSENT_TTL_SECONDS',
+  'MICROSOFT365_GRAPH_TIMEOUT_MS',
 ]) {
   if (!config.includes(required)) throw new Error(`Pilot/Production configuration is missing ${required}.`);
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!pool.includes('CURRENT_SCHEMA_VERSION = 10')) {
-  throw new Error('Runtime schema readiness must require Tenant role administration migration version 10.');
+if (!pool.includes('CURRENT_SCHEMA_VERSION = 11')) {
+  throw new Error('Runtime schema readiness must require Microsoft 365 lifecycle migration version 11.');
 }
 
 const index = await readFile('src/index.js', 'utf8');
@@ -458,6 +469,9 @@ for (const required of [
   'createTenantOnboardingService',
   'createJitUserService',
   'createPendingProviderIdentityResolver({ onboardingService, jitUserService })',
+  'createMicrosoft365Client',
+  'createMicrosoft365ConnectionService',
+  'microsoft365ConnectionService',
 ]) {
   if (!index.includes(required)) throw new Error(`Process composition must wire ${required}.`);
 }
@@ -505,6 +519,24 @@ for (const required of ['JIT_USER_BINDINGS_REQUIRE_REVIEW', 'JIT_USER_AUDIT_REQU
   if (!jitRollback.includes(required)) throw new Error(`JIT User rollback is missing ${required}.`);
 }
 
+const microsoft365Migration = await readFile('migrations/011_microsoft365_connection_lifecycle.up.sql', 'utf8');
+for (const required of [
+  'integrations_microsoft365_tenant_unique',
+  'microsoft365_consent_transactions',
+  'microsoft365_consent_actor_fk',
+  'microsoft365_consent_integration_fk',
+  'connection_version > 0',
+  'state_hash char(64) NOT NULL UNIQUE',
+]) {
+  if (!microsoft365Migration.includes(required)) {
+    throw new Error(`Microsoft 365 lifecycle migration is missing ${required}.`);
+  }
+}
+const microsoft365Rollback = await readFile('migrations/011_microsoft365_connection_lifecycle.down.sql', 'utf8');
+if (!microsoft365Rollback.includes('MICROSOFT365_CONNECTION_ROWS_REQUIRE_REVIEW')) {
+  throw new Error('Microsoft 365 lifecycle rollback must fail closed when connection evidence exists.');
+}
+
 for (const migration of [
   'migrations/001_core_tenant_schema.up.sql',
   'migrations/001_core_tenant_schema.down.sql',
@@ -526,6 +558,8 @@ for (const migration of [
   'migrations/009_jit_user_identity_bindings.down.sql',
   'migrations/010_tenant_role_administration.up.sql',
   'migrations/010_tenant_role_administration.down.sql',
+  'migrations/011_microsoft365_connection_lifecycle.up.sql',
+  'migrations/011_microsoft365_connection_lifecycle.down.sql',
 ]) {
   await readFile(migration, 'utf8');
 }
