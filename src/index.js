@@ -23,7 +23,10 @@ const metrics = createMetricsRegistry({ write: (line) => process.stdout.write(li
 const persistence = config.databaseUrl ? createPostgresPersistence(config) : null;
 const authorizationPolicy = createAuthorizationPolicy();
 const auditService = persistence
-  ? createAuditService({ repository: persistence.auditRepository, authorizationPolicy })
+  ? createAuditService({
+    repository: persistence.auditRepository,
+    authorizationPolicy,
+  })
   : null;
 const sessionService = persistence
   ? createSessionService({
@@ -79,7 +82,11 @@ const entraAuthService = persistence && entraClient && sessionService
   })
   : null;
 const requestService = persistence
-  ? createRequestService({ repository: persistence.requestRepository, authorizationPolicy, auditService })
+  ? createRequestService({
+    repository: persistence.requestRepository,
+    authorizationPolicy,
+    auditService,
+  })
   : null;
 const tenantUserAdministrationService = persistence && auditService
   ? createTenantUserAdministrationService({
