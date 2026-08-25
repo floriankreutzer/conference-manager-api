@@ -30,8 +30,12 @@ async function seed(pool, tenantId, integrationId, providerReference) {
   await pool.query(
     `INSERT INTO integrations (
       tenant_id, id, provider, provider_reference, status, connection_version,
-      last_verified_at, places_permission_status, calendars_permission_status
-    ) VALUES ($1, $2, 'microsoft365', $3, 'connected', 1, $4, 'granted', 'granted')`,
+      last_verified_at, places_permission_status, calendars_permission_status,
+      created_at, updated_at
+    ) VALUES (
+      $1, $2, 'microsoft365', $3, 'connected', 1,
+      $4, 'granted', 'granted', $4, $4
+    )`,
     [tenantId, integrationId, providerReference, VERIFIED_AT],
   );
 }
