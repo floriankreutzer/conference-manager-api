@@ -70,16 +70,10 @@ test('booking reference migration rollback fails closed when provider links exis
     [TENANT_ID, 'request-1', INTEGRATION_ID, 'migration-event', 'e'.repeat(64), 'active', CORRELATION_ID],
   );
 
-  assert.equal(await rollbackLatest(pool), true);
+  for (let version = 16; version >= 7; version -= 1) {
+    assert.equal(await rollbackLatest(pool), true);
+  }
   assert.equal(await isPostgresSchemaReady(pool), false);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
   await assert.rejects(rollbackLatest(pool), (error) => error.code === '55000');
 
   await pool.query('DELETE FROM booking_provider_references WHERE tenant_id = $1', [TENANT_ID]);
