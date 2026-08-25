@@ -235,6 +235,7 @@ for (const required of [
   'createPostgresTenantOnboardingRepository',
   'createPostgresJitUserRepository',
   'createPostgresMicrosoft365ConnectionRepository',
+  'createPostgresMicrosoft365RoomMappingRepository',
   'auditRepository',
   'entitlementRepository',
   'bookingReferenceRepository',
@@ -242,6 +243,7 @@ for (const required of [
   'tenantOnboardingRepository',
   'jitUserRepository',
   'microsoft365ConnectionRepository',
+  'microsoft365RoomMappingRepository',
 ]) {
   if (!persistence.includes(required)) throw new Error(`PostgreSQL persistence is missing ${required}.`);
 }
@@ -454,8 +456,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!pool.includes('CURRENT_SCHEMA_VERSION = 11')) {
-  throw new Error('Runtime schema readiness must require Microsoft 365 lifecycle migration version 11.');
+if (!pool.includes('CURRENT_SCHEMA_VERSION = 12')) {
+  throw new Error('Runtime schema readiness must require Microsoft 365 room mapping migration version 12.');
 }
 
 const index = await readFile('src/index.js', 'utf8');
@@ -471,7 +473,9 @@ for (const required of [
   'createPendingProviderIdentityResolver({ onboardingService, jitUserService })',
   'createMicrosoft365Client',
   'createMicrosoft365ConnectionService',
+  'createMicrosoft365RoomMappingService',
   'microsoft365ConnectionService',
+  'microsoft365RoomMappingService',
 ]) {
   if (!index.includes(required)) throw new Error(`Process composition must wire ${required}.`);
 }
@@ -537,6 +541,23 @@ if (!microsoft365Rollback.includes('MICROSOFT365_CONNECTION_ROWS_REQUIRE_REVIEW'
   throw new Error('Microsoft 365 lifecycle rollback must fail closed when connection evidence exists.');
 }
 
+const roomMappingMigration = await readFile('migrations/012_microsoft365_room_mappings.up.sql', 'utf8');
+for (const required of [
+  'CREATE TABLE microsoft365_room_mappings',
+  'UNIQUE (tenant_id, integration_id, external_room_id)',
+  'FOREIGN KEY (tenant_id, room_id) REFERENCES rooms(tenant_id, id)',
+  'FOREIGN KEY (tenant_id, integration_id) REFERENCES integrations(tenant_id, id)',
+  'microsoft365_room_mapping_address_unique',
+]) {
+  if (!roomMappingMigration.includes(required)) {
+    throw new Error(`Microsoft 365 room mapping migration is missing ${required}.`);
+  }
+}
+const roomMappingRollback = await readFile('migrations/012_microsoft365_room_mappings.down.sql', 'utf8');
+if (!roomMappingRollback.includes('Cannot roll back Microsoft 365 room mappings while mapping rows exist')) {
+  throw new Error('Microsoft 365 room mapping rollback must fail closed while mapping evidence exists.');
+}
+
 for (const migration of [
   'migrations/001_core_tenant_schema.up.sql',
   'migrations/001_core_tenant_schema.down.sql',
@@ -560,6 +581,8 @@ for (const migration of [
   'migrations/010_tenant_role_administration.down.sql',
   'migrations/011_microsoft365_connection_lifecycle.up.sql',
   'migrations/011_microsoft365_connection_lifecycle.down.sql',
+  'migrations/012_microsoft365_room_mappings.up.sql',
+  'migrations/012_microsoft365_room_mappings.down.sql',
 ]) {
   await readFile(migration, 'utf8');
 }
