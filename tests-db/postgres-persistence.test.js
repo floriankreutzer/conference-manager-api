@@ -153,6 +153,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 12, name: 'microsoft365_room_mappings' },
       { version: 13, name: 'microsoft_calendar_write_entitlement' },
       { version: 14, name: 'microsoft365_capability_health' },
+      { version: 15, name: 'request_created_audit_action' },
     ]);
   });
 
@@ -599,6 +600,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
+    assert.equal(await rollbackLatest(pool), true);
     let remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(remaining.rows, [
       { version: 1 },
@@ -675,6 +677,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
     await migrateUp(pool);
     assert.equal(await isPostgresSchemaReady(pool), true);
 
+    assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
