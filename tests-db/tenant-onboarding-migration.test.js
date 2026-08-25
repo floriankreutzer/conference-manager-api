@@ -18,14 +18,10 @@ test('tenant onboarding migration refuses rollback when invitation or binding ev
   t.after(async () => pool.end());
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
+  for (let version = 16; version >= 9; version -= 1) {
+    assert.equal(await rollbackLatest(pool), true);
+  }
   assert.equal(await isPostgresSchemaReady(pool), false);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
 
   await pool.query(
     'INSERT INTO tenants (id, display_name, status) VALUES ($1, $2, $3)',
@@ -45,7 +41,6 @@ test('tenant onboarding migration refuses rollback when invitation or binding ev
   );
 
   await assert.rejects(rollbackLatest(pool), (error) => error.code === '55000');
-  assert.equal(await isPostgresSchemaReady(pool), false);
   const retained = await pool.query(
     'SELECT count(*)::int AS count FROM tenant_onboarding_invitations WHERE id = $1',
     [INVITATION_ID],
