@@ -88,6 +88,14 @@ function tenant() {
   };
 }
 
+function tenantContext() {
+  return {
+    tenantId: TENANT_ID,
+    status: 'onboarding',
+    tenant: tenant(),
+  };
+}
+
 function connection(status = 'connected') {
   return {
     status,
@@ -160,7 +168,7 @@ test('connection read requires an authenticated tenant and rejects browser-selec
   await withServer(anonymous.serverOptions, async (port) => {
     const response = await request({ port, path: '/api/v1/integrations/microsoft365' });
     assert.equal(response.statusCode, 401);
-    assert.equal(response.body.error.code, 'AUTHENTICATION_REQUIRED');
+    assert.equal(response.body.error.code, 'UNAUTHENTICATED');
   });
 });
 
@@ -241,7 +249,7 @@ test('successful and denied provider callbacks are authenticated, fixed-redirect
     assert.equal(success.headers.location, '/?integration=microsoft365_connected');
     assert.deepEqual(value.calls[0].value, {
       principal: principal(),
-      tenantContext: { tenantId: TENANT_ID, status: 'onboarding' },
+      tenantContext: tenantContext(),
       correlationId: value.calls[0].value.correlationId,
       state: STATE,
       providerTenantReference: PROVIDER_TENANT_ID,
