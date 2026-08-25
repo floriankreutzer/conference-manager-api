@@ -84,7 +84,7 @@ test('MSAL identity transport is fixed-origin, redirect-disabled, timeout-bound 
         return response(200, { ok: true }, { contentLength: 65_537 });
       }
       if (identityMode === 'wait') {
-        return new Promise((resolve, reject) => {
+        return new Promise((_, reject) => {
           options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
         });
       }
@@ -118,6 +118,16 @@ test('MSAL identity transport is fixed-origin, redirect-disabled, timeout-bound 
 
   await assert.rejects(
     networkClient.sendPostRequestAsync(tokenUrl, { body: 'x'.repeat(65_537) }),
+    (error) => error instanceof Microsoft365ProviderError
+      && error.code === 'MICROSOFT365_IDENTITY_REQUEST_INVALID',
+  );
+  assert.equal(calls.length, callCount);
+
+  await assert.rejects(
+    networkClient.sendPostRequestAsync(tokenUrl, {
+      headers: { 'X-Test': 'value\r\ninjected: true' },
+      body: '',
+    }),
     (error) => error instanceof Microsoft365ProviderError
       && error.code === 'MICROSOFT365_IDENTITY_REQUEST_INVALID',
   );
