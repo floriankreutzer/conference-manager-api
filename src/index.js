@@ -1,3 +1,4 @@
+import { createFinalRoomConfirmationService } from './application/final-room-confirmation-service.js';
 import { createMicrosoft365ConnectionService } from './application/microsoft365-connection-service.js';
 import { createMicrosoft365RoomDiscoveryService } from './application/microsoft365-room-discovery-service.js';
 import { createMicrosoft365RoomMappingService } from './application/microsoft365-room-mapping-service.js';
@@ -6,11 +7,13 @@ import { createTenantUserAdministrationService } from './application/tenant-user
 import { createAuditService } from './audit/audit-service.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { loadConfig } from './config.js';
+import { createEntitlementService } from './entitlements/entitlement-service.js';
 import { createEntraAuthService } from './identity/entra-auth-service.js';
 import { createEntraClient } from './identity/entra-client.js';
 import { createJitUserService } from './identity/jit-user-service.js';
 import { createPendingProviderIdentityResolver } from './identity/provider-identity-resolver.js';
 import { createSessionService } from './identity/session-service.js';
+import { createMicrosoft365CalendarProviderFactory } from './integrations/microsoft365-calendar-provider.js';
 import { createMicrosoft365Client } from './integrations/microsoft365-client.js';
 import { createLogger } from './logger.js';
 import { createMetricsRegistry } from './observability/metrics.js';
@@ -27,6 +30,12 @@ const auditService = persistence
   ? createAuditService({
     repository: persistence.auditRepository,
     authorizationPolicy,
+  })
+  : null;
+const entitlementService = persistence && auditService
+  ? createEntitlementService({
+    repository: persistence.entitlementRepository,
+    auditService,
   })
   : null;
 const sessionService = persistence
@@ -70,6 +79,13 @@ const microsoft365Client = config.entraClientId
     allowInsecureLocalhost: config.mode === 'development' || config.mode === 'test',
   })
   : null;
+const microsoft365CalendarProviderFactory = persistence && microsoft365Client
+  ? createMicrosoft365CalendarProviderFactory({
+    connectionRepository: persistence.microsoft365ConnectionRepository,
+    mappingRepository: persistence.microsoft365RoomMappingRepository,
+    providerClient: microsoft365Client,
+  })
+  : null;
 const identityResolver = createPendingProviderIdentityResolver({ onboardingService, jitUserService });
 const entraAuthService = persistence && entraClient && sessionService
   ? createEntraAuthService({
@@ -82,11 +98,24 @@ const entraAuthService = persistence && entraClient && sessionService
     transactionTtlSeconds: config.oidcTransactionTtlSeconds,
   })
   : null;
+const finalRoomConfirmationService = persistence
+  && auditService
+  && entitlementService
+  && microsoft365CalendarProviderFactory
+  ? createFinalRoomConfirmationService({
+    repository: persistence.requestRepository,
+    authorizationPolicy,
+    auditService,
+    entitlementService,
+    calendarProviderFactory: microsoft365CalendarProviderFactory,
+  })
+  : null;
 const requestService = persistence
   ? createRequestService({
     repository: persistence.requestRepository,
     authorizationPolicy,
     auditService,
+    finalRoomConfirmationService,
   })
   : null;
 const tenantUserAdministrationService = persistence && auditService
