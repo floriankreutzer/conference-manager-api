@@ -64,7 +64,7 @@ function mapProviderError(error, operation) {
 
 function requireWriteMethod(providerClient, method, operation) {
   if (typeof providerClient[method] !== 'function') {
-    throw new CalendarProviderError(PROVIDER_ERROR_KIND.VALIDATION, { operation });
+    throw new CalendarProviderError(PROVIDER_ERROR_KIND.AUTHORIZATION, { operation });
   }
   return providerClient[method].bind(providerClient);
 }
@@ -98,8 +98,7 @@ function createBoundProvider({
   async function write(operation, input, method, values) {
     assertTenantRoomInput(input, tenantId, roomId, operation);
     try {
-      const invoke = requireWriteMethod(providerClient, method, operation);
-      return await invoke(values);
+      return await requireWriteMethod(providerClient, method, operation)(values);
     } catch (error) {
       throw mapProviderError(error, operation);
     }
