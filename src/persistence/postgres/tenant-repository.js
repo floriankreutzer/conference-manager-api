@@ -19,9 +19,6 @@ export function createPostgresTenantRepository(pool, { auditRepository } = {}) {
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
   }
-  if (!auditRepository || typeof auditRepository.appendWithClient !== 'function') {
-    throw new TypeError('AUDIT_REPOSITORY_REQUIRED');
-  }
 
   return Object.freeze({
     async findById(tenantId) {
@@ -38,6 +35,9 @@ export function createPostgresTenantRepository(pool, { auditRepository } = {}) {
     },
 
     async changeStatus({ tenantId, expectedStatus, targetStatus, changedAt, auditEvent }) {
+      if (!auditRepository || typeof auditRepository.appendWithClient !== 'function') {
+        throw new TypeError('AUDIT_REPOSITORY_REQUIRED');
+      }
       return withPostgresTransaction(pool, async (client) => {
         const result = await client.query({
           name: 'tenant-change-status',
