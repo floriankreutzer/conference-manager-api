@@ -7,8 +7,8 @@ import {
   AuthorizationDeniedError,
   RequestStateConflictError,
 } from '../authorization/errors.js';
-import { REQUEST_TRANSITION } from '../domain/request-workflow.js';
 import { isRequestId } from '../domain/request.js';
+import { REQUEST_STATUS, REQUEST_TRANSITION } from '../domain/request-workflow.js';
 import { CAPABILITY } from '../entitlements/capabilities.js';
 import { CalendarProviderError, RESERVATION_PHASE } from '../integrations/calendar-contract.js';
 
@@ -39,7 +39,11 @@ export function createFinalRoomConfirmationService({
   ) {
     throw new TypeError('FINAL_CONFIRMATION_REPOSITORY_REQUIRED');
   }
-  if (!authorizationPolicy || typeof authorizationPolicy.authorizeRequestTransition !== 'function') {
+  if (
+    !authorizationPolicy
+    || typeof authorizationPolicy.authorizeRequestRead !== 'function'
+    || typeof authorizationPolicy.authorizeRequestTransition !== 'function'
+  ) {
     throw new TypeError('FINAL_CONFIRMATION_AUTHORIZATION_REQUIRED');
   }
   if (
@@ -73,20 +77,36 @@ export function createFinalRoomConfirmationService({
     });
   }
 
+  async function recordDenied({ principal, tenantContext, requestId, correlationId }) {
+    await auditService.recordAuthorizationDenied({
+      principal,
+      tenantContext,
+      correlationId,
+      targetType: 'request',
+      targetId: requestId,
+      metadata: { operation: 'final_confirm' },
+    });
+  }
+
   return Object.freeze({
     async confirm({ principal, tenantContext, requestId, correlationId }) {
       if (!isRequestId(requestId)) throw new TypeError('REQUEST_ID_INVALID');
       const request = await repository.findByTenantIdAndId(tenantContext.tenantId, requestId);
       if (!request) {
-        await auditService.recordAuthorizationDenied({
-          principal,
-          tenantContext,
-          correlationId,
-          targetType: 'request',
-          targetId: requestId,
-          metadata: { operation: 'final_confirm' },
-        });
+        await recordDenied({ principal, tenantContext, requestId, correlationId });
         throw concealedNotFound();
+      }
+
+      if (request.status === REQUEST_STATUS.CONFIRMED) {
+        try {
+          authorizationPolicy.authorizeRequestRead(principal, tenantContext, request);
+        } catch (error) {
+          if (error instanceof AuthorizationDeniedError) {
+            await recordDenied({ principal, tenantContext, requestId, correlationId });
+          }
+          throw error;
+        }
+        return request;
       }
 
       let decision;
@@ -100,14 +120,7 @@ export function createFinalRoomConfirmationService({
         );
       } catch (error) {
         if (error instanceof AuthorizationDeniedError) {
-          await auditService.recordAuthorizationDenied({
-            principal,
-            tenantContext,
-            correlationId,
-            targetType: 'request',
-            targetId: requestId,
-            metadata: { operation: 'final_confirm' },
-          });
+          await recordDenied({ principal, tenantContext, requestId, correlationId });
         }
         throw error;
       }
