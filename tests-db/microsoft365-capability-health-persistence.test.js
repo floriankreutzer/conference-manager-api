@@ -14,6 +14,7 @@ const INTEGRATION_B = '94949494-9494-4949-8949-949494949494';
 const PROVIDER_A = '95959595-9595-4959-8959-959595959595';
 const PROVIDER_B = '96969696-9696-4969-8969-969696969696';
 const TENANT_IDS = [TENANT_A, TENANT_B];
+const VERIFIED_AT = new Date('2026-08-25T17:59:00.000Z');
 
 function databaseConfig() {
   const database = loadDatabaseConfig(process.env, 'test');
@@ -29,9 +30,9 @@ async function seed(pool, tenantId, integrationId, providerReference) {
   await pool.query(
     `INSERT INTO integrations (
       tenant_id, id, provider, provider_reference, status, connection_version,
-      places_permission_status, calendars_permission_status
-    ) VALUES ($1, $2, 'microsoft365', $3, 'connected', 1, 'granted', 'granted')`,
-    [tenantId, integrationId, providerReference],
+      last_verified_at, places_permission_status, calendars_permission_status
+    ) VALUES ($1, $2, 'microsoft365', $3, 'connected', 1, $4, 'granted', 'granted')`,
+    [tenantId, integrationId, providerReference, VERIFIED_AT],
   );
 }
 
