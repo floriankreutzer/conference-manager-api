@@ -36,6 +36,11 @@ function mapRequestRow(row) {
   });
 }
 
+async function appendAudit(client, auditRepository, auditEvent) {
+  const audit = await auditRepository.appendWithClient(client, auditEvent);
+  if (!audit) throw new Error('AUDIT_APPEND_FAILED');
+}
+
 async function lockFinalRoom(client, tenantId, roomId) {
   await client.query({
     name: 'request-final-room-lock',
@@ -68,6 +73,64 @@ export function createPostgresRequestRepository(pool, { auditRepository } = {}) 
       return mapRequestRow(result.rows[0]);
     },
 
+    async listByTenantId(tenantId, { requesterUserId = null, limit = 500 } = {}) {
+      const result = await pool.query({
+        name: 'request-list-by-tenant',
+        text: `
+          SELECT ${REQUEST_COLUMNS}
+          FROM requests
+          WHERE tenant_id = $1
+            AND ($2::uuid IS NULL OR requester_user_id = $2::uuid)
+          ORDER BY starts_at DESC, id
+          LIMIT $3
+        `,
+        values: [tenantId, requesterUserId, limit],
+      });
+      return result.rows.map(mapRequestRow);
+    },
+
+    async createForTenant({
+      tenantId,
+      requestId,
+      requesterUserId,
+      roomId,
+      startsAt,
+      endsAt,
+      internalParticipants,
+      externalParticipants,
+      createdAt,
+      auditEvent,
+    }) {
+      return withPostgresTransaction(pool, async (client) => {
+        const result = await client.query({
+          name: 'request-create-for-tenant',
+          text: `
+            INSERT INTO requests (
+              tenant_id, id, requester_user_id, room_id, status,
+              starts_at, ends_at, internal_participants, external_participants,
+              status_changed_at, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, 'Submitted', $5, $6, $7, $8, $9, $9, $9)
+            RETURNING ${REQUEST_COLUMNS}
+          `,
+          values: [
+            tenantId,
+            requestId,
+            requesterUserId,
+            roomId,
+            startsAt,
+            endsAt,
+            internalParticipants,
+            externalParticipants,
+            createdAt,
+          ],
+        });
+        const request = mapRequestRow(result.rows[0]);
+        await appendAudit(client, auditRepository, auditEvent);
+        return request;
+      });
+    },
+
     async transitionByTenantIdAndId({
       tenantId,
       requestId,
@@ -95,8 +158,7 @@ export function createPostgresRequestRepository(pool, { auditRepository } = {}) 
         });
         const request = mapRequestRow(result.rows[0]);
         if (!request) return null;
-        const audit = await auditRepository.appendWithClient(client, auditEvent);
-        if (!audit) throw new Error('AUDIT_APPEND_FAILED');
+        await appendAudit(client, auditRepository, auditEvent);
         return request;
       });
     },
@@ -161,8 +223,7 @@ export function createPostgresRequestRepository(pool, { auditRepository } = {}) 
         });
         const confirmed = mapRequestRow(result.rows[0]);
         if (!confirmed) return Object.freeze({ status: 'state_conflict', request: current });
-        const audit = await auditRepository.appendWithClient(client, auditEvent);
-        if (!audit) throw new Error('AUDIT_APPEND_FAILED');
+        await appendAudit(client, auditRepository, auditEvent);
         return Object.freeze({ status: 'confirmed', request: confirmed });
       });
     },
