@@ -88,6 +88,21 @@ function requireRequestDraft(value) {
   });
 }
 
+function publicRequest(request) {
+  return Object.freeze({
+    id: request.id,
+    roomId: request.roomId,
+    status: request.status,
+    statusReason: request.statusReason,
+    startsAt: request.startsAt,
+    endsAt: request.endsAt,
+    internalParticipants: request.internalParticipants,
+    externalParticipants: request.externalParticipants,
+    statusChangedAt: request.statusChangedAt,
+    updatedAt: request.updatedAt,
+  });
+}
+
 function requireSites(value) {
   if (!Array.isArray(value) || value.length > SITE_LIMIT) {
     throw new AuthorizationInputError('TENANT_CONFIGURATION_INVALID');
@@ -253,10 +268,11 @@ export function createProductionApplicationService({
     async listRequests({ principal, tenantContext, correlationId }) {
       requireCorrelationId(correlationId);
       const scope = authorizationPolicy.requestListScope(principal, tenantContext);
-      return Object.freeze(await requestRepository.listByTenantId(
+      const requests = await requestRepository.listByTenantId(
         tenantContext.tenantId,
         { requesterUserId: scope.requesterUserId },
-      ));
+      );
+      return Object.freeze(requests.map(publicRequest));
     },
 
     async createRequest({ principal, tenantContext, correlationId, requestDraft }) {
@@ -280,14 +296,14 @@ export function createProductionApplicationService({
         retentionClass: AUDIT_RETENTION_CLASS.BUSINESS,
         occurredAt: createdAt.toISOString(),
       });
-      return requestRepository.createForTenant({
+      return publicRequest(await requestRepository.createForTenant({
         tenantId: tenantContext.tenantId,
         requestId,
         requesterUserId: principal.userId,
         ...draft,
         createdAt,
         auditEvent,
-      });
+      }));
     },
 
     async listNotifications({ principal, tenantContext, correlationId }) {
