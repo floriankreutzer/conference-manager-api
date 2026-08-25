@@ -13,17 +13,13 @@ const USER_ID = '33333333-3333-4333-8333-333333333333';
 const STATE = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 const ACCESS_TOKEN = 'T'.repeat(128);
 
-function response(status, payload, { contentLength, raw } = {}) {
+function response(status, payload, { contentLength, raw, omitContentLength = false } = {}) {
   const text = raw ?? JSON.stringify(payload);
-  return {
-    status,
-    headers: {
-      get: (name) => name.toLowerCase() === 'content-length'
-        ? String(contentLength ?? Buffer.byteLength(text))
-        : null,
-    },
-    async text() { return text; },
-  };
+  const headers = { 'Content-Type': 'application/json; charset=utf-8' };
+  if (!omitContentLength) {
+    headers['Content-Length'] = String(contentLength ?? Buffer.byteLength(text));
+  }
+  return new Response(text, { status, headers });
 }
 
 function client({ fetchImpl, acquire, publicOrigin = 'https://conference.example', allowInsecureLocalhost } = {}) {
@@ -56,7 +52,10 @@ test('admin consent URL is tenant-specific, fixed-origin and requests reviewed G
   assert.equal(value.pathname, `/${TENANT_ID}/v2.0/adminconsent`);
   assert.equal(value.searchParams.get('client_id'), CLIENT_ID);
   assert.equal(value.searchParams.get('scope'), 'https://graph.microsoft.com/.default');
-  assert.equal(value.searchParams.get('redirect_uri'), 'https://conference.example/api/v1/integrations/microsoft365/callback');
+  assert.equal(
+    value.searchParams.get('redirect_uri'),
+    'https://conference.example/api/v1/integrations/microsoft365/callback',
+  );
   assert.equal(value.searchParams.get('state'), STATE);
 });
 
@@ -69,15 +68,24 @@ test('base permission verification uses fixed Graph destinations and validates b
       return response(200, { id: 'calendar-id' });
     },
   });
-  const result = await api.verifyBasePermissions({ tenantReference: TENANT_ID, claimantUserReference: USER_ID });
+  const result = await api.verifyBasePermissions({
+    tenantReference: TENANT_ID,
+    claimantUserReference: USER_ID,
+  });
   assert.deepEqual(result, {
     status: MICROSOFT365_VERIFICATION.CONNECTED,
     places: 'granted',
     calendars: 'granted',
     reason: null,
   });
-  assert.match(calls[0].url, /^https:\/\/graph\.microsoft\.com\/v1\.0\/places\/microsoft\.graph\.room\?/);
-  assert.match(calls[1].url, new RegExp(`^https://graph\\.microsoft\\.com/v1\\.0/users/${USER_ID}/calendar\\?`));
+  assert.match(
+    calls[0].url,
+    /^https:\/\/graph\.microsoft\.com\/v1\.0\/places\/microsoft\.graph\.room\?/,
+  );
+  assert.match(
+    calls[1].url,
+    new RegExp(`^https://graph\\.microsoft\\.com/v1\\.0/users/${USER_ID}/calendar\\?`),
+  );
   assert.equal(calls[0].options.method, 'GET');
   assert.equal(calls[0].options.redirect, 'error');
   assert.equal(calls[0].options.headers.Authorization, `Bearer ${ACCESS_TOKEN}`);
@@ -105,7 +113,9 @@ test('a missing claimant identity leaves calendar permission unverified without 
 });
 
 test('permission and authorization failures are classified without returning provider payloads', async () => {
-  const missingPlaces = client({ fetchImpl: async () => response(403, { error: { message: 'sensitive' } }) });
+  const missingPlaces = client({
+    fetchImpl: async () => response(403, { error: { message: 'sensitive' } }),
+  });
   assert.deepEqual(
     await missingPlaces.verifyBasePermissions({ tenantReference: TENANT_ID, claimantUserReference: USER_ID }),
     {
@@ -116,7 +126,9 @@ test('permission and authorization failures are classified without returning pro
     },
   );
 
-  const revoked = client({ fetchImpl: async () => response(401, { error: { message: 'sensitive' } }) });
+  const revoked = client({
+    fetchImpl: async () => response(401, { error: { message: 'sensitive' } }),
+  });
   assert.equal(
     (await revoked.verifyBasePermissions({ tenantReference: TENANT_ID })).status,
     MICROSOFT365_VERIFICATION.REVOKED,
@@ -126,10 +138,21 @@ test('permission and authorization failures are classified without returning pro
   assert.deepEqual(
     await tokenFailure.verifyBasePermissions({ tenantReference: TENANT_ID }),
     {
+      status: MICROSOFT365_VERIFICATION.DEGRADED,
+      places: 'unknown',
+      calendars: 'unknown',
+      reason: 'provider_unavailable',
+    },
+  );
+
+  const invalidToken = client({ acquire: () => ({ accessToken: 'short' }) });
+  assert.deepEqual(
+    await invalidToken.verifyBasePermissions({ tenantReference: TENANT_ID }),
+    {
       status: MICROSOFT365_VERIFICATION.REVOKED,
       places: 'unknown',
       calendars: 'unknown',
-      reason: 'token_unavailable',
+      reason: 'token_invalid',
     },
   );
 });
@@ -143,7 +166,10 @@ test('calendar probe distinguishes permission denial from a claimant without an 
     },
   });
   assert.deepEqual(
-    await missingCalendar.verifyBasePermissions({ tenantReference: TENANT_ID, claimantUserReference: USER_ID }),
+    await missingCalendar.verifyBasePermissions({
+      tenantReference: TENANT_ID,
+      claimantUserReference: USER_ID,
+    }),
     {
       status: MICROSOFT365_VERIFICATION.DEGRADED,
       places: 'granted',
@@ -160,7 +186,10 @@ test('calendar probe distinguishes permission denial from a claimant without an 
     },
   });
   assert.deepEqual(
-    await noMailbox.verifyBasePermissions({ tenantReference: TENANT_ID, claimantUserReference: USER_ID }),
+    await noMailbox.verifyBasePermissions({
+      tenantReference: TENANT_ID,
+      claimantUserReference: USER_ID,
+    }),
     {
       status: MICROSOFT365_VERIFICATION.CONNECTED,
       places: 'granted',
@@ -185,7 +214,18 @@ test('transport, malformed and oversized provider responses degrade without esca
       reason: 'provider_response_invalid',
     },
     {
+      fetchImpl: async () => response(200, { value: [] }, {
+        raw: 'x'.repeat(65_537),
+        omitContentLength: true,
+      }),
+      reason: 'provider_response_invalid',
+    },
+    {
       fetchImpl: async () => response(200, { unexpected: [] }),
+      reason: 'provider_response_invalid',
+    },
+    {
+      fetchImpl: async () => response(200, { value: [{ id: 12 }] }),
       reason: 'provider_response_invalid',
     },
     {
@@ -199,7 +239,9 @@ test('transport, malformed and oversized provider responses degrade without esca
   ];
 
   for (const value of cases) {
-    const result = await client({ fetchImpl: value.fetchImpl }).verifyBasePermissions({ tenantReference: TENANT_ID });
+    const result = await client({ fetchImpl: value.fetchImpl }).verifyBasePermissions({
+      tenantReference: TENANT_ID,
+    });
     assert.deepEqual(result, {
       status: MICROSOFT365_VERIFICATION.DEGRADED,
       places: 'unknown',
@@ -211,15 +253,48 @@ test('transport, malformed and oversized provider responses degrade without esca
   }
 });
 
+test('oversized chunked provider responses are cancelled as soon as the response bound is exceeded', async () => {
+  let cancelled = false;
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array(40_000));
+      controller.enqueue(new Uint8Array(40_000));
+      controller.enqueue(new Uint8Array(40_000));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  const api = client({
+    fetchImpl: async () => new Response(body, {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  });
+
+  assert.deepEqual(
+    await api.verifyBasePermissions({ tenantReference: TENANT_ID }),
+    {
+      status: MICROSOFT365_VERIFICATION.DEGRADED,
+      places: 'unknown',
+      calendars: 'unknown',
+      reason: 'provider_response_invalid',
+    },
+  );
+  assert.equal(cancelled, true);
+});
+
 test('malformed tenant, state and unapproved callback origins fail before provider transport', () => {
   const api = client();
   assert.throws(
     () => api.adminConsentUrl({ tenantReference: 'browser-tenant', state: STATE }),
-    (error) => error instanceof Microsoft365ProviderError && error.code === 'MICROSOFT365_TENANT_INVALID',
+    (error) => error instanceof Microsoft365ProviderError
+      && error.code === 'MICROSOFT365_TENANT_INVALID',
   );
   assert.throws(
     () => api.adminConsentUrl({ tenantReference: TENANT_ID, state: 'short' }),
-    (error) => error instanceof Microsoft365ProviderError && error.code === 'MICROSOFT365_CONSENT_STATE_INVALID',
+    (error) => error instanceof Microsoft365ProviderError
+      && error.code === 'MICROSOFT365_CONSENT_STATE_INVALID',
   );
   for (const publicOrigin of [
     'http://conference.example',
