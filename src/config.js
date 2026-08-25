@@ -23,6 +23,8 @@ const DEFAULTS = Object.freeze({
   databaseStatementTimeoutMs: 10_000,
   sessionTtlSeconds: 28_800,
   oidcTransactionTtlSeconds: 600,
+  microsoft365ConsentTtlSeconds: 600,
+  microsoft365GraphTimeoutMs: 10_000,
 });
 
 export class ConfigurationError extends Error {
@@ -266,6 +268,16 @@ export function loadConfig(env = process.env) {
       max: 86_400,
       code: 'SESSION_TTL_SECONDS_INVALID',
     }),
+    microsoft365ConsentTtlSeconds: parseInteger(
+      env.MICROSOFT365_CONSENT_TTL_SECONDS,
+      DEFAULTS.microsoft365ConsentTtlSeconds,
+      { min: 120, max: 900, code: 'MICROSOFT365_CONSENT_TTL_SECONDS_INVALID' },
+    ),
+    microsoft365GraphTimeoutMs: parseInteger(
+      env.MICROSOFT365_GRAPH_TIMEOUT_MS,
+      DEFAULTS.microsoft365GraphTimeoutMs,
+      { min: 1_000, max: 30_000, code: 'MICROSOFT365_GRAPH_TIMEOUT_MS_INVALID' },
+    ),
     csrfSecret,
     auditHmacSecret,
     ...entra,
