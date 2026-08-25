@@ -2,7 +2,9 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
-export const CURRENT_SCHEMA_VERSION = 16;
+// Schema 14 established the Microsoft 365 capability-health baseline.
+// Migrations 15 and 16 add request-created and Tenant lifecycle audit actions.
+export const CURRENT_SCHEMA_VERSION = 14 + 2;
 
 export function createPostgresPool(config) {
   if (!config?.databaseUrl) throw new TypeError('DATABASE_URL_REQUIRED');
