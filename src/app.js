@@ -59,7 +59,10 @@ const ONBOARDING_START_BODY_SCHEMA = Object.freeze({
   }),
   optional: Object.freeze({}),
 });
-const ONBOARDING_CONFIRM_BODY_SCHEMA = Object.freeze({ confirm: (value) => value === true });
+const ONBOARDING_CONFIRM_BODY_SCHEMA = Object.freeze({
+  required: Object.freeze({ confirm: (value) => value === true }),
+  optional: Object.freeze({}),
+});
 const TENANT_USER_ROLES_BODY_SCHEMA = Object.freeze({
   required: Object.freeze({
     roles: (value) => Array.isArray(value)
