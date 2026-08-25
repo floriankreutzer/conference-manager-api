@@ -4,8 +4,13 @@ import {
   PROVIDER_ERROR_KIND,
 } from './calendar-contract.js';
 import { Microsoft365ProviderError } from './microsoft365-client.js';
+import { executeSafeProviderOperation } from './provider-retry.js';
 
 const ROOM_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const HEALTH_CAPABILITY = Object.freeze({
+  FREE_BUSY: 'free_busy',
+  CALENDAR_WRITE: 'calendar_write',
+});
 
 function assertTenantRoomInput(input, tenantId, roomId, operation) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
@@ -69,6 +74,11 @@ function requireWriteMethod(providerClient, method, operation) {
   return providerClient[method].bind(providerClient);
 }
 
+function retryClassification(error) {
+  const mapped = mapProviderError(error, 'availability');
+  return { retryable: mapped.retryable, retryAfterMs: mapped.retryAfterMs };
+}
+
 function createBoundProvider({
   tenantId,
   integrationId,
@@ -76,31 +86,54 @@ function createBoundProvider({
   roomId,
   resourceAddress,
   providerClient,
+  capabilityHealthService,
+  retrySleep,
 }) {
+  async function recordSuccess(capability) {
+    await capabilityHealthService?.recordSuccess({ tenantId, integrationId, capability });
+  }
+
+  async function recordFailure(capability, error) {
+    await capabilityHealthService?.recordFailure({ tenantId, integrationId, capability, error });
+  }
+
   async function availability(input, operation) {
     assertTenantRoomInput(input, tenantId, roomId, operation);
     try {
-      const result = await providerClient.lookupFreeBusy({
-        tenantReference: providerTenantReference,
-        schedules: [resourceAddress],
-        startsAt: input.startsAt,
-        endsAt: input.endsAt,
-      });
+      const result = await executeSafeProviderOperation(
+        () => providerClient.lookupFreeBusy({
+          tenantReference: providerTenantReference,
+          schedules: [resourceAddress],
+          startsAt: input.startsAt,
+          endsAt: input.endsAt,
+        }),
+        {
+          classifyError: retryClassification,
+          ...(retrySleep ? { sleep: retrySleep } : {}),
+        },
+      );
       if (!Array.isArray(result) || result.length !== 1 || result[0]?.schedule !== resourceAddress) {
         throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_RESPONSE_INVALID');
       }
+      await recordSuccess(HEALTH_CAPABILITY.FREE_BUSY);
       return result[0];
     } catch (error) {
-      throw mapProviderError(error, operation);
+      const mapped = mapProviderError(error, operation);
+      await recordFailure(HEALTH_CAPABILITY.FREE_BUSY, mapped);
+      throw mapped;
     }
   }
 
   async function write(operation, input, method, values) {
     assertTenantRoomInput(input, tenantId, roomId, operation);
     try {
-      return await requireWriteMethod(providerClient, method, operation)(values);
+      const result = await requireWriteMethod(providerClient, method, operation)(values);
+      await recordSuccess(HEALTH_CAPABILITY.CALENDAR_WRITE);
+      return result;
     } catch (error) {
-      throw mapProviderError(error, operation);
+      const mapped = mapProviderError(error, operation);
+      await recordFailure(HEALTH_CAPABILITY.CALENDAR_WRITE, mapped);
+      throw mapped;
     }
   }
 
@@ -148,6 +181,8 @@ export function createMicrosoft365CalendarProviderFactory({
   connectionRepository,
   mappingRepository,
   providerClient,
+  capabilityHealthService = null,
+  retrySleep,
 } = {}) {
   if (!connectionRepository || typeof connectionRepository.findByTenantId !== 'function') {
     throw new TypeError('MICROSOFT365_CONNECTION_REPOSITORY_REQUIRED');
@@ -157,6 +192,18 @@ export function createMicrosoft365CalendarProviderFactory({
   }
   if (!providerClient || typeof providerClient.lookupFreeBusy !== 'function') {
     throw new TypeError('MICROSOFT365_FREE_BUSY_CLIENT_REQUIRED');
+  }
+  if (
+    capabilityHealthService
+    && (
+      typeof capabilityHealthService.recordSuccess !== 'function'
+      || typeof capabilityHealthService.recordFailure !== 'function'
+    )
+  ) {
+    throw new TypeError('MICROSOFT365_HEALTH_SERVICE_INVALID');
+  }
+  if (retrySleep !== undefined && typeof retrySleep !== 'function') {
+    throw new TypeError('MICROSOFT365_RETRY_SLEEP_INVALID');
   }
 
   return Object.freeze({
@@ -179,7 +226,14 @@ export function createMicrosoft365CalendarProviderFactory({
       );
       const mapping = mappings.find((candidate) => candidate.roomId === roomId);
       if (!mapping || mapping.providerStatus !== 'active') {
-        throw new CalendarProviderError(PROVIDER_ERROR_KIND.NOT_FOUND, { operation: 'availability' });
+        const error = new CalendarProviderError(PROVIDER_ERROR_KIND.NOT_FOUND, { operation: 'availability' });
+        await capabilityHealthService?.recordFailure({
+          tenantId,
+          integrationId: connection.integrationId,
+          capability: HEALTH_CAPABILITY.FREE_BUSY,
+          error,
+        });
+        throw error;
       }
       return createBoundProvider({
         tenantId,
@@ -188,6 +242,8 @@ export function createMicrosoft365CalendarProviderFactory({
         roomId,
         resourceAddress: mapping.resourceAddress,
         providerClient,
+        capabilityHealthService,
+        retrySleep,
       });
     },
   });
