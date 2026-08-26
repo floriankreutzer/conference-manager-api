@@ -155,7 +155,10 @@ export function createMicrosoft365RoomMappingService({
         PERMISSION.TENANT_INTEGRATIONS_MANAGE,
       );
     } catch (error) {
-      if (error instanceof AuthorizationDeniedError) {
+      if (
+        error instanceof AuthorizationDeniedError
+        && principal?.tenantId === tenantContext?.tenantId
+      ) {
         await auditService.recordAuthorizationDenied({
           principal,
           tenantContext,

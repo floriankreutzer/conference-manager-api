@@ -217,7 +217,6 @@ const microsoft365OnboardingVerificationService = microsoft365RoomMappingService
   ? createMicrosoft365OnboardingVerificationService({
     roomMappingService: microsoft365RoomMappingService,
     calendarProviderFactory: microsoft365CalendarProviderFactory,
-    authorizationPolicy,
   })
   : null;
 const microsoft365Service = microsoft365ConnectionService

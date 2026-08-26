@@ -1,4 +1,3 @@
-import { PERMISSION } from '../authorization/policy.js';
 import { isInternalUuid } from '../domain/identifiers.js';
 import {
   CalendarProviderError,
@@ -28,7 +27,6 @@ function mappedProviderError(error) {
 export function createMicrosoft365OnboardingVerificationService({
   roomMappingService,
   calendarProviderFactory,
-  authorizationPolicy,
   clock = () => Date.now(),
 } = {}) {
   if (!roomMappingService || typeof roomMappingService.listMappings !== 'function') {
@@ -37,9 +35,6 @@ export function createMicrosoft365OnboardingVerificationService({
   if (!calendarProviderFactory || typeof calendarProviderFactory.forRoom !== 'function') {
     throw new TypeError('MICROSOFT365_CALENDAR_PROVIDER_FACTORY_REQUIRED');
   }
-  if (!authorizationPolicy || typeof authorizationPolicy.requireTenantPermission !== 'function') {
-    throw new TypeError('AUTHORIZATION_POLICY_REQUIRED');
-  }
   if (typeof clock !== 'function') throw new TypeError('MICROSOFT365_VERIFICATION_CLOCK_REQUIRED');
 
   return Object.freeze({
@@ -47,11 +42,6 @@ export function createMicrosoft365OnboardingVerificationService({
       if (!isInternalUuid(correlationId)) {
         throw new Microsoft365ConnectionInputError('MICROSOFT365_CORRELATION_INVALID');
       }
-      authorizationPolicy.requireTenantPermission(
-        principal,
-        tenantContext,
-        PERMISSION.TENANT_INTEGRATIONS_MANAGE,
-      );
       const mappings = await roomMappingService.listMappings({
         principal,
         tenantContext,
