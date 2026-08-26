@@ -92,7 +92,11 @@ Migration 017 extends booking references:
 - `pending`, `active`, `compensating`, `compensated` and `cancelled` state/reference invariants;
 - fail-closed application and rollback when populated references require reconciliation.
 
-Migration 018 adds nullable `sites.time_zone`. Existing Sites remain explicitly unknown instead of receiving a fabricated UTC default. Application Configuration accepts only bounded identifiers validated against the server IANA database, while PostgreSQL reinforces the bounded identifier shape. Migration 019 advances runtime schema readiness to exactly version 19.
+Migration 018 adds nullable `sites.time_zone`. Existing Sites remain explicitly unknown instead of receiving a fabricated UTC default. Application Configuration accepts only bounded identifiers validated against the server IANA database, while PostgreSQL reinforces the bounded identifier shape.
+
+Migration 019 adds confirmed-booking change persistence and enforces one open proposal per confirmed Request.
+
+Migration 020 adds independent optimistic revision counters for the Organization, Locations, Catalogue, Booking Policies and Cost Allocation Tenant Admin aggregates. It does not create a generic settings table/document. Runtime schema readiness advances to exactly version 20, and rollback fails closed after any aggregate revision advances beyond its initial value.
 
 No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
 
@@ -191,7 +195,7 @@ The migration runner:
 - serializes concurrent runners with a PostgreSQL advisory lock;
 - runs each migration transactionally;
 - supports repeatable `up`;
-- rolls back only the latest applied migration.
+- rolls back only the latest applied migration through `rollbackLatest`, while migration-focused tests may use `rollbackToVersion` to target the historical migration under test.
 
 Commands:
 
@@ -200,7 +204,7 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 19.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 20.
 
 ## Transaction contract
 
@@ -265,6 +269,8 @@ Migration 007 down removes only short-lived pre-authentication transaction state
 
 Migration 017 up and down fail closed when booking references exist because neither a legacy create-time resource nor removal of a current binding is safe to infer automatically. Migration 018 down fails closed while any Site time zone is configured because dropping the column would lose booking/display authority; reviewed forward remediation is preferred.
 
+Migration 020 down fails closed when any Tenant settings aggregate revision has advanced beyond `1`; removing active concurrency state after a settings mutation requires a reviewed forward fix or compatible application rollback.
+
 ## Testing evidence required
 
 Database changes require PostgreSQL integration coverage for applicable migration/version/checksum behavior, tenant-scoped repositories, composite FK isolation, invalid constraints, duplicate/concurrent writes, transaction rollback, schema readiness and cross-Tenant persistence.
@@ -298,6 +304,8 @@ Booking-provider persistence additionally requires real PostgreSQL tests for Ten
 Site-time-zone persistence additionally requires real PostgreSQL tests for nullable legacy migration, Tenant-scoped catalog/configuration, room-to-Site booking context, configuration audit atomicity, invalid bounded database shapes, exact schema readiness and fail-closed populated rollback.
 
 Migration 019 adds `booking_change_requests`, its Tenant-scoped foreign keys, bounded proposal fields, decision metadata and the partial unique index that enforces exactly one open proposal per confirmed Request. Participant-only application and approved proposal application update the Request, append `request.booking_change` audit evidence and create the Requester notification in one transaction. Room moves additionally swap the persisted active provider reference in that same apply transaction.
+
+Migration 020 additionally requires integration coverage that each aggregate revision initializes to `1`, only the intended revision is advanced by later owners, rollback remains available before first use, and populated rollback fails closed after any aggregate revision advances.
 
 The DB suites share migration state and are therefore executed serially with `--test-concurrency=1` to prevent test-runner races from weakening the migration/integrity evidence.
 
