@@ -405,7 +405,7 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
             FROM tenants
             WHERE id = $1
               AND status IN ('pending', 'onboarding', 'ready')
-            FOR UPDATE
+            FOR SHARE
           `,
           values: [tenantId],
         });
