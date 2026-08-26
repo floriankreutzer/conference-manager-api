@@ -64,7 +64,7 @@ const rollback = await readFile('migrations/020_tenant_settings_revisions.down.s
 if (!rollback.includes('LOCK TABLE tenants IN ACCESS EXCLUSIVE MODE')) {
   throw new Error('Tenant settings rollback must serialize the populated-revision guard.');
 }
-if (!rollback.includes('Cannot remove tenant settings revisions after versioned configuration writes exist')) {
+if (!rollback.includes('TENANT_SETTINGS_REVISIONS_REQUIRE_REVIEW')) {
   throw new Error('Tenant settings rollback must fail closed after any aggregate revision advances.');
 }
 
