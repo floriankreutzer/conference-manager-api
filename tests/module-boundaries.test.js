@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildModuleGraph, findModuleCycles } from '../scripts/module-graph.mjs';
+import { buildModuleGraph, findModuleCycles, moduleSpecifiers } from '../scripts/module-graph.mjs';
 import { backendSaas2BoundaryViolations } from '../scripts/backend-boundary-policy.mjs';
 
 test('general module graph detects cycles', () => {
@@ -9,6 +9,21 @@ test('general module graph detects cycles', () => {
     'src/b.js': "import './a.js';",
   });
   assert.equal(findModuleCycles(graph).length, 1);
+});
+
+test('module graph parses executable template dynamic imports only', () => {
+  const source = [
+    "// import('../persistence/postgres/comment.js');",
+    "const example = \"import(`../persistence/postgres/string.js`)\";",
+    "import(`../persistence/postgres/catalog-repository.js`);",
+  ].join('\n');
+  assert.deepEqual(moduleSpecifiers(source), ['../persistence/postgres/catalog-repository.js']);
+
+  const violations = backendSaas2BoundaryViolations({
+    'src/application/catalog-service.js': source,
+    'src/persistence/postgres/catalog-repository.js': 'export const repository = true;',
+  });
+  assert.ok(violations.some((item) => item.includes('application code must not depend')));
 });
 
 test('valid HTTP to application to domain direction passes', () => {

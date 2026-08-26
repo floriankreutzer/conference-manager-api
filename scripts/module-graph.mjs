@@ -1,24 +1,30 @@
 import path from 'node:path';
-
-const STATIC_MODULE_PATTERN = /(?:import\s+(?:(?:[\w$]+(?:\s*,\s*(?:\*\s+as\s+[\w$]+|\{[\s\S]*?\}))?|\*\s+as\s+[\w$]+|\{[\s\S]*?\})\s+from\s+)?|export\s+(?:\*\s*(?:as\s+[\w$]+\s*)?|\{[\s\S]*?\})\s+from\s+)['"]([^'"]+)['"]/g;
-const DYNAMIC_MODULE_PATTERN = /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+import { parse } from 'es-module-lexer/js';
 
 function normalized(file) {
   return path.posix.normalize(String(file).replaceAll('\\', '/'));
 }
 
+function localModuleSpecifier(specifier) {
+  const value = String(specifier);
+  return value.startsWith('.') || value.startsWith('/');
+}
+
 export function moduleSpecifiers(source) {
   const text = String(source || '');
-  const specifiers = [];
-  for (const match of text.matchAll(STATIC_MODULE_PATTERN)) specifiers.push(match[1].split('?')[0]);
-  for (const match of text.matchAll(DYNAMIC_MODULE_PATTERN)) specifiers.push(match[1].split('?')[0]);
+  const [imports] = parse(text);
+  const specifiers = imports
+    .filter((entry) => entry.d !== -2 && typeof entry.n === 'string')
+    .map((entry) => entry.n.split(/[?#]/)[0]);
   return Object.freeze(specifiers);
 }
 
 export function resolveRelativeModule(fromFile, specifier, knownFiles) {
-  if (!String(specifier).startsWith('.')) return null;
+  if (!localModuleSpecifier(specifier)) return null;
   const files = knownFiles instanceof Set ? knownFiles : new Set(knownFiles);
-  const base = normalized(path.posix.join(path.posix.dirname(normalized(fromFile)), specifier));
+  const base = String(specifier).startsWith('/')
+    ? normalized(String(specifier).slice(1))
+    : normalized(path.posix.join(path.posix.dirname(normalized(fromFile)), specifier));
   const candidates = path.posix.extname(base)
     ? [base]
     : [base, `${base}.js`, path.posix.join(base, 'index.js')];
@@ -36,7 +42,7 @@ export function buildModuleGraph(sourceEntries) {
   for (const [file, source] of sources) {
     const dependencies = new Set();
     for (const specifier of moduleSpecifiers(source)) {
-      if (!specifier.startsWith('.')) continue;
+      if (!localModuleSpecifier(specifier)) continue;
       const dependency = resolveRelativeModule(file, specifier, knownFiles);
       if (!dependency) unresolved.push(Object.freeze({ file, specifier }));
       else dependencies.add(dependency);
@@ -53,8 +59,7 @@ function canonicalCycle(cycle) {
     ...pathWithoutRepeat.slice(index),
     ...pathWithoutRepeat.slice(0, index),
   ]);
-  const canonical = rotations.map((rotation) => rotation.join(' -> ')).sort()[0];
-  return canonical;
+  return rotations.map((rotation) => rotation.join(' -> ')).sort()[0];
 }
 
 export function findModuleCycles(graph) {

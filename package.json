@@ -41,5 +41,8 @@
   "dependencies": {
     "@azure/msal-node": "5.4.3",
     "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "es-module-lexer": "2.3.2"
   }
 }
