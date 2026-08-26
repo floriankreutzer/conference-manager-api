@@ -88,6 +88,27 @@ for (const required of [
   }
 }
 
+if (
+  sessionRepository.indexOf("name: 'session-security-context-tenant'")
+  > sessionRepository.indexOf("name: 'session-security-context-user'")
+) {
+  throw new Error('Session persistence must lock Tenant before User authority.');
+}
+const rotateBoundary = sessionRepository.slice(sessionRepository.indexOf('async rotate'));
+if (
+  rotateBoundary.indexOf('loadSecurityContext(')
+  > rotateBoundary.indexOf("name: 'session-rotate-current'")
+) {
+  throw new Error('Session rotation must lock Tenant/User authority before the current Session.');
+}
+const revokeBoundary = sessionRepository.slice(
+  sessionRepository.indexOf('async revoke'),
+  sessionRepository.indexOf('async rotate'),
+);
+if (revokeBoundary.indexOf('lockSessionOwner(') > revokeBoundary.indexOf("name: 'session-revoke'")) {
+  throw new Error('Session revocation must lock Tenant/User ownership before the Session.');
+}
+
 const runtime = await readFile('src/index.js', 'utf8');
 for (const required of ['createJitUserService', 'persistence.jitUserRepository', 'jitUserService']) {
   if (!runtime.includes(required)) throw new Error(`Runtime composition is missing ${required}.`);
