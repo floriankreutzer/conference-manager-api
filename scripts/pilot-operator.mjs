@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import { createTenantAdminRecoveryService } from '../src/application/tenant-admin-recovery-service.js';
 import { createTenantPilotService } from '../src/application/tenant-pilot-service.js';
 import { createAuditService } from '../src/audit/audit-service.js';
 import { createAuthorizationPolicy } from '../src/authorization/policy.js';
 import { loadConfig } from '../src/config.js';
-import { CAPABILITY, normalizeCapabilityId } from '../src/entitlements/capabilities.js';
+import { normalizeCapabilityId } from '../src/entitlements/capabilities.js';
 import { createEntitlementService } from '../src/entitlements/entitlement-service.js';
 import { createTenantOnboardingService } from '../src/onboarding/tenant-onboarding-service.js';
 import { createPostgresPersistence } from '../src/persistence/postgres/index.js';
@@ -11,6 +12,13 @@ import { createPostgresPersistence } from '../src/persistence/postgres/index.js'
 const OPERATOR_CONTEXT = Object.freeze({ source: 'pilot_operator_cli' });
 const LIFECYCLE = new Set(['ready', 'active', 'suspended']);
 const BOOLEAN = new Map([['true', true], ['false', false]]);
+const COMMANDS = new Set([
+  'invite',
+  'readiness',
+  'lifecycle',
+  'entitlement',
+  'recover-tenant-admin',
+]);
 
 function fail(message) {
   process.stderr.write(`${message}\n`);
@@ -24,7 +32,9 @@ function argument(name) {
 
 function requireArgument(name) {
   const value = argument(name);
-  if (typeof value !== 'string' || value.length < 1) throw new TypeError(`MISSING_${name.toUpperCase().replaceAll('-', '_')}`);
+  if (typeof value !== 'string' || value.length < 1) {
+    throw new TypeError(`MISSING_${name.toUpperCase().replaceAll('-', '_')}`);
+  }
   return value;
 }
 
@@ -34,9 +44,7 @@ function output(value) {
 
 async function main() {
   const command = process.argv[2];
-  if (!['invite', 'readiness', 'lifecycle', 'entitlement'].includes(command)) {
-    throw new TypeError('COMMAND_INVALID');
-  }
+  if (!COMMANDS.has(command)) throw new TypeError('COMMAND_INVALID');
   const config = loadConfig();
   if (!config.databaseUrl) throw new TypeError('DATABASE_URL_REQUIRED');
   const persistence = createPostgresPersistence(config);
@@ -66,6 +74,11 @@ async function main() {
     capabilityHealthRepository: persistence.microsoft365CapabilityHealthRepository,
     entitlementRepository: persistence.entitlementRepository,
     authorizationPolicy,
+    auditService,
+    authorizeOperator,
+  });
+  const recovery = createTenantAdminRecoveryService({
+    repository: persistence.tenantUserAdminRepository,
     auditService,
     authorizeOperator,
   });
@@ -104,6 +117,22 @@ async function main() {
       output({ command, tenantId, status: result.status, correlationId });
       return;
     }
+    if (command === 'recover-tenant-admin') {
+      const user = await recovery.recoverTenantAdmin({
+        operatorContext: OPERATOR_CONTEXT,
+        tenantId,
+        targetUserId: requireArgument('user-id'),
+        correlationId,
+      });
+      output({
+        command,
+        tenantId,
+        userId: user.userId,
+        elevatedRoles: user.elevatedRoles,
+        correlationId,
+      });
+      return;
+    }
     const capabilityId = normalizeCapabilityId(requireArgument('capability'));
     const enabledValue = requireArgument('enabled');
     if (!BOOLEAN.has(enabledValue)) throw new TypeError('ENABLED_INVALID');
@@ -129,5 +158,3 @@ async function main() {
 main().catch((error) => {
   fail(error?.code || error?.message || 'PILOT_OPERATOR_FAILED');
 });
-
-export const PILOT_CAPABILITIES = Object.freeze(Object.values(CAPABILITY));
