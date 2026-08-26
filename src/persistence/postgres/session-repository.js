@@ -23,22 +23,33 @@ function mapSessionRow(row) {
 }
 
 async function loadSecurityContext(client, tenantId, userId, expectedSecurityVersion) {
-  const result = await client.query({
-    name: 'session-security-context',
+  const tenant = await client.query({
+    name: 'session-security-context-tenant',
     text: `
-      SELECT u.security_version, t.status AS tenant_status
-      FROM users u
-      JOIN tenants t ON t.id = u.tenant_id
-      WHERE u.tenant_id = $1
-        AND u.id = $2
-        AND u.active = true
-        AND u.security_version = $3
-        AND t.status = ANY($4::text[])
-      FOR SHARE OF u, t
+      SELECT status AS tenant_status
+      FROM tenants
+      WHERE id = $1
+        AND status = ANY($2::text[])
+      FOR SHARE
     `,
-    values: [tenantId, userId, expectedSecurityVersion, SESSION_TENANT_STATUSES],
+    values: [tenantId, SESSION_TENANT_STATUSES],
   });
-  return result.rows[0] || null;
+  if (tenant.rowCount !== 1) return null;
+  const user = await client.query({
+    name: 'session-security-context-user',
+    text: `
+      SELECT security_version
+      FROM users
+      WHERE tenant_id = $1
+        AND id = $2
+        AND active = true
+        AND security_version = $3
+      FOR SHARE
+    `,
+    values: [tenantId, userId, expectedSecurityVersion],
+  });
+  if (user.rowCount !== 1) return null;
+  return { ...user.rows[0], ...tenant.rows[0] };
 }
 
 async function insertSession(client, session, securityContext) {
@@ -154,6 +165,13 @@ export function createPostgresSessionRepository(pool, { auditRepository } = {}) 
 
     async rotate({ currentSessionId, session, revokedAt, auditEvent }) {
       return withPostgresTransaction(pool, async (client) => {
+        const securityContext = await loadSecurityContext(
+          client,
+          session.tenantId,
+          session.userId,
+          session.expectedSecurityVersion,
+        );
+        if (!securityContext) return null;
         const current = await client.query({
           name: 'session-rotate-current',
           text: `
@@ -169,14 +187,6 @@ export function createPostgresSessionRepository(pool, { auditRepository } = {}) 
           values: [currentSessionId, session.tenantId, session.userId, revokedAt],
         });
         if (current.rowCount !== 1) return null;
-
-        const securityContext = await loadSecurityContext(
-          client,
-          session.tenantId,
-          session.userId,
-          session.expectedSecurityVersion,
-        );
-        if (!securityContext) return null;
         const created = await insertSession(client, session, securityContext);
         await client.query({
           name: 'session-rotate-revoke-old',
