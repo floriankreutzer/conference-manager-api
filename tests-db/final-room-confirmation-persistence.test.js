@@ -235,10 +235,16 @@ test('final confirmation fails closed when the commit-time calendar authority is
       `UPDATE integrations
        SET status = $3,
            connection_version = connection_version + 1,
-           last_verified_at = CASE WHEN $3 = 'disconnected' THEN NULL ELSE $4 END,
-           updated_at = $4
+           last_verified_at = $4,
+           updated_at = $5
        WHERE tenant_id = $1 AND id = $2`,
-      [TENANT_A, INTEGRATION_A, status, CHANGED_AT],
+      [
+        TENANT_A,
+        INTEGRATION_A,
+        status,
+        status === 'disconnected' ? null : CHANGED_AT,
+        CHANGED_AT,
+      ],
     );
     const unavailable = await confirm(repo, TENANT_A, REQUEST_A1);
     assert.equal(unavailable.status, 'provider_authority_conflict');
