@@ -98,7 +98,7 @@ test('Employee and cross-tenant principals cannot invoke free-busy verification'
       tenantContext: { tenantId: TENANT_B, status: 'onboarding' },
       correlationId: CORRELATION,
     }),
-    (error) => error?.code === 'TENANT_SCOPE_MISMATCH',
+    (error) => error?.code === 'TENANT_SCOPE_INVALID',
   );
   assert.equal(crossTenant.calls.length, 0);
   assert.equal(crossTenant.auditDenials.length, 1);
