@@ -81,7 +81,9 @@ const sessionRepository = await readFile('src/persistence/postgres/session-repos
 for (const required of [
   'expectedSecurityVersion',
   'AND u.security_version = $3',
-  'FOR SHARE OF u, t',
+  "name: 'session-security-context-tenant'",
+  "name: 'session-security-context-user'",
+  'FOR SHARE',
 ]) {
   if (!sessionRepository.includes(required)) {
     throw new Error(`Session persistence is missing JIT authorization-snapshot invariant ${required}.`);
