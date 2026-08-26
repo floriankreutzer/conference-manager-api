@@ -124,7 +124,7 @@ function harness({
     clock: () => Date.parse('2026-08-25T11:00:00.000Z'),
     idFactory: () => REQUEST_ID,
   });
-  return { service, calls };
+  return { service, calls, requestRepository };
 }
 
 test('request list scope is employee-owned and manager tenant-wide', async () => {
@@ -238,6 +238,29 @@ test('request creation accepts only the canonical availability window contract',
   });
   assert.equal(created.startsAt, valid.startsAt);
   assert.equal(created.endsAt, valid.endsAt);
+});
+
+test('request creation fails closed when atomic persistence revalidation rejects the room', async () => {
+  const { service, requestRepository } = harness();
+  requestRepository.createForTenant = async () => null;
+
+  await assert.rejects(
+    service.createRequest({
+      principal: employee(),
+      tenantContext: { tenantId: TENANT_A },
+      correlationId: CORRELATION_ID,
+      requestDraft: {
+        roomId: 'room-a',
+        startsAt: '2026-09-01T10:00:00.000Z',
+        endsAt: '2026-09-01T11:00:00.000Z',
+        internalParticipants: 1,
+        externalParticipants: 0,
+      },
+    }),
+    (error) => error instanceof AuthorizationDeniedError
+      && error.code === 'RESOURCE_NOT_AVAILABLE'
+      && error.conceal === true,
+  );
 });
 
 test('notification ownership is always bound to the authenticated user', async () => {
