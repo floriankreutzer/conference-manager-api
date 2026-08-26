@@ -12,6 +12,7 @@ export const MICROSOFT365_ROUTES = Object.freeze({
   callback: '/api/v1/integrations/microsoft365/callback',
   verify: '/api/v1/integrations/microsoft365/verify',
   pilotReadiness: '/api/v1/integrations/microsoft365/pilot-readiness',
+  availabilityVerify: '/api/v1/integrations/microsoft365/free-busy/verify',
   rooms: '/api/v1/integrations/microsoft365/rooms',
   roomMappings: '/api/v1/integrations/microsoft365/room-mappings',
   roomImport: '/api/v1/integrations/microsoft365/room-mappings/import',
@@ -177,6 +178,7 @@ export function microsoft365RouteKey(path) {
   if (path === MICROSOFT365_ROUTES.callback) return 'microsoft365_callback';
   if (path === MICROSOFT365_ROUTES.verify) return 'microsoft365_verify';
   if (path === MICROSOFT365_ROUTES.pilotReadiness) return 'microsoft365_pilot_readiness';
+  if (path === MICROSOFT365_ROUTES.availabilityVerify) return 'microsoft365_free_busy_verify';
   if (path === MICROSOFT365_ROUTES.rooms) return 'microsoft365_rooms';
   if (path === MICROSOFT365_ROUTES.roomMappings) return 'microsoft365_room_mappings';
   if (path === MICROSOFT365_ROUTES.roomImport) return 'microsoft365_room_import';
@@ -248,6 +250,24 @@ export function createMicrosoft365HttpHandler({
       const tenantContext = await tenantGuard.requireKnown(principal);
       const readiness = await service.getPilotReadiness({ principal, tenantContext });
       sendJson(response, 200, { readiness, requestId }, maxResponseBytes);
+      return 200;
+    }
+
+    if (path === MICROSOFT365_ROUTES.availabilityVerify) {
+      if (request.method !== 'POST') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+      assertNoQuery(parsedUrl);
+      if (typeof service.verifyFreeBusy !== 'function') {
+        throw new ApiError(503, 'MICROSOFT365_FREE_BUSY_VERIFICATION_UNAVAILABLE');
+      }
+      const principal = await principalGuard.require(request, { csrf: true });
+      const tenantContext = await tenantGuard.requireKnown(principal);
+      await assertEmptyBody(request);
+      const verification = await service.verifyFreeBusy({
+        principal,
+        tenantContext,
+        correlationId: requestId,
+      });
+      sendJson(response, 200, { verification, requestId }, maxResponseBytes);
       return 200;
     }
 
