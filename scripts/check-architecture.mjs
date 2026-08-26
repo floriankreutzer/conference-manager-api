@@ -242,6 +242,8 @@ for (const required of [
   'createPostgresMicrosoft365ConnectionRepository',
   'createPostgresMicrosoft365RoomMappingRepository',
   'createPostgresMicrosoft365CapabilityHealthRepository',
+  'createPostgresConfigurationRevisionStore',
+  'tenantConfigurationRepositories',
   'auditRepository',
   'entitlementRepository',
   'bookingReferenceRepository',
@@ -463,8 +465,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!pool.includes('CURRENT_SCHEMA_VERSION = 19')) {
-  throw new Error('Runtime schema readiness must require confirmed-booking-change migration version 19.');
+if (!pool.includes('CURRENT_SCHEMA_VERSION = 20')) {
+  throw new Error('Runtime schema readiness must require versioned Tenant configuration migration 20.');
 }
 
 const index = await readFile('src/index.js', 'utf8');
@@ -485,6 +487,8 @@ for (const required of [
   'createMicrosoft365CapabilityHealthService',
   'createMicrosoft365RoomMappingService',
   'createMicrosoft365BookingServiceFactory',
+  'createTenantConfigurationServices',
+  'tenantConfigurationServices',
   'capabilityHealthService',
   'microsoft365ConnectionService',
   'microsoft365RoomMappingService',
@@ -637,6 +641,29 @@ if (!siteTimeZoneRollback.includes('LOCK TABLE sites IN ACCESS EXCLUSIVE MODE'))
   throw new Error('Site time-zone rollback must lock before checking populated rows.');
 }
 
+const tenantConfigurationMigration = await readFile('migrations/020_versioned_tenant_configuration.up.sql', 'utf8');
+for (const required of [
+  'CREATE TABLE tenant_configuration_revisions',
+  'CREATE TABLE tenant_configuration_heads',
+  'tenant_configuration_revisions_immutable',
+  "domain IN ('organization', 'locations', 'catalog', 'booking_policies', 'cost_allocation')",
+  'CREATE TABLE tenant_brand_assets',
+]) {
+  if (!tenantConfigurationMigration.includes(required)) {
+    throw new Error(`Tenant configuration migration is missing ${required}.`);
+  }
+}
+const tenantConfigurationRollback = await readFile('migrations/020_versioned_tenant_configuration.down.sql', 'utf8');
+for (const required of [
+  'TENANT_CONFIGURATION_REVISIONS_REQUIRE_REVIEW',
+  'TENANT_BRAND_ASSETS_REQUIRE_REVIEW',
+  'TENANT_CONFIGURATION_PROJECTIONS_REQUIRE_REVIEW',
+]) {
+  if (!tenantConfigurationRollback.includes(required)) {
+    throw new Error(`Tenant configuration rollback is missing fail-closed invariant ${required}.`);
+  }
+}
+
 for (const migration of [
   'migrations/001_core_tenant_schema.up.sql',
   'migrations/001_core_tenant_schema.down.sql',
@@ -672,6 +699,8 @@ for (const migration of [
   'migrations/018_site_time_zones.down.sql',
   'migrations/019_confirmed_booking_changes.up.sql',
   'migrations/019_confirmed_booking_changes.down.sql',
+  'migrations/020_versioned_tenant_configuration.up.sql',
+  'migrations/020_versioned_tenant_configuration.down.sql',
 ]) {
   await readFile(migration, 'utf8');
 }
