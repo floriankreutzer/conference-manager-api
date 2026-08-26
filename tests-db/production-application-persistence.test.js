@@ -253,4 +253,24 @@ test('production application persistence is tenant-scoped and request create is 
     [TENANT_A],
   );
   assert.equal(inactiveAudit.rows[0].count, 0);
+
+  await pool.query(
+    'UPDATE sites SET active = TRUE, time_zone = $3 WHERE tenant_id = $1 AND id = $2',
+    [TENANT_A, SITE_A, 'Mars/Olympus'],
+  );
+  assert.equal(
+    await requestRepository.createForTenant({
+      tenantId: TENANT_A,
+      requestId: 'invalid-time-zone-room',
+      requesterUserId: USER_A,
+      roomId: ROOM_A,
+      startsAt: new Date('2026-09-04T10:00:00.000Z'),
+      endsAt: new Date('2026-09-04T11:00:00.000Z'),
+      internalParticipants: 1,
+      externalParticipants: 0,
+      createdAt: AT,
+      auditEvent: requestAudit(TENANT_A, USER_A, 'invalid-time-zone-room'),
+    }),
+    null,
+  );
 });
