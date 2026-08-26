@@ -67,6 +67,8 @@ test('Microsoft capability health is tenant-scoped, preserves last success and r
   await repository.record({
     tenantId: TENANT_A,
     integrationId: INTEGRATION_A,
+    connectionVersion: 1,
+    providerTenantReference: PROVIDER_A,
     capability: 'free_busy',
     status: 'healthy',
     checkedAt: successAt,
@@ -75,6 +77,8 @@ test('Microsoft capability health is tenant-scoped, preserves last success and r
   await repository.record({
     tenantId: TENANT_A,
     integrationId: INTEGRATION_A,
+    connectionVersion: 1,
+    providerTenantReference: PROVIDER_A,
     capability: 'free_busy',
     status: 'unavailable',
     reason: 'provider_unavailable',
@@ -88,17 +92,35 @@ test('Microsoft capability health is tenant-scoped, preserves last success and r
     [],
   );
 
-  await assert.rejects(
-    repository.record({
+  assert.equal(
+    await repository.record({
       tenantId: TENANT_A,
       integrationId: INTEGRATION_B,
+      connectionVersion: 1,
+      providerTenantReference: PROVIDER_B,
       capability: 'places',
       status: 'healthy',
       checkedAt: successAt,
       successful: true,
     }),
-    (error) => error.code === '23503',
+    null,
   );
+  await pool.query(
+    `UPDATE integrations
+     SET provider_reference = $3, connection_version = 2
+     WHERE tenant_id = $1 AND id = $2`,
+    [TENANT_A, INTEGRATION_A, PROVIDER_B],
+  );
+  assert.equal(await repository.record({
+    tenantId: TENANT_A,
+    integrationId: INTEGRATION_A,
+    connectionVersion: 1,
+    providerTenantReference: PROVIDER_A,
+    capability: 'places',
+    status: 'healthy',
+    checkedAt: failureAt,
+    successful: true,
+  }), null);
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
   assert.equal(await rollbackLatest(pool), true);
