@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
 
 const TENANT_ID = '63636363-6363-4636-8636-636363636363';
 const USER_ID = '73737373-7373-4737-8737-737373737373';
@@ -20,10 +20,8 @@ test('booking reference migration rollback fails closed when provider links exis
   t.after(async () => pool.end());
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackToVersion(pool, 17), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
-  assert.equal(await rollbackLatest(pool), true);
 
   await pool.query(
     'INSERT INTO tenants (id, display_name, status) VALUES ($1, $2, $3)',
@@ -74,9 +72,7 @@ test('booking reference migration rollback fails closed when provider links exis
     [TENANT_ID, 'request-1', INTEGRATION_ID, 'migration-event', 'e'.repeat(64), 'active', CORRELATION_ID],
   );
 
-  for (let version = 16; version >= 7; version -= 1) {
-    assert.equal(await rollbackLatest(pool), true);
-  }
+  assert.equal(await rollbackToVersion(pool, 7), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
   await assert.rejects(rollbackLatest(pool), (error) => error.code === '55000');
 
