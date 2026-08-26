@@ -5,6 +5,10 @@ import {
   CalendarProviderError,
   PROVIDER_ERROR_KIND,
 } from '../integrations/calendar-contract.js';
+import {
+  Microsoft365ConnectionConflictError,
+  Microsoft365ConnectionUnavailableError,
+} from './microsoft365-connection-errors.js';
 
 const VERIFICATION_WINDOW_MS = 30 * 60 * 1_000;
 
@@ -22,6 +26,14 @@ function verificationWindow(clock) {
     endsAt: endsAt.toISOString(),
     checkedAt: new Date(value).toISOString(),
   });
+}
+
+function availabilityFailure(error) {
+  if (!(error instanceof CalendarProviderError)) return error;
+  if (error.retryable) {
+    return new Microsoft365ConnectionUnavailableError('MICROSOFT365_FREE_BUSY_VERIFICATION_UNAVAILABLE');
+  }
+  return new Microsoft365ConnectionConflictError('MICROSOFT365_FREE_BUSY_VERIFICATION_NOT_READY');
 }
 
 export function createMicrosoft365AvailabilityVerificationService({
@@ -77,10 +89,7 @@ export function createMicrosoft365AvailabilityVerificationService({
       await authorize({ principal, tenantContext, correlationId });
       const connection = await connectionRepository.findByTenantId(tenantContext.tenantId);
       if (!connection || !isInternalUuid(connection.integrationId) || connection.status !== 'connected') {
-        throw new CalendarProviderError(
-          PROVIDER_ERROR_KIND.AUTHORIZATION,
-          { operation: 'availability_verification' },
-        );
+        throw new Microsoft365ConnectionConflictError('MICROSOFT365_CONNECTION_REQUIRED');
       }
       const mappings = await mappingRepository.listByTenantIdAndIntegrationId(
         tenantContext.tenantId,
@@ -88,23 +97,24 @@ export function createMicrosoft365AvailabilityVerificationService({
       );
       const mapping = mappings.find((candidate) => candidate.providerStatus === 'active');
       if (!mapping) {
-        throw new CalendarProviderError(
-          PROVIDER_ERROR_KIND.NOT_FOUND,
-          { operation: 'availability_verification' },
-        );
+        throw new Microsoft365ConnectionConflictError('MICROSOFT365_ROOM_MAPPING_REQUIRED');
       }
 
       const window = verificationWindow(clock);
-      const provider = await calendarProviderFactory.forRoom({
-        tenantId: tenantContext.tenantId,
-        roomId: mapping.roomId,
-      });
-      await provider.lookupAvailability({
-        tenantId: tenantContext.tenantId,
-        roomId: mapping.roomId,
-        startsAt: window.startsAt,
-        endsAt: window.endsAt,
-      });
+      try {
+        const provider = await calendarProviderFactory.forRoom({
+          tenantId: tenantContext.tenantId,
+          roomId: mapping.roomId,
+        });
+        await provider.lookupAvailability({
+          tenantId: tenantContext.tenantId,
+          roomId: mapping.roomId,
+          startsAt: window.startsAt,
+          endsAt: window.endsAt,
+        });
+      } catch (error) {
+        throw availabilityFailure(error);
+      }
       return Object.freeze({ verified: true, checkedAt: window.checkedAt });
     },
   });
