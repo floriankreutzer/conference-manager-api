@@ -1,4 +1,5 @@
 import { normalizeRequest } from '../../domain/request.js';
+import { isIanaTimeZone } from '../../domain/site-time-zone.js';
 import { withPostgresTransaction } from './transaction.js';
 
 const REQUEST_COLUMNS = `
@@ -111,7 +112,7 @@ export function createPostgresRequestRepository(
         const bookableRoom = await client.query({
           name: 'request-create-lock-bookable-room',
           text: `
-            SELECT rooms.id
+            SELECT rooms.id, sites.time_zone
             FROM rooms
             INNER JOIN sites
               ON sites.tenant_id = rooms.tenant_id
@@ -125,7 +126,10 @@ export function createPostgresRequestRepository(
           `,
           values: [tenantId, roomId],
         });
-        if (bookableRoom.rowCount !== 1) return null;
+        if (
+          bookableRoom.rowCount !== 1
+          || !isIanaTimeZone(bookableRoom.rows[0].time_zone)
+        ) return null;
 
         const result = await client.query({
           name: 'request-create-for-tenant',
