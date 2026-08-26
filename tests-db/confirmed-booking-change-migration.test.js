@@ -41,8 +41,8 @@ test('confirmed booking change migration enforces one open proposal and fail-clo
     [TENANT_ID, 'room-1', 'site-1', 'Room', 10]);
   await pool.query(`INSERT INTO requests (
       tenant_id,id,requester_user_id,room_id,status,starts_at,ends_at,
-      internal_participants,external_participants,status_changed_at
-    ) VALUES ($1,$2,$3,$4,'Confirmed',$5,$6,2,0,$7)`, [
+      internal_participants,external_participants,status_changed_at,created_at,updated_at
+    ) VALUES ($1,$2,$3,$4,'Confirmed',$5,$6,2,0,$7,$7,$7)`, [
     TENANT_ID, 'CR-68', USER_ID, 'room-1',
     '2026-09-01T08:00:00.000Z', '2026-09-01T09:00:00.000Z', '2026-08-26T10:00:00.000Z',
   ]);
