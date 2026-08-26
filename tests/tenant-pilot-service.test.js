@@ -242,3 +242,21 @@ test('stale lifecycle persistence conflicts fail instead of reporting completion
   assert.equal(attemptedChange.expectedStatus, 'onboarding');
   assert.equal(attemptedChange.targetStatus, 'ready');
 });
+
+test('commit-time readiness loss prevents lifecycle activation', async () => {
+  const tenantRepository = lifecycleRepository('ready');
+  tenantRepository.changeStatusIfReady = async () => ({ outcome: 'not_ready' });
+  const { service: pilot } = service({
+    authorizeOperator: async () => true,
+    repositories: { tenantRepository },
+  });
+  await assert.rejects(
+    pilot.setLifecycle({
+      operatorContext: { source: 'trusted_control_plane' },
+      tenantId: TENANT_ID,
+      targetStatus: 'active',
+      correlationId: CORRELATION_ID,
+    }),
+    /TENANT_PILOT_NOT_READY/,
+  );
+});
