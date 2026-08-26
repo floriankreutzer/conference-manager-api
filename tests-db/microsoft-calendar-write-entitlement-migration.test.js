@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackToVersion } from '../scripts/db-migrations.mjs';
 
 const TENANT_ID = '96969696-9696-4696-8696-969696969696';
 
@@ -32,24 +32,18 @@ test('calendar write entitlement migration is fail-closed and reversible without
     [TENANT_ID, 'microsoft.calendar.write'],
   );
 
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await isPostgresSchemaReady(pool), false);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
   await assert.rejects(
-    rollbackLatest(pool),
+    rollbackToVersion(pool, 13),
     (error) => error.code === '55000'
       && error.message.includes('MICROSOFT_CALENDAR_WRITE_ENTITLEMENT_ROWS_REQUIRE_REVIEW'),
   );
+  assert.equal(await isPostgresSchemaReady(pool), false);
 
   await pool.query(
     'DELETE FROM tenant_entitlements WHERE tenant_id = $1 AND capability_id = $2',
     [TENANT_ID, 'microsoft.calendar.write'],
   );
-  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackToVersion(pool, 13), true);
 
   await assert.rejects(
     pool.query(
