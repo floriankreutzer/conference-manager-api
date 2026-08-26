@@ -101,6 +101,7 @@ test('Microsoft capability health is tenant-scoped, preserves last success and r
   );
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
+  assert.equal(await rollbackLatest(pool), true);
   await assert.rejects(rollbackLatest(pool), (error) => error.code === '55000');
 
   await pool.query('DELETE FROM microsoft365_capability_health WHERE tenant_id = $1', [TENANT_A]);

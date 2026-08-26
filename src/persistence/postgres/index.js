@@ -26,7 +26,7 @@ export function createPostgresPersistence(config) {
     hmacSecret: config.auditHmacSecret,
   });
   const applicationRepository = createPostgresApplicationRepository(pool, { auditRepository });
-  const tenantRepository = createPostgresTenantRepository(pool);
+  const tenantRepository = createPostgresTenantRepository(pool, { auditRepository });
   const bookingReferenceRepository = createPostgresBookingReferenceRepository(pool, { auditRepository });
   const entitlementRepository = createPostgresEntitlementRepository(pool, { auditRepository });
   const jitUserRepository = createPostgresJitUserRepository(pool, { auditRepository });
@@ -53,6 +53,7 @@ export function createPostgresPersistence(config) {
     sessionRepository,
     requestRepository,
     tenantOnboardingRepository,
+    tenantRepository,
     tenantUserAdminRepository,
     loadTenant: (tenantId) => tenantRepository.findById(tenantId),
     readinessChecks: [

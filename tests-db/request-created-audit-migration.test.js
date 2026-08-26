@@ -52,6 +52,8 @@ test('request-created audit migration allows evidence and rolls back fail-closed
     values: [TENANT_ID, CORRELATION_ID, EVENT_HASH],
   });
 
+  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await isPostgresSchemaReady(pool), false);
   await assert.rejects(
     rollbackLatest(pool),
     (error) => error.code === '55000'
@@ -60,7 +62,6 @@ test('request-created audit migration allows evidence and rolls back fail-closed
 
   await removeAuditRow(pool);
   assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await isPostgresSchemaReady(pool), false);
 
   await assert.rejects(
     pool.query({

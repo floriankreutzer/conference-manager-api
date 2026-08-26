@@ -24,6 +24,17 @@ async function clean(pool) {
   await pool.query('DELETE FROM tenants WHERE id = $1', [TENANT_ID]);
 }
 
+function transaction(overrides = {}) {
+  return {
+    provider: 'microsoft_entra',
+    stateHash: STATE_HASH,
+    nonceHash: NONCE_HASH,
+    createdAt: new Date('2026-08-24T12:00:00.000Z'),
+    expiresAt: new Date('2026-08-24T12:10:00.000Z'),
+    ...overrides,
+  };
+}
+
 test('OIDC transaction persistence atomically consumes state exactly once', async (t) => {
   const pool = createPostgresPool(databaseConfig());
   t.after(async () => pool.end());
@@ -32,16 +43,7 @@ test('OIDC transaction persistence atomically consumes state exactly once', asyn
   await clean(pool);
 
   const repository = createPostgresOidcTransactionRepository(pool);
-  const createdAt = new Date('2026-08-24T12:00:00.000Z');
-  const expiresAt = new Date('2026-08-24T12:10:00.000Z');
-  await repository.create({
-    provider: 'microsoft_entra',
-    stateHash: STATE_HASH,
-    nonceHash: NONCE_HASH,
-    createdAt,
-    expiresAt,
-  });
-
+  await repository.create(transaction());
   const first = await repository.consume({
     provider: 'microsoft_entra',
     stateHash: STATE_HASH,
@@ -79,14 +81,7 @@ test('trusted onboarding invitation context survives OIDC state storage and one-
   );
 
   const repository = createPostgresOidcTransactionRepository(pool);
-  await repository.create({
-    provider: 'microsoft_entra',
-    stateHash: STATE_HASH,
-    nonceHash: NONCE_HASH,
-    onboardingInvitationId: INVITATION_ID,
-    createdAt: new Date('2026-08-24T12:00:00.000Z'),
-    expiresAt: new Date('2026-08-24T12:10:00.000Z'),
-  });
+  await repository.create(transaction({ onboardingInvitationId: INVITATION_ID }));
   const consumed = await repository.consume({
     provider: 'microsoft_entra',
     stateHash: STATE_HASH,
@@ -103,14 +98,7 @@ test('concurrent callback consumers cannot both redeem the same OIDC state', asy
   await clean(pool);
 
   const repository = createPostgresOidcTransactionRepository(pool);
-  await repository.create({
-    provider: 'microsoft_entra',
-    stateHash: STATE_HASH,
-    nonceHash: NONCE_HASH,
-    createdAt: new Date('2026-08-24T12:00:00.000Z'),
-    expiresAt: new Date('2026-08-24T12:10:00.000Z'),
-  });
-
+  await repository.create(transaction());
   const consumedAt = new Date('2026-08-24T12:01:00.000Z');
   const results = await Promise.all([
     repository.consume({ provider: 'microsoft_entra', stateHash: STATE_HASH, consumedAt }),
@@ -127,22 +115,11 @@ test('OIDC transaction state is provider scoped', async (t) => {
   await clean(pool);
 
   const repository = createPostgresOidcTransactionRepository(pool);
-  const createdAt = new Date('2026-08-24T12:00:00.000Z');
-  const expiresAt = new Date('2026-08-24T12:10:00.000Z');
-  await repository.create({
-    provider: 'microsoft_entra',
-    stateHash: STATE_HASH,
-    nonceHash: NONCE_HASH,
-    createdAt,
-    expiresAt,
-  });
-  await repository.create({
+  await repository.create(transaction());
+  await repository.create(transaction({
     provider: 'test_oidc',
-    stateHash: STATE_HASH,
     nonceHash: OTHER_NONCE_HASH,
-    createdAt,
-    expiresAt,
-  });
+  }));
 
   const microsoft = await repository.consume({
     provider: 'microsoft_entra',
@@ -165,26 +142,18 @@ test('expired OIDC state fails closed and is removed by bounded cleanup', async 
   await clean(pool);
 
   const repository = createPostgresOidcTransactionRepository(pool);
-  await repository.create({
-    provider: 'microsoft_entra',
-    stateHash: STATE_HASH,
-    nonceHash: NONCE_HASH,
-    createdAt: new Date('2026-08-24T12:00:00.000Z'),
-    expiresAt: new Date('2026-08-24T12:02:00.000Z'),
-  });
+  await repository.create(transaction({ expiresAt: new Date('2026-08-24T12:02:00.000Z') }));
   assert.equal(await repository.consume({
     provider: 'microsoft_entra',
     stateHash: STATE_HASH,
     consumedAt: new Date('2026-08-24T12:02:00.000Z'),
   }), null);
 
-  await repository.create({
-    provider: 'microsoft_entra',
+  await repository.create(transaction({
     stateHash: OTHER_STATE_HASH,
-    nonceHash: NONCE_HASH,
     createdAt: new Date('2026-08-24T12:03:00.000Z'),
     expiresAt: new Date('2026-08-24T12:13:00.000Z'),
-  });
+  }));
   const result = await pool.query('SELECT state_hash FROM oidc_auth_transactions ORDER BY state_hash');
   assert.deepEqual(result.rows.map((row) => row.state_hash.trim()), [OTHER_STATE_HASH]);
   await clean(pool);
@@ -196,23 +165,21 @@ test('OIDC migration rolls back and reapplies without touching established sessi
   await migrateUp(pool);
   await clean(pool);
 
-  assert.equal(await rollbackLatest(pool), true);
+  for (let version = 16; version >= 7; version -= 1) {
+    assert.equal(await rollbackLatest(pool), true);
+  }
   assert.equal(await isPostgresSchemaReady(pool), false);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  const missing = await pool.query("SELECT to_regclass('public.oidc_auth_transactions') AS table_name");
+  const missing = await pool.query(
+    "SELECT to_regclass('public.oidc_auth_transactions') AS table_name",
+  );
   assert.equal(missing.rows[0].table_name, null);
   const sessions = await pool.query("SELECT to_regclass('public.sessions') AS table_name");
   assert.equal(sessions.rows[0].table_name, 'sessions');
 
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
-  const restored = await pool.query("SELECT to_regclass('public.oidc_auth_transactions') AS table_name");
+  const restored = await pool.query(
+    "SELECT to_regclass('public.oidc_auth_transactions') AS table_name",
+  );
   assert.equal(restored.rows[0].table_name, 'oidc_auth_transactions');
 });

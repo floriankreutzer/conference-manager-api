@@ -9,6 +9,7 @@ import { createMicrosoft365RoomDiscoveryService } from './application/microsoft3
 import { createMicrosoft365RoomMappingService } from './application/microsoft365-room-mapping-service.js';
 import { createProductionApplicationService } from './application/production-application-service.js';
 import { createRequestService } from './application/request-service.js';
+import { createTenantPilotService } from './application/tenant-pilot-service.js';
 import { createTenantUserAdministrationService } from './application/tenant-user-administration-service.js';
 import { createAuditService } from './audit/audit-service.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
@@ -160,6 +161,18 @@ const tenantUserAdministrationService = persistence && auditService
     auditService,
   })
   : null;
+const tenantPilotService = persistence && auditService
+  ? createTenantPilotService({
+    tenantRepository: persistence.tenantRepository,
+    bindingRepository: persistence.tenantOnboardingRepository,
+    connectionRepository: persistence.microsoft365ConnectionRepository,
+    roomMappingRepository: persistence.microsoft365RoomMappingRepository,
+    capabilityHealthRepository: persistence.microsoft365CapabilityHealthRepository,
+    entitlementRepository: persistence.entitlementRepository,
+    authorizationPolicy,
+    auditService,
+  })
+  : null;
 const microsoft365ConnectionLifecycleService = persistence && auditService && microsoft365Client
   ? createMicrosoft365ConnectionService({
     repository: persistence.microsoft365ConnectionRepository,
@@ -208,6 +221,9 @@ const microsoft365Service = microsoft365ConnectionService
         importSelectedRooms: (args) => microsoft365RoomMappingService.importSelectedRooms(args),
         synchronizeRoomMappings: (args) => microsoft365RoomMappingService.synchronize(args),
       }
+      : {}),
+    ...(tenantPilotService
+      ? { getPilotReadiness: (args) => tenantPilotService.getReadiness(args) }
       : {}),
   })
   : null;
