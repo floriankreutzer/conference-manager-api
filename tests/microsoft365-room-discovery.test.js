@@ -392,3 +392,36 @@ test('room discovery service fails closed when connection and active binding poi
   );
   assert.equal(providerCalled, false);
 });
+
+test('room discovery fails closed when commit-time connection authority is stale', async () => {
+  const service = createMicrosoft365RoomDiscoveryService({
+    connectionRepository: {
+      findByTenantId: async () => ({
+        integrationId: '55555555-5555-4555-8555-555555555555',
+        connectionVersion: 1,
+        status: 'connected',
+        placesPermission: 'granted',
+        providerTenantReference: TENANT_A,
+      }),
+    },
+    bindingRepository: {
+      findActiveBindingByTenantId: async () => ({ providerTenantReference: TENANT_A }),
+    },
+    authorizationPolicy: { requireTenantPermission: () => {} },
+    auditService: { recordAuthorizationDenied: async () => {} },
+    providerClient: { discoverRooms: async () => Object.freeze([graphRoom(1)]) },
+    capabilityHealthService: {
+      recordSuccess: async () => null,
+      recordFailure: async () => null,
+    },
+  });
+
+  await assert.rejects(
+    service.discoverRooms({
+      principal: { userId: '33333333-3333-4333-8333-333333333333' },
+      tenantContext: { tenantId: '44444444-4444-4444-8444-444444444444' },
+      correlationId: CORRELATION_ID,
+    }),
+    (error) => error.code === 'MICROSOFT365_CONNECTION_REQUIRED',
+  );
+});
