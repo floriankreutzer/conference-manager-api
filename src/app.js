@@ -757,7 +757,13 @@ export function createApp({
         logger.unhandledError({ requestId, errorName: error?.name || 'Error' });
       }
       if (!response.headersSent) {
-        sendJson(response, statusCode, { error: { code: apiError.code, requestId } }, config.maxResponseBytes);
+        sendJson(response, statusCode, {
+          error: {
+            code: apiError.code,
+            requestId,
+            ...(apiError.context || {}),
+          },
+        }, config.maxResponseBytes);
       } else {
         response.destroy();
       }
