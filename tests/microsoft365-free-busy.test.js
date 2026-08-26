@@ -88,6 +88,7 @@ function providerFactory({
   currentConnection = connection(),
   currentBinding = binding(),
   mappings = [mapping()],
+  capabilityHealthService,
 } = {}) {
   return createMicrosoft365CalendarProviderFactory({
     connectionRepository: {
@@ -110,6 +111,7 @@ function providerFactory({
         return mappings;
       },
     },
+    capabilityHealthService,
     providerClient: providerClient || {
       async lookupFreeBusy() {
         return [{ schedule: ROOM_ADDRESS, available: true, conflictCount: 0 }];
@@ -117,6 +119,26 @@ function providerFactory({
     },
   });
 }
+
+test('free/busy fails closed when commit-time provider or room authority is stale', async () => {
+  const provider = await providerFactory({
+    providerClient: {
+      async lookupFreeBusy() {
+        return [{ schedule: ROOM_ADDRESS, conflicts: [], available: true }];
+      },
+    },
+    capabilityHealthService: {
+      async recordSuccess() { return null; },
+      async recordFailure() { return null; },
+    },
+  }).forRoom({ tenantId: TENANT_ID, roomId: ROOM_ID });
+
+  await assert.rejects(
+    provider.lookupAvailability({ tenantId: TENANT_ID, roomId: ROOM_ID, startsAt: STARTS_AT, endsAt: ENDS_AT }),
+    (error) => error instanceof CalendarProviderError
+      && error.kind === PROVIDER_ERROR_KIND.AUTHORIZATION,
+  );
+});
 
 test('Graph getSchedule uses a fixed endpoint, UTC normalization and returns free/busy only', async () => {
   const calls = [];
