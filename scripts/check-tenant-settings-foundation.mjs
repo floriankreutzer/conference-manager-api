@@ -42,6 +42,11 @@ if (/repository|SELECT|UPDATE|INSERT INTO|DELETE FROM/i.test(revision)) {
   throw new Error('Shared Tenant settings revision primitive must not own persistence.');
 }
 
+const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
+if (!/export const CURRENT_SCHEMA_VERSION = 20;/.test(pool)) {
+  throw new Error('Runtime schema readiness must require Tenant settings revision migration version 20.');
+}
+
 const migration = await readFile('migrations/020_tenant_settings_revisions.up.sql', 'utf8');
 for (const column of [
   'organization_revision',
@@ -54,6 +59,13 @@ for (const column of [
 }
 if (/settings\s+json|settings_document|tenant_settings\s*\(/i.test(migration)) {
   throw new Error('Migration 020 must not introduce a generic settings document/table.');
+}
+const rollback = await readFile('migrations/020_tenant_settings_revisions.down.sql', 'utf8');
+if (!rollback.includes('LOCK TABLE tenants IN ACCESS EXCLUSIVE MODE')) {
+  throw new Error('Tenant settings rollback must serialize the populated-revision guard.');
+}
+if (!rollback.includes('Cannot remove tenant settings revisions after versioned configuration writes exist')) {
+  throw new Error('Tenant settings rollback must fail closed after any aggregate revision advances.');
 }
 
 const applicationRoutes = await readFile('src/http/application-routes.js', 'utf8');
