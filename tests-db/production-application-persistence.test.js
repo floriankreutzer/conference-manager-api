@@ -169,6 +169,10 @@ test('production application persistence is tenant-scoped and request create is 
   assert.equal(createdA.requesterUserId, USER_A);
   assert.equal(createdA.status, 'Submitted');
 
+  await pool.query(
+    'UPDATE sites SET time_zone = $3 WHERE tenant_id = $1 AND id = $2',
+    [TENANT_B, SITE_B, 'Europe/London'],
+  );
   await requestRepository.createForTenant({
     tenantId: TENANT_B,
     requestId: REQUEST_B,
