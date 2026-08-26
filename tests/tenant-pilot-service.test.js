@@ -28,6 +28,9 @@ function fixtures(overrides = {}) {
     tenantRepository: {
       async findById() { return tenant; },
       async changeStatus(values) { return { ...tenant, status: values.targetStatus, auditEvent: values.auditEvent }; },
+      async changeStatusIfReady(values) {
+        return { outcome: 'updated', tenant: { ...tenant, status: values.targetStatus, auditEvent: values.auditEvent } };
+      },
     },
     bindingRepository: {
       async findActiveBindingByTenantId() { return { status: 'active' }; },
@@ -66,6 +69,12 @@ function lifecycleRepository(status, { changeStatus } = {}) {
     async changeStatus(values) {
       if (changeStatus) return changeStatus(values);
       return { ...tenant, status: values.targetStatus, auditEvent: values.auditEvent };
+    },
+    async changeStatusIfReady(values) {
+      const changed = changeStatus
+        ? await changeStatus(values)
+        : { ...tenant, status: values.targetStatus, auditEvent: values.auditEvent };
+      return changed ? { outcome: 'updated', tenant: changed } : { outcome: 'stale' };
     },
   };
 }
@@ -232,4 +241,22 @@ test('stale lifecycle persistence conflicts fail instead of reporting completion
   );
   assert.equal(attemptedChange.expectedStatus, 'onboarding');
   assert.equal(attemptedChange.targetStatus, 'ready');
+});
+
+test('commit-time readiness loss prevents lifecycle activation', async () => {
+  const tenantRepository = lifecycleRepository('ready');
+  tenantRepository.changeStatusIfReady = async () => ({ outcome: 'not_ready' });
+  const { service: pilot } = service({
+    authorizeOperator: async () => true,
+    repositories: { tenantRepository },
+  });
+  await assert.rejects(
+    pilot.setLifecycle({
+      operatorContext: { source: 'trusted_control_plane' },
+      tenantId: TENANT_ID,
+      targetStatus: 'active',
+      correlationId: CORRELATION_ID,
+    }),
+    /TENANT_PILOT_NOT_READY/,
+  );
 });

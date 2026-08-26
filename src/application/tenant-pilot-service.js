@@ -55,6 +55,7 @@ export function createTenantPilotService({
   const required = [
     [tenantRepository, 'findById'],
     [tenantRepository, 'changeStatus'],
+    [tenantRepository, 'changeStatusIfReady'],
     [bindingRepository, 'findActiveBindingByTenantId'],
     [connectionRepository, 'findByTenantId'],
     [roomMappingRepository, 'listByTenantIdAndIntegrationId'],
@@ -139,10 +140,6 @@ export function createTenantPilotService({
       if (LIFECYCLE_TRANSITIONS[current.status]?.has(targetStatus) !== true) {
         throw new TenantPilotLifecycleConflictError();
       }
-      if (targetStatus === 'ready' || targetStatus === 'active') {
-        const readiness = await readinessForTenant(tenantId);
-        if (!readiness?.ready) throw new TypeError('TENANT_PILOT_NOT_READY');
-      }
       const changedAtMs = clock();
       if (!Number.isSafeInteger(changedAtMs) || changedAtMs < 0) throw new TypeError('PILOT_CLOCK_INVALID');
       const changedAt = new Date(changedAtMs);
@@ -160,13 +157,21 @@ export function createTenantPilotService({
         retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
         occurredAt: changedAt.toISOString(),
       });
-      const changed = await tenantRepository.changeStatus({
+      const input = {
         tenantId,
         expectedStatus: current.status,
         targetStatus,
         changedAt,
         auditEvent,
-      });
+      };
+      let changed;
+      if (targetStatus === 'ready' || targetStatus === 'active') {
+        const result = await tenantRepository.changeStatusIfReady(input);
+        if (result?.outcome === 'not_ready') throw new TypeError('TENANT_PILOT_NOT_READY');
+        changed = result?.outcome === 'updated' ? result.tenant : null;
+      } else {
+        changed = await tenantRepository.changeStatus(input);
+      }
       if (!changed) throw new TenantPilotLifecycleConflictError();
       if (changed.id !== tenantId || changed.status !== targetStatus) {
         throw new TypeError('TENANT_PILOT_LIFECYCLE_RESULT_INVALID');

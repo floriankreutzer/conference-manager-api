@@ -85,6 +85,7 @@ function retryClassification(error) {
 function createBoundProvider({
   tenantId,
   integrationId,
+  connectionVersion,
   providerTenantReference,
   roomId,
   resourceAddress,
@@ -93,11 +94,28 @@ function createBoundProvider({
   retrySleep,
 }) {
   async function recordSuccess(capability) {
-    await capabilityHealthService?.recordSuccess({ tenantId, integrationId, capability });
+    return capabilityHealthService?.recordSuccess({
+      tenantId,
+      integrationId,
+      connectionVersion,
+      providerTenantReference,
+      roomId,
+      providerResourceReference: resourceAddress,
+      capability,
+    });
   }
 
   async function recordFailure(capability, error) {
-    await capabilityHealthService?.recordFailure({ tenantId, integrationId, capability, error });
+    return capabilityHealthService?.recordFailure({
+      tenantId,
+      integrationId,
+      connectionVersion,
+      providerTenantReference,
+      roomId,
+      providerResourceReference: resourceAddress,
+      capability,
+      error,
+    });
   }
 
   async function availability(input, operation) {
@@ -118,7 +136,10 @@ function createBoundProvider({
       if (!Array.isArray(result) || result.length !== 1 || result[0]?.schedule !== resourceAddress) {
         throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_RESPONSE_INVALID');
       }
-      await recordSuccess(HEALTH_CAPABILITY.FREE_BUSY);
+      const recorded = await recordSuccess(HEALTH_CAPABILITY.FREE_BUSY);
+      if (capabilityHealthService && !recorded) {
+        throw new CalendarProviderError(PROVIDER_ERROR_KIND.AUTHORIZATION, { operation });
+      }
       return result[0];
     } catch (error) {
       const mapped = mapProviderError(error, operation);
@@ -259,6 +280,8 @@ export function createMicrosoft365CalendarProviderFactory({
         await capabilityHealthService?.recordFailure({
           tenantId,
           integrationId: connection.integrationId,
+          connectionVersion: connection.connectionVersion,
+          providerTenantReference: connection.providerTenantReference,
           capability: HEALTH_CAPABILITY.FREE_BUSY,
           error,
         });
@@ -267,6 +290,7 @@ export function createMicrosoft365CalendarProviderFactory({
       return createBoundProvider({
         tenantId,
         integrationId: connection.integrationId,
+        connectionVersion: connection.connectionVersion,
         providerTenantReference: connection.providerTenantReference,
         roomId,
         resourceAddress: mapping.resourceAddress,
@@ -304,6 +328,7 @@ export function createMicrosoft365CalendarProviderFactory({
       return createBoundProvider({
         tenantId,
         integrationId,
+        connectionVersion: connection.connectionVersion,
         providerTenantReference: providerConnectionReference,
         roomId,
         resourceAddress: providerResourceReference,

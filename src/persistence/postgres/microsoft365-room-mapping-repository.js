@@ -6,6 +6,7 @@ const SITE_ID_PATTERN = ROOM_ID_PATTERN;
 const EXTERNAL_ID_MAX = 512;
 const ADDRESS_MAX = 320;
 const PROVIDER_NAME_MAX = 512;
+const PROVIDER_TENANT_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function assertUuid(value, code) {
   if (!isInternalUuid(value)) throw new TypeError(code);
@@ -100,12 +101,62 @@ async function tenantLock(client, tenantId) {
     text: 'SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))',
     values: [`microsoft365-room-mapping:${tenantId}`],
   });
+  await client.query({
+    name: 'microsoft365-room-mapping-tenant-row-lock',
+    text: 'SELECT 1 FROM tenants WHERE id = $1 FOR SHARE',
+    values: [tenantId],
+  });
+}
+
+async function lockConnectionAuthority(
+  client,
+  { tenantId, integrationId, connectionVersion, providerTenantReference },
+) {
+  const result = await client.query({
+    name: 'microsoft365-room-mapping-connection-authority',
+    text: `
+      SELECT 1
+      FROM integrations
+      WHERE tenant_id = $1
+        AND id = $2
+        AND provider = 'microsoft365'
+        AND connection_version = $3
+        AND provider_reference = $4
+        AND status IN ('connected', 'degraded')
+        AND places_permission_status = 'granted'
+      FOR SHARE
+    `,
+    values: [tenantId, integrationId, connectionVersion, providerTenantReference],
+  });
+  return result.rowCount === 1;
+}
+
+function assertConnectionAuthority(connectionVersion, providerTenantReference) {
+  if (!Number.isSafeInteger(connectionVersion) || connectionVersion < 1) {
+    throw new TypeError('MICROSOFT365_CONNECTION_VERSION_INVALID');
+  }
+  if (typeof providerTenantReference !== 'string' || !PROVIDER_TENANT_PATTERN.test(providerTenantReference)) {
+    throw new TypeError('MICROSOFT365_PROVIDER_TENANT_INVALID');
+  }
 }
 
 async function appendAudit(client, auditRepository, event) {
   if (!event) return;
   const result = await auditRepository.appendWithClient(client, event);
   if (!result) throw new Error('AUDIT_APPEND_FAILED');
+}
+
+async function invalidateResourceHealth(client, tenantId, integrationId) {
+  await client.query({
+    name: 'microsoft365-room-mapping-invalidate-resource-health',
+    text: `
+      DELETE FROM microsoft365_capability_health
+      WHERE tenant_id = $1
+        AND integration_id = $2
+        AND capability IN ('free_busy', 'calendar_write')
+    `,
+    values: [tenantId, integrationId],
+  });
 }
 
 function validateProviderRoom(room) {
@@ -167,9 +218,18 @@ export function createPostgresMicrosoft365RoomMappingRepository(pool, { auditRep
       return new Set(result.rows.map((row) => row.id));
     },
 
-    async importRooms({ tenantId, integrationId, rooms, changedAt, auditEventFor }) {
+    async importRooms({
+      tenantId,
+      integrationId,
+      connectionVersion,
+      providerTenantReference,
+      rooms,
+      changedAt,
+      auditEventFor,
+    }) {
       assertUuid(tenantId, 'TENANT_ID_INVALID');
       assertUuid(integrationId, 'INTEGRATION_ID_INVALID');
+      assertConnectionAuthority(connectionVersion, providerTenantReference);
       assertDate(changedAt);
       if (!Array.isArray(rooms) || rooms.length < 1 || rooms.length > 100) throw new TypeError('ROOM_IMPORT_INVALID');
       if (typeof auditEventFor !== 'function') throw new TypeError('AUDIT_EVENT_FACTORY_REQUIRED');
@@ -184,6 +244,12 @@ export function createPostgresMicrosoft365RoomMappingRepository(pool, { auditRep
       try {
         return await withPostgresTransaction(pool, async (client) => {
           await tenantLock(client, tenantId);
+          if (!await lockConnectionAuthority(client, {
+            tenantId,
+            integrationId,
+            connectionVersion,
+            providerTenantReference,
+          })) return Object.freeze({ status: 'stale' });
           const externalIds = rooms.map((room) => room.externalRoomId);
           const existingResult = await client.query({
             name: 'microsoft365-room-mapping-existing',
@@ -231,6 +297,7 @@ export function createPostgresMicrosoft365RoomMappingRepository(pool, { auditRep
                 ],
               });
               if (changed) {
+                await invalidateResourceHealth(client, tenantId, integrationId);
                 await appendAudit(client, auditRepository, auditEventFor({
                   roomId: existing.room_id,
                   operation: 'room_mapping_refreshed',
@@ -278,6 +345,7 @@ export function createPostgresMicrosoft365RoomMappingRepository(pool, { auditRep
                 changedAt,
               ],
             });
+            await invalidateResourceHealth(client, tenantId, integrationId);
             await appendAudit(client, auditRepository, auditEventFor({
               roomId: room.roomId,
               operation: 'room_imported',
@@ -293,9 +361,18 @@ export function createPostgresMicrosoft365RoomMappingRepository(pool, { auditRep
       }
     },
 
-    async synchronize({ tenantId, integrationId, discoveredRooms, changedAt, auditEventFor }) {
+    async synchronize({
+      tenantId,
+      integrationId,
+      connectionVersion,
+      providerTenantReference,
+      discoveredRooms,
+      changedAt,
+      auditEventFor,
+    }) {
       assertUuid(tenantId, 'TENANT_ID_INVALID');
       assertUuid(integrationId, 'INTEGRATION_ID_INVALID');
+      assertConnectionAuthority(connectionVersion, providerTenantReference);
       assertDate(changedAt);
       if (!Array.isArray(discoveredRooms) || discoveredRooms.length > 10_000) {
         throw new TypeError('ROOM_SYNC_INVALID');
@@ -307,6 +384,12 @@ export function createPostgresMicrosoft365RoomMappingRepository(pool, { auditRep
       try {
         return await withPostgresTransaction(pool, async (client) => {
           await tenantLock(client, tenantId);
+          if (!await lockConnectionAuthority(client, {
+            tenantId,
+            integrationId,
+            connectionVersion,
+            providerTenantReference,
+          })) return Object.freeze({ status: 'stale' });
           const existingResult = await client.query({
             name: 'microsoft365-room-mapping-sync-existing',
             text: `
@@ -334,6 +417,7 @@ export function createPostgresMicrosoft365RoomMappingRepository(pool, { auditRep
                   `,
                   values: [tenantId, existing.room_id, changedAt],
                 });
+                await invalidateResourceHealth(client, tenantId, integrationId);
                 await appendAudit(client, auditRepository, auditEventFor({
                   roomId: existing.room_id,
                   operation: 'room_provider_missing',
@@ -372,6 +456,7 @@ export function createPostgresMicrosoft365RoomMappingRepository(pool, { auditRep
               ],
             });
             if (changed) {
+              await invalidateResourceHealth(client, tenantId, integrationId);
               await appendAudit(client, auditRepository, auditEventFor({
                 roomId: existing.room_id,
                 operation: 'room_provider_refreshed',

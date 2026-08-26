@@ -154,6 +154,8 @@ test('Microsoft 365 room mapping is idempotent, tenant-isolated and preserves lo
   const imported = await repository.importRooms({
     tenantId: TENANT_A,
     integrationId: INTEGRATION_A,
+    connectionVersion: 1,
+    providerTenantReference: PROVIDER_TENANT_A,
     rooms: [{
       roomId: ROOM_A,
       siteId: SITE_A,
@@ -192,6 +194,8 @@ test('Microsoft 365 room mapping is idempotent, tenant-isolated and preserves lo
   const duplicate = await repository.importRooms({
     tenantId: TENANT_A,
     integrationId: INTEGRATION_A,
+    connectionVersion: 1,
+    providerTenantReference: PROVIDER_TENANT_A,
     rooms: [{
       roomId: ROOM_A_DUPLICATE_ATTEMPT,
       siteId: SITE_A,
@@ -216,6 +220,8 @@ test('Microsoft 365 room mapping is idempotent, tenant-isolated and preserves lo
   const refreshed = await repository.synchronize({
     tenantId: TENANT_A,
     integrationId: INTEGRATION_A,
+    connectionVersion: 1,
+    providerTenantReference: PROVIDER_TENANT_A,
     discoveredRooms: [providerRoom({
       resourceAddress: 'room-renamed@example.invalid',
       providerDisplayName: 'Provider Room Renamed',
@@ -235,6 +241,8 @@ test('Microsoft 365 room mapping is idempotent, tenant-isolated and preserves lo
   const missing = await repository.synchronize({
     tenantId: TENANT_A,
     integrationId: INTEGRATION_A,
+    connectionVersion: 1,
+    providerTenantReference: PROVIDER_TENANT_A,
     discoveredRooms: [],
     changedAt: MISSING_AT,
     auditEventFor: auditFactory({ tenantId: TENANT_A, actorUserId: ADMIN_A, occurredAt: MISSING_AT }),
@@ -254,6 +262,8 @@ test('Microsoft 365 room mapping is idempotent, tenant-isolated and preserves lo
   const tenantB = await repository.importRooms({
     tenantId: TENANT_B,
     integrationId: INTEGRATION_B,
+    connectionVersion: 1,
+    providerTenantReference: PROVIDER_TENANT_B,
     rooms: [{
       roomId: ROOM_B,
       siteId: SITE_B,

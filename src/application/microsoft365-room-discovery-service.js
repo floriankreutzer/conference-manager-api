@@ -145,16 +145,23 @@ export function createMicrosoft365RoomDiscoveryService({
             ...(retrySleep ? { sleep: retrySleep } : {}),
           },
         );
-        await capabilityHealthService?.recordSuccess({
+        const recorded = await capabilityHealthService?.recordSuccess({
           tenantId: tenantContext.tenantId,
           integrationId: connection.integrationId,
+          connectionVersion: connection.connectionVersion,
+          providerTenantReference: connection.providerTenantReference,
           capability: MICROSOFT365_CAPABILITY.PLACES,
         });
+        if (capabilityHealthService && !recorded) {
+          throw new Microsoft365ConnectionConflictError('MICROSOFT365_CONNECTION_REQUIRED');
+        }
         return rooms;
       } catch (error) {
         await capabilityHealthService?.recordFailure({
           tenantId: tenantContext.tenantId,
           integrationId: connection.integrationId,
+          connectionVersion: connection.connectionVersion,
+          providerTenantReference: connection.providerTenantReference,
           capability: MICROSOFT365_CAPABILITY.PLACES,
           error,
         });

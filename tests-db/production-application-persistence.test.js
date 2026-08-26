@@ -169,6 +169,10 @@ test('production application persistence is tenant-scoped and request create is 
   assert.equal(createdA.requesterUserId, USER_A);
   assert.equal(createdA.status, 'Submitted');
 
+  await pool.query(
+    'UPDATE sites SET time_zone = $3 WHERE tenant_id = $1 AND id = $2',
+    [TENANT_B, SITE_B, 'Europe/London'],
+  );
   await requestRepository.createForTenant({
     tenantId: TENANT_B,
     requestId: REQUEST_B,
@@ -204,8 +208,8 @@ test('production application persistence is tenant-scoped and request create is 
     [AUDIT_ACTION.REQUEST_CREATED, REQUEST_A],
   ]);
 
-  await assert.rejects(
-    requestRepository.createForTenant({
+  assert.equal(
+    await requestRepository.createForTenant({
       tenantId: TENANT_A,
       requestId: 'cross-tenant-room',
       requesterUserId: USER_A,
@@ -217,11 +221,56 @@ test('production application persistence is tenant-scoped and request create is 
       createdAt: AT,
       auditEvent: requestAudit(TENANT_A, USER_A, 'cross-tenant-room'),
     }),
-    (error) => error.code === '23503',
+    null,
   );
   const crossAudit = await pool.query(
     "SELECT count(*)::int AS count FROM audit_events WHERE tenant_id = $1 AND target_id = 'cross-tenant-room'",
     [TENANT_A],
   );
   assert.equal(crossAudit.rows[0].count, 0);
+
+  await pool.query(
+    'UPDATE sites SET active = FALSE WHERE tenant_id = $1 AND id = $2',
+    [TENANT_A, SITE_A],
+  );
+  assert.equal(
+    await requestRepository.createForTenant({
+      tenantId: TENANT_A,
+      requestId: 'inactive-site-room',
+      requesterUserId: USER_A,
+      roomId: ROOM_A,
+      startsAt: new Date('2026-09-03T10:00:00.000Z'),
+      endsAt: new Date('2026-09-03T11:00:00.000Z'),
+      internalParticipants: 1,
+      externalParticipants: 0,
+      createdAt: AT,
+      auditEvent: requestAudit(TENANT_A, USER_A, 'inactive-site-room'),
+    }),
+    null,
+  );
+  const inactiveAudit = await pool.query(
+    "SELECT count(*)::int AS count FROM audit_events WHERE tenant_id = $1 AND target_id = 'inactive-site-room'",
+    [TENANT_A],
+  );
+  assert.equal(inactiveAudit.rows[0].count, 0);
+
+  await pool.query(
+    'UPDATE sites SET active = TRUE, time_zone = $3 WHERE tenant_id = $1 AND id = $2',
+    [TENANT_A, SITE_A, 'Mars/Olympus'],
+  );
+  assert.equal(
+    await requestRepository.createForTenant({
+      tenantId: TENANT_A,
+      requestId: 'invalid-time-zone-room',
+      requesterUserId: USER_A,
+      roomId: ROOM_A,
+      startsAt: new Date('2026-09-04T10:00:00.000Z'),
+      endsAt: new Date('2026-09-04T11:00:00.000Z'),
+      internalParticipants: 1,
+      externalParticipants: 0,
+      createdAt: AT,
+      auditEvent: requestAudit(TENANT_A, USER_A, 'invalid-time-zone-room'),
+    }),
+    null,
+  );
 });

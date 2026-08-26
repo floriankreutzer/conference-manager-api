@@ -23,22 +23,33 @@ function mapSessionRow(row) {
 }
 
 async function loadSecurityContext(client, tenantId, userId, expectedSecurityVersion) {
-  const result = await client.query({
-    name: 'session-security-context',
+  const tenant = await client.query({
+    name: 'session-security-context-tenant',
     text: `
-      SELECT u.security_version, t.status AS tenant_status
+      SELECT status AS tenant_status
+      FROM tenants
+      WHERE id = $1
+        AND status = ANY($2::text[])
+      FOR SHARE
+    `,
+    values: [tenantId, SESSION_TENANT_STATUSES],
+  });
+  if (tenant.rowCount !== 1) return null;
+  const user = await client.query({
+    name: 'session-security-context-user',
+    text: `
+      SELECT u.security_version
       FROM users u
-      JOIN tenants t ON t.id = u.tenant_id
       WHERE u.tenant_id = $1
         AND u.id = $2
         AND u.active = true
         AND u.security_version = $3
-        AND t.status = ANY($4::text[])
-      FOR SHARE OF u, t
+      FOR SHARE
     `,
-    values: [tenantId, userId, expectedSecurityVersion, SESSION_TENANT_STATUSES],
+    values: [tenantId, userId, expectedSecurityVersion],
   });
-  return result.rows[0] || null;
+  if (user.rowCount !== 1) return null;
+  return { ...user.rows[0], ...tenant.rows[0] };
 }
 
 async function insertSession(client, session, securityContext) {
@@ -82,6 +93,21 @@ async function insertSession(client, session, securityContext) {
 async function appendAudit(client, auditRepository, auditEvent) {
   const stored = await auditRepository.appendWithClient(client, auditEvent);
   if (!stored) throw new Error('AUDIT_APPEND_FAILED');
+}
+
+async function lockSessionOwner(client, tenantId, userId) {
+  const tenant = await client.query({
+    name: 'session-owner-tenant-lock',
+    text: 'SELECT 1 FROM tenants WHERE id = $1 FOR SHARE',
+    values: [tenantId],
+  });
+  if (tenant.rowCount !== 1) return false;
+  const user = await client.query({
+    name: 'session-owner-user-lock',
+    text: 'SELECT 1 FROM users WHERE tenant_id = $1 AND id = $2 FOR SHARE',
+    values: [tenantId, userId],
+  });
+  return user.rowCount === 1;
 }
 
 export function createPostgresSessionRepository(pool, { auditRepository } = {}) {
@@ -133,6 +159,7 @@ export function createPostgresSessionRepository(pool, { auditRepository } = {}) 
 
     async revoke({ sessionId, tenantId, userId, revokedAt, auditEvent }) {
       return withPostgresTransaction(pool, async (client) => {
+        if (!await lockSessionOwner(client, tenantId, userId)) return false;
         const result = await client.query({
           name: 'session-revoke',
           text: `
@@ -154,6 +181,13 @@ export function createPostgresSessionRepository(pool, { auditRepository } = {}) 
 
     async rotate({ currentSessionId, session, revokedAt, auditEvent }) {
       return withPostgresTransaction(pool, async (client) => {
+        const securityContext = await loadSecurityContext(
+          client,
+          session.tenantId,
+          session.userId,
+          session.expectedSecurityVersion,
+        );
+        if (!securityContext) return null;
         const current = await client.query({
           name: 'session-rotate-current',
           text: `
@@ -169,14 +203,6 @@ export function createPostgresSessionRepository(pool, { auditRepository } = {}) 
           values: [currentSessionId, session.tenantId, session.userId, revokedAt],
         });
         if (current.rowCount !== 1) return null;
-
-        const securityContext = await loadSecurityContext(
-          client,
-          session.tenantId,
-          session.userId,
-          session.expectedSecurityVersion,
-        );
-        if (!securityContext) return null;
         const created = await insertSession(client, session, securityContext);
         await client.query({
           name: 'session-rotate-revoke-old',

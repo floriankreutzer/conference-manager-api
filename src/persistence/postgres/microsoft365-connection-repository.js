@@ -84,6 +84,11 @@ async function tenantLock(client, tenantId) {
     text: 'SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))',
     values: [`microsoft365-connection:${tenantId}`],
   });
+  await client.query({
+    name: 'microsoft365-connection-tenant-row-lock',
+    text: 'SELECT 1 FROM tenants WHERE id = $1 FOR SHARE',
+    values: [tenantId],
+  });
 }
 
 export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepository } = {}) {
@@ -452,6 +457,21 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
 
       return withPostgresTransaction(pool, async (client) => {
         await tenantLock(client, tenantId);
+        const currentIntegration = await client.query({
+          name: 'microsoft365-lock-connection-for-finalize',
+          text: `
+            SELECT 1
+            FROM integrations
+            WHERE tenant_id = $1
+              AND id = $2
+              AND provider = '${PROVIDER}'
+              AND connection_version = $3
+              AND provider_reference = $4
+            FOR UPDATE
+          `,
+          values: [tenantId, integrationId, connectionVersion, providerTenantReference],
+        });
+        if (currentIntegration.rowCount !== 1) return Object.freeze({ status: 'stale' });
         const activeBinding = await client.query({
           name: 'microsoft365-lock-active-binding-for-finalize',
           text: `

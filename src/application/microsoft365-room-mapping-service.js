@@ -259,6 +259,8 @@ export function createMicrosoft365RoomMappingService({
       const result = await mappingRepository.importRooms({
         tenantId: tenantContext.tenantId,
         integrationId: connection.integrationId,
+        connectionVersion: connection.connectionVersion,
+        providerTenantReference: connection.providerTenantReference,
         rooms: imports,
         changedAt: at,
         auditEventFor: auditEventFor({
@@ -284,6 +286,8 @@ export function createMicrosoft365RoomMappingService({
       const result = await mappingRepository.synchronize({
         tenantId: tenantContext.tenantId,
         integrationId: connection.integrationId,
+        connectionVersion: connection.connectionVersion,
+        providerTenantReference: connection.providerTenantReference,
         discoveredRooms: discovered,
         changedAt: at,
         auditEventFor: auditEventFor({

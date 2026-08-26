@@ -60,11 +60,23 @@ export function createMicrosoft365CapabilityHealthService({ repository, clock = 
       return repository.listByTenantIdAndIntegrationId(tenantId, integrationId);
     },
 
-    recordSuccess({ tenantId, integrationId, capability }) {
+    recordSuccess({
+      tenantId,
+      integrationId,
+      connectionVersion,
+      providerTenantReference,
+      roomId,
+      providerResourceReference,
+      capability,
+    }) {
       requireCapability(capability);
       return repository.record({
         tenantId,
         integrationId,
+        connectionVersion,
+        providerTenantReference,
+        roomId,
+        providerResourceReference,
         capability,
         status: 'healthy',
         reason: null,
@@ -73,12 +85,25 @@ export function createMicrosoft365CapabilityHealthService({ repository, clock = 
       });
     },
 
-    recordFailure({ tenantId, integrationId, capability, error }) {
+    recordFailure({
+      tenantId,
+      integrationId,
+      connectionVersion,
+      providerTenantReference,
+      roomId,
+      providerResourceReference,
+      capability,
+      error,
+    }) {
       requireCapability(capability);
       const failure = classify(error);
       return repository.record({
         tenantId,
         integrationId,
+        connectionVersion,
+        providerTenantReference,
+        roomId,
+        providerResourceReference,
         capability,
         ...failure,
         checkedAt: now(clock),
