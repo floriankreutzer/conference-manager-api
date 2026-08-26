@@ -21,7 +21,7 @@ import {
 import {
   createPostgresTenantUserAdminRepository,
 } from '../src/persistence/postgres/tenant-user-admin-repository.js';
-import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
 
 const TENANT_A = '10101010-1010-4010-8010-101010101010';
 const TENANT_B = '20202020-2020-4020-8020-202020202020';
@@ -283,16 +283,8 @@ test('tenant roles are claimant-bootstrapped, isolated, concurrent-safe and inva
   assert.equal(activeAdmins.rows[0].count, 1);
   assert.equal(await auditRepository.verifyTenantChain(TENANT_A), true);
 
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackToVersion(pool, 11), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
   await assert.rejects(rollbackLatest(pool), (error) => error.code === '55000');
   assert.equal(await isPostgresSchemaReady(pool), false);
 });
