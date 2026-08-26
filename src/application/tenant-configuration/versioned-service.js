@@ -110,17 +110,17 @@ export function createVersionedTenantConfigurationService({
       correlationId,
       expectedRevision,
       configuration,
-      changeKind = TENANT_CONFIGURATION_CHANGE_KIND.UPDATE,
+      changeKind = TENANT_CONFIGURATION_CHANGE_KIND.CHANGE,
     }) {
       requireCorrelationId(correlationId);
       authorize(authorizationPolicy, principal, tenantContext);
       const normalizedExpectedRevision = requireExpectedRevision(expectedRevision);
       const normalizedChangeKind = requireTenantConfigurationChangeKind(changeKind);
       if (
-        normalizedChangeKind !== TENANT_CONFIGURATION_CHANGE_KIND.UPDATE
+        normalizedChangeKind !== TENANT_CONFIGURATION_CHANGE_KIND.CHANGE
         && normalizedChangeKind !== TENANT_CONFIGURATION_CHANGE_KIND.IMPORT
       ) {
-        throw new TypeError('TENANT_CONFIGURATION_UPDATE_KIND_INVALID');
+        throw new TypeError('TENANT_CONFIGURATION_CHANGE_KIND_INVALID');
       }
       const current = await repository.current(tenantContext.tenantId);
       const normalized = normalize(configuration, current.configuration);
