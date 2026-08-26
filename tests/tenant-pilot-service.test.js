@@ -59,6 +59,17 @@ function fixtures(overrides = {}) {
   return { entitlements, tenant, repositories: { ...repositories, ...overrides } };
 }
 
+function lifecycleRepository(status, { changeStatus } = {}) {
+  const tenant = Object.freeze({ id: TENANT_ID, status });
+  return {
+    async findById() { return tenant; },
+    async changeStatus(values) {
+      if (changeStatus) return changeStatus(values);
+      return { ...tenant, status: values.targetStatus, auditEvent: values.auditEvent };
+    },
+  };
+}
+
 function service(options = {}) {
   const { repositories, ...state } = fixtures(options.repositories);
   return {
@@ -142,11 +153,83 @@ test('lifecycle mutation is operator-only, readiness-gated and emits server audi
   const result = await allowed.setLifecycle({
     operatorContext: { source: 'trusted_control_plane' },
     tenantId: TENANT_ID,
-    targetStatus: 'active',
+    targetStatus: 'ready',
     correlationId: CORRELATION_ID,
   });
-  assert.equal(result.status, 'active');
+  assert.equal(result.status, 'ready');
   assert.equal(result.auditEvent.action, 'tenant.lifecycle.changed');
   assert.deepEqual(result.auditEvent.previousState, { status: 'onboarding' });
-  assert.deepEqual(result.auditEvent.newState, { status: 'active' });
+  assert.deepEqual(result.auditEvent.newState, { status: 'ready' });
+});
+
+test('lifecycle allows only the documented forward, suspension and reactivation transitions', async () => {
+  for (const [currentStatus, targetStatus] of [
+    ['onboarding', 'ready'],
+    ['ready', 'active'],
+    ['active', 'suspended'],
+    ['suspended', 'active'],
+  ]) {
+    const { service: pilot } = service({
+      authorizeOperator: async () => true,
+      repositories: { tenantRepository: lifecycleRepository(currentStatus) },
+    });
+    const result = await pilot.setLifecycle({
+      operatorContext: { source: 'trusted_control_plane' },
+      tenantId: TENANT_ID,
+      targetStatus,
+      correlationId: CORRELATION_ID,
+    });
+    assert.equal(result.status, targetStatus);
+  }
+
+  for (const [currentStatus, targetStatus] of [
+    ['pending', 'ready'],
+    ['onboarding', 'active'],
+    ['ready', 'suspended'],
+    ['active', 'ready'],
+    ['suspended', 'ready'],
+    ['archived', 'ready'],
+    ['archived', 'active'],
+    ['archived', 'suspended'],
+  ]) {
+    const { service: pilot } = service({
+      authorizeOperator: async () => true,
+      repositories: { tenantRepository: lifecycleRepository(currentStatus) },
+    });
+    await assert.rejects(
+      pilot.setLifecycle({
+        operatorContext: { source: 'trusted_control_plane' },
+        tenantId: TENANT_ID,
+        targetStatus,
+        correlationId: CORRELATION_ID,
+      }),
+      (error) => error?.code === 'TENANT_PILOT_LIFECYCLE_CONFLICT',
+    );
+  }
+});
+
+test('stale lifecycle persistence conflicts fail instead of reporting completion', async () => {
+  let attemptedChange = null;
+  const repository = lifecycleRepository('onboarding', {
+    async changeStatus(values) {
+      attemptedChange = values;
+      return null;
+    },
+  });
+  const { service: pilot } = service({
+    authorizeOperator: async () => true,
+    repositories: { tenantRepository: repository },
+  });
+
+  await assert.rejects(
+    pilot.setLifecycle({
+      operatorContext: { source: 'trusted_control_plane' },
+      tenantId: TENANT_ID,
+      targetStatus: 'ready',
+      correlationId: CORRELATION_ID,
+    }),
+    (error) => error?.code === 'TENANT_PILOT_LIFECYCLE_CONFLICT',
+  );
+  assert.equal(attemptedChange.expectedStatus, 'onboarding');
+  assert.equal(attemptedChange.targetStatus, 'ready');
 });
