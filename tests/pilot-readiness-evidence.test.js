@@ -52,9 +52,10 @@ function replaceEvidence(document, id, replacement) {
   };
 }
 
-test('complete disabled-calendar Pilot evidence validates as ready', () => {
+test('disabled Calendar Write can validate its declared scope but is not enabled-write evidence for issue #73', () => {
   const result = validatePilotReadinessEvidence(evidenceDocument(), { requireReady: true });
   assert.equal(result.summary.ready, true);
+  assert.equal(result.summary.enabledCalendarWriteEvidenceVerified, false);
   assert.equal(result.summary.pending.length, 0);
   assert.deepEqual(result.summary.notApplicable, [
     PILOT_EVIDENCE_ID.GRAPH_CALENDAR_WRITE,
@@ -68,6 +69,7 @@ test('enabled Calendar Write requires both live write and Exchange RBAC evidence
     { requireReady: true },
   );
   assert.equal(result.summary.ready, true);
+  assert.equal(result.summary.enabledCalendarWriteEvidenceVerified, true);
   assert.equal(result.summary.notApplicable.length, 0);
 
   const invalid = replaceEvidence(
@@ -152,12 +154,15 @@ test('duplicate, unknown and incomplete release evidence fail closed', () => {
   );
 });
 
-test('evidence references reject credential, session and raw token material', () => {
+test('evidence references reject credential, session, identifier and raw token material', () => {
   const sensitiveReferences = [
     'Bearer abcdefghijklmnop',
     'client_secret=do-not-store-this',
     'cm_session=do-not-store-this',
     'A'.repeat(43),
+    'artifact:11111111-1111-4111-8111-111111111111',
+    'oid=customer-object-reference',
+    'tid=customer-tenant-reference',
   ];
   for (const reference of sensitiveReferences) {
     const invalid = replaceEvidence(
@@ -176,6 +181,24 @@ test('evidence references reject credential, session and raw token material', ()
       (error) => error?.code === 'PILOT_READINESS_REFERENCE_INVALID',
     );
   }
+});
+
+test('evidence notes reject naked UUID identifiers', () => {
+  const invalid = replaceEvidence(
+    evidenceDocument(),
+    PILOT_EVIDENCE_ID.BACKEND_GATES,
+    {
+      id: PILOT_EVIDENCE_ID.BACKEND_GATES,
+      status: 'verified',
+      reference: 'protected-backend-gate-report',
+      verifiedAt: VERIFIED_AT,
+      note: 'Protected artifact 11111111-1111-4111-8111-111111111111 was reviewed.',
+    },
+  );
+  assert.throws(
+    () => validatePilotReadinessEvidence(invalid),
+    (error) => error?.code === 'PILOT_READINESS_NOTE_INVALID',
+  );
 });
 
 test('unexpected fields and unverified references are rejected', () => {
