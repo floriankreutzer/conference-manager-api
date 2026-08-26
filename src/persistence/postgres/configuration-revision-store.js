@@ -152,7 +152,7 @@ export function createPostgresConfigurationRevisionStore(pool, { auditRepository
       initialize,
       expectedRevision,
       configuration,
-      changeKind = TENANT_CONFIGURATION_CHANGE_KIND.UPDATE,
+      changeKind = TENANT_CONFIGURATION_CHANGE_KIND.CHANGE,
       actorUserId,
       changedAt,
       auditEvent,
