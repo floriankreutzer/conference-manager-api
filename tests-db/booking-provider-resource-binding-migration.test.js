@@ -66,7 +66,15 @@ async function cleanup(pool) {
 
 test('provider-resource binding migration fails closed for unresolved rows and populated rollback', async (t) => {
   const pool = createPostgresPool(databaseConfig());
-  t.after(async () => pool.end());
+  t.after(async () => {
+    try {
+      await cleanup(pool);
+      await migrateUp(pool);
+      assert.equal(await isPostgresSchemaReady(pool), true);
+    } finally {
+      await pool.end();
+    }
+  });
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
 
