@@ -38,12 +38,12 @@ async function loadSecurityContext(client, tenantId, userId, expectedSecurityVer
   const user = await client.query({
     name: 'session-security-context-user',
     text: `
-      SELECT security_version
-      FROM users
-      WHERE tenant_id = $1
-        AND id = $2
-        AND active = true
-        AND security_version = $3
+      SELECT u.security_version
+      FROM users u
+      WHERE u.tenant_id = $1
+        AND u.id = $2
+        AND u.active = true
+        AND u.security_version = $3
       FOR SHARE
     `,
     values: [tenantId, userId, expectedSecurityVersion],
