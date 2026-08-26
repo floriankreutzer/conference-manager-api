@@ -1,7 +1,10 @@
 import { AuthorizationDeniedError } from '../authorization/errors.js';
 import { PERMISSION } from '../authorization/policy.js';
 import { isInternalUuid } from '../domain/identifiers.js';
-import { CalendarProviderError } from '../integrations/calendar-contract.js';
+import {
+  CalendarProviderError,
+  PROVIDER_ERROR_KIND,
+} from '../integrations/calendar-contract.js';
 
 const VERIFICATION_WINDOW_MS = 30 * 60 * 1_000;
 
@@ -74,14 +77,22 @@ export function createMicrosoft365AvailabilityVerificationService({
       await authorize({ principal, tenantContext, correlationId });
       const connection = await connectionRepository.findByTenantId(tenantContext.tenantId);
       if (!connection || !isInternalUuid(connection.integrationId) || connection.status !== 'connected') {
-        throw new CalendarProviderError('authorization', { operation: 'availability_verification' });
+        throw new CalendarProviderError(
+          PROVIDER_ERROR_KIND.AUTHORIZATION,
+          { operation: 'availability_verification' },
+        );
       }
       const mappings = await mappingRepository.listByTenantIdAndIntegrationId(
         tenantContext.tenantId,
         connection.integrationId,
       );
       const mapping = mappings.find((candidate) => candidate.providerStatus === 'active');
-      if (!mapping) throw new CalendarProviderError('not_found', { operation: 'availability_verification' });
+      if (!mapping) {
+        throw new CalendarProviderError(
+          PROVIDER_ERROR_KIND.NOT_FOUND,
+          { operation: 'availability_verification' },
+        );
+      }
 
       const window = verificationWindow(clock);
       const provider = await calendarProviderFactory.forRoom({
