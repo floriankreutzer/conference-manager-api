@@ -42,6 +42,7 @@ const STATUS_VALUES = new Set(Object.values(EVIDENCE_STATUS));
 const CALENDAR_WRITE_VALUES = new Set(Object.values(CALENDAR_WRITE_STATE));
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/;
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
+const UUID_MATERIAL = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i;
 const FORBIDDEN_MATERIAL = [
   /(?:bearer|basic)\s+[A-Za-z0-9._~+/-]{8,}/i,
   /(?:access|refresh|id)[_-]?token\s*[:=]/i,
@@ -52,6 +53,9 @@ const FORBIDDEN_MATERIAL = [
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/,
   /\b[A-Za-z0-9_-]{43}\b/,
   /(?:provider[_-]?)?tenant[_-]?id\s*[:=]/i,
+  /(?:user|object|provider|integration|correlation|session)[_-]?id\s*[:=]/i,
+  /\b(?:tid|oid)\s*[:=]/i,
+  UUID_MATERIAL,
 ];
 
 export class PilotReadinessEvidenceError extends Error {
@@ -221,6 +225,11 @@ export function validatePilotReadinessEvidence(value, { requireReady = false } =
   const ready = pending.length === 0
     && release.backendCommit !== null
     && value.generatedAt !== null;
+  const enabledCalendarWriteEvidenceVerified = value.calendarWrite === CALENDAR_WRITE_STATE.ENABLED
+    && evidence.find((item) => item.id === PILOT_EVIDENCE_ID.GRAPH_CALENDAR_WRITE)?.status
+      === EVIDENCE_STATUS.VERIFIED
+    && evidence.find((item) => item.id === PILOT_EVIDENCE_ID.EXCHANGE_APPLICATION_RBAC)?.status
+      === EVIDENCE_STATUS.VERIFIED;
   if (requireReady && !ready) invalid('PILOT_READINESS_PENDING');
 
   return Object.freeze({
@@ -232,6 +241,7 @@ export function validatePilotReadinessEvidence(value, { requireReady = false } =
     evidence: Object.freeze(evidence),
     summary: Object.freeze({
       ready,
+      enabledCalendarWriteEvidenceVerified,
       verifiedCount: evidence.filter((item) => item.status === EVIDENCE_STATUS.VERIFIED).length,
       pending: Object.freeze(pending),
       notApplicable: Object.freeze(notApplicable),

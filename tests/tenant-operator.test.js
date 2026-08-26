@@ -38,6 +38,18 @@ function entitlementArguments(overrides = []) {
   ];
 }
 
+function lifecycleCommand(targetStatus = 'active') {
+  return parseTenantOperatorCommand([
+    'lifecycle',
+    '--environment', 'pilot',
+    '--correlation-id', CORRELATION_ID,
+    '--tenant-id', TENANT_ID,
+    '--target', targetStatus,
+    '--confirm', `lifecycle:${TENANT_ID}:${targetStatus}`,
+    '--apply',
+  ]);
+}
+
 test('operator command parser accepts bounded invitation and readiness contracts', () => {
   assert.deepEqual(parseTenantOperatorCommand(inviteArguments()), {
     kind: 'invite',
@@ -196,4 +208,28 @@ test('readiness output is positively shaped and contains no Tenant selector', as
     }),
     /TENANT_OPERATOR_READINESS_RESULT_INVALID/,
   );
+});
+
+test('lifecycle completion requires a positively validated persisted result', () => {
+  const command = lifecycleCommand();
+  const completed = publicTenantOperatorResult(command, {
+    id: TENANT_ID,
+    status: 'active',
+  });
+  assert.deepEqual(completed, {
+    status: 'completed',
+    command: 'lifecycle',
+    correlationId: CORRELATION_ID,
+  });
+
+  for (const invalid of [
+    null,
+    { id: TENANT_ID, status: 'ready' },
+    { id: CORRELATION_ID, status: 'active' },
+  ]) {
+    assert.throws(
+      () => publicTenantOperatorResult(command, invalid),
+      /TENANT_OPERATOR_LIFECYCLE_RESULT_INVALID/,
+    );
+  }
 });

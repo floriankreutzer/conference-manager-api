@@ -375,6 +375,17 @@ function normalizeReadiness(value) {
   });
 }
 
+function requireLifecycleResult(command, value) {
+  if (
+    !value
+    || typeof value !== 'object'
+    || value.id !== command.tenantId
+    || value.status !== command.targetStatus
+  ) {
+    throw new TypeError('TENANT_OPERATOR_LIFECYCLE_RESULT_INVALID');
+  }
+}
+
 export function publicTenantOperatorResult(command, value) {
   if (!command || typeof command !== 'object' || !isInternalUuid(command.correlationId)) {
     throw new TypeError('TENANT_OPERATOR_RESULT_INVALID');
@@ -387,6 +398,7 @@ export function publicTenantOperatorResult(command, value) {
       readiness: normalizeReadiness(value),
     });
   }
+  if (command.kind === COMMAND.LIFECYCLE) requireLifecycleResult(command, value);
   return Object.freeze({
     status: 'completed',
     command: command.kind,
