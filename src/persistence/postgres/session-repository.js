@@ -95,6 +95,21 @@ async function appendAudit(client, auditRepository, auditEvent) {
   if (!stored) throw new Error('AUDIT_APPEND_FAILED');
 }
 
+async function lockSessionOwner(client, tenantId, userId) {
+  const tenant = await client.query({
+    name: 'session-owner-tenant-lock',
+    text: 'SELECT 1 FROM tenants WHERE id = $1 FOR SHARE',
+    values: [tenantId],
+  });
+  if (tenant.rowCount !== 1) return false;
+  const user = await client.query({
+    name: 'session-owner-user-lock',
+    text: 'SELECT 1 FROM users WHERE tenant_id = $1 AND id = $2 FOR SHARE',
+    values: [tenantId, userId],
+  });
+  return user.rowCount === 1;
+}
+
 export function createPostgresSessionRepository(pool, { auditRepository } = {}) {
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
@@ -144,6 +159,7 @@ export function createPostgresSessionRepository(pool, { auditRepository } = {}) 
 
     async revoke({ sessionId, tenantId, userId, revokedAt, auditEvent }) {
       return withPostgresTransaction(pool, async (client) => {
+        if (!await lockSessionOwner(client, tenantId, userId)) return false;
         const result = await client.query({
           name: 'session-revoke',
           text: `
