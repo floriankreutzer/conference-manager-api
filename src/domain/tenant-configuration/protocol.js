@@ -8,7 +8,7 @@ export const TENANT_CONFIGURATION_DOMAIN = Object.freeze({
 
 export const TENANT_CONFIGURATION_CHANGE_KIND = Object.freeze({
   INITIAL: 'initial',
-  UPDATE: 'update',
+  CHANGE: 'update',
   ROLLBACK: 'rollback',
   IMPORT: 'import',
 });
