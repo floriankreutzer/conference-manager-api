@@ -131,15 +131,6 @@ export function createPostgresMicrosoft365CapabilityHealthRepository(pool) {
               AND connection_version = $3
               AND provider_reference = $4
               AND status IN ('connected', 'degraded')
-              AND ($5::varchar IS NULL OR EXISTS (
-                SELECT 1
-                FROM microsoft365_room_mappings mapping
-                WHERE mapping.tenant_id = integrations.tenant_id
-                  AND mapping.integration_id = integrations.id
-                  AND mapping.room_id = $5
-                  AND mapping.resource_address = $6
-                  AND mapping.provider_status = 'active'
-              ))
             FOR SHARE
           `,
           values: [
@@ -147,11 +138,26 @@ export function createPostgresMicrosoft365CapabilityHealthRepository(pool) {
             integrationId,
             connectionVersion,
             providerTenantReference,
-            roomId,
-            providerResourceReference,
           ],
         });
         if (authority.rowCount !== 1) return null;
+        if (roomId !== null) {
+          const roomAuthority = await client.query({
+            name: 'microsoft365-capability-health-room-authority',
+            text: `
+              SELECT 1
+              FROM microsoft365_room_mappings
+              WHERE tenant_id = $1
+                AND integration_id = $2
+                AND room_id = $3
+                AND resource_address = $4
+                AND provider_status = 'active'
+              FOR SHARE
+            `,
+            values: [tenantId, integrationId, roomId, providerResourceReference],
+          });
+          if (roomAuthority.rowCount !== 1) return null;
+        }
         const result = await client.query({
           name: 'microsoft365-capability-health-record',
           text: `
