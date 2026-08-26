@@ -5,6 +5,9 @@ import {
 } from './application/microsoft365-capability-health-service.js';
 import { createMicrosoft365ConnectionHealthView } from './application/microsoft365-connection-health-view.js';
 import { createMicrosoft365ConnectionService } from './application/microsoft365-connection-service.js';
+import {
+  createMicrosoft365OnboardingVerificationService,
+} from './application/microsoft365-onboarding-verification-service.js';
 import { createMicrosoft365RoomDiscoveryService } from './application/microsoft365-room-discovery-service.js';
 import { createMicrosoft365RoomMappingService } from './application/microsoft365-room-mapping-service.js';
 import { createProductionApplicationService } from './application/production-application-service.js';
@@ -209,6 +212,14 @@ const microsoft365RoomMappingService = persistence && auditService && microsoft3
     auditService,
   })
   : null;
+const microsoft365OnboardingVerificationService = microsoft365RoomMappingService
+  && microsoft365CalendarProviderFactory
+  ? createMicrosoft365OnboardingVerificationService({
+    roomMappingService: microsoft365RoomMappingService,
+    calendarProviderFactory: microsoft365CalendarProviderFactory,
+    authorizationPolicy,
+  })
+  : null;
 const microsoft365Service = microsoft365ConnectionService
   ? Object.freeze({
     ...microsoft365ConnectionService,
@@ -221,6 +232,9 @@ const microsoft365Service = microsoft365ConnectionService
         importSelectedRooms: (args) => microsoft365RoomMappingService.importSelectedRooms(args),
         synchronizeRoomMappings: (args) => microsoft365RoomMappingService.synchronize(args),
       }
+      : {}),
+    ...(microsoft365OnboardingVerificationService
+      ? { verifyFreeBusy: (args) => microsoft365OnboardingVerificationService.verifyFreeBusy(args) }
       : {}),
     ...(tenantPilotService
       ? { getPilotReadiness: (args) => tenantPilotService.getReadiness(args) }
