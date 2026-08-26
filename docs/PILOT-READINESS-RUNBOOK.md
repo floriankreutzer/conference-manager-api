@@ -6,6 +6,8 @@ Root `AGENTS.md` and `docs/CODING-STANDARDS.md` remain authoritative. This runbo
 
 No live Pilot evidence is claimed by this document. Repository tests and CI prove only the code and controls they execute. They do not prove a deployed EU runtime, an accepted cloud provider or region, real Microsoft Entra authentication, Microsoft Graph behavior, HTTPS/browser behavior, backup restoration, deployed DAST, penetration testing, or operational monitoring.
 
+Calendar Write remains an optional per-Tenant capability for the SaaS 2 integration health scope. A readiness document with `calendarWrite` set to `disabled` can validate that declared baseline scope, but it is not evidence for the enabled Calendar Write acceptance criterion in issue `#73`. Issue #73 remains open until the enabled path has real acceptance evidence, or its acceptance criteria are changed through an explicit product decision.
+
 The current provider and region decision remains blocked by the PoC and acceptance work tracked in `floriankreutzer/conference-manager#113`. The Pilot must not be declared ready until that decision is accepted and every required item in the readiness evidence contract is verified.
 
 This runbook covers:
@@ -298,6 +300,8 @@ npm run operator:tenant -- lifecycle \
 
 Both transitions are readiness-gated and audit-atomic. A stale status, failed readiness check, missing entitlement, missing binding, missing room, missing capability health, or persistence/audit failure blocks the transition.
 
+The lifecycle state machine permits only `onboarding` to `ready`, `ready` to `active`, `active` to `suspended`, and readiness-gated `suspended` to `active`. Repeating the current target is an idempotent no-op. `pending` remains owned by the claiming flow, while `archived` is terminal. Unsupported or concurrently stale transitions fail with `TENANT_PILOT_LIFECYCLE_CONFLICT`; the CLI must never print `completed` for them.
+
 ## 7. Optional Calendar Write and Exchange Application RBAC
 
 Calendar Write is not required for the baseline Pilot. It may remain disabled while sign-in, room discovery, mapping, and Free/Busy are enabled.
@@ -307,6 +311,8 @@ When Calendar Write remains disabled:
 - do not grant `microsoft.calendar.write`;
 - mark real calendar-write acceptance and Exchange Application RBAC evidence as `not_applicable` in the release evidence document;
 - state explicitly that no create/update/delete calendar operation is enabled.
+
+This disabled state preserves the optional capability model required by SaaS 2 issue `#87`. It does not satisfy issue `#73`'s enabled-calendar-write acceptance criterion. The readiness summary therefore reports `enabledCalendarWriteEvidenceVerified: false`, and #73 must remain open.
 
 When Calendar Write is enabled, all of the following become mandatory release gates:
 
@@ -535,7 +541,9 @@ The ready gate requires:
 - deployed DAST, penetration testing, redaction, and observability evidence;
 - Calendar Write and Exchange Application RBAC evidence when Calendar Write is enabled.
 
-The validator rejects duplicate or unknown evidence IDs, unverified references, required evidence marked not applicable, partial release commits, unexpected fields, credential-like material, session material, raw token-shaped values, and invalid timestamps.
+The validator rejects duplicate or unknown evidence IDs, unverified references, required evidence marked not applicable, partial release commits, unexpected fields, credential-like material, session material, naked UUID/identity material, raw token-shaped values, and invalid timestamps.
+
+The summary field `enabledCalendarWriteEvidenceVerified` is true only when Calendar Write is enabled and both the real Graph write and Exchange Application RBAC evidence entries are verified. `summary.ready` validates the capability scope declared by the evidence document; it must not be used to claim #73 completion while this explicit field is false.
 
 The validator prints only counts and stable pending evidence IDs. It does not print evidence references or sensitive source material.
 
@@ -550,7 +558,8 @@ A Pilot release decision is reproducible only when a reviewer can:
 5. run the readiness validator with `--require-ready` successfully;
 6. verify the accepted provider/region and restore/rollback evidence;
 7. confirm that optional Calendar Write status matches the actual entitlement and Exchange scope;
-8. confirm that no open material finding or missing acceptance condition is hidden as repository evidence.
+8. keep issue `#73` open unless `enabledCalendarWriteEvidenceVerified` is true or its acceptance criterion was explicitly changed;
+9. confirm that no open material finding or missing acceptance condition is hidden as repository evidence.
 
 Until all steps succeed, the correct decision is `pending`, not `ready`.
 
