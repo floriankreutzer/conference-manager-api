@@ -65,6 +65,7 @@ export function createMicrosoft365OnboardingVerificationService({
       if (!Number.isSafeInteger(now) || now < 0) {
         throw new Microsoft365ConnectionInputError('MICROSOFT365_CLOCK_INVALID');
       }
+      const checkedAt = new Date(now).toISOString();
       const startsAt = new Date(now + VERIFICATION_OFFSET_MS).toISOString();
       const endsAt = new Date(now + VERIFICATION_OFFSET_MS + VERIFICATION_WINDOW_MS).toISOString();
       try {
@@ -78,7 +79,7 @@ export function createMicrosoft365OnboardingVerificationService({
           startsAt,
           endsAt,
         }));
-        return Object.freeze({ verified: true });
+        return Object.freeze({ verified: true, checkedAt });
       } catch (error) {
         throw mappedProviderError(error);
       }
