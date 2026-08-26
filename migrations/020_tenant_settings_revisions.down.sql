@@ -11,7 +11,9 @@ BEGIN
        OR booking_policies_revision <> 1
        OR cost_allocation_revision <> 1
   ) THEN
-    RAISE EXCEPTION 'Cannot remove tenant settings revisions after versioned configuration writes exist';
+    RAISE EXCEPTION USING
+      ERRCODE = '55000',
+      MESSAGE = 'TENANT_SETTINGS_REVISIONS_REQUIRE_REVIEW';
   END IF;
 END $$;
 
