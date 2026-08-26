@@ -703,6 +703,7 @@ test('Microsoft 365 connection persistence is tenant-isolated, replay-safe and r
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatest(pool), true);
   await assert.rejects(
     rollbackLatest(pool),
     /MICROSOFT365_CONNECTION_ROWS_REQUIRE_REVIEW/,

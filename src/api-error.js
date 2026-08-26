@@ -9,6 +9,10 @@ import { RequestCancellationReconciliationError } from './application/request-se
 import { BookingChangeConflictError, BookingChangeDependencyError } from './application/booking-change-errors.js';
 import { TenantUserRoleConflictError } from './application/tenant-user-errors.js';
 import {
+  TenantSettingsConflictError,
+  TenantSettingsInputError,
+} from './application/tenant-settings-errors.js';
+import {
   AuditInputError,
   AuditIntegrityError,
 } from './audit/errors.js';
@@ -31,11 +35,12 @@ import {
 import { RoomAvailabilityUnavailableError } from './application/room-availability-service.js';
 
 export class ApiError extends Error {
-  constructor(statusCode, code) {
+  constructor(statusCode, code, context = null) {
     super(code);
     this.name = 'ApiError';
     this.statusCode = statusCode;
     this.code = code;
+    this.context = context;
   }
 }
 
@@ -49,6 +54,7 @@ export function asApiError(error) {
     || error instanceof OnboardingInputError
     || error instanceof Microsoft365ConnectionInputError
     || error instanceof EntitlementInputError
+    || error instanceof TenantSettingsInputError
   ) {
     return new ApiError(400, 'VALIDATION_FAILED');
   }
@@ -56,6 +62,9 @@ export function asApiError(error) {
   if (error instanceof EntitlementDeniedError) return new ApiError(403, 'ENTITLEMENT_ACCESS_DENIED');
   if (error instanceof OnboardingConflictError) return new ApiError(409, 'ONBOARDING_CONFLICT');
   if (error instanceof TenantUserRoleConflictError) return new ApiError(409, error.code);
+  if (error instanceof TenantSettingsConflictError) {
+    return new ApiError(409, error.code, { currentRevision: error.currentRevision });
+  }
   if (error instanceof Microsoft365ConnectionConflictError) return new ApiError(409, error.code);
   if (error instanceof Microsoft365ConnectionUnavailableError) {
     return new ApiError(503, 'MICROSOFT365_CONNECTION_UNAVAILABLE');

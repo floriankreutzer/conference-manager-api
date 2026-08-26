@@ -15,7 +15,7 @@
     "pilot:exchange-rbac": "node scripts/exchange-application-rbac-check.mjs",
     "check:syntax": "node scripts/check-syntax.mjs",
     "check:agents": "node scripts/check-agent-instructions.mjs",
-    "check:architecture": "node scripts/check-architecture.mjs && node scripts/check-module-boundaries.mjs",
+    "check:architecture": "node scripts/check-architecture.mjs && node scripts/check-module-boundaries.mjs && node scripts/check-tenant-settings-foundation.mjs",
     "check:pilot-activation": "node scripts/check-pilot-activation.mjs",
     "check:pilot-operations": "node scripts/check-pilot-operations.mjs",
     "check:pilot-readiness": "node scripts/pilot-readiness.mjs docs/pilot-readiness-evidence.example.json",

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
 
 const TENANT_ID = '91919191-9191-4919-8919-919191919191';
 const INVITATION_ID = '92929292-9292-4929-8929-929292929292';
@@ -18,9 +18,7 @@ test('tenant onboarding migration refuses rollback when invitation or binding ev
   t.after(async () => pool.end());
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
-  for (let version = 19; version >= 9; version -= 1) {
-    assert.equal(await rollbackLatest(pool), true);
-  }
+  assert.equal(await rollbackToVersion(pool, 9), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
 
   await pool.query(

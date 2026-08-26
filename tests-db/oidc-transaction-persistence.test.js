@@ -3,7 +3,7 @@ import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresOidcTransactionRepository } from '../src/persistence/postgres/oidc-transaction-repository.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackToVersion } from '../scripts/db-migrations.mjs';
 
 const STATE_HASH = 'a'.repeat(64);
 const NONCE_HASH = 'b'.repeat(64);
@@ -165,9 +165,7 @@ test('OIDC migration rolls back and reapplies without touching established sessi
   await migrateUp(pool);
   await clean(pool);
 
-  for (let version = 19; version >= 7; version -= 1) {
-    assert.equal(await rollbackLatest(pool), true);
-  }
+  assert.equal(await rollbackToVersion(pool, 7), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
   const missing = await pool.query(
     "SELECT to_regclass('public.oidc_auth_transactions') AS table_name",

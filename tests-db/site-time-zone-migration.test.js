@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackToVersion } from '../scripts/db-migrations.mjs';
 
 const TENANT_ID = '69696969-6969-4696-8696-696969696969';
+const MIGRATION_VERSION = 18;
 
 function databaseConfig() {
   const database = loadDatabaseConfig(process.env, 'test');
@@ -27,8 +28,7 @@ test('Site time-zone migration preserves unknown legacy values and protects roll
 
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackToVersion(pool, MIGRATION_VERSION), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
 
   await pool.query(
@@ -59,9 +59,8 @@ test('Site time-zone migration preserves unknown legacy values and protects roll
     'UPDATE sites SET time_zone = $3 WHERE tenant_id = $1 AND id = $2',
     [TENANT_ID, 'site-1', 'Europe/Berlin'],
   );
-  assert.equal(await rollbackLatest(pool), true);
   await assert.rejects(
-    rollbackLatest(pool),
+    rollbackToVersion(pool, MIGRATION_VERSION),
     (error) => error.code === '55000' && error.message.includes('SITE_TIME_ZONE_ROWS_REQUIRE_REVIEW'),
   );
 
@@ -69,7 +68,7 @@ test('Site time-zone migration preserves unknown legacy values and protects roll
     'UPDATE sites SET time_zone = NULL WHERE tenant_id = $1 AND id = $2',
     [TENANT_ID, 'site-1'],
   );
-  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackToVersion(pool, MIGRATION_VERSION), true);
   await assert.rejects(
     pool.query('SELECT time_zone FROM sites WHERE tenant_id = $1', [TENANT_ID]),
     (error) => error.code === '42703',

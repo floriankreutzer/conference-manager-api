@@ -14,7 +14,7 @@ import {
 import {
   createPostgresTenantOnboardingRepository,
 } from '../src/persistence/postgres/tenant-onboarding-repository.js';
-import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
 
 const TENANT_A = '10101010-1010-4010-8010-101010101010';
 const TENANT_B = '20202020-2020-4020-8020-202020202020';
@@ -390,17 +390,8 @@ test('JIT provisioning is tenant-isolated, deterministic, concurrent-safe and au
   );
   assert.equal(fallbackProfile.rows[0].display_name, 'Provisioned user');
 
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackToVersion(pool, 10), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
   await assert.rejects(rollbackLatest(pool), (error) => error.code === '55000');
   await cleanup(pool);
   assert.equal(await rollbackLatest(pool), true);

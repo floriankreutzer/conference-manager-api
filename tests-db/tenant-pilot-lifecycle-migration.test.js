@@ -7,11 +7,12 @@ import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresAuditRepository } from '../src/persistence/postgres/audit-repository.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
 import { createPostgresTenantRepository } from '../src/persistence/postgres/tenant-repository.js';
-import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackToVersion } from '../scripts/db-migrations.mjs';
 
 const TENANT_ID = '67676767-6767-4676-8676-676767676767';
 const CORRELATION_ID = '68686868-6868-4686-8686-686868686868';
 const AUDIT_KEY = 'p'.repeat(32);
+const MIGRATION_VERSION = 16;
 
 function databaseConfig() {
   const database = loadDatabaseConfig(process.env, 'test');
@@ -80,11 +81,8 @@ test('Tenant pilot lifecycle change is optimistic, audit-atomic, and rollback-pr
     auditEvent,
   }), null);
 
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
   await assert.rejects(
-    rollbackLatest(pool),
+    rollbackToVersion(pool, MIGRATION_VERSION),
     (error) => error.code === '55000'
       && error.message.includes('TENANT_LIFECYCLE_AUDIT_ROWS_REQUIRE_REVIEW'),
   );

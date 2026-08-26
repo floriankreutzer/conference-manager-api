@@ -81,6 +81,13 @@ function verifyApplied(applied, migrations) {
   }
 }
 
+async function rollbackMigration(client, migration) {
+  await transaction(client, async () => {
+    await client.query(migration.down);
+    await client.query('DELETE FROM schema_migrations WHERE version = $1', [migration.version]);
+  });
+}
+
 export async function migrateUp(pool, directory = 'migrations') {
   const migrations = await loadMigrations(directory);
   const client = await pool.connect();
@@ -121,11 +128,39 @@ export async function rollbackLatest(pool, directory = 'migrations') {
     const latest = applied.at(-1);
     if (!latest) return false;
     const migration = migrations.find((candidate) => candidate.version === latest.version);
+    await rollbackMigration(client, migration);
+    return true;
+  } finally {
+    try {
+      await client.query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK]);
+    } finally {
+      client.release();
+    }
+  }
+}
 
-    await transaction(client, async () => {
-      await client.query(migration.down);
-      await client.query('DELETE FROM schema_migrations WHERE version = $1', [migration.version]);
-    });
+export async function rollbackToVersion(pool, targetVersion, directory = 'migrations') {
+  if (!Number.isSafeInteger(targetVersion) || targetVersion < 1) {
+    throw new TypeError('MIGRATION_TARGET_VERSION_INVALID');
+  }
+  const migrations = await loadMigrations(directory);
+  const migrationByVersion = new Map(migrations.map((migration) => [migration.version, migration]));
+  if (!migrationByVersion.has(targetVersion)) throw new Error(`MIGRATION_SOURCE_MISSING:${targetVersion}`);
+  const client = await pool.connect();
+  try {
+    await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK]);
+    await ensureMigrationTable(client);
+    const applied = await appliedMigrations(client);
+    verifyApplied(applied, migrations);
+    const appliedVersions = new Set(applied.map((row) => row.version));
+    if (!appliedVersions.has(targetVersion)) return false;
+
+    const rollbackPlan = applied
+      .filter((row) => row.version >= targetVersion)
+      .sort((left, right) => right.version - left.version);
+    for (const row of rollbackPlan) {
+      await rollbackMigration(client, migrationByVersion.get(row.version));
+    }
     return true;
   } finally {
     try {

@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackToVersion } from '../scripts/db-migrations.mjs';
 
 const TENANT_ID = '64646464-6464-4646-8646-646464646464';
 const USER_ID = '74747474-7474-4747-8747-747474747474';
 const INTEGRATION_ID = '84848484-8484-4848-8848-848484848484';
 const CORRELATION_ID = '94949494-9494-4949-8949-949494949494';
+const MIGRATION_VERSION = 17;
 
 function databaseConfig() {
   const database = loadDatabaseConfig(process.env, 'test');
@@ -78,10 +79,8 @@ test('provider-resource binding migration fails closed for unresolved rows and p
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
 
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackToVersion(pool, MIGRATION_VERSION), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
-  assert.equal(await rollbackLatest(pool), true);
   await seed(pool);
   await pool.query(
     `INSERT INTO booking_provider_references (
@@ -145,9 +144,10 @@ test('provider-resource binding migration fails closed for unresolved rows and p
     ),
     (error) => error.code === '23514',
   );
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  await assert.rejects(rollbackLatest(pool), (error) => error.code === '55000');
+  await assert.rejects(
+    rollbackToVersion(pool, MIGRATION_VERSION),
+    (error) => error.code === '55000',
+  );
   assert.equal(await isPostgresSchemaReady(pool), false);
 
   await cleanup(pool);
