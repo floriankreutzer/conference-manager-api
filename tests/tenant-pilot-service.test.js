@@ -28,6 +28,9 @@ function fixtures(overrides = {}) {
     tenantRepository: {
       async findById() { return tenant; },
       async changeStatus(values) { return { ...tenant, status: values.targetStatus, auditEvent: values.auditEvent }; },
+      async changeStatusIfReady(values) {
+        return { outcome: 'updated', tenant: { ...tenant, status: values.targetStatus, auditEvent: values.auditEvent } };
+      },
     },
     bindingRepository: {
       async findActiveBindingByTenantId() { return { status: 'active' }; },
@@ -66,6 +69,12 @@ function lifecycleRepository(status, { changeStatus } = {}) {
     async changeStatus(values) {
       if (changeStatus) return changeStatus(values);
       return { ...tenant, status: values.targetStatus, auditEvent: values.auditEvent };
+    },
+    async changeStatusIfReady(values) {
+      const changed = changeStatus
+        ? await changeStatus(values)
+        : { ...tenant, status: values.targetStatus, auditEvent: values.auditEvent };
+      return changed ? { outcome: 'updated', tenant: changed } : { outcome: 'stale' };
     },
   };
 }
