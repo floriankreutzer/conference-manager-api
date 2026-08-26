@@ -1,4 +1,5 @@
 import { createFinalRoomConfirmationService } from './application/final-room-confirmation-service.js';
+import { createBookingChangeService } from './application/booking-change-service.js';
 import { createMicrosoft365BookingServiceFactory } from './application/microsoft365-booking-service-factory.js';
 import {
   createMicrosoft365CapabilityHealthService,
@@ -162,6 +163,15 @@ const requestService = persistence
     metrics,
   })
   : null;
+const bookingChangeService = persistence && auditService && microsoft365BookingServiceFactory
+  ? createBookingChangeService({
+    repository: persistence.bookingChangeRepository,
+    requestRepository: persistence.requestRepository,
+    authorizationPolicy,
+    auditService,
+    bookingServiceFactory: microsoft365BookingServiceFactory,
+  })
+  : null;
 const productionApplicationService = persistence && auditService
   ? createProductionApplicationService({
     repository: persistence.applicationRepository,
@@ -264,6 +274,7 @@ const server = createHttpServer({
   entraAuthService,
   onboardingService,
   requestService,
+  bookingChangeService,
   productionApplicationService,
   tenantUserAdministrationService,
   microsoft365ConnectionService: microsoft365Service,

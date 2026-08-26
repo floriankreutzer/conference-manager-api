@@ -340,6 +340,18 @@ Accepted transitions are `start_review`, `confirm`, `reject`, `request_change` a
 
 Successful transition and `request.transition` evidence commit atomically. Invalid current state or concurrent change returns HTTP 409 `REQUEST_STATE_CONFLICT`.
 
+### `GET/POST /api/v1/requests/{requestId}/booking-change`
+
+`GET` returns the single open proposal or `null`. `POST` requires CSRF and the exact desired confirmed-booking fields: `roomId`, canonical UTC `startsAt`/`endsAt`, `internalParticipants`, and `externalParticipants`. Tenant, owner, status, decision and provider fields are rejected.
+
+The Requester/Organizer may mutate only their own confirmed Request. A Conference Manager may initiate a proposal for any confirmed Request in the Tenant. Exactly one `pending` or `applying` proposal is permitted. A participant-count-only proposal applies immediately if current capacity is sufficient; room or schedule changes leave the original Request and calendar event unchanged pending approval.
+
+### `POST /api/v1/requests/{requestId}/booking-change/{changeId}/decision`
+
+The exact body is `{ "decision": "approve" }` or `{ "decision": "reject", "reason": "..." }`. Only a Conference Manager with `request:manage` may decide, including a self-initiated proposal. The proposal cannot be edited through this route.
+
+Approval rechecks current Request version, room/site state, capacity, local overlap and live provider availability. A conflict returns `status: "blocked"` plus up to five server-derived alternative room IDs without changing the proposal or original booking. Successful application returns the updated confirmed Request. Provider exhaustion returns HTTP 503 and leaves the original booking active with the proposal pending for a later retry.
+
 See `docs/AUTHORIZATION.md`.
 
 ## Request-boundary invariants

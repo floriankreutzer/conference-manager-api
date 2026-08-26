@@ -281,6 +281,53 @@ test('calendar update and cancellation use the resource address bound at create,
   ]);
 });
 
+test('calendar writes automatically retry bounded transient Graph failures', async () => {
+  let attempts = 0;
+  const providerClient = {
+    async lookupFreeBusy() { return [{ schedule: ROOM_ADDRESS, available: true, conflictCount: 0 }]; },
+    async createCalendarEvent() { return { providerReference: EVENT_ID, disposition: 'created' }; },
+    async updateCalendarEvent(values) {
+      attempts += 1;
+      if (attempts < 3) throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_UNAVAILABLE');
+      return { providerReference: values.providerReference, disposition: 'updated' };
+    },
+    async cancelCalendarEvent() { return { providerReference: EVENT_ID, disposition: 'cancelled' }; },
+  };
+  const factory = createMicrosoft365CalendarProviderFactory({
+    connectionRepository: { async findByTenantId() { return {
+      integrationId: CLIENT_ID,
+      providerTenantReference: PROVIDER_TENANT,
+      connectionVersion: 1,
+      status: 'connected',
+      calendarsPermission: 'granted',
+    }; } },
+    bindingRepository: { async findActiveBindingByTenantId() { return {
+      tenantId: TENANT_ID,
+      provider: 'microsoft_entra',
+      providerTenantReference: PROVIDER_TENANT,
+      status: 'active',
+    }; } },
+    mappingRepository: { async listByTenantIdAndIntegrationId() { return [
+      { roomId: 'room-a', resourceAddress: ROOM_ADDRESS, providerStatus: 'active' },
+    ]; } },
+    providerClient,
+    retrySleep: async () => {},
+  });
+  const provider = await factory.forRoom({ tenantId: TENANT_ID, roomId: 'room-a' });
+  await provider.updateCalendarEvent({
+    tenantId: TENANT_ID,
+    requestId: 'request-a',
+    roomId: 'room-a',
+    startsAt: '2026-09-01T10:00:00.000Z',
+    endsAt: '2026-09-01T11:00:00.000Z',
+    phase: 'final',
+    correlationId: CORRELATION_ID,
+    providerReference: EVENT_ID,
+    providerResourceReference: ROOM_ADDRESS,
+  });
+  assert.equal(attempts, 3);
+});
+
 test('persisted cleanup binding survives mapping and connection-health changes but rejects identity generation drift', async () => {
   for (const status of ['degraded', 'disconnected']) {
     const calls = [];

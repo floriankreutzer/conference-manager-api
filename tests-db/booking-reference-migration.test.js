@@ -21,6 +21,7 @@ test('booking reference migration rollback fails closed when provider links exis
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
   assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatest(pool), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
   assert.equal(await rollbackLatest(pool), true);
 

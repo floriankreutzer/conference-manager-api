@@ -151,7 +151,16 @@ function createBoundProvider({
   async function write(operation, input, method, values) {
     assertTenantRoomInput(input, tenantId, roomId, operation);
     try {
-      const result = await requireWriteMethod(providerClient, method, operation)(values);
+      const result = await executeSafeProviderOperation(
+        () => requireWriteMethod(providerClient, method, operation)(values),
+        {
+          classifyError: (error) => {
+            const mapped = mapProviderError(error, operation);
+            return { retryable: mapped.retryable, retryAfterMs: mapped.retryAfterMs };
+          },
+          ...(retrySleep ? { sleep: retrySleep } : {}),
+        },
+      );
       await recordSuccess(HEALTH_CAPABILITY.CALENDAR_WRITE);
       return result;
     } catch (error) {

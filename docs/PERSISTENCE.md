@@ -92,7 +92,7 @@ Migration 017 extends booking references:
 - `pending`, `active`, `compensating`, `compensated` and `cancelled` state/reference invariants;
 - fail-closed application and rollback when populated references require reconciliation.
 
-Migration 018 adds nullable `sites.time_zone`. Existing Sites remain explicitly unknown instead of receiving a fabricated UTC default. Application Configuration accepts only bounded identifiers validated against the server IANA database, while PostgreSQL reinforces the bounded identifier shape. Runtime schema readiness is exactly version 18.
+Migration 018 adds nullable `sites.time_zone`. Existing Sites remain explicitly unknown instead of receiving a fabricated UTC default. Application Configuration accepts only bounded identifiers validated against the server IANA database, while PostgreSQL reinforces the bounded identifier shape. Migration 019 advances runtime schema readiness to exactly version 19.
 
 No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
 
@@ -200,7 +200,7 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 18.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 19.
 
 ## Transaction contract
 
@@ -296,6 +296,8 @@ Entitlement persistence additionally requires real PostgreSQL tests for schema v
 Booking-provider persistence additionally requires real PostgreSQL tests for Tenant-composite Request/Integration ownership, same-provider-value cross-Tenant independence, pre-write pending connection/resource binding, attempt/state/reference constraints, same-attempt idempotent finalization, compensated-attempt key rotation, remap/disconnect-safe cleanup, create/final-commit authority loss, overlap lookup, audit-atomic mutations and fail-closed populated migration/rollback.
 
 Site-time-zone persistence additionally requires real PostgreSQL tests for nullable legacy migration, Tenant-scoped catalog/configuration, room-to-Site booking context, configuration audit atomicity, invalid bounded database shapes, exact schema readiness and fail-closed populated rollback.
+
+Migration 019 adds `booking_change_requests`, its Tenant-scoped foreign keys, bounded proposal fields, decision metadata and the partial unique index that enforces exactly one open proposal per confirmed Request. Participant-only application and approved proposal application update the Request, append `request.booking_change` audit evidence and create the Requester notification in one transaction. Room moves additionally swap the persisted active provider reference in that same apply transaction.
 
 The DB suites share migration state and are therefore executed serially with `--test-concurrency=1` to prevent test-runner races from weakening the migration/integrity evidence.
 

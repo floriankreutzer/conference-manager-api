@@ -583,6 +583,82 @@ test('manager transition is authorized server-side while employee cannot invoke 
   });
 });
 
+test('confirmed booking proposal and decision routes require CSRF and reject authority injection', async () => {
+  const manager = principal({
+    roles: [TENANT_ROLE.CONFERENCE_MANAGER],
+    permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_MANAGE],
+  });
+  const calls = [];
+  const bookingChangeService = {
+    async findOpen() { return null; },
+    async propose(values) {
+      calls.push(['propose', values]);
+      return { change: {
+        id: '66666666-6666-4666-8666-666666666666',
+        status: 'pending',
+        roomId: values.proposed.roomId,
+        startsAt: values.proposed.startsAt,
+        endsAt: values.proposed.endsAt,
+        internalParticipants: values.proposed.internalParticipants,
+        externalParticipants: values.proposed.externalParticipants,
+        rejectionReason: null,
+        createdAt: '2026-08-26T10:00:00.000Z',
+        updatedAt: '2026-08-26T10:00:00.000Z',
+      }, request: requestRecord({ status: REQUEST_STATUS.CONFIRMED }) };
+    },
+    async approve(values) {
+      calls.push(['approve', values]);
+      return { status: 'blocked', alternatives: ['room-b'] };
+    },
+    async reject() { throw new Error('UNEXPECTED'); },
+  };
+  const common = {
+    config: testConfig(),
+    resolvePrincipal: async () => manager,
+    verifyCsrf: async (req) => req.headers['x-csrf-token'] === CSRF_TOKEN,
+    loadTenant: async () => tenant(),
+    bookingChangeService,
+  };
+  const proposal = {
+    roomId: 'room-b',
+    startsAt: '2026-09-01T12:00:00.000Z',
+    endsAt: '2026-09-01T13:00:00.000Z',
+    internalParticipants: 4,
+    externalParticipants: 0,
+  };
+  await withServer(common, async ({ port }) => {
+    const missingCsrf = await request({
+      port, path: '/api/v1/requests/REQ-1/booking-change', method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(proposal),
+    });
+    assert.equal(missingCsrf.statusCode, 403);
+    const injected = await request({
+      port, path: '/api/v1/requests/REQ-1/booking-change', method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+      body: JSON.stringify({ ...proposal, tenantId: OTHER_TENANT_ID }),
+    });
+    assert.equal(injected.statusCode, 400);
+    const accepted = await request({
+      port, path: '/api/v1/requests/REQ-1/booking-change', method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+      body: JSON.stringify(proposal),
+    });
+    assert.equal(accepted.statusCode, 201);
+    assert.equal(accepted.body.schemaVersion, 1);
+    assert.equal(accepted.body.result.change.status, 'pending');
+    const decision = await request({
+      port,
+      path: '/api/v1/requests/REQ-1/booking-change/66666666-6666-4666-8666-666666666666/decision',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+      body: JSON.stringify({ decision: 'approve' }),
+    });
+    assert.equal(decision.statusCode, 200);
+    assert.deepEqual(decision.body.result, { status: 'blocked', alternatives: ['room-b'] });
+  });
+  assert.deepEqual(calls.map(([operation]) => operation), ['propose', 'approve']);
+});
+
 test('logs contain only bounded metadata and do not copy authorization or cookie headers', async () => {
   const config = testConfig();
   await withServer({ config }, async ({ port, logs }) => {

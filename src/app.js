@@ -45,6 +45,11 @@ const ROUTES = Object.freeze({
 });
 const REQUEST_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/;
 const REQUEST_TRANSITION_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/transitions$/;
+const BOOKING_CHANGE_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/booking-change$/;
+const BOOKING_CHANGE_DECISION_PATH = new RegExp(
+  '^/api/v1/requests/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})/booking-change/([0-9a-f-]{36})/decision$',
+  'i',
+);
 const TENANT_USER_ROLES_PATH = /^\/api\/v1\/tenant\/users\/([0-9a-f-]{36})\/roles$/i;
 const ALLOWED_METRIC_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const INVITATION_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -55,6 +60,24 @@ const TRANSITION_BODY_SCHEMA = Object.freeze({
   }),
   optional: Object.freeze({
     reason: (value) => typeof value === 'string' && value.length <= 1000,
+  }),
+});
+const BOOKING_CHANGE_BODY_SCHEMA = Object.freeze({
+  required: Object.freeze({
+    roomId: (value) => typeof value === 'string' && value.length >= 1 && value.length <= 128,
+    startsAt: (value) => typeof value === 'string' && value.length <= 64,
+    endsAt: (value) => typeof value === 'string' && value.length <= 64,
+    internalParticipants: (value) => Number.isSafeInteger(value) && value >= 0 && value <= 100_000,
+    externalParticipants: (value) => Number.isSafeInteger(value) && value >= 0 && value <= 100_000,
+  }),
+  optional: Object.freeze({}),
+});
+const BOOKING_CHANGE_DECISION_SCHEMA = Object.freeze({
+  required: Object.freeze({
+    decision: (value) => value === 'approve' || value === 'reject',
+  }),
+  optional: Object.freeze({
+    reason: (value) => typeof value === 'string' && value.length <= 1_000,
   }),
 });
 const ONBOARDING_START_BODY_SCHEMA = Object.freeze({
@@ -223,6 +246,8 @@ function routeKey(path) {
   const microsoft365Route = microsoft365RouteKey(path);
   if (microsoft365Route) return microsoft365Route;
   if (REQUEST_TRANSITION_PATH.test(path)) return 'request_transition';
+  if (BOOKING_CHANGE_DECISION_PATH.test(path)) return 'booking_change_decision';
+  if (BOOKING_CHANGE_PATH.test(path)) return 'booking_change';
   if (REQUEST_PATH.test(path)) return 'request';
   return 'not_found';
 }
@@ -241,6 +266,7 @@ export function createApp({
   entraAuthService,
   onboardingService,
   requestService,
+  bookingChangeService,
   productionApplicationService,
   tenantUserAdministrationService,
   microsoft365ConnectionService,
@@ -629,6 +655,60 @@ export function createApp({
       }
 
       const transitionMatch = path.match(REQUEST_TRANSITION_PATH);
+      const bookingChangeMatch = path.match(BOOKING_CHANGE_PATH);
+      const bookingChangeDecisionMatch = path.match(BOOKING_CHANGE_DECISION_PATH);
+      if (bookingChangeMatch || bookingChangeDecisionMatch) {
+        const mutation = request.method !== 'GET';
+        if (bookingChangeDecisionMatch && request.method !== 'POST') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+        if (bookingChangeMatch && !['GET', 'POST'].includes(request.method)) throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+        const principal = await principalGuard.require(request, { csrf: mutation });
+        authorizationPolicy.assertRecognizedPrincipal(principal);
+        const tenantContext = await tenantGuard.requireActive(principal);
+        if (!bookingChangeService) throw new ApiError(503, 'BOOKING_CHANGE_SERVICE_UNAVAILABLE');
+        const requestIdValue = (bookingChangeDecisionMatch || bookingChangeMatch)[1];
+        if (bookingChangeDecisionMatch) {
+          const body = validateExactObject(
+            await readJsonObjectBody(request, { maxBytes: config.maxBodyBytes }),
+            BOOKING_CHANGE_DECISION_SCHEMA,
+          );
+          if (
+            body.decision === 'approve' && body.reason !== undefined
+            || body.decision === 'reject' && body.reason === undefined
+          ) throw new ApiError(400, 'VALIDATION_FAILED');
+          const result = body.decision === 'approve'
+            ? await bookingChangeService.approve({
+              principal, tenantContext, correlationId: requestId, requestId: requestIdValue,
+              changeId: bookingChangeDecisionMatch[2].toLowerCase(),
+            })
+            : await bookingChangeService.reject({
+              principal, tenantContext, correlationId: requestId, requestId: requestIdValue,
+              changeId: bookingChangeDecisionMatch[2].toLowerCase(), rejectionReason: body.reason,
+            });
+          statusCode = 200;
+          sendJson(response, statusCode, {
+            schemaVersion: 1,
+            result: result.request ? { ...result, request: publicRequest(result.request) } : result,
+          }, config.maxResponseBytes);
+          return;
+        }
+        const result = request.method === 'GET'
+          ? { change: await bookingChangeService.findOpen({
+            principal, tenantContext, correlationId: requestId, requestId: requestIdValue,
+          }) }
+          : await bookingChangeService.propose({
+            principal, tenantContext, correlationId: requestId, requestId: requestIdValue,
+            proposed: validateExactObject(
+              await readJsonObjectBody(request, { maxBytes: config.maxBodyBytes }),
+              BOOKING_CHANGE_BODY_SCHEMA,
+            ),
+          });
+        statusCode = request.method === 'POST' ? 201 : 200;
+        sendJson(response, statusCode, {
+          schemaVersion: 1,
+          result: result.request ? { ...result, request: publicRequest(result.request) } : result,
+        }, config.maxResponseBytes);
+        return;
+      }
       const requestMatch = path.match(REQUEST_PATH);
       if (transitionMatch || requestMatch) {
         const isTransition = Boolean(transitionMatch);

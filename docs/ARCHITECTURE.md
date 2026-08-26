@@ -190,7 +190,7 @@ See `docs/AUDIT.md` for the normative event/integrity contract.
 
 Schema ownership lives in `migrations/`. Migrations are paired up/down files, numerically versioned, checksum protected and serialized by a PostgreSQL advisory lock.
 
-The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 18.
+The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 19.
 
 - Migration 001 establishes Tenant-owned product structures.
 - Migration 002 adds User security-version state and server-side sessions.
@@ -233,7 +233,7 @@ Migration 017 extends the migration-006 reference so the attempt number, exact p
 
 Migration 018 stores `sites.time_zone` as nullable for pre-existing Sites. Catalog/Site-info/Configuration expose it as `timeZone`; Configuration writes require a valid IANA identifier. Request creation and room availability require the selected active room's active Site to have a valid value and share the exact canonical UTC interval contract with a 24-hour maximum. Neither the backend nor browser may substitute browser-local time or UTC for an unknown Site zone.
 
-The Microsoft 365 connection lifecycle establishes and verifies the Tenant connection boundary. Separate implemented adapters provide Places discovery, room/resource mapping, free/busy, final availability enforcement and entitlement-gated event create/update/cancel while preserving fixed destinations, bounded transport, positive provider validation, least privilege, Tenant scoping, explicit retry classification and provider-neutral contracts. Live Microsoft acceptance and the approved post-confirmation update workflow remain external gates in issues #64, #66, #68 and #69.
+The Microsoft 365 connection lifecycle establishes and verifies the Tenant connection boundary. Separate implemented adapters provide Places discovery, room/resource mapping, free/busy, final availability enforcement and entitlement-gated event create/update/cancel while preserving fixed destinations, bounded transport, positive provider validation, least privilege, Tenant scoping, explicit retry classification and provider-neutral contracts. The post-confirmation proposal aggregate owns approval, conflict revalidation, same-room update and compensated room replacement. Live Microsoft acceptance remains an external gate in issues #64, #66, #68 and #69.
 
 See `docs/BOOKING-INTEGRATION.md` and `docs/MICROSOFT365-CONNECTION.md`.
 
@@ -270,7 +270,7 @@ The foundation rate limiter is local, in-memory and bounded. It is not a multi-i
 
 - Real independent Entra Tenant authentication and Tenant-claim acceptance evidence remains tracked by #58 and #59; their repository identity/JIT paths are implemented.
 - The Microsoft 365 connection API/lifecycle is implemented; #62 retains live admin-consent and cross-repository browser acceptance evidence.
-- Places discovery, room/resource mapping, free/busy, final availability and create/cancel synchronization are implemented. Issues #64-#68 retain live Microsoft acceptance, and #68 separately retains product acceptance of the server-authoritative post-confirmation update workflow.
+- Places discovery, room/resource mapping, free/busy, final availability and create/update/cancel synchronization are implemented. Issues #64-#68 retain live Microsoft acceptance; #68's remaining external gate is live update/move acceptance rather than an internal workflow gap.
 - Exchange Online Application RBAC implementation guidance and evidence tooling exist; real customer-Tenant scope evidence remains #69.
 - Issues #70-#73 retain their unproven external/operational acceptance, isolation, recovery and runbook evidence rather than standing for the already implemented provider adapters.
 - The #114 backend create/list/transition and room-availability contracts are implemented. Production hosting/IaC, cross-repository frontend acceptance and production-like secure E2E evidence remain external gates across #113-#115; they do not own the missing post-confirmation update workflow.

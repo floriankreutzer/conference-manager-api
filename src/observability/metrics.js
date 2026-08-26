@@ -30,6 +30,8 @@ const ROUTES = new Set([
   'microsoft365_room_sync',
   'request',
   'request_transition',
+  'booking_change',
+  'booking_change_decision',
   'not_found',
   'invalid_request',
 ]);

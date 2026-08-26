@@ -79,6 +79,7 @@ test('provider-resource binding migration fails closed for unresolved rows and p
   assert.equal(await isPostgresSchemaReady(pool), true);
 
   assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatest(pool), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
   assert.equal(await rollbackLatest(pool), true);
   await seed(pool);
@@ -144,6 +145,7 @@ test('provider-resource binding migration fails closed for unresolved rows and p
     ),
     (error) => error.code === '23514',
   );
+  assert.equal(await rollbackLatest(pool), true);
   assert.equal(await rollbackLatest(pool), true);
   await assert.rejects(rollbackLatest(pool), (error) => error.code === '55000');
   assert.equal(await isPostgresSchemaReady(pool), false);

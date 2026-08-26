@@ -6,6 +6,7 @@ import {
 import { FinalRoomAvailabilityError } from './application/final-room-confirmation-service.js';
 import { SiteTimeZoneRequiredError } from './application/production-application-service.js';
 import { RequestCancellationReconciliationError } from './application/request-service.js';
+import { BookingChangeConflictError, BookingChangeDependencyError } from './application/booking-change-errors.js';
 import { TenantUserRoleConflictError } from './application/tenant-user-errors.js';
 import {
   AuditInputError,
@@ -71,6 +72,8 @@ export function asApiError(error) {
   if (error instanceof RequestCancellationReconciliationError) {
     return new ApiError(503, 'CALENDAR_RECONCILIATION_REQUIRED');
   }
+  if (error instanceof BookingChangeConflictError) return new ApiError(409, error.code);
+  if (error instanceof BookingChangeDependencyError) return new ApiError(503, error.code);
   if (error instanceof TenantUnavailableError) return new ApiError(403, 'TENANT_UNAVAILABLE');
   if (error instanceof AuthorizationDeniedError) {
     return error.conceal

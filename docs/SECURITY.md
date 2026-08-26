@@ -168,7 +168,7 @@ GitHub-native security feature availability depends on repository/account entitl
 - Real Pilot acceptance must use controlled independent Entra Tenants and record exact redirect URI, app ownership, permission grants, success, denial, missing-permission, revocation and reconnect evidence.
 - The audit chain is tamper-evident but is not external completeness proof against privileged suffix deletion or stale backup restoration.
 - The in-process limiter is not a distributed quota solution; Pilot and Production require trusted shared edge abuse controls.
-- Places synchronization, room mapping, free/busy and entitlement-gated create/cancel adapters are implemented, but repository tests do not prove them against a live customer Microsoft Tenant. Live Graph/Exchange acceptance, the approved post-confirmation update workflow (#68), operational recovery evidence, deployment IaC and independent penetration testing remain completion gates.
+- Places synchronization, room mapping, free/busy and entitlement-gated create/update/cancel adapters are implemented, but repository tests do not prove them against a live customer Microsoft Tenant. Live Graph/Exchange acceptance for the post-confirmation workflow (#68), operational recovery evidence, deployment IaC and independent penetration testing remain completion gates.
 
 ## OWASP and CWE mapping
 

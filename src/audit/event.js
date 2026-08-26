@@ -10,6 +10,7 @@ export const AUDIT_ACTION = Object.freeze({
   REQUEST_CREATED: 'request.created',
   REQUEST_TRANSITION: 'request.transition',
   REQUEST_TRANSITION_FAILED: 'request.transition_failed',
+  REQUEST_BOOKING_CHANGE: 'request.booking_change',
   TENANT_CONFIGURATION_CHANGED: 'tenant.configuration.changed',
   TENANT_USER_PERMISSIONS_CHANGED: 'tenant.user_permissions.changed',
   TENANT_ENTITLEMENT_CHANGED: 'tenant.entitlement.changed',
