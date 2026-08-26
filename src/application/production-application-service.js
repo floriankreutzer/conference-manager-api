@@ -329,14 +329,18 @@ export function createProductionApplicationService({
         retentionClass: AUDIT_RETENTION_CLASS.BUSINESS,
         occurredAt: createdAt.toISOString(),
       });
-      return publicRequest(await requestRepository.createForTenant({
+      const created = await requestRepository.createForTenant({
         tenantId: tenantContext.tenantId,
         requestId,
         requesterUserId: principal.userId,
         ...draft,
         createdAt,
         auditEvent,
-      }));
+      });
+      if (!created) {
+        throw new AuthorizationDeniedError('RESOURCE_NOT_AVAILABLE', { conceal: true });
+      }
+      return publicRequest(created);
     },
 
     async checkRoomAvailability({ principal, tenantContext, correlationId, query }) {
