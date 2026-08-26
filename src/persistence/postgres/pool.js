@@ -3,7 +3,6 @@ import pg from 'pg';
 const { Pool } = pg;
 
 // Schema 19 established confirmed-booking change persistence.
-// Previous architecture-guard baseline marker: CURRENT_SCHEMA_VERSION = 19.
 // Schema 20 adds independent optimistic revision state for each mutable
 // Tenant Admin settings aggregate without introducing a generic settings store.
 export const CURRENT_SCHEMA_VERSION = 20;
