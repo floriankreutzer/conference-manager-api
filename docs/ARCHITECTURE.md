@@ -20,6 +20,7 @@ The service uses Node.js 22 native HTTP and ECMAScript modules. The implemented 
 - server-side Tenant entitlements;
 - provider-neutral booking/calendar contracts and opaque provider references;
 - a Tenant-scoped Microsoft 365 admin-consent, verification, reconnect and disconnect lifecycle;
+- independent optimistic revision authority for the five SaaS 2 Tenant Admin settings aggregates;
 - production observability, threat-model and secure-configuration gates.
 
 Runtime dependencies are limited to exact-pinned `pg` and `@azure/msal-node`. Provider-specific Microsoft handling uses bounded native HTTP plus a bounded MSAL transport isolated inside identity/integration adapters; Microsoft SDK types do not enter application or domain contracts.
@@ -63,7 +64,7 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
 ## Module responsibilities
 
 - `src/config.js` owns runtime, database, Entra, Microsoft 365, session and audit-secret configuration with fail-closed Pilot/Production validation.
-- `src/api-error.js` owns safe public error classification, including authorization concealment, audit-integrity failures and Microsoft 365 lifecycle errors.
+- `src/api-error.js` owns safe public error classification, including authorization concealment, audit-integrity failures, Tenant settings revision conflicts and Microsoft 365 lifecycle errors.
 - `src/domain/identifiers.js` owns stable internal UUID validation.
 - `src/domain/request-workflow.js` owns canonical Request status and transition identifiers.
 - `src/domain/request.js` validates canonical Request records returned from persistence.
@@ -83,6 +84,7 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
 - `src/authorization/policy.js` owns recognized Tenant roles/permissions, capability checks, object ownership, Request transition authorization and Tenant audit-read capability.
 - `src/application/request-service.js` coordinates Tenant-scoped Request loading, authorization, optimistic workflow writes and correlated audit outcomes.
 - `src/application/production-application-service.js` owns the server-authoritative browser application contract, Site configuration and the fail-closed Site-time-zone booking gate.
+- `src/application/tenant-settings-revision.js` owns only the shared SaaS 2 schema/revision primitive and deterministic stale-write conflict semantics; aggregate business fields and persistence stay with their bounded owners.
 - `src/application/tenant-user-administration-service.js` owns authorized Tenant role reads/writes, last-admin protection and stale-session invalidation through User security versions.
 - `src/application/microsoft365-connection-service.js` owns Tenant Admin authorization, Entra-binding corroboration, one-time consent state, connection verification, reconnect/disconnect and audit-safe public results.
 - `src/http/microsoft365-routes.js` owns the strict same-origin Microsoft 365 HTTP contract, callback query allowlist and fixed result redirects.
@@ -116,6 +118,7 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
 - `scripts/security-dast.mjs` exercises the real HTTP server in isolated Test mode.
 - `docs/ENTRA-AUTHENTICATION.md` defines the Entra authentication and Tenant-claiming contract.
 - `docs/MICROSOFT365-CONNECTION.md` defines the Microsoft 365 connection lifecycle and provider trust boundary.
+- `docs/TENANT-SETTINGS-CONTRACTS.md` defines the bounded SaaS 2 aggregate versioning, concurrency, history and rollback contract without creating a generic settings owner.
 - `docs/THREAT-MODEL.md` is the canonical SaaS threat, control and residual-risk model.
 - `docs/PRODUCTION-SECURE-CONFIGURATION.md` is the canonical Pilot/Production deployment security baseline.
 - `docs/PILOT-PENETRATION-TEST.md` defines the independent Pilot security-assessment scope and exit criteria.
@@ -190,7 +193,7 @@ See `docs/AUDIT.md` for the normative event/integrity contract.
 
 Schema ownership lives in `migrations/`. Migrations are paired up/down files, numerically versioned, checksum protected and serialized by a PostgreSQL advisory lock.
 
-The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 19.
+The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 20.
 
 - Migration 001 establishes Tenant-owned product structures.
 - Migration 002 adds User security-version state and server-side sessions.
@@ -210,6 +213,8 @@ The application never auto-migrates at startup. Deployment automation runs migra
 - Migration 016 adds the Tenant Pilot lifecycle audit action.
 - Migration 017 binds each numbered pending calendar-create attempt to its provider connection/resource and idempotency key before external write.
 - Migration 018 adds nullable authoritative Site IANA time zones without inventing values for legacy Sites.
+- Migration 019 adds confirmed-booking change persistence and one-open-proposal enforcement.
+- Migration 020 adds five independent Tenant Admin settings revision counters and fail-closed rollback after first use, without adding a generic settings datastore.
 
 Every migration that removes security/business evidence includes a fail-closed rollback guard.
 
