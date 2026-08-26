@@ -74,7 +74,7 @@ test('booking reference migration rollback fails closed when provider links exis
     [TENANT_ID, 'request-1', INTEGRATION_ID, 'migration-event', 'e'.repeat(64), 'active', CORRELATION_ID],
   );
 
-  for (let version = 17; version >= 7; version -= 1) {
+  for (let version = 16; version >= 7; version -= 1) {
     assert.equal(await rollbackLatest(pool), true);
   }
   assert.equal(await isPostgresSchemaReady(pool), false);
