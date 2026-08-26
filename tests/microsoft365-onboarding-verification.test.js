@@ -59,7 +59,7 @@ test('Tenant Admin free-busy verification uses a server-derived mapped room and 
     correlationId: CORRELATION_ID,
   });
 
-  assert.deepEqual(result, { verified: true });
+  assert.deepEqual(result, { verified: true, checkedAt: '2026-08-26T08:00:00.000Z' });
   assert.deepEqual(observed[1], {
     type: 'provider',
     values: { tenantId: TENANT_ID, roomId: ROOM_ID },
