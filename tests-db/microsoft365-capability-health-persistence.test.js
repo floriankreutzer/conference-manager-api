@@ -5,7 +5,7 @@ import {
   createPostgresMicrosoft365CapabilityHealthRepository,
 } from '../src/persistence/postgres/microsoft365-capability-health-repository.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
 
 const TENANT_A = '91919191-9191-4919-8919-919191919191';
 const TENANT_B = '92929292-9292-4929-8929-929292929292';
@@ -121,12 +121,8 @@ test('Microsoft capability health is tenant-scoped, preserves last success and r
     checkedAt: failureAt,
     successful: true,
   }), null);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackToVersion(pool, 15), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
   await assert.rejects(rollbackLatest(pool), (error) => error.code === '55000');
 
   await pool.query('DELETE FROM microsoft365_capability_health WHERE tenant_id = $1', [TENANT_A]);
