@@ -96,6 +96,8 @@ for (const required of [
   'Role recovery',
   'Backup, restore, rollback, and escalation',
   'Microsoft Entra and Graph acceptance',
+  'Issue #73 remains open',
+  'enabledCalendarWriteEvidenceVerified',
 ]) {
   if (!runbook.includes(required)) {
     throw new Error(`Pilot readiness runbook is missing section ${required}.`);
