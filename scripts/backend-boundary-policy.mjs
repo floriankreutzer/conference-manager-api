@@ -58,7 +58,9 @@ function isNewSettingsRoute(file) {
 }
 
 export function backendSaas2BoundaryViolations(sourceEntries) {
-  const sources = sourceEntries instanceof Map ? sourceEntries : new Map(Object.entries(sourceEntries || {}));
+  const sources = sourceEntries instanceof Map
+    ? sourceEntries
+    : new Map(Object.entries(sourceEntries || {}));
   const { graph, unresolved } = buildModuleGraph(sources);
   const violations = [];
 
@@ -72,19 +74,34 @@ export function backendSaas2BoundaryViolations(sourceEntries) {
   for (const [rawFile, rawSource] of sources) {
     const file = normalized(rawFile);
     const source = String(rawSource);
-    const genericSegment = pathSegments(file).find((segment) => GENERIC_DUMPING_GROUNDS.has(segment));
+    const genericSegment = pathSegments(file)
+      .find((segment) => GENERIC_DUMPING_GROUNDS.has(segment));
     if (genericSegment) {
-      violations.push(violation(file, `generic dumping-ground module or directory ${genericSegment} is forbidden.`));
+      violations.push(violation(
+        file,
+        `generic dumping-ground module or directory ${genericSegment} is forbidden.`,
+      ));
     }
     if (GENERIC_SETTINGS_MODULES.has(basename(file))) {
-      violations.push(violation(file, 'generic mutable Tenant settings modules are forbidden; use the owning bounded domain.'));
+      violations.push(violation(
+        file,
+        'generic mutable Tenant settings modules are forbidden; use the owning bounded domain.',
+      ));
     }
     if (isNewSettingsRoute(file) && file !== 'src/http/route-module.js') {
-      if (!source.includes("from '../route-module.js'") && !source.includes("from './route-module.js'")) {
-        violations.push(violation(file, 'SaaS 2 settings route families must use the bounded route-module registration contract.'));
+      const importsRouteModule = source.includes("from '../route-module.js'")
+        || source.includes("from './route-module.js'");
+      if (!importsRouteModule) {
+        violations.push(violation(
+          file,
+          'SaaS 2 settings route families must use the bounded route-module registration contract.',
+        ));
       }
       if (!source.includes('defineRouteModule')) {
-        violations.push(violation(file, 'SaaS 2 settings route families must export a defineRouteModule contract.'));
+        violations.push(violation(
+          file,
+          'SaaS 2 settings route families must export a defineRouteModule contract.',
+        ));
       }
     }
   }
@@ -96,10 +113,17 @@ export function backendSaas2BoundaryViolations(sourceEntries) {
           || isInside(dependency, 'src/persistence')
           || COMPOSITION_FILES.has(dependency)
           || dependency === 'src/config.js') {
-          violations.push(violation(sourceFile, `application code must not depend on transport, concrete persistence or composition module ${dependency}.`));
+          violations.push(violation(
+            sourceFile,
+            `application code must not depend on transport, concrete persistence or composition module ${dependency}.`,
+          ));
         }
-        if (CONCRETE_PROVIDER_MODULES.has(dependency) && !isProviderApplicationException(sourceFile)) {
-          violations.push(violation(sourceFile, `application code may consume provider contracts only; concrete provider module ${dependency} is not allowed here.`));
+        if (CONCRETE_PROVIDER_MODULES.has(dependency)
+          && !isProviderApplicationException(sourceFile)) {
+          violations.push(violation(
+            sourceFile,
+            `application code may consume provider contracts only; concrete provider module ${dependency} is not allowed here.`,
+          ));
         }
       }
 
@@ -110,7 +134,10 @@ export function backendSaas2BoundaryViolations(sourceEntries) {
           || isInside(dependency, 'src/integrations')
           || COMPOSITION_FILES.has(dependency)
           || dependency === 'src/config.js')) {
-        violations.push(violation(sourceFile, `domain and authorization policy must remain independent of ${dependency}.`));
+        violations.push(violation(
+          sourceFile,
+          `domain and authorization policy must remain independent of ${dependency}.`,
+        ));
       }
 
       if (isInside(sourceFile, 'src/http')
@@ -118,7 +145,10 @@ export function backendSaas2BoundaryViolations(sourceEntries) {
           || isInside(dependency, 'src/integrations')
           || COMPOSITION_FILES.has(dependency)
           || dependency === 'src/config.js')) {
-        violations.push(violation(sourceFile, `HTTP transport must not import concrete infrastructure or composition module ${dependency}.`));
+        violations.push(violation(
+          sourceFile,
+          `HTTP transport must not import concrete infrastructure or composition module ${dependency}.`,
+        ));
       }
 
       if (isInside(sourceFile, 'src/persistence/postgres')
@@ -127,7 +157,10 @@ export function backendSaas2BoundaryViolations(sourceEntries) {
           || CONCRETE_PROVIDER_MODULES.has(dependency)
           || COMPOSITION_FILES.has(dependency)
           || dependency === 'src/config.js')) {
-        violations.push(violation(sourceFile, `PostgreSQL adapters must not depend on transport, application services, providers or composition module ${dependency}.`));
+        violations.push(violation(
+          sourceFile,
+          `PostgreSQL adapters must not depend on transport, application services, providers or composition module ${dependency}.`,
+        ));
       }
 
       if (isInside(sourceFile, 'src/integrations')
@@ -135,7 +168,10 @@ export function backendSaas2BoundaryViolations(sourceEntries) {
           || isInside(dependency, 'src/application')
           || isInside(dependency, 'src/persistence')
           || COMPOSITION_FILES.has(dependency))) {
-        violations.push(violation(sourceFile, `provider adapters must not depend on transport, application services, persistence or composition module ${dependency}.`));
+        violations.push(violation(
+          sourceFile,
+          `provider adapters must not depend on transport, application services, persistence or composition module ${dependency}.`,
+        ));
       }
     }
   }
