@@ -26,6 +26,7 @@ const RETRYABLE_ERROR_KINDS = new Set([
   PROVIDER_ERROR_KIND.UNAVAILABLE,
 ]);
 const PROVIDER_REFERENCE_PATTERN = /^[^\u0000-\u001f\u007f]{1,255}$/;
+const PROVIDER_RESOURCE_REFERENCE_PATTERN = /^[^\u0000-\u001f\u007f]{3,320}$/;
 const IDEMPOTENCY_KEY_PATTERN = /^[0-9a-f]{64}$/;
 const MAX_CONFLICT_COUNT = 10_000;
 const MAX_RETRY_AFTER_MS = 300_000;
@@ -55,6 +56,16 @@ export function isProviderReference(value) {
   return typeof value === 'string'
     && value.trim() === value
     && PROVIDER_REFERENCE_PATTERN.test(value);
+}
+
+export function isProviderResourceReference(value) {
+  return typeof value === 'string'
+    && value.trim() === value
+    && PROVIDER_RESOURCE_REFERENCE_PATTERN.test(value);
+}
+
+export function isProviderConnectionReference(value) {
+  return isProviderResourceReference(value);
 }
 
 export function isIdempotencyKey(value) {
@@ -129,9 +140,11 @@ export function normalizeReservationValidation(value) {
 export function normalizeCreateResult(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalidProviderResponse('create');
   if (!isProviderReference(value.providerReference)) throw invalidProviderResponse('create');
+  if (!isProviderResourceReference(value.providerResourceReference)) throw invalidProviderResponse('create');
   if (!['created', 'existing'].includes(value.disposition)) throw invalidProviderResponse('create');
   return Object.freeze({
     providerReference: value.providerReference,
+    providerResourceReference: value.providerResourceReference,
     disposition: value.disposition,
   });
 }
@@ -167,6 +180,12 @@ export function assertCalendarProvider(provider) {
     throw new TypeError('CALENDAR_PROVIDER_REQUIRED');
   }
   if (!isInternalUuid(provider.integrationId)) throw new TypeError('CALENDAR_PROVIDER_INTEGRATION_ID_INVALID');
+  if (!isProviderResourceReference(provider.providerResourceReference)) {
+    throw new TypeError('CALENDAR_PROVIDER_RESOURCE_REFERENCE_INVALID');
+  }
+  if (!isProviderConnectionReference(provider.providerConnectionReference)) {
+    throw new TypeError('CALENDAR_PROVIDER_CONNECTION_REFERENCE_INVALID');
+  }
   for (const method of [
     'lookupAvailability',
     'validateReservation',

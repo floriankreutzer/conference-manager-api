@@ -120,6 +120,7 @@ export function createMicrosoft365ConnectionService({
   if (
     !auditService
     || typeof auditService.createEvent !== 'function'
+    || typeof auditService.record !== 'function'
     || typeof auditService.recordAuthorizationDenied !== 'function'
   ) {
     throw new TypeError('AUDIT_SERVICE_REQUIRED');
@@ -172,7 +173,7 @@ export function createMicrosoft365ConnectionService({
   }
 
   function consentAuditFactory({ principal, tenantContext, correlationId, occurredAt }) {
-    return ({ integrationId, previousStatus, nextStatus }) => auditService.createEvent({
+    return ({ integrationId, previousStatus, nextStatus, providerRebound = false }) => auditService.createEvent({
       principal,
       tenantContext,
       correlationId,
@@ -182,7 +183,7 @@ export function createMicrosoft365ConnectionService({
       previousState: previousStatus ? { provider: 'microsoft365', status: previousStatus } : null,
       newState: { provider: 'microsoft365', status: nextStatus },
       outcome: AUDIT_OUTCOME.SUCCESS,
-      metadata: { operation: 'admin_consent_start' },
+      metadata: { operation: 'admin_consent_start', providerRebound },
       retentionClass: AUDIT_RETENTION_CLASS.SECURITY,
       occurredAt,
     });
@@ -193,6 +194,7 @@ export function createMicrosoft365ConnectionService({
     tenantContext,
     correlationId,
     integrationId,
+    previousStatus,
     finalStatus,
     reason,
     occurredAt,
@@ -205,7 +207,7 @@ export function createMicrosoft365ConnectionService({
       action: AUDIT_ACTION.INTEGRATION_ADMIN_CONSENT_CHANGED,
       targetType: 'integration',
       targetId: integrationId,
-      previousState: { provider: 'microsoft365', status: 'pending' },
+      previousState: { provider: 'microsoft365', status: previousStatus },
       newState: { provider: 'microsoft365', status: finalStatus },
       outcome: approved ? AUDIT_OUTCOME.SUCCESS : AUDIT_OUTCOME.FAILURE,
       metadata: {
@@ -226,7 +228,7 @@ export function createMicrosoft365ConnectionService({
         action: AUDIT_ACTION.INTEGRATION_CONNECTED,
         targetType: 'integration',
         targetId: integrationId,
-        previousState: { provider: 'microsoft365', status: 'pending' },
+        previousState: { provider: 'microsoft365', status: previousStatus },
         newState: { provider: 'microsoft365', status: 'connected' },
         outcome: AUDIT_OUTCOME.SUCCESS,
         metadata: { operation: 'connect' },
@@ -234,6 +236,54 @@ export function createMicrosoft365ConnectionService({
         occurredAt,
       }),
     ];
+  }
+
+  function consentRejectionAuditFactory({ principal, tenantContext, correlationId, occurredAt }) {
+    return ({ integrationId, previousStatus, reasonCode }) => auditService.createEvent({
+      principal,
+      tenantContext,
+      correlationId,
+      action: AUDIT_ACTION.INTEGRATION_ADMIN_CONSENT_CHANGED,
+      targetType: 'integration',
+      targetId: integrationId ?? 'microsoft365',
+      previousState: previousStatus
+        ? { provider: 'microsoft365', status: previousStatus }
+        : null,
+      newState: previousStatus
+        ? { provider: 'microsoft365', status: previousStatus }
+        : null,
+      outcome: AUDIT_OUTCOME.FAILURE,
+      metadata: {
+        operation: 'admin_consent_callback_rejected',
+        reasonCode,
+      },
+      retentionClass: AUDIT_RETENTION_CLASS.SECURITY,
+      occurredAt,
+    });
+  }
+
+  async function recordConsentCallbackRejection({
+    principal,
+    tenantContext,
+    correlationId,
+    reasonCode,
+  }) {
+    requireCorrelationId(correlationId);
+    await authorize({ principal, tenantContext, correlationId, operation: 'consent_callback' });
+    return auditService.record({
+      principal,
+      tenantContext,
+      correlationId,
+      action: AUDIT_ACTION.INTEGRATION_ADMIN_CONSENT_CHANGED,
+      targetType: 'integration',
+      targetId: 'microsoft365',
+      outcome: AUDIT_OUTCOME.FAILURE,
+      metadata: {
+        operation: 'admin_consent_callback_rejected',
+        reasonCode,
+      },
+      retentionClass: AUDIT_RETENTION_CLASS.SECURITY,
+    });
   }
 
   function verificationAuditEvent({
@@ -245,6 +295,7 @@ export function createMicrosoft365ConnectionService({
     finalStatus,
     reason,
     occurredAt,
+    outcome = null,
   }) {
     return auditService.createEvent({
       principal,
@@ -255,7 +306,7 @@ export function createMicrosoft365ConnectionService({
       targetId: integrationId,
       previousState: { provider: 'microsoft365', status: previousStatus },
       newState: { provider: 'microsoft365', status: finalStatus },
-      outcome: finalStatus === 'connected' ? AUDIT_OUTCOME.SUCCESS : AUDIT_OUTCOME.FAILURE,
+      outcome: outcome ?? (finalStatus === 'connected' ? AUDIT_OUTCOME.SUCCESS : AUDIT_OUTCOME.FAILURE),
       metadata: {
         operation: 'verify',
         ...(reason ? { reasonCode: reason } : {}),
@@ -268,29 +319,50 @@ export function createMicrosoft365ConnectionService({
   async function finalizeVerification({
     tenantContext,
     consumed,
+    providerTenantReference,
     verification,
     approved,
     auditEvents,
+    bindingUnavailableAuditEvent = null,
   }) {
     const at = changedAt(clock);
-    const status = approved ? providerStatus(verification) : 'disconnected';
-    const reason = approved ? (verification.reason ?? null) : 'consent_denied';
+    const preserveConnection = !approved
+      && ['connected', 'degraded', 'revoked'].includes(consumed.connectionStatus);
+    const status = approved
+      ? providerStatus(verification)
+      : preserveConnection ? consumed.connectionStatus : 'disconnected';
+    const reason = approved
+      ? (verification.reason ?? null)
+      : preserveConnection ? (consumed.connectionReason ?? null) : 'consent_denied';
+    const lastVerifiedAt = preserveConnection && consumed.lastVerifiedAt
+      ? new Date(consumed.lastVerifiedAt)
+      : null;
+    if (lastVerifiedAt && Number.isNaN(lastVerifiedAt.getTime())) {
+      throw new Microsoft365ConnectionUnavailableError('MICROSOFT365_CONNECTION_STATE_INVALID');
+    }
     const result = await repository.finalizeConsent({
       tenantId: tenantContext.tenantId,
       integrationId: consumed.integrationId,
+      providerTenantReference,
       connectionVersion: consumed.connectionVersion,
       status,
       placesPermission: approved
         ? verificationPermission(verification.places, PLACES_PERMISSIONS)
-        : 'unknown',
+        : preserveConnection ? consumed.placesPermission : 'unknown',
       calendarsPermission: approved
         ? verificationPermission(verification.calendars, CALENDAR_PERMISSIONS)
-        : 'unknown',
+        : preserveConnection ? consumed.calendarsPermission : 'unknown',
       reason,
-      lastVerifiedAt: approved ? at : null,
+      lastVerifiedAt: approved ? at : lastVerifiedAt,
       changedAt: at,
       auditEvents: auditEvents({ status, reason, occurredAt: at.toISOString() }),
+      bindingUnavailableAuditEvent: bindingUnavailableAuditEvent
+        ? bindingUnavailableAuditEvent({ occurredAt: at.toISOString() })
+        : null,
     });
+    if (result?.status === 'binding_unavailable') {
+      throw new Microsoft365ConnectionConflictError('MICROSOFT365_PROVIDER_TENANT_MISMATCH');
+    }
     if (result?.status === 'stale') throw new Microsoft365ConnectionConflictError('MICROSOFT365_CONNECTION_STALE');
     if (result?.status !== 'updated' || !result.connection) {
       throw new Microsoft365ConnectionUnavailableError();
@@ -340,6 +412,12 @@ export function createMicrosoft365ConnectionService({
       if (started?.status === 'provider_mismatch') {
         throw new Microsoft365ConnectionConflictError('MICROSOFT365_PROVIDER_TENANT_MISMATCH');
       }
+      if (started?.status === 'binding_unavailable') {
+        throw new Microsoft365ConnectionConflictError('MICROSOFT365_TENANT_NOT_CLAIMED');
+      }
+      if (started?.status === 'booking_reconciliation_required') {
+        throw new Microsoft365ConnectionConflictError('MICROSOFT365_BOOKING_RECONCILIATION_REQUIRED');
+      }
       if (started?.status !== 'pending') throw new Microsoft365ConnectionUnavailableError();
       return Object.freeze({ authorizationUrl, expiresAt: expiresAt.toISOString() });
     },
@@ -363,19 +441,56 @@ export function createMicrosoft365ConnectionService({
         throw new Microsoft365ConnectionInputError('MICROSOFT365_PROVIDER_TENANT_INVALID');
       }
 
+      const callbackAt = changedAt(clock);
       const consumed = await repository.consumeConsent({
         tenantId: tenantContext.tenantId,
         actorUserId: principal.userId,
         stateHash: sha256Hex(normalizedState),
-        now: changedAt(clock),
+        callbackProviderTenantReference: callbackTenant,
+        now: callbackAt,
+        rejectionAuditEventFor: consentRejectionAuditFactory({
+          principal,
+          tenantContext,
+          correlationId,
+          occurredAt: callbackAt.toISOString(),
+        }),
       });
-      if (!consumed) throw new Microsoft365ConnectionConflictError('MICROSOFT365_CONSENT_UNAVAILABLE');
+      if (consumed?.status !== 'consumed') {
+        const code = consumed?.reason === 'provider_tenant_mismatch'
+          || consumed?.reason === 'provider_binding_mismatch'
+          ? 'MICROSOFT365_PROVIDER_TENANT_MISMATCH'
+          : 'MICROSOFT365_CONSENT_UNAVAILABLE';
+        throw new Microsoft365ConnectionConflictError(code);
+      }
 
-      const binding = await bindingFor(tenantContext);
+      let binding;
+      try {
+        binding = await bindingFor(tenantContext);
+      } catch (error) {
+        await recordConsentCallbackRejection({
+          principal,
+          tenantContext,
+          correlationId,
+          reasonCode: 'provider_binding_changed',
+        });
+        throw error;
+      }
       if (consumed.providerTenantReference !== binding.providerTenantReference) {
+        await recordConsentCallbackRejection({
+          principal,
+          tenantContext,
+          correlationId,
+          reasonCode: 'provider_binding_changed',
+        });
         throw new Microsoft365ConnectionConflictError('MICROSOFT365_PROVIDER_TENANT_MISMATCH');
       }
       if (callbackTenant !== null && callbackTenant !== binding.providerTenantReference) {
+        await recordConsentCallbackRejection({
+          principal,
+          tenantContext,
+          correlationId,
+          reasonCode: 'provider_tenant_mismatch',
+        });
         throw new Microsoft365ConnectionConflictError('MICROSOFT365_PROVIDER_TENANT_MISMATCH');
       }
 
@@ -383,6 +498,7 @@ export function createMicrosoft365ConnectionService({
         return finalizeVerification({
           tenantContext,
           consumed,
+          providerTenantReference: consumed.providerTenantReference,
           verification: {
             status: MICROSOFT365_VERIFICATION.DEGRADED,
             places: 'unknown',
@@ -395,10 +511,21 @@ export function createMicrosoft365ConnectionService({
             tenantContext,
             correlationId,
             integrationId: consumed.integrationId,
+            previousStatus: consumed.connectionStatus,
             finalStatus: status,
-            reason,
+            reason: 'consent_denied',
             occurredAt,
             approved: false,
+          }),
+          bindingUnavailableAuditEvent: ({ occurredAt }) => consentRejectionAuditFactory({
+            principal,
+            tenantContext,
+            correlationId,
+            occurredAt,
+          })({
+            integrationId: consumed.integrationId,
+            previousStatus: consumed.connectionStatus,
+            reasonCode: 'provider_binding_changed',
           }),
         });
       }
@@ -410,6 +537,7 @@ export function createMicrosoft365ConnectionService({
       return finalizeVerification({
         tenantContext,
         consumed,
+        providerTenantReference: consumed.providerTenantReference,
         verification,
         approved: true,
         auditEvents: ({ status, reason, occurredAt }) => finalConsentAuditEvents({
@@ -417,10 +545,21 @@ export function createMicrosoft365ConnectionService({
           tenantContext,
           correlationId,
           integrationId: consumed.integrationId,
+          previousStatus: consumed.connectionStatus,
           finalStatus: status,
           reason,
           occurredAt,
           approved: true,
+        }),
+        bindingUnavailableAuditEvent: ({ occurredAt }) => consentRejectionAuditFactory({
+          principal,
+          tenantContext,
+          correlationId,
+          occurredAt,
+        })({
+          integrationId: consumed.integrationId,
+          previousStatus: consumed.connectionStatus,
+          reasonCode: 'provider_binding_changed',
         }),
       });
     },
@@ -444,6 +583,7 @@ export function createMicrosoft365ConnectionService({
           integrationId: connection.integrationId,
           connectionVersion: connection.connectionVersion,
         },
+        providerTenantReference: connection.providerTenantReference,
         verification,
         approved: true,
         auditEvents: ({ status, reason, occurredAt }) => [verificationAuditEvent({
@@ -456,8 +596,21 @@ export function createMicrosoft365ConnectionService({
           reason,
           occurredAt,
         })],
+        bindingUnavailableAuditEvent: ({ occurredAt }) => verificationAuditEvent({
+          principal,
+          tenantContext,
+          correlationId,
+          integrationId: connection.integrationId,
+          previousStatus: connection.status,
+          finalStatus: connection.status,
+          reason: 'provider_binding_changed',
+          occurredAt,
+          outcome: AUDIT_OUTCOME.FAILURE,
+        }),
       });
     },
+
+    recordConsentCallbackRejection,
 
     async disconnect({ principal, tenantContext, correlationId }) {
       requireCorrelationId(correlationId);

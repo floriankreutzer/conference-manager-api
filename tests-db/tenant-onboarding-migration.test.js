@@ -18,7 +18,7 @@ test('tenant onboarding migration refuses rollback when invitation or binding ev
   t.after(async () => pool.end());
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
-  for (let version = 16; version >= 9; version -= 1) {
+  for (let version = 18; version >= 9; version -= 1) {
     assert.equal(await rollbackLatest(pool), true);
   }
   assert.equal(await isPostgresSchemaReady(pool), false);

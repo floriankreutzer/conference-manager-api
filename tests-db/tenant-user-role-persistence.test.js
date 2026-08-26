@@ -10,7 +10,7 @@ import {
 import { createAuthorizationPolicy } from '../src/authorization/policy.js';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createJitUserService } from '../src/identity/jit-user-service.js';
-import { createSessionService } from '../src/identity/session-service.js';
+import { createSessionService, SessionServiceError } from '../src/identity/session-service.js';
 import { createPostgresAuditRepository } from '../src/persistence/postgres/audit-repository.js';
 import { createPostgresJitUserRepository } from '../src/persistence/postgres/jit-user-repository.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
@@ -197,6 +197,11 @@ test('tenant roles are claimant-bootstrapped, isolated, concurrent-safe and inva
   assert.deepEqual(promoted.roles, ['employee', 'conference_manager', 'tenant_admin']);
   assert.equal(await sessionService.resolvePrincipal(staleRequest), null);
 
+  await assert.rejects(
+    sessionService.issue(employee.trustedIdentity, { correlationId: CORR_A }),
+    (error) => error instanceof SessionServiceError && error.code === 'IDENTITY_NOT_PROVISIONED',
+  );
+
   const repeated = await jit.resolve(
     external(PROVIDER_TENANT_A, USER_REFERENCE, 'Employee A'),
     { correlationId: CORR_A },
@@ -280,6 +285,8 @@ test('tenant roles are claimant-bootstrapped, isolated, concurrent-safe and inva
 
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
+  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatest(pool), true);
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await rollbackLatest(pool), true);

@@ -68,7 +68,14 @@ function normalizeUtcInstant(value, code) {
 }
 
 export function normalizeTrustedIdentity(value) {
-  return normalizeIdentityCore(value);
+  const core = normalizeIdentityCore(value);
+  if (!Number.isSafeInteger(value.securityVersion) || value.securityVersion < 1) {
+    throw new TypeError('IDENTITY_SECURITY_VERSION_INVALID');
+  }
+  return Object.freeze({
+    ...core,
+    securityVersion: value.securityVersion,
+  });
 }
 
 export function normalizePrincipal(value) {

@@ -21,12 +21,16 @@ const TENANT_B = '20202020-2020-4020-8020-202020202020';
 const TENANT_C = '30303030-3030-4030-8030-303030303030';
 const TENANT_D = '40404040-4040-4040-8040-404040404040';
 const TENANT_E = '50505050-5050-4050-8050-505050505050';
+const TENANT_F = '51515151-5151-4151-8151-515151515151';
+const TENANT_G = '52525252-5252-4252-8252-525252525252';
 const BIND_A = '11111111-aaaa-4111-8111-111111111111';
 const BIND_B = '22222222-bbbb-4222-8222-222222222222';
 const BIND_C1 = '33333333-cccc-4333-8333-333333333333';
 const BIND_C2 = '34343434-cdcd-4434-8434-343434343434';
 const BIND_D = '44444444-dddd-4444-8444-444444444444';
 const BIND_E = '55555555-eeee-4555-8555-555555555555';
+const BIND_F = '56565656-fefe-4656-8656-565656565656';
+const BIND_G = '57575757-abab-4757-8757-575757575757';
 const USER_A1 = '61616161-6161-4161-8161-616161616161';
 const USER_A2 = '62626262-6262-4262-8262-626262626262';
 const USER_B = '63636363-6363-4363-8363-636363636363';
@@ -34,23 +38,31 @@ const USER_C1 = '64646464-6464-4464-8464-646464646464';
 const USER_C2 = '65656565-6565-4565-8565-656565656565';
 const USER_D = '66666666-6666-4666-8666-666666666666';
 const USER_E = '67676767-6767-4767-8767-676767676767';
+const USER_F = '68686868-6868-4868-8868-686868686868';
+const USER_G = '69696969-6969-4969-8969-696969696969';
 const CORR_A = '71717171-7171-4171-8171-717171717171';
 const CORR_B = '72727272-7272-4272-8272-727272727272';
 const CORR_C = '73737373-7373-4373-8373-737373737373';
 const CORR_D = '74747474-7474-4474-8474-747474747474';
 const CORR_E = '75757575-7575-4575-8575-757575757575';
+const CORR_F = '76767676-7676-4676-8676-767676767676';
+const CORR_G = '77777777-7777-4777-8777-777777777778';
 const PROVIDER_TENANT_A = '81818181-8181-4181-8181-818181818181';
 const PROVIDER_TENANT_B = '82828282-8282-4282-8282-828282828282';
 const PROVIDER_TENANT_C1 = '83838383-8383-4383-8383-838383838383';
 const PROVIDER_TENANT_C2 = '84848484-8484-4484-8484-848484848484';
 const PROVIDER_TENANT_D = '85858585-8585-4585-8585-858585858585';
 const PROVIDER_TENANT_E = '86868686-8686-4686-8686-868686868686';
+const PROVIDER_TENANT_F = '87878787-8787-4787-8787-878787878787';
+const PROVIDER_TENANT_G = '88888888-8888-4888-8888-888888888889';
 const PROVIDER_USER_SHARED = '91919191-9191-4191-8191-919191919191';
 const PROVIDER_USER_C = '92929292-9292-4292-8292-929292929292';
 const PROVIDER_USER_D = '93939393-9393-4393-8393-939393939393';
 const PROVIDER_USER_E = '94949494-9494-4494-8494-949494949494';
+const PROVIDER_USER_F = '95959595-9595-4595-8595-959595959595';
+const PROVIDER_USER_G = '96969696-9696-4696-8696-969696969696';
 const AUDIT_KEY = 'jit-user-persistence-audit-key-at-least-32-bytes';
-const TENANT_IDS = [TENANT_A, TENANT_B, TENANT_C, TENANT_D, TENANT_E];
+const TENANT_IDS = [TENANT_A, TENANT_B, TENANT_C, TENANT_D, TENANT_E, TENANT_F, TENANT_G];
 
 function databaseConfig() {
   const database = loadDatabaseConfig(process.env, 'test');
@@ -195,6 +207,17 @@ test('JIT provisioning is tenant-isolated, deterministic, concurrent-safe and au
   assert.ok(profileAudit);
   assert.equal(JSON.stringify(profileAudit).includes('Pilot User Renamed'), false);
 
+  const withoutName = await serviceA.resolve(
+    external(PROVIDER_TENANT_A, PROVIDER_USER_SHARED, null),
+    { correlationId: CORR_A },
+  );
+  assert.equal(withoutName.status, 'authenticated');
+  const profileAfterMissingName = await pool.query(
+    'SELECT display_name FROM users WHERE tenant_id = $1 AND id = $2',
+    [TENANT_A, resolvedUserA],
+  );
+  assert.equal(profileAfterMissingName.rows[0].display_name, 'Pilot User Renamed');
+
   const serviceB = jitService({
     repository,
     bindingRepository,
@@ -312,8 +335,65 @@ test('JIT provisioning is tenant-isolated, deterministic, concurrent-safe and au
   );
   assert.deepEqual(rollbackRows.rows[0], { user_count: 0, binding_count: 0 });
 
+  await seedTenantBinding(pool, {
+    tenantId: TENANT_F,
+    bindingId: BIND_F,
+    providerTenantReference: PROVIDER_TENANT_F,
+  });
+  const staleBindingRepository = {
+    async findActiveBindingByProvider(provider, providerTenantReference) {
+      const binding = await bindingRepository.findActiveBindingByProvider(provider, providerTenantReference);
+      await pool.query(
+        `UPDATE tenant_identity_bindings
+         SET status = 'unbound', updated_at = $2
+         WHERE id = $1`,
+        [BIND_F, '2026-08-24T14:55:00.000Z'],
+      );
+      return binding;
+    },
+  };
+  const serviceF = jitService({
+    repository,
+    bindingRepository: staleBindingRepository,
+    auditService,
+    userIds: [USER_F],
+  });
+  assert.deepEqual(await serviceF.resolve(
+    external(PROVIDER_TENANT_F, PROVIDER_USER_F, null),
+    { correlationId: CORR_F },
+  ), { status: 'onboarding_required' });
+  const fUsers = await pool.query(
+    'SELECT count(*)::int AS count FROM users WHERE tenant_id = $1',
+    [TENANT_F],
+  );
+  assert.equal(fUsers.rows[0].count, 0);
+
+  await seedTenantBinding(pool, {
+    tenantId: TENANT_G,
+    bindingId: BIND_G,
+    providerTenantReference: PROVIDER_TENANT_G,
+  });
+  const serviceG = jitService({
+    repository,
+    bindingRepository,
+    auditService,
+    userIds: [USER_G],
+  });
+  const fallbackUser = await serviceG.resolve(
+    external(PROVIDER_TENANT_G, PROVIDER_USER_G, null),
+    { correlationId: CORR_G },
+  );
+  assert.equal(fallbackUser.status, 'authenticated');
+  const fallbackProfile = await pool.query(
+    'SELECT display_name FROM users WHERE tenant_id = $1 AND id = $2',
+    [TENANT_G, USER_G],
+  );
+  assert.equal(fallbackProfile.rows[0].display_name, 'Provisioned user');
+
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
+  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatest(pool), true);
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await rollbackLatest(pool), true);

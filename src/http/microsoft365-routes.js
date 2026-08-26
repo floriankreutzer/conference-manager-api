@@ -194,9 +194,23 @@ export function createMicrosoft365HttpHandler({
 
     if (path === MICROSOFT365_ROUTES.callback) {
       if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+      await assertEmptyBody(request);
       const principal = await principalGuard.require(request);
       const tenantContext = await tenantGuard.requireKnown(principal);
-      const callback = callbackFromUrl(parsedUrl);
+      let callback;
+      try {
+        callback = callbackFromUrl(parsedUrl);
+      } catch (error) {
+        if (error instanceof ApiError && typeof service.recordConsentCallbackRejection === 'function') {
+          await service.recordConsentCallbackRejection({
+            principal,
+            tenantContext,
+            correlationId: requestId,
+            reasonCode: 'callback_validation_failed',
+          });
+        }
+        throw error;
+      }
       try {
         const connection = await service.completeConsent({
           principal,
@@ -215,6 +229,7 @@ export function createMicrosoft365HttpHandler({
     if (path === MICROSOFT365_ROUTES.pilotReadiness) {
       if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
       assertNoQuery(parsedUrl);
+      await assertEmptyBody(request);
       if (typeof service.getPilotReadiness !== 'function') throw new ApiError(503, 'TENANT_PILOT_SERVICE_UNAVAILABLE');
       const principal = await principalGuard.require(request);
       const tenantContext = await tenantGuard.requireKnown(principal);
@@ -226,6 +241,7 @@ export function createMicrosoft365HttpHandler({
     if (path === MICROSOFT365_ROUTES.rooms) {
       if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
       assertNoQuery(parsedUrl);
+      await assertEmptyBody(request);
       if (typeof service.discoverRooms !== 'function') throw new ApiError(503, 'MICROSOFT365_ROOM_DISCOVERY_UNAVAILABLE');
       const principal = await principalGuard.require(request);
       const tenantContext = await tenantGuard.requireKnown(principal);
@@ -237,6 +253,7 @@ export function createMicrosoft365HttpHandler({
     if (path === MICROSOFT365_ROUTES.roomMappings) {
       if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
       assertNoQuery(parsedUrl);
+      await assertEmptyBody(request);
       if (typeof service.listRoomMappings !== 'function') throw new ApiError(503, 'MICROSOFT365_ROOM_MAPPING_UNAVAILABLE');
       const principal = await principalGuard.require(request);
       const tenantContext = await tenantGuard.requireKnown(principal);
@@ -296,6 +313,7 @@ export function createMicrosoft365HttpHandler({
     if (mutation) await assertEmptyBody(request);
 
     if (path === MICROSOFT365_ROUTES.connection && method === 'GET') {
+      await assertEmptyBody(request);
       const connection = await service.getConnection({ principal, tenantContext, correlationId: requestId });
       sendJson(response, 200, { connection, requestId }, maxResponseBytes);
       return 200;

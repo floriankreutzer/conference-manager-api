@@ -31,6 +31,10 @@ function assertDisplayName(value) {
   }
 }
 
+function assertOptionalDisplayName(value) {
+  if (value !== null) assertDisplayName(value);
+}
+
 function assertDate(value) {
   if (!(value instanceof Date) || Number.isNaN(value.getTime())) throw new TypeError('JIT_CHANGED_AT_INVALID');
 }
@@ -92,6 +96,7 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
       providerTenantReference,
       providerUserReference,
       displayName,
+      fallbackDisplayName,
       newUserId,
       changedAt,
       provisionAuditEvent,
@@ -103,7 +108,8 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
       assertProvider(provider);
       assertReference(providerTenantReference, 'JIT_PROVIDER_TENANT_REFERENCE_INVALID');
       assertReference(providerUserReference, 'JIT_PROVIDER_USER_REFERENCE_INVALID');
-      assertDisplayName(displayName);
+      assertOptionalDisplayName(displayName);
+      assertDisplayName(fallbackDisplayName);
       assertUuid(newUserId, 'JIT_USER_ID_INVALID');
       assertDate(changedAt);
       if (typeof profileAuditEventFor !== 'function') throw new TypeError('JIT_PROFILE_AUDIT_FACTORY_REQUIRED');
@@ -124,6 +130,22 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
         });
         const tenantStatus = tenant.rows[0]?.status;
         if (!TENANT_LOGIN_STATUSES.has(tenantStatus)) return Object.freeze({ status: 'tenant_unavailable' });
+
+        const activeBinding = await client.query({
+          name: 'jit-lock-active-provider-tenant-binding',
+          text: `
+            SELECT claimant_provider_user_reference
+            FROM tenant_identity_bindings
+            WHERE tenant_id = $1
+              AND provider = $2
+              AND provider_tenant_reference = $3
+              AND status = 'active'
+            FOR SHARE
+          `,
+          values: [tenantId, provider, providerTenantReference],
+        });
+        const currentBinding = activeBinding.rows[0];
+        if (!currentBinding) return Object.freeze({ status: 'binding_unavailable' });
 
         const existing = await client.query({
           name: 'jit-find-provider-user-binding',
@@ -150,7 +172,7 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
         if (current) {
           if (current.active !== true) return Object.freeze({ status: 'user_disabled' });
           const elevatedRoles = await loadElevatedRoles(client, tenantId, current.user_id);
-          if (current.display_name !== displayName) {
+          if (displayName !== null && current.display_name !== displayName) {
             const updated = await client.query({
               name: 'jit-update-user-profile',
               text: `
@@ -180,7 +202,8 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
         }
 
         let bootstrapGranted = false;
-        if (bootstrapTenantAdmin) {
+        const bindingAllowsBootstrap = currentBinding.claimant_provider_user_reference === providerUserReference;
+        if (bootstrapTenantAdmin && bindingAllowsBootstrap) {
           await client.query({
             name: 'jit-role-bootstrap-lock',
             text: 'SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))',
@@ -213,7 +236,7 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
             VALUES ($1, $2, $3, true, $4, $4)
             RETURNING tenant_id, id AS user_id, display_name, active, security_version
           `,
-          values: [tenantId, newUserId, displayName, changedAt],
+          values: [tenantId, newUserId, displayName ?? fallbackDisplayName, changedAt],
         });
         if (insertedUser.rowCount !== 1) throw new Error('JIT_USER_CREATE_FAILED');
         await client.query({

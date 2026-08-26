@@ -22,7 +22,7 @@ function mapSessionRow(row) {
   });
 }
 
-async function loadSecurityContext(client, tenantId, userId) {
+async function loadSecurityContext(client, tenantId, userId, expectedSecurityVersion) {
   const result = await client.query({
     name: 'session-security-context',
     text: `
@@ -32,10 +32,11 @@ async function loadSecurityContext(client, tenantId, userId) {
       WHERE u.tenant_id = $1
         AND u.id = $2
         AND u.active = true
-        AND t.status = ANY($3::text[])
+        AND u.security_version = $3
+        AND t.status = ANY($4::text[])
       FOR SHARE OF u, t
     `,
-    values: [tenantId, userId, SESSION_TENANT_STATUSES],
+    values: [tenantId, userId, expectedSecurityVersion, SESSION_TENANT_STATUSES],
   });
   return result.rows[0] || null;
 }
@@ -94,7 +95,12 @@ export function createPostgresSessionRepository(pool, { auditRepository } = {}) 
   return Object.freeze({
     async issue(session, auditEvent) {
       return withPostgresTransaction(pool, async (client) => {
-        const securityContext = await loadSecurityContext(client, session.tenantId, session.userId);
+        const securityContext = await loadSecurityContext(
+          client,
+          session.tenantId,
+          session.userId,
+          session.expectedSecurityVersion,
+        );
         if (!securityContext) return null;
         const created = await insertSession(client, session, securityContext);
         await appendAudit(client, auditRepository, auditEvent);
@@ -164,7 +170,12 @@ export function createPostgresSessionRepository(pool, { auditRepository } = {}) 
         });
         if (current.rowCount !== 1) return null;
 
-        const securityContext = await loadSecurityContext(client, session.tenantId, session.userId);
+        const securityContext = await loadSecurityContext(
+          client,
+          session.tenantId,
+          session.userId,
+          session.expectedSecurityVersion,
+        );
         if (!securityContext) return null;
         const created = await insertSession(client, session, securityContext);
         await client.query({

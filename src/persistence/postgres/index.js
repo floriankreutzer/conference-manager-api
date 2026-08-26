@@ -6,6 +6,7 @@ import {
 import { createPostgresApplicationRepository } from './application-repository.js';
 import { createPostgresAuditRepository } from './audit-repository.js';
 import { createPostgresBookingReferenceRepository } from './booking-reference-repository.js';
+import { createPostgresMicrosoft365CalendarAuthorityGuard } from './calendar-authority-guard.js';
 import { createPostgresEntitlementRepository } from './entitlement-repository.js';
 import { createPostgresJitUserRepository } from './jit-user-repository.js';
 import {
@@ -25,6 +26,7 @@ export function createPostgresPersistence(config) {
   const auditRepository = createPostgresAuditRepository(pool, {
     hmacSecret: config.auditHmacSecret,
   });
+  const calendarAuthorityGuard = createPostgresMicrosoft365CalendarAuthorityGuard();
   const applicationRepository = createPostgresApplicationRepository(pool, { auditRepository });
   const tenantRepository = createPostgresTenantRepository(pool, { auditRepository });
   const bookingReferenceRepository = createPostgresBookingReferenceRepository(pool, { auditRepository });
@@ -35,7 +37,10 @@ export function createPostgresPersistence(config) {
   const microsoft365RoomMappingRepository = createPostgresMicrosoft365RoomMappingRepository(pool, { auditRepository });
   const oidcTransactionRepository = createPostgresOidcTransactionRepository(pool);
   const sessionRepository = createPostgresSessionRepository(pool, { auditRepository });
-  const requestRepository = createPostgresRequestRepository(pool, { auditRepository });
+  const requestRepository = createPostgresRequestRepository(pool, {
+    auditRepository,
+    calendarAuthorityGuard,
+  });
   const tenantOnboardingRepository = createPostgresTenantOnboardingRepository(pool, { auditRepository });
   const tenantUserAdminRepository = createPostgresTenantUserAdminRepository(pool, { auditRepository });
 

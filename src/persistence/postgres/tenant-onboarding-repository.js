@@ -410,13 +410,57 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
           values: [tenantId],
         });
         if (tenant.rowCount !== 1) return null;
+        await client.query({
+          name: 'onboarding-lock-microsoft365-for-unbind',
+          text: `
+            SELECT id
+            FROM integrations
+            WHERE tenant_id = $1
+              AND provider = 'microsoft365'
+            FOR UPDATE
+          `,
+          values: [tenantId],
+        });
+        const activeBinding = await client.query({
+          name: 'onboarding-lock-active-identity-for-unbind',
+          text: `
+            SELECT
+              id,
+              tenant_id,
+              provider,
+              provider_tenant_reference,
+              claimant_provider_user_reference,
+              status,
+              created_at,
+              updated_at
+            FROM tenant_identity_bindings
+            WHERE tenant_id = $1
+              AND provider = $2
+              AND status = 'active'
+            FOR UPDATE
+          `,
+          values: [tenantId, provider],
+        });
+        if (activeBinding.rowCount !== 1) return null;
+        const unresolvedBookings = await client.query({
+          name: 'onboarding-unbind-block-unresolved-bookings',
+          text: `
+            SELECT 1
+            FROM booking_provider_references
+            WHERE tenant_id = $1
+              AND state <> 'cancelled'
+            LIMIT 1
+            FOR UPDATE
+          `,
+          values: [tenantId],
+        });
+        if (unresolvedBookings.rowCount > 0) return null;
         const result = await client.query({
           name: 'onboarding-unbind-active-identity',
           text: `
             UPDATE tenant_identity_bindings
-            SET status = 'unbound', updated_at = $3
-            WHERE tenant_id = $1
-              AND provider = $2
+            SET status = 'unbound', updated_at = $2
+            WHERE id = $1
               AND status = 'active'
             RETURNING
               id,
@@ -428,9 +472,53 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
               created_at,
               updated_at
           `,
-          values: [tenantId, provider, changedAt],
+          values: [activeBinding.rows[0].id, changedAt],
         });
         if (result.rowCount !== 1) return null;
+        await client.query({
+          name: 'onboarding-unbind-invalidate-user-security-versions',
+          text: `
+            UPDATE users
+            SET security_version = security_version + 1,
+                updated_at = GREATEST(updated_at, $2)
+            WHERE tenant_id = $1
+          `,
+          values: [tenantId, changedAt],
+        });
+        await client.query({
+          name: 'onboarding-unbind-revoke-sessions',
+          text: `
+            UPDATE sessions
+            SET revoked_at = GREATEST(issued_at, $2)
+            WHERE tenant_id = $1
+              AND revoked_at IS NULL
+          `,
+          values: [tenantId, changedAt],
+        });
+        await client.query({
+          name: 'onboarding-unbind-delete-microsoft365-consent',
+          text: `
+            DELETE FROM microsoft365_consent_transactions
+            WHERE tenant_id = $1
+          `,
+          values: [tenantId],
+        });
+        await client.query({
+          name: 'onboarding-unbind-disconnect-microsoft365',
+          text: `
+            UPDATE integrations
+            SET status = 'disconnected',
+                connection_version = connection_version + 1,
+                last_verified_at = NULL,
+                connection_reason = NULL,
+                places_permission_status = 'unknown',
+                calendars_permission_status = 'unknown',
+                updated_at = GREATEST(updated_at, $2)
+            WHERE tenant_id = $1
+              AND provider = 'microsoft365'
+          `,
+          values: [tenantId, changedAt],
+        });
         const audit = await auditRepository.appendWithClient(client, auditEvent);
         if (!audit) throw new Error('AUDIT_APPEND_FAILED');
         return mapBinding(result.rows[0]);

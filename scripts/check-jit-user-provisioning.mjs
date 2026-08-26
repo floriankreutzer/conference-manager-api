@@ -8,7 +8,9 @@ for (const required of [
   'snapshot.permissions',
   'external.tenantReference',
   'providerTenantReference: external.tenantReference',
+  'fallbackDisplayName: JIT_FALLBACK_DISPLAY_NAME',
   'tenantBinding.tenantId',
+  'securityVersion: result.identity.securityVersion',
   "status: 'authentication_denied'",
   "status: 'onboarding_required'",
 ]) {
@@ -37,6 +39,10 @@ for (const required of [
   'b.provider = $2',
   'b.provider_tenant_reference = $3',
   'b.provider_user_reference = $4',
+  'jit-lock-active-provider-tenant-binding',
+  "AND status = 'active'",
+  "status: 'binding_unavailable'",
+  'displayName ?? fallbackDisplayName',
   "status: 'tenant_unavailable'",
   "status: 'user_disabled'",
   'appendWithClient(client, provisionAuditEvent)',
@@ -69,6 +75,17 @@ for (const required of [
 const persistence = await readFile('src/persistence/postgres/index.js', 'utf8');
 for (const required of ['createPostgresJitUserRepository', 'jitUserRepository']) {
   if (!persistence.includes(required)) throw new Error(`PostgreSQL composition is missing ${required}.`);
+}
+
+const sessionRepository = await readFile('src/persistence/postgres/session-repository.js', 'utf8');
+for (const required of [
+  'expectedSecurityVersion',
+  'AND u.security_version = $3',
+  'FOR SHARE OF u, t',
+]) {
+  if (!sessionRepository.includes(required)) {
+    throw new Error(`Session persistence is missing JIT authorization-snapshot invariant ${required}.`);
+  }
 }
 
 const runtime = await readFile('src/index.js', 'utf8');

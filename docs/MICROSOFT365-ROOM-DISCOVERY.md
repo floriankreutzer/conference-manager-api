@@ -52,7 +52,7 @@ Provider objects are untrusted input. Missing optional properties normalize to `
 
 ## Pagination and outbound controls
 
-The provider client constructs the Graph URL itself. Discovery uses bounded pages of 100 and a maximum of 100 pages. `$skip` is generated server-side; provider-controlled continuation URLs are not followed. Every request is restricted to the configured Microsoft Graph origin, uses redirects disabled, and inherits the existing bounded timeout and response-size controls.
+The provider client constructs the initial Graph URL itself. Discovery uses bounded pages of 100, at most 10 pages, at most 1,000 collected rooms, and at most 1,000,000 serialized collection bytes. The aggregate bounds are checked before a page is added to the materialized response. Microsoft Graph `@odata.nextLink` values are followed as opaque URLs only when they retain the exact approved Graph origin, room-list path, `$top=100`, the original `$select`, and exactly one `$skip` or `$skiptoken` continuation; credentials, fragments, duplicate parameters, unknown query controls and loops fail closed. Every request uses redirects disabled. One shared configured deadline covers identity/token transport and every Graph page rather than restarting for each call. Each individual provider response remains subject to its existing response-size bound.
 
 This trades a finite maximum discovery set for a deterministic SSRF-safe outbound contract. A tenant exceeding the bound receives an unavailable discovery result instead of unbounded Graph traversal.
 
@@ -74,6 +74,6 @@ Room import and synchronization ownership are intentionally outside this contrac
 
 ## Test evidence
 
-Automated coverage includes nominal normalization, malformed required data, bounded pagination, permission and throttling errors, fixed Graph destination, provider-Tenant mismatch, authorization/authentication boundaries, browser-selected Tenant/query rejection, and token/redaction checks. Repository quality, dependency, secret and PostgreSQL integration gates pass on the reviewed PR head.
+Automated coverage includes nominal normalization, malformed required data, bounded pagination and aggregate materialization, one total deadline, permission and throttling errors, fixed Graph destination, provider-Tenant mismatch, authorization/authentication boundaries, browser-selected Tenant/query/body rejection, and token/redaction checks. Repository quality, dependency, secret and PostgreSQL integration gates pass on the reviewed PR head.
 
 Real room discovery against customer Microsoft tenants remains an external Pilot acceptance step and must not be claimed until executed with actual Entra consent.

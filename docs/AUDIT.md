@@ -47,7 +47,7 @@ Keys containing credential-sensitive concepts are rejected, including password, 
 
 Session events identify the internal User as target and use only role/permission counts or non-secret state labels. Raw session ID, token, hash and provider subject values are intentionally excluded.
 
-Microsoft 365 lifecycle events contain only bounded operation, status and reason codes. They exclude internal or provider Tenant IDs, provider User IDs, raw consent state, credentials, access tokens, provider response bodies and provider error descriptions.
+Microsoft 365 lifecycle events contain only bounded operation, status and reason codes. Authenticated malformed, denied, expired, replayed, and binding-mismatch consent callbacks are persisted with stable redacted reason codes, including when no authoritative connection mutation succeeds. They exclude internal or provider Tenant IDs, provider User IDs, raw consent state, credentials, access tokens, provider response bodies and provider error descriptions.
 
 ## Append-only and tamper evidence
 
@@ -75,7 +75,7 @@ Successful Request creation and transitions, session issue/revoke/rotation, enti
 
 Production Request creation emits `request.created` only after the server derives the internal Tenant, requester, request identifier, initial workflow status and correlation context. The browser cannot supply audit actor/Tenant/outcome data or an authoritative workflow status. Migration 015 adds `request.created` to the database action allowlist and refuses rollback while such durable evidence exists.
 
-For Microsoft 365, the atomic boundary covers consent-state persistence, connection-state/version changes and local disconnect. External Microsoft consent or Graph calls cannot participate in the PostgreSQL transaction and are never described as transactionally atomic with local state.
+For Microsoft 365, the atomic boundary covers consent-state persistence, connection-state/version changes, active provider-binding revalidation, callback rejection evidence and local disconnect. External Microsoft consent or Graph calls cannot participate in the PostgreSQL transaction and are never described as transactionally atomic with local state.
 
 Failures that produce no authoritative mutation are appended as separate failure or denial events when a valid Tenant and actor context exists. Events for identities that cannot be mapped to a valid internal Tenant belong to the platform/security telemetry boundary rather than being forced into another Tenant's audit trail.
 

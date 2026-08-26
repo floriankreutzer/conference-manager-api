@@ -7,6 +7,7 @@ import {
   CalendarProviderError,
   PROVIDER_ERROR_KIND,
   RESERVATION_PHASE,
+  assertCalendarProvider,
   classifyProviderError,
 } from '../src/integrations/calendar-contract.js';
 
@@ -48,9 +49,13 @@ function repository() {
   return {
     async hasConflictingRequest() { return false; },
     async findProviderReferenceByRequest() { return null; },
+    async reserveProviderResourceBinding() { throw new Error('UNEXPECTED_PERSISTENCE_CALL'); },
+    async retryProviderResourceBinding() { throw new Error('UNEXPECTED_PERSISTENCE_CALL'); },
     async createProviderReference() { throw new Error('UNEXPECTED_PERSISTENCE_CALL'); },
     async touchProviderReference() { throw new Error('UNEXPECTED_PERSISTENCE_CALL'); },
     async cancelProviderReference() { throw new Error('UNEXPECTED_PERSISTENCE_CALL'); },
+    async beginCompensatingProviderReference() { throw new Error('UNEXPECTED_PERSISTENCE_CALL'); },
+    async completeCompensatingProviderReference() { throw new Error('UNEXPECTED_PERSISTENCE_CALL'); },
   };
 }
 
@@ -67,6 +72,8 @@ test('missing tenant entitlement short-circuits the provider even after business
     repository: repository(),
     provider: {
       integrationId: INTEGRATION_ID,
+      providerConnectionReference: 'provider-tenant-a',
+      providerResourceReference: 'room-1@example.invalid',
       async lookupAvailability() {
         providerCalls += 1;
         return { available: true, conflictCount: 0 };
@@ -77,7 +84,11 @@ test('missing tenant entitlement short-circuits the provider even after business
       },
       async createCalendarEvent() {
         providerCalls += 1;
-        return { providerReference: 'event-1', disposition: 'created' };
+        return {
+          providerReference: 'event-1',
+          providerResourceReference: 'room-1@example.invalid',
+          disposition: 'created',
+        };
       },
       async updateCalendarEvent() {
         providerCalls += 1;
@@ -114,4 +125,33 @@ test('duplicate, conflict, and unknown provider failures are not blindly retryab
   assert.equal(unknown.kind, PROVIDER_ERROR_KIND.UNKNOWN);
   assert.equal(unknown.retryable, false);
   assert.equal(unknown.code, 'CALENDAR_PROVIDER_FAILED');
+});
+
+test('calendar adapters must expose a bounded create-time provider resource binding', () => {
+  const provider = {
+    integrationId: INTEGRATION_ID,
+    providerConnectionReference: 'provider-tenant-a',
+    async lookupAvailability() {},
+    async validateReservation() {},
+    async createCalendarEvent() {},
+    async updateCalendarEvent() {},
+    async cancelCalendarEvent() {},
+  };
+  assert.throws(
+    () => assertCalendarProvider(provider),
+    /CALENDAR_PROVIDER_RESOURCE_REFERENCE_INVALID/,
+  );
+  assert.throws(
+    () => assertCalendarProvider({ ...provider, providerResourceReference: ' invalid ' }),
+    /CALENDAR_PROVIDER_RESOURCE_REFERENCE_INVALID/,
+  );
+  assert.equal(
+    assertCalendarProvider({
+      ...provider,
+      providerConnectionReference: 'provider-tenant-a',
+      providerResourceReference: 'room-1@example.invalid',
+    })
+      .providerResourceReference,
+    'room-1@example.invalid',
+  );
 });

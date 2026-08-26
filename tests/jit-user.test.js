@@ -77,6 +77,7 @@ test('first JIT login emits only the safe Employee authorization snapshot', asyn
     },
     roles: ['employee'],
     permissions: ['request:read', 'request:cancel'],
+    securityVersion: 1,
   });
   assert.deepEqual(capture.bindings, [{
     provider: 'microsoft_entra',
@@ -115,13 +116,30 @@ test('malformed provider identity fails closed before binding lookup', async () 
     {},
     external({ tenantReference: '../../tenant' }),
     external({ userReference: '' }),
-    external({ displayName: null }),
+    external({ displayName: 42 }),
     external({ displayName: ' name with outer whitespace ' }),
   ];
   for (const identity of invalid) {
     const resolved = await service().resolve(identity, { correlationId: CORRELATION_ID });
     assert.deepEqual(resolved, { status: 'authentication_denied' });
   }
+});
+
+test('missing optional provider display name uses only the server fallback for provisioning', async () => {
+  const capture = { provision: [] };
+  const resolved = await service({ capture }).resolve(external({ displayName: null }), {
+    correlationId: CORRELATION_ID,
+  });
+  assert.equal(resolved.status, 'authenticated');
+  assert.equal(capture.provision[0].displayName, null);
+  assert.equal(capture.provision[0].fallbackDisplayName, 'Provisioned user');
+});
+
+test('binding loss detected by the atomic repository boundary never issues an identity', async () => {
+  const resolved = await service({ result: { status: 'binding_unavailable' } }).resolve(external(), {
+    correlationId: CORRELATION_ID,
+  });
+  assert.deepEqual(resolved, { status: 'onboarding_required' });
 });
 
 test('profile update audit factory is user-bound and contains no display-name PII', async () => {

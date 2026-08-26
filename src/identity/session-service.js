@@ -52,6 +52,7 @@ function sessionRecord(identity, { id, token, issuedAt, expiresAt }) {
     providerIdentity: identity.providerIdentity,
     roles: identity.roles,
     permissions: identity.permissions,
+    expectedSecurityVersion: identity.securityVersion,
     issuedAt,
     expiresAt,
   });

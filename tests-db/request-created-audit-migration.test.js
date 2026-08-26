@@ -54,6 +54,8 @@ test('request-created audit migration allows evidence and rolls back fail-closed
 
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
+  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatest(pool), true);
   await assert.rejects(
     rollbackLatest(pool),
     (error) => error.code === '55000'

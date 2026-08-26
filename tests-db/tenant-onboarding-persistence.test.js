@@ -9,6 +9,7 @@ import { OnboardingDeniedError } from '../src/onboarding/errors.js';
 import { createTenantOnboardingService } from '../src/onboarding/tenant-onboarding-service.js';
 import { createPostgresAuditRepository } from '../src/persistence/postgres/audit-repository.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
+import { createPostgresSessionRepository } from '../src/persistence/postgres/session-repository.js';
 import { createPostgresTenantOnboardingRepository } from '../src/persistence/postgres/tenant-onboarding-repository.js';
 import { migrateUp } from '../scripts/db-migrations.mjs';
 
@@ -41,6 +42,9 @@ const PROVIDER_TENANT_E1 = '33333333-3333-4333-8333-333333333333';
 const PROVIDER_TENANT_E2 = '44444444-4444-4444-8444-444444444444';
 const PROVIDER_TENANT_F = '55555555-5555-4555-8555-555555555555';
 const PROVIDER_USER = '66666666-6666-4666-8666-666666666666';
+const SESSION_USER_A = '77777777-7777-4777-8777-777777777777';
+const SESSION_A = '88888888-8888-4888-8888-888888888888';
+const INTEGRATION_A = '99999999-9999-4999-8999-999999999999';
 const AUDIT_KEY = 'tenant-onboarding-persistence-audit-key-at-least-32-bytes';
 const SECRET = 'tenant-onboarding-persistence-secret-at-least-32-bytes';
 let nowMs = Date.parse('2026-08-24T12:00:00.000Z');
@@ -86,6 +90,9 @@ async function cleanup(pool) {
   const tenantIds = [TENANT_A, TENANT_B, TENANT_C, TENANT_D, TENANT_E, TENANT_F];
   await pool.query('DELETE FROM tenant_claim_transactions');
   await pool.query('DELETE FROM oidc_auth_transactions');
+  await pool.query('DELETE FROM sessions WHERE tenant_id = ANY($1::uuid[])', [tenantIds]);
+  await pool.query('DELETE FROM integrations WHERE tenant_id = ANY($1::uuid[])', [tenantIds]);
+  await pool.query('DELETE FROM users WHERE tenant_id = ANY($1::uuid[])', [tenantIds]);
   await pool.query('DELETE FROM tenant_identity_bindings WHERE tenant_id = ANY($1::uuid[])', [tenantIds]);
   await pool.query('DELETE FROM tenant_onboarding_invitations WHERE tenant_id = ANY($1::uuid[])', [tenantIds]);
   await pool.query('ALTER TABLE audit_events DISABLE TRIGGER audit_events_append_only');
@@ -360,4 +367,75 @@ test('tenant onboarding is isolated, single-use, conflict-safe, concurrent and a
   assert.equal(rollbackF.rows[0].binding_count, 0);
   assert.equal(rollbackF.rows[0].consumed_at, null);
   assert.equal(rollbackF.rows[0].tenant_status, 'pending');
+
+  await pool.query(
+    `INSERT INTO users (tenant_id, id, display_name, security_version, created_at, updated_at)
+     VALUES ($1, $2, 'Tenant A session user', 1, $3, $3)`,
+    [TENANT_A, SESSION_USER_A, '2026-08-24T11:00:00.000Z'],
+  );
+  await pool.query(
+    `INSERT INTO sessions (
+       id, tenant_id, user_id, token_hash, provider, provider_identity_reference,
+       roles, permissions, principal_version, issued_at, expires_at
+     ) VALUES ($1, $2, $3, $4, 'microsoft_entra', $5, $6::text[], $7::text[], 1, $8, $9)`,
+    [
+      SESSION_A,
+      TENANT_A,
+      SESSION_USER_A,
+      '7'.repeat(64),
+      PROVIDER_USER,
+      ['employee'],
+      ['request:read'],
+      '2026-08-24T11:00:00.000Z',
+      '2026-08-25T11:00:00.000Z',
+    ],
+  );
+  await pool.query(
+    `INSERT INTO integrations (
+       tenant_id, id, provider, provider_reference, status, connection_version,
+       last_verified_at, connection_reason, places_permission_status,
+       calendars_permission_status, created_at, updated_at
+     ) VALUES ($1, $2, 'microsoft365', $3, 'connected', 1, $4, NULL, 'granted', 'granted', $4, $4)`,
+    [TENANT_A, INTEGRATION_A, PROVIDER_TENANT_A, '2026-08-24T11:00:00.000Z'],
+  );
+  const sessionRepository = createPostgresSessionRepository(pool, { auditRepository });
+  assert.ok(await sessionRepository.resolveByTokenHash(
+    '7'.repeat(64),
+    new Date('2026-08-24T11:30:00.000Z'),
+  ));
+
+  const unbound = await serviceA.unbindTenantIdentity({
+    operatorContext: { kind: 'platform-operator' },
+    tenantId: TENANT_A,
+    correlationId: CORR_A,
+    reason: 'security authority removed',
+  });
+  assert.equal(unbound.status, 'unbound');
+  assert.equal(await sessionRepository.resolveByTokenHash(
+    '7'.repeat(64),
+    new Date('2026-08-24T12:00:01.000Z'),
+  ), null);
+  const invalidated = await pool.query(
+    `SELECT
+       u.security_version::int AS security_version,
+       s.revoked_at,
+       i.status AS integration_status,
+       i.connection_version::int AS connection_version,
+       i.places_permission_status,
+       i.calendars_permission_status
+     FROM users u
+     JOIN sessions s ON s.tenant_id = u.tenant_id AND s.user_id = u.id
+     JOIN integrations i ON i.tenant_id = u.tenant_id AND i.id = $3
+     WHERE u.tenant_id = $1 AND u.id = $2`,
+    [TENANT_A, SESSION_USER_A, INTEGRATION_A],
+  );
+  assert.deepEqual(invalidated.rows[0], {
+    security_version: 2,
+    revoked_at: new Date('2026-08-24T12:00:00.000Z'),
+    integration_status: 'disconnected',
+    connection_version: 2,
+    places_permission_status: 'unknown',
+    calendars_permission_status: 'unknown',
+  });
+  assert.equal(await auditRepository.verifyTenantChain(TENANT_A), true);
 });

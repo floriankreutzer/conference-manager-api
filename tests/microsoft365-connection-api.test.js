@@ -125,6 +125,9 @@ function options({ authenticated = true, overrides = {} } = {}) {
       calls.push({ operation: 'callback', value });
       return connection(value.approved ? 'connected' : 'disconnected');
     },
+    async recordConsentCallbackRejection(value) {
+      calls.push({ operation: 'callback_rejection_audit', value });
+    },
     async verifyConnection(value) {
       calls.push({ operation: 'verify', value });
       return connection();
@@ -285,7 +288,12 @@ test('callback query pollution and provider-state conflicts fail closed without 
       assert.equal(response.statusCode, 400);
       assert.equal(response.body.error.code, 'VALIDATION_FAILED');
     }
-    assert.equal(polluted.calls.length, 0);
+    assert.equal(polluted.calls.length, 7);
+    assert.equal(polluted.calls.every((entry) => entry.operation === 'callback_rejection_audit'), true);
+    assert.equal(
+      polluted.calls.every((entry) => entry.value.reasonCode === 'callback_validation_failed'),
+      true,
+    );
   });
 
   const conflict = options({
@@ -304,6 +312,26 @@ test('callback query pollution and provider-state conflicts fail closed without 
     assert.equal(response.headers.location, '/?integration=microsoft365_connection_failed');
     assert.equal(JSON.stringify(response).includes('PROVIDER_SECRET_DETAIL'), false);
     assert.equal(JSON.stringify(response).includes('sensitive'), false);
+  });
+});
+
+test('Microsoft 365 GET endpoints reject request bodies before service execution', async () => {
+  const value = options();
+  await withServer(value.serverOptions, async (port) => {
+    for (const path of [
+      '/api/v1/integrations/microsoft365',
+      `/api/v1/integrations/microsoft365/callback?error=access_denied&state=${STATE}`,
+    ]) {
+      const response = await request({
+        port,
+        path,
+        headers: { 'Content-Length': '2', 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      assert.equal(response.statusCode, 400);
+      assert.equal(response.body.error.code, 'REQUEST_BODY_NOT_ALLOWED');
+    }
+    assert.equal(value.calls.length, 0);
   });
 });
 

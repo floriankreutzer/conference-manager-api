@@ -8,6 +8,7 @@ import {
   AuthorizationInputError,
   RequestStateConflictError,
 } from '../authorization/errors.js';
+import { BOOKING_OPERATION } from '../authorization/policy.js';
 import { isRequestId } from '../domain/request.js';
 import { REQUEST_STATUS, REQUEST_TRANSITION } from '../domain/request-workflow.js';
 import { RESERVATION_PHASE } from '../integrations/calendar-contract.js';
@@ -20,12 +21,21 @@ function assertRequestId(requestId) {
   if (!isRequestId(requestId)) throw new AuthorizationInputError('REQUEST_ID_INVALID');
 }
 
+export class RequestCancellationReconciliationError extends Error {
+  constructor(options = {}) {
+    super('REQUEST_CANCELLATION_RECONCILIATION_REQUIRED', options);
+    this.name = 'RequestCancellationReconciliationError';
+    this.code = 'REQUEST_CANCELLATION_RECONCILIATION_REQUIRED';
+  }
+}
+
 export function createRequestService({
   repository,
   authorizationPolicy,
   auditService,
-  finalRoomConfirmationService = null,
+  finalRoomConfirmationService,
   bookingServiceFactory = null,
+  metrics = null,
   clock = () => Date.now(),
 } = {}) {
   if (
@@ -39,6 +49,7 @@ export function createRequestService({
     !authorizationPolicy
     || typeof authorizationPolicy.authorizeRequestRead !== 'function'
     || typeof authorizationPolicy.authorizeRequestTransition !== 'function'
+    || typeof authorizationPolicy.authorizeRequestReconciliation !== 'function'
   ) {
     throw new TypeError('AUTHORIZATION_POLICY_REQUIRED');
   }
@@ -50,11 +61,26 @@ export function createRequestService({
   ) {
     throw new TypeError('AUDIT_SERVICE_REQUIRED');
   }
-  if (finalRoomConfirmationService !== null && typeof finalRoomConfirmationService?.confirm !== 'function') {
-    throw new TypeError('FINAL_ROOM_CONFIRMATION_SERVICE_INVALID');
+  if (!finalRoomConfirmationService || typeof finalRoomConfirmationService.confirm !== 'function') {
+    throw new TypeError('FINAL_ROOM_CONFIRMATION_SERVICE_REQUIRED');
   }
-  if (bookingServiceFactory !== null && typeof bookingServiceFactory?.forRequest !== 'function') {
+  if (
+    bookingServiceFactory !== null
+    && (
+      typeof bookingServiceFactory?.forCancellation !== 'function'
+      || typeof bookingServiceFactory?.requiresCancellation !== 'function'
+    )
+  ) {
     throw new TypeError('BOOKING_SERVICE_FACTORY_INVALID');
+  }
+  if (
+    bookingServiceFactory !== null
+    && typeof authorizationPolicy.authorizeBookingOperation !== 'function'
+  ) {
+    throw new TypeError('BOOKING_AUTHORIZATION_REQUIRED');
+  }
+  if (metrics !== null && typeof metrics?.recordBookingOperation !== 'function') {
+    throw new TypeError('REQUEST_METRICS_INVALID');
   }
   if (typeof clock !== 'function') throw new TypeError('CLOCK_REQUIRED');
 
@@ -110,15 +136,97 @@ export function createRequestService({
     });
   }
 
-  async function synchronizeCancellation({ principal, tenantContext, request, correlationId }) {
-    if (!bookingServiceFactory || !request.roomId) return;
-    const service = await bookingServiceFactory.forRequest(request);
-    await service.cancelCalendarEvent(bookingContext(
+  async function failCalendarReconciliation({
+    principal,
+    tenantContext,
+    request,
+    correlationId,
+    reasonCode,
+    cause,
+  }) {
+    metrics?.recordBookingOperation({ operation: 'cancel', outcome: 'failure' });
+    let auditError = null;
+    try {
+      await auditService.record({
+        principal,
+        tenantContext,
+        correlationId,
+        action: AUDIT_ACTION.CALENDAR_OPERATION,
+        targetType: 'request',
+        targetId: request.id,
+        previousState: { calendarState: 'reconciliation_required' },
+        outcome: AUDIT_OUTCOME.FAILURE,
+        metadata: { operation: 'cancel', reasonCode },
+        retentionClass: AUDIT_RETENTION_CLASS.BUSINESS,
+      });
+    } catch (error) {
+      auditError = error;
+    }
+    throw new RequestCancellationReconciliationError({
+      cause: auditError
+        ? new AggregateError([cause, auditError], 'CALENDAR_RECONCILIATION_OBSERVABILITY_FAILED')
+        : cause,
+    });
+  }
+
+  async function calendarCleanupRequired({ principal, tenantContext, request, correlationId }) {
+    if (!bookingServiceFactory || !request.roomId) return false;
+    const authorized = authorizationPolicy.authorizeBookingOperation(
       principal,
       tenantContext,
       request,
-      correlationId,
-    ));
+      BOOKING_OPERATION.CANCEL,
+    );
+    if (authorized !== true) return false;
+    try {
+      return await bookingServiceFactory.requiresCancellation(request);
+    } catch (error) {
+      return failCalendarReconciliation({
+        principal,
+        tenantContext,
+        request,
+        correlationId,
+        reasonCode: 'reference_lookup_unavailable',
+        cause: error,
+      });
+    }
+  }
+
+  async function synchronizeCancellation({ principal, tenantContext, request, correlationId, enabled }) {
+    if (!enabled) return;
+    let service;
+    try {
+      service = await bookingServiceFactory.forCancellation(request);
+      if (!service || typeof service.cancelCalendarEvent !== 'function') {
+        throw new TypeError('CALENDAR_CANCELLATION_SERVICE_INVALID');
+      }
+    } catch (error) {
+      return failCalendarReconciliation({
+        principal,
+        tenantContext,
+        request,
+        correlationId,
+        reasonCode: 'cancellation_factory_unavailable',
+        cause: error,
+      });
+    }
+    try {
+      await service.cancelCalendarEvent(bookingContext(
+        principal,
+        tenantContext,
+        request,
+        correlationId,
+      ));
+    } catch (error) {
+      throw new RequestCancellationReconciliationError({ cause: error });
+    }
+  }
+
+  function releaseStatusFor(transition) {
+    if (transition === REQUEST_TRANSITION.CANCEL) return REQUEST_STATUS.CANCELLED;
+    if (transition === REQUEST_TRANSITION.REJECT) return REQUEST_STATUS.REJECTED;
+    if (transition === REQUEST_TRANSITION.REQUEST_CHANGE) return REQUEST_STATUS.CHANGE_REQUESTED;
+    return null;
   }
 
   return Object.freeze({
@@ -160,7 +268,7 @@ export function createRequestService({
       correlationId,
     }) {
       assertRequestId(requestId);
-      if (transition === REQUEST_TRANSITION.CONFIRM && finalRoomConfirmationService) {
+      if (transition === REQUEST_TRANSITION.CONFIRM) {
         if (reason !== undefined && reason !== null) {
           throw new AuthorizationInputError('TRANSITION_REASON_FORBIDDEN');
         }
@@ -184,9 +292,15 @@ export function createRequestService({
         throw concealedNotFound();
       }
 
-      if (transition === REQUEST_TRANSITION.CANCEL && request.status === REQUEST_STATUS.CANCELLED) {
+      const releaseStatus = releaseStatusFor(transition);
+      if (releaseStatus !== null && request.status === releaseStatus) {
         try {
-          authorizationPolicy.authorizeRequestRead(principal, tenantContext, request);
+          authorizationPolicy.authorizeRequestReconciliation(
+            principal,
+            tenantContext,
+            request,
+            transition,
+          );
         } catch (error) {
           if (error instanceof AuthorizationDeniedError) {
             await recordDenied({
@@ -199,7 +313,13 @@ export function createRequestService({
           }
           throw error;
         }
-        await synchronizeCancellation({ principal, tenantContext, request, correlationId });
+        const enabled = await calendarCleanupRequired({
+          principal,
+          tenantContext,
+          request,
+          correlationId,
+        });
+        await synchronizeCancellation({ principal, tenantContext, request, correlationId, enabled });
         return request;
       }
 
@@ -245,6 +365,15 @@ export function createRequestService({
         throw error;
       }
 
+      const releasesCalendarReservation = [
+        REQUEST_STATUS.CANCELLED,
+        REQUEST_STATUS.REJECTED,
+        REQUEST_STATUS.CHANGE_REQUESTED,
+      ].includes(decision.nextStatus);
+      const synchronizeCalendarWrite = releasesCalendarReservation
+        ? await calendarCleanupRequired({ principal, tenantContext, request, correlationId })
+        : false;
+
       const changedMs = clock();
       if (!Number.isSafeInteger(changedMs) || changedMs < 0) throw new TypeError('REQUEST_CLOCK_INVALID');
       const changedAt = new Date(changedMs);
@@ -286,12 +415,20 @@ export function createRequestService({
         });
         throw new RequestStateConflictError();
       }
-      if (decision.nextStatus === REQUEST_STATUS.CANCELLED) {
+      if (releasesCalendarReservation) {
+        const cleanupRequiredAfterCommit = synchronizeCalendarWrite
+          || await calendarCleanupRequired({
+            principal,
+            tenantContext,
+            request: updated,
+            correlationId,
+          });
         await synchronizeCancellation({
           principal,
           tenantContext,
           request: updated,
           correlationId,
+          enabled: cleanupRequiredAfterCommit,
         });
       }
       return updated;

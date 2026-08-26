@@ -64,9 +64,11 @@ Requires CSRF and an empty request body. The service:
 2. loads the active Entra Tenant binding;
 3. generates a 256-bit browser-safe random state value;
 4. persists only SHA-256 of that state in a one-time, actor-bound, expiring transaction;
-5. transitions the Tenant connection to `pending` with optimistic versioning;
-6. appends the consent-start audit event in the same PostgreSQL transaction;
-7. returns the fixed-origin Microsoft admin-consent URL and transaction expiry.
+5. locks and revalidates the active internal Tenant/provider-Tenant binding;
+6. advances the connection version with optimistic protection;
+7. preserves a healthy verified connection while a same-provider reconnect is outstanding, but uses `pending` for an initial, disconnected, or provider-rebound connection;
+8. appends the consent-start audit event in the same PostgreSQL transaction;
+9. returns the fixed-origin Microsoft admin-consent URL and transaction expiry.
 
 The raw state is returned only inside the Microsoft authorization URL and is never logged or persisted.
 
@@ -83,9 +85,9 @@ The route requires the existing authenticated session. The service atomically co
 - SHA-256 state hash;
 - current server time and expiry.
 
-Replay, expired state, a different Tenant Admin, provider-Tenant mismatch, or a changed Entra binding fails closed.
+Replay, expired state, a different Tenant Admin, provider-Tenant mismatch, or a changed Entra binding fails closed. When an authenticated Tenant/actor context exists, malformed, denied, expired, replayed, and provider-binding-mismatch callbacks append durable redacted failure/denial evidence using stable reason codes. Raw state, provider descriptions, Tenant identifiers, and provider payloads are never included.
 
-On approval, the server performs bounded application-permission verification against fixed Microsoft endpoints. On denial, no provider verification occurs. The browser is redirected only to fixed same-origin result locations; provider errors and descriptions are not reflected.
+On approval, the server performs bounded application-permission verification against fixed Microsoft endpoints. On denial, no provider verification occurs. A failed or abandoned same-provider reconnect does not downgrade an already healthy verified connection; its prior status, permission health, reason, and verification timestamp remain authoritative. The browser is redirected only to fixed same-origin result locations; provider errors and descriptions are not reflected.
 
 ### Verify connection
 
@@ -101,10 +103,12 @@ Requires CSRF and an empty request body. Disconnect invalidates outstanding cons
 
 Disconnecting the local lifecycle record does not claim that Microsoft administrator consent has been revoked in Microsoft Entra. Customer and platform runbooks must distinguish local disconnect from external service-principal permission revocation.
 
+Local disconnect also does not discard persisted booking references or their provider/resource identity. Authorized cancellation reconciliation may use that exact persisted binding while the same Integration/provider-Tenant identity and active Entra binding still exist; it does not require the local connection to be healthy or the room mapping to remain active.
+
 ## Lifecycle states
 
 - `disconnected`: no active local connection; permissions are unknown.
-- `pending`: an unexpired one-time admin-consent transaction exists.
+- `pending`: no usable verified local connection exists while consent is outstanding or awaiting completion.
 - `connected`: both bounded base permission checks succeeded.
 - `degraded`: Microsoft responded, but one or more required base permissions are missing, unavailable, or unverified.
 - `revoked`: Microsoft rejects the application credential or consent in a way classified as revoked.
@@ -122,7 +126,11 @@ Migration `011_microsoft365_connection_lifecycle` extends the existing Tenant-ow
 
 It also creates the one-time `microsoft365_consent_transactions` table. Every row is bound to internal Tenant, actor User, Integration, provider Tenant, connection version, hashed state, creation time, and expiry.
 
-Tenant-scoped advisory locking serializes lifecycle changes per internal Tenant. A new consent transaction invalidates an older pending transaction. Finalization succeeds only for the exact persisted connection version. Stale callbacks therefore cannot overwrite a reconnect, disconnect, or newer consent attempt.
+Tenant-scoped advisory locking serializes lifecycle changes per internal Tenant. Consent start locks and revalidates the active provider-Tenant binding in the same transaction as the connection mutation and consent row. A new consent transaction invalidates an older transaction. Callback consume locks the transaction and connection, validates expiry, actor, callback Tenant, and the still-active provider binding, appends any redacted rejection evidence, and consumes the state within one transaction. After the external Graph check, consent and manual-verification finalization again lock and revalidate that exact active binding in the same transaction as the version-guarded connection update. Binding removal during the provider call therefore yields a conflict and cannot commit `connected` or verified state. Finalization succeeds only for the exact persisted connection version.
+
+A valid active Entra rebinding may replace the connection's provider-Tenant reference only when every persisted booking reference for the connection is terminal `cancelled`. Any `pending`, `active`, `compensating` or `compensated` row blocks consent start with `MICROSOFT365_BOOKING_RECONCILIATION_REQUIRED`, because a new Tenant token cannot safely reconcile the old event. After that guard, recovery advances the connection version, resets verification to `pending`, marks existing Microsoft 365 room mappings `missing`, and clears operational capability-health snapshots in the same transaction. Room discovery, explicit mapping, and capability verification must run again for the rebound connection.
+
+The authorized pre-activation identity-unbind path applies the same nonterminal-reference guard. When allowed, it atomically marks the identity binding unbound, increments every Tenant User security version, revokes active sessions, deletes outstanding consent transactions, advances and disconnects Microsoft 365, clears verification/reason state and resets permission indicators to `unknown`, together with `tenant.identity.unbound` audit evidence. A removed identity authority therefore cannot leave a usable application session or locally connected Graph boundary behind.
 
 Migration rollback fails closed while Microsoft 365 connection or consent rows exist.
 
@@ -171,6 +179,7 @@ Required automated evidence includes:
 - CSRF enforcement for connect, verify, and disconnect;
 - rejection of browser-selected Tenant authority and request bodies;
 - callback query allowlisting, duplicate rejection, state expiry, replay, actor mismatch, and provider-Tenant mismatch;
+- durable redacted rejection evidence for malformed, denied, expired, replayed, and binding-mismatch callbacks;
 - fixed redirect destinations and provider-error concealment;
 - fixed Microsoft identity and Graph destinations;
 - custom MSAL transport rejection of foreign origins, overlarge requests/responses, redirects, and unbounded waits;
@@ -178,6 +187,8 @@ Required automated evidence includes:
 - fail-closed Calendar `unverified` behavior;
 - Tenant-scoped connection persistence and cross-Tenant isolation;
 - reconnect/version races and stale callback rejection;
+- provider-binding removal during consent or manual-verification Graph calls;
+- healthy reconnect cancellation/expiry preservation and provider-rebinding recovery;
 - audit-atomic lifecycle persistence;
 - migration up/down and rollback guards;
 - dependency, secret, static security, architecture, unit, HTTP, and PostgreSQL integration gates.

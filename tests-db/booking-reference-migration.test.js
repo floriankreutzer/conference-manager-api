@@ -20,6 +20,9 @@ test('booking reference migration rollback fails closed when provider links exis
   t.after(async () => pool.end());
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await isPostgresSchemaReady(pool), false);
+  assert.equal(await rollbackLatest(pool), true);
 
   await pool.query(
     'INSERT INTO tenants (id, display_name, status) VALUES ($1, $2, $3)',

@@ -5,7 +5,7 @@ import { EntraAuthenticationError } from './entra-errors.js';
 const ENTRA_PROVIDER = 'microsoft_entra';
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const OIDC_SCOPES = Object.freeze(['openid', 'profile']);
-const MAX_DISPLAY_NAME_LENGTH = 200;
+const MAX_DISPLAY_NAME_LENGTH = 160;
 
 function sha256Hex(value) {
   return createHash('sha256').update(value, 'utf8').digest('hex');

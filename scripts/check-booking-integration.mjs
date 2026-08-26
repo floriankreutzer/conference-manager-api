@@ -4,6 +4,8 @@ const contract = await readFile('src/integrations/calendar-contract.js', 'utf8')
 const service = await readFile('src/application/booking-integration-service.js', 'utf8');
 const repository = await readFile('src/persistence/postgres/booking-reference-repository.js', 'utf8');
 const migration = await readFile('migrations/006_booking_provider_references.up.sql', 'utf8');
+const bookingContract = await readFile('docs/BOOKING-INTEGRATION.md', 'utf8');
+const microsoftWriteContract = await readFile('docs/MICROSOFT365-CALENDAR-WRITE.md', 'utf8');
 
 for (const required of [
   'lookupAvailability',
@@ -17,6 +19,21 @@ for (const required of [
   if (!contract.includes(required)) throw new Error(`Calendar provider contract is missing ${required}.`);
 }
 
+for (const [document, label] of [
+  [bookingContract, 'Booking integration contract'],
+  [microsoftWriteContract, 'Microsoft calendar-write contract'],
+]) {
+  for (const required of [
+    '`pending`',
+    '`compensating`',
+    'persisted create-time resource',
+    '`compensated`',
+    'repeats create idempotently',
+  ]) {
+    if (!document.includes(required)) throw new Error(`${label} is missing ${required}.`);
+  }
+}
+
 if (/microsoft|graph\.microsoft|https?:\/\//i.test(contract)) {
   throw new Error('Provider-neutral calendar contract must not contain Microsoft-specific or outbound URL details.');
 }
@@ -28,6 +45,10 @@ for (const required of [
   'entitlementService.requireAccess',
   "createHash('sha256')",
   'hasConflictingRequest',
+  'reserveProviderResourceBinding',
+  'providerResourceReference: reference.providerResourceReference',
+  'providerConnectionReference: calendarProvider.providerConnectionReference',
+  "operation === BOOKING_PROVIDER_OPERATION.CANCEL",
   'normalizeCreateResult',
   'classifyProviderError',
   'AUDIT_ACTION.CALENDAR_OPERATION',
@@ -39,6 +60,16 @@ for (const required of [
   'WHERE tenant_id = $1',
   'booking_provider_references',
   'pg_advisory_xact_lock',
+  "'pending'",
+  "state <> 'cancelled'",
+  'booking-lock-current-create-authority',
+  'booking-lock-current-cleanup-authority',
+  'booking-resource-binding-lock-eligible-request',
+  'booking-resource-binding-retry',
+  'attempt_number',
+  "status IN ('Submitted', 'In Review')",
+  'beginCompensatingProviderReference',
+  'completeCompensatingProviderReference',
   'appendWithClient(client, auditEvent)',
   "status NOT IN ('Rejected', 'Cancelled')",
 ]) {

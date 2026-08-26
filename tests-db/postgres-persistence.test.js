@@ -17,6 +17,9 @@ import {
   isPostgresSchemaReady,
 } from '../src/persistence/postgres/pool.js';
 import { createPostgresRequestRepository } from '../src/persistence/postgres/request-repository.js';
+import {
+  createPostgresMicrosoft365CalendarAuthorityGuard,
+} from '../src/persistence/postgres/calendar-authority-guard.js';
 import { createPostgresRoomAdapter } from '../src/persistence/postgres/room-adapter.js';
 import { createPostgresSessionRepository } from '../src/persistence/postgres/session-repository.js';
 import { createPostgresTenantRepository } from '../src/persistence/postgres/tenant-repository.js';
@@ -92,6 +95,7 @@ function identity(overrides = {}) {
     providerIdentity: { provider: 'test_oidc', reference: 'subject-a' },
     roles: ['employee'],
     permissions: ['request:read'],
+    securityVersion: 1,
     ...overrides,
   };
 }
@@ -129,7 +133,11 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
   const authorizationPolicy = createAuthorizationPolicy();
   const auditRepository = createPostgresAuditRepository(pool, { hmacSecret: AUDIT_KEY });
   const auditService = createAuditService({ repository: auditRepository, authorizationPolicy });
-  const requestRepository = () => createPostgresRequestRepository(pool, { auditRepository });
+  const calendarAuthorityGuard = createPostgresMicrosoft365CalendarAuthorityGuard();
+  const requestRepository = () => createPostgresRequestRepository(pool, {
+    auditRepository,
+    calendarAuthorityGuard,
+  });
   const sessionRepository = () => createPostgresSessionRepository(pool, { auditRepository });
   t.after(async () => pool.end());
 
@@ -155,6 +163,8 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 14, name: 'microsoft365_capability_health' },
       { version: 15, name: 'request_created_audit_action' },
       { version: 16, name: 'tenant_pilot_lifecycle' },
+      { version: 17, name: 'booking_provider_resource_binding' },
+      { version: 18, name: 'site_time_zones' },
     ]);
   });
 
@@ -348,7 +358,10 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
         throw new Error('EXPECTED_AUDIT_FAILURE');
       },
     };
-    const requests = createPostgresRequestRepository(pool, { auditRepository: failingAuditRepository });
+    const requests = createPostgresRequestRepository(pool, {
+      auditRepository: failingAuditRepository,
+      calendarAuthorityGuard,
+    });
     await assert.rejects(
       requests.transitionByTenantIdAndId({
         tenantId: TENANT_A,
@@ -585,6 +598,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
     const rotated = await service.rotate(original.principal, identity({
       roles: ['conference_manager'],
       permissions: ['request:read', 'request:manage'],
+      securityVersion: 2,
     }));
     const rotatedRequest = { headers: { cookie: cookiePair(rotated.setCookie) } };
     const refreshed = await service.resolvePrincipal(rotatedRequest);
@@ -597,6 +611,8 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
   await t.test('audit migration refuses unreviewed legacy rows before reapplication', async () => {
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await isPostgresSchemaReady(pool), false);
+    assert.equal(await rollbackLatest(pool), true);
+    assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
@@ -679,6 +695,8 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
     await migrateUp(pool);
     assert.equal(await isPostgresSchemaReady(pool), true);
 
+    assert.equal(await rollbackLatest(pool), true);
+    assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);

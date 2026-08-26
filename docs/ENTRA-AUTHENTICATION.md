@@ -134,7 +134,7 @@ When the resolver returns a trusted internal identity, the existing `SessionServ
 
 Authentication alone never grants `conference_manager`, `tenant_admin`, or platform privileges.
 
-Internal roles and permissions remain server-side application data. A future resolver may use the validated Entra Tenant/User references only to find the corresponding internal Tenant/User records. It must not make provider groups, email domains, names, or browser input authoritative.
+Internal roles and permissions remain server-side application data. The implemented provider-identity/JIT resolver uses validated Entra Tenant/User references only to find the corresponding internal Tenant/User records and takes a transaction-locked server-controlled role/permission snapshot. Provider groups, email domains, names and browser input are never authorization authority.
 
 A validated Entra Tenant reference remains external identity metadata; it never replaces the stable internal `tenant_id` used for Tenant ownership and BOLA/IDOR protection.
 

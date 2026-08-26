@@ -24,7 +24,7 @@ Returns HTTP 200 while the process can handle requests. It exposes no dependency
 
 ### `GET /api/v1/health/ready`
 
-Returns HTTP 200 with `ready` only when required dependencies complete successfully within their bounds. PostgreSQL deployments require connectivity and the exact repository-defined schema version, currently version 11. Failure returns HTTP 503 with `not_ready` without naming internal dependencies.
+Returns HTTP 200 with `ready` only when required dependencies complete successfully within their bounds. PostgreSQL deployments require connectivity and the exact repository-defined schema version. The expected version advances only with the reviewed migrations in this repository; stale or partially applied schemas fail readiness. Failure returns HTTP 503 with `not_ready` without naming internal dependencies.
 
 Optional provider degradation does not make core readiness fail while the API can still serve traffic safely.
 
@@ -131,6 +131,61 @@ The response omits the raw session token, internal session ID, token hash, provi
 Requires the authenticated session and valid CSRF. The server revokes the session and appends `session.revoked` evidence in one PostgreSQL transaction, clears the cookie and returns HTTP 204.
 
 See `docs/IDENTITY-SESSION.md`.
+
+## Production application contract
+
+The production browser uses one same-origin, server-authoritative application contract. Successful application responses contain `schemaVersion: 1`; the browser rejects unsupported or malformed envelopes and never falls back to demo storage.
+
+The current routes are:
+
+- `GET/PUT /api/v1/application/profile`;
+- `GET /api/v1/application/catalog`;
+- `GET /api/v1/application/site-info`;
+- `GET/POST /api/v1/application/requests`;
+- `POST /api/v1/application/room-availability`;
+- `GET /api/v1/application/notifications`;
+- `PATCH /api/v1/application/notifications/{notificationId}`;
+- `GET/PUT /api/v1/application/configuration`.
+
+All routes derive Tenant and User authority from the resolved Principal. Mutations require CSRF and exact positive-schema bodies. Public representations omit internal Tenant ownership, requester identity, provider identities/references, credentials, audit-chain material and other authority-shaped infrastructure fields.
+
+Employee Request lists are restricted to server-side ownership. Conference Managers with the separate Request management permission receive the Tenant-wide Request list. Tenant configuration requires Tenant Admin permission; Tenant Admin alone does not inherit Conference Manager Request access.
+
+`catalog.sites[]`, `siteInfo.sites[]` and `configuration.sites[]` expose the same minimized Site shape: `id`, `name`, `active` and `timeZone`. `timeZone` is the server-authoritative IANA time-zone identifier for that physical Site, for example `Europe/Berlin`. Existing Sites migrated without an established value expose `timeZone: null`; the server and browser must not replace that unknown state with browser-local time or UTC.
+
+`PUT /api/v1/application/configuration` requires every submitted Site to contain a positively validated `timeZone` in addition to `id`, `name` and `active`. Canonical identifiers recognized by the server IANA/`Intl` database, including `UTC`, are accepted. Unknown fields, missing values, surrounding whitespace and unrecognized identifiers fail with HTTP 400 `VALIDATION_FAILED`. Configuration writes remain Tenant-scoped and audit-atomic.
+
+A Request or room-availability check for an inactive/missing room or Site is concealed as unavailable. A room whose active Site has no valid authoritative time zone is not bookable and returns HTTP 409 `SITE_TIME_ZONE_REQUIRED` before local Request mutation or provider access.
+
+`POST /api/v1/application/requests` accepts the same canonical UTC schedule boundary as room availability: both timestamps must equal their ECMAScript `toISOString()` representation, the end must be later than the start, and the interval must not exceed 24 hours. Offset, local, non-canonical, and longer intervals fail with HTTP 400 `VALIDATION_FAILED` before persistence, preventing Requests that the authoritative availability path could never validate.
+
+### `POST /api/v1/application/room-availability`
+
+This is the advisory production Employee room-search check required before the browser creates a Request. It accepts only:
+
+```json
+{
+  "roomId": "internal-room-id",
+  "startsAt": "2026-09-01T10:00:00.000Z",
+  "endsAt": "2026-09-01T11:00:00.000Z"
+}
+```
+
+The server requires an active Employee Principal, the internal `microsoft.calendar` entitlement, a canonical UTC interval of at most 24 hours, the Tenant-owned local room, its active Site with an authoritative IANA time zone and its active Microsoft mapping. It checks Tenant-scoped local Request overlap first and then performs a live Free/Busy lookup through the fixed Microsoft provider boundary. The browser cannot submit a Tenant, User, provider Tenant, mailbox, Graph URL, token or availability result.
+
+A successful minimized response is:
+
+```json
+{
+  "schemaVersion": 1,
+  "availability": {
+    "available": true,
+    "conflictCount": 0
+  }
+}
+```
+
+Local or provider busy state returns `available: false`. Missing entitlement/mapping/connection, provider authorization, throttling, timeout or malformed provider data returns the stable HTTP 503 code `ROOM_AVAILABILITY_UNAVAILABLE`; it never produces false availability. The check is advisory: authoritative Conference Manager confirmation still repeats uncached final validation and the local room-lock operation.
 
 ## Tenant audit
 

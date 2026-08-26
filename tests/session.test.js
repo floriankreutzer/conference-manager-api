@@ -26,6 +26,7 @@ function identity(overrides = {}) {
     providerIdentity: { provider: 'test_oidc', reference: 'provider-subject-123' },
     roles: ['employee'],
     permissions: ['request:read'],
+    securityVersion: 1,
     ...overrides,
   };
 }
@@ -114,6 +115,7 @@ test('trusted identity contract rejects provider/client-shaped malformed identit
   assert.throws(() => normalizeTrustedIdentity(identity({ tenantId: 'client-selected-tenant' })), TypeError);
   assert.throws(() => normalizeTrustedIdentity(identity({ roles: ['ADMIN ROLE'] })), TypeError);
   assert.throws(() => normalizeTrustedIdentity(identity({ permissions: ['bad permission'] })), TypeError);
+  assert.throws(() => normalizeTrustedIdentity(identity({ securityVersion: 0 })), TypeError);
 });
 
 test('session service stores only token hashes and emits minimized issuance audit data', async () => {
@@ -168,7 +170,7 @@ test('session rotation and revocation carry audit events while credentials remai
 
   const rotated = await context.service.rotate(
     first.principal,
-    identity({ roles: ['manager'] }),
+    identity({ roles: ['manager'], securityVersion: 2 }),
     { correlationId: CORRELATION_ID },
   );
   assert.notEqual(cookiePair(rotated.setCookie), cookiePair(first.setCookie));

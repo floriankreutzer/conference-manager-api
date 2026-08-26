@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createProductionApplicationService } from '../src/application/production-application-service.js';
+import {
+  SiteTimeZoneRequiredError,
+  createProductionApplicationService,
+} from '../src/application/production-application-service.js';
 import { AuthorizationDeniedError, AuthorizationInputError } from '../src/authorization/errors.js';
 import {
   PERMISSION,
@@ -46,7 +49,10 @@ function tenantAdmin() {
   });
 }
 
-function harness() {
+function harness({
+  bookingContext = { roomActive: true, siteActive: true, timeZone: 'Europe/Berlin' },
+  roomAvailabilityService = null,
+} = {}) {
   const calls = [];
   const repository = {
     async findProfile(tenantId, userId) {
@@ -60,6 +66,10 @@ function harness() {
     async loadCatalog(tenantId) {
       calls.push(['loadCatalog', tenantId]);
       return { sites: [], rooms: [], services: [], cateringPackages: [], cateringItems: [] };
+    },
+    async findRoomBookingContext(tenantId, roomId) {
+      calls.push(['findRoomBookingContext', tenantId, roomId]);
+      return bookingContext;
     },
     async listNotifications(tenantId, userId) {
       calls.push(['listNotifications', tenantId, userId]);
@@ -110,6 +120,7 @@ function harness() {
     requestRepository,
     authorizationPolicy: createAuthorizationPolicy(),
     auditService,
+    roomAvailabilityService,
     clock: () => Date.parse('2026-08-25T11:00:00.000Z'),
     idFactory: () => REQUEST_ID,
   });
@@ -189,6 +200,46 @@ test('request creation rejects authority-shaped fields and derives identity/stat
   assert.deepEqual(createCall.auditEvent.newState, { status: 'Submitted' });
 });
 
+test('request creation accepts only the canonical availability window contract', async () => {
+  const valid = {
+    roomId: 'room-a',
+    startsAt: '2026-09-01T10:00:00.000Z',
+    endsAt: '2026-09-02T10:00:00.000Z',
+    internalParticipants: 1,
+    externalParticipants: 0,
+  };
+
+  for (const requestDraft of [
+    { ...valid, startsAt: '2026-09-01T12:00:00+02:00' },
+    { ...valid, startsAt: '2026-09-01T10:00:00' },
+    { ...valid, startsAt: '2026-09-01T10:00:00Z' },
+    { ...valid, endsAt: '2026-09-02T10:00:00.001Z' },
+  ]) {
+    const { service, calls } = harness();
+    await assert.rejects(
+      service.createRequest({
+        principal: employee(),
+        tenantContext: { tenantId: TENANT_A },
+        correlationId: CORRELATION_ID,
+        requestDraft,
+      }),
+      (error) => error instanceof AuthorizationInputError
+        && error.message === 'REQUEST_SCHEDULE_INVALID',
+    );
+    assert.equal(calls.some(([name]) => name === 'createRequest'), false);
+  }
+
+  const { service } = harness();
+  const created = await service.createRequest({
+    principal: employee(),
+    tenantContext: { tenantId: TENANT_A },
+    correlationId: CORRELATION_ID,
+    requestDraft: valid,
+  });
+  assert.equal(created.startsAt, valid.startsAt);
+  assert.equal(created.endsAt, valid.endsAt);
+});
+
 test('notification ownership is always bound to the authenticated user', async () => {
   const { service, calls } = harness();
   await service.listNotifications({
@@ -223,17 +274,93 @@ test('tenant configuration requires Tenant Admin permission and positive site sc
     principal: tenantAdmin(),
     tenantContext: { tenantId: TENANT_A },
     correlationId: CORRELATION_ID,
-    configuration: { sites: [{ id: 'berlin', name: 'Berlin', active: true }] },
+    configuration: {
+      sites: [{ id: 'berlin', name: 'Berlin', active: true, timeZone: 'Europe/Berlin' }],
+    },
   });
-  assert.deepEqual(updated.sites, [{ id: 'berlin', name: 'Berlin', active: true }]);
+  assert.deepEqual(updated.sites, [
+    { id: 'berlin', name: 'Berlin', active: true, timeZone: 'Europe/Berlin' },
+  ]);
 
   await assert.rejects(
     service.updateConfiguration({
       principal: tenantAdmin(),
       tenantContext: { tenantId: TENANT_A },
       correlationId: CORRELATION_ID,
-      configuration: { sites: [{ id: 'berlin', name: 'Berlin', active: true, tenantId: TENANT_B }] },
+      configuration: { sites: [{ id: 'berlin', name: 'Berlin', active: true }] },
     }),
     AuthorizationInputError,
   );
+
+  const utc = await service.updateConfiguration({
+    principal: tenantAdmin(),
+    tenantContext: { tenantId: TENANT_A },
+    correlationId: CORRELATION_ID,
+    configuration: { sites: [{ id: 'utc', name: 'UTC Site', active: true, timeZone: 'UTC' }] },
+  });
+  assert.equal(utc.sites[0].timeZone, 'UTC');
+
+  await assert.rejects(
+    service.updateConfiguration({
+      principal: tenantAdmin(),
+      tenantContext: { tenantId: TENANT_A },
+      correlationId: CORRELATION_ID,
+      configuration: {
+        sites: [{
+          id: 'berlin',
+          name: 'Berlin',
+          active: true,
+          timeZone: 'Europe/Berlin',
+          tenantId: TENANT_B,
+        }],
+      },
+    }),
+    AuthorizationInputError,
+  );
+});
+
+test('request creation and availability fail closed when the Site time zone is missing', async () => {
+  const availabilityCalls = [];
+  const { service, calls } = harness({
+    bookingContext: { roomActive: true, siteActive: true, timeZone: null },
+    roomAvailabilityService: {
+      async checkAvailability(value) {
+        availabilityCalls.push(value);
+        return { available: true, conflictCount: 0 };
+      },
+    },
+  });
+  const requestDraft = {
+    roomId: 'room-a',
+    startsAt: '2026-09-01T10:00:00.000Z',
+    endsAt: '2026-09-01T11:00:00.000Z',
+    internalParticipants: 1,
+    externalParticipants: 0,
+  };
+
+  await assert.rejects(
+    service.createRequest({
+      principal: employee(),
+      tenantContext: { tenantId: TENANT_A },
+      correlationId: CORRELATION_ID,
+      requestDraft,
+    }),
+    SiteTimeZoneRequiredError,
+  );
+  await assert.rejects(
+    service.checkRoomAvailability({
+      principal: employee(),
+      tenantContext: { tenantId: TENANT_A },
+      correlationId: CORRELATION_ID,
+      query: {
+        roomId: requestDraft.roomId,
+        startsAt: requestDraft.startsAt,
+        endsAt: requestDraft.endsAt,
+      },
+    }),
+    SiteTimeZoneRequiredError,
+  );
+
+  assert.equal(calls.filter(([name]) => name === 'createRequest').length, 0);
+  assert.equal(availabilityCalls.length, 0);
 });

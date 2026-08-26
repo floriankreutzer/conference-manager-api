@@ -12,6 +12,7 @@ import { createMicrosoft365RoomDiscoveryService } from './application/microsoft3
 import { createMicrosoft365RoomMappingService } from './application/microsoft365-room-mapping-service.js';
 import { createProductionApplicationService } from './application/production-application-service.js';
 import { createRequestService } from './application/request-service.js';
+import { createRoomAvailabilityService } from './application/room-availability-service.js';
 import { createTenantPilotService } from './application/tenant-pilot-service.js';
 import { createTenantUserAdministrationService } from './application/tenant-user-administration-service.js';
 import { createAuditService } from './audit/audit-service.js';
@@ -97,6 +98,7 @@ const microsoft365Client = config.entraClientId
 const microsoft365CalendarProviderFactory = persistence && microsoft365Client
   ? createMicrosoft365CalendarProviderFactory({
     connectionRepository: persistence.microsoft365ConnectionRepository,
+    bindingRepository: persistence.tenantOnboardingRepository,
     mappingRepository: persistence.microsoft365RoomMappingRepository,
     providerClient: microsoft365Client,
     capabilityHealthService,
@@ -113,6 +115,16 @@ const microsoft365BookingServiceFactory = persistence
     auditService,
     authorizationPolicy,
     metrics,
+  })
+  : null;
+const roomAvailabilityService = persistence
+  && entitlementService
+  && microsoft365CalendarProviderFactory
+  ? createRoomAvailabilityService({
+    repository: persistence.bookingReferenceRepository,
+    authorizationPolicy,
+    entitlementService,
+    calendarProviderFactory: microsoft365CalendarProviderFactory,
   })
   : null;
 const identityResolver = createPendingProviderIdentityResolver({ onboardingService, jitUserService });
@@ -147,6 +159,7 @@ const requestService = persistence
     auditService,
     finalRoomConfirmationService,
     bookingServiceFactory: microsoft365BookingServiceFactory,
+    metrics,
   })
   : null;
 const productionApplicationService = persistence && auditService
@@ -155,6 +168,7 @@ const productionApplicationService = persistence && auditService
     requestRepository: persistence.requestRepository,
     authorizationPolicy,
     auditService,
+    roomAvailabilityService,
   })
   : null;
 const tenantUserAdministrationService = persistence && auditService

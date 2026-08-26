@@ -18,8 +18,27 @@ const PROVIDER_HEADER_COUNT_MAX = 64;
 const PROVIDER_HEADER_NAME_MAX = 128;
 const PROVIDER_HEADER_VALUE_MAX = 16_384;
 const ROOM_PAGE_SIZE = 100;
-const ROOM_PAGE_LIMIT = 100;
+const ROOM_COLLECTION_LIMIT = 1_000;
+const ROOM_COLLECTION_MAX_BYTES = 1_000_000;
+const ROOM_PAGE_LIMIT = ROOM_COLLECTION_LIMIT / ROOM_PAGE_SIZE;
 const ROOM_STRING_MAX = 512;
+const ROOM_RESOURCE_MAX = 320;
+const ROOM_SELECT = [
+  'id',
+  'displayName',
+  'emailAddress',
+  'capacity',
+  'building',
+  'floorNumber',
+  'floorLabel',
+  'label',
+  'nickname',
+  'phone',
+  'audioDeviceName',
+  'videoDeviceName',
+  'displayDeviceName',
+  'bookingType',
+].join(',');
 const FREE_BUSY_SCHEDULE_LIMIT = 20;
 const FREE_BUSY_SCHEDULE_MAX = 320;
 const FREE_BUSY_INTERVAL_MINUTES = 5;
@@ -138,10 +157,15 @@ function createMsalApplication({
   tenantReference,
   fetchImpl,
   timeoutMs,
+  totalDeadlineSignal = null,
   applicationFactory,
 }) {
   const authority = `${LOGIN_ORIGIN}/${tenantReference}`;
-  const networkClient = createBoundedMicrosoftIdentityNetworkClient({ fetchImpl, timeoutMs });
+  const networkClient = createBoundedMicrosoftIdentityNetworkClient({
+    fetchImpl,
+    timeoutMs,
+    totalDeadlineSignal,
+  });
   if (applicationFactory) {
     const application = applicationFactory({
       clientId,
@@ -268,16 +292,24 @@ async function fetchMicrosoftIdentity({
   method,
   options,
   timeoutMs,
+  totalDeadlineSignal,
 }) {
   const url = requireMicrosoftIdentityUrl(value);
+  if (method === 'GET' && options?.body !== undefined) {
+    throw new Microsoft365ProviderError('MICROSOFT365_IDENTITY_REQUEST_INVALID');
+  }
   let response;
+  const signal = totalDeadlineSignal ?? AbortSignal.timeout(timeoutMs);
+  if (!(signal instanceof AbortSignal) || signal.aborted) {
+    throw new Microsoft365ProviderError('MICROSOFT365_IDENTITY_UNAVAILABLE');
+  }
   try {
     response = await fetchImpl(url, {
       method,
       redirect: 'error',
       headers: boundedRequestHeaders(options),
       body: method === 'POST' ? boundedRequestBody(options) : undefined,
-      signal: AbortSignal.timeout(timeoutMs),
+      signal,
     });
   } catch (error) {
     if (error instanceof Microsoft365ProviderError) throw error;
@@ -293,7 +325,11 @@ async function fetchMicrosoftIdentity({
   };
 }
 
-function createBoundedMicrosoftIdentityNetworkClient({ fetchImpl, timeoutMs }) {
+function createBoundedMicrosoftIdentityNetworkClient({
+  fetchImpl,
+  timeoutMs,
+  totalDeadlineSignal = null,
+}) {
   return Object.freeze({
     sendGetRequestAsync(value, options, requestedTimeoutMs) {
       return fetchMicrosoftIdentity({
@@ -302,6 +338,7 @@ function createBoundedMicrosoftIdentityNetworkClient({ fetchImpl, timeoutMs }) {
         method: 'GET',
         options,
         timeoutMs: boundedIdentityTimeout(requestedTimeoutMs, timeoutMs),
+        totalDeadlineSignal,
       });
     },
     sendPostRequestAsync(value, options) {
@@ -311,6 +348,7 @@ function createBoundedMicrosoftIdentityNetworkClient({ fetchImpl, timeoutMs }) {
         method: 'POST',
         options,
         timeoutMs,
+        totalDeadlineSignal,
       });
     },
   });
@@ -348,11 +386,15 @@ function validCalendarPayload(payload) {
     && payload.id.length <= EVENT_REFERENCE_MAX;
 }
 
-async function fetchGraph(fetchImpl, url, accessToken, timeoutMs) {
+async function fetchGraph(fetchImpl, url, accessToken, timeoutMs, totalDeadlineSignal = null) {
   if (url.origin !== GRAPH_ORIGIN) {
     throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_ORIGIN_INVALID');
   }
   let response;
+  const signal = totalDeadlineSignal ?? AbortSignal.timeout(timeoutMs);
+  if (!(signal instanceof AbortSignal) || signal.aborted) {
+    throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_UNAVAILABLE');
+  }
   try {
     response = await fetchImpl(url, {
       method: 'GET',
@@ -361,7 +403,7 @@ async function fetchGraph(fetchImpl, url, accessToken, timeoutMs) {
         Accept: 'application/json',
         Authorization: `Bearer ${accessToken}`,
       },
-      signal: AbortSignal.timeout(timeoutMs),
+      signal,
     });
   } catch {
     throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_UNAVAILABLE');
@@ -440,6 +482,19 @@ function boundedOptionalString(value) {
   return value;
 }
 
+function boundedRequiredString(value, max, min = 1) {
+  if (
+    typeof value !== 'string'
+    || value.length < min
+    || value.length > max
+    || value.trim() !== value
+    || /[\u0000-\u001f\u007f]/.test(value)
+  ) {
+    return null;
+  }
+  return value;
+}
+
 function boundedCapacity(value) {
   if (value === null || value === undefined) return null;
   return Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000
@@ -458,9 +513,9 @@ function normalizeRoom(item) {
   if (!item || typeof item !== 'object' || Array.isArray(item)) {
     throw new Microsoft365ProviderError('MICROSOFT365_ROOM_RESPONSE_INVALID');
   }
-  const externalRoomId = boundedOptionalString(item.id);
-  const displayName = boundedOptionalString(item.displayName);
-  const resourceAddress = boundedOptionalString(item.emailAddress);
+  const externalRoomId = boundedRequiredString(item.id, ROOM_STRING_MAX);
+  const displayName = boundedRequiredString(item.displayName, ROOM_STRING_MAX);
+  const resourceAddress = boundedRequiredString(item.emailAddress, ROOM_RESOURCE_MAX, 3);
   if (!externalRoomId || !displayName || !resourceAddress) {
     throw new Microsoft365ProviderError('MICROSOFT365_ROOM_RESPONSE_INVALID');
   }
@@ -482,35 +537,67 @@ function normalizeRoom(item) {
   });
 }
 
-function roomDiscoveryUrl(skip) {
+function roomDiscoveryUrl() {
   const url = new URL('/v1.0/places/microsoft.graph.room', GRAPH_ORIGIN);
   url.searchParams.set('$top', String(ROOM_PAGE_SIZE));
-  url.searchParams.set('$skip', String(skip));
-  url.searchParams.set('$select', [
-    'id',
-    'displayName',
-    'emailAddress',
-    'capacity',
-    'building',
-    'floorNumber',
-    'floorLabel',
-    'label',
-    'nickname',
-    'phone',
-    'audioDeviceName',
-    'videoDeviceName',
-    'displayDeviceName',
-    'bookingType',
-  ].join(','));
+  url.searchParams.set('$skip', '0');
+  url.searchParams.set('$select', ROOM_SELECT);
   return url;
 }
 
-async function roomPage({ fetchImpl, accessToken, timeoutMs, skip }) {
+function requireRoomNextLink(value) {
+  if (typeof value !== 'string' || value.length < 1 || value.length > PROVIDER_URL_MAX_LENGTH) {
+    throw new Microsoft365ProviderError('MICROSOFT365_ROOM_RESPONSE_INVALID');
+  }
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Microsoft365ProviderError('MICROSOFT365_ROOM_RESPONSE_INVALID');
+  }
+  if (
+    url.origin !== GRAPH_ORIGIN
+    || url.pathname !== '/v1.0/places/microsoft.graph.room'
+    || url.username
+    || url.password
+    || url.hash
+    || url.href.length > PROVIDER_URL_MAX_LENGTH
+  ) {
+    throw new Microsoft365ProviderError('MICROSOFT365_ROOM_RESPONSE_INVALID');
+  }
+  const keys = [...url.searchParams.keys()];
+  const allowed = new Set(['$top', '$select', '$skip', '$skiptoken']);
+  if (keys.some((key) => !allowed.has(key))) {
+    throw new Microsoft365ProviderError('MICROSOFT365_ROOM_RESPONSE_INVALID');
+  }
+  const top = url.searchParams.getAll('$top');
+  const select = url.searchParams.getAll('$select');
+  const skips = url.searchParams.getAll('$skip');
+  const skipTokens = url.searchParams.getAll('$skiptoken');
+  const skip = skips.length === 1 && /^\d+$/.test(skips[0]) ? Number(skips[0]) : null;
+  if (
+    top.length !== 1
+    || top[0] !== String(ROOM_PAGE_SIZE)
+    || select.length !== 1
+    || select[0] !== ROOM_SELECT
+    || (skips.length === 1) === (skipTokens.length === 1)
+    || skips.length > 1
+    || skipTokens.length > 1
+    || skips.length === 1 && (!Number.isSafeInteger(skip) || skip < 1)
+    || skipTokens.length === 1 && skipTokens[0].length < 1
+  ) {
+    throw new Microsoft365ProviderError('MICROSOFT365_ROOM_RESPONSE_INVALID');
+  }
+  return url;
+}
+
+async function roomPage({ fetchImpl, accessToken, timeoutMs, totalDeadlineSignal, url }) {
   const response = await fetchGraph(
     fetchImpl,
-    roomDiscoveryUrl(skip),
+    url,
     accessToken,
     timeoutMs,
+    totalDeadlineSignal,
   );
   const classification = classifyGraphStatus(response.status);
   if (classification === 'revoked') {
@@ -525,7 +612,7 @@ async function roomPage({ fetchImpl, accessToken, timeoutMs, skip }) {
   if (classification === 'transient') {
     throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_UNAVAILABLE');
   }
-  if (classification !== 'ok') {
+  if (response.status !== 200) {
     throw new Microsoft365ProviderError('MICROSOFT365_ROOM_RESPONSE_INVALID');
   }
   const payload = await readBoundedJson(response);
@@ -538,7 +625,21 @@ async function roomPage({ fetchImpl, accessToken, timeoutMs, skip }) {
   ) {
     throw new Microsoft365ProviderError('MICROSOFT365_ROOM_RESPONSE_INVALID');
   }
-  return payload.value.map(normalizeRoom);
+  const nextLink = Object.hasOwn(payload, '@odata.nextLink')
+    ? requireRoomNextLink(payload['@odata.nextLink'])
+    : null;
+  return Object.freeze({
+    values: Object.freeze(payload.value.map(normalizeRoom)),
+    nextLink,
+  });
+}
+
+function roomCollectionBytes(rooms) {
+  let bytes = 0;
+  for (const room of rooms) {
+    bytes += Buffer.byteLength(JSON.stringify(room), 'utf8') + 1;
+  }
+  return bytes;
 }
 
 function requireFreeBusySchedules(value) {
@@ -584,10 +685,10 @@ function requireFreeBusyWindow(startsAt, endsAt) {
 }
 
 function graphUtcDateTime(value) {
-  return value.toISOString().replace(/\.\d{3}Z$/, '');
+  return value.toISOString().replace(/Z$/, '');
 }
 
-function normalizeFreeBusyPayload(payload, schedules) {
+function normalizeFreeBusyPayload(payload, schedules, expectedSlots) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !Array.isArray(payload.value)) {
     throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_RESPONSE_INVALID');
   }
@@ -604,8 +705,7 @@ function normalizeFreeBusyPayload(payload, schedules) {
       || item.scheduleId.toLowerCase() !== expectedSchedule.toLowerCase()
       || item.error !== undefined && item.error !== null
       || typeof item.availabilityView !== 'string'
-      || item.availabilityView.length < 1
-      || item.availabilityView.length > FREE_BUSY_VIEW_MAX
+      || item.availabilityView.length !== expectedSlots
       || !/^[0-4]+$/.test(item.availabilityView)
     ) {
       throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_RESPONSE_INVALID');
@@ -621,6 +721,13 @@ function normalizeFreeBusyPayload(payload, schedules) {
 
 async function freeBusy({ fetchImpl, accessToken, timeoutMs, schedules, startsAt, endsAt }) {
   const window = requireFreeBusyWindow(startsAt, endsAt);
+  const expectedSlots = Math.ceil(
+    (window.endsAt.getTime() - window.startsAt.getTime())
+      / (FREE_BUSY_INTERVAL_MINUTES * 60 * 1_000),
+  );
+  if (expectedSlots < 1 || expectedSlots > FREE_BUSY_VIEW_MAX) {
+    throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_REQUEST_INVALID');
+  }
   const normalizedSchedules = requireFreeBusySchedules(schedules);
   const url = new URL(
     `/v1.0/users/${encodeURIComponent(normalizedSchedules[0])}/calendar/getSchedule`,
@@ -647,8 +754,12 @@ async function freeBusy({ fetchImpl, accessToken, timeoutMs, schedules, startsAt
   }
   if (response.status === 429) throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_THROTTLED');
   if (classification === 'transient') throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_UNAVAILABLE');
-  if (classification !== 'ok') throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_RESPONSE_INVALID');
-  return normalizeFreeBusyPayload(await readBoundedJson(response), normalizedSchedules);
+  if (response.status !== 200) throw new Microsoft365ProviderError('MICROSOFT365_FREE_BUSY_RESPONSE_INVALID');
+  return normalizeFreeBusyPayload(
+    await readBoundedJson(response),
+    normalizedSchedules,
+    expectedSlots,
+  );
 }
 
 function requireResourceAddress(value) {
@@ -847,7 +958,7 @@ export function createMicrosoft365Client({
     origin,
   ).toString();
 
-  async function acquireAccessToken(tenantReference) {
+  async function acquireAccessToken(tenantReference, totalDeadlineSignal = null) {
     const tenant = requireGuid(
       tenantReference,
       'MICROSOFT365_TENANT_INVALID',
@@ -858,6 +969,7 @@ export function createMicrosoft365Client({
       tenantReference: tenant,
       fetchImpl,
       timeoutMs,
+      totalDeadlineSignal,
       applicationFactory,
     });
     let result;
@@ -895,17 +1007,51 @@ export function createMicrosoft365Client({
         tenantReference,
         'MICROSOFT365_TENANT_INVALID',
       );
-      const accessToken = await acquireAccessToken(tenant);
+      const totalDeadlineSignal = AbortSignal.timeout(timeoutMs);
+      const accessToken = await acquireAccessToken(tenant, totalDeadlineSignal);
+      if (totalDeadlineSignal.aborted) {
+        throw new Microsoft365ProviderError('MICROSOFT365_GRAPH_UNAVAILABLE');
+      }
       const rooms = [];
+      let materializedBytes = 2;
+      let url = roomDiscoveryUrl();
+      const visited = new Set();
+      const externalRoomIds = new Set();
+      const resourceAddresses = new Set();
       for (let page = 0; page < ROOM_PAGE_LIMIT; page += 1) {
-        const values = await roomPage({
+        const href = url.toString();
+        if (visited.has(href)) {
+          throw new Microsoft365ProviderError('MICROSOFT365_ROOM_RESPONSE_INVALID');
+        }
+        visited.add(href);
+        const { values, nextLink } = await roomPage({
           fetchImpl,
           accessToken,
           timeoutMs,
-          skip: page * ROOM_PAGE_SIZE,
+          totalDeadlineSignal,
+          url,
         });
+        for (const room of values) {
+          const externalRoomKey = room.externalRoomId.toLowerCase();
+          const resourceAddressKey = room.resourceAddress.toLowerCase();
+          if (externalRoomIds.has(externalRoomKey) || resourceAddresses.has(resourceAddressKey)) {
+            throw new Microsoft365ProviderError('MICROSOFT365_ROOM_RESPONSE_INVALID');
+          }
+          externalRoomIds.add(externalRoomKey);
+          resourceAddresses.add(resourceAddressKey);
+        }
+        const nextSize = rooms.length + values.length;
+        const nextBytes = materializedBytes + roomCollectionBytes(values);
+        if (nextSize > ROOM_COLLECTION_LIMIT || nextBytes > ROOM_COLLECTION_MAX_BYTES) {
+          throw new Microsoft365ProviderError('MICROSOFT365_ROOM_COLLECTION_LIMIT_EXCEEDED');
+        }
         rooms.push(...values);
-        if (values.length < ROOM_PAGE_SIZE) return Object.freeze(rooms);
+        materializedBytes = nextBytes;
+        if (!nextLink) return Object.freeze(rooms);
+        if (rooms.length >= ROOM_COLLECTION_LIMIT) {
+          throw new Microsoft365ProviderError('MICROSOFT365_ROOM_COLLECTION_LIMIT_EXCEEDED');
+        }
+        url = nextLink;
       }
       throw new Microsoft365ProviderError(
         'MICROSOFT365_ROOM_PAGE_LIMIT_EXCEEDED',
@@ -1021,7 +1167,7 @@ export function createMicrosoft365Client({
         });
       }
       if (
-        placesClass !== 'ok'
+        placesResponse.status !== 200
         || !await validGraphPayload(placesResponse, validCollectionPayload)
       ) {
         return degraded({ reason: 'provider_response_invalid' });
@@ -1086,7 +1232,7 @@ export function createMicrosoft365Client({
         });
       }
       if (
-        calendarClass !== 'ok'
+        calendarResponse.status !== 200
         || !await validGraphPayload(calendarResponse, validCalendarPayload)
       ) {
         return degraded({

@@ -8,14 +8,14 @@ const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const ADMIN_ID = '22222222-2222-4222-8222-222222222222';
 const SESSION_ID = '33333333-3333-4333-8333-333333333333';
 
-function request({ port, path, method = 'GET' }) {
+function request({ port, path, method = 'GET', headers = {}, body = null }) {
   return new Promise((resolve, reject) => {
     const req = http.request({
       hostname: '127.0.0.1',
       port,
       path,
       method,
-      headers: { Host: `localhost:${port}` },
+      headers: { Host: `localhost:${port}`, ...headers },
     }, (res) => {
       const chunks = [];
       res.on('data', (chunk) => chunks.push(chunk));
@@ -25,6 +25,7 @@ function request({ port, path, method = 'GET' }) {
       });
     });
     req.on('error', reject);
+    if (body !== null) req.write(body);
     req.end();
   });
 }
@@ -126,6 +127,20 @@ test('room discovery HTTP contract requires authentication before provider acces
     const response = await request({ port, path: '/api/v1/integrations/microsoft365/rooms' });
     assert.equal(response.statusCode, 401);
     assert.equal(response.body.error.code, 'UNAUTHENTICATED');
+    assert.equal(calls.length, 0);
+  });
+});
+
+test('room discovery GET rejects a request body before provider access', async () => {
+  await withServer({}, async ({ port, calls }) => {
+    const response = await request({
+      port,
+      path: '/api/v1/integrations/microsoft365/rooms',
+      headers: { 'Content-Length': '2', 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.body.error.code, 'REQUEST_BODY_NOT_ALLOWED');
     assert.equal(calls.length, 0);
   });
 });
