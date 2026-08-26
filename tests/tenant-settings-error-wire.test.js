@@ -10,6 +10,7 @@ import { TENANT_STATUS } from '../src/tenancy/tenant.js';
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const TENANT_ID = '22222222-2222-4222-8222-222222222222';
 const SESSION_ID = '33333333-3333-4333-8333-333333333333';
+const PUBLIC_ORIGIN = 'http://localhost:3000';
 
 function principal() {
   return {
@@ -44,7 +45,7 @@ function request(port, path) {
       port,
       path,
       method: 'GET',
-      headers: { Host: `localhost:${port}` },
+      headers: { Host: new URL(PUBLIC_ORIGIN).host },
     }, (response) => {
       const chunks = [];
       response.on('data', (chunk) => chunks.push(chunk));
@@ -61,7 +62,7 @@ function request(port, path) {
 test('Tenant settings conflicts expose only the safe current revision context on the HTTP wire', async (t) => {
   const config = loadConfig({
     NODE_ENV: 'test',
-    PUBLIC_ORIGIN: 'http://localhost:3000',
+    PUBLIC_ORIGIN,
     RATE_LIMIT_MAX: '50',
   });
   const server = createHttpServer({
@@ -79,7 +80,6 @@ test('Tenant settings conflicts expose only the safe current revision context on
     server.close((error) => error ? reject(error) : resolve());
   }));
   const address = server.address();
-  config.publicOrigin = `http://localhost:${address.port}`;
 
   const result = await request(address.port, '/api/v1/application/configuration');
   assert.equal(result.statusCode, 409);
