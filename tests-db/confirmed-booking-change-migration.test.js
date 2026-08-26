@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackToVersion } from '../scripts/db-migrations.mjs';
 
 const TENANT_ID = '12121212-1212-4121-8121-121212121212';
 const USER_ID = '23232323-2323-4232-8232-232323232323';
+const MIGRATION_VERSION = 19;
 
 function databaseConfig() {
   const database = loadDatabaseConfig(process.env, 'test');
@@ -58,11 +59,11 @@ test('confirmed booking change migration enforces one open proposal and fail-clo
     (error) => error.code === '23505',
   );
   await assert.rejects(
-    rollbackLatest(pool),
+    rollbackToVersion(pool, MIGRATION_VERSION),
     (error) => error.code === '55000' && error.message.includes('BOOKING_CHANGE_ROWS_REQUIRE_REVIEW'),
   );
   await pool.query('DELETE FROM booking_change_requests WHERE tenant_id = $1', [TENANT_ID]);
-  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackToVersion(pool, MIGRATION_VERSION), true);
   const missing = await pool.query("SELECT to_regclass('public.booking_change_requests') AS relation");
   assert.equal(missing.rows[0].relation, null);
   await migrateUp(pool);
