@@ -14,6 +14,7 @@ import { createMicrosoft365RoomMappingService } from './application/microsoft365
 import { createProductionApplicationService } from './application/production-application-service.js';
 import { createRequestService } from './application/request-service.js';
 import { createRoomAvailabilityService } from './application/room-availability-service.js';
+import { createTenantConfigurationServices } from './application/tenant-configuration/factory.js';
 import { createTenantPilotService } from './application/tenant-pilot-service.js';
 import { createTenantUserAdministrationService } from './application/tenant-user-administration-service.js';
 import { createAuditService } from './audit/audit-service.js';
@@ -39,21 +40,13 @@ const metrics = createMetricsRegistry({ write: (line) => process.stdout.write(li
 const persistence = config.databaseUrl ? createPostgresPersistence(config) : null;
 const authorizationPolicy = createAuthorizationPolicy();
 const auditService = persistence
-  ? createAuditService({
-    repository: persistence.auditRepository,
-    authorizationPolicy,
-  })
+  ? createAuditService({ repository: persistence.auditRepository, authorizationPolicy })
   : null;
 const entitlementService = persistence && auditService
-  ? createEntitlementService({
-    repository: persistence.entitlementRepository,
-    auditService,
-  })
+  ? createEntitlementService({ repository: persistence.entitlementRepository, auditService })
   : null;
 const capabilityHealthService = persistence
-  ? createMicrosoft365CapabilityHealthService({
-    repository: persistence.microsoft365CapabilityHealthRepository,
-  })
+  ? createMicrosoft365CapabilityHealthService({ repository: persistence.microsoft365CapabilityHealthRepository })
   : null;
 const sessionService = persistence
   ? createSessionService({
@@ -105,10 +98,7 @@ const microsoft365CalendarProviderFactory = persistence && microsoft365Client
     capabilityHealthService,
   })
   : null;
-const microsoft365BookingServiceFactory = persistence
-  && auditService
-  && entitlementService
-  && microsoft365CalendarProviderFactory
+const microsoft365BookingServiceFactory = persistence && auditService && entitlementService && microsoft365CalendarProviderFactory
   ? createMicrosoft365BookingServiceFactory({
     repository: persistence.bookingReferenceRepository,
     calendarProviderFactory: microsoft365CalendarProviderFactory,
@@ -118,9 +108,7 @@ const microsoft365BookingServiceFactory = persistence
     metrics,
   })
   : null;
-const roomAvailabilityService = persistence
-  && entitlementService
-  && microsoft365CalendarProviderFactory
+const roomAvailabilityService = persistence && entitlementService && microsoft365CalendarProviderFactory
   ? createRoomAvailabilityService({
     repository: persistence.bookingReferenceRepository,
     authorizationPolicy,
@@ -140,10 +128,7 @@ const entraAuthService = persistence && entraClient && sessionService
     transactionTtlSeconds: config.oidcTransactionTtlSeconds,
   })
   : null;
-const finalRoomConfirmationService = persistence
-  && auditService
-  && entitlementService
-  && microsoft365CalendarProviderFactory
+const finalRoomConfirmationService = persistence && auditService && entitlementService && microsoft365CalendarProviderFactory
   ? createFinalRoomConfirmationService({
     repository: persistence.requestRepository,
     authorizationPolicy,
@@ -172,7 +157,14 @@ const bookingChangeService = persistence && auditService && microsoft365BookingS
     bookingServiceFactory: microsoft365BookingServiceFactory,
   })
   : null;
-const productionApplicationService = persistence && auditService
+const tenantConfigurationServices = persistence && auditService
+  ? createTenantConfigurationServices({
+    repositories: persistence.tenantConfigurationRepositories,
+    authorizationPolicy,
+    auditService,
+  })
+  : null;
+const productionApplicationCoreService = persistence && auditService
   ? createProductionApplicationService({
     repository: persistence.applicationRepository,
     requestRepository: persistence.requestRepository,
@@ -180,6 +172,9 @@ const productionApplicationService = persistence && auditService
     auditService,
     roomAvailabilityService,
   })
+  : null;
+const productionApplicationService = productionApplicationCoreService
+  ? Object.freeze({ ...productionApplicationCoreService, tenantConfigurationServices })
   : null;
 const tenantUserAdministrationService = persistence && auditService
   ? createTenantUserAdministrationService({
@@ -236,8 +231,7 @@ const microsoft365RoomMappingService = persistence && auditService && microsoft3
     auditService,
   })
   : null;
-const microsoft365OnboardingVerificationService = microsoft365RoomMappingService
-  && microsoft365CalendarProviderFactory
+const microsoft365OnboardingVerificationService = microsoft365RoomMappingService && microsoft365CalendarProviderFactory
   ? createMicrosoft365OnboardingVerificationService({
     roomMappingService: microsoft365RoomMappingService,
     calendarProviderFactory: microsoft365CalendarProviderFactory,
@@ -259,9 +253,7 @@ const microsoft365Service = microsoft365ConnectionService
     ...(microsoft365OnboardingVerificationService
       ? { verifyFreeBusy: (args) => microsoft365OnboardingVerificationService.verifyFreeBusy(args) }
       : {}),
-    ...(tenantPilotService
-      ? { getPilotReadiness: (args) => tenantPilotService.getReadiness(args) }
-      : {}),
+    ...(tenantPilotService ? { getPilotReadiness: (args) => tenantPilotService.getReadiness(args) } : {}),
   })
   : null;
 const server = createHttpServer({
@@ -288,13 +280,11 @@ async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   logger.lifecycle({ event: `shutdown_${signal.toLowerCase()}` });
-
   const forceTimer = setTimeout(() => {
     server.closeAllConnections();
     process.exitCode = 1;
   }, 10_000);
   forceTimer.unref();
-
   try {
     await new Promise((resolve, reject) => {
       server.close((error) => error ? reject(error) : resolve());

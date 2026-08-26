@@ -17,6 +17,11 @@ import {
   AuthorizationInputError,
   RequestStateConflictError,
 } from './authorization/errors.js';
+import {
+  TenantConfigurationConflictError,
+  TenantConfigurationInputError,
+  TenantConfigurationNotFoundError,
+} from './domain/tenant-configuration/protocol.js';
 import { EntraAuthenticationError } from './identity/entra-errors.js';
 import { EntitlementDeniedError, EntitlementInputError } from './entitlements/errors.js';
 import {
@@ -42,6 +47,9 @@ export class ApiError extends Error {
 export function asApiError(error) {
   if (error instanceof ApiError) return error;
   if (error instanceof EntraAuthenticationError) return new ApiError(401, 'AUTHENTICATION_FAILED');
+  if (error instanceof TenantConfigurationInputError) return new ApiError(400, error.code);
+  if (error instanceof TenantConfigurationConflictError) return new ApiError(409, error.code);
+  if (error instanceof TenantConfigurationNotFoundError) return new ApiError(404, error.code);
   if (
     error instanceof TenantInputError
     || error instanceof AuthorizationInputError

@@ -2,38 +2,24 @@
 
 ## Status
 
-This document defines the permanent backend architecture constraints introduced for SaaS 2. It extends `ARCHITECTURE.md`, the security baseline and the repository coding standards. Existing SaaS 1 provider composition remains supported; new SaaS 2 code must follow these rules without compatibility shortcuts.
+This document extends `ARCHITECTURE.md`, the security baseline, and the repository coding standards. Existing SaaS 1 provider composition remains supported; SaaS 2 code follows these constraints without compatibility shortcuts.
 
 ## Dependency direction
 
-The required direction is:
+The required direction is `HTTP transport -> application services -> domain and authorization policy -> explicit ports/contracts -> infrastructure adapters`. The Composition Root wires PostgreSQL, Microsoft, and runtime adapters. Application services do not import HTTP or persistence. Domain and authorization policy do not import application, HTTP, persistence, provider, or composition modules.
 
-`HTTP transport -> application services -> domain and authorization policy -> explicit ports/contracts -> infrastructure adapters`
+## Bounded configuration domains
 
-The Composition Root in `src/index.js` wires concrete PostgreSQL, Microsoft and runtime adapters. Application services do not import HTTP, PostgreSQL, configuration or composition modules. Domain and authorization policy do not import application, HTTP, persistence, provider or composition modules. PostgreSQL and provider adapters do not depend on HTTP or application services.
+Organization, locations/rooms, catalogue, booking policies, and cost allocation remain separately owned domains. User lifecycle, Microsoft operations, and audit remain separate operational domains. Generic mutable settings services or repositories are forbidden.
 
-The reviewed SaaS 1 Microsoft application modules may continue to consume the existing Microsoft contract constants. New files under `src/integrations` are treated as concrete provider adapters by default. Only the explicitly reviewed `booking-reference`, `calendar-contract` and stable integration error modules are provider-neutral allowlisted contracts. A new neutral contract therefore requires a deliberate architecture change and regression update rather than becoming implicitly trusted by filename.
+The common versioning protocol is limited to optimistic concurrency, immutable history, rollback, and atomic audit coordination. Each domain retains its own validator, application wrapper, persistence adapter, and route module. Domain-specific fields and decisions do not belong in the shared protocol/store.
 
-## Bounded settings domains
+Tenant authority comes from the authenticated principal and resolved Tenant context. Route or payload Tenant selectors are never authoritative. Production configuration does not fall back to Demo fixtures, browser storage, or a legacy unversioned mutation path.
 
-SaaS 2 configuration is implemented by the owning bounded domain, for example locations/rooms, catalogue, booking policies, cost allocation, User lifecycle, Microsoft operations and audit. Generic mutable `settings` services, repositories or route families are forbidden because they erase ownership, authorization, versioning and audit semantics.
+## Route and persistence ownership
 
-Each domain owns its contract, validation, authorization requirements, persistence port, PostgreSQL adapter and HTTP route family. Tenant authority is derived from the authenticated principal and resolved Tenant context; route or payload Tenant selectors are never authoritative.
+The five route modules below `src/http/settings/` use the executable route-module contract. Their shared transport parses only the bounded revision protocol and delegates to an injected domain service. Domain schemas, SQL, and provider behavior remain outside HTTP.
 
-## HTTP route ownership
+`configuration-revision-store.js` owns Tenant locking, optimistic revision checks, immutable revision/history persistence, head changes, and atomic audit append. Domain repositories own initialization from and projection into operational tables. They do not accept caller-controlled Tenant identifiers, generic table names, or dynamic SQL identifiers.
 
-`src/http/route-module.js` defines the registration contract for new SaaS 2 route families. A route module has a validated stable identifier, a route-key resolver and an injected handler factory. Registration rejects invalid or duplicate identities. Route lookup and dispatch fail closed when more than one module claims the same path, so route ownership cannot depend on registration order.
-
-Existing SaaS 1 routes remain operational during incremental extraction. New settings route families below `src/http/settings/` or named `*-settings-routes.js` must import and call `defineRouteModule`; they must not add domain schemas, SQL or provider behavior to the central dispatcher.
-
-## Automated enforcement
-
-`npm run check:architecture` runs the existing architecture gate followed by `scripts/check-module-boundaries.mjs`. The general gate:
-
-- rejects source import cycles and unresolved relative imports;
-- enforces application, domain/policy, HTTP, PostgreSQL and provider dependency boundaries;
-- treats unknown integration modules as concrete providers and prevents their unauthorized import;
-- rejects generic `settings`, `utils`, `helpers` and `common` dumping grounds;
-- requires the executable route-module contract for new SaaS 2 settings routes.
-
-`tests/module-boundaries.test.js` contains positive and intentionally invalid graph fixtures. `tests/route-module.test.js` protects route registration, duplicate ownership and dispatch behavior. Architecture exceptions require an explicit documented decision and corresponding regression updates; weakening the gate to make an implementation pass is not permitted.
+Append-only revision and audit rows are protected by database triggers. Down migrations fail closed while non-initial history or materialized settings exist. Architecture exceptions require a documented decision and regression updates; weakening a gate to make implementation pass is prohibited.

@@ -4,8 +4,8 @@ const { Pool } = pg;
 
 // Schema 14 established the Microsoft 365 capability-health baseline.
 // Migrations 15 through 19 add request-created/Tenant lifecycle audit actions,
-// bind calendar events to their create-time provider resource, persist Site time zones,
-// and establish confirmed-booking changes. Schema 20 adds versioned Tenant configuration.
+// provider-bound calendar references, Site time zones, and confirmed-booking changes.
+// Schema 20 adds the versioned Tenant configuration protocol.
 export const CURRENT_SCHEMA_VERSION = 20;
 
 export function createPostgresPool(config) {
