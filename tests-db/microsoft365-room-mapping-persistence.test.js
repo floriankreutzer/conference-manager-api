@@ -15,7 +15,7 @@ import {
   createPostgresPool,
   isPostgresSchemaReady,
 } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
 
 const TENANT_A = '31313131-3131-4131-8131-313131313131';
 const TENANT_B = '32323232-3232-4232-8232-323232323232';
@@ -278,13 +278,7 @@ test('Microsoft 365 room mapping is idempotent, tenant-isolated and preserves lo
   assert.equal(tenantB[0].roomId, ROOM_B);
   assert.equal((await repository.listByTenantIdAndIntegrationId(TENANT_A, INTEGRATION_A))[0].roomId, ROOM_A);
 
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackToVersion(pool, 13), true);
   await assert.rejects(
     () => rollbackLatest(pool),
     /Cannot roll back Microsoft 365 room mappings while mapping rows exist/,
