@@ -8,13 +8,21 @@ import {
   RequestStateConflictError,
 } from '../authorization/errors.js';
 import { isRequestId } from '../domain/request.js';
+import { isInternalUuid } from '../domain/identifiers.js';
 import { REQUEST_STATUS, REQUEST_TRANSITION } from '../domain/request-workflow.js';
 import { CAPABILITY } from '../entitlements/capabilities.js';
-import { CalendarProviderError, RESERVATION_PHASE } from '../integrations/calendar-contract.js';
+import { EntitlementDeniedError } from '../entitlements/errors.js';
+import {
+  RESERVATION_PHASE,
+  isProviderConnectionReference,
+  isProviderResourceReference,
+} from '../integrations/calendar-contract.js';
 
 function concealedNotFound() {
   return new AuthorizationDeniedError('RESOURCE_NOT_AVAILABLE', { conceal: true });
 }
+
+const PROVIDER_PATTERN = /^[a-z][a-z0-9_-]{1,63}$/;
 
 export class FinalRoomAvailabilityError extends Error {
   constructor(code = 'FINAL_ROOM_AVAILABILITY_UNAVAILABLE', options = {}) {
@@ -55,13 +63,20 @@ export function createFinalRoomConfirmationService({
   ) {
     throw new TypeError('FINAL_CONFIRMATION_AUDIT_REQUIRED');
   }
-  if (!entitlementService || typeof entitlementService.requireAccess !== 'function') {
+  if (
+    !entitlementService
+    || typeof entitlementService.requireAccess !== 'function'
+    || typeof entitlementService.evaluateAccess !== 'function'
+  ) {
     throw new TypeError('FINAL_CONFIRMATION_ENTITLEMENT_REQUIRED');
   }
   if (!calendarProviderFactory || typeof calendarProviderFactory.forRoom !== 'function') {
     throw new TypeError('FINAL_CONFIRMATION_PROVIDER_FACTORY_REQUIRED');
   }
-  if (bookingServiceFactory && typeof bookingServiceFactory.forRequest !== 'function') {
+  if (
+    bookingServiceFactory
+    && typeof bookingServiceFactory.forProvider !== 'function'
+  ) {
     throw new TypeError('FINAL_CONFIRMATION_BOOKING_FACTORY_INVALID');
   }
   if (typeof clock !== 'function') throw new TypeError('FINAL_CONFIRMATION_CLOCK_REQUIRED');
@@ -104,7 +119,7 @@ export function createFinalRoomConfirmationService({
 
   async function compensateCreatedCalendarEvent(service, context, originalError) {
     try {
-      await service.cancelCalendarEvent(context);
+      await service.compensateCalendarEvent(context);
     } catch (compensationError) {
       throw new FinalRoomAvailabilityError('FINAL_ROOM_COMPENSATION_FAILED', {
         cause: new AggregateError([originalError, compensationError], 'FINAL_ROOM_CONFIRMATION_AND_COMPENSATION_FAILED'),
@@ -160,20 +175,66 @@ export function createFinalRoomConfirmationService({
         throw new RequestStateConflictError('ROOM_REQUIRED');
       }
 
-      await entitlementService.requireAccess({
-        principal,
-        tenantContext,
-        capabilityId: CAPABILITY.MICROSOFT_CALENDAR,
-        authorized: true,
-      });
-
-      const provider = await calendarProviderFactory.forRoom({
-        tenantId: tenantContext.tenantId,
-        roomId: request.roomId,
-      });
-      let validation;
+      let calendarWriteEnabled = false;
       try {
-        validation = await provider.validateReservation({
+        await entitlementService.requireAccess({
+          principal,
+          tenantContext,
+          capabilityId: CAPABILITY.MICROSOFT_CALENDAR,
+          authorized: true,
+        });
+        calendarWriteEnabled = bookingServiceFactory
+          ? await entitlementService.evaluateAccess({
+            principal,
+            tenantContext,
+            capabilityId: CAPABILITY.MICROSOFT_CALENDAR_WRITE,
+            authorized: true,
+          })
+          : false;
+      } catch (error) {
+        await recordFailure({
+          principal,
+          tenantContext,
+          requestId,
+          correlationId,
+          request,
+          reasonCode: error instanceof EntitlementDeniedError
+            ? 'calendar_entitlement_denied'
+            : 'calendar_entitlement_unavailable',
+        });
+        if (error instanceof EntitlementDeniedError) throw error;
+        throw new FinalRoomAvailabilityError('FINAL_ROOM_ENTITLEMENT_UNAVAILABLE', { cause: error });
+      }
+
+      let validation;
+      let calendarAuthority;
+      let calendarProvider;
+      try {
+        calendarProvider = await calendarProviderFactory.forRoom({
+          tenantId: tenantContext.tenantId,
+          roomId: request.roomId,
+        });
+        if (
+          !isInternalUuid(calendarProvider?.integrationId)
+          || !isProviderConnectionReference(calendarProvider?.providerConnectionReference)
+          || !isProviderResourceReference(calendarProvider?.providerResourceReference)
+          || typeof calendarProvider?.integrationProvider !== 'string'
+          || !PROVIDER_PATTERN.test(calendarProvider.integrationProvider)
+          || typeof calendarProvider?.identityProvider !== 'string'
+          || !PROVIDER_PATTERN.test(calendarProvider.identityProvider)
+        ) {
+          throw new TypeError('FINAL_ROOM_PROVIDER_AUTHORITY_INVALID');
+        }
+        calendarAuthority = Object.freeze({
+          integrationId: calendarProvider.integrationId,
+          integrationProvider: calendarProvider.integrationProvider,
+          identityProvider: calendarProvider.identityProvider,
+          providerConnectionReference: calendarProvider.providerConnectionReference,
+          roomId: request.roomId,
+          providerResourceReference: calendarProvider.providerResourceReference,
+          calendarWriteEnabled,
+        });
+        validation = await calendarProvider.validateReservation({
           tenantId: tenantContext.tenantId,
           requestId: request.id,
           roomId: request.roomId,
@@ -191,10 +252,7 @@ export function createFinalRoomConfirmationService({
           request,
           reasonCode: 'provider_unavailable',
         });
-        if (error instanceof CalendarProviderError) {
-          throw new FinalRoomAvailabilityError('FINAL_ROOM_PROVIDER_UNAVAILABLE', { cause: error });
-        }
-        throw error;
+        throw new FinalRoomAvailabilityError('FINAL_ROOM_PROVIDER_UNAVAILABLE', { cause: error });
       }
       if (!validation || validation.valid !== true || validation.reason !== 'available') {
         await recordFailure({
@@ -211,10 +269,52 @@ export function createFinalRoomConfirmationService({
       let bookingService = null;
       let calendarCreated = false;
       const context = bookingContext(principal, tenantContext, request, correlationId);
-      if (bookingServiceFactory) {
-        bookingService = await bookingServiceFactory.forRequest(request);
-        await bookingService.createCalendarEvent(context);
-        calendarCreated = true;
+      if (!calendarWriteEnabled && bookingServiceFactory) {
+        try {
+          if (
+            typeof bookingServiceFactory.requiresCancellation !== 'function'
+            || typeof bookingServiceFactory.forCancellation !== 'function'
+          ) {
+            throw new TypeError('FINAL_ROOM_CALENDAR_CLEANUP_FACTORY_INVALID');
+          }
+          if (await bookingServiceFactory.requiresCancellation(request)) {
+            const cleanupService = await bookingServiceFactory.forCancellation(request);
+            if (!cleanupService || typeof cleanupService.cancelCalendarEvent !== 'function') {
+              throw new TypeError('FINAL_ROOM_CALENDAR_CLEANUP_SERVICE_INVALID');
+            }
+            await cleanupService.cancelCalendarEvent(context);
+          }
+        } catch (error) {
+          await recordFailure({
+            principal,
+            tenantContext,
+            requestId,
+            correlationId,
+            request,
+            reasonCode: 'calendar_cleanup_unavailable',
+          });
+          throw new FinalRoomAvailabilityError(
+            'FINAL_ROOM_CALENDAR_RECONCILIATION_REQUIRED',
+            { cause: error },
+          );
+        }
+      }
+      if (calendarWriteEnabled) {
+        try {
+          bookingService = await bookingServiceFactory.forProvider(request, calendarProvider);
+          await bookingService.createCalendarEvent(context);
+          calendarCreated = true;
+        } catch (error) {
+          await recordFailure({
+            principal,
+            tenantContext,
+            requestId,
+            correlationId,
+            request,
+            reasonCode: 'calendar_write_unavailable',
+          });
+          throw new FinalRoomAvailabilityError('FINAL_ROOM_CALENDAR_WRITE_UNAVAILABLE', { cause: error });
+        }
       }
 
       const changedMs = clock();
@@ -241,14 +341,58 @@ export function createFinalRoomConfirmationService({
           tenantId: tenantContext.tenantId,
           requestId,
           expectedStatus: decision.expectedStatus,
+          calendarAuthority,
           changedAt,
           auditEvent,
         });
       } catch (error) {
-        if (calendarCreated) await compensateCreatedCalendarEvent(bookingService, context, error);
-        throw error;
+        let authoritative;
+        try {
+          authoritative = await repository.findByTenantIdAndId(tenantContext.tenantId, requestId);
+        } catch (reconciliationError) {
+          await recordFailure({
+            principal,
+            tenantContext,
+            requestId,
+            correlationId,
+            request,
+            reasonCode: 'confirmation_reconciliation_unavailable',
+          });
+          throw new FinalRoomAvailabilityError('FINAL_ROOM_CONFIRMATION_RECONCILIATION_REQUIRED', {
+            cause: new AggregateError([error, reconciliationError], 'FINAL_ROOM_CONFIRMATION_OUTCOME_UNKNOWN'),
+          });
+        }
+        if (authoritative?.status === REQUEST_STATUS.CONFIRMED) return authoritative;
+        await recordFailure({
+          principal,
+          tenantContext,
+          requestId,
+          correlationId,
+          request,
+          reasonCode: 'confirmation_outcome_unknown',
+        });
+        throw new FinalRoomAvailabilityError('FINAL_ROOM_CONFIRMATION_RECONCILIATION_REQUIRED', {
+          cause: error,
+        });
       }
       if (result.status === 'confirmed') return result.request;
+      if (result.request?.status === REQUEST_STATUS.CONFIRMED) return result.request;
+
+      if (result.status === 'provider_authority_conflict') {
+        const authorityError = new FinalRoomAvailabilityError('FINAL_ROOM_PROVIDER_AUTHORITY_LOST');
+        if (calendarCreated) {
+          await compensateCreatedCalendarEvent(bookingService, context, authorityError);
+        }
+        await recordFailure({
+          principal,
+          tenantContext,
+          requestId,
+          correlationId,
+          request,
+          reasonCode: 'provider_authority_lost',
+        });
+        throw authorityError;
+      }
 
       const conflict = new RequestStateConflictError(
         result.status === 'room_conflict' ? 'ROOM_AVAILABILITY_CONFLICT' : 'REQUEST_STATE_CONFLICT',

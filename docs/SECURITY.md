@@ -48,6 +48,7 @@ The browser and all provider responses are untrusted. Client-controlled Tenant I
 - The browser session credential is a server-generated 256-bit opaque token. Only its SHA-256 hash is stored in PostgreSQL.
 - `cm_session` is `HttpOnly`, `SameSite=Lax`, `Path=/api`, has bounded `Max-Age`, sets no broad `Domain` and is `Secure` for HTTPS.
 - Session resolution fails closed for malformed or missing cookies, unknown hashes, expiry, revocation, inactive Users, stale `security_version` and unavailable Tenant lifecycle state.
+- Session issuance compares the approved role/permission snapshot's exact `security_version` under the same database locks and transaction as insertion; a concurrent role change cannot install a stale privileged session.
 - Logout and session rotation require server authority and commit their audit evidence atomically with the session mutation.
 - Role changes increment User `security_version`, invalidating all stale session authorization snapshots immediately.
 - Provider access, refresh and ID tokens are not application sessions and never enter LocalStorage or sessionStorage.
@@ -97,7 +98,7 @@ See `docs/AUDIT.md`.
 ## Entitlement controls (#53)
 
 - Product access is the server-side intersection of authorization and Tenant entitlement; a trusted rollout gate may only restrict that result.
-- The allowlisted capabilities are `microsoft.directory` and `microsoft.calendar`; unknown capabilities fail closed.
+- The allowlisted capabilities are `microsoft.directory`, `microsoft.calendar` and the independently gated `microsoft.calendar.write`; unknown capabilities fail closed.
 - Missing entitlement rows mean disabled. Browser flags, visibility and submitted values cannot grant access.
 - Entitlement reads and writes are scoped by internal Tenant ID plus capability ID.
 - Commercial entitlement mutation uses a separate deny-by-default operator authorization port; Tenant Admin is not a commercial administrator.
@@ -109,9 +110,12 @@ See `docs/ENTITLEMENTS.md`.
 
 - Booking and calendar application code is provider-neutral and accepts no provider URL or SDK type.
 - Every provider operation requires same-active-Tenant Principal and Request binding, explicit server authorization and the configured Tenant entitlement.
-- PostgreSQL stores only opaque provider references bound to internal Tenant, Request and Integration.
+- PostgreSQL stores only bounded opaque provider connection/resource/event references bound to internal Tenant, Request and Integration, plus a positive create-attempt number and deterministic key.
 - Local room-conflict checks are Tenant-scoped.
-- Calendar create uses a deterministic server-derived SHA-256 idempotency key; the browser cannot supply it.
+- Calendar create uses a deterministic server-derived SHA-256 idempotency key per attempt; the browser cannot supply it. A compensated retry increments the attempt and rotates the key.
+- A pending attempt keeps its create-time resource through remapping or local disconnect. Cancellation uses that persisted binding and still requires the exact current Integration/provider-Tenant identity and active Entra binding.
+- Create reservation/finalization and final Request confirmation revalidate the exact connected Integration plus active Entra binding under the same database locks as their local commit. Authority loss after provider create is explicitly compensated.
+- Booking-reference states are `pending`, `active`, `compensating`, `compensated` and terminal `cancelled`; identity/provider rebinding is blocked while any reference is nonterminal.
 - Provider responses are positively validated and mapped to stable retryable or non-retryable classifications.
 - Raw provider errors, payloads, credentials and references are excluded from Tenant audit metadata.
 - Provider write retries must remain bounded and idempotency-aware.
@@ -122,16 +126,20 @@ See `docs/BOOKING-INTEGRATION.md`.
 
 - Only an authenticated `tenant_admin` with `tenant:integrations:manage` may read or mutate connection state.
 - The provider Tenant is derived from the active server-side Entra Tenant binding. Browser and callback Tenant values never select the internal Tenant.
-- Connect, verify and disconnect require CSRF and reject request bodies or Tenant selectors.
+- Connect, verify and disconnect require CSRF and reject request bodies or Tenant selectors. Read-only Microsoft 365 routes also reject request bodies.
 - Admin consent uses a 256-bit state value; only SHA-256 is persisted.
 - Consent transactions are bound to internal Tenant, actor User, Integration, provider Tenant, connection version and expiry.
 - Callback keys and values are positively allowlisted; duplicates, pollution, control characters and inconsistent provider states fail closed.
-- State is consumed atomically and once. Replay, expiry, actor mismatch, cross-Tenant use, provider-Tenant mismatch, changed binding and stale version fail closed.
+- Consent start and callback consume lock and revalidate the active provider-Tenant binding inside their persistence transactions.
+- Consent and manual-verification finalization revalidate the exact binding again inside the version-guarded connection-update transaction after Graph I/O.
+- State is consumed atomically and once. Replay, expiry, actor mismatch, cross-Tenant use, provider-Tenant mismatch, changed binding and stale version fail closed and are durably audited with redacted reason codes when a trusted Tenant/actor context exists.
 - Microsoft identity and Graph origins are fixed in server configuration. Adapter paths are constructed internally and redirects are disabled.
 - Provider calls and response bodies are bounded; provider responses are positively validated and raw details are concealed.
 - The base lifecycle checks `Place.Read.All` and `Calendars.ReadBasic.All` application access only. It does not claim free/busy or calendar-write authorization.
 - Connection states are `pending`, `connected`, `degraded`, `revoked` and `disconnected` with fixed reason and permission indicators.
 - Connection, consent and local disconnect state is Tenant-scoped, versioned and audit-atomic.
+- A cancelled or expired same-provider reconnect preserves an existing healthy verified connection. Provider rebinding is fail-closed while any booking reference is not terminal `cancelled`; an allowed rebind resets verification and invalidates stale room mappings before recovery.
+- Pre-activation Entra identity unbind is fail-closed with any nonterminal booking reference; an allowed unbind invalidates User security versions, revokes sessions, deletes consent state and disconnects/clears Microsoft 365 in the same audited transaction.
 - Local disconnect does not claim that Entra administrator consent was externally revoked.
 
 See `docs/MICROSOFT365-CONNECTION.md`.
@@ -160,7 +168,7 @@ GitHub-native security feature availability depends on repository/account entitl
 - Real Pilot acceptance must use controlled independent Entra Tenants and record exact redirect URI, app ownership, permission grants, success, denial, missing-permission, revocation and reconnect evidence.
 - The audit chain is tamper-evident but is not external completeness proof against privileged suffix deletion or stale backup restoration.
 - The in-process limiter is not a distributed quota solution; Pilot and Production require trusted shared edge abuse controls.
-- Places synchronization, free/busy, calendar event writes, operational recovery, deployment IaC and independent penetration testing remain separate completion scopes.
+- Places synchronization, room mapping, free/busy and entitlement-gated create/cancel adapters are implemented, but repository tests do not prove them against a live customer Microsoft Tenant. Live Graph/Exchange acceptance, the approved post-confirmation update workflow (#68), operational recovery evidence, deployment IaC and independent penetration testing remain completion gates.
 
 ## OWASP and CWE mapping
 

@@ -12,6 +12,7 @@
     "db:rollback": "node scripts/db-migrate.mjs down",
     "operator:tenant": "node scripts/tenant-operator.mjs",
     "pilot:readiness": "node scripts/pilot-readiness.mjs --require-ready",
+    "pilot:exchange-rbac": "node scripts/exchange-application-rbac-check.mjs",
     "check:syntax": "node scripts/check-syntax.mjs",
     "check:agents": "node scripts/check-agent-instructions.mjs",
     "check:architecture": "node scripts/check-architecture.mjs",

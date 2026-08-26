@@ -80,6 +80,8 @@ test('Tenant pilot lifecycle change is optimistic, audit-atomic, and rollback-pr
     auditEvent,
   }), null);
 
+  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatest(pool), true);
   await assert.rejects(
     rollbackLatest(pool),
     (error) => error.code === '55000'

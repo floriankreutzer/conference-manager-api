@@ -316,14 +316,17 @@ This disabled state preserves the optional capability model required by SaaS 2 i
 
 When Calendar Write is enabled, all of the following become mandatory release gates:
 
-1. enable `microsoft.calendar.write` through the operator entitlement command;
-2. complete the real calendar-write acceptance test in each representative Pilot organization;
-3. implement and verify the approved Exchange Application RBAC scope for the central application;
-4. prove that out-of-scope mailboxes are denied;
-5. retain rollback and audit evidence;
-6. mark both conditional evidence items `verified`.
+1. keep `microsoft.calendar.write` disabled while the scope is prepared;
+2. implement `docs/EXCHANGE-APPLICATION-RBAC.md`, including removal of the central app registration's static `Calendars.ReadWrite` request and every unscoped customer-Tenant grant;
+3. build the protected non-sensitive evidence input from the complete enabled room-mapping inventory and run `npm run pilot:exchange-rbac -- /protected/path/exchange-rbac-evidence.json` from the release commit;
+4. verify the exact in-scope inventory and prove that out-of-scope mailboxes are denied through both `Test-ServicePrincipalAuthorization` and a live Graph negative control;
+5. only after steps 1–4 pass, enable `microsoft.calendar.write` through the operator entitlement command for the controlled acceptance window;
+6. complete the real create/update/delete calendar-write acceptance test in each representative Pilot organization;
+7. on any failure, immediately disable the entitlement, execute the documented rollback, and reconcile every persisted provider reference before retrying;
+8. retain rollback and audit evidence;
+9. mark both conditional evidence items `verified`.
 
-Exchange Application RBAC guidance and live verification are tracked separately in issue `#69`. Repository documentation alone is not execution evidence.
+Exchange Application RBAC guidance is defined in `docs/EXCHANGE-APPLICATION-RBAC.md` and tracked in issue `#69`. Repository documentation and a passing input validator alone are not execution evidence. The operator check must cover the exact complete set of enabled internal room IDs; both `Test-ServicePrincipalAuthorization` and live in-scope/out-of-scope Graph behavior must be recorded before Calendar Write activation. Recheck the central app registration and customer service-principal grant inventory after every consent or reconnect so `/.default` cannot restore unscoped Calendar Write.
 
 ## 8. Suspension and reactivation
 

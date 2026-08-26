@@ -7,11 +7,24 @@ import {
 import { AuthorizationDeniedError, AuthorizationInputError } from '../authorization/errors.js';
 import { PERMISSION } from '../authorization/policy.js';
 import { isInternalUuid } from '../domain/identifiers.js';
+import { isIanaTimeZone } from '../domain/site-time-zone.js';
+import {
+  RoomAvailabilityUnavailableError,
+  normalizeRoomAvailabilityQuery,
+} from './room-availability-service.js';
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const DISPLAY_NAME_MAX = 160;
 const SITE_LIMIT = 200;
 const NOTIFICATION_LIMIT = 200;
+
+export class SiteTimeZoneRequiredError extends Error {
+  constructor(code = 'SITE_TIME_ZONE_REQUIRED') {
+    super(code);
+    this.name = 'SiteTimeZoneRequiredError';
+    this.code = code;
+  }
+}
 
 function requireCorrelationId(value) {
   if (!isInternalUuid(value)) throw new AuthorizationInputError('CORRELATION_ID_INVALID');
@@ -53,15 +66,15 @@ function requireRequestDraft(value) {
   if (typeof value.roomId !== 'string' || !SAFE_ID.test(value.roomId)) {
     throw new AuthorizationInputError('REQUEST_ROOM_INVALID');
   }
-  const startsAt = new Date(value.startsAt);
-  const endsAt = new Date(value.endsAt);
-  if (
-    typeof value.startsAt !== 'string'
-    || typeof value.endsAt !== 'string'
-    || Number.isNaN(startsAt.getTime())
-    || Number.isNaN(endsAt.getTime())
-    || endsAt <= startsAt
-  ) {
+  let schedule;
+  try {
+    schedule = normalizeRoomAvailabilityQuery({
+      roomId: value.roomId,
+      startsAt: value.startsAt,
+      endsAt: value.endsAt,
+    });
+  } catch (error) {
+    if (!(error instanceof AuthorizationInputError)) throw error;
     throw new AuthorizationInputError('REQUEST_SCHEDULE_INVALID');
   }
   const internalParticipants = value.internalParticipants ?? 0;
@@ -81,8 +94,8 @@ function requireRequestDraft(value) {
   }
   return Object.freeze({
     roomId: value.roomId,
-    startsAt,
-    endsAt,
+    startsAt: new Date(schedule.startsAt),
+    endsAt: new Date(schedule.endsAt),
     internalParticipants,
     externalParticipants,
   });
@@ -113,7 +126,7 @@ function requireSites(value) {
       throw new AuthorizationInputError('TENANT_CONFIGURATION_INVALID');
     }
     const keys = Object.keys(site);
-    if (keys.some((key) => !['id', 'name', 'active'].includes(key))) {
+    if (keys.some((key) => !['id', 'name', 'active', 'timeZone'].includes(key))) {
       throw new AuthorizationInputError('TENANT_CONFIGURATION_INVALID');
     }
     if (typeof site.id !== 'string' || !SAFE_ID.test(site.id) || ids.has(site.id)) {
@@ -124,7 +137,10 @@ function requireSites(value) {
     if (typeof site.active !== 'boolean') {
       throw new AuthorizationInputError('TENANT_CONFIGURATION_INVALID');
     }
-    return Object.freeze({ id: site.id, name, active: site.active });
+    if (!isIanaTimeZone(site.timeZone)) {
+      throw new AuthorizationInputError('TENANT_CONFIGURATION_INVALID');
+    }
+    return Object.freeze({ id: site.id, name, active: site.active, timeZone: site.timeZone });
   }));
 }
 
@@ -183,6 +199,7 @@ export function createProductionApplicationService({
   requestRepository,
   authorizationPolicy,
   auditService,
+  roomAvailabilityService = null,
   clock = () => Date.now(),
   idFactory = () => randomUUID(),
 } = {}) {
@@ -191,6 +208,7 @@ export function createProductionApplicationService({
     || typeof repository.findProfile !== 'function'
     || typeof repository.updateProfile !== 'function'
     || typeof repository.loadCatalog !== 'function'
+    || typeof repository.findRoomBookingContext !== 'function'
     || typeof repository.listNotifications !== 'function'
     || typeof repository.markNotificationRead !== 'function'
     || typeof repository.updateSites !== 'function'
@@ -216,12 +234,26 @@ export function createProductionApplicationService({
   if (!auditService || typeof auditService.createEvent !== 'function') {
     throw new TypeError('AUDIT_SERVICE_REQUIRED');
   }
+  if (
+    roomAvailabilityService !== null
+    && typeof roomAvailabilityService?.checkAvailability !== 'function'
+  ) {
+    throw new TypeError('ROOM_AVAILABILITY_SERVICE_INVALID');
+  }
   if (typeof clock !== 'function' || typeof idFactory !== 'function') {
     throw new TypeError('APPLICATION_RUNTIME_INVALID');
   }
 
   function authorizeRead(principal, tenantContext) {
     authorizationPolicy.authorizeTenantApplicationRead(principal, tenantContext);
+  }
+
+  async function requireBookableRoom(tenantId, roomId) {
+    const context = await repository.findRoomBookingContext(tenantId, roomId);
+    if (!context || context.roomActive !== true || context.siteActive !== true) {
+      throw new AuthorizationDeniedError('RESOURCE_NOT_AVAILABLE', { conceal: true });
+    }
+    if (!isIanaTimeZone(context.timeZone)) throw new SiteTimeZoneRequiredError();
   }
 
   return Object.freeze({
@@ -279,6 +311,7 @@ export function createProductionApplicationService({
       requireCorrelationId(correlationId);
       authorizationPolicy.authorizeRequestCreate(principal, tenantContext);
       const draft = requireRequestDraft(requestDraft);
+      await requireBookableRoom(tenantContext.tenantId, draft.roomId);
       const requestId = idFactory();
       if (!isInternalUuid(requestId)) throw new TypeError('REQUEST_ID_FACTORY_INVALID');
       const createdAt = clockDate(clock);
@@ -304,6 +337,20 @@ export function createProductionApplicationService({
         createdAt,
         auditEvent,
       }));
+    },
+
+    async checkRoomAvailability({ principal, tenantContext, correlationId, query }) {
+      if (!roomAvailabilityService) throw new RoomAvailabilityUnavailableError();
+      requireCorrelationId(correlationId);
+      authorizationPolicy.authorizeRequestCreate(principal, tenantContext);
+      const normalized = normalizeRoomAvailabilityQuery(query);
+      await requireBookableRoom(tenantContext.tenantId, normalized.roomId);
+      return roomAvailabilityService.checkAvailability({
+        principal,
+        tenantContext,
+        correlationId,
+        query: normalized,
+      });
     },
 
     async listNotifications({ principal, tenantContext, correlationId }) {

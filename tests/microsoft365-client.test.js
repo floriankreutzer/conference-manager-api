@@ -28,12 +28,14 @@ function client({
   publicOrigin = 'https://conference.example',
   allowInsecureLocalhost,
   onApplicationConfiguration,
+  timeoutMs,
 } = {}) {
   return createMicrosoft365Client({
     clientId: CLIENT_ID,
     clientSecret: 'secret-value-for-test-only-not-a-production-credential',
     publicOrigin,
     allowInsecureLocalhost,
+    timeoutMs,
     fetchImpl: fetchImpl || (async () => response(200, { value: [] })),
     applicationFactory(configuration) {
       assert.equal(configuration.authority, `https://login.microsoftonline.com/${TENANT_ID}`);
@@ -114,6 +116,13 @@ test('MSAL identity transport is fixed-origin, redirect-disabled, timeout-bound 
 
   const callCount = calls.length;
   await assert.rejects(
+    networkClient.sendGetRequestAsync(tokenUrl, { body: 'not-allowed' }),
+    (error) => error instanceof Microsoft365ProviderError
+      && error.code === 'MICROSOFT365_IDENTITY_REQUEST_INVALID',
+  );
+  assert.equal(calls.length, callCount);
+
+  await assert.rejects(
     networkClient.sendPostRequestAsync('https://attacker.example/token', { body: '' }),
     (error) => error instanceof Microsoft365ProviderError
       && error.code === 'MICROSOFT365_IDENTITY_URL_INVALID',
@@ -187,6 +196,47 @@ test('base permission verification uses fixed Graph destinations and validates b
   assert.equal(calls[0].options.redirect, 'error');
   assert.equal(calls[0].options.headers.Authorization, `Bearer ${ACCESS_TOKEN}`);
   assert.equal(calls[0].options.signal instanceof AbortSignal, true);
+});
+
+test('base permission verification accepts only the documented HTTP 200 responses', async () => {
+  for (const status of [201, 204]) {
+    const places = client({
+      fetchImpl: async () => status === 204
+        ? new Response(null, { status })
+        : response(status, { value: [] }),
+    });
+    assert.deepEqual(
+      await places.verifyBasePermissions({ tenantReference: TENANT_ID }),
+      {
+        status: MICROSOFT365_VERIFICATION.DEGRADED,
+        places: 'unknown',
+        calendars: 'unknown',
+        reason: 'provider_response_invalid',
+      },
+    );
+  }
+
+  let calls = 0;
+  const calendar = client({
+    fetchImpl: async () => {
+      calls += 1;
+      return calls === 1
+        ? response(200, { value: [] })
+        : response(201, { id: 'calendar-id' });
+    },
+  });
+  assert.deepEqual(
+    await calendar.verifyBasePermissions({
+      tenantReference: TENANT_ID,
+      claimantUserReference: USER_ID,
+    }),
+    {
+      status: MICROSOFT365_VERIFICATION.DEGRADED,
+      places: 'granted',
+      calendars: 'unknown',
+      reason: 'provider_response_invalid',
+    },
+  );
 });
 
 test('a missing claimant identity degrades calendar verification without making a broad Graph call', async () => {

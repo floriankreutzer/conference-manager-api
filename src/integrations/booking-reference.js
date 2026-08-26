@@ -1,9 +1,17 @@
 import { isInternalUuid } from '../domain/identifiers.js';
 import { isRequestId } from '../domain/request.js';
-import { isIdempotencyKey, isProviderReference } from './calendar-contract.js';
+import {
+  isIdempotencyKey,
+  isProviderConnectionReference,
+  isProviderReference,
+  isProviderResourceReference,
+} from './calendar-contract.js';
 
 export const BOOKING_REFERENCE_STATE = Object.freeze({
+  PENDING: 'pending',
   ACTIVE: 'active',
+  COMPENSATED: 'compensated',
+  COMPENSATING: 'compensating',
   CANCELLED: 'cancelled',
 });
 
@@ -21,13 +29,22 @@ export function normalizeBookingProviderReference(value) {
     !isInternalUuid(value.tenantId)
     || !isRequestId(value.requestId)
     || !isInternalUuid(value.integrationId)
-    || !isProviderReference(value.providerReference)
+    || !isProviderConnectionReference(value.providerConnectionReference)
+    || !isProviderResourceReference(value.providerResourceReference)
     || !isIdempotencyKey(value.idempotencyKey)
     || !isInternalUuid(value.createdCorrelationId)
+    || !Number.isSafeInteger(value.attemptNumber)
+    || value.attemptNumber < 1
   ) {
     throw new TypeError('BOOKING_PROVIDER_REFERENCE_INVALID');
   }
   if (!BOOKING_REFERENCE_STATES.has(value.state)) throw new TypeError('BOOKING_PROVIDER_REFERENCE_INVALID');
+  if (
+    (value.state === BOOKING_REFERENCE_STATE.PENDING && value.providerReference !== null)
+    || (value.state !== BOOKING_REFERENCE_STATE.PENDING && !isProviderReference(value.providerReference))
+  ) {
+    throw new TypeError('BOOKING_PROVIDER_REFERENCE_INVALID');
+  }
   if (!isUtcInstant(value.createdAt) || !isUtcInstant(value.updatedAt)) {
     throw new TypeError('BOOKING_PROVIDER_REFERENCE_INVALID');
   }
@@ -38,7 +55,10 @@ export function normalizeBookingProviderReference(value) {
     tenantId: value.tenantId,
     requestId: value.requestId,
     integrationId: value.integrationId,
+    attemptNumber: value.attemptNumber,
+    providerConnectionReference: value.providerConnectionReference,
     providerReference: value.providerReference,
+    providerResourceReference: value.providerResourceReference,
     idempotencyKey: value.idempotencyKey,
     state: value.state,
     createdCorrelationId: value.createdCorrelationId,

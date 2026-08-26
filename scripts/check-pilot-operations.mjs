@@ -78,10 +78,33 @@ for (const required of [
   }
 }
 
+const exchangeRbacRuntime = await readFile('scripts/exchange-application-rbac-check.mjs', 'utf8');
+const boundedEvidenceReader = await readFile('scripts/lib/bounded-evidence-file.mjs', 'utf8');
+for (const required of [
+  'readBoundedRegularFile',
+]) {
+  if (!exchangeRbacRuntime.includes(required)) {
+    throw new Error(`Exchange Application RBAC evidence reader is missing invariant ${required}.`);
+  }
+}
+for (const required of [
+  'O_NOFOLLOW',
+  'Buffer.allocUnsafe(maxBytes + 1)',
+  'file.read(buffer,',
+]) {
+  if (!boundedEvidenceReader.includes(required)) {
+    throw new Error(`Bounded operator evidence reader is missing invariant ${required}.`);
+  }
+}
+if (boundedEvidenceReader.includes('file.readFile')) {
+  throw new Error('Operator evidence reader must enforce its bound while reading.');
+}
+
 const packageDocument = JSON.parse(await readFile('package.json', 'utf8'));
 for (const script of [
   'operator:tenant',
   'pilot:readiness',
+  'pilot:exchange-rbac',
   'check:pilot-operations',
   'check:pilot-readiness',
 ]) {
@@ -98,6 +121,9 @@ for (const required of [
   'Microsoft Entra and Graph acceptance',
   'Issue #73 remains open',
   'enabledCalendarWriteEvidenceVerified',
+  'keep `microsoft.calendar.write` disabled',
+  'only after steps 1–4 pass',
+  'immediately disable the entitlement',
 ]) {
   if (!runbook.includes(required)) {
     throw new Error(`Pilot readiness runbook is missing section ${required}.`);

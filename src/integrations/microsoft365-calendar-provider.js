@@ -2,11 +2,14 @@ import { isInternalUuid } from '../domain/identifiers.js';
 import {
   CalendarProviderError,
   PROVIDER_ERROR_KIND,
+  isProviderConnectionReference,
+  isProviderResourceReference,
 } from './calendar-contract.js';
 import { Microsoft365ProviderError } from './microsoft365-client.js';
 import { executeSafeProviderOperation } from './provider-retry.js';
 
 const ROOM_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const ENTRA_IDENTITY_PROVIDER = 'microsoft_entra';
 const HEALTH_CAPABILITY = Object.freeze({
   FREE_BUSY: 'free_busy',
   CALENDAR_WRITE: 'calendar_write',
@@ -139,6 +142,10 @@ function createBoundProvider({
 
   return Object.freeze({
     integrationId,
+    integrationProvider: 'microsoft365',
+    identityProvider: ENTRA_IDENTITY_PROVIDER,
+    providerConnectionReference: providerTenantReference,
+    providerResourceReference: resourceAddress,
     lookupAvailability(input) {
       return availability(input, 'availability');
     },
@@ -149,19 +156,21 @@ function createBoundProvider({
         reason: result.available ? 'available' : 'conflict',
       });
     },
-    createCalendarEvent(input) {
-      return write('create', input, 'createCalendarEvent', {
+    async createCalendarEvent(input) {
+      const createResourceAddress = input.providerResourceReference ?? resourceAddress;
+      const result = await write('create', input, 'createCalendarEvent', {
         tenantReference: providerTenantReference,
-        resourceAddress,
+        resourceAddress: createResourceAddress,
         startsAt: input.startsAt,
         endsAt: input.endsAt,
         idempotencyKey: input.idempotencyKey,
       });
+      return Object.freeze({ ...result, providerResourceReference: createResourceAddress });
     },
     updateCalendarEvent(input) {
       return write('update', input, 'updateCalendarEvent', {
         tenantReference: providerTenantReference,
-        resourceAddress,
+        resourceAddress: input.providerResourceReference,
         providerReference: input.providerReference,
         startsAt: input.startsAt,
         endsAt: input.endsAt,
@@ -170,7 +179,7 @@ function createBoundProvider({
     cancelCalendarEvent(input) {
       return write('cancel', input, 'cancelCalendarEvent', {
         tenantReference: providerTenantReference,
-        resourceAddress,
+        resourceAddress: input.providerResourceReference,
         providerReference: input.providerReference,
       });
     },
@@ -179,6 +188,7 @@ function createBoundProvider({
 
 export function createMicrosoft365CalendarProviderFactory({
   connectionRepository,
+  bindingRepository,
   mappingRepository,
   providerClient,
   capabilityHealthService = null,
@@ -186,6 +196,9 @@ export function createMicrosoft365CalendarProviderFactory({
 } = {}) {
   if (!connectionRepository || typeof connectionRepository.findByTenantId !== 'function') {
     throw new TypeError('MICROSOFT365_CONNECTION_REPOSITORY_REQUIRED');
+  }
+  if (!bindingRepository || typeof bindingRepository.findActiveBindingByTenantId !== 'function') {
+    throw new TypeError('MICROSOFT365_BINDING_REPOSITORY_REQUIRED');
   }
   if (!mappingRepository || typeof mappingRepository.listByTenantIdAndIntegrationId !== 'function') {
     throw new TypeError('MICROSOFT365_ROOM_MAPPING_REPOSITORY_REQUIRED');
@@ -206,16 +219,32 @@ export function createMicrosoft365CalendarProviderFactory({
     throw new TypeError('MICROSOFT365_RETRY_SLEEP_INVALID');
   }
 
+  async function findBoundConnection(tenantId, operation) {
+    const [connection, binding] = await Promise.all([
+      connectionRepository.findByTenantId(tenantId),
+      bindingRepository.findActiveBindingByTenantId(tenantId, ENTRA_IDENTITY_PROVIDER),
+    ]);
+    if (
+      !connection
+      || !binding
+      || binding.tenantId !== tenantId
+      || binding.provider !== ENTRA_IDENTITY_PROVIDER
+      || binding.providerTenantReference !== connection.providerTenantReference
+    ) {
+      throw new CalendarProviderError(PROVIDER_ERROR_KIND.AUTHORIZATION, { operation });
+    }
+    return connection;
+  }
+
   return Object.freeze({
     async forRoom({ tenantId, roomId } = {}) {
       if (!isInternalUuid(tenantId)) throw new TypeError('TENANT_ID_INVALID');
       if (typeof roomId !== 'string' || !ROOM_ID_PATTERN.test(roomId)) {
         throw new TypeError('ROOM_ID_INVALID');
       }
-      const connection = await connectionRepository.findByTenantId(tenantId);
+      const connection = await findBoundConnection(tenantId, 'availability');
       if (
-        !connection
-        || connection.status !== 'connected'
+        connection.status !== 'connected'
         || connection.calendarsPermission !== 'granted'
       ) {
         throw new CalendarProviderError(PROVIDER_ERROR_KIND.AUTHORIZATION, { operation: 'availability' });
@@ -241,6 +270,43 @@ export function createMicrosoft365CalendarProviderFactory({
         providerTenantReference: connection.providerTenantReference,
         roomId,
         resourceAddress: mapping.resourceAddress,
+        providerClient,
+        capabilityHealthService,
+        retrySleep,
+      });
+    },
+
+    async forPersistedReference({
+      tenantId,
+      roomId,
+      integrationId,
+      providerConnectionReference,
+      providerResourceReference,
+    } = {}) {
+      if (!isInternalUuid(tenantId)) throw new TypeError('TENANT_ID_INVALID');
+      if (typeof roomId !== 'string' || !ROOM_ID_PATTERN.test(roomId)) {
+        throw new TypeError('ROOM_ID_INVALID');
+      }
+      if (!isInternalUuid(integrationId)) throw new TypeError('INTEGRATION_ID_INVALID');
+      if (!isProviderConnectionReference(providerConnectionReference)) {
+        throw new TypeError('PROVIDER_CONNECTION_REFERENCE_INVALID');
+      }
+      if (!isProviderResourceReference(providerResourceReference)) {
+        throw new TypeError('PROVIDER_RESOURCE_REFERENCE_INVALID');
+      }
+      const connection = await findBoundConnection(tenantId, 'cancel');
+      if (
+        connection.integrationId !== integrationId
+        || connection.providerTenantReference !== providerConnectionReference
+      ) {
+        throw new CalendarProviderError(PROVIDER_ERROR_KIND.AUTHORIZATION, { operation: 'cancel' });
+      }
+      return createBoundProvider({
+        tenantId,
+        integrationId,
+        providerTenantReference: providerConnectionReference,
+        roomId,
+        resourceAddress: providerResourceReference,
         providerClient,
         capabilityHealthService,
         retrySleep,

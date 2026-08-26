@@ -13,26 +13,34 @@ import { normalizeTrustedIdentity } from './principal.js';
 
 const PROVIDER_PATTERN = /^[a-z][a-z0-9_-]{1,63}$/;
 const REFERENCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const JIT_FALLBACK_DISPLAY_NAME = 'Provisioned user';
+
+function normalizedDisplayName(value) {
+  if (value === null || value === undefined) return null;
+  if (
+    typeof value !== 'string'
+    || value.length < 1
+    || value.length > 160
+    || value.trim() !== value
+    || /[\u0000-\u001f\u007f]/.test(value)
+  ) {
+    return undefined;
+  }
+  return value;
+}
 
 function normalizedExternalIdentity(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   if (typeof value.provider !== 'string' || !PROVIDER_PATTERN.test(value.provider)) return null;
   if (typeof value.tenantReference !== 'string' || !REFERENCE_PATTERN.test(value.tenantReference)) return null;
   if (typeof value.userReference !== 'string' || !REFERENCE_PATTERN.test(value.userReference)) return null;
-  if (
-    typeof value.displayName !== 'string'
-    || value.displayName.length < 1
-    || value.displayName.length > 160
-    || value.displayName.trim() !== value.displayName
-    || /[\u0000-\u001f\u007f]/.test(value.displayName)
-  ) {
-    return null;
-  }
+  const displayName = normalizedDisplayName(value.displayName);
+  if (displayName === undefined) return null;
   return Object.freeze({
     provider: value.provider,
     tenantReference: value.tenantReference,
     userReference: value.userReference,
-    displayName: value.displayName,
+    displayName,
   });
 }
 
@@ -114,6 +122,7 @@ export function createJitUserService({
         providerTenantReference: external.tenantReference,
         providerUserReference: external.userReference,
         displayName: external.displayName,
+        fallbackDisplayName: JIT_FALLBACK_DISPLAY_NAME,
         newUserId,
         changedAt,
         provisionAuditEvent,
@@ -140,6 +149,9 @@ export function createJitUserService({
       if (result?.status === 'tenant_unavailable' || result?.status === 'user_disabled') {
         return Object.freeze({ status: 'authentication_denied' });
       }
+      if (result?.status === 'binding_unavailable') {
+        return Object.freeze({ status: 'onboarding_required' });
+      }
       if (result?.status !== 'resolved' || !result.identity) {
         throw new TypeError('JIT_USER_RESOLUTION_INVALID');
       }
@@ -159,6 +171,7 @@ export function createJitUserService({
           },
           roles: snapshot.roles,
           permissions: snapshot.permissions,
+          securityVersion: result.identity.securityVersion,
         }),
       });
     },

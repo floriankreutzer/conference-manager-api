@@ -3,8 +3,9 @@ import pg from 'pg';
 const { Pool } = pg;
 
 // Schema 14 established the Microsoft 365 capability-health baseline.
-// Migrations 15 and 16 add request-created and Tenant lifecycle audit actions.
-export const CURRENT_SCHEMA_VERSION = 14 + 2;
+// Migrations 15 through 18 add request-created/Tenant lifecycle audit actions,
+// bind calendar events to their create-time provider resource, and persist Site time zones.
+export const CURRENT_SCHEMA_VERSION = 14 + 4;
 
 export function createPostgresPool(config) {
   if (!config?.databaseUrl) throw new TypeError('DATABASE_URL_REQUIRED');

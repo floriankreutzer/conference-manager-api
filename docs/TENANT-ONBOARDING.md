@@ -4,7 +4,7 @@
 
 Root `AGENTS.md` and `docs/CODING-STANDARDS.md` remain authoritative. This document defines the SaaS 1 tenant invitation and Microsoft Entra tenant-claiming boundary implemented for conference-manager issue #59.
 
-This slice binds one validated external Microsoft Entra tenant to one prepared internal Conference Manager Tenant. It does not implement JIT User provisioning (#60), Tenant role administration (#61), Microsoft Graph consent (#62), or the Platform/operator control plane and pilot activation workflow (#71).
+This document is scoped to binding one validated external Microsoft Entra tenant to one prepared internal Conference Manager Tenant. The repository also implements the adjacent JIT User provisioning (#60), Tenant role administration (#61), Microsoft 365 consent (#62), and bounded operator/Pilot lifecycle paths (#71); their separate authorization and acceptance contracts remain documented in their owning specifications.
 
 ## Security objective
 
@@ -74,7 +74,7 @@ Requires:
 - valid `X-CSRF-Token` derived from the claim transaction;
 - exact JSON body `{ "confirm": true }`.
 
-On success the claim cookie is cleared and the response reports only the resulting Tenant lifecycle status. JIT User/session issuance is intentionally deferred to #60.
+On success the claim cookie is cleared and the response reports only the resulting Tenant lifecycle status. The claim call itself does not issue a business session. The implemented #60 JIT path resolves or creates the local User and issues a session on a subsequent validated normal Entra authentication.
 
 ## Cookie and CSRF contract
 
@@ -136,18 +136,20 @@ Audit records use the internal Tenant ID and trusted server correlation context.
 
 Operator invitation creation and identity unbinding are deliberately not exposed as Tenant Admin browser APIs in this slice.
 
-`TenantOnboardingService` requires an explicit `authorizeOperator` decision for operator mutations. The production composition currently denies these operations by default. This avoids introducing an undocumented Platform Admin role or an insecure bootstrap endpoint before the separate operator control-plane work in #71.
+`TenantOnboardingService` requires an explicit `authorizeOperator` decision for operator mutations. The public HTTP composition denies these operations by default. The implemented `npm run operator:tenant -- ...` path supplies a process-local trusted operator context after production configuration/schema validation; it is deliberately separate from Tenant roles and browser authority.
 
 The supported recovery contract is therefore:
 
 1. identify the internal Tenant through trusted operational records;
 2. inspect audit evidence and the current binding state without using customer-supplied Tenant/provider IDs as authority;
-3. use an explicitly authorized Platform/operator execution path that composes `authorizeOperator`;
+3. use the trusted Tenant-operator CLI, which composes `authorizeOperator` without exposing a browser bootstrap API;
 4. never edit binding rows manually as the normal recovery mechanism;
 5. record an unbind/rebind action through the service so audit evidence is generated;
 6. create a new single-use invitation for a new claim when recovery policy allows it.
 
-The current service permits unbinding only before productive Tenant activation. Active/production recovery policy is intentionally deferred to #71 so support cannot bypass lifecycle governance.
+The current service permits unbinding only while the Tenant is `pending`, `onboarding` or `ready`, before productive activation. The repository serializes the Tenant, Microsoft 365 Integration and active binding and rejects the unbind while any booking-provider reference is `pending`, `active`, `compensating` or `compensated`; only terminal `cancelled` references permit the authority change.
+
+An allowed unbind is audit-atomic with all of its security effects: it marks the Entra binding `unbound`, increments every Tenant User's `security_version`, revokes every active Tenant session, deletes outstanding Microsoft 365 consent transactions, advances/disconnects the Microsoft 365 connection, clears verification time/reason and resets permission indicators to `unknown`. This prevents a session or Graph connection derived from the removed identity authority from remaining usable. Active/production recovery policy remains governed by #71 so support cannot bypass lifecycle controls.
 
 ## Failure semantics
 
@@ -162,6 +164,7 @@ The implementation fails closed for:
 - competing concurrent claims;
 - unrecognized provider identity;
 - missing operator authorization;
+- identity unbind with a nonterminal booking-provider reference;
 - audit or authoritative persistence failure.
 
 Public errors remain bounded and do not disclose whether a provider Tenant is bound to another customer.
@@ -181,6 +184,7 @@ Progression and security tests cover:
 - duplicate provider-Tenant binding;
 - concurrent claim attempts;
 - two independent Tenant/provider fixtures;
+- pre-activation unbind session invalidation and Microsoft 365 disconnect;
 - transaction rollback when audit append fails;
 - Migration 008 up/down/reapply behavior;
 - legacy migration regression through schema version 8.

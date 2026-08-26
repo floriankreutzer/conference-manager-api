@@ -28,7 +28,7 @@ Two concurrent Conference Manager attempts for overlapping Requests can both obs
 
 A retry for a Request that is already `Confirmed` returns the same authorized Request state without another provider call or database mutation. This avoids duplicate effects when the client retries after losing the successful HTTP response.
 
-This idempotency covers the local confirmation operation. Microsoft calendar event create/update/cancel idempotency and recovery are owned by the subsequent calendar-write capability.
+This idempotency covers the local confirmation operation. When the optional `microsoft.calendar.write` capability is enabled, the same owning use case also invokes the provider-neutral calendar service with a server-derived idempotency key and a persisted create-time resource binding; create/update/cancel recovery remains server-side.
 
 ## Tenant and object ownership
 
@@ -52,9 +52,9 @@ No provider error body, token, resource address, or provider reference is added 
 
 ## Consistency boundary and residual risk
 
-PostgreSQL and Microsoft Graph cannot participate in one distributed transaction. #67 deliberately does not create a Microsoft calendar event: that write belongs to the subsequent calendar-operation capability, which must use the existing deterministic provider idempotency contract and define compensation/recovery behavior.
+PostgreSQL and Microsoft Graph cannot participate in one distributed transaction. The implemented optional calendar-write composition therefore persists reconciliation state and a create-time resource binding, uses deterministic provider idempotency, and never reports provider failure as synchronized local success. Partial outcomes remain explicit reconciliation work rather than being hidden as atomicity.
 
-The final live free/busy call reduces stale-provider risk; the local room lock eliminates concurrent Conference Manager double confirmation inside one Tenant. An external Exchange actor can still create an event after the final free/busy read and before the future calendar write. The calendar-write capability must treat provider conflict as authoritative and must not report false local success.
+The final live free/busy call reduces stale-provider risk; the local room lock eliminates concurrent Conference Manager double confirmation inside one Tenant. When Calendar Write is enabled, event creation follows that validation through the fixed Microsoft adapter. An external Exchange actor can still create a conflicting event in the remaining network interval because Graph and PostgreSQL provide no shared transaction; this residual race requires real Pilot acceptance and operational reconciliation evidence.
 
 ## Verification
 

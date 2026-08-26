@@ -180,15 +180,27 @@ test('booking service records booking and provider outcomes without tenant or pr
     repository: {
       async hasConflictingRequest() { return false; },
       async findProviderReferenceByRequest() { return null; },
+      async reserveProviderResourceBinding() { throw new Error('UNUSED'); },
+      async retryProviderResourceBinding() { throw new Error('UNUSED'); },
       async createProviderReference() { throw new Error('UNUSED'); },
       async touchProviderReference() { throw new Error('UNUSED'); },
       async cancelProviderReference() { throw new Error('UNUSED'); },
+      async beginCompensatingProviderReference() { throw new Error('UNUSED'); },
+      async completeCompensatingProviderReference() { throw new Error('UNUSED'); },
     },
     provider: {
       integrationId: INTEGRATION_ID,
+      providerConnectionReference: 'provider-tenant-a',
+      providerResourceReference: 'room-1@example.invalid',
       async lookupAvailability() { return { available: true, conflictCount: 0 }; },
       async validateReservation() { return { valid: true, reason: 'available' }; },
-      async createCalendarEvent() { return { providerReference: 'provider-secret', disposition: 'created' }; },
+      async createCalendarEvent() {
+        return {
+          providerReference: 'provider-secret',
+          providerResourceReference: 'room-1@example.invalid',
+          disposition: 'created',
+        };
+      },
       async updateCalendarEvent(input) {
         return { providerReference: input.providerReference, disposition: 'updated' };
       },

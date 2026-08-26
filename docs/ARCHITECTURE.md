@@ -52,13 +52,13 @@ Microsoft identity platform / Microsoft Graph (external and untrusted)
         -> src/application/microsoft365-connection-service.js
            -> PostgreSQL connection/consent state and audit evidence
 
-Future Microsoft calendar capability adapters
+Microsoft Places, free/busy and calendar capability adapters
   -> fixed Microsoft Graph endpoint templates
      -> validated provider-neutral calendar result
         -> existing booking integration service
 ```
 
-Provider claims, Microsoft response bodies and provider SDK types do not cross into business services. The Entra adapter validates and maps external identity before session issuance. The Microsoft 365 connection client validates provider results before the application service sees them. Future Places, free/busy and calendar-event adapters must preserve the URL-free provider-neutral booking contract and the outbound controls defined by `docs/THREAT-MODEL.md`.
+Provider claims, Microsoft response bodies and provider SDK types do not cross into business services. The Entra adapter validates and maps external identity before session issuance. The Microsoft 365 client positively validates connection, Places, free/busy and calendar-event results before application services see provider-neutral values. New provider capabilities must preserve the URL-free booking contract and outbound controls defined by `docs/THREAT-MODEL.md`.
 
 ## Module responsibilities
 
@@ -67,6 +67,7 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
 - `src/domain/identifiers.js` owns stable internal UUID validation.
 - `src/domain/request-workflow.js` owns canonical Request status and transition identifiers.
 - `src/domain/request.js` validates canonical Request records returned from persistence.
+- `src/domain/site-time-zone.js` validates bounded server-runtime IANA Site time-zone identifiers.
 - `src/security.js` owns generic HTTP-boundary validation, security headers, rate limiting, JSON validation and the transport Principal guard.
 - `src/identity/principal.js` owns provider-neutral trusted-identity and internal-Principal shapes.
 - `src/identity/entra-client.js` owns fixed-authority Entra authorization-code/PKCE handling and positive token/claim validation.
@@ -81,6 +82,7 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
 - `src/tenancy/tenant-scoped-repository.js` enforces generic Tenant-scoped persistence ports.
 - `src/authorization/policy.js` owns recognized Tenant roles/permissions, capability checks, object ownership, Request transition authorization and Tenant audit-read capability.
 - `src/application/request-service.js` coordinates Tenant-scoped Request loading, authorization, optimistic workflow writes and correlated audit outcomes.
+- `src/application/production-application-service.js` owns the server-authoritative browser application contract, Site configuration and the fail-closed Site-time-zone booking gate.
 - `src/application/tenant-user-administration-service.js` owns authorized Tenant role reads/writes, last-admin protection and stale-session invalidation through User security versions.
 - `src/application/microsoft365-connection-service.js` owns Tenant Admin authorization, Entra-binding corroboration, one-time consent state, connection verification, reconnect/disconnect and audit-safe public results.
 - `src/http/microsoft365-routes.js` owns the strict same-origin Microsoft 365 HTTP contract, callback query allowlist and fixed result redirects.
@@ -98,6 +100,7 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
 - `src/persistence/postgres/audit-repository.js` owns per-Tenant append serialization, HMAC signing, Tenant-scoped listing and chain verification.
 - `src/persistence/postgres/entitlement-repository.js` owns Tenant-scoped entitlement reads and audit-atomic entitlement changes.
 - `src/persistence/postgres/booking-reference-repository.js` owns Tenant-scoped room-conflict lookup and audit-atomic opaque provider-reference persistence.
+- `src/persistence/postgres/application-repository.js` owns Tenant-scoped catalog, Site time-zone configuration, profile and notification persistence.
 - `src/persistence/postgres/tenant-onboarding-repository.js` owns Tenant invitation, identity-binding and claim persistence.
 - `src/persistence/postgres/jit-user-repository.js` owns internal User/provider binding persistence and profile synchronization.
 - `src/persistence/postgres/tenant-user-admin-repository.js` owns Tenant role persistence, concurrency control and last-admin enforcement.
@@ -136,6 +139,8 @@ The public session endpoint intentionally omits provider identity references, in
 Microsoft Entra remains external and untrusted until `src/identity/entra-client.js` validates OIDC signature, issuer, audience, state, nonce, time and organizational-account policy. The validated external Tenant/User references are then resolved through server-side Tenant identity bindings and JIT User persistence before an application session is issued. Email domains, display names, browser-selected Tenant IDs and raw Entra group claims are not authorization authority.
 
 A Microsoft 365 connection is bound to the already claimed Entra Tenant. The callback provider Tenant value corroborates that binding and the one-time consent transaction; it never selects the internal Tenant.
+
+An authorized pre-activation identity unbind is a security-authority revocation, not a metadata edit. In one transaction it requires every booking-provider reference to be terminal `cancelled`, marks the binding unbound, increments Tenant User security versions, revokes active sessions, deletes pending Microsoft consent transactions, disconnects Microsoft 365 and clears its verification/permission state.
 
 ## Authorization architecture
 
@@ -185,7 +190,7 @@ See `docs/AUDIT.md` for the normative event/integrity contract.
 
 Schema ownership lives in `migrations/`. Migrations are paired up/down files, numerically versioned, checksum protected and serialized by a PostgreSQL advisory lock.
 
-The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 11.
+The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 18.
 
 - Migration 001 establishes Tenant-owned product structures.
 - Migration 002 adds User security-version state and server-side sessions.
@@ -198,6 +203,13 @@ The application never auto-migrates at startup. Deployment automation runs migra
 - Migration 009 adds JIT User identity bindings.
 - Migration 010 adds Tenant role administration and claimant bootstrap state.
 - Migration 011 adds Microsoft 365 connection lifecycle state and actor-bound one-time admin-consent transactions.
+- Migration 012 adds Tenant-scoped Microsoft room mappings.
+- Migration 013 adds the independent Microsoft calendar-write entitlement.
+- Migration 014 adds Microsoft capability-health snapshots.
+- Migration 015 adds the fixed Request-created audit action.
+- Migration 016 adds the Tenant Pilot lifecycle audit action.
+- Migration 017 binds each numbered pending calendar-create attempt to its provider connection/resource and idempotency key before external write.
+- Migration 018 adds nullable authoritative Site IANA time zones without inventing values for legacy Sites.
 
 Every migration that removes security/business evidence includes a fail-closed rollback guard.
 
@@ -215,11 +227,13 @@ See `docs/MICROSOFT365-CONNECTION.md` for the normative contract.
 
 `src/application/booking-integration-service.js` is an internal use-case boundary, not a browser endpoint. It preserves Employee/Conference Manager workflow semantics and requires same-active-Tenant binding, explicit server authorization and configured Tenant entitlement before provider access.
 
-Availability and provisional/final reservation validation first apply the Tenant-scoped local overlap rule. Provider-specific room/resource mapping remains inside provider adapters. Calendar create uses a deterministic server-derived SHA-256 idempotency key so recovery after external success plus local persistence failure can reuse the same provider event instead of creating a duplicate.
+Availability and provisional/final reservation validation first apply the Tenant-scoped local overlap rule. Provider-specific room/resource mapping remains inside provider adapters. Calendar create uses a deterministic server-derived SHA-256 idempotency key per numbered attempt so recovery of a pending external success can reuse the same provider event, while a retry after completed compensation receives a new key.
 
-Migration 006 persists only the internal Tenant/Request/Integration binding, opaque provider reference, idempotency key, state and correlation metadata. Local provider-reference mutations and `calendar.operation` evidence commit atomically. External provider work cannot participate in the PostgreSQL transaction; recovery uses idempotency rather than claiming distributed atomicity.
+Migration 017 extends the migration-006 reference so the attempt number, exact provider connection identity, create-time resource and deterministic key are audit-atomically persisted as `pending` before provider access. The real provider event reference is nullable only in that state and is finalized as `active` after Graph returns. Reserve/finalize and the final Request commit lock and revalidate the exact connected Integration and active Entra binding. Authority loss after create moves the reference through `compensating` to `compensated` and deletes the event; a later confirmation starts the next numbered attempt with a new key/current mapping. Pending reconciliation and cancellation keep using the persisted resource even after remapping or local disconnect. External provider work cannot participate in the PostgreSQL transaction; recovery uses persisted binding, idempotency and explicit compensation rather than claiming distributed atomicity.
 
-The Microsoft 365 connection lifecycle now establishes and verifies the Tenant connection boundary. Places discovery, room/resource mapping, free/busy, final availability enforcement and event create/update/cancel remain separate capability adapters tracked by SaaS 1 issues #64-#68. They must preserve fixed destinations, bounded transport, positive provider validation, least privilege, Tenant scoping, explicit retry classification and provider-neutral contracts.
+Migration 018 stores `sites.time_zone` as nullable for pre-existing Sites. Catalog/Site-info/Configuration expose it as `timeZone`; Configuration writes require a valid IANA identifier. Request creation and room availability require the selected active room's active Site to have a valid value and share the exact canonical UTC interval contract with a 24-hour maximum. Neither the backend nor browser may substitute browser-local time or UTC for an unknown Site zone.
+
+The Microsoft 365 connection lifecycle establishes and verifies the Tenant connection boundary. Separate implemented adapters provide Places discovery, room/resource mapping, free/busy, final availability enforcement and entitlement-gated event create/update/cancel while preserving fixed destinations, bounded transport, positive provider validation, least privilege, Tenant scoping, explicit retry classification and provider-neutral contracts. Live Microsoft acceptance and the approved post-confirmation update workflow remain external gates in issues #64, #66, #68 and #69.
 
 See `docs/BOOKING-INTEGRATION.md` and `docs/MICROSOFT365-CONNECTION.md`.
 
@@ -254,11 +268,11 @@ The foundation rate limiter is local, in-memory and bounded. It is not a multi-i
 
 ## Remaining SaaS 1 ownership
 
-- Real independent Entra Tenant authentication and Tenant-claim acceptance evidence remains tracked by #58 and #59.
-- The browser Tenant Admin Microsoft 365 connection surface remains cross-repository work in #62.
-- Places discovery, room/resource mapping, free/busy, final availability enforcement and calendar event lifecycle remain #64-#68.
-- Exchange Online Application RBAC and application-permission scope evidence remains #69.
-- Connection health/recovery, activation workflow, isolation suite and operational runbook remain #70-#73.
-- Production hosting/IaC, full frontend production API migration and production-like secure E2E evidence remain #113-#115.
+- Real independent Entra Tenant authentication and Tenant-claim acceptance evidence remains tracked by #58 and #59; their repository identity/JIT paths are implemented.
+- The Microsoft 365 connection API/lifecycle is implemented; #62 retains live admin-consent and cross-repository browser acceptance evidence.
+- Places discovery, room/resource mapping, free/busy, final availability and create/cancel synchronization are implemented. Issues #64-#68 retain live Microsoft acceptance, and #68 separately retains product acceptance of the server-authoritative post-confirmation update workflow.
+- Exchange Online Application RBAC implementation guidance and evidence tooling exist; real customer-Tenant scope evidence remains #69.
+- Issues #70-#73 retain their unproven external/operational acceptance, isolation, recovery and runbook evidence rather than standing for the already implemented provider adapters.
+- The #114 backend create/list/transition and room-availability contracts are implemented. Production hosting/IaC, cross-repository frontend acceptance and production-like secure E2E evidence remain external gates across #113-#115; they do not own the missing post-confirmation update workflow.
 - Platform Admin/developer operator Principal and audit APIs remain a separate authorization domain.
 - External audit anchoring/WORM retention and selected-platform backup/restore evidence remain operational/governance decisions before stronger completeness or recovery claims are made.

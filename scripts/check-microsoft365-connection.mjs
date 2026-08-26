@@ -23,6 +23,12 @@ const contract = await text('docs/MICROSOFT365-CONNECTION.md');
 const apiContract = await text('docs/API.md');
 const auditContract = await text('docs/AUDIT.md');
 const securityContract = await text('docs/SECURITY.md');
+const applicationRbacContract = await text('docs/EXCHANGE-APPLICATION-RBAC.md');
+const applicationRbacEvidence = await text('src/operator/exchange-application-rbac-evidence.js');
+const applicationRbacCommand = await text('scripts/exchange-application-rbac-check.mjs');
+const boundedEvidenceFile = await text('scripts/lib/bounded-evidence-file.mjs');
+const loggerContract = await text('src/logger.js');
+const metricsContract = await text('src/observability/metrics.js');
 
 requireContains(migrationUp, [
   'microsoft365_consent_transactions',
@@ -92,11 +98,20 @@ requireContains(routes, [
 requireContains(repository, [
   'WHERE tenant_id = $1',
   'pg_advisory_xact_lock',
-  'DELETE FROM microsoft365_consent_transactions',
-  'AND actor_user_id = $2',
-  'AND state_hash = $3',
-  'AND expires_at > $4',
+  'microsoft365-consent-lock-for-consume',
+  'AND consent.actor_user_id = $2',
+  'AND consent.state_hash = $3',
+  'FOR UPDATE OF consent, integration',
+  'if (row.expires_at <= now)',
+  'microsoft365-consent-delete-consumed',
+  'rejectionAuditEventFor',
+  'microsoft365-lock-active-binding-for-finalize',
+  'bindingUnavailableAuditEvent',
+  'microsoft365-capability-health-reset-on-provider-rebind',
+  'microsoft365-provider-rebind-block-unresolved-bookings',
+  "state <> 'cancelled'",
   'AND connection_version = $3',
+  'AND provider_reference = $10',
   'appendWithClient(client, event)',
 ], 'Microsoft 365 PostgreSQL boundary');
 
@@ -109,7 +124,8 @@ requireContains(contract, [
 ], 'Microsoft 365 lifecycle contract');
 
 requireContains(apiContract, [
-  'currently version 11',
+  'exact repository-defined schema version',
+  'expected version advances only with the reviewed migrations',
   'GET /api/v1/integrations/microsoft365',
   'POST /api/v1/integrations/microsoft365/connect',
   'GET /api/v1/integrations/microsoft365/callback',
@@ -128,5 +144,54 @@ requireContains(securityContract, [
   'Replay, expiry, actor mismatch, cross-Tenant use',
   'Local disconnect does not claim',
 ], 'Security contract');
+
+requireContains(applicationRbacContract, [
+  'Application Calendars.ReadWrite',
+  'Test-ServicePrincipalAuthorization',
+  'InScope=True',
+  'InScope=False',
+  'unscoped Microsoft Entra `Calendars.ReadWrite`',
+  'assignments are additive',
+  '`requiredResourceAccess`',
+  'after every consent or reconnect',
+  'Application Access Policies',
+  'acceptance.graph_calendar_write',
+  'security.exchange_application_rbac',
+  'npm run pilot:exchange-rbac',
+  'configuredRoomIds',
+  'authorizationChecks',
+], 'Exchange Application RBAC contract');
+
+requireContains(applicationRbacEvidence, [
+  'EXCHANGE_APPLICATION_RBAC_CHECK_SET_MISMATCH',
+  'EXCHANGE_APPLICATION_RBAC_UNSCOPED_APP_REQUEST_PRESENT',
+  'EXCHANGE_APPLICATION_RBAC_UNSCOPED_TENANT_GRANT_PRESENT',
+  'EXCHANGE_APPLICATION_RBAC_NEGATIVE_CONTROL_FAILED',
+  'configuredRoomCount',
+  'inScopeRoomCount',
+], 'Exchange Application RBAC evidence validator');
+
+requireContains(applicationRbacCommand, [
+  'MAX_EVIDENCE_BYTES',
+  'readBoundedRegularFile',
+  'maxBytes: MAX_EVIDENCE_BYTES',
+  'validateExchangeApplicationRbacEvidence',
+  'JSON.stringify(validated.summary)',
+], 'Exchange Application RBAC operator command');
+
+requireContains(boundedEvidenceFile, [
+  'constants.O_NOFOLLOW',
+  'await file.stat()',
+  'metadata.isFile()',
+  'Buffer.allocUnsafe(maxBytes + 1)',
+  'await file.read(',
+], 'Shared bounded evidence file reader');
+
+for (const [name, contract] of [['Logger', loggerContract], ['Metrics', metricsContract]]) {
+  requireContains(contract, [
+    'microsoft365_free_busy_verify',
+    'microsoft365_pilot_readiness',
+  ], `${name} Microsoft 365 route vocabulary`);
+}
 
 console.log('Microsoft 365 connection lifecycle gate passed.');

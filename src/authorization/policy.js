@@ -202,6 +202,18 @@ function authorizeBookingOperation(principal, tenantContext, request, operation)
   return true;
 }
 
+function authorizeRequestReconciliation(principal, tenantContext, request, transition) {
+  assertTenantBinding(principal, tenantContext, request?.tenantId);
+  if (transition === REQUEST_TRANSITION.CANCEL) {
+    return authorizeBookingOperation(principal, tenantContext, request, BOOKING_OPERATION.CANCEL);
+  }
+  if (transition === REQUEST_TRANSITION.REJECT || transition === REQUEST_TRANSITION.REQUEST_CHANGE) {
+    requirePermission(principal, PERMISSION.REQUEST_MANAGE, [TENANT_ROLE.CONFERENCE_MANAGER]);
+    return true;
+  }
+  throw new AuthorizationInputError('REQUEST_RECONCILIATION_TRANSITION_INVALID');
+}
+
 export function tenantAuthorizationSnapshot(roles) {
   if (!Array.isArray(roles) || roles.length < 1 || roles.length > TENANT_ROLE_ORDER.length) {
     deny('ROLE_NOT_AUTHORIZED');
@@ -268,6 +280,7 @@ export function createAuthorizationPolicy() {
     },
 
     authorizeBookingOperation,
+    authorizeRequestReconciliation,
 
     authorizeRequestRead(principal, tenantContext, request) {
       assertPrincipalShape(principal);

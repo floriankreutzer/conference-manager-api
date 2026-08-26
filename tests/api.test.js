@@ -129,6 +129,25 @@ function requestServiceFor(initialRecord) {
   return createRequestService({
     authorizationPolicy,
     auditService: audit.service,
+    finalRoomConfirmationService: {
+      async confirm({ principal: actor, tenantContext }) {
+        const decision = authorizationPolicy.authorizeRequestTransition(
+          actor,
+          tenantContext,
+          record,
+          REQUEST_TRANSITION.CONFIRM,
+          undefined,
+        );
+        record = {
+          ...record,
+          status: decision.nextStatus,
+          statusReason: decision.reason,
+          statusChangedAt: '2026-08-24T09:00:00.000Z',
+          updatedAt: '2026-08-24T09:00:00.000Z',
+        };
+        return record;
+      },
+    },
     clock: () => Date.parse('2026-08-24T09:00:00.000Z'),
     repository: {
       async findByTenantIdAndId(tenantId, requestId) {

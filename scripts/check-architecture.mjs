@@ -472,6 +472,7 @@ for (const required of [
   'createSessionService',
   'createAuthorizationPolicy',
   'createRequestService',
+  'createRoomAvailabilityService',
   'createAuditService',
   'createEntraClient',
   'createEntraAuthService',
@@ -488,6 +489,7 @@ for (const required of [
   'microsoft365ConnectionService',
   'microsoft365RoomMappingService',
   'microsoft365BookingServiceFactory',
+  'roomAvailabilityService',
 ]) {
   if (!index.includes(required)) throw new Error(`Process composition must wire ${required}.`);
 }
@@ -596,6 +598,45 @@ if (!capabilityHealthRollback.includes('MICROSOFT365_CAPABILITY_HEALTH_ROWS_REQU
   throw new Error('Microsoft 365 capability-health rollback must fail closed while diagnostics exist.');
 }
 
+const bookingResourceMigration = await readFile('migrations/017_booking_provider_resource_binding.up.sql', 'utf8');
+for (const required of [
+  'provider_resource_reference varchar(320) NOT NULL',
+  'provider_connection_reference varchar(320) NOT NULL',
+  'ALTER COLUMN provider_reference DROP NOT NULL',
+  "state IN ('pending', 'active', 'compensating', 'compensated', 'cancelled')",
+  'booking_provider_references_state_reference_valid',
+  'BOOKING_PROVIDER_RESOURCE_BINDING_REQUIRES_REVIEW',
+]) {
+  if (!bookingResourceMigration.includes(required)) {
+    throw new Error(`Booking provider-resource migration is missing ${required}.`);
+  }
+}
+const bookingResourceRollback = await readFile('migrations/017_booking_provider_resource_binding.down.sql', 'utf8');
+if (!bookingResourceRollback.includes('BOOKING_PROVIDER_RESOURCE_BINDING_ROWS_REQUIRE_REVIEW')) {
+  throw new Error('Booking provider-resource rollback must fail closed while references exist.');
+}
+if (!bookingResourceRollback.includes('LOCK TABLE booking_provider_references IN ACCESS EXCLUSIVE MODE')) {
+  throw new Error('Booking provider-resource rollback must lock before checking populated rows.');
+}
+
+const siteTimeZoneMigration = await readFile('migrations/018_site_time_zones.up.sql', 'utf8');
+for (const required of [
+  'ALTER TABLE sites',
+  'ADD COLUMN time_zone varchar(64)',
+  'sites_time_zone_valid',
+]) {
+  if (!siteTimeZoneMigration.includes(required)) {
+    throw new Error(`Site time-zone migration is missing ${required}.`);
+  }
+}
+const siteTimeZoneRollback = await readFile('migrations/018_site_time_zones.down.sql', 'utf8');
+if (!siteTimeZoneRollback.includes('SITE_TIME_ZONE_ROWS_REQUIRE_REVIEW')) {
+  throw new Error('Site time-zone rollback must fail closed while configured values exist.');
+}
+if (!siteTimeZoneRollback.includes('LOCK TABLE sites IN ACCESS EXCLUSIVE MODE')) {
+  throw new Error('Site time-zone rollback must lock before checking populated rows.');
+}
+
 for (const migration of [
   'migrations/001_core_tenant_schema.up.sql',
   'migrations/001_core_tenant_schema.down.sql',
@@ -625,6 +666,10 @@ for (const migration of [
   'migrations/013_microsoft_calendar_write_entitlement.down.sql',
   'migrations/014_microsoft365_capability_health.up.sql',
   'migrations/014_microsoft365_capability_health.down.sql',
+  'migrations/017_booking_provider_resource_binding.up.sql',
+  'migrations/017_booking_provider_resource_binding.down.sql',
+  'migrations/018_site_time_zones.up.sql',
+  'migrations/018_site_time_zones.down.sql',
 ]) {
   await readFile(migration, 'utf8');
 }

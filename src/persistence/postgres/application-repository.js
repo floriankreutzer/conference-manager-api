@@ -1,7 +1,12 @@
 import { withPostgresTransaction } from './transaction.js';
 
 function publicSite(row) {
-  return Object.freeze({ id: row.id, name: row.name, active: row.active });
+  return Object.freeze({
+    id: row.id,
+    name: row.name,
+    active: row.active,
+    timeZone: row.time_zone ?? null,
+  });
 }
 
 function publicRoom(row) {
@@ -80,7 +85,7 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
       const [sites, rooms, services, packages, items] = await Promise.all([
         pool.query({
           name: 'application-sites-list',
-          text: 'SELECT id, name, active FROM sites WHERE tenant_id = $1 ORDER BY id',
+          text: 'SELECT id, name, active, time_zone FROM sites WHERE tenant_id = $1 ORDER BY id',
           values: [tenantId],
         }),
         pool.query({
@@ -122,6 +127,28 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
       });
     },
 
+    async findRoomBookingContext(tenantId, roomId) {
+      const result = await pool.query({
+        name: 'application-room-booking-context-find',
+        text: `
+          SELECT rooms.active AS room_active, sites.active AS site_active, sites.time_zone
+          FROM rooms
+          JOIN sites
+            ON sites.tenant_id = rooms.tenant_id
+           AND sites.id = rooms.site_id
+          WHERE rooms.tenant_id = $1 AND rooms.id = $2
+        `,
+        values: [tenantId, roomId],
+      });
+      return result.rows[0]
+        ? Object.freeze({
+          roomActive: result.rows[0].room_active,
+          siteActive: result.rows[0].site_active,
+          timeZone: result.rows[0].time_zone ?? null,
+        })
+        : null;
+    },
+
     async listNotifications(tenantId, userId, limit = 200) {
       const result = await pool.query({
         name: 'application-notifications-list',
@@ -157,12 +184,16 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
           await client.query({
             name: 'application-site-upsert',
             text: `
-              INSERT INTO sites (tenant_id, id, name, active, created_at, updated_at)
-              VALUES ($1, $2, $3, $4, $5, $5)
+              INSERT INTO sites (tenant_id, id, name, active, time_zone, created_at, updated_at)
+              VALUES ($1, $2, $3, $4, $5, $6, $6)
               ON CONFLICT (tenant_id, id)
-              DO UPDATE SET name = EXCLUDED.name, active = EXCLUDED.active, updated_at = EXCLUDED.updated_at
+              DO UPDATE SET
+                name = EXCLUDED.name,
+                active = EXCLUDED.active,
+                time_zone = EXCLUDED.time_zone,
+                updated_at = EXCLUDED.updated_at
             `,
-            values: [tenantId, site.id, site.name, site.active, changedAt],
+            values: [tenantId, site.id, site.name, site.active, site.timeZone, changedAt],
           });
         }
         const audit = await auditRepository.appendWithClient(client, auditEvent);
@@ -170,7 +201,7 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
       });
       const result = await pool.query({
         name: 'application-sites-list-after-update',
-        text: 'SELECT id, name, active FROM sites WHERE tenant_id = $1 ORDER BY id',
+        text: 'SELECT id, name, active, time_zone FROM sites WHERE tenant_id = $1 ORDER BY id',
         values: [tenantId],
       });
       return Object.freeze(result.rows.map(publicSite));

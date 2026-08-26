@@ -62,6 +62,8 @@ function createHarness({
   connection: initialConnection = null,
   binding = {},
   consumeResult,
+  finalizeResult,
+  startResult,
   verification = {
     status: MICROSOFT365_VERIFICATION.CONNECTED,
     places: 'granted',
@@ -78,6 +80,7 @@ function createHarness({
     finalizes: [],
     disconnects: [],
     providerVerifications: [],
+    recorded: [],
   };
   let connection = initialConnection;
   const identifiers = [INTEGRATION_ID, TRANSACTION_ID];
@@ -96,6 +99,10 @@ function createHarness({
       capture.denied.push(value);
       return value;
     },
+    async record(value) {
+      capture.recorded.push(value);
+      return value;
+    },
   };
 
   const repository = {
@@ -105,25 +112,42 @@ function createHarness({
     },
     async startConsent(value) {
       capture.starts.push(value);
+      if (startResult !== undefined) return startResult;
       capture.audit.push(value.auditEventFor({
         integrationId: INTEGRATION_ID,
         previousStatus: connection?.status ?? null,
-        nextStatus: 'pending',
+        nextStatus: connection?.status ?? 'pending',
+        providerRebound: false,
       }));
       return { status: 'pending', integrationId: INTEGRATION_ID, connectionVersion: 1 };
     },
     async consumeConsent(value) {
       capture.consumes.push(value);
-      return consumeResult === undefined
+      const result = consumeResult === undefined
         ? {
+          status: 'consumed',
           integrationId: INTEGRATION_ID,
           providerTenantReference: PROVIDER_TENANT_ID,
           connectionVersion: 1,
+          connectionStatus: connection?.status ?? 'pending',
+          lastVerifiedAt: connection?.lastVerifiedAt ?? null,
+          connectionReason: connection?.reason ?? null,
+          placesPermission: connection?.placesPermission ?? 'unknown',
+          calendarsPermission: connection?.calendarsPermission ?? 'unknown',
         }
         : consumeResult;
+      if (result?.status === 'rejected') {
+        capture.audit.push(value.rejectionAuditEventFor({
+          integrationId: null,
+          previousStatus: null,
+          reasonCode: result.reason,
+        }));
+      }
+      return result;
     },
     async finalizeConsent(value) {
       capture.finalizes.push(value);
+      if (finalizeResult !== undefined) return finalizeResult;
       connection = storedConnection({
         status: value.status,
         connectionVersion: value.connectionVersion,
@@ -251,6 +275,23 @@ test('connection start derives the provider tenant from the active binding and s
   assert.equal(capture.audit.at(-1).action, 'integration.admin_consent.changed');
 });
 
+test('provider rebind is rejected while booking references require reconciliation', async () => {
+  const { service, capture } = createHarness({
+    startResult: { status: 'booking_reconciliation_required' },
+  });
+  await assert.rejects(
+    service.startConnection({
+      principal: principal(),
+      tenantContext,
+      correlationId: CORRELATION_ID,
+    }),
+    (error) => error instanceof Microsoft365ConnectionConflictError
+      && error.code === 'MICROSOFT365_BOOKING_RECONCILIATION_REQUIRED',
+  );
+  assert.equal(capture.starts.length, 1);
+  assert.equal(capture.audit.length, 0);
+});
+
 test('successful consent is one-time, binding-consistent, verified and audit-atomic', async () => {
   const { service, capture } = createHarness();
   const connection = await service.completeConsent({
@@ -264,6 +305,7 @@ test('successful consent is one-time, binding-consistent, verified and audit-ato
 
   assert.equal(capture.consumes[0].tenantId, TENANT_ID);
   assert.equal(capture.consumes[0].actorUserId, ADMIN_ID);
+  assert.equal(capture.consumes[0].callbackProviderTenantReference, PROVIDER_TENANT_ID);
   assert.equal(capture.providerVerifications.length, 1);
   assert.deepEqual(capture.providerVerifications[0], {
     tenantReference: PROVIDER_TENANT_ID,
@@ -297,7 +339,9 @@ test('callback tenant mismatch is rejected and a replayed consent state cannot b
   );
   assert.equal(mismatch.capture.providerVerifications.length, 0);
 
-  const replay = createHarness({ consumeResult: null });
+  const replay = createHarness({
+    consumeResult: { status: 'rejected', reason: 'consent_unavailable' },
+  });
   await assert.rejects(
     replay.service.completeConsent({
       principal: principal(),
@@ -309,6 +353,77 @@ test('callback tenant mismatch is rejected and a replayed consent state cannot b
     }),
     (error) => error instanceof Microsoft365ConnectionConflictError
       && error.code === 'MICROSOFT365_CONSENT_UNAVAILABLE',
+  );
+  assert.equal(replay.capture.audit.at(-1).outcome, 'failure');
+  assert.deepEqual(replay.capture.audit.at(-1).metadata, {
+    operation: 'admin_consent_callback_rejected',
+    reasonCode: 'consent_unavailable',
+  });
+  const replayAuditJson = JSON.stringify(replay.capture.audit.at(-1));
+  assert.equal(replayAuditJson.includes(STATE), false);
+  assert.equal(replayAuditJson.includes(PROVIDER_TENANT_ID), false);
+});
+
+test('consent denial during reconnect preserves the last verified healthy connection', async () => {
+  const { service, capture } = createHarness({ connection: storedConnection() });
+  const connection = await service.completeConsent({
+    principal: principal(),
+    tenantContext,
+    correlationId: CORRELATION_ID,
+    state: STATE,
+    providerTenantReference: null,
+    approved: false,
+  });
+
+  assert.equal(capture.providerVerifications.length, 0);
+  assert.equal(capture.finalizes[0].status, 'connected');
+  assert.equal(capture.finalizes[0].placesPermission, 'granted');
+  assert.equal(capture.finalizes[0].calendarsPermission, 'granted');
+  assert.equal(capture.finalizes[0].reason, null);
+  assert.equal(connection.status, 'connected');
+  assert.equal(connection.lastVerifiedAt, '2026-08-25T06:00:00.000Z');
+  assert.equal(capture.finalizes[0].auditEvents[0].outcome, 'failure');
+  assert.equal(capture.finalizes[0].auditEvents[0].metadata.reasonCode, 'consent_denied');
+});
+
+test('binding loss after Graph verification fails finalization for consent and manual verify', async () => {
+  const consent = createHarness({ finalizeResult: { status: 'binding_unavailable' } });
+  await assert.rejects(
+    consent.service.completeConsent({
+      principal: principal(),
+      tenantContext,
+      correlationId: CORRELATION_ID,
+      state: STATE,
+      providerTenantReference: PROVIDER_TENANT_ID,
+      approved: true,
+    }),
+    (error) => error instanceof Microsoft365ConnectionConflictError
+      && error.code === 'MICROSOFT365_PROVIDER_TENANT_MISMATCH',
+  );
+  assert.equal(consent.capture.finalizes[0].providerTenantReference, PROVIDER_TENANT_ID);
+  assert.equal(
+    consent.capture.finalizes[0].bindingUnavailableAuditEvent.metadata.reasonCode,
+    'provider_binding_changed',
+  );
+
+  const verify = createHarness({
+    connection: storedConnection(),
+    finalizeResult: { status: 'binding_unavailable' },
+  });
+  await assert.rejects(
+    verify.service.verifyConnection({
+      principal: principal(),
+      tenantContext,
+      correlationId: CORRELATION_ID,
+    }),
+    (error) => error instanceof Microsoft365ConnectionConflictError
+      && error.code === 'MICROSOFT365_PROVIDER_TENANT_MISMATCH',
+  );
+  assert.equal(verify.capture.finalizes[0].providerTenantReference, PROVIDER_TENANT_ID);
+  assert.equal(verify.capture.finalizes[0].bindingUnavailableAuditEvent.outcome, 'failure');
+  assert.equal(
+    verify.capture.finalizes[0].bindingUnavailableAuditEvent.metadata.reasonCode,
+    'provider_binding_changed',
   );
 });
 

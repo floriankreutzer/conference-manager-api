@@ -169,6 +169,26 @@ test('validated Entra claims are minimized and do not import provider roles, gro
   });
 });
 
+test('optional Entra display names beyond the local profile bound never block a valid identity', async () => {
+  const bounded = await entraClient(providerApplication({ name: 'N'.repeat(160) })).redeemAuthorizationCode({
+    code: 'bounded-name-code',
+    codeVerifier: 'V'.repeat(43),
+    expectedNonceHash: hash(NONCE),
+  });
+  assert.equal(bounded.displayName, 'N'.repeat(160));
+
+  for (const length of [161, 200]) {
+    const identity = await entraClient(providerApplication({ name: 'N'.repeat(length) })).redeemAuthorizationCode({
+      code: `long-name-${length}`,
+      codeVerifier: 'V'.repeat(43),
+      expectedNonceHash: hash(NONCE),
+    });
+    assert.equal(identity.tenantReference, TENANT_ID);
+    assert.equal(identity.userReference, USER_ID);
+    assert.equal(identity.displayName, null);
+  }
+});
+
 test('two Entra organizations resolve to distinct provider-neutral tenant references', async () => {
   const first = await entraClient().redeemAuthorizationCode({
     code: 'first-code',

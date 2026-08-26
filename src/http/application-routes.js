@@ -7,6 +7,7 @@ export const APPLICATION_ROUTES = Object.freeze({
   catalog: '/api/v1/application/catalog',
   siteInfo: '/api/v1/application/site-info',
   requests: '/api/v1/application/requests',
+  roomAvailability: '/api/v1/application/room-availability',
   notifications: '/api/v1/application/notifications',
   configuration: '/api/v1/application/configuration',
 });
@@ -25,6 +26,14 @@ const REQUEST_BODY_SCHEMA = Object.freeze({
     endsAt: (value) => typeof value === 'string' && value.length <= 64,
     internalParticipants: (value) => Number.isSafeInteger(value) && value >= 0 && value <= 100_000,
     externalParticipants: (value) => Number.isSafeInteger(value) && value >= 0 && value <= 100_000,
+  }),
+  optional: Object.freeze({}),
+});
+const ROOM_AVAILABILITY_BODY_SCHEMA = Object.freeze({
+  required: Object.freeze({
+    roomId: (value) => typeof value === 'string' && value.length >= 1 && value.length <= 128,
+    startsAt: (value) => typeof value === 'string' && value.length <= 64,
+    endsAt: (value) => typeof value === 'string' && value.length <= 64,
   }),
   optional: Object.freeze({}),
 });
@@ -61,6 +70,7 @@ export function applicationRouteKey(path) {
   if (path === APPLICATION_ROUTES.catalog) return 'application_catalog';
   if (path === APPLICATION_ROUTES.siteInfo) return 'application_site_info';
   if (path === APPLICATION_ROUTES.requests) return 'application_requests';
+  if (path === APPLICATION_ROUTES.roomAvailability) return 'application_room_availability';
   if (path === APPLICATION_ROUTES.notifications) return 'application_notifications';
   if (path === APPLICATION_ROUTES.configuration) return 'application_configuration';
   if (NOTIFICATION_PATH.test(path)) return 'application_notification';
@@ -153,6 +163,18 @@ export function createApplicationHttpHandler({
         return 201;
       }
       throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+    }
+
+    if (path === APPLICATION_ROUTES.roomAvailability) {
+      if (request.method !== 'POST') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+      const query = validateExactObject(
+        await readJsonObjectBody(request, { maxBytes: maxBodyBytes }),
+        ROOM_AVAILABILITY_BODY_SCHEMA,
+      );
+      sendJson(response, 200, {
+        availability: await service.checkRoomAvailability({ ...common, query }),
+      }, maxResponseBytes);
+      return 200;
     }
 
     if (path === APPLICATION_ROUTES.notifications) {

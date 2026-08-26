@@ -79,8 +79,20 @@ Migration 007 establishes short-lived OIDC authentication transaction persistenc
 - explicit creation/expiry timestamps;
 - bounded provider/hash constraints;
 - expiry index for cleanup;
-- no authorization code, provider token, plaintext state or plaintext nonce persistence;
-- exact runtime schema readiness version 7.
+- no authorization code, provider token, plaintext state or plaintext nonce persistence.
+
+Migrations 008 through 016 add Tenant onboarding/identity claims, JIT User bindings, role administration, Microsoft 365 connection/mapping/write-entitlement/capability-health state and fixed Request/Tenant-lifecycle audit actions.
+
+Migration 017 extends booking references:
+
+- a positive non-null create-attempt number with no fabricated database default;
+- a non-null provider connection identity reference;
+- a non-null create-time provider resource binding;
+- nullable provider event reference only while state is `pending`;
+- `pending`, `active`, `compensating`, `compensated` and `cancelled` state/reference invariants;
+- fail-closed application and rollback when populated references require reconciliation.
+
+Migration 018 adds nullable `sites.time_zone`. Existing Sites remain explicitly unknown instead of receiving a fabricated UTC default. Application Configuration accepts only bounded identifiers validated against the server IANA database, while PostgreSQL reinforces the bounded identifier shape. Runtime schema readiness is exactly version 18.
 
 No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
 
@@ -99,6 +111,10 @@ Audit rows are likewise Tenant-owned. Append/list/verification operations receiv
 Entitlement rows use `(tenant_id, capability_id)` as their primary key. The same capability can therefore be enabled independently for separate Tenants, while unknown capability IDs are rejected by the database allowlist.
 
 Booking-provider references use `(tenant_id, request_id, integration_id)` as their primary key and Tenant-composite foreign keys to both Request and Integration. A provider reference or idempotency key is unique only within one Tenant/Integration boundary, so identical opaque provider values in separate Tenants cannot cross-link ownership.
+
+The create-attempt number is part of the server-derived idempotency scope. Pending reconciliation retains its number/key/resource; only a completed `compensated` row may advance to the next attempt, rotate the key and bind the current resource before another provider create.
+
+Booking references do not snapshot the Microsoft 365 optimistic `connection_version`: routine connection verification can advance it without changing provider identity. Transactional booking authority is the exact Integration/provider reference, required lifecycle status and active identity binding under locks.
 
 OIDC authentication transactions exist before an internal Tenant is known and therefore deliberately do not carry a Tenant ID. They are not business records and cannot authorize Tenant access. Their authority is limited to one short-lived provider/state-hash pair used to complete the external authentication protocol.
 
@@ -184,7 +200,7 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 7 for the current SaaS 1 authentication slice.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 18.
 
 ## Transaction contract
 
@@ -192,19 +208,27 @@ The app does not auto-migrate on process start. Deployment automation runs migra
 
 Business/session services must not report successful persistence before the authoritative transaction commits.
 
-Session issuance, revocation and rotation persist their corresponding success audit event in the same transaction as the session mutation. Rotation additionally locks the current session, inserts the replacement using current User `security_version`, revokes the previous session and appends the audit evidence before commit.
+Session issuance, revocation and rotation persist their corresponding success audit event in the same transaction as the session mutation. Issuance locks the User and Tenant and requires the trusted role/permission snapshot's expected `security_version` to equal the current User value before insertion. Rotation additionally locks the current session, inserts the replacement using current User `security_version`, revokes the previous session and appends the audit evidence before commit.
+
+JIT provisioning locks the complete external identity tuple and then locks and revalidates the exact active Tenant/provider-Tenant binding inside the same transaction that resolves or creates the local User. Its returned authorization snapshot includes the exact User `security_version`, closing the gap between role resolution and session insertion.
+
+Microsoft 365 consent start likewise locks and revalidates the active provider-Tenant binding before changing the connection and inserting the one-time consent row. Provider rebinding is rejected while any booking reference is not terminal `cancelled`. Callback consume locks the consent row and connection, revalidates actor, expiry, callback Tenant and the active provider binding, deletes the one-time row, and appends redacted rejection evidence within one transaction. After external verification, finalization revalidates both the exact active binding and the consumed `provider_reference` in the connection-update predicate, so an unbind or rebind during Graph I/O cannot commit verified state. A same-provider reconnect preserves a healthy verified connection until successful replacement; an allowed provider rebind resets verification and invalidates stale room mappings and capability-health snapshots atomically.
+
+Pre-activation identity unbind locks the Tenant, Microsoft 365 Integration and exact active binding. It returns a conflict if any booking reference is not `cancelled`; otherwise binding removal, User security-version increments, active-session revocation, consent-transaction deletion, Microsoft 365 disconnect/verification reset and `tenant.identity.unbound` evidence commit together.
 
 Request workflow transitions conditionally update the row and append the success audit event in the same transaction. A failed audit insert therefore prevents a successful Request transition from becoming authoritative.
 
 Entitlement changes are serialized per Tenant/capability, update the allowlisted entitlement row and append `tenant.entitlement.changed` in the same transaction. A failed audit append rolls the entitlement change back; setting an already-effective value is idempotent and creates no false change event.
 
-Booking-provider reference creation is serialized per Tenant/Request/Integration. An identical stored provider-reference/idempotency pair is an idempotent repeat and does not append duplicate success evidence; a conflicting pair fails closed. Create/update/cancel local reference mutations append the required `calendar.operation` success event in the same PostgreSQL transaction.
+Booking-provider reference creation is serialized per Tenant/Request/Integration. Before provider create, a `pending` row audit-atomically binds attempt number, exact provider connection identity, create-time resource and deterministic key without a placeholder event reference. Reserve/retry and normal finalization lock and require that exact Integration/provider reference, `connected` status and, for Microsoft 365, exact active Entra binding. Finalization stores the real reference as `active`; if authority disappeared after external create, it instead stores the event as `compensating` so the caller can delete and complete `compensated`. An identical repeat does not append duplicate success evidence and a conflicting pair fails closed. Update, compensation and cancel local mutations append the required `calendar.operation` success event in the same PostgreSQL transaction.
 
-The external calendar system is not part of that database transaction. A provider success followed by local persistence failure returns failure and is recovered by retrying the deterministic create idempotency key; the provider contract must return the same existing external event instead of creating a duplicate.
+The external calendar system is not part of that database transaction. A provider success followed by local finalization failure returns failure and is recovered with the persisted resource/idempotency scope; the provider contract must return the same existing external event instead of creating a duplicate. Pending cancellation performs that same reconciliation before delete and may do so after local disconnect, provided the persisted Integration/provider identity and active binding still match. A retry after completed compensation increments the attempt and rotates the key instead of reusing the deleted event's transaction ID.
+
+Final Request confirmation passes a bounded provider-authority descriptor into its owning transaction. Before the room lock/update, persistence locks and requires the exact connected Integration/provider reference plus exact active identity binding; loss produces `provider_authority_conflict` without changing the Request. If the caller created an event, it compensates that event rather than committing under stale authority.
 
 Failure/denial events for operations that did not commit an authoritative mutation are separate audit appends because there is no successful business transaction to join.
 
-The booking integration boundary performs Tenant-scoped overlap validation using the same baseline blocking statuses as the Employee/Manager domain. Until #56 composes Request creation/confirmation with this server boundary, the existing Request workflow-state transaction alone is not a complete room double-booking guarantee; no parallel reservation authority is introduced by #54.
+The production application composes Tenant-scoped advisory availability with server-authoritative Request creation, then repeats local/provider validation for final confirmation. The final Request transaction locks the Request and Tenant/room scope, rechecks confirmed overlaps and provider authority, and appends the transition audit before commit; no parallel reservation authority is introduced by the booking adapter.
 
 ## Backup, restore and deployment rollback
 
@@ -239,11 +263,17 @@ Migration 006 down fails closed when booking-provider reference rows exist. A po
 
 Migration 007 down removes only short-lived pre-authentication transaction state. Rolling it back invalidates any Entra sign-in flow already in progress, so authentication traffic must be drained or users must restart login after rollback. It does not delete established sessions or Tenant/User records.
 
+Migration 017 up and down fail closed when booking references exist because neither a legacy create-time resource nor removal of a current binding is safe to infer automatically. Migration 018 down fails closed while any Site time zone is configured because dropping the column would lose booking/display authority; reviewed forward remediation is preferred.
+
 ## Testing evidence required
 
 Database changes require PostgreSQL integration coverage for applicable migration/version/checksum behavior, tenant-scoped repositories, composite FK isolation, invalid constraints, duplicate/concurrent writes, transaction rollback, schema readiness and cross-Tenant persistence.
 
-Session persistence additionally requires real PostgreSQL tests for raw-token non-persistence, session resolution, cross-Tenant issuance rejection, expiry, revocation, stale privilege invalidation, rotation and migration rollback/reapply.
+Session persistence additionally requires real PostgreSQL tests for raw-token non-persistence, session resolution, cross-Tenant issuance rejection, expiry, revocation, stale privilege invalidation, role-change/issuance races, rotation and migration rollback/reapply.
+
+JIT persistence additionally requires real PostgreSQL tests for an active binding removed between lookup and transaction, absent optional display names, concurrent first login, and audit-atomic provisioning.
+
+Microsoft 365 connection persistence additionally requires real PostgreSQL tests for durable redacted callback rejection, healthy reconnect cancellation/expiry recovery, active provider rebinding, room-mapping invalidation and stale callback/version rejection.
 
 OIDC transaction persistence additionally requires real PostgreSQL tests for schema version 7, plaintext non-persistence, valid one-time consume, expiry rejection, replay rejection, provider scoping, concurrent consume behavior and rollback/reapply.
 
@@ -263,7 +293,9 @@ Audit persistence additionally requires real PostgreSQL tests for:
 
 Entitlement persistence additionally requires real PostgreSQL tests for schema version 5, absent-is-disabled behavior, cross-Tenant independence, database capability allowlisting, rollout/entitlement intersection, audit-atomic changes and fail-closed populated rollback.
 
-Booking-provider persistence additionally requires real PostgreSQL tests for schema version 6, Tenant-composite Request/Integration ownership, same-provider-value cross-Tenant independence, idempotent create persistence, overlap lookup, audit-atomic mutations and fail-closed populated rollback.
+Booking-provider persistence additionally requires real PostgreSQL tests for Tenant-composite Request/Integration ownership, same-provider-value cross-Tenant independence, pre-write pending connection/resource binding, attempt/state/reference constraints, same-attempt idempotent finalization, compensated-attempt key rotation, remap/disconnect-safe cleanup, create/final-commit authority loss, overlap lookup, audit-atomic mutations and fail-closed populated migration/rollback.
+
+Site-time-zone persistence additionally requires real PostgreSQL tests for nullable legacy migration, Tenant-scoped catalog/configuration, room-to-Site booking context, configuration audit atomicity, invalid bounded database shapes, exact schema readiness and fail-closed populated rollback.
 
 The DB suites share migration state and are therefore executed serially with `--test-concurrency=1` to prevent test-runner races from weakening the migration/integrity evidence.
 

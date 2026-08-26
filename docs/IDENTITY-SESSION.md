@@ -41,13 +41,14 @@ The trusted identity input contains only normalized server-side values:
 - internal Tenant UUID;
 - provider identity reference `{ provider, reference }`;
 - approved roles;
-- approved permissions.
+- approved permissions;
+- the exact User `security_version` read with that authorization snapshot.
 
 The provider identity reference is evidence/linkage for the identity adapter. It is not a Tenant ownership identifier and is not returned by the public session endpoint or copied into Tenant audit metadata.
 
 Provider-specific fields such as Entra `tid`, `oid`, group claim formats, token types, issuer URLs, Graph objects, or Microsoft SDK types remain inside the identity adapter and identity-mapping boundary. Business services consume only the internal Principal.
 
-The current Entra authentication slice deliberately emits only validated external `tenantReference`, `userReference`, provider and an optional bounded display name. It does not import provider group, role or email claims as Conference Manager authorization. Issues #59 and #60 own the binding of those external references to internal Tenant/User records.
+The Entra adapter emits only validated external `tenantReference`, `userReference`, provider and an optional bounded display name. It does not import provider group, role or email claims as Conference Manager authorization. The implemented Tenant-claim and JIT persistence paths bind those references to internal Tenant/User records and revalidate the exact active provider-Tenant binding inside their authoritative database transactions.
 
 The session layer validates syntactic role/permission shape. The authorization layer additionally requires every role/permission value to belong to the recognized Tenant policy. Unknown authorization values fail closed instead of being ignored.
 
@@ -124,7 +125,7 @@ Logout uses `DELETE /api/v1/session` and requires the authenticated session plus
 
 Session rotation creates a new random token/session ID, revokes the previous session and appends `session.rotated` audit evidence in one database transaction. The old cookie cannot resolve after a successful rotation.
 
-Session issuance inserts the new session row and `session.issued` success audit event in one transaction. If the required audit append fails, the session mutation does not commit.
+Session issuance locks the internal User and Tenant, verifies that the trusted identity's expected `security_version` still equals the current User value, and only then inserts the new session row and `session.issued` success audit event in one transaction. If the role snapshot became stale or the required audit append fails, the session mutation does not commit.
 
 Rotation is an internal server operation, not a browser-controlled identity update. The caller must provide a newly validated trusted identity for the same internal User/Tenant.
 
@@ -154,7 +155,11 @@ See `docs/AUDIT.md` for the common event validation and HMAC-chain contract.
 
 Each User has a monotonically increasing `security_version`. Each issued session snapshots that value as `principal_version`.
 
+The approved roles, permissions, and `security_version` form one authorization snapshot. Session issuance compares the snapshot version under the same PostgreSQL transaction and row locks used for insertion. A concurrent role change cannot therefore install a new session carrying permissions from the old version; the caller must resolve identity again.
+
 When an authorized role/permission mapping changes, the responsible server-side operation increments the User `security_version`. Every previously issued session immediately fails resolution because its snapshot no longer matches.
+
+An authorized pre-activation Entra identity unbind applies this invalidation to every User in the Tenant and also sets `revoked_at` on every active Tenant session in the same transaction as the binding/audit change. It additionally disconnects Microsoft 365 and clears pending consent state. The unbind is rejected while any nonterminal booking-provider reference still needs the old provider authority for reconciliation.
 
 If the user should remain signed in, an authorized identity/session orchestration path may rotate the known current session using the newly approved role/permission snapshot. The new session receives the new `security_version`; the old session remains unusable.
 
@@ -192,7 +197,7 @@ The adapter validates Microsoft protocol output and then resolves provider ident
 
 The OIDC state is additionally bound to the initiating browser through `cm_oidc_tx`. The binding is validated before the shared state row is consumed; this prevents a callback URL authenticated in one browser from being used to install that identity's session into another browser.
 
-A successfully authenticated Entra identity that is not yet claimed/provisioned is returned as `onboarding_required`; it receives no business session. This preserves the ownership split with #59 Tenant claiming and #60 JIT User provisioning.
+A successfully authenticated Entra identity whose Tenant is not yet claimed/provisionable is returned as `onboarding_required`; it receives no business session. Once an active Tenant binding exists, the implemented JIT boundary resolves or creates the internal User and returns the exact authorization/security-version snapshot used for audit-atomic session issuance.
 
 Any mapping output that eventually reaches session issuance must use only authorization values recognized by `docs/AUTHORIZATION.md`. Unknown mapping output fails closed at the business authorization boundary.
 

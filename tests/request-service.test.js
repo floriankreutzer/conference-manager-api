@@ -98,10 +98,28 @@ function service(repository, clock = () => Date.parse('2026-08-24T09:00:00.000Z'
       repository,
       authorizationPolicy,
       auditService: audit.service,
+      finalRoomConfirmationService: {
+        async confirm() {
+          throw new Error('FINAL_CONFIRMATION_NOT_EXPECTED');
+        },
+      },
       clock,
     }),
   });
 }
+
+test('request service requires the final confirmation boundary at composition time', () => {
+  const authorizationPolicy = createAuthorizationPolicy();
+  const audit = createAuditHarness({ authorizationPolicy });
+  assert.throws(
+    () => createRequestService({
+      repository: fakeRepository(),
+      authorizationPolicy,
+      auditService: audit.service,
+    }),
+    /FINAL_ROOM_CONFIRMATION_SERVICE_REQUIRED/,
+  );
+});
 
 test('request service returns employee-owned resources and audits concealed cross-user probes', async () => {
   const own = service(fakeRepository());
@@ -191,7 +209,7 @@ test('stale authorized transition fails without overwrite and records a correlat
       principal: manager,
       tenantContext: { tenantId: TENANT_A },
       requestId: 'REQ-1',
-      transition: REQUEST_TRANSITION.CONFIRM,
+      transition: REQUEST_TRANSITION.START_REVIEW,
       correlationId: CORRELATION_ID,
     }),
     RequestStateConflictError,

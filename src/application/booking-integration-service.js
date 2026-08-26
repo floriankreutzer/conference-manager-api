@@ -8,6 +8,8 @@ import { normalizeRequest } from '../domain/request.js';
 import { isInternalUuid } from '../domain/identifiers.js';
 import { normalizeCapabilityId } from '../entitlements/capabilities.js';
 import {
+  CalendarProviderError,
+  PROVIDER_ERROR_KIND,
   assertCalendarProvider,
   classifyProviderError,
   isReservationPhase,
@@ -58,9 +60,9 @@ function normalizeOperationInput({ principal, tenantContext, request, correlatio
   return normalizedRequest;
 }
 
-function createIdempotencyKey(tenantId, requestId, integrationId) {
+function createIdempotencyKey(tenantId, requestId, integrationId, attemptNumber) {
   return createHash('sha256')
-    .update(`calendar-create:v1:${tenantId}:${requestId}:${integrationId}`, 'utf8')
+    .update(`calendar-create:v1:${tenantId}:${requestId}:${integrationId}:${attemptNumber}`, 'utf8')
     .digest('hex');
 }
 
@@ -90,9 +92,13 @@ export function createBookingIntegrationService({
     !repository
     || typeof repository.hasConflictingRequest !== 'function'
     || typeof repository.findProviderReferenceByRequest !== 'function'
+    || typeof repository.reserveProviderResourceBinding !== 'function'
+    || typeof repository.retryProviderResourceBinding !== 'function'
     || typeof repository.createProviderReference !== 'function'
     || typeof repository.touchProviderReference !== 'function'
     || typeof repository.cancelProviderReference !== 'function'
+    || typeof repository.beginCompensatingProviderReference !== 'function'
+    || typeof repository.completeCompensatingProviderReference !== 'function'
   ) {
     throw new TypeError('BOOKING_REPOSITORY_REQUIRED');
   }
@@ -125,6 +131,7 @@ export function createBookingIntegrationService({
       operation,
     });
     if (authorized !== true) throw new BookingIntegrationDeniedError();
+    if (operation === BOOKING_PROVIDER_OPERATION.CANCEL) return;
     await entitlementService.requireAccess({
       principal: context.principal,
       tenantContext: context.tenantContext,
@@ -238,6 +245,175 @@ export function createBookingIntegrationService({
     return request;
   }
 
+  async function createAndFinalizeProviderEvent(
+    context,
+    request,
+    reference,
+    idempotencyKey,
+    { allowDisconnectedCleanup = false } = {},
+  ) {
+    const created = await providerCall(context, request, BOOKING_PROVIDER_OPERATION.CREATE, async () => {
+      const input = {
+        ...providerInput(request, context.tenantContext, context.correlationId, context.phase),
+        idempotencyKey,
+        providerResourceReference: reference.providerResourceReference,
+      };
+      const result = normalizeCreateResult(
+        await calendarProvider.createCalendarEvent(Object.freeze(input)),
+      );
+      if (result.providerResourceReference !== reference.providerResourceReference) {
+        throw new CalendarProviderError(PROVIDER_ERROR_KIND.MALFORMED_RESPONSE, {
+          operation: BOOKING_PROVIDER_OPERATION.CREATE,
+        });
+      }
+      return result;
+    });
+    const auditEvent = successAudit(
+      context,
+      request,
+      BOOKING_PROVIDER_OPERATION.CREATE,
+      context.phase,
+      { calendarState: reference.state },
+      { calendarState: 'active' },
+      created.disposition,
+    );
+    const authorityLossAuditEvent = successAudit(
+      context,
+      request,
+      'create_authority_lost',
+      context.phase,
+      { calendarState: reference.state },
+      { calendarState: 'compensating' },
+      'reconciliation_started',
+    );
+    const stored = await repository.createProviderReference({
+      tenantId: context.tenantContext.tenantId,
+      requestId: request.id,
+      integrationId: calendarProvider.integrationId,
+      providerReference: created.providerReference,
+      providerConnectionReference: calendarProvider.providerConnectionReference,
+      providerResourceReference: created.providerResourceReference,
+      idempotencyKey,
+      correlationId: context.correlationId,
+      changedAt: new Date(auditEvent.occurredAt),
+      auditEvent,
+      authorityLossAuditEvent,
+      allowDisconnectedCleanup,
+    });
+    if (stored.authorityLost) {
+      const cancelled = await providerCall(
+        context,
+        request,
+        BOOKING_PROVIDER_OPERATION.CANCEL,
+        async () => normalizeCancelResult(
+          await calendarProvider.cancelCalendarEvent(Object.freeze({
+            ...providerInput(request, context.tenantContext, context.correlationId, context.phase),
+            providerReference: stored.reference.providerReference,
+            providerResourceReference: stored.reference.providerResourceReference,
+          })),
+          stored.reference.providerReference,
+        ),
+      );
+      const compensatedAudit = successAudit(
+        context,
+        request,
+        'create_authority_lost_compensate',
+        context.phase,
+        { calendarState: 'compensating' },
+        { calendarState: 'compensated' },
+        cancelled.disposition,
+      );
+      await repository.completeCompensatingProviderReference({
+        tenantId: context.tenantContext.tenantId,
+        requestId: request.id,
+        integrationId: calendarProvider.integrationId,
+        providerReference: stored.reference.providerReference,
+        changedAt: new Date(compensatedAudit.occurredAt),
+        auditEvent: compensatedAudit,
+      });
+      throw new BookingIntegrationError('BOOKING_CREATE_AUTHORITY_LOST', {
+        operation: BOOKING_PROVIDER_OPERATION.CREATE,
+      });
+    }
+    return Object.freeze({ created, stored });
+  }
+
+  async function reconcileReferenceForFreshCreate(context, request, reference) {
+    let current = reference;
+    if (current.state === 'pending') {
+      const idempotencyKey = createIdempotencyKey(
+        context.tenantContext.tenantId,
+        request.id,
+        calendarProvider.integrationId,
+        current.attemptNumber,
+      );
+      if (current.idempotencyKey !== idempotencyKey) {
+        throw new BookingIntegrationInputError('BOOKING_REFERENCE_IDEMPOTENCY_INVALID');
+      }
+      ({ stored: { reference: current } } = await createAndFinalizeProviderEvent(
+        context,
+        request,
+        current,
+        idempotencyKey,
+      ));
+    }
+    if (current.state === 'active') {
+      const beginAuditEvent = successAudit(
+        context,
+        request,
+        'compensate_begin',
+        context.phase,
+        { calendarState: 'active' },
+        { calendarState: 'compensating' },
+        'started',
+      );
+      current = await repository.beginCompensatingProviderReference({
+        tenantId: context.tenantContext.tenantId,
+        requestId: request.id,
+        integrationId: calendarProvider.integrationId,
+        providerReference: current.providerReference,
+        changedAt: new Date(beginAuditEvent.occurredAt),
+        auditEvent: beginAuditEvent,
+      });
+    }
+    if (current.state !== 'compensating') {
+      if (current.state === 'compensated') return current;
+      throw new BookingIntegrationError('BOOKING_REFERENCE_RECONCILIATION_REQUIRED', {
+        operation: BOOKING_PROVIDER_OPERATION.CREATE,
+      });
+    }
+    const cancelled = await providerCall(
+      context,
+      request,
+      BOOKING_PROVIDER_OPERATION.CANCEL,
+      async () => normalizeCancelResult(
+        await calendarProvider.cancelCalendarEvent(Object.freeze({
+          ...providerInput(request, context.tenantContext, context.correlationId, context.phase),
+          providerReference: current.providerReference,
+          providerResourceReference: current.providerResourceReference,
+        })),
+        current.providerReference,
+      ),
+    );
+    const auditEvent = successAudit(
+      context,
+      request,
+      'compensate',
+      context.phase,
+      { calendarState: 'compensating' },
+      { calendarState: 'compensated' },
+      cancelled.disposition,
+    );
+    return repository.completeCompensatingProviderReference({
+      tenantId: context.tenantContext.tenantId,
+      requestId: request.id,
+      integrationId: calendarProvider.integrationId,
+      providerReference: current.providerReference,
+      changedAt: new Date(auditEvent.occurredAt),
+      auditEvent,
+    });
+  }
+
   return Object.freeze({
     async lookupAvailability(context) {
       return observedBooking(BOOKING_PROVIDER_OPERATION.AVAILABILITY, async () => {
@@ -266,45 +442,109 @@ export function createBookingIntegrationService({
     async createCalendarEvent(context) {
       return observedBooking(BOOKING_PROVIDER_OPERATION.CREATE, async () => {
         const request = await prepare(context, BOOKING_PROVIDER_OPERATION.CREATE);
-        const existing = await repository.findProviderReferenceByRequest(
+        let reference = await repository.findProviderReferenceByRequest(
           context.tenantContext.tenantId,
           request.id,
           calendarProvider.integrationId,
         );
-        if (existing?.state === 'active') return Object.freeze({ disposition: 'existing', state: 'active' });
-        if (existing) throw new BookingIntegrationInputError('BOOKING_REFERENCE_CANCELLED');
-
+        if (reference && reference.state === 'cancelled') {
+          throw new BookingIntegrationInputError('BOOKING_REFERENCE_CANCELLED');
+        }
+        if (
+          reference
+          && reference.state !== 'compensated'
+          && (
+            reference.providerConnectionReference !== calendarProvider.providerConnectionReference
+          )
+        ) {
+          throw new BookingIntegrationInputError('BOOKING_PROVIDER_GENERATION_MISMATCH');
+        }
+        const resourceMatches = reference?.providerResourceReference
+          === calendarProvider.providerResourceReference;
+        if (reference?.state === 'active' && resourceMatches) {
+          return Object.freeze({ disposition: 'existing', state: 'active' });
+        }
+        if (
+          reference?.state === 'compensating'
+          || reference?.state === 'active'
+          || reference?.state === 'pending' && !resourceMatches
+        ) {
+          reference = await reconcileReferenceForFreshCreate(context, request, reference);
+        }
+        if (reference?.state === 'compensated') {
+          const nextAttemptNumber = reference.attemptNumber + 1;
+          const nextIdempotencyKey = createIdempotencyKey(
+            context.tenantContext.tenantId,
+            request.id,
+            calendarProvider.integrationId,
+            nextAttemptNumber,
+          );
+          const retryAudit = successAudit(
+            context,
+            request,
+            BOOKING_PROVIDER_OPERATION.CREATE,
+            context.phase,
+            { calendarState: 'compensated', attemptNumber: reference.attemptNumber },
+            { calendarState: 'pending', attemptNumber: nextAttemptNumber },
+            'retry_resource_bound',
+          );
+          const retried = await repository.retryProviderResourceBinding({
+            tenantId: context.tenantContext.tenantId,
+            requestId: request.id,
+            integrationId: calendarProvider.integrationId,
+            providerConnectionReference: calendarProvider.providerConnectionReference,
+            providerResourceReference: calendarProvider.providerResourceReference,
+            nextAttemptNumber,
+            idempotencyKey: nextIdempotencyKey,
+            changedAt: new Date(retryAudit.occurredAt),
+            auditEvent: retryAudit,
+          });
+          reference = retried.reference;
+        }
+        if (!reference) {
+          const idempotencyKey = createIdempotencyKey(
+            context.tenantContext.tenantId,
+            request.id,
+            calendarProvider.integrationId,
+            1,
+          );
+          const bindingAudit = successAudit(
+            context,
+            request,
+            BOOKING_PROVIDER_OPERATION.CREATE,
+            context.phase,
+            null,
+            { calendarState: 'pending' },
+            'resource_bound',
+          );
+          const reserved = await repository.reserveProviderResourceBinding({
+            tenantId: context.tenantContext.tenantId,
+            requestId: request.id,
+            integrationId: calendarProvider.integrationId,
+            providerConnectionReference: calendarProvider.providerConnectionReference,
+            providerResourceReference: calendarProvider.providerResourceReference,
+            idempotencyKey,
+            correlationId: context.correlationId,
+            changedAt: new Date(bindingAudit.occurredAt),
+            auditEvent: bindingAudit,
+          });
+          reference = reserved.reference;
+        }
         const idempotencyKey = createIdempotencyKey(
           context.tenantContext.tenantId,
           request.id,
           calendarProvider.integrationId,
+          reference.attemptNumber,
         );
-        const created = await providerCall(context, request, BOOKING_PROVIDER_OPERATION.CREATE, async () => {
-          const input = {
-            ...providerInput(request, context.tenantContext, context.correlationId, context.phase),
-            idempotencyKey,
-          };
-          return normalizeCreateResult(await calendarProvider.createCalendarEvent(Object.freeze(input)));
-        });
-        const auditEvent = successAudit(
+        if (reference.idempotencyKey !== idempotencyKey) {
+          throw new BookingIntegrationInputError('BOOKING_REFERENCE_IDEMPOTENCY_INVALID');
+        }
+        const { created, stored } = await createAndFinalizeProviderEvent(
           context,
           request,
-          BOOKING_PROVIDER_OPERATION.CREATE,
-          context.phase,
-          null,
-          { calendarState: 'active' },
-          created.disposition,
-        );
-        const stored = await repository.createProviderReference({
-          tenantId: context.tenantContext.tenantId,
-          requestId: request.id,
-          integrationId: calendarProvider.integrationId,
-          providerReference: created.providerReference,
+          reference,
           idempotencyKey,
-          correlationId: context.correlationId,
-          changedAt: new Date(auditEvent.occurredAt),
-          auditEvent,
-        });
+        );
         return Object.freeze({
           disposition: stored.created ? created.disposition : 'existing',
           state: stored.reference.state,
@@ -315,7 +555,7 @@ export function createBookingIntegrationService({
     async updateCalendarEvent(context) {
       return observedBooking(BOOKING_PROVIDER_OPERATION.MODIFY, async () => {
         const request = await prepare(context, BOOKING_PROVIDER_OPERATION.MODIFY);
-        const reference = await repository.findProviderReferenceByRequest(
+        let reference = await repository.findProviderReferenceByRequest(
           context.tenantContext.tenantId,
           request.id,
           calendarProvider.integrationId,
@@ -323,10 +563,16 @@ export function createBookingIntegrationService({
         if (!reference || reference.state !== 'active') {
           throw new BookingIntegrationInputError('BOOKING_REFERENCE_NOT_ACTIVE');
         }
+        if (
+          reference.providerConnectionReference !== calendarProvider.providerConnectionReference
+        ) {
+          throw new BookingIntegrationInputError('BOOKING_PROVIDER_GENERATION_MISMATCH');
+        }
         const updated = await providerCall(context, request, BOOKING_PROVIDER_OPERATION.MODIFY, async () => {
           const input = {
             ...providerInput(request, context.tenantContext, context.correlationId, context.phase),
             providerReference: reference.providerReference,
+            providerResourceReference: reference.providerResourceReference,
           };
           return normalizeUpdateResult(
             await calendarProvider.updateCalendarEvent(Object.freeze(input)),
@@ -357,7 +603,7 @@ export function createBookingIntegrationService({
     async cancelCalendarEvent(context) {
       return observedBooking(BOOKING_PROVIDER_OPERATION.CANCEL, async () => {
         const request = await prepare(context, BOOKING_PROVIDER_OPERATION.CANCEL);
-        const reference = await repository.findProviderReferenceByRequest(
+        let reference = await repository.findProviderReferenceByRequest(
           context.tenantContext.tenantId,
           request.id,
           calendarProvider.integrationId,
@@ -366,10 +612,34 @@ export function createBookingIntegrationService({
         if (reference.state === 'cancelled') {
           return Object.freeze({ disposition: 'already_cancelled', state: 'cancelled' });
         }
+        if (
+          reference.providerConnectionReference !== calendarProvider.providerConnectionReference
+        ) {
+          throw new BookingIntegrationInputError('BOOKING_PROVIDER_GENERATION_MISMATCH');
+        }
+        if (reference.state === 'pending') {
+          const idempotencyKey = createIdempotencyKey(
+            context.tenantContext.tenantId,
+            request.id,
+            calendarProvider.integrationId,
+            reference.attemptNumber,
+          );
+          if (reference.idempotencyKey !== idempotencyKey) {
+            throw new BookingIntegrationInputError('BOOKING_REFERENCE_IDEMPOTENCY_INVALID');
+          }
+          ({ stored: { reference } } = await createAndFinalizeProviderEvent(
+            context,
+            request,
+            reference,
+            idempotencyKey,
+            { allowDisconnectedCleanup: true },
+          ));
+        }
         const cancelled = await providerCall(context, request, BOOKING_PROVIDER_OPERATION.CANCEL, async () => {
           const input = {
             ...providerInput(request, context.tenantContext, context.correlationId, context.phase),
             providerReference: reference.providerReference,
+            providerResourceReference: reference.providerResourceReference,
           };
           return normalizeCancelResult(
             await calendarProvider.cancelCalendarEvent(Object.freeze(input)),
@@ -394,6 +664,82 @@ export function createBookingIntegrationService({
           auditEvent,
         });
         return Object.freeze({ disposition: cancelled.disposition, state: 'cancelled' });
+      });
+    },
+
+    async compensateCalendarEvent(context) {
+      return observedBooking(BOOKING_PROVIDER_OPERATION.CANCEL, async () => {
+        const request = await prepare(context, BOOKING_PROVIDER_OPERATION.CANCEL);
+        let reference = await repository.findProviderReferenceByRequest(
+          context.tenantContext.tenantId,
+          request.id,
+          calendarProvider.integrationId,
+        );
+        if (!reference) return Object.freeze({ disposition: 'not_present', state: 'compensated' });
+        if (reference.state === 'compensated') {
+          return Object.freeze({ disposition: 'already_cancelled', state: 'compensated' });
+        }
+        if (reference.state === 'cancelled') {
+          return Object.freeze({ disposition: 'already_cancelled', state: 'cancelled' });
+        }
+        if (
+          reference.providerConnectionReference !== calendarProvider.providerConnectionReference
+        ) {
+          throw new BookingIntegrationInputError('BOOKING_PROVIDER_GENERATION_MISMATCH');
+        }
+        if (reference.state === 'pending') {
+          throw new BookingIntegrationError('BOOKING_REFERENCE_RECONCILIATION_REQUIRED', {
+            operation: BOOKING_PROVIDER_OPERATION.CANCEL,
+          });
+        }
+        if (reference.state === 'active') {
+          const beginAuditEvent = successAudit(
+            context,
+            request,
+            'compensate_begin',
+            context.phase,
+            { calendarState: 'active' },
+            { calendarState: 'compensating' },
+            'started',
+          );
+          reference = await repository.beginCompensatingProviderReference({
+            tenantId: context.tenantContext.tenantId,
+            requestId: request.id,
+            integrationId: calendarProvider.integrationId,
+            providerReference: reference.providerReference,
+            changedAt: new Date(beginAuditEvent.occurredAt),
+            auditEvent: beginAuditEvent,
+          });
+        }
+        const cancelled = await providerCall(context, request, BOOKING_PROVIDER_OPERATION.CANCEL, async () => {
+          const input = {
+            ...providerInput(request, context.tenantContext, context.correlationId, context.phase),
+            providerReference: reference.providerReference,
+            providerResourceReference: reference.providerResourceReference,
+          };
+          return normalizeCancelResult(
+            await calendarProvider.cancelCalendarEvent(Object.freeze(input)),
+            reference.providerReference,
+          );
+        });
+        const auditEvent = successAudit(
+          context,
+          request,
+          'compensate',
+          context.phase,
+          { calendarState: 'compensating' },
+          { calendarState: 'compensated' },
+          cancelled.disposition,
+        );
+        await repository.completeCompensatingProviderReference({
+          tenantId: context.tenantContext.tenantId,
+          requestId: request.id,
+          integrationId: calendarProvider.integrationId,
+          providerReference: reference.providerReference,
+          changedAt: new Date(auditEvent.occurredAt),
+          auditEvent,
+        });
+        return Object.freeze({ disposition: cancelled.disposition, state: 'compensated' });
       });
     },
   });

@@ -1,5 +1,5 @@
-import { lstat, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { readBoundedRegularFile } from './lib/bounded-evidence-file.mjs';
 import { validatePilotReadinessEvidence } from '../src/operator/pilot-readiness-evidence.js';
 
 const MAX_EVIDENCE_BYTES = 65_536;
@@ -22,13 +22,15 @@ function parseArguments(argv) {
 async function main() {
   try {
     const options = parseArguments(process.argv.slice(2));
-    const metadata = await lstat(options.path);
-    if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.size > MAX_EVIDENCE_BYTES) {
+    let encoded;
+    try {
+      encoded = await readBoundedRegularFile(options.path, { maxBytes: MAX_EVIDENCE_BYTES });
+    } catch {
       throw new Error('PILOT_READINESS_FILE_INVALID');
     }
     let document;
     try {
-      document = JSON.parse(await readFile(options.path, 'utf8'));
+      document = JSON.parse(encoded);
     } catch {
       throw new Error('PILOT_READINESS_JSON_INVALID');
     }

@@ -50,7 +50,7 @@ The SaaS 0 foundation through issue #57 now provides:
 - regression/progression/adversarial tests for HTTP, Tenant, persistence, session, authorization, audit, entitlement,
   booking-integration, observability and production-security boundaries.
 
-The sibling frontend repository now owns the explicit demo versus production persistence migration under SaaS 0 issue #56. Production Entra/Microsoft Graph adapters remain SaaS 1 work and must satisfy the provider requirements in `docs/THREAT-MODEL.md` before enablement.
+The SaaS 1 repository implementation now includes the production Entra identity adapter, Tenant claiming and JIT provisioning, Tenant role administration, Microsoft 365 consent lifecycle, room discovery/mapping, Free/Busy, calendar synchronization, integration health, Tenant Pilot lifecycle, adversarial multi-Tenant gates, and controlled Pilot operations/readiness evidence. Real Microsoft, deployment, browser, restore, DAST, penetration-test, and operational evidence remains an external Pilot gate; see `docs/PILOT-READINESS-RUNBOOK.md`. Calendar Write remains disabled unless the release also satisfies `docs/EXCHANGE-APPLICATION-RBAC.md`.
 
 ## Run locally
 
@@ -80,7 +80,7 @@ The checked-in `.env.example` is a development template. Pilot/Production config
 - `POST /api/v1/requests/{requestId}/transitions` — CSRF-protected, server-authorized Request workflow transition.
 - `GET /api/v1/audit` — Tenant Admin audit read after Tenant authorization and integrity-chain verification.
 
-There is intentionally no public browser-controlled session issuance, entitlement-administration, metrics or direct calendar-provider endpoint in SaaS 0. Future Entra OIDC code validates/maps provider identity server-side before session issuance. Future Platform Admin tooling must use a separately authorized server-side operator contract before changing Tenant entitlements. Production Request/calendar wiring must reuse the existing authorized Request use cases rather than create a parallel browser-controlled provider flow.
+There is intentionally no browser-controlled session issuance, entitlement-administration, metrics or direct calendar-provider endpoint. The production Entra OIDC flow validates and maps provider identity server-side before issuing an opaque application session. Platform/operator changes use separately authorized process-local contracts, while production Request, availability and calendar synchronization remain composed behind the existing authenticated and object-authorized application use cases.
 
 See:
 
@@ -90,10 +90,20 @@ See:
 - `docs/AUTHORIZATION.md`
 - `docs/BOOKING-INTEGRATION.md`
 - `docs/ENTITLEMENTS.md`
+- `docs/ENTRA-AUTHENTICATION.md`
+- `docs/ENTRA-PILOT-VALIDATION.md`
+- `docs/EXCHANGE-APPLICATION-RBAC.md`
 - `docs/IDENTITY-SESSION.md`
+- `docs/MICROSOFT365-CALENDAR-WRITE.md`
+- `docs/MICROSOFT365-CONNECTION.md`
+- `docs/MICROSOFT365-FREE-BUSY.md`
+- `docs/MICROSOFT365-INTEGRATION-HEALTH.md`
+- `docs/MICROSOFT365-ROOM-DISCOVERY.md`
+- `docs/MICROSOFT365-ROOM-MAPPING.md`
 - `docs/OBSERVABILITY.md`
 - `docs/PERSISTENCE.md`
 - `docs/PILOT-PENETRATION-TEST.md`
+- `docs/PILOT-READINESS-RUNBOOK.md`
 - `docs/PRODUCTION-SECURE-CONFIGURATION.md`
 - `docs/SECURITY.md`
 - `docs/TENANCY.md`

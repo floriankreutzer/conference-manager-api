@@ -2,6 +2,7 @@ import { isInternalUuid } from '../../domain/identifiers.js';
 import { withPostgresTransaction } from './transaction.js';
 
 const PROVIDER = 'microsoft365';
+const IDENTITY_PROVIDER = 'microsoft_entra';
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const HASH_PATTERN = /^[0-9a-f]{64}$/;
 const STATUSES = new Set(['pending', 'connected', 'degraded', 'revoked', 'disconnected']);
@@ -25,6 +26,10 @@ function assertProviderTenant(value) {
   if (typeof value !== 'string' || !GUID_PATTERN.test(value)) {
     throw new TypeError('MICROSOFT365_PROVIDER_TENANT_INVALID');
   }
+}
+
+function assertNullableProviderTenant(value) {
+  if (value !== null) assertProviderTenant(value);
 }
 
 function assertHash(value) {
@@ -136,7 +141,10 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
         const existing = await client.query({
           name: 'microsoft365-connection-lock-existing',
           text: `
-            SELECT id, provider_reference, status, connection_version
+            SELECT
+              id, provider_reference, status, connection_version,
+              last_verified_at, connection_reason, places_permission_status,
+              calendars_permission_status
             FROM integrations
             WHERE tenant_id = $1 AND provider = '${PROVIDER}'
             FOR UPDATE
@@ -144,12 +152,27 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
           values: [tenantId],
         });
         const current = existing.rows[0];
-        if (current && current.provider_reference !== providerTenantReference) {
-          return Object.freeze({ status: 'provider_mismatch' });
+        const activeBinding = await client.query({
+          name: 'microsoft365-lock-active-provider-tenant-binding',
+          text: `
+            SELECT 1
+            FROM tenant_identity_bindings
+            WHERE tenant_id = $1
+              AND provider = '${IDENTITY_PROVIDER}'
+              AND provider_tenant_reference = $2
+              AND status = 'active'
+            FOR SHARE
+          `,
+          values: [tenantId, providerTenantReference],
+        });
+        if (activeBinding.rowCount !== 1) {
+          return Object.freeze({ status: 'binding_unavailable' });
         }
 
         let id = integrationId;
         let previousStatus = null;
+        let nextStatus = 'pending';
+        let providerRebound = false;
         let version;
         if (!current) {
           version = 1;
@@ -169,22 +192,80 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
         } else {
           id = current.id;
           previousStatus = current.status;
+          providerRebound = current.provider_reference !== providerTenantReference;
+          if (providerRebound) {
+            const unresolvedBookings = await client.query({
+              name: 'microsoft365-provider-rebind-block-unresolved-bookings',
+              text: `
+                SELECT 1
+                FROM booking_provider_references
+                WHERE tenant_id = $1
+                  AND integration_id = $2
+                  AND state <> 'cancelled'
+                LIMIT 1
+                FOR UPDATE
+              `,
+              values: [tenantId, id],
+            });
+            if (unresolvedBookings.rowCount > 0) {
+              return Object.freeze({ status: 'booking_reconciliation_required' });
+            }
+          }
           version = Number(current.connection_version) + 1;
-          await client.query({
-            name: 'microsoft365-connection-reset-pending',
-            text: `
-              UPDATE integrations
-              SET status = 'pending',
-                  connection_version = $3,
-                  connection_reason = NULL,
-                  last_verified_at = NULL,
-                  places_permission_status = 'unknown',
-                  calendars_permission_status = 'unknown',
-                  updated_at = $4
-              WHERE tenant_id = $1 AND id = $2
-            `,
-            values: [tenantId, id, version, createdAt],
-          });
+          const preservesVerifiedConnection = !providerRebound
+            && ['connected', 'degraded', 'revoked'].includes(current.status);
+          nextStatus = preservesVerifiedConnection ? current.status : 'pending';
+          if (preservesVerifiedConnection) {
+            await client.query({
+              name: 'microsoft365-connection-start-reconnect-preserving-health',
+              text: `
+                UPDATE integrations
+                SET connection_version = $3,
+                    updated_at = $4
+                WHERE tenant_id = $1 AND id = $2
+              `,
+              values: [tenantId, id, version, createdAt],
+            });
+          } else {
+            await client.query({
+              name: 'microsoft365-connection-reset-pending',
+              text: `
+                UPDATE integrations
+                SET provider_reference = $3,
+                    status = 'pending',
+                    connection_version = $4,
+                    connection_reason = NULL,
+                    last_verified_at = NULL,
+                    places_permission_status = 'unknown',
+                    calendars_permission_status = 'unknown',
+                    updated_at = $5
+                WHERE tenant_id = $1 AND id = $2
+              `,
+              values: [tenantId, id, providerTenantReference, version, createdAt],
+            });
+          }
+          if (providerRebound) {
+            await client.query({
+              name: 'microsoft365-room-mappings-invalidate-on-provider-rebind',
+              text: `
+                UPDATE microsoft365_room_mappings
+                SET provider_status = 'missing',
+                    updated_at = $3
+                WHERE tenant_id = $1
+                  AND integration_id = $2
+                  AND provider_status <> 'missing'
+              `,
+              values: [tenantId, id, createdAt],
+            });
+            await client.query({
+              name: 'microsoft365-capability-health-reset-on-provider-rebind',
+              text: `
+                DELETE FROM microsoft365_capability_health
+                WHERE tenant_id = $1 AND integration_id = $2
+              `,
+              values: [tenantId, id],
+            });
+          }
         }
 
         await client.query({
@@ -216,37 +297,114 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
         await appendAudit(client, auditRepository, auditEventFor({
           integrationId: id,
           previousStatus,
-          nextStatus: 'pending',
+          nextStatus,
+          providerRebound,
         }));
         return Object.freeze({ status: 'pending', integrationId: id, connectionVersion: version });
       });
     },
 
-    async consumeConsent({ tenantId, actorUserId, stateHash, now }) {
+    async consumeConsent({
+      tenantId,
+      actorUserId,
+      stateHash,
+      callbackProviderTenantReference,
+      now,
+      rejectionAuditEventFor,
+    }) {
       assertUuid(tenantId, 'MICROSOFT365_TENANT_ID_INVALID');
       assertUuid(actorUserId, 'MICROSOFT365_ACTOR_ID_INVALID');
       assertHash(stateHash);
+      assertNullableProviderTenant(callbackProviderTenantReference);
       assertDate(now, 'MICROSOFT365_NOW_INVALID');
+      if (typeof rejectionAuditEventFor !== 'function') {
+        throw new TypeError('MICROSOFT365_REJECTION_AUDIT_FACTORY_REQUIRED');
+      }
       return withPostgresTransaction(pool, async (client) => {
         await tenantLock(client, tenantId);
         const result = await client.query({
-          name: 'microsoft365-consent-consume',
+          name: 'microsoft365-consent-lock-for-consume',
           text: `
-            DELETE FROM microsoft365_consent_transactions
-            WHERE tenant_id = $1
-              AND actor_user_id = $2
-              AND state_hash = $3
-              AND expires_at > $4
-            RETURNING integration_id, provider_tenant_reference, connection_version
+            SELECT
+              consent.id,
+              consent.integration_id,
+              consent.provider_tenant_reference,
+              consent.connection_version,
+              consent.expires_at,
+              integration.status AS connection_status,
+              integration.last_verified_at,
+              integration.connection_reason,
+              integration.places_permission_status,
+              integration.calendars_permission_status
+            FROM microsoft365_consent_transactions consent
+            JOIN integrations integration
+              ON integration.tenant_id = consent.tenant_id
+             AND integration.id = consent.integration_id
+            WHERE consent.tenant_id = $1
+              AND consent.actor_user_id = $2
+              AND consent.state_hash = $3
+            FOR UPDATE OF consent, integration
           `,
-          values: [tenantId, actorUserId, stateHash, now],
+          values: [tenantId, actorUserId, stateHash],
         });
         const row = result.rows[0];
-        if (!row) return null;
+        if (!row) {
+          await appendAudit(client, auditRepository, rejectionAuditEventFor({
+            integrationId: null,
+            previousStatus: null,
+            reasonCode: 'consent_unavailable',
+          }));
+          return Object.freeze({ status: 'rejected', reason: 'consent_unavailable' });
+        }
+
+        let rejectionReason = null;
+        if (row.expires_at <= now) {
+          rejectionReason = 'consent_expired';
+        } else if (
+          callbackProviderTenantReference !== null
+          && callbackProviderTenantReference !== row.provider_tenant_reference
+        ) {
+          rejectionReason = 'provider_tenant_mismatch';
+        } else {
+          const activeBinding = await client.query({
+            name: 'microsoft365-lock-active-binding-for-consent',
+            text: `
+              SELECT 1
+              FROM tenant_identity_bindings
+              WHERE tenant_id = $1
+                AND provider = '${IDENTITY_PROVIDER}'
+                AND provider_tenant_reference = $2
+                AND status = 'active'
+              FOR SHARE
+            `,
+            values: [tenantId, row.provider_tenant_reference],
+          });
+          if (activeBinding.rowCount !== 1) rejectionReason = 'provider_binding_mismatch';
+        }
+
+        await client.query({
+          name: 'microsoft365-consent-delete-consumed',
+          text: 'DELETE FROM microsoft365_consent_transactions WHERE id = $1',
+          values: [row.id],
+        });
+        if (rejectionReason !== null) {
+          await appendAudit(client, auditRepository, rejectionAuditEventFor({
+            integrationId: row.integration_id,
+            previousStatus: row.connection_status,
+            reasonCode: rejectionReason,
+          }));
+          return Object.freeze({ status: 'rejected', reason: rejectionReason });
+        }
         return Object.freeze({
+          status: 'consumed',
           integrationId: row.integration_id,
           providerTenantReference: row.provider_tenant_reference,
           connectionVersion: Number(row.connection_version),
+          connectionStatus: row.connection_status,
+          lastVerifiedAt: row.last_verified_at,
+          connectionReason: row.connection_reason ?? null,
+          placesPermission: row.places_permission_status,
+          calendarsPermission: row.calendars_permission_status,
         });
       });
     },
@@ -254,6 +412,7 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
     async finalizeConsent({
       tenantId,
       integrationId,
+      providerTenantReference,
       connectionVersion,
       status,
       placesPermission,
@@ -262,9 +421,11 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
       lastVerifiedAt,
       changedAt,
       auditEvents = [],
+      bindingUnavailableAuditEvent = null,
     }) {
       assertUuid(tenantId, 'MICROSOFT365_TENANT_ID_INVALID');
       assertUuid(integrationId, 'MICROSOFT365_INTEGRATION_ID_INVALID');
+      assertProviderTenant(providerTenantReference);
       if (!Number.isSafeInteger(connectionVersion) || connectionVersion < 1) {
         throw new TypeError('MICROSOFT365_VERSION_INVALID');
       }
@@ -291,6 +452,23 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
 
       return withPostgresTransaction(pool, async (client) => {
         await tenantLock(client, tenantId);
+        const activeBinding = await client.query({
+          name: 'microsoft365-lock-active-binding-for-finalize',
+          text: `
+            SELECT 1
+            FROM tenant_identity_bindings
+            WHERE tenant_id = $1
+              AND provider = '${IDENTITY_PROVIDER}'
+              AND provider_tenant_reference = $2
+              AND status = 'active'
+            FOR SHARE
+          `,
+          values: [tenantId, providerTenantReference],
+        });
+        if (activeBinding.rowCount !== 1) {
+          await appendAudit(client, auditRepository, bindingUnavailableAuditEvent);
+          return Object.freeze({ status: 'binding_unavailable' });
+        }
         const updated = await client.query({
           name: 'microsoft365-connection-finalize',
           text: `
@@ -306,6 +484,7 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
               AND id = $2
               AND provider = '${PROVIDER}'
               AND connection_version = $3
+              AND provider_reference = $10
             RETURNING
               tenant_id, id, provider_reference, status, connection_version,
               last_verified_at, connection_reason, places_permission_status,
@@ -321,6 +500,7 @@ export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepo
             normalizedReason,
             lastVerifiedAt,
             changedAt,
+            providerTenantReference,
           ],
         });
         if (updated.rowCount !== 1) return Object.freeze({ status: 'stale' });

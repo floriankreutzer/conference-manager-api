@@ -18,8 +18,8 @@ const PROVIDER_TENANT = '55555555-5555-4555-8555-555555555555';
 const ACCESS_TOKEN = 'T'.repeat(128);
 const ROOM_ID = 'room-a';
 const ROOM_ADDRESS = 'room-a@example.com';
-const STARTS_AT = '2026-10-25T00:30:00.000Z';
-const ENDS_AT = '2026-10-25T02:30:00.000Z';
+const STARTS_AT = '2026-10-25T00:30:00.123Z';
+const ENDS_AT = '2026-10-25T02:30:00.123Z';
 
 function response(status, payload) {
   const body = JSON.stringify(payload);
@@ -55,6 +55,7 @@ function connection(overrides = {}) {
     tenantId: TENANT_ID,
     integrationId: INTEGRATION_ID,
     providerTenantReference: PROVIDER_TENANT,
+    connectionVersion: 1,
     status: 'connected',
     calendarsPermission: 'granted',
     ...overrides,
@@ -72,12 +73,34 @@ function mapping(overrides = {}) {
   };
 }
 
-function providerFactory({ providerClient, currentConnection = connection(), mappings = [mapping()] } = {}) {
+function binding(overrides = {}) {
+  return {
+    tenantId: TENANT_ID,
+    provider: 'microsoft_entra',
+    providerTenantReference: PROVIDER_TENANT,
+    status: 'active',
+    ...overrides,
+  };
+}
+
+function providerFactory({
+  providerClient,
+  currentConnection = connection(),
+  currentBinding = binding(),
+  mappings = [mapping()],
+} = {}) {
   return createMicrosoft365CalendarProviderFactory({
     connectionRepository: {
       async findByTenantId(tenantId) {
         assert.equal(tenantId, TENANT_ID);
         return currentConnection;
+      },
+    },
+    bindingRepository: {
+      async findActiveBindingByTenantId(tenantId, provider) {
+        assert.equal(tenantId, TENANT_ID);
+        assert.equal(provider, 'microsoft_entra');
+        return currentBinding;
       },
     },
     mappingRepository: {
@@ -130,8 +153,8 @@ test('Graph getSchedule uses a fixed endpoint, UTC normalization and returns fre
   assert.equal(calls[0].options.signal instanceof AbortSignal, true);
   assert.deepEqual(JSON.parse(calls[0].options.body), {
     schedules: [ROOM_ADDRESS],
-    startTime: { dateTime: '2026-10-25T00:30:00', timeZone: 'UTC' },
-    endTime: { dateTime: '2026-10-25T02:30:00', timeZone: 'UTC' },
+    startTime: { dateTime: '2026-10-25T00:30:00.123', timeZone: 'UTC' },
+    endTime: { dateTime: '2026-10-25T02:30:00.123', timeZone: 'UTC' },
     availabilityViewInterval: 5,
   });
 });
@@ -142,7 +165,7 @@ test('all non-free Graph availability states fail closed as conflicts and batchi
   const api = client(async () => response(200, {
     value: schedules.map((scheduleId, index) => ({
       scheduleId,
-      availabilityView: availabilityView[index % availabilityView.length],
+      availabilityView: availabilityView[index % availabilityView.length].repeat(12),
     })),
   }));
 
@@ -240,6 +263,67 @@ test('provider dependency failures and malformed payloads never become available
   );
 });
 
+test('free/busy requires the exact five-minute slot count for the UTC window', async () => {
+  for (const availabilityView of ['0', '0'.repeat(287), '0'.repeat(289)]) {
+    const api = client(async () => response(200, {
+      value: [{ scheduleId: ROOM_ADDRESS, availabilityView }],
+    }));
+    await assert.rejects(
+      api.lookupFreeBusy({
+        tenantReference: PROVIDER_TENANT,
+        schedules: [ROOM_ADDRESS],
+        startsAt: '2026-10-25T00:00:00.000Z',
+        endsAt: '2026-10-26T00:00:00.000Z',
+      }),
+      (error) => error instanceof Microsoft365ProviderError
+        && error.code === 'MICROSOFT365_FREE_BUSY_RESPONSE_INVALID',
+    );
+  }
+
+  const exact = client(async () => response(200, {
+    value: [{ scheduleId: ROOM_ADDRESS, availabilityView: '0'.repeat(288) }],
+  }));
+  assert.deepEqual(
+    await exact.lookupFreeBusy({
+      tenantReference: PROVIDER_TENANT,
+      schedules: [ROOM_ADDRESS],
+      startsAt: '2026-10-25T00:00:00.000Z',
+      endsAt: '2026-10-26T00:00:00.000Z',
+    }),
+    [{ schedule: ROOM_ADDRESS, available: true, conflictCount: 0 }],
+  );
+
+  const partialSlot = client(async () => response(200, {
+    value: [{ scheduleId: ROOM_ADDRESS, availabilityView: '000' }],
+  }));
+  assert.equal((await partialSlot.lookupFreeBusy({
+    tenantReference: PROVIDER_TENANT,
+    schedules: [ROOM_ADDRESS],
+    startsAt: '2026-10-25T00:00:00.000Z',
+    endsAt: '2026-10-25T00:10:01.000Z',
+  }))[0].available, true);
+});
+
+test('free/busy accepts only the documented HTTP 200 response', async () => {
+  for (const status of [201, 204]) {
+    const api = client(async () => status === 204
+      ? new Response(null, { status })
+      : response(status, {
+        value: [{ scheduleId: ROOM_ADDRESS, availabilityView: '0'.repeat(24) }],
+      }));
+    await assert.rejects(
+      api.lookupFreeBusy({
+        tenantReference: PROVIDER_TENANT,
+        schedules: [ROOM_ADDRESS],
+        startsAt: STARTS_AT,
+        endsAt: ENDS_AT,
+      }),
+      (error) => error instanceof Microsoft365ProviderError
+        && error.code === 'MICROSOFT365_FREE_BUSY_RESPONSE_INVALID',
+    );
+  }
+});
+
 test('Microsoft 365 calendar provider binds server-side Tenant, connection and active room mapping', async () => {
   const calls = [];
   const factory = providerFactory({
@@ -285,6 +369,23 @@ test('missing permission, inactive mappings and Graph failures are classified fa
   await assert.rejects(
     providerFactory({ currentConnection: connection({ calendarsPermission: 'missing' }) })
       .forRoom({ tenantId: TENANT_ID, roomId: ROOM_ID }),
+    (error) => error instanceof CalendarProviderError
+      && error.kind === PROVIDER_ERROR_KIND.AUTHORIZATION,
+  );
+
+  await assert.rejects(
+    providerFactory({ currentBinding: null })
+      .forRoom({ tenantId: TENANT_ID, roomId: ROOM_ID }),
+    (error) => error instanceof CalendarProviderError
+      && error.kind === PROVIDER_ERROR_KIND.AUTHORIZATION,
+  );
+
+  await assert.rejects(
+    providerFactory({
+      currentBinding: binding({
+        providerTenantReference: '66666666-6666-4666-8666-666666666666',
+      }),
+    }).forRoom({ tenantId: TENANT_ID, roomId: ROOM_ID }),
     (error) => error instanceof CalendarProviderError
       && error.kind === PROVIDER_ERROR_KIND.AUTHORIZATION,
   );

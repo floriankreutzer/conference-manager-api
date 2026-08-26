@@ -79,8 +79,16 @@ This implementation introduces no availability cache. Every provider call is liv
 
 Final confirmation authority remains a separate concern owned by the subsequent transactional final-availability capability. Browser/advisory availability must never be treated as sufficient evidence for an authoritative confirmation.
 
+## Production Employee room search
+
+`POST /api/v1/application/room-availability` connects the production Employee flow to this provider. The exact request contains only an internal room ID and a canonical UTC start/end interval of at most 24 hours. The route is same-origin, session-bound, active-Tenant-bound, CSRF-protected and rejects unknown or authority-shaped fields.
+
+The application service first requires Employee Request-create authorization and the internal `microsoft.calendar` entitlement. It then checks Tenant-scoped local Request overlap and, when locally free, resolves the Tenant-owned Microsoft connection and active room mapping server-side before performing live Free/Busy. Its versioned response exposes only `available` and `conflictCount`; subjects, schedule items, mailbox addresses, provider identifiers and raw errors never cross the API boundary.
+
+The production browser invalidates a successful check whenever room or time input changes and permits Request creation only for the exact currently verified tuple. Missing provider configuration, authorization, entitlement, throttling, timeout or malformed output returns `ROOM_AVAILABILITY_UNAVAILABLE`, never `available=true`. The explicit demo workflow keeps its simulated occupancy path and never calls this endpoint.
+
 ## Verification
 
-Automated progression and negative coverage includes fixed-origin POST behavior, UTC/DST-boundary timestamps, all free/busy states, 20-resource bounds, duplicate/invalid schedule input, oversized time windows, permission/revocation/throttling/unavailable cases, malformed provider payloads, Tenant/room binding and provider error translation.
+Automated progression and negative coverage includes fixed-origin POST behavior, UTC/DST-boundary timestamps, all free/busy states, 20-resource bounds, duplicate/invalid schedule input, oversized time windows, permission/revocation/throttling/unavailable cases, malformed provider payloads, Tenant/room binding, local-overlap short circuit, Employee API CSRF/authority rejection, provider error translation and minimized versioned output.
 
 Real Microsoft 365 behavior against a Pilot customer Tenant remains external acceptance evidence and must not be represented as verified by repository tests alone.

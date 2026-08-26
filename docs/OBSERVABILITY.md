@@ -91,6 +91,8 @@ External provider health is optional unless a specific deployment explicitly mak
 
 Booking/integration code records fixed operation/outcome/retryability signals. Raw provider error messages, response bodies and provider references are not metric labels or operational log metadata.
 
+Calendar cancellation reconciliation records a `cancel`/`failure` booking observation when the persisted-reference lookup or provider factory fails before a provider call can be observed. The correlated failure audit uses only the fixed `reference_lookup_unavailable` or `cancellation_factory_unavailable` reason code. Provider-call failures remain owned by the booking adapter so the orchestration layer does not double count them.
+
 ## Initial Pilot SLO candidates
 
 These are initial operational targets for the Pilot, not contractual SLAs and not evidence that the values have already been achieved.

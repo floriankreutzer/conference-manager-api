@@ -12,7 +12,7 @@ JIT provisioning removes bulk directory synchronization as a prerequisite for th
 Microsoft Entra OIDC
   -> protocol and claims validated by the Entra adapter
      -> provider-neutral external identity
-        { provider, tenantReference, userReference, displayName }
+        { provider, tenantReference, userReference, displayName? }
      -> active internal Tenant <-> provider-Tenant binding lookup
      -> JIT User resolver
         -> PostgreSQL User + provider identity binding
@@ -70,27 +70,31 @@ The row references the existing Tenant-owned `users` record through `(tenant_id,
 
 The existing `users.active` flag remains authoritative for local offboarding. The existing `users.security_version` remains authoritative for stale-session invalidation.
 
-The JIT transaction uses a PostgreSQL advisory transaction lock derived from the complete identity tuple. Concurrent first logins for the same identity therefore serialize and resolve to one local User rather than creating duplicate identities.
+The JIT transaction uses a PostgreSQL advisory transaction lock derived from the complete identity tuple. Concurrent first logins for the same identity therefore serialize and resolve to one local User rather than creating duplicate identities. After acquiring that lock, the transaction locks and revalidates the exact active internal Tenant/provider-Tenant binding. A binding that was removed or changed after the initial lookup cannot authorize provisioning.
 
 ## First login
 
 For a validated external identity whose provider Tenant is actively bound:
 
-1. the Tenant is checked for a login-available lifecycle state;
-2. the complete User identity tuple is locked;
-3. an existing binding is resolved if present;
-4. otherwise one local User is created;
-5. one `user_identity_bindings` row is created;
-6. `tenant.user.provisioned` audit evidence is appended in the same transaction;
-7. only after commit may session issuance proceed.
+1. the complete User identity tuple is locked;
+2. the exact active Tenant/provider-Tenant binding is locked and revalidated;
+3. the Tenant is checked for a login-available lifecycle state;
+4. an existing User identity binding is resolved if present;
+5. otherwise one local User is created;
+6. one `user_identity_bindings` row is created;
+7. `tenant.user.provisioned` audit evidence is appended in the same transaction;
+8. the role/permission snapshot and its exact User `security_version` are returned together;
+9. only after commit may session issuance proceed.
 
 If required audit persistence fails, User and identity-binding creation roll back.
+
+Session issuance accepts the JIT role/permission snapshot only together with its returned `security_version`. The session transaction locks the User and inserts the session only when that version is still current. A concurrent role change therefore invalidates the stale snapshot before a session can be created.
 
 ## Repeat login and profile refresh
 
 Repeat login resolves the existing local User deterministically.
 
-The validated bounded display name may refresh `users.display_name`. A display-name change:
+The validated bounded display name is optional. A new User without that optional claim receives the server-owned fallback `Provisioned user`; no provider-controlled identifier is exposed as the fallback. On repeat login, an absent display name preserves the existing profile. A present validated display name may refresh `users.display_name`. A display-name change:
 
 - does not create a second User;
 - does not change roles or permissions;
@@ -152,11 +156,14 @@ Required automated coverage includes:
 - concurrent first login;
 - same provider User reference in different Tenants;
 - provider-Tenant rebind isolation;
+- provider-Tenant unbinding between lookup and JIT transaction;
 - changed display name;
+- absent optional display name on first and repeat login;
 - disabled local User;
 - unavailable Tenant;
 - malformed external identity;
 - attempted provider/client privilege injection;
+- role-change/session-issuance race rejection;
 - audit-atomic rollback;
 - migration rollback protection;
 - existing session, Tenant, onboarding, authorization, DAST, static, dependency, and secret-scan regression gates.

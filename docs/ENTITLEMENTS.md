@@ -36,9 +36,9 @@ Baseline Conference Manager functionality is intentionally not represented as an
 
 ## Microsoft permission boundary
 
-The entitlement is not the Microsoft consent itself. In the confidential-client/application-permission model, Microsoft Graph access tokens use the configured application roles through the `/.default` scope. Productive calendar writes require the reviewed Microsoft application role `Calendars.ReadWrite` on the central SaaS app registration.
+The entitlement is not Microsoft provider authorization itself. In the confidential-client/application-permission model, Microsoft Graph access tokens use application permissions through the `/.default` scope. Productive calendar writes require `Calendars.ReadWrite` authorization. The hardened customer-Tenant path uses the resource-scoped Exchange role `Application Calendars.ReadWrite` and removes the same unscoped Entra grant, as defined in `docs/EXCHANGE-APPLICATION-RBAC.md`.
 
-Because application roles are configured on the app registration and administrator-consented at the provider boundary, the backend must not pretend that an internal Tenant entitlement dynamically adds or removes a Microsoft application role. Instead:
+Because provider authorization is configured at the Microsoft boundary, the backend must not pretend that an internal Tenant entitlement dynamically adds or removes a Microsoft permission. Instead:
 
 1. Microsoft consent establishes the provider permission boundary.
 2. `microsoft.calendar.write` independently determines whether Conference Manager is allowed to invoke productive write operations for an internal Tenant.

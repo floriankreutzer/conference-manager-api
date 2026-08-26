@@ -49,12 +49,18 @@ async function lockFinalRoom(client, tenantId, roomId) {
   });
 }
 
-export function createPostgresRequestRepository(pool, { auditRepository } = {}) {
+export function createPostgresRequestRepository(
+  pool,
+  { auditRepository, calendarAuthorityGuard } = {},
+) {
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
   }
   if (!auditRepository || typeof auditRepository.appendWithClient !== 'function') {
     throw new TypeError('AUDIT_REPOSITORY_REQUIRED');
+  }
+  if (!calendarAuthorityGuard || typeof calendarAuthorityGuard.lockCurrent !== 'function') {
+    throw new TypeError('CALENDAR_AUTHORITY_GUARD_REQUIRED');
   }
 
   return Object.freeze({
@@ -167,6 +173,7 @@ export function createPostgresRequestRepository(pool, { auditRepository } = {}) 
       tenantId,
       requestId,
       expectedStatus,
+      calendarAuthority,
       changedAt,
       auditEvent,
     }) {
@@ -184,6 +191,13 @@ export function createPostgresRequestRepository(pool, { auditRepository } = {}) 
         const current = mapRequestRow(locked.rows[0]);
         if (!current || current.status !== expectedStatus || !current.roomId) {
           return Object.freeze({ status: 'state_conflict', request: current });
+        }
+
+        if (!await calendarAuthorityGuard.lockCurrent(
+          client,
+          { tenantId, requestId, authority: calendarAuthority },
+        )) {
+          return Object.freeze({ status: 'provider_authority_conflict', request: current });
         }
 
         await lockFinalRoom(client, tenantId, current.roomId);

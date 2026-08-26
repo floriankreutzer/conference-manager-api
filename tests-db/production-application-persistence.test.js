@@ -11,6 +11,9 @@ import { createPostgresApplicationRepository } from '../src/persistence/postgres
 import { createPostgresAuditRepository } from '../src/persistence/postgres/audit-repository.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
 import { createPostgresRequestRepository } from '../src/persistence/postgres/request-repository.js';
+import {
+  createPostgresMicrosoft365CalendarAuthorityGuard,
+} from '../src/persistence/postgres/calendar-authority-guard.js';
 import { migrateUp } from '../scripts/db-migrations.mjs';
 
 const TENANT_A = '51515151-5151-4151-8151-515151515151';
@@ -85,11 +88,31 @@ function requestAudit(tenantId, userId, requestId) {
   });
 }
 
+function configurationAudit(tenantId, userId) {
+  return normalizeAuditEvent({
+    tenantId,
+    actorUserId: userId,
+    action: AUDIT_ACTION.TENANT_CONFIGURATION_CHANGED,
+    targetType: 'tenant_configuration',
+    targetId: 'sites',
+    previousState: null,
+    newState: { siteCount: 1 },
+    occurredAt: AT.toISOString(),
+    correlationId: CORRELATION_ID,
+    outcome: AUDIT_OUTCOME.SUCCESS,
+    metadata: { operation: 'site_configuration_update' },
+    retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
+  });
+}
+
 test('production application persistence is tenant-scoped and request create is atomic with audit', async (t) => {
   const pool = createPostgresPool(databaseConfig());
   const auditRepository = createPostgresAuditRepository(pool, { hmacSecret: AUDIT_KEY });
   const applicationRepository = createPostgresApplicationRepository(pool, { auditRepository });
-  const requestRepository = createPostgresRequestRepository(pool, { auditRepository });
+  const requestRepository = createPostgresRequestRepository(pool, {
+    auditRepository,
+    calendarAuthorityGuard: createPostgresMicrosoft365CalendarAuthorityGuard(),
+  });
 
   t.after(async () => {
     await clean(pool);
@@ -104,10 +127,31 @@ test('production application persistence is tenant-scoped and request create is 
 
   const catalogA = await applicationRepository.loadCatalog(TENANT_A);
   assert.deepEqual(catalogA.sites.map((site) => site.id), [SITE_A]);
+  assert.equal(catalogA.sites[0].timeZone, null);
   assert.deepEqual(catalogA.rooms.map((room) => room.id), [ROOM_A]);
   const catalogB = await applicationRepository.loadCatalog(TENANT_B);
   assert.deepEqual(catalogB.sites.map((site) => site.id), [SITE_B]);
   assert.deepEqual(catalogB.rooms.map((room) => room.id), [ROOM_B]);
+
+  assert.deepEqual(await applicationRepository.findRoomBookingContext(TENANT_A, ROOM_A), {
+    roomActive: true,
+    siteActive: true,
+    timeZone: null,
+  });
+  assert.equal(await applicationRepository.findRoomBookingContext(TENANT_A, ROOM_B), null);
+
+  const updatedSites = await applicationRepository.updateSites({
+    tenantId: TENANT_A,
+    sites: [{ id: SITE_A, name: `Site ${SITE_A}`, active: true, timeZone: 'Europe/Berlin' }],
+    changedAt: AT,
+    auditEvent: configurationAudit(TENANT_A, USER_A),
+  });
+  assert.equal(updatedSites[0].timeZone, 'Europe/Berlin');
+  assert.equal(
+    (await applicationRepository.findRoomBookingContext(TENANT_A, ROOM_A)).timeZone,
+    'Europe/Berlin',
+  );
+  assert.equal((await applicationRepository.loadCatalog(TENANT_B)).sites[0].timeZone, null);
 
   const createdA = await requestRepository.createForTenant({
     tenantId: TENANT_A,
@@ -155,7 +199,10 @@ test('production application persistence is tenant-scoped and request create is 
     'SELECT action, target_id FROM audit_events WHERE tenant_id = $1 ORDER BY id',
     [TENANT_A],
   );
-  assert.deepEqual(auditA.rows.map((row) => [row.action, row.target_id]), [[AUDIT_ACTION.REQUEST_CREATED, REQUEST_A]]);
+  assert.deepEqual(auditA.rows.map((row) => [row.action, row.target_id]), [
+    [AUDIT_ACTION.TENANT_CONFIGURATION_CHANGED, 'sites'],
+    [AUDIT_ACTION.REQUEST_CREATED, REQUEST_A],
+  ]);
 
   await assert.rejects(
     requestRepository.createForTenant({
