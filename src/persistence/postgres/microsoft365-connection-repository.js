@@ -84,6 +84,11 @@ async function tenantLock(client, tenantId) {
     text: 'SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))',
     values: [`microsoft365-connection:${tenantId}`],
   });
+  await client.query({
+    name: 'microsoft365-connection-tenant-row-lock',
+    text: 'SELECT 1 FROM tenants WHERE id = $1 FOR SHARE',
+    values: [tenantId],
+  });
 }
 
 export function createPostgresMicrosoft365ConnectionRepository(pool, { auditRepository } = {}) {
