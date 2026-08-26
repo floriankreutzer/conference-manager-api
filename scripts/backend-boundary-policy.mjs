@@ -20,6 +20,7 @@ const COMPOSITION_FILES = new Set(['src/index.js', 'src/server.js', 'src/app.js'
 const CONCRETE_PROVIDER_MODULES = new Set([
   'src/integrations/microsoft365-client.js',
   'src/integrations/microsoft365-calendar-provider.js',
+  'src/integrations/provider-retry.js',
   'src/identity/entra-client.js',
 ]);
 
@@ -123,7 +124,7 @@ export function backendSaas2BoundaryViolations(sourceEntries) {
       if (isInside(sourceFile, 'src/persistence/postgres')
         && (isInside(dependency, 'src/http')
           || isInside(dependency, 'src/application')
-          || isInside(dependency, 'src/integrations')
+          || CONCRETE_PROVIDER_MODULES.has(dependency)
           || COMPOSITION_FILES.has(dependency)
           || dependency === 'src/config.js')) {
         violations.push(violation(sourceFile, `PostgreSQL adapters must not depend on transport, application services, providers or composition module ${dependency}.`));

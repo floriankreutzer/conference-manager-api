@@ -46,3 +46,17 @@ test('generic mutable settings services and repositories are rejected', () => {
   });
   assert.equal(violations.filter((item) => item.includes('generic mutable Tenant settings modules')).length, 2);
 });
+
+test('PostgreSQL adapters may consume provider-neutral contracts but not concrete providers', () => {
+  const valid = backendSaas2BoundaryViolations({
+    'src/persistence/postgres/booking-reference-repository.js': "import { normalize } from '../../integrations/booking-reference.js'; export { normalize };",
+    'src/integrations/booking-reference.js': 'export const normalize = (value) => value;',
+  });
+  assert.deepEqual(valid, []);
+
+  const invalid = backendSaas2BoundaryViolations({
+    'src/persistence/postgres/room-repository.js': "import '../../integrations/microsoft365-client.js';",
+    'src/integrations/microsoft365-client.js': 'export const client = true;',
+  });
+  assert.ok(invalid.some((item) => item.includes('PostgreSQL adapters must not depend')));
+});
