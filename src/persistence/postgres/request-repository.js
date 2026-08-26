@@ -108,6 +108,25 @@ export function createPostgresRequestRepository(
       auditEvent,
     }) {
       return withPostgresTransaction(pool, async (client) => {
+        const bookableRoom = await client.query({
+          name: 'request-create-lock-bookable-room',
+          text: `
+            SELECT rooms.id
+            FROM rooms
+            INNER JOIN sites
+              ON sites.tenant_id = rooms.tenant_id
+             AND sites.id = rooms.site_id
+            WHERE rooms.tenant_id = $1
+              AND rooms.id = $2
+              AND rooms.active = TRUE
+              AND sites.active = TRUE
+              AND sites.time_zone IS NOT NULL
+            FOR UPDATE OF rooms, sites
+          `,
+          values: [tenantId, roomId],
+        });
+        if (bookableRoom.rowCount !== 1) return null;
+
         const result = await client.query({
           name: 'request-create-for-tenant',
           text: `
