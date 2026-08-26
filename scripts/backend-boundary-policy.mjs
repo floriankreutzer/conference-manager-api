@@ -1,4 +1,9 @@
-import { buildModuleGraph, findModuleCycles, isInside } from './module-graph.mjs';
+import {
+  buildModuleGraph,
+  findModuleCycles,
+  isInside,
+  moduleImports,
+} from './module-graph.mjs';
 
 const GENERIC_DUMPING_GROUNDS = new Set([
   'common.js',
@@ -17,11 +22,10 @@ const GENERIC_SETTINGS_MODULES = new Set([
   'tenant-settings-routes.js',
 ]);
 const COMPOSITION_FILES = new Set(['src/index.js', 'src/server.js', 'src/app.js']);
-const CONCRETE_PROVIDER_MODULES = new Set([
-  'src/integrations/microsoft365-client.js',
-  'src/integrations/microsoft365-calendar-provider.js',
-  'src/integrations/provider-retry.js',
-  'src/identity/entra-client.js',
+const PROVIDER_NEUTRAL_INTEGRATION_MODULES = new Set([
+  'src/integrations/booking-reference.js',
+  'src/integrations/calendar-contract.js',
+  'src/integrations/errors.js',
 ]);
 
 function normalized(file) {
@@ -53,8 +57,20 @@ function isProviderApplicationException(file) {
   return isInside(file, 'src/application') && name.startsWith('microsoft365-');
 }
 
+function isConcreteProviderModule(file) {
+  return file === 'src/identity/entra-client.js'
+    || (isInside(file, 'src/integrations')
+      && !PROVIDER_NEUTRAL_INTEGRATION_MODULES.has(file));
+}
+
 function isNewSettingsRoute(file) {
   return isInside(file, 'src/http/settings') || /-settings-routes\.js$/.test(file);
+}
+
+function importsRouteModuleContract(source) {
+  return moduleImports(source).some((entry) => !entry.dynamic
+    && entry.specifier.endsWith('/route-module.js')
+    && /\bdefineRouteModule\b/.test(entry.statement || ''));
 }
 
 export function backendSaas2BoundaryViolations(sourceEntries) {
@@ -89,15 +105,13 @@ export function backendSaas2BoundaryViolations(sourceEntries) {
       ));
     }
     if (isNewSettingsRoute(file) && file !== 'src/http/route-module.js') {
-      const importsRouteModule = source.includes("from '../route-module.js'")
-        || source.includes("from './route-module.js'");
-      if (!importsRouteModule) {
+      if (!importsRouteModuleContract(source)) {
         violations.push(violation(
           file,
-          'SaaS 2 settings route families must use the bounded route-module registration contract.',
+          'SaaS 2 settings route families must import the bounded defineRouteModule contract.',
         ));
       }
-      if (!source.includes('defineRouteModule')) {
+      if (!/\bdefineRouteModule\s*\(/.test(source)) {
         violations.push(violation(
           file,
           'SaaS 2 settings route families must export a defineRouteModule contract.',
@@ -118,7 +132,7 @@ export function backendSaas2BoundaryViolations(sourceEntries) {
             `application code must not depend on transport, concrete persistence or composition module ${dependency}.`,
           ));
         }
-        if (CONCRETE_PROVIDER_MODULES.has(dependency)
+        if (isConcreteProviderModule(dependency)
           && !isProviderApplicationException(sourceFile)) {
           violations.push(violation(
             sourceFile,
@@ -154,7 +168,7 @@ export function backendSaas2BoundaryViolations(sourceEntries) {
       if (isInside(sourceFile, 'src/persistence/postgres')
         && (isInside(dependency, 'src/http')
           || isInside(dependency, 'src/application')
-          || CONCRETE_PROVIDER_MODULES.has(dependency)
+          || isConcreteProviderModule(dependency)
           || COMPOSITION_FILES.has(dependency)
           || dependency === 'src/config.js')) {
         violations.push(violation(

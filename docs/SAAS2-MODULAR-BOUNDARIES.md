@@ -12,7 +12,7 @@ The required direction is:
 
 The Composition Root in `src/index.js` wires concrete PostgreSQL, Microsoft and runtime adapters. Application services do not import HTTP, PostgreSQL, configuration or composition modules. Domain and authorization policy do not import application, HTTP, persistence, provider or composition modules. PostgreSQL and provider adapters do not depend on HTTP or application services.
 
-The reviewed SaaS 1 Microsoft application modules may continue to consume the existing Microsoft contract constants. This explicit compatibility boundary does not authorize new non-Microsoft application services to import concrete provider clients.
+The reviewed SaaS 1 Microsoft application modules may continue to consume the existing Microsoft contract constants. New files under `src/integrations` are treated as concrete provider adapters by default. Only the explicitly reviewed `booking-reference`, `calendar-contract` and stable integration error modules are provider-neutral allowlisted contracts. A new neutral contract therefore requires a deliberate architecture change and regression update rather than becoming implicitly trusted by filename.
 
 ## Bounded settings domains
 
@@ -22,9 +22,9 @@ Each domain owns its contract, validation, authorization requirements, persisten
 
 ## HTTP route ownership
 
-`src/http/route-module.js` defines the registration contract for new SaaS 2 route families. A route module has a stable identifier, a route-key resolver and an injected handler factory. The contract provides deterministic route ownership, duplicate detection and bounded dispatcher composition.
+`src/http/route-module.js` defines the registration contract for new SaaS 2 route families. A route module has a validated stable identifier, a route-key resolver and an injected handler factory. Registration rejects invalid or duplicate identities. Route lookup and dispatch fail closed when more than one module claims the same path, so route ownership cannot depend on registration order.
 
-Existing SaaS 1 routes remain operational during incremental extraction. New settings route families below `src/http/settings/` or named `*-settings-routes.js` must use `defineRouteModule`; they must not add domain schemas, SQL or provider behavior to the central dispatcher.
+Existing SaaS 1 routes remain operational during incremental extraction. New settings route families below `src/http/settings/` or named `*-settings-routes.js` must import and call `defineRouteModule`; they must not add domain schemas, SQL or provider behavior to the central dispatcher.
 
 ## Automated enforcement
 
@@ -32,8 +32,8 @@ Existing SaaS 1 routes remain operational during incremental extraction. New set
 
 - rejects source import cycles and unresolved relative imports;
 - enforces application, domain/policy, HTTP, PostgreSQL and provider dependency boundaries;
-- prevents unauthorized concrete provider imports;
+- treats unknown integration modules as concrete providers and prevents their unauthorized import;
 - rejects generic `settings`, `utils`, `helpers` and `common` dumping grounds;
-- requires the route-module contract for new SaaS 2 settings routes.
+- requires the executable route-module contract for new SaaS 2 settings routes.
 
-`tests/module-boundaries.test.js` contains positive and intentionally invalid graph fixtures. `tests/route-module.test.js` protects route registration and dispatch behavior. Architecture exceptions require an explicit documented decision and corresponding regression updates; weakening the gate to make an implementation pass is not permitted.
+`tests/module-boundaries.test.js` contains positive and intentionally invalid graph fixtures. `tests/route-module.test.js` protects route registration, duplicate ownership and dispatch behavior. Architecture exceptions require an explicit documented decision and corresponding regression updates; weakening the gate to make an implementation pass is not permitted.

@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildModuleGraph, findModuleCycles, moduleSpecifiers } from '../scripts/module-graph.mjs';
+import {
+  buildModuleGraph,
+  findModuleCycles,
+  moduleImports,
+  moduleSpecifiers,
+} from '../scripts/module-graph.mjs';
 import { backendSaas2BoundaryViolations } from '../scripts/backend-boundary-policy.mjs';
 
 test('general module graph detects cycles', () => {
@@ -18,6 +23,7 @@ test('module graph parses executable template dynamic imports only', () => {
     "import(`../persistence/postgres/catalog-repository.js`);",
   ].join('\n');
   assert.deepEqual(moduleSpecifiers(source), ['../persistence/postgres/catalog-repository.js']);
+  assert.equal(moduleImports(source)[0].dynamic, true);
 
   const violations = backendSaas2BoundaryViolations({
     'src/application/catalog-service.js': source,
@@ -28,8 +34,14 @@ test('module graph parses executable template dynamic imports only', () => {
 
 test('valid HTTP to application to domain direction passes', () => {
   const violations = backendSaas2BoundaryViolations({
-    'src/http/catalog-routes.js': "import { service } from '../application/catalog-service.js'; export { service };",
-    'src/application/catalog-service.js': "import { validate } from '../domain/catalog.js'; export const service = validate;",
+    'src/http/catalog-routes.js': [
+      "import { service } from '../application/catalog-service.js';",
+      'export { service };',
+    ].join('\n'),
+    'src/application/catalog-service.js': [
+      "import { validate } from '../domain/catalog.js';",
+      'export const service = validate;',
+    ].join('\n'),
     'src/domain/catalog.js': 'export const validate = (value) => value;',
   });
   assert.deepEqual(violations, []);
@@ -46,12 +58,26 @@ test('application to PostgreSQL and domain to HTTP dependencies fail closed', ()
   assert.ok(violations.some((item) => item.includes('domain and authorization policy must remain independent')));
 });
 
-test('SaaS 2 settings routes require the route-module contract', () => {
-  const violations = backendSaas2BoundaryViolations({
-    'src/http/settings/catalog-settings-routes.js': 'export const route = true;',
+test('SaaS 2 settings routes require an executable route-module contract', () => {
+  const valid = backendSaas2BoundaryViolations({
+    'src/http/settings/catalog-settings-routes.js': [
+      "import { defineRouteModule } from '../route-module.js';",
+      'export const catalogRoutes = defineRouteModule({',
+      "  id: 'catalog', routeKey: () => null, createHandler: () => async () => null,",
+      '});',
+    ].join('\n'),
+    'src/http/route-module.js': 'export const defineRouteModule = (value) => value;',
   });
-  assert.ok(violations.some((item) => item.includes('route-module registration contract')));
-  assert.ok(violations.some((item) => item.includes('defineRouteModule contract')));
+  assert.deepEqual(valid, []);
+
+  const invalid = backendSaas2BoundaryViolations({
+    'src/http/settings/catalog-settings-routes.js': [
+      "import '../route-module.js';",
+      '// defineRouteModule({});',
+    ].join('\n'),
+    'src/http/route-module.js': 'export const defineRouteModule = (value) => value;',
+  });
+  assert.ok(invalid.some((item) => item.includes('must import the bounded')));
 });
 
 test('generic mutable settings services and repositories are rejected', () => {
@@ -62,7 +88,7 @@ test('generic mutable settings services and repositories are rejected', () => {
   assert.equal(violations.filter((item) => item.includes('generic mutable Tenant settings modules')).length, 2);
 });
 
-test('PostgreSQL adapters may consume provider-neutral contracts but not concrete providers', () => {
+test('provider-neutral contracts are allowlisted and future providers fail closed', () => {
   const valid = backendSaas2BoundaryViolations({
     'src/persistence/postgres/booking-reference-repository.js': [
       "import { normalize } from '../../integrations/booking-reference.js';",
@@ -73,8 +99,13 @@ test('PostgreSQL adapters may consume provider-neutral contracts but not concret
   assert.deepEqual(valid, []);
 
   const invalid = backendSaas2BoundaryViolations({
-    'src/persistence/postgres/room-repository.js': "import '../../integrations/microsoft365-client.js';",
-    'src/integrations/microsoft365-client.js': 'export const client = true;',
+    'src/application/catalog-service.js': "import '../integrations/google-calendar-provider.js';",
+    'src/integrations/google-calendar-provider.js': 'export const provider = true;',
+    'src/persistence/postgres/room-repository.js': [
+      "import '../../integrations/google-calendar-provider.js';",
+      'export const repository = true;',
+    ].join('\n'),
   });
+  assert.ok(invalid.some((item) => item.includes('application code may consume provider contracts only')));
   assert.ok(invalid.some((item) => item.includes('PostgreSQL adapters must not depend')));
 });

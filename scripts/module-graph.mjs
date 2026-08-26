@@ -10,13 +10,20 @@ function localModuleSpecifier(specifier) {
   return value.startsWith('.') || value.startsWith('/');
 }
 
-export function moduleSpecifiers(source) {
+export function moduleImports(source) {
   const text = String(source || '');
   const [imports] = parse(text);
-  const specifiers = imports
+  return Object.freeze(imports
     .filter((entry) => entry.d !== -2 && typeof entry.n === 'string')
-    .map((entry) => entry.n.split(/[?#]/)[0]);
-  return Object.freeze(specifiers);
+    .map((entry) => Object.freeze({
+      dynamic: entry.d !== -1,
+      specifier: entry.n.split(/[?#]/)[0],
+      statement: entry.d === -1 ? text.slice(entry.ss, entry.se) : null,
+    })));
+}
+
+export function moduleSpecifiers(source) {
+  return Object.freeze(moduleImports(source).map((entry) => entry.specifier));
 }
 
 export function resolveRelativeModule(fromFile, specifier, knownFiles) {
