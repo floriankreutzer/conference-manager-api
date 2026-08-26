@@ -279,6 +279,33 @@ export function createAuthorizationPolicy() {
       return true;
     },
 
+    authorizeBookingChangePropose(principal, tenantContext, request) {
+      assertPrincipalShape(principal);
+      assertTenantBinding(principal, tenantContext, request?.tenantId);
+      if (!request || request.status !== REQUEST_STATUS.CONFIRMED) {
+        throw new RequestStateConflictError();
+      }
+      const manager = principal.roles.includes(TENANT_ROLE.CONFERENCE_MANAGER)
+        && principal.permissions.includes(PERMISSION.REQUEST_MANAGE);
+      if (manager) {
+        requirePermission(principal, PERMISSION.REQUEST_MANAGE, [TENANT_ROLE.CONFERENCE_MANAGER]);
+        return true;
+      }
+      requirePermission(principal, PERMISSION.REQUEST_READ, [TENANT_ROLE.EMPLOYEE]);
+      if (request.requesterUserId !== principal.userId) deny('RESOURCE_NOT_AVAILABLE', { conceal: true });
+      return true;
+    },
+
+    authorizeBookingChangeDecision(principal, tenantContext, request) {
+      assertPrincipalShape(principal);
+      assertTenantBinding(principal, tenantContext, request?.tenantId);
+      if (!request || request.status !== REQUEST_STATUS.CONFIRMED) {
+        throw new RequestStateConflictError();
+      }
+      requirePermission(principal, PERMISSION.REQUEST_MANAGE, [TENANT_ROLE.CONFERENCE_MANAGER]);
+      return true;
+    },
+
     authorizeBookingOperation,
     authorizeRequestReconciliation,
 

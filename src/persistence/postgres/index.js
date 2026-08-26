@@ -6,6 +6,7 @@ import {
 import { createPostgresApplicationRepository } from './application-repository.js';
 import { createPostgresAuditRepository } from './audit-repository.js';
 import { createPostgresBookingReferenceRepository } from './booking-reference-repository.js';
+import { createPostgresBookingChangeRepository } from './booking-change-repository.js';
 import { createPostgresMicrosoft365CalendarAuthorityGuard } from './calendar-authority-guard.js';
 import { createPostgresEntitlementRepository } from './entitlement-repository.js';
 import { createPostgresJitUserRepository } from './jit-user-repository.js';
@@ -30,6 +31,7 @@ export function createPostgresPersistence(config) {
   const applicationRepository = createPostgresApplicationRepository(pool, { auditRepository });
   const tenantRepository = createPostgresTenantRepository(pool, { auditRepository });
   const bookingReferenceRepository = createPostgresBookingReferenceRepository(pool, { auditRepository });
+  const bookingChangeRepository = createPostgresBookingChangeRepository(pool, { auditRepository });
   const entitlementRepository = createPostgresEntitlementRepository(pool, { auditRepository });
   const jitUserRepository = createPostgresJitUserRepository(pool, { auditRepository });
   const microsoft365CapabilityHealthRepository = createPostgresMicrosoft365CapabilityHealthRepository(pool);
@@ -49,6 +51,7 @@ export function createPostgresPersistence(config) {
     applicationRepository,
     auditRepository,
     bookingReferenceRepository,
+    bookingChangeRepository,
     entitlementRepository,
     jitUserRepository,
     microsoft365CapabilityHealthRepository,

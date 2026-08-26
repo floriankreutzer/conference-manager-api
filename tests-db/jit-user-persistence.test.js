@@ -391,6 +391,7 @@ test('JIT provisioning is tenant-isolated, deterministic, concurrent-safe and au
   assert.equal(fallbackProfile.rows[0].display_name, 'Provisioned user');
 
   assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatest(pool), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await rollbackLatest(pool), true);

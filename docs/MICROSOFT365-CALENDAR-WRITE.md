@@ -92,7 +92,9 @@ Successful compensation records `compensating` before Graph delete and `compensa
 
 The Microsoft adapter and provider-neutral booking contract support updating the persisted event reference with new UTC start/end values. The provider event reference may not be replaced by the update response.
 
-The current product has no accepted server-authoritative post-confirmation date/time/room mutation use case yet. The adapter is ready, but issue #68 remains blocked on product acceptance of that workflow and its authorization/state-transition contract. Issue #114 covers the current create/list/transition API and does not close this separate acceptance gap. No parallel or browser-authoritative change workflow is invented here.
+The accepted post-confirmation workflow is server-authoritative. The Requester/Organizer or a Conference Manager may create exactly one open proposal for a confirmed Request. Date/time or room changes remain pending until a Conference Manager approves or rejects them; a manager may approve a self-initiated proposal and that actor is retained in the audit event. Participant-count-only changes apply immediately when the current room capacity remains sufficient.
+
+The original booking remains active while approval is pending. The target is not held. Approval rechecks local conflicts, room/site state, capacity and live Graph availability. A same-room schedule change patches the persisted event reference. A room change creates an idempotent replacement in the target room, removes the old event, and swaps the persisted reference in the same database transaction as the Request mutation. Failed external work is retried up to three times; exhausted attempts compensate to the original booking and return the proposal to `pending`. Notifications are inserted only in the successful Request-apply transaction.
 
 ## Cancellation and reconciliation
 

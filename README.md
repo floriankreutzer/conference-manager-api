@@ -78,6 +78,8 @@ The checked-in `.env.example` is a development template. Pilot/Production config
 - `DELETE /api/v1/session` — CSRF-protected server-side logout/revocation and cookie clearing.
 - `GET /api/v1/requests/{requestId}` — active-Tenant and object-authorized Request read.
 - `POST /api/v1/requests/{requestId}/transitions` — CSRF-protected, server-authorized Request workflow transition.
+- `GET/POST /api/v1/requests/{requestId}/booking-change` — read or create the single open confirmed-booking proposal.
+- `POST /api/v1/requests/{requestId}/booking-change/{changeId}/decision` — Conference Manager approve/reject decision with live revalidation.
 - `GET /api/v1/audit` — Tenant Admin audit read after Tenant authorization and integrity-chain verification.
 
 There is intentionally no browser-controlled session issuance, entitlement-administration, metrics or direct calendar-provider endpoint. The production Entra OIDC flow validates and maps provider identity server-side before issuing an opaque application session. Platform/operator changes use separately authorized process-local contracts, while production Request, availability and calendar synchronization remain composed behind the existing authenticated and object-authorized application use cases.

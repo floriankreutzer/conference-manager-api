@@ -165,7 +165,7 @@ test('OIDC migration rolls back and reapplies without touching established sessi
   await migrateUp(pool);
   await clean(pool);
 
-  for (let version = 18; version >= 7; version -= 1) {
+  for (let version = 19; version >= 7; version -= 1) {
     assert.equal(await rollbackLatest(pool), true);
   }
   assert.equal(await isPostgresSchemaReady(pool), false);

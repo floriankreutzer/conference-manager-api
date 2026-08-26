@@ -496,6 +496,38 @@ export function createPostgresBookingReferenceRepository(pool, { auditRepository
       });
     },
 
+    async replaceActiveProviderReference({
+      tenantId,
+      requestId,
+      integrationId,
+      expectedProviderReference,
+      providerReference,
+      providerResourceReference,
+      idempotencyKey,
+      changedAt,
+      auditEvent,
+    }) {
+      return withPostgresTransaction(pool, async (client) => {
+        await lockReference(client, tenantId, requestId, integrationId);
+        const result = await client.query({
+          name: 'booking-reference-replace-active',
+          text: `UPDATE booking_provider_references
+            SET provider_reference=$5, provider_resource_reference=$6, idempotency_key=$7,
+              attempt_number=attempt_number+1, updated_at=$8
+            WHERE tenant_id=$1 AND request_id=$2 AND integration_id=$3
+              AND provider_reference=$4 AND state='active'
+            RETURNING ${REFERENCE_COLUMNS}`,
+          values: [tenantId, requestId, integrationId, expectedProviderReference,
+            providerReference, providerResourceReference, idempotencyKey, changedAt],
+        });
+        const reference = mapRow(result.rows[0]);
+        if (!reference) throw new BookingReferenceConflictError();
+        const audit = await auditRepository.appendWithClient(client, auditEvent);
+        if (!audit) throw new Error('AUDIT_APPEND_FAILED');
+        return reference;
+      });
+    },
+
     async cancelProviderReference({
       tenantId,
       requestId,

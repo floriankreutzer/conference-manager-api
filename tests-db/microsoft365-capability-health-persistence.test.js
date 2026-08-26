@@ -122,6 +122,7 @@ test('Microsoft capability health is tenant-scoped, preserves last success and r
     successful: true,
   }), null);
   assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatest(pool), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await rollbackLatest(pool), true);

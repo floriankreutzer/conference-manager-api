@@ -695,6 +695,7 @@ test('Microsoft 365 connection persistence is tenant-isolated, replay-safe and r
   );
 
   assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatest(pool), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await rollbackLatest(pool), true);

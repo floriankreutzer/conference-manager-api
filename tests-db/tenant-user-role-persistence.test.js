@@ -284,6 +284,7 @@ test('tenant roles are claimant-bootstrapped, isolated, concurrent-safe and inva
   assert.equal(await auditRepository.verifyTenantChain(TENANT_A), true);
 
   assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatest(pool), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await rollbackLatest(pool), true);

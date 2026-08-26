@@ -28,6 +28,7 @@ test('Site time-zone migration preserves unknown legacy values and protects roll
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
   assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatest(pool), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
 
   await pool.query(
@@ -58,6 +59,7 @@ test('Site time-zone migration preserves unknown legacy values and protects roll
     'UPDATE sites SET time_zone = $3 WHERE tenant_id = $1 AND id = $2',
     [TENANT_ID, 'site-1', 'Europe/Berlin'],
   );
+  assert.equal(await rollbackLatest(pool), true);
   await assert.rejects(
     rollbackLatest(pool),
     (error) => error.code === '55000' && error.message.includes('SITE_TIME_ZONE_ROWS_REQUIRE_REVIEW'),

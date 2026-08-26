@@ -142,6 +142,8 @@ Update requires an existing `active` provider-reference row. It always uses the 
 
 The provider receives only the opaque stored reference and the desired server booking data. A provider is not allowed to replace the reference during update/cancel; a mismatched returned reference is treated as a malformed provider response.
 
+Post-confirmation booking changes use a separate proposal aggregate instead of overloading the Request workflow status. A partial unique index permits one `pending` or `applying` proposal per confirmed Request. Same-room updates retain the opaque event reference. Because a Graph event belongs to its room mailbox, room changes use an idempotent replacement saga with cleanup/compensation and an audit-atomic provider-reference swap; they never pretend that changing the local `room_id` moved an event between mailboxes.
+
 Cancellation of an `active` reference persists local state `cancelled` together with its success audit event. Repeating cancellation after local state is already cancelled is a deterministic no-op and does not call the provider again.
 
 If cancellation encounters a `pending` create with unknown provider outcome, it first repeats create idempotently with the persisted resource/key, stores the real returned event reference as `active`, and then cancels it. If no provider event existed this can create at most one event that is immediately deleted; if the prior attempt succeeded it resolves and deletes that same event. Provider or persistence failure remains an explicit reconciliation failure and can be retried without changing mailbox scope.

@@ -32,6 +32,8 @@ for (const required of [
   "return 'tenant_users'",
   "return 'tenant_user_roles'",
   "return 'request_transition'",
+  "return 'booking_change'",
+  "return 'booking_change_decision'",
   "return 'request'",
 ]) {
   if (!app.includes(required)) throw new Error(`HTTP observability composition is missing ${required}.`);

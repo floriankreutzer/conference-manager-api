@@ -61,7 +61,7 @@ test('entitlement migration rollback fails closed when state or evidence exists'
     correlationId: CORRELATION_ID,
   });
 
-  for (let version = 18; version >= 6; version -= 1) {
+  for (let version = 19; version >= 6; version -= 1) {
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await isPostgresSchemaReady(pool), false);
   }

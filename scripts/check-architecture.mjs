@@ -463,8 +463,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!pool.includes('CURRENT_SCHEMA_VERSION = 14')) {
-  throw new Error('Runtime schema readiness must require Microsoft 365 capability-health migration version 14.');
+if (!pool.includes('CURRENT_SCHEMA_VERSION = 19')) {
+  throw new Error('Runtime schema readiness must require confirmed-booking-change migration version 19.');
 }
 
 const index = await readFile('src/index.js', 'utf8');
@@ -670,6 +670,8 @@ for (const migration of [
   'migrations/017_booking_provider_resource_binding.down.sql',
   'migrations/018_site_time_zones.up.sql',
   'migrations/018_site_time_zones.down.sql',
+  'migrations/019_confirmed_booking_changes.up.sql',
+  'migrations/019_confirmed_booking_changes.down.sql',
 ]) {
   await readFile(migration, 'utf8');
 }

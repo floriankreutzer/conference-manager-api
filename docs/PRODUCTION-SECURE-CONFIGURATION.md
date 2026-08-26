@@ -137,7 +137,7 @@ The browser may hold the CSRF token in runtime memory. It must not persist the s
 - Pilot/Production use `DATABASE_SSL=verify-full` with a certificate/hostname-valid endpoint.
 - SQL application values remain parameterized.
 - Deployment automation applies migrations before application rollout; startup does not auto-migrate.
-- Readiness requires connectivity and exact repository-defined schema version 18.
+- Readiness requires connectivity and exact repository-defined schema version 19.
 - Tenant ownership and referential integrity are reinforced at database level.
 - Advisory locks and optimistic versions protect concurrent security/business transitions.
 - Migration rollback guards prevent silent removal of security/business evidence.

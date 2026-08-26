@@ -96,6 +96,8 @@ Client input selects only a supported transition name. It never supplies the nex
 
 Unsupported transitions fail validation. Valid transitions from an ineligible current state return `409 REQUEST_STATE_CONFLICT`.
 
+Confirmed-booking proposals are a separate aggregate and never reuse `request_change`, which remains the pre-confirmation manager transition above. The Requester/Organizer may propose changes only for their own confirmed Request; a Conference Manager with `request:manage` may propose for any confirmed Request in the active Tenant. Only a Conference Manager may approve or reject schedule/room proposals. Self-approval is allowed and the initiator/decider identities remain server-derived and auditable. No decision endpoint permits proposal editing.
+
 Reject/change-request reasons are trimmed server-side, limited to 1-1000 characters and reject control characters. Reasons on transitions that do not use a reason are rejected instead of ignored.
 
 ## Concurrency, persistence and audit evidence
