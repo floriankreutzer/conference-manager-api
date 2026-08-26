@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "environment": "pilot",
+  "calendarWrite": "disabled",
+  "generatedAt": null,
+  "release": {
+    "backendCommit": null,
+    "frontendCommit": null
+  },
+  "evidence": [
+    {
+      "id": "repository.backend_gates",
+      "status": "pending",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Attach the final backend CI, audit, database, dependency, static analysis, and secret scan evidence."
+    },
+    {
+      "id": "repository.frontend_gates",
+      "status": "pending",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Attach the final frontend CI, accessibility, dependency, static analysis, and secret scan evidence."
+    },
+    {
+      "id": "security.multi_tenant",
+      "status": "pending",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Attach the final adversarial two-Tenant isolation and BOLA or IDOR gate evidence."
+    },
+    {
+      "id": "deployment.provider_region_decision",
+      "status": "pending",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Provider and EU region require an accepted architecture decision based on completed PoC evidence."
+    },
+    {
+      "id": "deployment.eu_runtime",
+      "status": "pending",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Attach evidence for the actual EU runtime, data residency, and telemetry destinations."
+    },
+    {
+      "id": "deployment.https",
+      "status": "pending",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Attach deployed HTTPS, certificate, redirect, HSTS, and same-origin routing evidence."
+    },
+    {
+      "id": "deployment.postgresql18",
+      "status": "pending",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Attach runtime PostgreSQL 18 version and schema-readiness evidence from the selected service."
+    },
+    {
+      "id": "operations.backup_restore",
+      "status": "pending",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Attach a successful encrypted backup and restore drill with measured recovery values."
+    },
+    {
+      "id": "operations.rollback",
+      "status": "pending",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Attach an executed application and migration rollback or forward-recovery drill."
+    },
+    {
+      "id": "acceptance.two_entra_tenants",
+      "status": "pending",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Attach acceptance evidence from two independent Microsoft Entra organizations."
+    },
+    {
+      "id": "acceptance.oidc_session",
+      "status": "pending",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Attach real OIDC callback, replay protection, session rotation, CSRF, logout, and expiry evidence."
+    },
+    {
+      "id": "acceptance.graph_places",
+      "status": "pending",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Attach real Microsoft Graph Places discovery and room mapping evidence."
+    },
+    {
+      "id": "acceptance.graph_free_busy",
+      "status": "pending",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Attach real Microsoft Graph Free or Busy verification and failure-path evidence."
+    },
+    {
+      "id": "acceptance.graph_calendar_write",
+      "status": "not_applicable",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Calendar Write remains disabled for this Pilot release."
+    },
+    {
+      "id": "security.exchange_application_rbac",
+      "status": "not_applicable",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Exchange Application RBAC is not a launch gate while Calendar Write remains disabled."
+    },
+    {
+      "id": "acceptance.browser_e2e",
+      "status": "pending",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Attach deployed browser acceptance evidence for onboarding, authorization, and core workflows."
+    },
+    {
+      "id": "security.deployed_dast",
+      "status": "pending",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Attach DAST evidence executed against the deployed Pilot origin."
+    },
+    {
+      "id": "security.penetration_test",
+      "status": "pending",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Attach the completed Pilot penetration test and disposition of material findings."
+    },
+    {
+      "id": "security.redaction",
+      "status": "pending",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Attach deployed log, trace, metric, and audit redaction verification."
+    },
+    {
+      "id": "operations.observability",
+      "status": "pending",
+      "reference": null,
+      "verifiedAt": null,
+      "note": "Attach deployed health, readiness, alerting, correlation, and support diagnostic evidence."
+    }
+  ]
+}
