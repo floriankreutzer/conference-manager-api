@@ -146,6 +146,19 @@ async function appendAudit(client, auditRepository, event) {
   if (!result) throw new Error('AUDIT_APPEND_FAILED');
 }
 
+async function invalidateResourceHealth(client, tenantId, integrationId) {
+  await client.query({
+    name: 'microsoft365-room-mapping-invalidate-resource-health',
+    text: `
+      DELETE FROM microsoft365_capability_health
+      WHERE tenant_id = $1
+        AND integration_id = $2
+        AND capability IN ('free_busy', 'calendar_write')
+    `,
+    values: [tenantId, integrationId],
+  });
+}
+
 function validateProviderRoom(room) {
   assertBoundedString(room.externalRoomId, EXTERNAL_ID_MAX, 'MICROSOFT365_EXTERNAL_ROOM_ID_INVALID');
   assertBoundedString(room.resourceAddress, ADDRESS_MAX, 'MICROSOFT365_RESOURCE_ADDRESS_INVALID');
@@ -284,6 +297,7 @@ export function createPostgresMicrosoft365RoomMappingRepository(pool, { auditRep
                 ],
               });
               if (changed) {
+                await invalidateResourceHealth(client, tenantId, integrationId);
                 await appendAudit(client, auditRepository, auditEventFor({
                   roomId: existing.room_id,
                   operation: 'room_mapping_refreshed',
@@ -331,6 +345,7 @@ export function createPostgresMicrosoft365RoomMappingRepository(pool, { auditRep
                 changedAt,
               ],
             });
+            await invalidateResourceHealth(client, tenantId, integrationId);
             await appendAudit(client, auditRepository, auditEventFor({
               roomId: room.roomId,
               operation: 'room_imported',
@@ -402,6 +417,7 @@ export function createPostgresMicrosoft365RoomMappingRepository(pool, { auditRep
                   `,
                   values: [tenantId, existing.room_id, changedAt],
                 });
+                await invalidateResourceHealth(client, tenantId, integrationId);
                 await appendAudit(client, auditRepository, auditEventFor({
                   roomId: existing.room_id,
                   operation: 'room_provider_missing',
@@ -440,6 +456,7 @@ export function createPostgresMicrosoft365RoomMappingRepository(pool, { auditRep
               ],
             });
             if (changed) {
+              await invalidateResourceHealth(client, tenantId, integrationId);
               await appendAudit(client, auditRepository, auditEventFor({
                 roomId: existing.room_id,
                 operation: 'room_provider_refreshed',
