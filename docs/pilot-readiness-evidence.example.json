@@ -104,14 +104,14 @@
       "status": "not_applicable",
       "reference": null,
       "verifiedAt": null,
-      "note": "Calendar Write remains disabled for this Pilot release."
+      "note": "Calendar Write remains disabled; this baseline scope is not enabled-write acceptance evidence for issue #73."
     },
     {
       "id": "security.exchange_application_rbac",
       "status": "not_applicable",
       "reference": null,
       "verifiedAt": null,
-      "note": "Exchange Application RBAC is not a launch gate while Calendar Write remains disabled."
+      "note": "Exchange Application RBAC is not a gate for this disabled-write scope and issue #73 remains open."
     },
     {
       "id": "acceptance.browser_e2e",
