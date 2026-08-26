@@ -1,4 +1,7 @@
 import { createFinalRoomConfirmationService } from './application/final-room-confirmation-service.js';
+import {
+  createMicrosoft365AvailabilityVerificationService,
+} from './application/microsoft365-availability-verification-service.js';
 import { createMicrosoft365BookingServiceFactory } from './application/microsoft365-booking-service-factory.js';
 import {
   createMicrosoft365CapabilityHealthService,
@@ -173,6 +176,17 @@ const tenantPilotService = persistence && auditService
     auditService,
   })
   : null;
+const microsoft365AvailabilityVerificationService = persistence
+  && auditService
+  && microsoft365CalendarProviderFactory
+  ? createMicrosoft365AvailabilityVerificationService({
+    mappingRepository: persistence.microsoft365RoomMappingRepository,
+    connectionRepository: persistence.microsoft365ConnectionRepository,
+    calendarProviderFactory: microsoft365CalendarProviderFactory,
+    authorizationPolicy,
+    auditService,
+  })
+  : null;
 const microsoft365ConnectionLifecycleService = persistence && auditService && microsoft365Client
   ? createMicrosoft365ConnectionService({
     repository: persistence.microsoft365ConnectionRepository,
@@ -224,6 +238,9 @@ const microsoft365Service = microsoft365ConnectionService
       : {}),
     ...(tenantPilotService
       ? { getPilotReadiness: (args) => tenantPilotService.getReadiness(args) }
+      : {}),
+    ...(microsoft365AvailabilityVerificationService
+      ? { verifyFreeBusy: (args) => microsoft365AvailabilityVerificationService.verify(args) }
       : {}),
   })
   : null;
