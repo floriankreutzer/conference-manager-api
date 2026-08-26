@@ -49,7 +49,10 @@ test('generic mutable settings services and repositories are rejected', () => {
 
 test('PostgreSQL adapters may consume provider-neutral contracts but not concrete providers', () => {
   const valid = backendSaas2BoundaryViolations({
-    'src/persistence/postgres/booking-reference-repository.js': "import { normalize } from '../../integrations/booking-reference.js'; export { normalize };",
+    'src/persistence/postgres/booking-reference-repository.js': [
+      "import { normalize } from '../../integrations/booking-reference.js';",
+      'export { normalize };',
+    ].join('\n'),
     'src/integrations/booking-reference.js': 'export const normalize = (value) => value;',
   });
   assert.deepEqual(valid, []);
