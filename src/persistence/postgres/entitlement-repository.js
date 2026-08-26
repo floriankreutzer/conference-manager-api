@@ -49,7 +49,7 @@ export function createPostgresEntitlementRepository(pool, { auditRepository } = 
         });
         const tenant = await client.query({
           name: 'entitlement-tenant-exists',
-          text: 'SELECT 1 FROM tenants WHERE id = $1 LIMIT 1',
+          text: 'SELECT 1 FROM tenants WHERE id = $1 FOR SHARE',
           values: [tenantId],
         });
         if (tenant.rowCount !== 1) return null;
