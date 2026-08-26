@@ -198,13 +198,13 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
         }
         const audit = await auditRepository.appendWithClient(client, auditEvent);
         if (!audit) throw new Error('AUDIT_APPEND_FAILED');
+        const result = await client.query({
+          name: 'application-sites-list-after-update',
+          text: 'SELECT id, name, active, time_zone FROM sites WHERE tenant_id = $1 ORDER BY id',
+          values: [tenantId],
+        });
+        return Object.freeze(result.rows.map(publicSite));
       });
-      const result = await pool.query({
-        name: 'application-sites-list-after-update',
-        text: 'SELECT id, name, active, time_zone FROM sites WHERE tenant_id = $1 ORDER BY id',
-        values: [tenantId],
-      });
-      return Object.freeze(result.rows.map(publicSite));
     },
   });
 }

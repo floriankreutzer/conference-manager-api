@@ -199,7 +199,7 @@ test('PostgreSQL booking references are tenant-scoped, idempotent, and audit-ato
         changedAt: new Date('2026-08-24T10:00:01.000Z'),
         auditEvent: auditEvent(auditService, TENANT_A, USER_A, CORRELATION_A),
       }),
-      (error) => error.code === 'BOOKING_REFERENCE_CONFLICT',
+      (error) => error.code === 'BOOKING_PROVIDER_REFERENCE_CONFLICT',
     );
     assert.equal(
       (await repository.findProviderReferenceByRequest(TENANT_A, 'request-1', INTEGRATION_A))
@@ -363,7 +363,7 @@ test('PostgreSQL booking references are tenant-scoped, idempotent, and audit-ato
           'pending',
         ),
       }),
-      (error) => error.code === 'BOOKING_REFERENCE_CONFLICT',
+      (error) => error.code === 'BOOKING_PROVIDER_REFERENCE_CONFLICT',
     );
   });
 
@@ -500,7 +500,7 @@ test('PostgreSQL booking references are tenant-scoped, idempotent, and audit-ato
         ),
         allowDisconnectedCleanup: true,
       }),
-      (error) => error.code === 'BOOKING_REFERENCE_CONFLICT',
+      (error) => error.code === 'BOOKING_PROVIDER_REFERENCE_CONFLICT',
     );
     const cleanupResolved = await repository.createProviderReference({
       tenantId: TENANT_A,
@@ -536,8 +536,9 @@ test('PostgreSQL booking references are tenant-scoped, idempotent, and audit-ato
   await t.test('a committed Request cancellation wins against a stale concurrent resource reservation', async () => {
     await pool.query(
       `INSERT INTO requests (
-        tenant_id, id, requester_user_id, room_id, status, starts_at, ends_at, internal_participants
-      ) VALUES ($1, $2, $3, $4, 'In Review', $5, $6, 1)`,
+        tenant_id, id, requester_user_id, room_id, status, starts_at, ends_at,
+        internal_participants, created_at, updated_at, status_changed_at
+      ) VALUES ($1, $2, $3, $4, 'In Review', $5, $6, 1, $7, $7, $7)`,
       [
         TENANT_A,
         'request-cancel-race',
@@ -545,6 +546,7 @@ test('PostgreSQL booking references are tenant-scoped, idempotent, and audit-ato
         'room-1',
         '2026-09-04T10:00:00.000Z',
         '2026-09-04T11:00:00.000Z',
+        '2026-08-24T10:02:00.000Z',
       ],
     );
     const cancellation = await pool.connect();
@@ -572,7 +574,7 @@ test('PostgreSQL booking references are tenant-scoped, idempotent, and audit-ato
       await cancellation.query('COMMIT');
       await assert.rejects(
         staleReservation,
-        (error) => error.code === 'BOOKING_REFERENCE_CONFLICT',
+        (error) => error.code === 'BOOKING_PROVIDER_REFERENCE_CONFLICT',
       );
     } finally {
       try { await cancellation.query('ROLLBACK'); } catch {}
