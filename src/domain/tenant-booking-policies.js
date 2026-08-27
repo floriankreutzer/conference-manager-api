@@ -37,11 +37,11 @@ function inputError(code) {
   throw new TenantBookingPolicyInputError(code);
 }
 
-function exactObject(value, required) {
+function exactObject(value, required, optional = []) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     inputError('TENANT_BOOKING_POLICIES_INVALID');
   }
-  const allowed = new Set(required);
+  const allowed = new Set([...required, ...optional]);
   if (
     Object.keys(value).some((key) => !allowed.has(key))
     || required.some((key) => !Object.hasOwn(value, key))
@@ -261,17 +261,28 @@ function policyContext(value) {
     'roomId',
     'serviceIds',
     'participants',
-  ]);
+  ], ['changeWindowStartsAt']);
   if (!OPERATIONS.has(context.operation)) inputError('TENANT_BOOKING_POLICY_OPERATION_INVALID');
   const evaluationInstant = requireDate(
     context.evaluationInstant,
     'TENANT_BOOKING_POLICY_EVALUATION_INSTANT_INVALID',
   );
   const startsAt = requireDate(context.startsAt, 'TENANT_BOOKING_POLICY_START_INVALID');
+  const changeWindowStartsAt = context.operation === BOOKING_POLICY_OPERATION.CHANGE
+    ? requireDate(
+      context.changeWindowStartsAt,
+      'TENANT_BOOKING_POLICY_CHANGE_WINDOW_START_INVALID',
+    )
+    : null;
+  if (
+    context.operation !== BOOKING_POLICY_OPERATION.CHANGE
+    && Object.hasOwn(context, 'changeWindowStartsAt')
+  ) inputError('TENANT_BOOKING_POLICY_CHANGE_WINDOW_START_FORBIDDEN');
   return Object.freeze({
     operation: context.operation,
     evaluationInstant,
     startsAt,
+    changeWindowStartsAt,
     siteId: safeId(context.siteId, 'TENANT_BOOKING_POLICY_SITE_REFERENCE_INVALID'),
     roomId: safeId(context.roomId, 'TENANT_BOOKING_POLICY_ROOM_REFERENCE_INVALID'),
     serviceIds: referenceList(
@@ -320,7 +331,8 @@ function evaluateRules(version, context) {
     }
     if (
       context.operation === BOOKING_POLICY_OPERATION.CHANGE
-      && millisecondsUntilStart < rules.changeWindowMinutes * 60_000
+      && context.changeWindowStartsAt.getTime() - context.evaluationInstant.getTime()
+        < rules.changeWindowMinutes * 60_000
     ) {
       throw new TenantBookingPolicyViolationError(
         'BOOKING_POLICY_CHANGE_WINDOW_VIOLATION',

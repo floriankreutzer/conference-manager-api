@@ -66,7 +66,7 @@ The contract supports two phases:
 
 Both phases first enforce the local Tenant-scoped overlap rule. When there is a local conflict, provider lookup is not invoked. When no local conflict exists, the configured provider performs its own availability/reservation validation.
 
-The provider-neutral boundary is composed into the production application API in two places: `POST /api/v1/application/room-availability` performs an advisory pre-create check, and the normal Request confirmation use case repeats authoritative local/provider validation before its audit-atomic state transition. `POST /api/v1/application/requests` owns Tenant-scoped Request creation; the browser never invokes a provider or supplies an availability decision.
+The provider-neutral boundary is composed into the production application API in two places: `POST /api/v1/application/room-availability` performs an advisory pre-create check, and the normal Request confirmation use case repeats authoritative local/provider validation before its audit-atomic state transition. `POST /api/v1/application/requests` owns Tenant-scoped Request v2 creation and snapshots current Room/Catalogue/policy/allocation authority; the browser never invokes a provider or supplies an availability or price decision.
 
 ## Authorization and entitlements
 
@@ -142,7 +142,22 @@ Update requires an existing `active` provider-reference row. It always uses the 
 
 The provider receives only the opaque stored reference and the desired server booking data. A provider is not allowed to replace the reference during update/cancel; a mismatched returned reference is treated as a malformed provider response.
 
-Post-confirmation booking changes use a separate proposal aggregate instead of overloading the Request workflow status. A partial unique index permits one `pending` or `applying` proposal per confirmed Request. Same-room updates retain the opaque event reference. Because a Graph event belongs to its room mailbox, room changes use an idempotent replacement saga with cleanup/compensation and an audit-atomic provider-reference swap; they never pretend that changing the local `room_id` moved an event between mailboxes.
+Post-confirmation booking changes use a separate proposal aggregate instead of overloading the Request workflow status. A partial unique index permits one `pending` or `applying` proposal per confirmed Request. A v2 proposal contains the complete desired composition plus expected Request version and persists an immutable next-version snapshot after evaluating current Tenant configuration. A genuinely participant-count-only change with unchanged configuration revisions can apply immediately; every other composition change or revision-only refresh remains pending manager decision. Same-room updates retain the opaque event reference. Because a Graph event belongs to its room mailbox, room changes use an idempotent replacement saga with cleanup/compensation and an audit-atomic provider-reference swap; they never pretend that changing the local `room_id` moved an event between mailboxes.
+
+The proposal's persisted `applying` state is also its crash-recovery boundary.
+Repeated approval resumes that state and keeps the same room-move key while a
+target create outcome is unknown. Confirmed target cleanup returns the proposal
+to `pending`, so the next applying attempt derives a new key and cannot resolve
+a deleted target. An unknown PostgreSQL finish response is reread before any
+compensation; a visible `applied` Request/proposal is returned without deleting
+the moved event. A successful already-applied retry likewise performs no
+provider write.
+
+Request cancellation and booking-change approval use the same lock order:
+active Tenant, Request, then open proposal. Cancellation conflicts with
+`applying`; when the proposal is `pending`, cancellation atomically marks it
+terminal `superseded` before releasing the Request and records both effects in
+the same audit/history transaction.
 
 Cancellation of an `active` reference persists local state `cancelled` together with its success audit event. Repeating cancellation after local state is already cancelled is a deterministic no-op and does not call the provider again.
 

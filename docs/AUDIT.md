@@ -73,7 +73,13 @@ The chain detects record modification and reordering when the HMAC key is not co
 
 Successful Request creation and transitions, session issue/revoke/rotation, entitlement changes, Tenant onboarding and identity-claim changes, JIT User provisioning, Tenant role changes and Microsoft 365 connection lifecycle changes append their corresponding success audit evidence in the same PostgreSQL transaction as the authoritative mutation. If the audit append fails, the mutation rolls back.
 
-Production Request creation emits `request.created` only after the server derives the internal Tenant, requester, request identifier, initial workflow status and correlation context. The browser cannot supply audit actor/Tenant/outcome data or an authoritative workflow status. Migration 015 adds `request.created` to the database action allowlist and refuses rollback while such durable evidence exists.
+Production Request creation emits `request.created` only after the server derives the internal Tenant, requester, request identifier, initial workflow status and correlation context. Request v2 success state records only bounded schema/version/status facts; the complete composition, requirements, prices, policy and allocation belong to the Tenant-scoped Request snapshot/history rather than duplicated audit metadata. The browser cannot supply audit actor/Tenant/outcome data or an authoritative workflow status. Migration 015 adds `request.created` to the database action allowlist and refuses rollback while such durable evidence exists.
+
+Owner resubmission emits `request.transition` with the fixed `request_resubmit` operation and
+server-derived previous/new status and Request-version facts. Confirmed composition changes continue
+to use `request.booking_change`. The authoritative Request row, append-only Request revision,
+notification where applicable and success audit evidence commit atomically; audit failure cannot
+leave an unaudited Request version. Validation/conflict paths do not append false success evidence.
 
 For Microsoft 365, the atomic boundary covers consent-state persistence, connection-state/version changes, active provider-binding revalidation, callback rejection evidence and local disconnect. External Microsoft consent or Graph calls cannot participate in the PostgreSQL transaction and are never described as transactionally atomic with local state.
 

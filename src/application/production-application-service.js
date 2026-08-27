@@ -4,16 +4,40 @@ import {
   AUDIT_OUTCOME,
   AUDIT_RETENTION_CLASS,
 } from '../audit/event.js';
-import { AuthorizationDeniedError, AuthorizationInputError } from '../authorization/errors.js';
+import {
+  AuthorizationDeniedError,
+  AuthorizationInputError,
+  RequestStateConflictError,
+} from '../authorization/errors.js';
 import { PERMISSION } from '../authorization/policy.js';
 import { isInternalUuid } from '../domain/identifiers.js';
+import {
+  REQUEST_COMPOSITION_SCHEMA_VERSION,
+  normalizeRequestV2Draft,
+} from '../domain/request-composition.js';
+import { isSupportedCurrencyCode } from '../domain/money.js';
+import { isRequestId, toPublicRequest } from '../domain/request.js';
 import { isIanaTimeZone } from '../domain/site-time-zone.js';
 import {
   RoomAvailabilityUnavailableError,
   normalizeRoomAvailabilityQuery,
 } from './room-availability-service.js';
+import {
+  createRequestReportCursor,
+  normalizeRequestReportQuery,
+} from './request-report.js';
+import { fitPublicPage } from './public-page.js';
+import {
+  applicationCatalogContextMatches,
+  createApplicationCatalogCursor,
+  createApplicationCatalogContext,
+  normalizeApplicationCatalogQuery,
+} from './catalog-page.js';
+import {
+  createApplicationRequestListCursor,
+  normalizeApplicationRequestListQuery,
+} from './request-list.js';
 
-const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const DISPLAY_NAME_MAX = 160;
 const NOTIFICATION_LIMIT = 200;
 
@@ -48,73 +72,6 @@ function requireDisplayName(value) {
   return normalized;
 }
 
-function requireRequestDraft(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new AuthorizationInputError('REQUEST_DRAFT_INVALID');
-  }
-  const allowed = new Set([
-    'roomId',
-    'startsAt',
-    'endsAt',
-    'internalParticipants',
-    'externalParticipants',
-  ]);
-  if (Object.keys(value).some((key) => !allowed.has(key))) {
-    throw new AuthorizationInputError('REQUEST_DRAFT_INVALID');
-  }
-  if (typeof value.roomId !== 'string' || !SAFE_ID.test(value.roomId)) {
-    throw new AuthorizationInputError('REQUEST_ROOM_INVALID');
-  }
-  let schedule;
-  try {
-    schedule = normalizeRoomAvailabilityQuery({
-      roomId: value.roomId,
-      startsAt: value.startsAt,
-      endsAt: value.endsAt,
-    });
-  } catch (error) {
-    if (!(error instanceof AuthorizationInputError)) throw error;
-    throw new AuthorizationInputError('REQUEST_SCHEDULE_INVALID');
-  }
-  const internalParticipants = value.internalParticipants ?? 0;
-  const externalParticipants = value.externalParticipants ?? 0;
-  if (
-    !Number.isSafeInteger(internalParticipants)
-    || internalParticipants < 0
-    || internalParticipants > 100_000
-    || !Number.isSafeInteger(externalParticipants)
-    || externalParticipants < 0
-    || externalParticipants > 100_000
-  ) {
-    throw new AuthorizationInputError('REQUEST_PARTICIPANTS_INVALID');
-  }
-  if (internalParticipants + externalParticipants < 1) {
-    throw new AuthorizationInputError('REQUEST_PARTICIPANTS_INVALID');
-  }
-  return Object.freeze({
-    roomId: value.roomId,
-    startsAt: new Date(schedule.startsAt),
-    endsAt: new Date(schedule.endsAt),
-    internalParticipants,
-    externalParticipants,
-  });
-}
-
-function publicRequest(request) {
-  return Object.freeze({
-    id: request.id,
-    roomId: request.roomId,
-    status: request.status,
-    statusReason: request.statusReason,
-    startsAt: request.startsAt,
-    endsAt: request.endsAt,
-    internalParticipants: request.internalParticipants,
-    externalParticipants: request.externalParticipants,
-    statusChangedAt: request.statusChangedAt,
-    updatedAt: request.updatedAt,
-  });
-}
-
 function profileAudit(auditService, { principal, tenantContext, correlationId, changedAt }) {
   return auditService.createEvent({
     principal,
@@ -138,6 +95,8 @@ export function createProductionApplicationService({
   authorizationPolicy,
   auditService,
   roomAvailabilityService = null,
+  maxResponseBytes = 1_048_576,
+  cursorSecret = randomUUID(),
   clock = () => Date.now(),
   idFactory = () => randomUUID(),
 } = {}) {
@@ -145,7 +104,8 @@ export function createProductionApplicationService({
     !repository
     || typeof repository.findProfile !== 'function'
     || typeof repository.updateProfile !== 'function'
-    || typeof repository.loadCatalog !== 'function'
+    || typeof repository.loadCatalogPage !== 'function'
+    || typeof repository.loadSites !== 'function'
     || typeof repository.findRoomBookingContext !== 'function'
     || typeof repository.listNotifications !== 'function'
     || typeof repository.markNotificationRead !== 'function'
@@ -154,8 +114,10 @@ export function createProductionApplicationService({
   }
   if (
     !requestRepository
-    || typeof requestRepository.listByTenantId !== 'function'
-    || typeof requestRepository.createForTenant !== 'function'
+    || typeof requestRepository.listPageByTenantId !== 'function'
+    || typeof requestRepository.listReportPageByTenantId !== 'function'
+    || typeof requestRepository.createVersionedForTenant !== 'function'
+    || typeof requestRepository.resubmitVersionedForTenant !== 'function'
   ) {
     throw new TypeError('REQUEST_REPOSITORY_REQUIRED');
   }
@@ -163,6 +125,7 @@ export function createProductionApplicationService({
     !authorizationPolicy
     || typeof authorizationPolicy.authorizeTenantApplicationRead !== 'function'
     || typeof authorizationPolicy.authorizeRequestCreate !== 'function'
+    || typeof authorizationPolicy.authorizeRequestReport !== 'function'
     || typeof authorizationPolicy.requestListScope !== 'function'
     || typeof authorizationPolicy.requireTenantPermission !== 'function'
   ) {
@@ -179,6 +142,12 @@ export function createProductionApplicationService({
   }
   if (typeof clock !== 'function' || typeof idFactory !== 'function') {
     throw new TypeError('APPLICATION_RUNTIME_INVALID');
+  }
+  if (!Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1_024) {
+    throw new TypeError('APPLICATION_RESPONSE_BYTES_INVALID');
+  }
+  if (typeof cursorSecret !== 'string' || Buffer.byteLength(cursorSecret) < 32) {
+    throw new TypeError('APPLICATION_CURSOR_SECRET_INVALID');
   }
 
   function authorizeRead(principal, tenantContext) {
@@ -223,32 +192,183 @@ export function createProductionApplicationService({
       return updated;
     },
 
-    async getCatalog({ principal, tenantContext, correlationId }) {
+    async getCatalog({ principal, tenantContext, correlationId, query }) {
       requireCorrelationId(correlationId);
       authorizeRead(principal, tenantContext);
-      return repository.loadCatalog(tenantContext.tenantId);
+      const page = normalizeApplicationCatalogQuery(query);
+      const loaded = await repository.loadCatalogPage({
+        tenantId: tenantContext.tenantId,
+        section: page.section,
+        afterId: page.afterId,
+        limit: page.limit + 1,
+        expectedRevisions: page.expectedRevisions,
+        expectedPolicyVersionId: page.expectedPolicyVersionId,
+      });
+      if (loaded?.status === 'stale') throw new RequestStateConflictError();
+      if (loaded?.status !== 'ready' || !applicationCatalogContextMatches(loaded, page)) {
+        throw new AuthorizationDeniedError('RESOURCE_NOT_AVAILABLE', { conceal: true });
+      }
+      if (
+        !isSupportedCurrencyCode(loaded.defaultCurrency)
+        || !Array.isArray(loaded.entries)
+        || loaded.entries.length > page.limit + 1
+      ) {
+        throw new TypeError('APPLICATION_CATALOGUE_PAGE_INVALID');
+      }
+      return fitPublicPage({
+        items: loaded.entries,
+        limit: page.limit,
+        maxResponseBytes,
+        cursorFor: (last) => createApplicationCatalogCursor({
+          section: page.section,
+          revisions: loaded.configurationRevisions,
+          policyVersionId: loaded.bookingPolicy.policyVersionId,
+          afterId: last.id,
+        }),
+        resultFor: (entries, publicPage) => Object.freeze({
+          schemaVersion: 2,
+          configurationRevisions: loaded.configurationRevisions,
+          bookingPolicy: loaded.bookingPolicy,
+          organization: Object.freeze({ defaultCurrency: loaded.defaultCurrency }),
+          costAllocation: Object.freeze({
+            allocationRequired: loaded.allocationRequired,
+          }),
+          context: createApplicationCatalogContext({
+            revisions: loaded.configurationRevisions,
+            policyVersionId: loaded.bookingPolicy.policyVersionId,
+          }),
+          section: page.section,
+          entries,
+          page: publicPage,
+        }),
+        envelopeFor: (catalog) => catalog,
+      });
     },
 
     async getSiteInfo(args) {
-      const catalog = await this.getCatalog(args);
-      return Object.freeze({ sites: catalog.sites });
+      requireCorrelationId(args.correlationId);
+      authorizeRead(args.principal, args.tenantContext);
+      return Object.freeze({ sites: await repository.loadSites(args.tenantContext.tenantId) });
     },
 
-    async listRequests({ principal, tenantContext, correlationId }) {
+    async listRequests({ principal, tenantContext, correlationId, query }) {
       requireCorrelationId(correlationId);
       const scope = authorizationPolicy.requestListScope(principal, tenantContext);
-      const requests = await requestRepository.listByTenantId(
-        tenantContext.tenantId,
-        { requesterUserId: scope.requesterUserId },
-      );
-      return Object.freeze(requests.map(publicRequest));
+      const page = normalizeApplicationRequestListQuery(query, {
+        tenantId: tenantContext.tenantId,
+        requesterUserId: scope.requesterUserId,
+        cursorSecret,
+        evaluatedAt: clockDate(clock).toISOString(),
+      });
+      const loaded = await requestRepository.listPageByTenantId({
+        tenantId: tenantContext.tenantId,
+        requesterUserId: scope.requesterUserId,
+        snapshot: page.snapshot,
+        afterStartsAt: page.afterStartsAt === null ? null : new Date(page.afterStartsAt),
+        afterRequestId: page.afterRequestId,
+        limit: page.limit + 1,
+      });
+      if (
+        loaded?.status !== 'ready'
+        || !loaded.snapshot
+        || !Number.isSafeInteger(loaded.snapshot.revisionWatermark)
+        || loaded.snapshot.revisionWatermark < 0
+        || typeof loaded.snapshot.asOf !== 'string'
+        || Number.isNaN(Date.parse(loaded.snapshot.asOf))
+        || !Array.isArray(loaded.requests)
+        || loaded.requests.length > page.limit + 1
+      ) throw new TypeError('APPLICATION_REQUEST_LIST_RESULT_INVALID');
+      return fitPublicPage({
+        items: loaded.requests,
+        limit: page.limit,
+        maxResponseBytes,
+        cursorFor: (last) => createApplicationRequestListCursor({
+          requesterUserId: scope.requesterUserId,
+          tenantId: tenantContext.tenantId,
+          snapshot: loaded.snapshot,
+          startsAt: last.startsAt,
+          requestId: last.id,
+        }, { cursorSecret }),
+        resultFor: (requests, publicPage) => Object.freeze({
+          schemaVersion: 2,
+          asOf: loaded.snapshot.asOf,
+          requests,
+          page: publicPage,
+        }),
+        envelopeFor: (requestList) => requestList,
+      });
     },
 
-    async createRequest({ principal, tenantContext, correlationId, requestDraft }) {
+    async getRequestReport({ principal, tenantContext, correlationId, query }) {
+      requireCorrelationId(correlationId);
+      authorizationPolicy.authorizeRequestReport(principal, tenantContext);
+      const page = normalizeRequestReportQuery(query, {
+        tenantId: tenantContext.tenantId,
+        cursorSecret,
+        evaluatedAt: clockDate(clock).toISOString(),
+      });
+      const loaded = await requestRepository.listReportPageByTenantId({
+        tenantId: tenantContext.tenantId,
+        from: new Date(page.from),
+        to: new Date(page.to),
+        snapshot: page.snapshot,
+        afterStartsAt: page.after.startsAt === null ? null : new Date(page.after.startsAt),
+        afterRequestId: page.after.requestId,
+        limit: page.limit + 1,
+      });
+      if (
+        loaded?.status !== 'ready'
+        || !loaded.snapshot
+        || !Number.isSafeInteger(loaded.snapshot.revisionWatermark)
+        || loaded.snapshot.revisionWatermark < 0
+        || typeof loaded.snapshot.asOf !== 'string'
+        || Number.isNaN(Date.parse(loaded.snapshot.asOf))
+        || !Array.isArray(loaded.requests)
+        || loaded.requests.length > page.limit + 1
+      ) {
+        throw new TypeError('REQUEST_REPORT_RESULT_INVALID');
+      }
+      return fitPublicPage({
+        items: loaded.requests,
+        limit: page.limit,
+        maxResponseBytes,
+        cursorFor: (last) => createRequestReportCursor({
+          tenantId: tenantContext.tenantId,
+          from: page.from,
+          to: page.to,
+          snapshot: loaded.snapshot,
+          startsAt: last.startsAt,
+          requestId: last.id,
+        }, { cursorSecret }),
+        resultFor: (requests, publicPage) => Object.freeze({
+          schemaVersion: 2,
+          asOf: loaded.snapshot.asOf,
+          range: Object.freeze({
+            field: 'startsAt',
+            fromInclusive: page.from,
+            toExclusive: page.to,
+            timeZone: 'UTC',
+          }),
+          requests,
+          page: publicPage,
+        }),
+        envelopeFor: (report) => report,
+      });
+    },
+
+    async createRequest({
+      principal,
+      tenantContext,
+      correlationId,
+      schemaVersion,
+      requestDraft,
+    }) {
       requireCorrelationId(correlationId);
       authorizationPolicy.authorizeRequestCreate(principal, tenantContext);
-      const draft = requireRequestDraft(requestDraft);
-      await requireBookableRoom(tenantContext.tenantId, draft.roomId);
+      if (schemaVersion !== REQUEST_COMPOSITION_SCHEMA_VERSION) {
+        throw new AuthorizationInputError('REQUEST_SCHEMA_VERSION_UNSUPPORTED');
+      }
+      const draft = normalizeRequestV2Draft(requestDraft);
       const requestId = idFactory();
       if (!isInternalUuid(requestId)) throw new TypeError('REQUEST_ID_FACTORY_INVALID');
       const createdAt = clockDate(clock);
@@ -260,24 +380,84 @@ export function createProductionApplicationService({
         targetType: 'request',
         targetId: requestId,
         previousState: null,
-        newState: { status: 'Submitted' },
+        newState: { status: 'Submitted', schemaVersion: 2, requestVersion: 1 },
         outcome: AUDIT_OUTCOME.SUCCESS,
         metadata: { operation: 'request_create' },
         retentionClass: AUDIT_RETENTION_CLASS.BUSINESS,
         occurredAt: createdAt.toISOString(),
       });
-      const created = await requestRepository.createForTenant({
+      const result = await requestRepository.createVersionedForTenant({
         tenantId: tenantContext.tenantId,
         requestId,
         requesterUserId: principal.userId,
-        ...draft,
+        requestDraft: draft,
         createdAt,
         auditEvent,
       });
-      if (!created) {
+      if (result?.status === 'configuration_conflict') throw new RequestStateConflictError();
+      if (result?.status !== 'created' || !result.request) {
         throw new AuthorizationDeniedError('RESOURCE_NOT_AVAILABLE', { conceal: true });
       }
-      return publicRequest(created);
+      return toPublicRequest(result.request);
+    },
+
+    async resubmitRequest({
+      principal,
+      tenantContext,
+      correlationId,
+      requestId,
+      schemaVersion,
+      expectedVersion,
+      requestDraft,
+    }) {
+      requireCorrelationId(correlationId);
+      authorizationPolicy.authorizeRequestCreate(principal, tenantContext);
+      if (!isRequestId(requestId)) throw new AuthorizationInputError('REQUEST_ID_INVALID');
+      if (schemaVersion !== REQUEST_COMPOSITION_SCHEMA_VERSION) {
+        throw new AuthorizationInputError('REQUEST_SCHEMA_VERSION_UNSUPPORTED');
+      }
+      if (
+        !Number.isSafeInteger(expectedVersion)
+        || expectedVersion < 1
+        || expectedVersion >= Number.MAX_SAFE_INTEGER
+      ) {
+        throw new AuthorizationInputError('REQUEST_VERSION_INVALID');
+      }
+      const draft = normalizeRequestV2Draft(requestDraft);
+      const changedAt = clockDate(clock);
+      const auditEvent = auditService.createEvent({
+        principal,
+        tenantContext,
+        correlationId,
+        action: AUDIT_ACTION.REQUEST_TRANSITION,
+        targetType: 'request',
+        targetId: requestId,
+        previousState: { status: 'Change Requested', requestVersion: expectedVersion },
+        newState: { status: 'Submitted', schemaVersion: 2, requestVersion: expectedVersion + 1 },
+        outcome: AUDIT_OUTCOME.SUCCESS,
+        metadata: { operation: 'request_resubmit', transition: 'resubmit' },
+        retentionClass: AUDIT_RETENTION_CLASS.BUSINESS,
+        occurredAt: changedAt.toISOString(),
+      });
+      const result = await requestRepository.resubmitVersionedForTenant({
+        tenantId: tenantContext.tenantId,
+        requestId,
+        requesterUserId: principal.userId,
+        expectedVersion,
+        requestDraft: draft,
+        changedAt,
+        auditEvent,
+      });
+      if (result?.status === 'not_found') {
+        throw new AuthorizationDeniedError('RESOURCE_NOT_AVAILABLE', { conceal: true });
+      }
+      if (['state_conflict', 'configuration_conflict'].includes(result?.status)) {
+        throw new RequestStateConflictError();
+      }
+      if (result?.status !== 'resubmitted' || !result.request) {
+        throw new AuthorizationDeniedError('RESOURCE_NOT_AVAILABLE', { conceal: true });
+      }
+      return toPublicRequest(result.request);
     },
 
     async checkRoomAvailability({ principal, tenantContext, correlationId, query }) {
@@ -321,8 +501,7 @@ export function createProductionApplicationService({
         tenantContext,
         PERMISSION.TENANT_CONFIGURE,
       );
-      const catalog = await repository.loadCatalog(tenantContext.tenantId);
-      return Object.freeze({ sites: catalog.sites });
+      return Object.freeze({ sites: await repository.loadSites(tenantContext.tenantId) });
     },
   });
 }

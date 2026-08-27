@@ -110,11 +110,24 @@ Migration 025 adds Cost Allocation configuration, Tenant-scoped cost centers and
 
 Migration 026 adds monotonic `users.lifecycle_revision` state for disable/reactivate concurrency. It does not replace the independent `security_version` session-authority control.
 
+Migration 027 establishes Request composition v2 persistence:
+
+- Tenant/Room-composite `tenant_room_prices`, seeded deterministically at zero in the current
+  Organization default currency;
+- one appended Catalogue snapshot containing Room prices and one Catalogue-revision advance per
+  existing Tenant;
+- explicit `requests.schema_version`, monotonic `request_version` and a bounded immutable
+  `request_snapshot` for schema v2;
+- append-only, Tenant/Request-composite `request_revisions` containing a complete public record for
+  each Request version;
+- one explicit `migrated_legacy` schema-v1/version-1 history row per pre-existing Request;
+- full schema/base-version/composition fields for confirmed-booking proposals.
+
 The all-role Tenant presentation contract reuses the current Organization row and
 `organization_revision`. Its managed-brand policy maps one fixed reference to a code-shipped preset
 and therefore introduces no upload metadata, asset table, external object reference or migration.
 
-Runtime schema readiness advances to exactly version 26. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
+Runtime schema readiness advances to exactly version 27. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
 
 No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
 
@@ -126,7 +139,11 @@ Tenant-owned tables use non-null internal `tenant_id`. Composite keys/foreign ke
 
 Session rows reference `(tenant_id, user_id)`, so a session cannot attach an internal User from another Tenant.
 
-Request lookup and workflow mutation are always parameterized by internal `tenant_id` plus Request ID. A Request ID from another Tenant therefore resolves as absent without a global lookup.
+Request lookup, history and workflow/composition mutation are always parameterized by internal
+`tenant_id` plus Request ID. A Request ID from another Tenant therefore resolves as absent without
+a global lookup. Request history references `(tenant_id, request_id)`, and Room prices reference
+`(tenant_id, room_id)`, so syntactically valid cross-Tenant identifiers cannot attach to either
+authority.
 
 Audit rows are likewise Tenant-owned. Append/list/verification operations receive one internal Tenant ID, and each Tenant has an independent HMAC chain beginning with `previous_hash = NULL`.
 
@@ -160,21 +177,40 @@ Only one concurrent consumer can receive the nonce hash. A second callback using
 
 The repository never accepts or stores a Tenant ID from the browser or provider callback. Tenant/User claiming happens only after the external identity has been validated by the provider adapter.
 
-## Request workflow concurrency
+## Request composition, version and workflow concurrency
 
-`createPostgresRequestRepository` implements Tenant-scoped Request access and status-conditional workflow mutation.
+`createPostgresRequestRepository` implements Tenant-scoped Request access, bounded history,
+current-configuration composition and status/version-conditional workflow mutation.
 
-A transition update includes the previously authorized current status in its `WHERE` predicate:
+A v2 create or resubmit obtains the active Tenant/User and current Organization, Locations,
+Catalogue, Booking Policies and Cost Allocation revisions under the owning transaction. It compares
+all five with the observed draft, resolves the same-Tenant Room/Site/Room-price and selected current
+configuration under locks, evaluates policy/pricing/allocation, then inserts or replaces the Request
+snapshot. The browser cannot race a settings mutation into a mixed configuration snapshot or
+persist its own prices.
+
+Resubmission additionally locks the Request and requires:
 
 ```text
-tenant_id + request id + expected current status
+tenant_id + request id + requester user id + Change Requested + expected request version
 ```
 
-This provides optimistic workflow concurrency. If another operation changes the Request between the authorized read and the write, the stale update affects zero rows and the application returns `409 REQUEST_STATE_CONFLICT` rather than overwriting the newer state.
+A workflow transition continues to require the previously authorized status. Every successful
+workflow or composition mutation increments `request_version`; a stale status, Request version or
+configuration revision returns `409 REQUEST_STATE_CONFLICT` rather than overwriting newer state.
+Client-supplied target status/owner/Tenant and calculated snapshot fields do not reach the repository
+contract.
 
-The repository persists only the server policy decision (`nextStatus`, validated reason and server timestamp). Client-supplied target status/owner/Tenant fields do not reach the repository contract.
+The updated Request, one complete `request_revisions` record and the server-generated success audit
+event execute in one PostgreSQL transaction. Failure of history or audit persistence prevents the
+Request mutation from committing. History reads use only internal Tenant ID plus Request ID and are
+bounded newest-first.
 
-A successful Request transition and its server-generated audit event execute in one PostgreSQL transaction. The transition is not committed if the required audit append fails.
+Confirmed-booking proposal creation applies the same full v2 authority evaluation under the locked
+confirmed Request and expected version. It persists the proposed draft/immutable next-version
+snapshot rather than reevaluating historical business facts from a later Catalogue or policy. A
+participant-count-only change may apply atomically; any other composition change remains a separate
+pending aggregate until manager decision and existing calendar revalidation/compensation.
 
 ## Audit append and verification
 
@@ -222,7 +258,7 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 26.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 27.
 
 ## Transaction contract
 
@@ -240,7 +276,18 @@ Locations/Rooms updates lock `tenants.locations_revision`, validate the current 
 
 Pre-activation identity unbind locks the Tenant, Microsoft 365 Integration and exact active binding. It returns a conflict if any booking reference is not `cancelled`; otherwise binding removal, User security-version increments, active-session revocation, consent-transaction deletion, Microsoft 365 disconnect/verification reset and `tenant.identity.unbound` evidence commit together.
 
-Request workflow transitions conditionally update the row and append the success audit event in the same transaction. A failed audit insert therefore prevents a successful Request transition from becoming authoritative.
+Request v2 create/resubmit and workflow transitions conditionally persist the Request row, append
+the complete immutable Request revision and append the success audit event in the same transaction.
+A failed snapshot/history/audit insert therefore prevents a successful Request change from becoming
+authoritative. Current composition evaluation also occurs inside that transaction and locks the
+Tenant/configuration authority required to prevent a mixed-revision snapshot.
+
+Conference Manager report reads use the canonical `requests` rows and their immutable Request-v2
+snapshots; there is no parallel reporting model. Persistence requires the server-resolved Tenant ID,
+the canonical UTC `starts_at` half-open range and a bounded `(starts_at, id)` keyset. Migration 027
+adds `requests_tenant_report_range_idx (tenant_id, starts_at, id)`. The repository orders by the same
+key, so duplicate schedule instants neither omit nor repeat rows across pages. The application fetches
+one lookahead row and exposes an explicit completion flag/cursor instead of silently truncating.
 
 Entitlement changes are serialized per Tenant/capability, update the allowlisted entitlement row and append `tenant.entitlement.changed` in the same transaction. A failed audit append rolls the entitlement change back; setting an already-effective value is idempotent and creates no false change event.
 
@@ -299,6 +346,13 @@ Migrations 024 and 025 down fail closed after policy/allocation history, a revis
 
 Migration 026 down fails closed after any lifecycle revision advances beyond `1`; User disable/reactivate state must be retained or resolved through a reviewed forward migration.
 
+Migration 027 down takes access-exclusive locks and fails closed after any schema-v2 Request,
+non-migration Request revision, non-seed Room price, subsequent Catalogue mutation or v2
+confirmed-change proposal exists. The up migration advances every existing Tenant's Catalogue
+revision once to add Room prices; pre-migration Catalogue clients must reload. Once the new boundary
+has been used, production rollback requires a reviewed forward fix, compatible application rollback
+or restore/PITR decision rather than deletion of immutable history or bypass of the guard.
+
 ## Testing evidence required
 
 Database changes require PostgreSQL integration coverage for applicable migration/version/checksum behavior, tenant-scoped repositories, composite FK isolation, invalid constraints, duplicate/concurrent writes, transaction rollback, schema readiness and cross-Tenant persistence.
@@ -342,6 +396,12 @@ Migrations 022 and 023 additionally require real PostgreSQL coverage for neutral
 Migrations 024 and 025 additionally require real PostgreSQL coverage for explicit defaults, Tenant-scoped references, effective-policy/allocation validation, immutable history, stale/concurrent writes, audit-atomic mutation and fail-closed populated rollback.
 
 Migration 026 additionally requires real PostgreSQL coverage for Tenant-scoped User listing, cross-Tenant concealment, monotonic lifecycle concurrency, last-admin protection, session revocation, audit atomicity and fail-closed populated rollback.
+
+Migration 027 additionally requires real PostgreSQL coverage for zero/default-currency Room-price
+seeding, Catalogue revision advancement, legacy Request/history backfill, v2 snapshot constraints,
+Tenant-composite Room-price/history ownership, append-only history, create/resubmit/proposal
+configuration coherence, stale Request/configuration versions, concurrent settings writes,
+snapshot/history/audit rollback atomicity, schema readiness and fail-closed populated rollback.
 
 The DB suites share migration state and are therefore executed serially with `--test-concurrency=1` to prevent test-runner races from weakening the migration/integrity evidence.
 

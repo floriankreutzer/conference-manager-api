@@ -1,12 +1,42 @@
 import { createHash } from 'node:crypto';
 import { createBookingIntegrationService } from './booking-integration-service.js';
+import { normalizeBookingChangeCalendarReplacement } from '../domain/booking-change.js';
 import { CAPABILITY } from '../entitlements/capabilities.js';
-import { AUDIT_ACTION, AUDIT_OUTCOME, AUDIT_RETENTION_CLASS } from '../audit/event.js';
+import {
+  CalendarProviderError,
+  PROVIDER_ERROR_KIND,
+  normalizeCancelResult,
+  normalizeCreateResult,
+  normalizeReservationValidation,
+} from '../integrations/calendar-contract.js';
+import {
+  BOOKING_CHANGE_MOVE_RECOVERY,
+  BookingChangeCalendarMoveError,
+} from './booking-change-errors.js';
 
-function moveIdempotencyKey(tenantId, requestId, changeId, suffix = 'target') {
+function moveIdempotencyKey(tenantId, requestId, changeId, moveAttemptId, suffix = 'target') {
   return createHash('sha256')
-    .update(`calendar-move:v1:${tenantId}:${requestId}:${changeId}:${suffix}`, 'utf8')
+    .update(
+      `calendar-move:v2:${tenantId}:${requestId}:${changeId}:${moveAttemptId}:${suffix}`,
+      'utf8',
+    )
     .digest('hex');
+}
+
+function assertMoveAttemptNumber(value) {
+  if (!Number.isSafeInteger(value) || value < 1 || value > 2_147_483_647) {
+    throw new TypeError('BOOKING_CHANGE_MOVE_ATTEMPT_INVALID');
+  }
+  return value;
+}
+
+function cancelFailureProvesNoEffect(error) {
+  return error instanceof CalendarProviderError
+    && [
+      PROVIDER_ERROR_KIND.AUTHORIZATION,
+      PROVIDER_ERROR_KIND.CONFLICT,
+      PROVIDER_ERROR_KIND.VALIDATION,
+    ].includes(error.kind);
 }
 
 export function createMicrosoft365BookingServiceFactory({
@@ -84,7 +114,8 @@ export function createMicrosoft365BookingServiceFactory({
 
     forProvider,
 
-    async moveCalendarEvent(context, currentRequest, proposedRequest, changeId) {
+    async moveCalendarEvent(context, currentRequest, proposedRequest, changeId, moveAttemptNumber) {
+      assertMoveAttemptNumber(moveAttemptNumber);
       authorizationPolicy.authorizeBookingOperation(
         context.principal,
         context.tenantContext,
@@ -125,16 +156,164 @@ export function createMicrosoft365BookingServiceFactory({
         phase: context.phase,
         correlationId: context.correlationId,
       });
-      const validation = await targetProvider.validateReservation(input);
+      const validation = normalizeReservationValidation(
+        await targetProvider.validateReservation(input),
+      );
       if (!validation.valid) return Object.freeze({ status: 'blocked' });
       const idempotencyKey = moveIdempotencyKey(
         proposedRequest.tenantId,
         proposedRequest.id,
         changeId,
+        moveAttemptNumber,
       );
-      const created = await targetProvider.createCalendarEvent(Object.freeze({ ...input, idempotencyKey }));
+      let created;
       try {
-        await oldProvider.cancelCalendarEvent(Object.freeze({
+        created = normalizeCreateResult(
+          await targetProvider.createCalendarEvent(Object.freeze({ ...input, idempotencyKey })),
+        );
+      } catch (error) {
+        throw new BookingChangeCalendarMoveError(
+          BOOKING_CHANGE_MOVE_RECOVERY.RETRY_SAME_ATTEMPT,
+          { cause: error },
+        );
+      }
+      const replacement = Object.freeze({
+        integrationId: reference.integrationId,
+        previousProviderReference: reference.providerReference,
+        previousProviderResourceReference: reference.providerResourceReference,
+        providerReference: created.providerReference,
+        providerResourceReference: targetProvider.providerResourceReference,
+        idempotencyKey,
+      });
+      try {
+        normalizeCancelResult(
+          await oldProvider.cancelCalendarEvent(Object.freeze({
+            tenantId: currentRequest.tenantId,
+            requestId: currentRequest.id,
+            roomId: currentRequest.roomId,
+            startsAt: currentRequest.startsAt,
+            endsAt: currentRequest.endsAt,
+            phase: context.phase,
+            correlationId: context.correlationId,
+            providerReference: reference.providerReference,
+            providerResourceReference: reference.providerResourceReference,
+          })),
+          reference.providerReference,
+        );
+      } catch (error) {
+        if (!cancelFailureProvesNoEffect(error)) {
+          throw new BookingChangeCalendarMoveError(
+            BOOKING_CHANGE_MOVE_RECOVERY.RECONCILIATION_REQUIRED,
+            { calendarReplacement: replacement, cause: error },
+          );
+        }
+        try {
+          normalizeCancelResult(
+            await targetProvider.cancelCalendarEvent(Object.freeze({
+              ...input,
+              providerReference: created.providerReference,
+              providerResourceReference: targetProvider.providerResourceReference,
+            })),
+            created.providerReference,
+          );
+        } catch (cleanupError) {
+          throw new BookingChangeCalendarMoveError(
+            BOOKING_CHANGE_MOVE_RECOVERY.RECONCILIATION_REQUIRED,
+            {
+              calendarReplacement: replacement,
+              cause: new AggregateError(
+                [error, cleanupError],
+                'BOOKING_ROOM_MOVE_RECONCILIATION_REQUIRED',
+              ),
+            },
+          );
+        }
+        throw new BookingChangeCalendarMoveError(
+          BOOKING_CHANGE_MOVE_RECOVERY.RETRY_NEW_ATTEMPT,
+          { cause: error },
+        );
+      }
+      return Object.freeze({
+        status: 'moved',
+        disposition: created.disposition,
+        replacement,
+      });
+    },
+
+    async rollbackCalendarMove(
+      context,
+      currentRequest,
+      proposedRequest,
+      changeId,
+      moveAttemptNumber,
+      replacement,
+    ) {
+      assertMoveAttemptNumber(moveAttemptNumber);
+      const normalizedReplacement = normalizeBookingChangeCalendarReplacement(replacement);
+      authorizationPolicy.authorizeBookingOperation(
+        context.principal,
+        context.tenantContext,
+        currentRequest,
+        'update',
+      );
+      await entitlementService.requireAccess({
+        principal: context.principal,
+        tenantContext: context.tenantContext,
+        capabilityId: CAPABILITY.MICROSOFT_CALENDAR_WRITE,
+        authorized: true,
+      });
+      const reference = await repository.findProviderReferenceForCancellation(
+        currentRequest.tenantId,
+        currentRequest.id,
+      );
+      if (
+        !reference
+        || reference.state !== 'active'
+        || reference.integrationId !== normalizedReplacement.integrationId
+        || reference.providerReference !== normalizedReplacement.previousProviderReference
+        || reference.providerResourceReference
+          !== normalizedReplacement.previousProviderResourceReference
+      ) throw new TypeError('BOOKING_CHANGE_MOVE_RECOVERY_REFERENCE_INVALID');
+      const oldProvider = await calendarProviderFactory.forPersistedReference({
+        tenantId: currentRequest.tenantId,
+        roomId: currentRequest.roomId,
+        integrationId: reference.integrationId,
+        providerConnectionReference: reference.providerConnectionReference,
+        providerResourceReference: reference.providerResourceReference,
+      });
+      const targetProvider = await calendarProviderFactory.forPersistedReference({
+        tenantId: proposedRequest.tenantId,
+        roomId: proposedRequest.roomId,
+        integrationId: reference.integrationId,
+        providerConnectionReference: reference.providerConnectionReference,
+        providerResourceReference: normalizedReplacement.providerResourceReference,
+      });
+      const input = Object.freeze({
+        tenantId: proposedRequest.tenantId,
+        requestId: proposedRequest.id,
+        roomId: proposedRequest.roomId,
+        startsAt: proposedRequest.startsAt,
+        endsAt: proposedRequest.endsAt,
+        phase: context.phase,
+        correlationId: context.correlationId,
+      });
+      normalizeCancelResult(
+        await targetProvider.cancelCalendarEvent(Object.freeze({
+          ...input,
+          providerReference: normalizedReplacement.providerReference,
+          providerResourceReference: normalizedReplacement.providerResourceReference,
+        })),
+        normalizedReplacement.providerReference,
+      );
+      const idempotencyKey = moveIdempotencyKey(
+        currentRequest.tenantId,
+        currentRequest.id,
+        changeId,
+        moveAttemptNumber,
+        'restore',
+      );
+      const restored = normalizeCreateResult(
+        await oldProvider.createCalendarEvent(Object.freeze({
           tenantId: currentRequest.tenantId,
           requestId: currentRequest.id,
           roomId: currentRequest.roomId,
@@ -142,95 +321,17 @@ export function createMicrosoft365BookingServiceFactory({
           endsAt: currentRequest.endsAt,
           phase: context.phase,
           correlationId: context.correlationId,
-          providerReference: reference.providerReference,
           providerResourceReference: reference.providerResourceReference,
-        }));
-      } catch (error) {
-        try {
-          await targetProvider.cancelCalendarEvent(Object.freeze({
-            ...input,
-            providerReference: created.providerReference,
-            providerResourceReference: targetProvider.providerResourceReference,
-          }));
-        } catch (cleanupError) {
-          throw new AggregateError([error, cleanupError], 'BOOKING_ROOM_MOVE_RECONCILIATION_REQUIRED');
-        }
-        throw error;
-      }
-      await auditService.record({
-        principal: context.principal,
-        tenantContext: context.tenantContext,
-        correlationId: context.correlationId,
-        action: AUDIT_ACTION.CALENDAR_OPERATION,
-        targetType: 'request',
-        targetId: currentRequest.id,
-        outcome: AUDIT_OUTCOME.SUCCESS,
-        metadata: { operation: 'room_move', disposition: created.disposition },
-        retentionClass: AUDIT_RETENTION_CLASS.BUSINESS,
-      });
-      return Object.freeze({
-        status: 'moved',
-        replacement: Object.freeze({
-          integrationId: reference.integrationId,
-          previousProviderReference: reference.providerReference,
-          previousProviderResourceReference: reference.providerResourceReference,
-          providerReference: created.providerReference,
-          providerResourceReference: targetProvider.providerResourceReference,
           idempotencyKey,
-        }),
-        rollback: Object.freeze({ reference, oldProvider, targetProvider, created, input }),
-      });
-    },
-
-    async rollbackCalendarMove(context, currentRequest, changeId, move) {
-      const { reference, oldProvider, targetProvider, created, input } = move.rollback;
-      await targetProvider.cancelCalendarEvent(Object.freeze({
-        ...input,
-        providerReference: created.providerReference,
-        providerResourceReference: targetProvider.providerResourceReference,
-      }));
-      const idempotencyKey = moveIdempotencyKey(
-        currentRequest.tenantId,
-        currentRequest.id,
-        changeId,
-        'restore',
+        })),
       );
-      const restored = await oldProvider.createCalendarEvent(Object.freeze({
-        tenantId: currentRequest.tenantId,
-        requestId: currentRequest.id,
-        roomId: currentRequest.roomId,
-        startsAt: currentRequest.startsAt,
-        endsAt: currentRequest.endsAt,
-        phase: context.phase,
-        correlationId: context.correlationId,
-        providerResourceReference: reference.providerResourceReference,
-        idempotencyKey,
-      }));
-      const changedAt = new Date(typeof clock === 'function' ? clock() : Date.now());
-      const auditEvent = auditService.createEvent({
-        principal: context.principal,
-        tenantContext: context.tenantContext,
-        correlationId: context.correlationId,
-        action: AUDIT_ACTION.CALENDAR_OPERATION,
-        targetType: 'request',
-        targetId: currentRequest.id,
-        previousState: { calendarState: 'move_failed' },
-        newState: { calendarState: 'active' },
-        outcome: AUDIT_OUTCOME.SUCCESS,
-        metadata: { operation: 'room_move_compensate' },
-        retentionClass: AUDIT_RETENTION_CLASS.BUSINESS,
-        occurredAt: changedAt.toISOString(),
-      });
-      await repository.replaceActiveProviderReference({
-        tenantId: currentRequest.tenantId,
-        requestId: currentRequest.id,
+      return Object.freeze({
         integrationId: reference.integrationId,
-        expectedProviderReference: reference.providerReference,
+        expectedProviderReference: normalizedReplacement.previousProviderReference,
+        expectedProviderResourceReference: normalizedReplacement.previousProviderResourceReference,
         providerReference: restored.providerReference,
         providerResourceReference: reference.providerResourceReference,
         idempotencyKey,
-        changedAt,
-        auditEvent,
       });
     },
 

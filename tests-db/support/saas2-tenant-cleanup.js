@@ -1,6 +1,7 @@
 const INTERNAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const IMMUTABLE_TABLES = Object.freeze([
+  'request_revisions',
   'tenant_cost_allocation_revisions',
   'tenant_booking_policy_revisions',
   'tenant_catalogue_revisions',
@@ -8,6 +9,7 @@ const IMMUTABLE_TABLES = Object.freeze([
 ]);
 
 const MUTABLE_TABLES = Object.freeze([
+  'tenant_room_prices',
   'tenant_cost_centers',
   'tenant_cost_allocation_configuration',
   'tenant_booking_policy_configuration',
@@ -30,13 +32,40 @@ async function relationExists(pool, table) {
   return result.rows[0]?.exists === true;
 }
 
+async function triggerExists(pool, table, trigger) {
+  const result = await pool.query({
+    text: `
+      SELECT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgrelid = to_regclass($1)
+          AND tgname = $2
+          AND NOT tgisinternal
+      ) AS exists
+    `,
+    values: [`public.${table}`, trigger],
+  });
+  return result.rows[0]?.exists === true;
+}
+
 async function deleteImmutableRows(pool, table, tenantIds) {
   if (!await relationExists(pool, table)) return;
-  await pool.query(`ALTER TABLE ${table} DISABLE TRIGGER USER`);
+  const requestPointerTrigger = table === 'request_revisions'
+    && await triggerExists(pool, 'requests', 'requests_current_revision_integrity');
+  if (requestPointerTrigger) {
+    await pool.query('ALTER TABLE requests DISABLE TRIGGER requests_current_revision_integrity');
+  }
   try {
-    await pool.query(`DELETE FROM ${table} WHERE tenant_id = ANY($1::uuid[])`, [tenantIds]);
+    await pool.query(`ALTER TABLE ${table} DISABLE TRIGGER USER`);
+    try {
+      await pool.query(`DELETE FROM ${table} WHERE tenant_id = ANY($1::uuid[])`, [tenantIds]);
+    } finally {
+      await pool.query(`ALTER TABLE ${table} ENABLE TRIGGER USER`);
+    }
   } finally {
-    await pool.query(`ALTER TABLE ${table} ENABLE TRIGGER USER`);
+    if (requestPointerTrigger) {
+      await pool.query('ALTER TABLE requests ENABLE TRIGGER requests_current_revision_integrity');
+    }
   }
 }
 

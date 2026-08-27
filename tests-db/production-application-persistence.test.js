@@ -71,6 +71,51 @@ async function seedTenant(pool, tenantId, userId, siteId, roomId) {
     'INSERT INTO rooms (tenant_id, id, site_id, name, capacity, created_at, updated_at) VALUES ($1, $2, $3, $4, 10, $5, $5)',
     [tenantId, roomId, siteId, `Room ${roomId}`, AT],
   );
+  await pool.query(
+    `INSERT INTO tenant_room_prices (tenant_id, room_id, price_minor, currency, created_at, updated_at)
+      SELECT $1, $2, 0, default_currency, $3, $3
+      FROM tenant_organization_settings WHERE tenant_id = $1`,
+    [tenantId, roomId, AT],
+  );
+  await pool.query(
+    `INSERT INTO tenant_cost_centers (
+       tenant_id, id, code, name, group_name, active, created_at, updated_at
+     ) VALUES
+       ($1, $2, $3, $4, 'Operations', TRUE, $6, $6),
+       ($1, $5, $7, 'Archived center', NULL, FALSE, $6, $6)`,
+    [
+      tenantId,
+      `${siteId}-cost-center`,
+      siteId === SITE_A ? 'COST-A' : 'COST-B',
+      `Cost Center ${siteId}`,
+      `${siteId}-archived`,
+      AT,
+      siteId === SITE_A ? 'OLD-A' : 'OLD-B',
+    ],
+  );
+}
+
+function requestDraft(roomId, startsAt, endsAt, internalParticipants, externalParticipants) {
+  return {
+    title: `Request for ${roomId}`,
+    roomId,
+    startsAt,
+    endsAt,
+    internalParticipants,
+    externalParticipants,
+    serviceIds: [],
+    catering: { participantCount: 0, packageSelection: null, itemQuantities: [] },
+    dietaryRequirements: null,
+    specialRequirements: null,
+    allocations: [],
+    configurationRevisions: {
+      organization: 1,
+      locations: 1,
+      catalogue: 1,
+      bookingPolicies: 1,
+      costAllocation: 1,
+    },
+  };
 }
 
 function requestAudit(tenantId, userId, requestId) {
@@ -114,9 +159,25 @@ test('production application persistence is tenant-scoped and request create is 
   assert.deepEqual(catalogA.sites.map((site) => site.id), [SITE_A]);
   assert.equal(catalogA.sites[0].timeZone, null);
   assert.deepEqual(catalogA.rooms.map((room) => room.id), [ROOM_A]);
+  assert.deepEqual(catalogA.costAllocation, {
+    allocationRequired: false,
+    costCenters: [{
+      id: `${SITE_A}-cost-center`,
+      code: 'COST-A',
+      name: `Cost Center ${SITE_A}`,
+      group: 'Operations',
+    }],
+  });
+  assert.equal(catalogA.bookingPolicy.policyVersionId, 'platform-default-v1');
+  assert.equal(catalogA.bookingPolicy.effectiveFrom, '1970-01-01T00:00:00.000Z');
+  assert.equal(catalogA.bookingPolicy.rules.maximumAdvanceMinutes, 527_040);
+  assert.equal(Number.isFinite(Date.parse(catalogA.bookingPolicy.evaluatedAt)), true);
   const catalogB = await applicationRepository.loadCatalog(TENANT_B);
   assert.deepEqual(catalogB.sites.map((site) => site.id), [SITE_B]);
   assert.deepEqual(catalogB.rooms.map((room) => room.id), [ROOM_B]);
+  assert.deepEqual(catalogB.costAllocation.costCenters.map((center) => center.id), [
+    `${SITE_B}-cost-center`,
+  ]);
 
   assert.deepEqual(await applicationRepository.findRoomBookingContext(TENANT_A, ROOM_A), {
     roomActive: true,
@@ -135,35 +196,41 @@ test('production application persistence is tenant-scoped and request create is 
   );
   assert.equal((await applicationRepository.loadCatalog(TENANT_B)).sites[0].timeZone, null);
 
-  const createdA = await requestRepository.createForTenant({
+  const createdA = await requestRepository.createVersionedForTenant({
     tenantId: TENANT_A,
     requestId: REQUEST_A,
     requesterUserId: USER_A,
-    roomId: ROOM_A,
-    startsAt: new Date('2026-09-01T10:00:00.000Z'),
-    endsAt: new Date('2026-09-01T11:00:00.000Z'),
-    internalParticipants: 2,
-    externalParticipants: 1,
+    requestDraft: requestDraft(
+      ROOM_A,
+      '2026-09-01T10:00:00.000Z',
+      '2026-09-01T11:00:00.000Z',
+      2,
+      1,
+    ),
     createdAt: AT,
     auditEvent: requestAudit(TENANT_A, USER_A, REQUEST_A),
   });
-  assert.equal(createdA.tenantId, TENANT_A);
-  assert.equal(createdA.requesterUserId, USER_A);
-  assert.equal(createdA.status, 'Submitted');
+  assert.equal(createdA.status, 'created');
+  assert.equal(createdA.request.tenantId, TENANT_A);
+  assert.equal(createdA.request.requesterUserId, USER_A);
+  assert.equal(createdA.request.schemaVersion, 2);
+  assert.equal(createdA.request.status, 'Submitted');
 
   await pool.query(
     'UPDATE sites SET time_zone = $3 WHERE tenant_id = $1 AND id = $2',
     [TENANT_B, SITE_B, 'Europe/London'],
   );
-  await requestRepository.createForTenant({
+  await requestRepository.createVersionedForTenant({
     tenantId: TENANT_B,
     requestId: REQUEST_B,
     requesterUserId: USER_B,
-    roomId: ROOM_B,
-    startsAt: new Date('2026-09-01T12:00:00.000Z'),
-    endsAt: new Date('2026-09-01T13:00:00.000Z'),
-    internalParticipants: 1,
-    externalParticipants: 0,
+    requestDraft: requestDraft(
+      ROOM_B,
+      '2026-09-01T12:00:00.000Z',
+      '2026-09-01T13:00:00.000Z',
+      1,
+      0,
+    ),
     createdAt: AT,
     auditEvent: requestAudit(TENANT_B, USER_B, REQUEST_B),
   });
@@ -189,20 +256,21 @@ test('production application persistence is tenant-scoped and request create is 
     [AUDIT_ACTION.REQUEST_CREATED, REQUEST_A],
   ]);
 
-  assert.equal(
-    await requestRepository.createForTenant({
+  await assert.rejects(
+    requestRepository.createVersionedForTenant({
       tenantId: TENANT_A,
       requestId: 'cross-tenant-room',
       requesterUserId: USER_A,
-      roomId: ROOM_B,
-      startsAt: new Date('2026-09-02T10:00:00.000Z'),
-      endsAt: new Date('2026-09-02T11:00:00.000Z'),
-      internalParticipants: 1,
-      externalParticipants: 0,
+      requestDraft: requestDraft(
+        ROOM_B,
+        '2026-09-02T10:00:00.000Z',
+        '2026-09-02T11:00:00.000Z',
+        1,
+        0,
+      ),
       createdAt: AT,
       auditEvent: requestAudit(TENANT_A, USER_A, 'cross-tenant-room'),
     }),
-    null,
   );
   const crossAudit = await pool.query(
     "SELECT count(*)::int AS count FROM audit_events WHERE tenant_id = $1 AND target_id = 'cross-tenant-room'",
@@ -214,20 +282,21 @@ test('production application persistence is tenant-scoped and request create is 
     'UPDATE sites SET active = FALSE WHERE tenant_id = $1 AND id = $2',
     [TENANT_A, SITE_A],
   );
-  assert.equal(
-    await requestRepository.createForTenant({
+  await assert.rejects(
+    requestRepository.createVersionedForTenant({
       tenantId: TENANT_A,
       requestId: 'inactive-site-room',
       requesterUserId: USER_A,
-      roomId: ROOM_A,
-      startsAt: new Date('2026-09-03T10:00:00.000Z'),
-      endsAt: new Date('2026-09-03T11:00:00.000Z'),
-      internalParticipants: 1,
-      externalParticipants: 0,
+      requestDraft: requestDraft(
+        ROOM_A,
+        '2026-09-03T10:00:00.000Z',
+        '2026-09-03T11:00:00.000Z',
+        1,
+        0,
+      ),
       createdAt: AT,
       auditEvent: requestAudit(TENANT_A, USER_A, 'inactive-site-room'),
     }),
-    null,
   );
   const inactiveAudit = await pool.query(
     "SELECT count(*)::int AS count FROM audit_events WHERE tenant_id = $1 AND target_id = 'inactive-site-room'",
@@ -239,19 +308,20 @@ test('production application persistence is tenant-scoped and request create is 
     'UPDATE sites SET active = TRUE, time_zone = $3 WHERE tenant_id = $1 AND id = $2',
     [TENANT_A, SITE_A, 'Mars/Olympus'],
   );
-  assert.equal(
-    await requestRepository.createForTenant({
+  await assert.rejects(
+    requestRepository.createVersionedForTenant({
       tenantId: TENANT_A,
       requestId: 'invalid-time-zone-room',
       requesterUserId: USER_A,
-      roomId: ROOM_A,
-      startsAt: new Date('2026-09-04T10:00:00.000Z'),
-      endsAt: new Date('2026-09-04T11:00:00.000Z'),
-      internalParticipants: 1,
-      externalParticipants: 0,
+      requestDraft: requestDraft(
+        ROOM_A,
+        '2026-09-04T10:00:00.000Z',
+        '2026-09-04T11:00:00.000Z',
+        1,
+        0,
+      ),
       createdAt: AT,
       auditEvent: requestAudit(TENANT_A, USER_A, 'invalid-time-zone-room'),
     }),
-    null,
   );
 });

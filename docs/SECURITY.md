@@ -80,6 +80,44 @@ See `docs/IDENTITY-SESSION.md` and `docs/ENTRA-AUTHENTICATION.md`.
 
 See `docs/AUTHORIZATION.md`.
 
+## Request composition controls (#126)
+
+- Request create, resubmit and confirmed-change proposal accept only the closed schema-v2 contract;
+  unknown versions, authority-shaped fields and partial composition patches fail closed.
+- Tenant and requester identity come only from the authenticated Principal. Room, Site, Catalogue,
+  cost-center and Request ownership lookups are parameterized by the same internal Tenant ID.
+- The browser supplies only stable selection IDs, quantities, percentage basis points and observed
+  configuration revisions. Prices, totals, policy results, calculated allocation amounts, workflow
+  state, Request version result and snapshot/audit metadata are server authority.
+- Create/resubmit/proposal lock and revalidate the active Tenant/User and all five current
+  configuration revisions before resolving the active Room/Site, capacity, IANA time zone,
+  Catalogue applicability, effective Booking Policy and Cost Allocation configuration.
+- Total v2 participants are bounded to 500. Schedule duration, text, selection, quantity and
+  allocation collection bounds limit resource-exhaustion and ambiguous-input risk.
+- Pricing uses integer minor units, safe-total bounds and a single charge-line currency. Package
+  base price is not charged or used for currency resolution, included items are not charged again,
+  and an all-zero result uses the Organization default currency.
+- Immutable Request snapshots retain selected price, policy, allocation and configuration facts so
+  later Tenant administration cannot rewrite historical meaning. `request_revisions` is
+  append-only and Tenant-composite scoped.
+- Dietary and special requirements may contain confidential business or personal context. They
+  remain inside object-authorized Request snapshot/history storage and are not copied to
+  operational logs, metric labels or flattened audit metadata.
+- Employee resubmission and history access enforce server-side Request ownership. Missing,
+  cross-Tenant and same-Tenant non-owned Employee identifiers are concealed consistently.
+- Expected Request versions and configuration revisions prevent stale writes. Success Request,
+  history and audit mutations commit atomically; failed validation, conflict or audit persistence
+  cannot leave a partial authoritative Request.
+- Legacy v1 records expose unavailable composition facts as explicit `null`; missing historical
+  prices or policy decisions are never reconstructed. A valid owner resubmission is the deliberate
+  v1-to-v2 upgrade path.
+- A full confirmed-change proposal snapshots current v2 authority. Only a genuinely
+  participant-count-only change with unchanged configuration revisions may apply immediately;
+  other composition changes or revision-only refreshes retain the original confirmed booking until
+  Conference Manager approval and existing provider revalidation/compensation completes.
+
+See `docs/REQUEST-COMPOSITION.md`.
+
 ## Audit and security-event controls (#52)
 
 - Audit Tenant, actor, timestamp, correlation, action, outcome and integrity values come from trusted server context.

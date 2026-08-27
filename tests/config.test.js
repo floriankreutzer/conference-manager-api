@@ -221,6 +221,7 @@ test('public origin rejects paths, credentials, and unsupported schemes', () => 
 
 test('numeric security and database limits reject malformed or unsafe values', () => {
   assert.throws(() => loadConfig({ NODE_ENV: 'test', MAX_BODY_BYTES: '0' }), ConfigurationError);
+  assert.throws(() => loadConfig({ NODE_ENV: 'test', MAX_RESPONSE_BYTES: '700000' }), ConfigurationError);
   assert.throws(() => loadConfig({ NODE_ENV: 'test', RATE_LIMIT_MAX: 'not-a-number' }), ConfigurationError);
   assert.throws(() => loadConfig({ NODE_ENV: 'test', PORT: '70000' }), ConfigurationError);
   assert.throws(() => loadConfig({ NODE_ENV: 'test', SESSION_TTL_SECONDS: '299' }), ConfigurationError);

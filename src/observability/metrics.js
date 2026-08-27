@@ -14,6 +14,8 @@ const ROUTES = new Set([
   'application_catalog',
   'application_site_info',
   'application_requests',
+  'application_request_report',
+  'application_request_resubmission',
   'application_room_availability',
   'application_notifications',
   'application_notification',
@@ -51,6 +53,7 @@ const ROUTES = new Set([
   'request_transition',
   'booking_change',
   'booking_change_decision',
+  'request_history',
   'not_found',
   'invalid_request',
 ]);

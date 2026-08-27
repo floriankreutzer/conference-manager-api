@@ -301,6 +301,18 @@ if (!requestRepository.includes('normalizeRequest')) {
 if (!requestRepository.includes('appendWithClient(client, auditEvent)')) {
   throw new Error('Successful Request transitions must append audit evidence in the same database transaction.');
 }
+for (const required of [
+  'request-revision-watermark:${tenantId}',
+  'request-revision-watermark:${request.tenantId}',
+  'RETURNING revision_sequence',
+  'SET current_revision_sequence = $3',
+  'request.current_revision_sequence <=',
+  'request.current_revision_sequence >',
+]) {
+  if (!requestRepository.includes(required)) {
+    throw new Error(`Request persistence is missing durable revision watermark invariant ${required}.`);
+  }
+}
 
 const auditRepository = await readFile('src/persistence/postgres/audit-repository.js', 'utf8');
 for (const required of [
@@ -499,8 +511,72 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 26;/.test(pool)) {
-  throw new Error('Runtime schema readiness must require the integrated SaaS 2 migration version 26.');
+if (!/export const CURRENT_SCHEMA_VERSION = 27;/.test(pool)) {
+  throw new Error('Runtime schema readiness must require Request composition migration version 27.');
+}
+const requestCompositionMigration = await readFile(
+  'migrations/027_request_composition_v2.up.sql',
+  'utf8',
+);
+for (const required of [
+  'tenant_room_prices',
+  'FOREIGN KEY (tenant_id, room_id)',
+  'request_snapshot IS NOT NULL',
+  'request_revisions_append_only',
+  'revision_sequence BIGINT GENERATED ALWAYS AS IDENTITY',
+  'current_revision_sequence BIGINT',
+  'requests_current_revision_integrity',
+  'request_revisions_current_pointer_integrity',
+  'requests_tenant_revision_watermark_idx',
+  'proposed_request_snapshot',
+  'booking_change_proposal_identity_immutable',
+  'base_request_version + 1',
+  'booking_change_room_fk',
+  'booking_change_v2_schedule_limit',
+  'booking_change_superseded_valid',
+  'booking_change_calendar_recovery_valid',
+  'booking_change_calendar_replacement_valid',
+  'move_attempt_number INTEGER NOT NULL DEFAULT 0',
+  "recovery_phase VARCHAR(32) NOT NULL DEFAULT 'none'",
+  'jsonb_path_query_array',
+  "proposed_request_snapshot -> 'details' = jsonb_build_object(",
+  'request_revisions_migration_seed_valid',
+  'REQUEST_COMPOSITION_V2_AUTHORITY_INCOMPLETE',
+  'REQUEST_COMPOSITION_V2_LEGACY_REQUEST_REQUIRES_REVIEW',
+  'requests_tenant_report_range_idx',
+  'CREATE OR REPLACE FUNCTION initialize_tenant_catalogue_revision()',
+]) {
+  if (!requestCompositionMigration.includes(required)) {
+    throw new Error(`Request composition migration is missing integrity boundary ${required}.`);
+  }
+}
+if (/\b(?:BEGIN|COMMIT)\s*;|\bschema_migrations\b/i.test(requestCompositionMigration)) {
+  throw new Error('Request composition migration must use runner-owned transactions and bookkeeping.');
+}
+const requestCompositionRollback = await readFile(
+  'migrations/027_request_composition_v2.down.sql',
+  'utf8',
+);
+for (const required of [
+  'LOCK TABLE booking_change_requests IN ACCESS EXCLUSIVE MODE',
+  'REQUEST_COMPOSITION_V2_ROLLBACK_REQUIRES_REVIEW',
+  'proposed_request_snapshot IS NOT NULL',
+  'previous_tenant_updated_at',
+  'HAVING COUNT(revision.request_id) <> 1',
+  'prices.currency IS DISTINCT FROM organization.default_currency',
+  'DROP CONSTRAINT booking_change_room_fk',
+  "WHERE status = 'superseded'",
+  "recovery_phase <> 'none'",
+  'calendar_replacement IS NOT NULL',
+  'DROP INDEX requests_tenant_report_range_idx',
+  'DROP INDEX requests_tenant_revision_watermark_idx',
+  'DROP FUNCTION enforce_request_revision_pointer_integrity()',
+  'CREATE OR REPLACE FUNCTION initialize_tenant_catalogue_revision()',
+  "SET snapshot = revision.snapshot - 'roomPrices'",
+]) {
+  if (!requestCompositionRollback.includes(required)) {
+    throw new Error(`Request composition rollback is missing fail-closed boundary ${required}.`);
+  }
 }
 
 const index = await readFile('src/index.js', 'utf8');

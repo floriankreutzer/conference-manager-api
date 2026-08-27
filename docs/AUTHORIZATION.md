@@ -49,11 +49,24 @@ Request persistence is always queried with the server-resolved internal `tenant_
 
 Employee request access additionally requires `request.requester_user_id === principal.userId`.
 
+Request creation and resubmission use the existing Employee `request:read` capability. Resubmission
+additionally requires requester ownership, `Change Requested` status and the expected Request
+version; a Conference Manager cannot use management scope to impersonate the owning Employee.
+
 A missing request, a request from another Tenant and a same-Tenant request owned by another Employee are exposed to an Employee as the same `404 NOT_FOUND` response. This prevents object-existence disclosure through BOLA/IDOR probing.
 
 A Conference Manager with `request:read` may read requests belonging to another Employee only inside the authenticated Tenant.
 
+Request history applies exactly the same object decision as the current Request read. A history
+route is not an alternate existence oracle for another Employee or Tenant.
+
 Tenant Admin has no implicit request-read or Conference Manager workflow capability.
+
+`GET /api/v1/application/reports/requests` is a separate Conference Manager read. It requires both
+the `conference_manager` role and `request:manage`, derives the active Tenant from the Principal and
+passes that Tenant ID to a range-bounded repository query. An Employee, a Tenant Admin, or a
+Tenant Admin carrying an anomalous `request:manage` permission is denied before persistence. The
+opaque continuation cursor contains no Tenant authority and cannot change the authenticated scope.
 
 ## Tenant audit-read authorization
 
@@ -96,7 +109,13 @@ Client input selects only a supported transition name. It never supplies the nex
 
 Unsupported transitions fail validation. Valid transitions from an ineligible current state return `409 REQUEST_STATE_CONFLICT`.
 
-Confirmed-booking proposals are a separate aggregate and never reuse `request_change`, which remains the pre-confirmation manager transition above. The Requester/Organizer may propose changes only for their own confirmed Request; a Conference Manager with `request:manage` may propose for any confirmed Request in the active Tenant. Only a Conference Manager may approve or reject schedule/room proposals. Self-approval is allowed and the initiator/decider identities remain server-derived and auditable. No decision endpoint permits proposal editing.
+Confirmed-booking proposals are a separate aggregate and never reuse `request_change`, which remains the pre-confirmation manager transition above. The Requester/Organizer may propose changes only for their own confirmed Request; a Conference Manager with `request:manage` may propose for any confirmed Request in the active Tenant. Only a Conference Manager may approve or reject a pending composition proposal. Self-approval is allowed and the initiator/decider identities remain server-derived and auditable. No decision endpoint permits proposal editing.
+
+Every schema-v2 proposal contains the complete desired composition and expected Request version.
+Participant-count-only changes with unchanged configuration revisions may apply immediately after
+current authority evaluation; Room, schedule, other composition changes and revision-only refreshes
+remain pending manager decision. Neither initiator nor decider can submit prices,
+policy/allocation results, target workflow state or another Tenant's configuration as authority.
 
 Reject/change-request reasons are trimmed server-side, limited to 1-1000 characters and reject control characters. Reasons on transitions that do not use a reason are rejected instead of ignored.
 
@@ -146,7 +165,19 @@ or, only for a transition that requires it:
 
 Fields such as `tenantId`, `requesterUserId`, `owner`, `role`, `permission`, `status` or `nextStatus` are not part of the schema and are rejected.
 
-The public Request response deliberately omits internal Tenant ownership and requester User ID in this foundation slice. Later business APIs may expose additional required presentation data only through an explicit reviewed contract.
+The public Request response deliberately omits internal Tenant ownership and requester User ID. A
+v2 response exposes immutable composition, pricing, configuration-revision, policy and allocation
+facts for presentation; these historical facts do not become write authority. A legacy v1 response
+uses explicit `null` for those unavailable facts.
+
+`GET /api/v1/requests/{requestId}/history` requires the same `request:read` and object scope and
+returns bounded immutable revisions. `POST /api/v1/application/requests` creates a complete v2
+Request for an Employee. `POST /api/v1/application/requests/{requestId}/resubmissions` requires the
+owning Employee, CSRF, a complete v2 draft and `expectedVersion`.
+
+`GET /api/v1/application/reports/requests` requires Conference Manager `request:manage` and returns
+bounded cursor pages of the same public Request representation for the authenticated Tenant. It
+does not grant Tenant Admin an implicit Request capability.
 
 `GET /api/v1/tenant/presentation` is such an explicit minimized contract. Every recognized
 authenticated Tenant role may read it through `authorizeTenantApplicationRead`; the server derives
@@ -172,6 +203,7 @@ Changes to this policy require, as applicable:
 - unknown-role/permission negative tests;
 - Employee owner/non-owner tests;
 - Conference Manager same-Tenant/cross-Tenant tests;
+- Conference Manager report range/cursor completeness and Tenant Admin separation tests;
 - Tenant Admin separation tests;
 - Tenant audit-read permission and cross-Tenant isolation tests;
 - every privileged workflow transition;

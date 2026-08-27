@@ -171,6 +171,8 @@ const requestService = persistence
     finalRoomConfirmationService,
     bookingServiceFactory: microsoft365BookingServiceFactory,
     metrics,
+    maxResponseBytes: config.maxResponseBytes,
+    cursorSecret: config.auditHmacSecret,
   })
   : null;
 const bookingChangeService = persistence && auditService && microsoft365BookingServiceFactory
@@ -234,6 +236,8 @@ const productionApplicationService = persistence && auditService
     authorizationPolicy,
     auditService,
     roomAvailabilityService,
+    maxResponseBytes: config.maxResponseBytes,
+    cursorSecret: config.auditHmacSecret,
   })
   : null;
 const tenantUserAdministrationService = persistence && auditService

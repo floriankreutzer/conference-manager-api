@@ -10,6 +10,7 @@ const COLLECTION_LIMITS = Object.freeze({
   equipment: 200,
   cateringPackages: 100,
   cateringItems: 300,
+  roomPrices: 1_000,
 });
 
 export class TenantCatalogueValidationError extends Error {
@@ -145,6 +146,29 @@ function normalizePackage(value) {
   return Object.freeze(normalized);
 }
 
+function normalizeRoomPrice(value) {
+  exactObject(
+    value,
+    ['roomId', 'price'],
+    'TENANT_CATALOGUE_ROOM_PRICE_INVALID',
+  );
+  return Object.freeze({
+    roomId: identifier(value.roomId, 'TENANT_CATALOGUE_ROOM_PRICE_ROOM_INVALID'),
+    price: price(value.price),
+  });
+}
+
+function roomPriceCollection(value) {
+  if (!Array.isArray(value) || value.length > COLLECTION_LIMITS.roomPrices) {
+    invalid('TENANT_CATALOGUE_ROOM_PRICES_INVALID');
+  }
+  const normalized = value.map(normalizeRoomPrice);
+  if (new Set(normalized.map((entry) => entry.roomId)).size !== normalized.length) {
+    invalid('TENANT_CATALOGUE_ROOM_PRICE_DUPLICATE');
+  }
+  return Object.freeze(normalized.sort((left, right) => left.roomId.localeCompare(right.roomId)));
+}
+
 function collection(value, key, normalizeEntry) {
   if (!Array.isArray(value) || value.length > COLLECTION_LIMITS[key]) {
     invalid(`TENANT_CATALOGUE_${key.toUpperCase()}_INVALID`);
@@ -171,11 +195,15 @@ function assertPackageReferences(catalogue) {
 }
 
 export function normalizeTenantCatalogue(value) {
-  exactObject(
-    value,
-    ['services', 'equipment', 'cateringPackages', 'cateringItems'],
-    'TENANT_CATALOGUE_INVALID',
-  );
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    invalid('TENANT_CATALOGUE_INVALID');
+  }
+  const required = ['services', 'equipment', 'cateringPackages', 'cateringItems'];
+  const allowed = new Set([...required, 'roomPrices']);
+  if (
+    required.some((key) => !Object.hasOwn(value, key))
+    || Object.keys(value).some((key) => !allowed.has(key))
+  ) invalid('TENANT_CATALOGUE_INVALID');
   const normalized = Object.freeze({
     services: collection(value.services, 'services', (entry) => simpleEntity(entry, 'SERVICE')),
     equipment: collection(value.equipment, 'equipment', (entry) => simpleEntity(entry, 'EQUIPMENT')),
@@ -183,6 +211,7 @@ export function normalizeTenantCatalogue(value) {
     cateringItems: collection(value.cateringItems, 'cateringItems', (entry) => {
       return simpleEntity(entry, 'CATERING_ITEM');
     }),
+    roomPrices: roomPriceCollection(value.roomPrices ?? []),
   });
   assertPackageReferences(normalized);
   return normalized;
@@ -203,6 +232,7 @@ export function tenantCatalogueSummary(value) {
     activePackageCount: activeCount(catalogue.cateringPackages),
     cateringItemCount: catalogue.cateringItems.length,
     activeCateringItemCount: activeCount(catalogue.cateringItems),
+    roomPriceCount: catalogue.roomPrices.length,
   });
 }
 

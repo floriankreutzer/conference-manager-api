@@ -65,9 +65,10 @@ The following resource classes are Tenant-owned and carry explicit internal Tena
 - users;
 - sites;
 - rooms;
+- Room prices;
 - services;
 - catering packages and individual catering items;
-- requests/bookings;
+- requests/bookings, immutable Request revisions and booking-change proposals;
 - notifications;
 - integrations and provider references;
 - entitlements;
@@ -90,7 +91,11 @@ Generic Tenant-owned adapters expose only scoped methods such as:
 
 The generic wrapper never offers unscoped `findById`, `updateById`, or `deleteById` calls. Tenant ID is supplied separately from mutation data, and payloads that try to set `tenantId` are rejected. Adapter results are revalidated so an adapter cannot silently return another Tenant's resource.
 
-The specialized PostgreSQL Request repository follows the same invariant through `findByTenantIdAndId` and `transitionByTenantIdAndId`; its SQL always includes internal `tenant_id`.
+The specialized PostgreSQL Request repository follows the same invariant through scoped current,
+history, create, resubmit and transition methods; its SQL always includes internal `tenant_id`.
+Request revisions reference `(tenant_id, request_id)` and Room prices reference
+`(tenant_id, room_id)`, preventing a cross-Tenant ID from being attached even when its business ID
+is syntactically valid.
 
 The specialized Audit repository similarly appends, lists and verifies events only within an explicit internal Tenant scope. It does not expose a cross-Tenant list API to the Tenant-facing application service.
 

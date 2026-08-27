@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 26;/.test(pool)) {
-  throw new Error('Production application contract requires the integrated SaaS 2 schema version 26.');
+if (!/export const CURRENT_SCHEMA_VERSION = 27;/.test(pool)) {
+  throw new Error('Production application contract requires the integrated SaaS 2 schema version 27.');
 }
 
 const auditEvent = await readFile('src/audit/event.js', 'utf8');
@@ -61,6 +61,8 @@ const applicationRouteKeys = [
   'application_catalog',
   'application_site_info',
   'application_requests',
+  'application_request_report',
+  'application_request_resubmission',
   'application_room_availability',
   'application_notifications',
   'application_notification',
@@ -71,12 +73,16 @@ for (const required of [
   "catalog: '/api/v1/application/catalog'",
   "siteInfo: '/api/v1/application/site-info'",
   "requests: '/api/v1/application/requests'",
+  "requestReport: '/api/v1/application/reports/requests'",
   "roomAvailability: '/api/v1/application/room-availability'",
   "notifications: '/api/v1/application/notifications'",
   "configuration: '/api/v1/application/configuration'",
   "principalGuard.require(request, { csrf: mutation })",
   'tenantGuard.requireActive(principal)',
   'validateExactObject',
+  'REQUEST_RESUBMISSION_PATH',
+  'requestReportQuery',
+  'schemaVersion: (value) => value === 2',
 ]) {
   if (!routes.includes(required)) throw new Error(`Production application HTTP contract is missing ${required}.`);
 }
@@ -95,6 +101,11 @@ for (const required of [
   'POST /api/v1/application/room-availability',
   '`ROOM_AVAILABILITY_UNAVAILABLE`',
   'canonical UTC interval of at most 24 hours',
+  '`bookingPolicy`',
+  '`costAllocation`',
+  'currently active `costCenters[]`',
+  'GET /api/v1/application/reports/requests',
+  '`complete`',
 ]) {
   if (!apiContract.includes(required)) {
     throw new Error(`Production application API documentation is missing ${required}.`);
@@ -110,6 +121,16 @@ for (const required of [
   'findRoomBookingContext',
   'time_zone',
   'auditRepository.appendWithClient(client, auditEvent)',
+  "isolationLevel: 'REPEATABLE READ'",
+  'tenant_room_prices',
+  'configurationRevisions',
+  'tenant_cost_allocation_configuration',
+  'tenant_cost_centers',
+  'tenant_booking_policy_configuration',
+  'transaction_timestamp()',
+  'bookingPolicy',
+  'allocationRequired',
+  'costCenters',
 ]) {
   if (!repository.includes(required)) throw new Error(`Production application persistence is missing ${required}.`);
 }
@@ -119,6 +140,33 @@ if (repository.includes('updateSites')) {
 const applicationService = await readFile('src/application/production-application-service.js', 'utf8');
 if (applicationService.includes('updateConfiguration')) {
   throw new Error('Legacy application service must remain read-only for Tenant configuration.');
+}
+for (const required of [
+  'authorizeRequestReport',
+  'normalizeRequestReportQuery',
+  'createRequestReportCursor',
+  'listReportPageByTenantId',
+]) {
+  if (!applicationService.includes(required)) {
+    throw new Error(`Production Request reporting is missing ${required}.`);
+  }
+}
+const authorizationPolicy = await readFile('src/authorization/policy.js', 'utf8');
+for (const required of ['authorizeRequestReport', 'PERMISSION.REQUEST_MANAGE']) {
+  if (!authorizationPolicy.includes(required)) {
+    throw new Error(`Production Request reporting authorization is missing ${required}.`);
+  }
+}
+const requestRepository = await readFile('src/persistence/postgres/request-repository.js', 'utf8');
+for (const required of [
+  'request-report-page-by-tenant',
+  'starts_at >= $2',
+  'starts_at < $3',
+  'ORDER BY starts_at, id',
+]) {
+  if (!requestRepository.includes(required)) {
+    throw new Error(`Production Request report persistence is missing ${required}.`);
+  }
 }
 
 const timeZone = await readFile('src/domain/site-time-zone.js', 'utf8');
@@ -150,5 +198,6 @@ for (const required of [
 }
 
 await readFile('tests/room-availability-composition.test.js', 'utf8');
+await readFile('tests/request-composition.test.js', 'utf8');
 
 console.log('Production application contract check passed.');
