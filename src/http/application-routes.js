@@ -255,11 +255,13 @@ export function createApplicationHttpHandler({
           REQUEST_BODY_SCHEMA,
         );
         sendJson(response, 201, {
+          schemaVersion: 2,
           request: await service.createRequest({
             ...common,
             schemaVersion: body.schemaVersion,
             requestDraft: body.request,
           }),
+          requestId,
         }, maxResponseBytes);
         return 201;
       }
@@ -283,6 +285,7 @@ export function createApplicationHttpHandler({
         REQUEST_RESUBMISSION_BODY_SCHEMA,
       );
       sendJson(response, 200, {
+        schemaVersion: 2,
         request: await service.resubmitRequest({
           ...common,
           requestId: resubmissionMatch[1],
@@ -290,6 +293,7 @@ export function createApplicationHttpHandler({
           expectedVersion: body.expectedVersion,
           requestDraft: body.request,
         }),
+        requestId,
       }, maxResponseBytes);
       return 200;
     }

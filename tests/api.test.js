@@ -730,7 +730,7 @@ test('confirmed booking proposal and decision routes require CSRF and reject aut
     },
     async approve(values) {
       calls.push(['approve', values]);
-      return { status: 'blocked', alternatives: ['room-b'] };
+      return { status: 'blocked', alternatives: ['room-b'], change: { status: 'pending' }, requestRef };
     },
     async reject() { throw new Error('UNEXPECTED'); },
   };
@@ -795,7 +795,9 @@ test('confirmed booking proposal and decision routes require CSRF and reject aut
       body: JSON.stringify({ decision: 'approve' }),
     });
     assert.equal(decision.statusCode, 200);
-    assert.deepEqual(decision.body.result, { status: 'blocked', alternatives: ['room-b'] });
+    assert.deepEqual(Object.keys(decision.body.result).sort(), [
+      'alternatives', 'change', 'requestRef', 'status',
+    ]);
   });
   assert.deepEqual(calls.map(([operation]) => operation), ['propose', 'approve']);
 });
@@ -910,6 +912,9 @@ test('Request v2 create and resubmission routes require exact versioned CSRF con
     });
     assert.equal(created.statusCode, 201);
     assert.equal(created.body.request.schemaVersion, 2);
+    assert.equal(created.body.schemaVersion, 2);
+    assert.equal(created.body.requestId, created.body.requestId.toLowerCase());
+    assert.deepEqual(Object.keys(created.body).sort(), ['request', 'requestId', 'schemaVersion']);
 
     const resubmitted = await request({
       port,
@@ -920,6 +925,8 @@ test('Request v2 create and resubmission routes require exact versioned CSRF con
     });
     assert.equal(resubmitted.statusCode, 200);
     assert.equal(resubmitted.body.request.version, 5);
+    assert.equal(resubmitted.body.schemaVersion, 2);
+    assert.deepEqual(Object.keys(resubmitted.body).sort(), ['request', 'requestId', 'schemaVersion']);
   });
   assert.deepEqual(calls.map(([operation]) => operation), ['create', 'resubmit']);
   assert.deepEqual(calls[0][1].requestDraft, draft);
