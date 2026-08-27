@@ -32,5 +32,9 @@ export function assertTenantSettingsRevision(expectedRevision, currentRevision) 
 }
 
 export function nextTenantSettingsRevision(currentRevision) {
-  return requireTenantSettingsRevision(currentRevision) + 1;
+  const current = requireTenantSettingsRevision(currentRevision);
+  if (current >= Number.MAX_SAFE_INTEGER - 1) {
+    throw new TenantSettingsInputError('TENANT_SETTINGS_REVISION_INVALID');
+  }
+  return current + 1;
 }

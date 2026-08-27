@@ -71,6 +71,15 @@ async function lockRequest(client, tenantId, requestId) {
   return requestRow(result.rows[0]);
 }
 
+async function lockTenantLocationAuthority(client, tenantId) {
+  const result = await client.query({
+    name: 'booking-change-tenant-location-authority',
+    text: 'SELECT 1 FROM tenants WHERE id = $1 FOR SHARE',
+    values: [tenantId],
+  });
+  return result.rowCount === 1;
+}
+
 export function createPostgresBookingChangeRepository(pool, { auditRepository } = {}) {
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
@@ -180,6 +189,9 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
 
     async beginApproval({ tenantId, requestId, changeId, deciderUserId, changedAt, auditEvent }) {
       return withPostgresTransaction(pool, async (client) => {
+        if (!await lockTenantLocationAuthority(client, tenantId)) {
+          return Object.freeze({ status: 'conflict' });
+        }
         const request = await lockRequest(client, tenantId, requestId);
         const locked = await client.query({
           name: 'booking-change-lock-pending',
@@ -208,7 +220,8 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
           name: 'booking-change-target-valid',
           text: `SELECT 1 FROM rooms rm JOIN sites s ON s.tenant_id=rm.tenant_id AND s.id=rm.site_id
             WHERE rm.tenant_id=$1 AND rm.id=$2 AND rm.active=TRUE AND s.active=TRUE
-              AND s.time_zone IS NOT NULL AND rm.capacity >= $3`,
+              AND s.time_zone IS NOT NULL AND rm.capacity >= $3
+            FOR SHARE OF rm, s`,
           values: [tenantId, change.roomId, total],
         });
         if (conflict.rowCount || !target.rowCount) {
@@ -239,6 +252,9 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
 
     async finishApproval({ tenantId, requestId, changeId, changedAt, auditEvent, calendarReplacement = null }) {
       return withPostgresTransaction(pool, async (client) => {
+        if (!await lockTenantLocationAuthority(client, tenantId)) {
+          return Object.freeze({ status: 'conflict' });
+        }
         const request = await lockRequest(client, tenantId, requestId);
         const locked = await client.query({
           name: 'booking-change-lock-applying',
@@ -249,6 +265,24 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
         const change = changeRow(locked.rows[0]);
         if (!request || !change || change.status !== 'applying'
           || request.updatedAt !== change.baseRequestUpdatedAt) return Object.freeze({ status: 'conflict' });
+        const target = await client.query({
+          name: 'booking-change-finish-target-valid',
+          text: `
+            SELECT 1
+            FROM rooms rm
+            JOIN sites s ON s.tenant_id = rm.tenant_id AND s.id = rm.site_id
+            WHERE rm.tenant_id = $1 AND rm.id = $2
+              AND rm.active = TRUE AND s.active = TRUE AND s.time_zone IS NOT NULL
+              AND rm.capacity >= $3
+            FOR SHARE OF rm, s
+          `,
+          values: [
+            tenantId,
+            change.roomId,
+            change.internalParticipants + change.externalParticipants,
+          ],
+        });
+        if (target.rowCount !== 1) return Object.freeze({ status: 'conflict' });
         const updated = await client.query({
           name: 'booking-change-apply-request',
           text: `UPDATE requests SET room_id=$4, starts_at=$5, ends_at=$6,

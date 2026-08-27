@@ -1,4 +1,10 @@
 import { isInternalUuid } from '../../domain/identifiers.js';
+import {
+  advanceTenantLocationRevisionWithClient,
+  ensureTenantLocationSnapshotWithClient,
+  loadTenantLocationConfigurationWithClient,
+  lockTenantLocationRevisionWithClient,
+} from './tenant-location-repository.js';
 import { withPostgresTransaction } from './transaction.js';
 
 const ROOM_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -95,17 +101,19 @@ function mappingSelect(where) {
   `;
 }
 
-async function tenantLock(client, tenantId) {
+async function tenantLock(client, tenantId, { locationWrite = false } = {}) {
   await client.query({
     name: 'microsoft365-room-mapping-lock',
     text: 'SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))',
     values: [`microsoft365-room-mapping:${tenantId}`],
   });
+  if (locationWrite) return lockTenantLocationRevisionWithClient(client, tenantId);
   await client.query({
     name: 'microsoft365-room-mapping-tenant-row-lock',
     text: 'SELECT 1 FROM tenants WHERE id = $1 FOR SHARE',
     values: [tenantId],
   });
+  return null;
 }
 
 async function lockConnectionAuthority(
@@ -225,10 +233,12 @@ export function createPostgresMicrosoft365RoomMappingRepository(pool, { auditRep
       providerTenantReference,
       rooms,
       changedAt,
+      actorUserId,
       auditEventFor,
     }) {
       assertUuid(tenantId, 'TENANT_ID_INVALID');
       assertUuid(integrationId, 'INTEGRATION_ID_INVALID');
+      assertUuid(actorUserId, 'ACTOR_USER_ID_INVALID');
       assertConnectionAuthority(connectionVersion, providerTenantReference);
       assertDate(changedAt);
       if (!Array.isArray(rooms) || rooms.length < 1 || rooms.length > 100) throw new TypeError('ROOM_IMPORT_INVALID');
@@ -243,7 +253,7 @@ export function createPostgresMicrosoft365RoomMappingRepository(pool, { auditRep
 
       try {
         return await withPostgresTransaction(pool, async (client) => {
-          await tenantLock(client, tenantId);
+          const currentLocationRevision = await tenantLock(client, tenantId, { locationWrite: true });
           if (!await lockConnectionAuthority(client, {
             tenantId,
             integrationId,
@@ -269,6 +279,17 @@ export function createPostgresMicrosoft365RoomMappingRepository(pool, { auditRep
           const existingByExternalId = new Map(
             existingResult.rows.map((row) => [row.external_room_id, row]),
           );
+          const createsLocalRooms = rooms.some((room) => !existingByExternalId.has(room.externalRoomId));
+          if (createsLocalRooms) {
+            const currentConfiguration = await loadTenantLocationConfigurationWithClient(client, tenantId);
+            await ensureTenantLocationSnapshotWithClient(client, {
+              tenantId,
+              revision: currentLocationRevision,
+              configuration: currentConfiguration,
+              changedAt,
+              actorUserId,
+            });
+          }
 
           for (const room of rooms) {
             const existing = existingByExternalId.get(room.externalRoomId);
@@ -351,6 +372,24 @@ export function createPostgresMicrosoft365RoomMappingRepository(pool, { auditRep
               operation: 'room_imported',
               providerStatus: 'active',
             }));
+          }
+
+          if (createsLocalRooms) {
+            const nextLocationRevision = currentLocationRevision + 1;
+            await advanceTenantLocationRevisionWithClient(client, {
+              tenantId,
+              currentRevision: currentLocationRevision,
+              nextRevision: nextLocationRevision,
+              changedAt,
+            });
+            const appliedConfiguration = await loadTenantLocationConfigurationWithClient(client, tenantId);
+            await ensureTenantLocationSnapshotWithClient(client, {
+              tenantId,
+              revision: nextLocationRevision,
+              configuration: appliedConfiguration,
+              changedAt,
+              actorUserId,
+            });
           }
 
           return Object.freeze(await listWithClient(client, tenantId, integrationId));

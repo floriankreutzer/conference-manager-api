@@ -177,34 +177,5 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
       });
       return result.rows[0] ? publicNotification(result.rows[0]) : null;
     },
-
-    async updateSites({ tenantId, sites, changedAt, auditEvent }) {
-      return withPostgresTransaction(pool, async (client) => {
-        for (const site of sites) {
-          await client.query({
-            name: 'application-site-upsert',
-            text: `
-              INSERT INTO sites (tenant_id, id, name, active, time_zone, created_at, updated_at)
-              VALUES ($1, $2, $3, $4, $5, $6, $6)
-              ON CONFLICT (tenant_id, id)
-              DO UPDATE SET
-                name = EXCLUDED.name,
-                active = EXCLUDED.active,
-                time_zone = EXCLUDED.time_zone,
-                updated_at = EXCLUDED.updated_at
-            `,
-            values: [tenantId, site.id, site.name, site.active, site.timeZone, changedAt],
-          });
-        }
-        const audit = await auditRepository.appendWithClient(client, auditEvent);
-        if (!audit) throw new Error('AUDIT_APPEND_FAILED');
-        const result = await client.query({
-          name: 'application-sites-list-after-update',
-          text: 'SELECT id, name, active, time_zone FROM sites WHERE tenant_id = $1 ORDER BY id',
-          values: [tenantId],
-        });
-        return Object.freeze(result.rows.map(publicSite));
-      });
-    },
   });
 }

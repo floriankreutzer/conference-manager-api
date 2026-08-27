@@ -1,5 +1,3 @@
-BEGIN;
-
 ALTER TABLE sites
   ADD COLUMN details JSONB NOT NULL DEFAULT '{}'::jsonb,
   ADD CONSTRAINT sites_details_object CHECK (jsonb_typeof(details) = 'object');
@@ -40,8 +38,3 @@ FOR EACH ROW EXECUTE FUNCTION reject_tenant_location_revision_mutation();
 CREATE TRIGGER tenant_location_revisions_immutable_delete
 BEFORE DELETE ON tenant_location_revisions
 FOR EACH ROW EXECUTE FUNCTION reject_tenant_location_revision_mutation();
-
-INSERT INTO schema_migrations (version, name)
-VALUES (21, 'tenant_location_self_service');
-
-COMMIT;

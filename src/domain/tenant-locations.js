@@ -1,14 +1,21 @@
 import { isIanaTimeZone } from './site-time-zone.js';
-import { TenantSettingsInputError } from '../application/tenant-settings-errors.js';
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const ASSET_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/;
+const ASSET_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const SITE_LIMIT = 200;
 const ROOM_LIMIT = 2_000;
 const TEXT_MAX = 160;
 
+export class TenantLocationInputError extends Error {
+  constructor(code = 'TENANT_LOCATIONS_INVALID') {
+    super(code);
+    this.name = 'TenantLocationInputError';
+    this.code = code;
+  }
+}
+
 function inputError(code) {
-  throw new TenantSettingsInputError(code);
+  throw new TenantLocationInputError(code);
 }
 
 function exactObject(value, required, optional = []) {
@@ -54,12 +61,14 @@ function idList(value, code, limit = 200) {
   return Object.freeze(result);
 }
 
+function assetId(value, code) {
+  if (typeof value !== 'string' || !ASSET_ID.test(value)) inputError(code);
+  return value;
+}
+
 function assetList(value) {
   if (!Array.isArray(value) || value.length > 20) inputError('TENANT_ROOM_MEDIA_INVALID');
-  const result = value.map((entry) => {
-    if (typeof entry !== 'string' || !ASSET_ID.test(entry)) inputError('TENANT_ROOM_MEDIA_INVALID');
-    return entry;
-  });
+  const result = value.map((entry) => assetId(entry, 'TENANT_ROOM_MEDIA_INVALID'));
   if (new Set(result).size !== result.length) inputError('TENANT_ROOM_MEDIA_INVALID');
   return Object.freeze(result);
 }
@@ -93,9 +102,9 @@ function normalizeRoom(value, roomIds) {
     inputError('TENANT_ROOM_CAPACITY_INVALID');
   }
   if (typeof room.active !== 'boolean') inputError('TENANT_ROOM_ACTIVE_INVALID');
-  if (room.floorplanAssetId !== null && (typeof room.floorplanAssetId !== 'string' || !ASSET_ID.test(room.floorplanAssetId))) {
-    inputError('TENANT_ROOM_FLOORPLAN_INVALID');
-  }
+  const floorplanAssetId = room.floorplanAssetId === null
+    ? null
+    : assetId(room.floorplanAssetId, 'TENANT_ROOM_FLOORPLAN_INVALID');
   return Object.freeze({
     id,
     siteId,
@@ -107,12 +116,12 @@ function normalizeRoom(value, roomIds) {
     accessibility: stringList(room.accessibility, { code: 'TENANT_ROOM_ACCESSIBILITY_INVALID', limit: 20 }),
     serviceIds: idList(room.serviceIds, 'TENANT_ROOM_SERVICE_INVALID'),
     cateringPackageIds: idList(room.cateringPackageIds, 'TENANT_ROOM_CATERING_INVALID'),
-    floorplanAssetId: room.floorplanAssetId,
+    floorplanAssetId,
     mediaAssetIds: assetList(room.mediaAssetIds),
   });
 }
 
-export function normalizeTenantLocations(value, current = null) {
+function normalize(value, { allowUnknownTimeZones }) {
   const root = exactObject(value, ['sites', 'rooms']);
   if (!Array.isArray(root.sites) || root.sites.length > SITE_LIMIT) inputError('TENANT_SITES_INVALID');
   if (!Array.isArray(root.rooms) || root.rooms.length > ROOM_LIMIT) inputError('TENANT_ROOMS_INVALID');
@@ -123,7 +132,8 @@ export function normalizeTenantLocations(value, current = null) {
     if (siteIds.has(id)) inputError('TENANT_SITE_ID_DUPLICATE');
     siteIds.add(id);
     if (typeof site.active !== 'boolean') inputError('TENANT_SITE_ACTIVE_INVALID');
-    if (!isIanaTimeZone(site.timeZone)) inputError('TENANT_SITE_TIME_ZONE_INVALID');
+    if (site.timeZone !== null && !isIanaTimeZone(site.timeZone)) inputError('TENANT_SITE_TIME_ZONE_INVALID');
+    if (site.timeZone === null && !allowUnknownTimeZones) inputError('TENANT_SITE_TIME_ZONE_INVALID');
     return Object.freeze({
       id,
       name: boundedText(site.name, 'TENANT_SITE_NAME_INVALID'),
@@ -134,22 +144,59 @@ export function normalizeTenantLocations(value, current = null) {
   });
   const roomIds = new Set();
   const rooms = root.rooms.map((candidate) => normalizeRoom(candidate, roomIds));
+  const siteById = new Map(sites.map((site) => [site.id, site]));
   for (const room of rooms) {
-    if (!siteIds.has(room.siteId)) inputError('TENANT_ROOM_SITE_INVALID');
-    const site = sites.find((entry) => entry.id === room.siteId);
+    const site = siteById.get(room.siteId);
+    if (!site) inputError('TENANT_ROOM_SITE_INVALID');
     if (!site.active && room.active) inputError('TENANT_INACTIVE_SITE_HAS_ACTIVE_ROOM');
   }
-  if (new Set(rooms.flatMap((room) => room.serviceIds)).size > 2_000) inputError('TENANT_ROOM_SERVICE_INVALID');
-  if (new Set(rooms.flatMap((room) => room.cateringPackageIds)).size > 2_000) inputError('TENANT_ROOM_CATERING_INVALID');
-
-  if (current) {
-    const proposedSiteIds = new Set(sites.map((site) => site.id));
-    if (current.sites.some((site) => !proposedSiteIds.has(site.id))) inputError('TENANT_SITE_ARCHIVE_REQUIRED');
-    const proposedRoomIds = new Set(rooms.map((room) => room.id));
-    if (current.rooms.some((room) => !proposedRoomIds.has(room.id))) inputError('TENANT_ROOM_ARCHIVE_REQUIRED');
-    const currentRoomIds = new Set(current.rooms.map((room) => room.id));
-    if (rooms.some((room) => !currentRoomIds.has(room.id))) inputError('TENANT_ROOM_PROVIDER_IMPORT_REQUIRED');
+  if (new Set(rooms.flatMap((room) => room.serviceIds)).size > 2_000) {
+    inputError('TENANT_ROOM_SERVICE_INVALID');
   }
-
+  if (new Set(rooms.flatMap((room) => room.cateringPackageIds)).size > 2_000) {
+    inputError('TENANT_ROOM_CATERING_INVALID');
+  }
   return Object.freeze({ sites: Object.freeze(sites), rooms: Object.freeze(rooms) });
+}
+
+export function normalizeTenantLocations(value) {
+  return normalize(value, { allowUnknownTimeZones: false });
+}
+
+export function normalizeStoredTenantLocations(value) {
+  return normalize(value, { allowUnknownTimeZones: true });
+}
+
+export function assertTenantLocationTransition(currentValue, proposedValue) {
+  const current = normalizeStoredTenantLocations(currentValue);
+  const proposed = normalizeTenantLocations(proposedValue);
+  const proposedSiteIds = new Set(proposed.sites.map((site) => site.id));
+  if (current.sites.some((site) => !proposedSiteIds.has(site.id))) inputError('TENANT_SITE_ARCHIVE_REQUIRED');
+  const proposedRoomIds = new Set(proposed.rooms.map((room) => room.id));
+  if (current.rooms.some((room) => !proposedRoomIds.has(room.id))) inputError('TENANT_ROOM_ARCHIVE_REQUIRED');
+  const currentRoomIds = new Set(current.rooms.map((room) => room.id));
+  if (proposed.rooms.some((room) => !currentRoomIds.has(room.id))) {
+    inputError('TENANT_ROOM_PROVIDER_IMPORT_REQUIRED');
+  }
+  return proposed;
+}
+
+export function tenantLocationRollbackConfiguration(currentValue, sourceValue) {
+  const current = normalizeStoredTenantLocations(currentValue);
+  const source = normalizeStoredTenantLocations(sourceValue);
+  const sourceSiteIds = new Set(source.sites.map((site) => site.id));
+  const sourceRoomIds = new Set(source.rooms.map((room) => room.id));
+  const sites = [
+    ...source.sites,
+    ...current.sites
+      .filter((site) => !sourceSiteIds.has(site.id))
+      .map((site) => Object.freeze({ ...site, active: false })),
+  ].sort((left, right) => left.id.localeCompare(right.id));
+  const rooms = [
+    ...source.rooms,
+    ...current.rooms
+      .filter((room) => !sourceRoomIds.has(room.id))
+      .map((room) => Object.freeze({ ...room, active: false })),
+  ].sort((left, right) => left.id.localeCompare(right.id));
+  return normalizeTenantLocations({ sites, rooms });
 }

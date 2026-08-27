@@ -69,6 +69,7 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
 - `src/domain/request-workflow.js` owns canonical Request status and transition identifiers.
 - `src/domain/request.js` validates canonical Request records returned from persistence.
 - `src/domain/site-time-zone.js` validates bounded server-runtime IANA Site time-zone identifiers.
+- `src/domain/tenant-locations.js` owns the provider-neutral Locations/Rooms schema and set-transition rules.
 - `src/security.js` owns generic HTTP-boundary validation, security headers, rate limiting, JSON validation and the transport Principal guard.
 - `src/identity/principal.js` owns provider-neutral trusted-identity and internal-Principal shapes.
 - `src/identity/entra-client.js` owns fixed-authority Entra authorization-code/PKCE handling and positive token/claim validation.
@@ -83,11 +84,13 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
 - `src/tenancy/tenant-scoped-repository.js` enforces generic Tenant-scoped persistence ports.
 - `src/authorization/policy.js` owns recognized Tenant roles/permissions, capability checks, object ownership, Request transition authorization and Tenant audit-read capability.
 - `src/application/request-service.js` coordinates Tenant-scoped Request loading, authorization, optimistic workflow writes and correlated audit outcomes.
-- `src/application/production-application-service.js` owns the server-authoritative browser application contract, Site configuration and the fail-closed Site-time-zone booking gate.
+- `src/application/production-application-service.js` owns the server-authoritative browser application contract, legacy Site reads and the fail-closed Site-time-zone booking gate.
 - `src/application/tenant-settings-revision.js` owns only the shared SaaS 2 schema/revision primitive and deterministic stale-write conflict semantics; aggregate business fields and persistence stay with their bounded owners.
+- `src/application/tenant-location-administration-service.js` owns authorized versioned Locations/Rooms administration and rollback orchestration.
 - `src/application/tenant-user-administration-service.js` owns authorized Tenant role reads/writes, last-admin protection and stale-session invalidation through User security versions.
 - `src/application/microsoft365-connection-service.js` owns Tenant Admin authorization, Entra-binding corroboration, one-time consent state, connection verification, reconnect/disconnect and audit-safe public results.
 - `src/http/microsoft365-routes.js` owns the strict same-origin Microsoft 365 HTTP contract, callback query allowlist and fixed result redirects.
+- `src/http/settings/locations.js` owns the registered bounded Locations/Rooms route module.
 - `src/integrations/microsoft365-client.js` owns fixed Microsoft identity/Graph origins, admin-consent URL construction, application-token acquisition, bounded provider transport and base-permission verification.
 - `src/audit/event.js` owns the fixed event taxonomy, bounded secret-minimized event validation and canonical integrity payload.
 - `src/audit/audit-service.js` derives Tenant, actor and time from trusted context, authorizes Tenant audit reads and records denial/read evidence.
@@ -102,11 +105,12 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
 - `src/persistence/postgres/audit-repository.js` owns per-Tenant append serialization, HMAC signing, Tenant-scoped listing and chain verification.
 - `src/persistence/postgres/entitlement-repository.js` owns Tenant-scoped entitlement reads and audit-atomic entitlement changes.
 - `src/persistence/postgres/booking-reference-repository.js` owns Tenant-scoped room-conflict lookup and audit-atomic opaque provider-reference persistence.
-- `src/persistence/postgres/application-repository.js` owns Tenant-scoped catalog, Site time-zone configuration, profile and notification persistence.
+- `src/persistence/postgres/application-repository.js` owns Tenant-scoped catalog reads plus profile and notification persistence. Versioned Site/Room writes belong only to the Locations owner.
 - `src/persistence/postgres/tenant-onboarding-repository.js` owns Tenant invitation, identity-binding and claim persistence.
 - `src/persistence/postgres/jit-user-repository.js` owns internal User/provider binding persistence and profile synchronization.
 - `src/persistence/postgres/tenant-user-admin-repository.js` owns Tenant role persistence, concurrency control and last-admin enforcement.
 - `src/persistence/postgres/microsoft365-connection-repository.js` owns Tenant-scoped Microsoft 365 connection state, actor-bound one-time consent transactions, optimistic versions and audit-atomic lifecycle changes.
+- `src/persistence/postgres/tenant-location-repository.js` owns Tenant-scoped Locations/Rooms snapshots, revision concurrency and audit-atomic mutation.
 - `src/persistence/postgres/transaction.js` owns the common commit/rollback transaction boundary.
 - `src/persistence/postgres/index.js` composes the PostgreSQL repositories and readiness checks.
 - `scripts/db-migrations.mjs` owns source-controlled migration discovery, checksums, advisory locking and transactional up/down execution.
@@ -193,7 +197,7 @@ See `docs/AUDIT.md` for the normative event/integrity contract.
 
 Schema ownership lives in `migrations/`. Migrations are paired up/down files, numerically versioned, checksum protected and serialized by a PostgreSQL advisory lock.
 
-The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 20.
+The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 21.
 
 - Migration 001 establishes Tenant-owned product structures.
 - Migration 002 adds User security-version state and server-side sessions.
@@ -215,6 +219,7 @@ The application never auto-migrates at startup. Deployment automation runs migra
 - Migration 018 adds nullable authoritative Site IANA time zones without inventing values for legacy Sites.
 - Migration 019 adds confirmed-booking change persistence and one-open-proposal enforcement.
 - Migration 020 adds five independent Tenant Admin settings revision counters and fail-closed rollback after first use, without adding a generic settings datastore.
+- Migration 021 adds bounded Site/Room details and immutable Locations revision history without rewriting legacy Site time zones.
 
 Every migration that removes security/business evidence includes a fail-closed rollback guard.
 
@@ -254,6 +259,9 @@ See `docs/BOOKING-INTEGRATION.md` and `docs/MICROSOFT365-CONNECTION.md`.
 - `GET /api/v1/audit` requires Tenant Admin plus `tenant:audit:read` and verifies Tenant audit integrity.
 - `GET /api/v1/tenant/users` and `PUT /api/v1/tenant/users/{userId}/roles` expose Tenant-scoped role administration.
 - `GET /api/v1/integrations/microsoft365` reads minimized Microsoft 365 connection state.
+- `GET/PUT /api/v1/tenant/settings/locations` reads or updates the versioned Locations/Rooms aggregate.
+- `GET /api/v1/tenant/settings/locations/history` and its revision route expose bounded immutable history.
+- `POST /api/v1/tenant/settings/locations/rollback` creates a new revision from a historical snapshot.
 - `POST /api/v1/integrations/microsoft365/connect` starts actor-bound admin consent.
 - `GET /api/v1/integrations/microsoft365/callback` validates and consumes the fixed callback contract.
 - `POST /api/v1/integrations/microsoft365/verify` revalidates the base connection.

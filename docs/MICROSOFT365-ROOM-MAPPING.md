@@ -64,6 +64,8 @@ Import is explicit and bounded to 100 selected rooms per request. Every selected
 
 The stable mapping key is `(tenant_id, integration_id, external_room_id)`. Re-importing an already mapped external room is idempotent: it refreshes provider-owned metadata but does not create another Conference Manager room and does not replace the existing local site/name/capacity/activation state.
 
+An import that creates one or more local Rooms participates in the bounded Locations aggregate transaction. It snapshots the prior local configuration, advances `tenants.locations_revision` exactly once, stores the actual post-import snapshot and commits the existing administrative audit evidence atomically. A provider-metadata-only re-import does not advance the local configuration revision.
+
 The database additionally prevents two mappings within the same Tenant/integration from claiming the same external room or resource address.
 
 ## Synchronization semantics

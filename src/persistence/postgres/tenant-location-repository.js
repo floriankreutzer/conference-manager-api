@@ -1,69 +1,119 @@
+import { isInternalUuid } from '../../domain/identifiers.js';
+import {
+  TenantLocationInputError,
+  assertTenantLocationTransition,
+  normalizeStoredTenantLocations,
+  tenantLocationRollbackConfiguration,
+} from '../../domain/tenant-locations.js';
 import { withPostgresTransaction } from './transaction.js';
 
-function parseDetails(value) {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+const SITE_DETAIL_KEYS = new Set(['address']);
+const ROOM_DETAIL_KEYS = new Set([
+  'floor',
+  'equipment',
+  'accessibility',
+  'serviceIds',
+  'cateringPackageIds',
+  'floorplanAssetId',
+  'mediaAssetIds',
+]);
+const PROVIDER_STATUSES = new Set(['active', 'missing']);
+
+function persistedStateError() {
+  const error = new Error('TENANT_LOCATION_PERSISTED_STATE_INVALID');
+  error.code = 'TENANT_LOCATION_PERSISTED_STATE_INVALID';
+  return error;
+}
+
+function requireUuid(value, code) {
+  if (!isInternalUuid(value)) throw new TypeError(code);
+  return value;
+}
+
+function detailsObject(value, allowedKeys) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw persistedStateError();
+  if (Object.keys(value).some((key) => !allowedKeys.has(key))) throw persistedStateError();
+  return value;
 }
 
 function publicSite(row) {
-  const details = parseDetails(row.details);
-  return Object.freeze({
+  const details = detailsObject(row.details, SITE_DETAIL_KEYS);
+  return {
     id: row.id,
     name: row.name,
     active: row.active,
     timeZone: row.time_zone ?? null,
     address: details.address ?? null,
-  });
+  };
 }
 
 function publicRoom(row) {
-  const details = parseDetails(row.details);
-  return Object.freeze({
+  const details = detailsObject(row.details, ROOM_DETAIL_KEYS);
+  return {
     id: row.id,
     siteId: row.site_id,
     name: row.name,
     capacity: Number(row.capacity),
     active: row.active,
     floor: details.floor ?? null,
-    equipment: Object.freeze(Array.isArray(details.equipment) ? [...details.equipment] : []),
-    accessibility: Object.freeze(Array.isArray(details.accessibility) ? [...details.accessibility] : []),
-    serviceIds: Object.freeze(Array.isArray(details.serviceIds) ? [...details.serviceIds] : []),
-    cateringPackageIds: Object.freeze(Array.isArray(details.cateringPackageIds) ? [...details.cateringPackageIds] : []),
+    equipment: details.equipment ?? [],
+    accessibility: details.accessibility ?? [],
+    serviceIds: details.serviceIds ?? [],
+    cateringPackageIds: details.cateringPackageIds ?? [],
     floorplanAssetId: details.floorplanAssetId ?? null,
-    mediaAssetIds: Object.freeze(Array.isArray(details.mediaAssetIds) ? [...details.mediaAssetIds] : []),
-  });
+    mediaAssetIds: details.mediaAssetIds ?? [],
+  };
 }
 
-function providerContext(row) {
+function publicProviderContext(row) {
+  if (
+    typeof row.room_id !== 'string'
+    || !PROVIDER_STATUSES.has(row.provider_status)
+    || typeof row.provider_display_name !== 'string'
+    || !(row.last_seen_at instanceof Date)
+    || Number.isNaN(row.last_seen_at.getTime())
+  ) throw persistedStateError();
+  const capacity = row.provider_capacity === null ? null : Number(row.provider_capacity);
+  if (capacity !== null && (!Number.isSafeInteger(capacity) || capacity < 0 || capacity > 1_000_000)) {
+    throw persistedStateError();
+  }
   return Object.freeze({
     roomId: row.room_id,
     provider: 'microsoft365',
     status: row.provider_status,
     displayName: row.provider_display_name,
-    capacity: row.provider_capacity === null ? null : Number(row.provider_capacity),
+    capacity,
     lastSeenAt: row.last_seen_at.toISOString(),
   });
 }
 
-async function loadConfiguration(client, tenantId) {
-  const [sites, rooms] = await Promise.all([
-    client.query({
-      name: 'tenant-locations-sites-current',
-      text: 'SELECT id, name, active, time_zone, details FROM sites WHERE tenant_id = $1 ORDER BY id',
-      values: [tenantId],
-    }),
-    client.query({
-      name: 'tenant-locations-rooms-current',
-      text: 'SELECT id, site_id, name, capacity, active, details FROM rooms WHERE tenant_id = $1 ORDER BY id',
-      values: [tenantId],
-    }),
-  ]);
-  return Object.freeze({
-    sites: Object.freeze(sites.rows.map(publicSite)),
-    rooms: Object.freeze(rooms.rows.map(publicRoom)),
+function normalizePersistedConfiguration(value) {
+  try {
+    return normalizeStoredTenantLocations(value);
+  } catch (error) {
+    if (error instanceof TenantLocationInputError) throw persistedStateError();
+    throw error;
+  }
+}
+
+export async function loadTenantLocationConfigurationWithClient(client, tenantId) {
+  const sites = await client.query({
+    name: 'tenant-locations-sites-current',
+    text: 'SELECT id, name, active, time_zone, details FROM sites WHERE tenant_id = $1 ORDER BY id',
+    values: [tenantId],
+  });
+  const rooms = await client.query({
+    name: 'tenant-locations-rooms-current',
+    text: 'SELECT id, site_id, name, capacity, active, details FROM rooms WHERE tenant_id = $1 ORDER BY id',
+    values: [tenantId],
+  });
+  return normalizePersistedConfiguration({
+    sites: sites.rows.map(publicSite),
+    rooms: rooms.rows.map(publicRoom),
   });
 }
 
-async function loadProviderContext(client, tenantId) {
+async function loadProviderContextWithClient(client, tenantId) {
   const result = await client.query({
     name: 'tenant-locations-provider-context',
     text: `
@@ -74,29 +124,60 @@ async function loadProviderContext(client, tenantId) {
     `,
     values: [tenantId],
   });
-  return Object.freeze(result.rows.map(providerContext));
+  return Object.freeze(result.rows.map(publicProviderContext));
 }
 
-async function loadRevision(client, tenantId, { lock = false } = {}) {
+function requireRevision(value) {
+  const revision = Number(value);
+  if (!Number.isSafeInteger(revision) || revision < 1 || revision >= Number.MAX_SAFE_INTEGER) {
+    throw persistedStateError();
+  }
+  return revision;
+}
+
+async function loadTenantLocationRevisionWithClient(client, tenantId, { lock = false } = {}) {
   const result = await client.query({
     name: lock ? 'tenant-locations-revision-lock' : 'tenant-locations-revision',
     text: `SELECT locations_revision FROM tenants WHERE id = $1${lock ? ' FOR UPDATE' : ''}`,
     values: [tenantId],
   });
   if (!result.rows[0]) throw new Error('TENANT_NOT_FOUND');
-  return Number(result.rows[0].locations_revision);
+  return requireRevision(result.rows[0].locations_revision);
 }
 
-async function currentWithClient(client, tenantId) {
-  const [revision, configuration, provider] = await Promise.all([
-    loadRevision(client, tenantId),
-    loadConfiguration(client, tenantId),
-    loadProviderContext(client, tenantId),
-  ]);
-  return Object.freeze({ revision, configuration, providerContext: provider });
+export async function lockTenantLocationRevisionWithClient(client, tenantId) {
+  return loadTenantLocationRevisionWithClient(client, tenantId, { lock: true });
 }
 
-async function appendSnapshot(client, { tenantId, revision, configuration, changedAt, actorUserId }) {
+async function currentWithClient(client, tenantId, knownRevision = null) {
+  const revision = knownRevision ?? await loadTenantLocationRevisionWithClient(client, tenantId);
+  const configuration = await loadTenantLocationConfigurationWithClient(client, tenantId);
+  const providerContext = await loadProviderContextWithClient(client, tenantId);
+  return Object.freeze({ revision, configuration, providerContext });
+}
+
+export async function ensureTenantLocationSnapshotWithClient(client, {
+  tenantId,
+  revision,
+  configuration,
+  changedAt,
+  actorUserId,
+}) {
+  const safeRevision = requireRevision(revision);
+  const normalized = normalizePersistedConfiguration(configuration);
+  const existing = await client.query({
+    name: 'tenant-locations-history-match',
+    text: `
+      SELECT configuration = $3::jsonb AS matches
+      FROM tenant_location_revisions
+      WHERE tenant_id = $1 AND revision = $2
+    `,
+    values: [tenantId, safeRevision, JSON.stringify(normalized)],
+  });
+  if (existing.rows[0]) {
+    if (existing.rows[0].matches !== true) throw new Error('TENANT_LOCATION_SNAPSHOT_DIVERGED');
+    return false;
+  }
   await client.query({
     name: 'tenant-locations-history-insert',
     text: `
@@ -104,10 +185,35 @@ async function appendSnapshot(client, { tenantId, revision, configuration, chang
         tenant_id, revision, configuration, changed_at, actor_user_id
       )
       VALUES ($1, $2, $3::jsonb, $4, $5)
-      ON CONFLICT (tenant_id, revision) DO NOTHING
     `,
-    values: [tenantId, revision, JSON.stringify(configuration), changedAt, actorUserId],
+    values: [tenantId, safeRevision, JSON.stringify(normalized), changedAt, actorUserId],
   });
+  return true;
+}
+
+export async function advanceTenantLocationRevisionWithClient(client, {
+  tenantId,
+  currentRevision,
+  nextRevision,
+  changedAt,
+}) {
+  const safeCurrentRevision = requireRevision(currentRevision);
+  const safeNextRevision = requireRevision(nextRevision);
+  if (safeNextRevision !== safeCurrentRevision + 1) {
+    throw new TypeError('TENANT_LOCATION_NEXT_REVISION_INVALID');
+  }
+  const result = await client.query({
+    name: 'tenant-locations-revision-advance',
+    text: `
+      UPDATE tenants
+      SET locations_revision = $3, updated_at = $4
+      WHERE id = $1 AND locations_revision = $2
+      RETURNING locations_revision
+    `,
+    values: [tenantId, safeCurrentRevision, safeNextRevision, changedAt],
+  });
+  if (result.rowCount !== 1) throw new Error('TENANT_LOCATION_REVISION_RACE');
+  return requireRevision(result.rows[0].locations_revision);
 }
 
 function siteDetails(site) {
@@ -169,6 +275,19 @@ async function validateReferences(client, tenantId, current, proposed, changedAt
       values: [tenantId, ids],
     });
     if (providerRefs.rowCount > 0) return 'TENANT_LOCATION_REFERENCED_PROVIDER';
+    const bookingChangeRefs = await client.query({
+      name: 'tenant-locations-deactivation-booking-change-reference',
+      text: `
+        SELECT 1
+        FROM booking_change_requests
+        WHERE tenant_id = $1
+          AND room_id = ANY($2::varchar[])
+          AND status = 'applying'
+        LIMIT 1
+      `,
+      values: [tenantId, ids],
+    });
+    if (bookingChangeRefs.rowCount > 0) return 'TENANT_LOCATION_REFERENCED_BOOKING_CHANGE';
   }
 
   const serviceIds = [...new Set(proposed.rooms.flatMap((room) => room.serviceIds))];
@@ -231,58 +350,93 @@ async function applyConfiguration(client, tenantId, configuration, changedAt) {
   }
 }
 
+async function appendAudit(client, auditRepository, auditEvent) {
+  const audit = await auditRepository.appendWithClient(client, auditEvent);
+  if (!audit) throw new Error('AUDIT_APPEND_FAILED');
+}
+
+function repositoryInputError(code) {
+  const error = new Error(code);
+  error.name = 'TenantLocationReferenceError';
+  error.code = code;
+  return error;
+}
+
+function requireTransition(current, proposed) {
+  try {
+    return assertTenantLocationTransition(current, proposed);
+  } catch (error) {
+    if (error instanceof TenantLocationInputError) throw repositoryInputError(error.code);
+    throw error;
+  }
+}
+
+function requireRollbackConfiguration(current, source) {
+  try {
+    return tenantLocationRollbackConfiguration(current, source);
+  } catch (error) {
+    if (error instanceof TenantLocationInputError) throw repositoryInputError(error.code);
+    throw error;
+  }
+}
+
 export function createPostgresTenantLocationRepository(pool, { auditRepository } = {}) {
-  if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') throw new TypeError('POSTGRES_POOL_REQUIRED');
-  if (!auditRepository || typeof auditRepository.appendWithClient !== 'function') throw new TypeError('AUDIT_REPOSITORY_REQUIRED');
+  if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
+    throw new TypeError('POSTGRES_POOL_REQUIRED');
+  }
+  if (!auditRepository || typeof auditRepository.appendWithClient !== 'function') {
+    throw new TypeError('AUDIT_REPOSITORY_REQUIRED');
+  }
 
   async function mutate({ tenantId, expectedRevision, nextRevision, configuration, changedAt, actorUserId, auditEvent }) {
+    requireUuid(tenantId, 'TENANT_ID_INVALID');
+    requireUuid(actorUserId, 'ACTOR_USER_ID_INVALID');
     return withPostgresTransaction(pool, async (client) => {
-      const currentRevision = await loadRevision(client, tenantId, { lock: true });
+      const currentRevision = await lockTenantLocationRevisionWithClient(client, tenantId);
       if (currentRevision !== expectedRevision) return Object.freeze({ status: 'conflict', currentRevision });
-      const currentConfiguration = await loadConfiguration(client, tenantId);
-      const referenceError = await validateReferences(client, tenantId, currentConfiguration, configuration, changedAt);
-      if (referenceError) return Object.freeze({ status: 'invalid', code: referenceError });
-      await appendSnapshot(client, {
+      const currentConfiguration = await loadTenantLocationConfigurationWithClient(client, tenantId);
+      const proposed = requireTransition(currentConfiguration, configuration);
+      const referenceError = await validateReferences(client, tenantId, currentConfiguration, proposed, changedAt);
+      if (referenceError) throw repositoryInputError(referenceError);
+      await ensureTenantLocationSnapshotWithClient(client, {
         tenantId,
         revision: currentRevision,
         configuration: currentConfiguration,
         changedAt,
         actorUserId,
       });
-      await applyConfiguration(client, tenantId, configuration, changedAt);
-      const revisionResult = await client.query({
-        name: 'tenant-locations-revision-advance',
-        text: `
-          UPDATE tenants
-          SET locations_revision = $3, updated_at = $4
-          WHERE id = $1 AND locations_revision = $2
-          RETURNING locations_revision
-        `,
-        values: [tenantId, expectedRevision, nextRevision, changedAt],
+      await applyConfiguration(client, tenantId, proposed, changedAt);
+      await advanceTenantLocationRevisionWithClient(client, {
+        tenantId,
+        currentRevision,
+        nextRevision,
+        changedAt,
       });
-      if (revisionResult.rowCount !== 1) return Object.freeze({ status: 'conflict', currentRevision });
-      await appendSnapshot(client, { tenantId, revision: nextRevision, configuration, changedAt, actorUserId });
-      const audit = await auditRepository.appendWithClient(client, auditEvent);
-      if (!audit) throw new Error('AUDIT_APPEND_FAILED');
-      return currentWithClient(client, tenantId);
+      const applied = await loadTenantLocationConfigurationWithClient(client, tenantId);
+      await ensureTenantLocationSnapshotWithClient(client, {
+        tenantId,
+        revision: nextRevision,
+        configuration: applied,
+        changedAt,
+        actorUserId,
+      });
+      await appendAudit(client, auditRepository, auditEvent);
+      return currentWithClient(client, tenantId, nextRevision);
     });
   }
 
   return Object.freeze({
     async current(tenantId) {
-      return currentWithClient(pool, tenantId);
+      requireUuid(tenantId, 'TENANT_ID_INVALID');
+      return withPostgresTransaction(pool, async (client) => {
+        return currentWithClient(client, tenantId);
+      }, { isolationLevel: 'REPEATABLE READ', readOnly: true });
     },
     async update(args) {
-      const result = await mutate(args);
-      if (result?.status === 'invalid') {
-        const error = new Error(result.code);
-        error.name = 'TenantLocationReferenceError';
-        error.code = result.code;
-        throw error;
-      }
-      return result;
+      return mutate(args);
     },
     async history(tenantId, limit) {
+      requireUuid(tenantId, 'TENANT_ID_INVALID');
       const result = await pool.query({
         name: 'tenant-locations-history-list',
         text: `
@@ -295,12 +449,14 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
         values: [tenantId, limit],
       });
       return Object.freeze(result.rows.map((row) => Object.freeze({
-        revision: Number(row.revision),
+        revision: requireRevision(row.revision),
         changedAt: row.changed_at.toISOString(),
-        actorUserId: row.actor_user_id,
+        actorUserId: requireUuid(row.actor_user_id, 'TENANT_LOCATION_HISTORY_ACTOR_INVALID'),
       })));
     },
     async revision(tenantId, revision) {
+      requireUuid(tenantId, 'TENANT_ID_INVALID');
+      const requestedRevision = requireRevision(revision);
       const result = await pool.query({
         name: 'tenant-locations-history-get',
         text: `
@@ -308,19 +464,21 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
           FROM tenant_location_revisions
           WHERE tenant_id = $1 AND revision = $2
         `,
-        values: [tenantId, revision],
+        values: [tenantId, requestedRevision],
       });
       const row = result.rows[0];
       return row ? Object.freeze({
-        revision: Number(row.revision),
-        configuration: row.configuration,
+        revision: requireRevision(row.revision),
+        configuration: normalizePersistedConfiguration(row.configuration),
         changedAt: row.changed_at.toISOString(),
-        actorUserId: row.actor_user_id,
+        actorUserId: requireUuid(row.actor_user_id, 'TENANT_LOCATION_HISTORY_ACTOR_INVALID'),
       }) : null;
     },
     async rollback({ tenantId, expectedRevision, nextRevision, sourceRevision, changedAt, actorUserId, auditEvent }) {
+      requireUuid(tenantId, 'TENANT_ID_INVALID');
+      requireUuid(actorUserId, 'ACTOR_USER_ID_INVALID');
       return withPostgresTransaction(pool, async (client) => {
-        const currentRevision = await loadRevision(client, tenantId, { lock: true });
+        const currentRevision = await lockTenantLocationRevisionWithClient(client, tenantId);
         if (currentRevision !== expectedRevision) return Object.freeze({ status: 'conflict', currentRevision });
         const sourceResult = await client.query({
           name: 'tenant-locations-history-source-lock',
@@ -332,30 +490,36 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
           `,
           values: [tenantId, sourceRevision],
         });
-        if (!sourceResult.rows[0]) {
-          const error = new Error('TENANT_LOCATION_REVISION_NOT_FOUND');
-          error.code = 'TENANT_LOCATION_REVISION_NOT_FOUND';
-          throw error;
-        }
-        const configuration = sourceResult.rows[0].configuration;
-        const currentConfiguration = await loadConfiguration(client, tenantId);
-        const referenceError = await validateReferences(client, tenantId, currentConfiguration, configuration, changedAt);
-        if (referenceError) {
-          const error = new Error(referenceError);
-          error.code = referenceError;
-          throw error;
-        }
-        await appendSnapshot(client, { tenantId, revision: currentRevision, configuration: currentConfiguration, changedAt, actorUserId });
-        await applyConfiguration(client, tenantId, configuration, changedAt);
-        await client.query({
-          name: 'tenant-locations-rollback-revision-advance',
-          text: `UPDATE tenants SET locations_revision = $3, updated_at = $4 WHERE id = $1 AND locations_revision = $2`,
-          values: [tenantId, expectedRevision, nextRevision, changedAt],
+        if (!sourceResult.rows[0]) throw repositoryInputError('TENANT_LOCATION_REVISION_NOT_FOUND');
+        const source = normalizePersistedConfiguration(sourceResult.rows[0].configuration);
+        const current = await loadTenantLocationConfigurationWithClient(client, tenantId);
+        const proposed = requireRollbackConfiguration(current, source);
+        const referenceError = await validateReferences(client, tenantId, current, proposed, changedAt);
+        if (referenceError) throw repositoryInputError(referenceError);
+        await ensureTenantLocationSnapshotWithClient(client, {
+          tenantId,
+          revision: currentRevision,
+          configuration: current,
+          changedAt,
+          actorUserId,
         });
-        await appendSnapshot(client, { tenantId, revision: nextRevision, configuration, changedAt, actorUserId });
-        const audit = await auditRepository.appendWithClient(client, auditEvent);
-        if (!audit) throw new Error('AUDIT_APPEND_FAILED');
-        return currentWithClient(client, tenantId);
+        await applyConfiguration(client, tenantId, proposed, changedAt);
+        await advanceTenantLocationRevisionWithClient(client, {
+          tenantId,
+          currentRevision,
+          nextRevision,
+          changedAt,
+        });
+        const applied = await loadTenantLocationConfigurationWithClient(client, tenantId);
+        await ensureTenantLocationSnapshotWithClient(client, {
+          tenantId,
+          revision: nextRevision,
+          configuration: applied,
+          changedAt,
+          actorUserId,
+        });
+        await appendAudit(client, auditRepository, auditEvent);
+        return currentWithClient(client, tenantId, nextRevision);
       });
     },
   });

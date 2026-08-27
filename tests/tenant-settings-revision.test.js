@@ -47,4 +47,9 @@ test('stale writes expose only the current safe revision and never advance it', 
   );
   assert.equal(assertTenantSettingsRevision(5, 5), 5);
   assert.equal(nextTenantSettingsRevision(5), 6);
+  assert.throws(
+    () => nextTenantSettingsRevision(Number.MAX_SAFE_INTEGER - 1),
+    (error) => error instanceof TenantSettingsInputError
+      && error.code === 'TENANT_SETTINGS_REVISION_INVALID',
+  );
 });

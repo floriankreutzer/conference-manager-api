@@ -1,5 +1,6 @@
 import { ApiError } from '../../api-error.js';
 import { readJsonObjectBody, validateExactObject } from '../../security.js';
+import { defineRouteModule } from '../route-module.js';
 
 export const TENANT_LOCATION_ROUTES = Object.freeze({
   current: '/api/v1/tenant/settings/locations',
@@ -112,3 +113,17 @@ export function createTenantLocationHttpHandler({ service, principalGuard, tenan
     return null;
   };
 }
+
+export const tenantLocationRoutes = defineRouteModule({
+  id: 'tenant-locations',
+  routeKey: tenantLocationRouteKey,
+  createHandler(runtime) {
+    return createTenantLocationHttpHandler({
+      service: runtime.tenantLocationAdministrationService,
+      principalGuard: runtime.principalGuard,
+      tenantGuard: runtime.tenantGuard,
+      maxBodyBytes: runtime.maxBodyBytes,
+      maxResponseBytes: runtime.maxResponseBytes,
+    });
+  },
+});

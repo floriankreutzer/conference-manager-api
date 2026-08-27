@@ -20,6 +20,8 @@ No generic Tenant settings service, repository, route or persistence document is
 
 `PUT /api/v1/tenant/settings/locations` accepts exactly `schemaVersion`, `expectedRevision` and `configuration`. The Tenant and actor are always derived from the authenticated server session. Unsafe requests require the existing CSRF guard.
 
+Every route requires Tenant Admin plus `tenant:configure`. Server-side authorization denials are recorded through the existing bounded audit service before the request fails.
+
 `GET /api/v1/tenant/settings/locations/history` returns bounded revision metadata. `GET /api/v1/tenant/settings/locations/history/{revision}` returns an immutable local-configuration snapshot. `POST /api/v1/tenant/settings/locations/rollback` creates a new revision from an existing snapshot; it never rewinds the revision counter.
 
 A stale write returns the shared `409 TENANT_SETTINGS_REVISION_CONFLICT` response with only the current safe numeric revision. No stale mutation, revision increment or success audit event is committed.
@@ -42,23 +44,27 @@ This preserves the existing booking invariant: a Room whose Site time zone is un
 
 ## Concurrency, history and audit
 
-The aggregate uses only `tenants.locations_revision`. Provider discovery/resync does not advance that revision because provider observations are not Tenant settings. A successful local mutation locks the Tenant revision, rechecks `expectedRevision`, validates current server-side references, snapshots the prior local state, applies the local mutation, advances the revision, snapshots the resulting state and appends the server-generated audit event in one PostgreSQL transaction.
+The aggregate uses only `tenants.locations_revision`. Provider discovery/resync does not advance that revision because provider observations are not Tenant settings. Microsoft room import does advance it once whenever an import creates one or more local Rooms. A successful local mutation or local-room import locks the Tenant revision, validates current server-side references, snapshots the prior local state, applies the local mutation, advances the revision, snapshots the actual resulting state and appends server-generated audit evidence in one PostgreSQL transaction.
 
 `tenant_location_revisions` is immutable. Update and delete triggers reject mutation of historical snapshots. History contains local configuration only; provider observations are deliberately excluded so a Microsoft resync cannot rewrite or reinterpret a Tenant settings revision.
+
+Rollback preserves local identities created after the selected historical revision by deactivating those newer Sites/Rooms. Reference checks still apply. The new rollback revision snapshots the actual post-apply state, including those retained inactive identities, rather than claiming that the older snapshot was restored byte-for-byte.
+
+Rollback also revalidates the complete current writable contract. A legacy history snapshot containing an unknown Site time zone remains readable evidence, but it cannot be reapplied until an administrator submits an explicit valid IANA time zone through a normal Locations update.
 
 ## Reference protection
 
 Physical deletion is not part of the public contract. Existing Sites and Rooms must remain present and are deactivated instead. Room creation is blocked in this Microsoft-first path.
 
-Deactivation is rejected when the affected canonical Room identity is referenced by a non-terminal current/future Request or by a non-cancelled provider booking reference. Service and Catering applicability IDs are revalidated inside the Tenant-scoped transaction. Browser claims about references are never authoritative.
+Deactivation is rejected when the affected canonical Room identity is referenced by a non-terminal current/future Request, by a non-cancelled provider booking reference or as the target of an applying confirmed-booking change. Booking-change approval and Locations mutation share the Tenant location-authority lock; whichever starts second must revalidate after the first commits. Service and Catering applicability IDs are revalidated inside the Tenant-scoped transaction. Browser claims about references are never authoritative.
 
 A Site cannot be inactive while one of its Rooms remains active.
 
 ## Rollout and compatibility
 
-The legacy `/api/v1/application/configuration` Site-only endpoint remains temporarily for coordinated client migration. It must not gain new SaaS 2 domains. Before #82 can be closed, all supported Tenant Admin writes must use the versioned Locations endpoint so the legacy route cannot bypass optimistic concurrency.
+The legacy `/api/v1/application/configuration` Site-only endpoint remains temporarily for coordinated client reads. Its `PUT` method is disabled with `405 METHOD_NOT_ALLOWED`; all supported Tenant Admin writes use the versioned Locations endpoint and cannot bypass optimistic concurrency.
 
-Migration 021 may be rolled back only while `tenant_location_revisions` is empty and every Tenant still has `locations_revision = 1`. After a versioned mutation, rollback fails closed and requires a reviewed forward fix or compatible application rollback.
+Migration 021 may be rolled back only while `tenant_location_revisions` is empty, every Tenant still has `locations_revision = 1`, and no Site/Room detail value would be discarded. After a versioned mutation, rollback fails closed and requires a reviewed forward fix or compatible application rollback.
 
 ## Required acceptance evidence
 

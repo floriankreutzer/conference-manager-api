@@ -11,6 +11,8 @@ import {
   createMicrosoft365HttpHandler,
   microsoft365RouteKey,
 } from './http/microsoft365-routes.js';
+import { createRouteModuleRegistry } from './http/route-module.js';
+import { tenantLocationRoutes } from './http/settings/locations.js';
 import { EntraAuthenticationError } from './identity/entra-errors.js';
 import { readEntraTransactionCookie } from './identity/entra-transaction-cookie.js';
 import { createLogger } from './logger.js';
@@ -112,6 +114,7 @@ const ENTRA_CALLBACK_QUERY_KEYS = new Set([
   'correlation_id',
   'error_uri',
 ]);
+const SETTINGS_ROUTE_REGISTRY = createRouteModuleRegistry([tenantLocationRoutes]);
 
 function urlOf(rawUrl, publicOrigin) {
   return new URL(rawUrl, publicOrigin);
@@ -241,6 +244,8 @@ function routeKey(path) {
   if (path === ROUTES.audit) return 'audit';
   if (path === ROUTES.tenantUsers) return 'tenant_users';
   if (TENANT_USER_ROLES_PATH.test(path)) return 'tenant_user_roles';
+  const settingsRoute = SETTINGS_ROUTE_REGISTRY.routeKey(path);
+  if (settingsRoute) return settingsRoute;
   const applicationRoute = applicationRouteKey(path);
   if (applicationRoute) return applicationRoute;
   const microsoft365Route = microsoft365RouteKey(path);
@@ -268,6 +273,7 @@ export function createApp({
   requestService,
   bookingChangeService,
   productionApplicationService,
+  tenantLocationAdministrationService,
   tenantUserAdministrationService,
   microsoft365ConnectionService,
   resolvePrincipal,
@@ -297,6 +303,13 @@ export function createApp({
     verifyCsrf: verifyCsrf || sessionService?.verifyCsrf,
   });
   const tenantGuard = createTenantContextGuard({ loadTenant });
+  const settingsHandler = SETTINGS_ROUTE_REGISTRY.createDispatcher({
+    tenantLocationAdministrationService,
+    principalGuard,
+    tenantGuard,
+    maxBodyBytes: config.maxBodyBytes,
+    maxResponseBytes: config.maxResponseBytes,
+  });
   const applicationHandler = createApplicationHttpHandler({
     service: productionApplicationService,
     principalGuard,
@@ -583,6 +596,18 @@ export function createApp({
           nextBeforeId: publicEvents.at(-1)?.id || null,
           requestId,
         }, config.maxResponseBytes);
+        return;
+      }
+
+      const settingsStatus = await settingsHandler({
+        request,
+        response,
+        parsedUrl,
+        path,
+        requestId,
+      });
+      if (settingsStatus !== null) {
+        statusCode = settingsStatus;
         return;
       }
 

@@ -180,19 +180,13 @@ const tenantLocationAdministrationService = persistence && auditService
     auditService,
   })
   : null;
-const productionApplicationCoreService = persistence && auditService
+const productionApplicationService = persistence && auditService
   ? createProductionApplicationService({
     repository: persistence.applicationRepository,
     requestRepository: persistence.requestRepository,
     authorizationPolicy,
     auditService,
     roomAvailabilityService,
-  })
-  : null;
-const productionApplicationService = productionApplicationCoreService
-  ? Object.freeze({
-    ...productionApplicationCoreService,
-    tenantLocations: tenantLocationAdministrationService,
   })
   : null;
 const tenantUserAdministrationService = persistence && auditService
@@ -290,6 +284,7 @@ const server = createHttpServer({
   requestService,
   bookingChangeService,
   productionApplicationService,
+  tenantLocationAdministrationService,
   tenantUserAdministrationService,
   microsoft365ConnectionService: microsoft365Service,
   loadTenant: persistence?.loadTenant,

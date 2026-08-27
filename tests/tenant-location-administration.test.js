@@ -3,9 +3,13 @@ import test from 'node:test';
 import { createTenantLocationAdministrationService } from '../src/application/tenant-location-administration-service.js';
 import {
   TenantSettingsConflictError,
-  TenantSettingsInputError,
 } from '../src/application/tenant-settings-errors.js';
-import { normalizeTenantLocations } from '../src/domain/tenant-locations.js';
+import {
+  TenantLocationInputError,
+  assertTenantLocationTransition,
+  normalizeTenantLocations,
+  tenantLocationRollbackConfiguration,
+} from '../src/domain/tenant-locations.js';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
@@ -48,9 +52,11 @@ function locationConfiguration(overrides = {}) {
 
 function runtime({ revision = 4 } = {}) {
   const calls = [];
+  let currentReads = 0;
   const configuration = locationConfiguration();
   const repository = {
     async current(tenantId) {
+      currentReads += 1;
       assert.equal(tenantId, TENANT_ID);
       return {
         revision,
@@ -67,6 +73,9 @@ function runtime({ revision = 4 } = {}) {
     },
     async update(args) {
       calls.push(args);
+      if (args.expectedRevision !== revision) {
+        return { status: 'conflict', currentRevision: revision };
+      }
       return {
         revision: args.nextRevision,
         configuration: args.configuration,
@@ -88,9 +97,11 @@ function runtime({ revision = 4 } = {}) {
   };
   const auditService = {
     createEvent(event) { return { id: 'audit', ...event }; },
+    async recordAuthorizationDenied() {},
   };
   return {
     calls,
+    currentReads: () => currentReads,
     service: createTenantLocationAdministrationService({
       repository,
       authorizationPolicy,
@@ -109,7 +120,7 @@ test('location normalization keeps provider authority outside the mutable contra
       ...locationConfiguration(),
       rooms: [{ ...locationConfiguration().rooms[0], externalRoomId: 'provider-id' }],
     }, locationConfiguration()),
-    (error) => error instanceof TenantSettingsInputError && error.code === 'TENANT_LOCATIONS_INVALID',
+    (error) => error instanceof TenantLocationInputError && error.code === 'TENANT_LOCATIONS_INVALID',
   );
 });
 
@@ -119,7 +130,7 @@ test('legacy missing time zones are never fabricated into a writable location sn
   });
   assert.throws(
     () => normalizeTenantLocations(legacy, legacy),
-    (error) => error instanceof TenantSettingsInputError
+    (error) => error instanceof TenantLocationInputError
       && error.code === 'TENANT_SITE_TIME_ZONE_INVALID',
   );
 });
@@ -130,14 +141,15 @@ test('manual rooms cannot be created through the Microsoft-first location contra
     rooms: [...current.rooms, { ...current.rooms[0], id: 'manual-room' }],
   });
   assert.throws(
-    () => normalizeTenantLocations(proposed, current),
-    (error) => error instanceof TenantSettingsInputError
+    () => assertTenantLocationTransition(current, proposed),
+    (error) => error instanceof TenantLocationInputError
       && error.code === 'TENANT_ROOM_PROVIDER_IMPORT_REQUIRED',
   );
 });
 
 test('location service advances revisions and creates audit-bound mutations', async () => {
-  const { service, calls } = runtime({ revision: 4 });
+  const context = runtime({ revision: 4 });
+  const { service, calls } = context;
   const result = await service.update({
     principal,
     tenantContext,
@@ -152,10 +164,12 @@ test('location service advances revisions and creates audit-bound mutations', as
   assert.equal(calls[0].expectedRevision, 4);
   assert.equal(calls[0].nextRevision, 5);
   assert.equal(calls[0].auditEvent.metadata.domain, 'locations');
+  assert.equal(context.currentReads(), 0);
 });
 
-test('stale location writes fail before persistence and disclose only current revision', async () => {
-  const { service, calls } = runtime({ revision: 7 });
+test('stale location writes are decided under the persistence lock and disclose only current revision', async () => {
+  const context = runtime({ revision: 7 });
+  const { service, calls } = context;
   await assert.rejects(
     service.update({
       principal,
@@ -167,7 +181,8 @@ test('stale location writes fail before persistence and disclose only current re
     }),
     (error) => error instanceof TenantSettingsConflictError && error.currentRevision === 7,
   );
-  assert.equal(calls.length, 0);
+  assert.equal(calls.length, 1);
+  assert.equal(context.currentReads(), 0);
 });
 
 test('provider context is read-only presentation data returned beside local configuration', async () => {
@@ -176,4 +191,53 @@ test('provider context is read-only presentation data returned beside local conf
   assert.equal(current.providerContext[0].provider, 'microsoft365');
   assert.equal(Object.hasOwn(current.providerContext[0], 'externalRoomId'), false);
   assert.equal(Object.hasOwn(current.providerContext[0], 'resourceAddress'), false);
+});
+
+test('rollback keeps entities created after the source snapshot present and inactive', () => {
+  const source = locationConfiguration();
+  const current = locationConfiguration({
+    sites: [
+      ...source.sites,
+      { ...source.sites[0], id: 'munich', name: 'Munich' },
+    ],
+    rooms: [
+      ...source.rooms,
+      { ...source.rooms[0], id: 'room-2', siteId: 'munich', name: 'Room 2' },
+    ],
+  });
+  const rollback = tenantLocationRollbackConfiguration(current, source);
+  assert.deepEqual(rollback.sites.map(({ id, active }) => ({ id, active })), [
+    { id: 'berlin', active: true },
+    { id: 'munich', active: false },
+  ]);
+  assert.deepEqual(rollback.rooms.map(({ id, active }) => ({ id, active })), [
+    { id: 'room-1', active: true },
+    { id: 'room-2', active: false },
+  ]);
+});
+
+test('rollback cannot restore a legacy snapshot with an unknown Site time zone', () => {
+  const current = locationConfiguration();
+  const legacySource = locationConfiguration({
+    sites: [{ ...locationConfiguration().sites[0], timeZone: null }],
+  });
+  assert.throws(
+    () => tenantLocationRollbackConfiguration(current, legacySource),
+    (error) => error instanceof TenantLocationInputError
+      && error.code === 'TENANT_SITE_TIME_ZONE_INVALID',
+  );
+});
+
+test('location asset references are opaque identifiers and never browser-controlled URLs', () => {
+  const configuration = locationConfiguration({
+    rooms: [{
+      ...locationConfiguration().rooms[0],
+      floorplanAssetId: 'https://attacker.invalid/floorplan',
+    }],
+  });
+  assert.throws(
+    () => normalizeTenantLocations(configuration),
+    (error) => error instanceof TenantLocationInputError
+      && error.code === 'TENANT_ROOM_FLOORPLAN_INVALID',
+  );
 });

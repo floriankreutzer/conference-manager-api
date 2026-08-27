@@ -646,9 +646,11 @@ for (const required of [
   'tenant_location_revisions',
   'sites_details_object',
   'rooms_details_object',
-  "VALUES (21, 'tenant_location_self_service')",
 ]) {
   if (!locationMigration.includes(required)) throw new Error(`Tenant location migration is missing ${required}.`);
+}
+if (/\b(?:BEGIN|COMMIT)\s*;|\bschema_migrations\b/i.test(locationMigration)) {
+  throw new Error('Tenant location migration must leave transactions and schema bookkeeping to the migration runner.');
 }
 if (/UPDATE\s+sites[\s\S]{0,200}time_zone\s*=\s*['\"]?UTC/i.test(locationMigration)) {
   throw new Error('Tenant location migration must never fabricate an authoritative Site time zone.');
@@ -657,9 +659,14 @@ const locationRollback = await readFile('migrations/021_tenant_location_self_ser
 for (const required of [
   'LOCK TABLE tenant_location_revisions IN ACCESS EXCLUSIVE MODE',
   'LOCK TABLE tenants IN ACCESS EXCLUSIVE MODE',
-  'Cannot rollback schema 21 after Tenant location settings have been mutated',
+  "FROM sites WHERE details <> '{}'::jsonb",
+  "FROM rooms WHERE details <> '{}'::jsonb",
+  'TENANT_LOCATION_HISTORY_REQUIRE_REVIEW',
 ]) {
   if (!locationRollback.includes(required)) throw new Error(`Tenant location rollback is missing ${required}.`);
+}
+if (/\b(?:BEGIN|COMMIT)\s*;|\bschema_migrations\b/i.test(locationRollback)) {
+  throw new Error('Tenant location rollback must leave transactions and schema bookkeeping to the migration runner.');
 }
 
 for (const migration of [
