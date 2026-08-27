@@ -14,7 +14,19 @@ import {
   requireTenantSettingsSchemaVersion,
   TENANT_SETTINGS_SCHEMA_VERSION,
 } from './tenant-settings-revision.js';
-import { TenantSettingsConflictError } from './tenant-settings-errors.js';
+import {
+  TenantSettingsConflictError,
+  TenantSettingsInputError,
+} from './tenant-settings-errors.js';
+
+const SAFE_REPOSITORY_INPUT_CODES = new Set([
+  'TENANT_LOCATION_REFERENCED_REQUEST',
+  'TENANT_LOCATION_REFERENCED_PROVIDER',
+  'TENANT_LOCATION_SERVICE_REFERENCE_INVALID',
+  'TENANT_LOCATION_CATERING_REFERENCE_INVALID',
+  'TENANT_LOCATION_REVISION_NOT_FOUND',
+  'TENANT_ROOM_PROVIDER_IMPORT_REQUIRED',
+]);
 
 function requireRuntime(repository, authorizationPolicy, auditService) {
   if (!repository
@@ -84,6 +96,15 @@ function response(result) {
   });
 }
 
+async function safeRepositoryMutation(operation) {
+  try {
+    return await operation();
+  } catch (error) {
+    if (SAFE_REPOSITORY_INPUT_CODES.has(error?.code)) throw new TenantSettingsInputError(error.code);
+    throw error;
+  }
+}
+
 export function createTenantLocationAdministrationService({
   repository,
   authorizationPolicy,
@@ -110,7 +131,7 @@ export function createTenantLocationAdministrationService({
       const normalized = normalizeTenantLocations(configuration, current.configuration);
       const nextRevision = nextTenantSettingsRevision(expected);
       const at = changedAt(clock);
-      const result = await repository.update({
+      const result = await safeRepositoryMutation(() => repository.update({
         tenantId: tenantContext.tenantId,
         expectedRevision: expected,
         nextRevision,
@@ -126,7 +147,7 @@ export function createTenantLocationAdministrationService({
           nextRevision,
           operation: 'tenant_locations_update',
         }),
-      });
+      }));
       if (result?.status === 'conflict') throw new TenantSettingsConflictError(result.currentRevision);
       return response(result);
     },
@@ -154,7 +175,7 @@ export function createTenantLocationAdministrationService({
       const source = requireTenantSettingsRevision(sourceRevision);
       const nextRevision = nextTenantSettingsRevision(expected);
       const at = changedAt(clock);
-      const result = await repository.rollback({
+      const result = await safeRepositoryMutation(() => repository.rollback({
         tenantId: tenantContext.tenantId,
         expectedRevision: expected,
         nextRevision,
@@ -171,7 +192,7 @@ export function createTenantLocationAdministrationService({
           operation: 'tenant_locations_rollback',
           sourceRevision: source,
         }),
-      });
+      }));
       if (result?.status === 'conflict') throw new TenantSettingsConflictError(result.currentRevision);
       return response(result);
     },
