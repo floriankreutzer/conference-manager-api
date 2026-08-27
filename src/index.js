@@ -14,6 +14,7 @@ import { createMicrosoft365RoomMappingService } from './application/microsoft365
 import { createProductionApplicationService } from './application/production-application-service.js';
 import { createRequestService } from './application/request-service.js';
 import { createRoomAvailabilityService } from './application/room-availability-service.js';
+import { createTenantLocationAdministrationService } from './application/tenant-location-administration-service.js';
 import { createTenantPilotService } from './application/tenant-pilot-service.js';
 import { createTenantUserAdministrationService } from './application/tenant-user-administration-service.js';
 import { createAuditService } from './audit/audit-service.js';
@@ -172,13 +173,26 @@ const bookingChangeService = persistence && auditService && microsoft365BookingS
     bookingServiceFactory: microsoft365BookingServiceFactory,
   })
   : null;
-const productionApplicationService = persistence && auditService
+const tenantLocationAdministrationService = persistence && auditService
+  ? createTenantLocationAdministrationService({
+    repository: persistence.tenantLocationRepository,
+    authorizationPolicy,
+    auditService,
+  })
+  : null;
+const productionApplicationCoreService = persistence && auditService
   ? createProductionApplicationService({
     repository: persistence.applicationRepository,
     requestRepository: persistence.requestRepository,
     authorizationPolicy,
     auditService,
     roomAvailabilityService,
+  })
+  : null;
+const productionApplicationService = productionApplicationCoreService
+  ? Object.freeze({
+    ...productionApplicationCoreService,
+    tenantLocations: tenantLocationAdministrationService,
   })
   : null;
 const tenantUserAdministrationService = persistence && auditService
