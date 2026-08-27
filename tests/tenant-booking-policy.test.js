@@ -54,7 +54,7 @@ function configuration(overrides = {}) {
 }
 
 function context(overrides = {}) {
-  return {
+  const value = {
     operation: BOOKING_POLICY_OPERATION.CREATE,
     evaluationInstant: new Date(NOW),
     startsAt: new Date('2026-03-29T01:30:00.000Z'),
@@ -64,6 +64,11 @@ function context(overrides = {}) {
     participants: 20,
     ...overrides,
   };
+  if (
+    value.operation === BOOKING_POLICY_OPERATION.CHANGE
+    && !Object.hasOwn(value, 'changeWindowStartsAt')
+  ) value.changeWindowStartsAt = value.startsAt;
+  return value;
 }
 
 function principal(overrides = {}) {
@@ -253,6 +258,26 @@ test('booking policy rejects participant, applicability, change and cancellation
       ),
     );
   }
+});
+
+test('change window uses the current confirmed start while proposed lead and advance use the new start', () => {
+  assert.throws(
+    () => evaluateTenantBookingPolicy(configuration(), context({
+      operation: BOOKING_POLICY_OPERATION.CHANGE,
+      startsAt: new Date('2026-04-29T00:30:00.000Z'),
+      changeWindowStartsAt: new Date('2026-03-29T03:29:00.000Z'),
+    })),
+    (error) => error instanceof TenantBookingPolicyViolationError
+      && error.code === 'BOOKING_POLICY_CHANGE_WINDOW_VIOLATION',
+  );
+  assert.throws(
+    () => evaluateTenantBookingPolicy(configuration(), {
+      ...context(),
+      operation: BOOKING_POLICY_OPERATION.CHANGE,
+    }),
+    (error) => error instanceof TenantBookingPolicyInputError
+      && error.code === 'TENANT_BOOKING_POLICY_CHANGE_WINDOW_START_INVALID',
+  );
 });
 
 test('historical Request enforcement keeps its immutable policy snapshot', () => {

@@ -40,7 +40,7 @@ The parser is `src/config.js`. Values below are protected deployment configurati
 | `HOST` | Platform-controlled bind address | Runtime binding only |
 | `PORT` | 1-65535 | Bounded listener configuration |
 | `MAX_BODY_BYTES` | Default 65536; max 1048576 | Request exhaustion bound |
-| `MAX_RESPONSE_BYTES` | Default 1048576; max 4194304 | Response exhaustion and accidental disclosure bound |
+| `MAX_RESPONSE_BYTES` | Min 786432; default 1048576; max 4194304 | Guarantees one legal Request-v2 projection while byte-aware pages remain below the configured/frontend bound |
 | `RATE_LIMIT_MAX` | Default 120 | Process-local defense-in-depth |
 | `RATE_LIMIT_WINDOW_MS` | Default 60000 | Bounded rate window |
 | `REQUEST_TIMEOUT_MS` | Default 15000; max 120000 | Slow-request bound |
@@ -137,7 +137,7 @@ The browser may hold the CSRF token in runtime memory. It must not persist the s
 - Pilot/Production use `DATABASE_SSL=verify-full` with a certificate/hostname-valid endpoint.
 - SQL application values remain parameterized.
 - Deployment automation applies migrations before application rollout; startup does not auto-migrate.
-- Readiness requires connectivity and exact repository-defined schema version 26.
+- Readiness requires connectivity and exact repository-defined schema version 27.
 - Tenant ownership and referential integrity are reinforced at database level.
 - Advisory locks and optimistic versions protect concurrent security/business transitions.
 - Migration rollback guards prevent silent removal of security/business evidence.

@@ -10,7 +10,7 @@ import { createPostgresPool } from '../src/persistence/postgres/pool.js';
 import {
   createPostgresTenantUserLifecycleRepository,
 } from '../src/persistence/postgres/tenant-user-lifecycle-repository.js';
-import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
 import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 // Keep this integration fixture namespace distinct because node:test executes
@@ -236,6 +236,7 @@ test('Tenant User disable is isolated, audit-atomic and fails Entra JIT access c
   });
   assert.equal(lastAdmin.status, 'last_tenant_admin');
 
+  assert.equal(await rollbackToVersion(pool, 27), true);
   await assert.rejects(
     rollbackLatest(pool),
     (error) => error.code === '55000'

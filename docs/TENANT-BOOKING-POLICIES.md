@@ -29,7 +29,8 @@ The allowlisted Tenant-configurable rules are:
 - maximum advance window in elapsed minutes;
 - cancellation window in elapsed minutes;
 - change window in elapsed minutes;
-- maximum participants within the platform maximum of 100,000;
+- a Tenant-configured maximum participant rule; Request composition v2 separately enforces the
+  immutable platform maximum of 500, so configuration can restrict but never raise that bound;
 - optional allowlists of active Sites, rooms and services.
 
 No expression, script, arbitrary workflow, client-defined transition or custom
@@ -77,22 +78,23 @@ be effective at the mutation instant.
 
 The default version is platform-default-v1, effective from
 1970-01-01T00:00:00.000Z. It permits a zero-minute lead/change/cancellation
-window, a 366-day maximum advance window, the platform participant maximum and
-all active Tenant resources. This is an explicit compatibility default, not a
-replacement for immutable platform checks.
+window, a 366-day maximum advance window, the policy aggregate's compatibility
+participant limit and all active Tenant resources. Request v2 still applies its
+500-participant platform maximum first. This is an explicit compatibility
+default, not a replacement for immutable platform checks.
 
 ## Request enforcement and snapshots
 
 The bounded application service exposes evaluateCurrentForRequest for Request
 create, resubmit and confirmed-booking change integration. The caller supplies
-a server-derived Tenant ID, authoritative Request/resource facts and
-server-validated participant count.
+a server-derived Tenant ID, authoritative Request/resource facts and the
+server-validated v2 participant count.
 
 A successful evaluation returns the aggregate revision, selected policy
 version, effective instant, evaluation instant and immutable rule snapshot.
-That snapshot must be persisted with the authoritative Request representation
-by the #126 integration so later configuration changes cannot reinterpret
-historical Requests.
+Request composition v2 persists that snapshot with the authoritative Request
+representation so later configuration changes cannot reinterpret historical
+Requests.
 
 Confirmation, workflow transition and cancellation use
 evaluateSnapshotForRequest with the immutable snapshot already attached to the
@@ -136,6 +138,7 @@ non-default configuration exists; a forward fix or reviewed data migration is
 then required.
 
 The central composition root registers the route module, service and PostgreSQL
-repository, so the administration API is reachable under schema version 26.
-Request-path enforcement and immutable Request snapshot persistence remain the
-separate #126 integration boundary and are not implemented by this administration package.
+repository, so the administration API and Request integration are reachable
+under schema version 27. Policy administration remains a separate bounded
+owner; Request composition consumes only its public evaluation/snapshot
+contract.

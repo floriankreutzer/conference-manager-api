@@ -173,6 +173,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 24, name: 'tenant_booking_policies' },
       { version: 25, name: 'tenant_cost_allocation' },
       { version: 26, name: 'tenant_user_lifecycle_revision' },
+      { version: 27, name: 'request_composition_v2' },
     ]);
   });
 
@@ -617,6 +618,19 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
   });
 
   await t.test('audit migration refuses unreviewed legacy rows before reapplication', async () => {
+    await pool.query('ALTER TABLE request_revisions DISABLE TRIGGER request_revisions_append_only');
+    try {
+      await pool.query(
+        'DELETE FROM request_revisions WHERE tenant_id = ANY($1::uuid[])',
+        [[TENANT_A, TENANT_B]],
+      );
+    } finally {
+      await pool.query('ALTER TABLE request_revisions ENABLE TRIGGER request_revisions_append_only');
+    }
+    await pool.query(
+      'DELETE FROM requests WHERE tenant_id = ANY($1::uuid[])',
+      [[TENANT_A, TENANT_B]],
+    );
     assert.equal(await rollbackToVersion(pool, 10), true);
     assert.equal(await isPostgresSchemaReady(pool), false);
     let remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');

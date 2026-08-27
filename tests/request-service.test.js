@@ -38,6 +38,8 @@ function requestRecord(overrides = {}) {
     tenantId: TENANT_A,
     id: 'REQ-1',
     requesterUserId: USER_A,
+    schemaVersion: 1,
+    version: 1,
     roomId: 'room-a',
     status: REQUEST_STATUS.SUBMITTED,
     statusReason: null,
@@ -55,15 +57,32 @@ function requestRecord(overrides = {}) {
 function fakeRepository(initial = requestRecord()) {
   let current = initial;
   let forceConflict = false;
+  let openBookingChangeStatus = null;
   const committedAuditEvents = [];
   return {
     committedAuditEvents,
     setConflict(value) {
       forceConflict = value;
     },
+    setOpenBookingChangeStatus(value) {
+      openBookingChangeStatus = value;
+    },
+    get openBookingChangeStatus() {
+      return openBookingChangeStatus;
+    },
     async findByTenantIdAndId(tenantId, requestId) {
       if (!current || current.tenantId !== tenantId || current.id !== requestId) return null;
       return current;
+    },
+    async listHistoryPageByTenantIdAndId(tenantId, requestId, { limit }) {
+      if (!current || current.tenantId !== tenantId || current.id !== requestId) return [];
+      return [{
+        version: current.version,
+        schemaVersion: current.schemaVersion,
+        operation: 'migrated_legacy',
+        capturedAt: current.updatedAt,
+        request: { id: current.id, schemaVersion: current.schemaVersion, version: current.version },
+      }].slice(0, limit);
     },
     async transitionByTenantIdAndId({
       tenantId,
@@ -73,13 +92,20 @@ function fakeRepository(initial = requestRecord()) {
       reason,
       changedAt,
       auditEvent,
+      bookingChangeAuditEvent,
     }) {
       if (forceConflict || !current) return null;
       if (current.tenantId !== tenantId || current.id !== requestId || current.status !== expectedStatus) return null;
+      if (openBookingChangeStatus === 'applying') return null;
+      if (openBookingChangeStatus === 'pending') {
+        openBookingChangeStatus = 'superseded';
+        committedAuditEvents.push(bookingChangeAuditEvent);
+      }
       current = {
         ...current,
         status: nextStatus,
         statusReason: reason,
+        version: current.version + 1,
         statusChangedAt: changedAt.toISOString(),
         updatedAt: changedAt.toISOString(),
       };
@@ -119,6 +145,46 @@ test('request service requires the final confirmation boundary at composition ti
     }),
     /FINAL_ROOM_CONFIRMATION_SERVICE_REQUIRED/,
   );
+});
+
+test('confirmed Request cancellation atomically supersedes a pending booking change', async () => {
+  const repository = fakeRepository(requestRecord({ status: REQUEST_STATUS.CONFIRMED }));
+  repository.setOpenBookingChangeStatus('pending');
+  const context = service(repository);
+  const updated = await context.requestService.transitionRequest({
+    principal: principal(),
+    tenantContext: { tenantId: TENANT_A },
+    requestId: 'REQ-1',
+    transition: REQUEST_TRANSITION.CANCEL,
+    correlationId: CORRELATION_ID,
+  });
+  assert.equal(updated.status, REQUEST_STATUS.CANCELLED);
+  assert.equal(repository.openBookingChangeStatus, 'superseded');
+  assert.deepEqual(repository.committedAuditEvents.map((event) => event.action), [
+    AUDIT_ACTION.REQUEST_BOOKING_CHANGE,
+    AUDIT_ACTION.REQUEST_TRANSITION,
+  ]);
+  assert.deepEqual(repository.committedAuditEvents[0].metadata, {
+    operation: 'supersede',
+    reasonCode: 'request_released',
+    transition: REQUEST_TRANSITION.CANCEL,
+  });
+});
+
+test('confirmed Request cancellation conflicts while booking-change approval is applying', async () => {
+  const repository = fakeRepository(requestRecord({ status: REQUEST_STATUS.CONFIRMED }));
+  repository.setOpenBookingChangeStatus('applying');
+  const context = service(repository);
+  await assert.rejects(context.requestService.transitionRequest({
+    principal: principal(),
+    tenantContext: { tenantId: TENANT_A },
+    requestId: 'REQ-1',
+    transition: REQUEST_TRANSITION.CANCEL,
+    correlationId: CORRELATION_ID,
+  }), RequestStateConflictError);
+  assert.equal(repository.openBookingChangeStatus, 'applying');
+  assert.equal((await repository.findByTenantIdAndId(TENANT_A, 'REQ-1')).status, REQUEST_STATUS.CONFIRMED);
+  assert.equal(repository.committedAuditEvents.length, 0);
 });
 
 test('request service returns employee-owned resources and audits concealed cross-user probes', async () => {
@@ -173,6 +239,27 @@ test('request service rejects malformed IDs and audits valid absent object probe
   );
   assert.equal(context.audit.events[0].action, AUDIT_ACTION.AUTHORIZATION_DENIED);
   assert.equal(context.audit.events[0].targetId, 'REQ-404');
+});
+
+test('request history uses the same object authorization and concealed tenant scope', async () => {
+  const own = service(fakeRepository());
+  const history = await own.requestService.getRequestHistory({
+    principal: principal(),
+    tenantContext: { tenantId: TENANT_A },
+    requestId: 'REQ-1',
+    correlationId: CORRELATION_ID,
+  });
+  assert.deepEqual(history.history.map((entry) => entry.version), [1]);
+  assert.deepEqual(history.page, { limit: 10, complete: true, nextCursor: null });
+
+  const foreign = service(fakeRepository(requestRecord({ requesterUserId: USER_B })));
+  await assert.rejects(foreign.requestService.getRequestHistory({
+    principal: principal(),
+    tenantContext: { tenantId: TENANT_A },
+    requestId: 'REQ-1',
+    correlationId: CORRELATION_ID,
+  }), (error) => error instanceof AuthorizationDeniedError && error.conceal === true);
+  assert.equal(foreign.audit.events[0].metadata.operation, 'history');
 });
 
 test('authorized transitions carry only the server policy decision into the atomic audit contract', async () => {

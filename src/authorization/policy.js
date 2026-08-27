@@ -272,6 +272,13 @@ export function createAuthorizationPolicy() {
       return Object.freeze({ requesterUserId: principal.userId });
     },
 
+    authorizeRequestReport(principal, tenantContext) {
+      assertPrincipalShape(principal);
+      assertTenantBinding(principal, tenantContext);
+      requirePermission(principal, PERMISSION.REQUEST_MANAGE, [TENANT_ROLE.CONFERENCE_MANAGER]);
+      return true;
+    },
+
     authorizeRequestCreate(principal, tenantContext) {
       assertPrincipalShape(principal);
       assertTenantBinding(principal, tenantContext);

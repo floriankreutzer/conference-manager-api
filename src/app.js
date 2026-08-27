@@ -2,6 +2,7 @@ import { ApiError, asApiError } from './api-error.js';
 import { AuthorizationDeniedError } from './authorization/errors.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { assertProductionConfig } from './config.js';
+import { toPublicRequest } from './domain/request.js';
 import {
   applicationRouteKey,
   createApplicationHttpHandler,
@@ -51,6 +52,7 @@ const ROUTES = Object.freeze({
   principal: '/api/v1/session',
 });
 const REQUEST_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/;
+const REQUEST_HISTORY_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/history$/;
 const REQUEST_TRANSITION_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/transitions$/;
 const BOOKING_CHANGE_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/booking-change$/;
 const BOOKING_CHANGE_DECISION_PATH = new RegExp(
@@ -71,11 +73,11 @@ const TRANSITION_BODY_SCHEMA = Object.freeze({
 });
 const BOOKING_CHANGE_BODY_SCHEMA = Object.freeze({
   required: Object.freeze({
-    roomId: (value) => typeof value === 'string' && value.length >= 1 && value.length <= 128,
-    startsAt: (value) => typeof value === 'string' && value.length <= 64,
-    endsAt: (value) => typeof value === 'string' && value.length <= 64,
-    internalParticipants: (value) => Number.isSafeInteger(value) && value >= 0 && value <= 100_000,
-    externalParticipants: (value) => Number.isSafeInteger(value) && value >= 0 && value <= 100_000,
+    schemaVersion: (value) => value === 2,
+    expectedVersion: (value) => Number.isSafeInteger(value)
+      && value >= 1
+      && value < Number.MAX_SAFE_INTEGER,
+    request: (value) => value && typeof value === 'object' && !Array.isArray(value),
   }),
   optional: Object.freeze({}),
 });
@@ -161,6 +163,17 @@ function assertNoQuery(parsedUrl) {
   if ([...parsedUrl.searchParams.keys()].length > 0) throw new ApiError(400, 'VALIDATION_FAILED');
 }
 
+function requestHistoryQuery(parsedUrl) {
+  const result = { limit: undefined, cursor: undefined };
+  for (const key of parsedUrl.searchParams.keys()) {
+    if (!['limit', 'cursor'].includes(key) || parsedUrl.searchParams.getAll(key).length !== 1) {
+      throw new ApiError(400, 'VALIDATION_FAILED');
+    }
+    result[key] = parsedUrl.searchParams.get(key);
+  }
+  return Object.freeze(result);
+}
+
 function entraCallbackFromUrl(parsedUrl) {
   for (const key of parsedUrl.searchParams.keys()) {
     if (!ENTRA_CALLBACK_QUERY_KEYS.has(key) || parsedUrl.searchParams.getAll(key).length !== 1) {
@@ -177,21 +190,6 @@ function entraCallbackFromUrl(parsedUrl) {
   }
   if (typeof code !== 'string' || !code || code.length > 4096) throw new ApiError(400, 'VALIDATION_FAILED');
   return Object.freeze({ state, code, providerError: false });
-}
-
-function publicRequest(request) {
-  return Object.freeze({
-    id: request.id,
-    roomId: request.roomId,
-    status: request.status,
-    statusReason: request.statusReason,
-    startsAt: request.startsAt,
-    endsAt: request.endsAt,
-    internalParticipants: request.internalParticipants,
-    externalParticipants: request.externalParticipants,
-    statusChangedAt: request.statusChangedAt,
-    updatedAt: request.updatedAt,
-  });
 }
 
 function routeKey(path) {
@@ -211,6 +209,7 @@ function routeKey(path) {
   const microsoft365Route = microsoft365RouteKey(path);
   if (microsoft365Route) return microsoft365Route;
   if (REQUEST_TRANSITION_PATH.test(path)) return 'request_transition';
+  if (REQUEST_HISTORY_PATH.test(path)) return 'request_history';
   if (BOOKING_CHANGE_DECISION_PATH.test(path)) return 'booking_change_decision';
   if (BOOKING_CHANGE_PATH.test(path)) return 'booking_change';
   if (REQUEST_PATH.test(path)) return 'request';
@@ -616,6 +615,7 @@ export function createApp({
       const bookingChangeMatch = path.match(BOOKING_CHANGE_PATH);
       const bookingChangeDecisionMatch = path.match(BOOKING_CHANGE_DECISION_PATH);
       if (bookingChangeMatch || bookingChangeDecisionMatch) {
+        assertNoQuery(parsedUrl);
         const mutation = request.method !== 'GET';
         if (bookingChangeDecisionMatch && request.method !== 'POST') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
         if (bookingChangeMatch && !['GET', 'POST'].includes(request.method)) throw new ApiError(405, 'METHOD_NOT_ALLOWED');
@@ -644,39 +644,63 @@ export function createApp({
             });
           statusCode = 200;
           sendJson(response, statusCode, {
-            schemaVersion: 1,
-            result: result.request ? { ...result, request: publicRequest(result.request) } : result,
+            schemaVersion: 2,
+            result,
           }, config.maxResponseBytes);
           return;
         }
         const result = request.method === 'GET'
-          ? { change: await bookingChangeService.findOpen({
+          ? await bookingChangeService.findOpen({
             principal, tenantContext, correlationId: requestId, requestId: requestIdValue,
-          }) }
-          : await bookingChangeService.propose({
-            principal, tenantContext, correlationId: requestId, requestId: requestIdValue,
-            proposed: validateExactObject(
+          })
+          : await (async () => {
+            const body = validateExactObject(
               await readJsonObjectBody(request, { maxBytes: config.maxBodyBytes }),
               BOOKING_CHANGE_BODY_SCHEMA,
-            ),
-          });
+            );
+            return bookingChangeService.propose({
+              principal,
+              tenantContext,
+              correlationId: requestId,
+              requestId: requestIdValue,
+              schemaVersion: body.schemaVersion,
+              expectedVersion: body.expectedVersion,
+              proposed: body.request,
+            });
+          })();
         statusCode = request.method === 'POST' ? 201 : 200;
         sendJson(response, statusCode, {
-          schemaVersion: 1,
-          result: result.request ? { ...result, request: publicRequest(result.request) } : result,
+          schemaVersion: 2,
+          result,
         }, config.maxResponseBytes);
         return;
       }
+      const requestHistoryMatch = path.match(REQUEST_HISTORY_PATH);
       const requestMatch = path.match(REQUEST_PATH);
-      if (transitionMatch || requestMatch) {
+      if (transitionMatch || requestHistoryMatch || requestMatch) {
         const isTransition = Boolean(transitionMatch);
+        const isHistory = Boolean(requestHistoryMatch);
+        const historyQuery = isHistory ? requestHistoryQuery(parsedUrl) : null;
+        if (!isHistory) assertNoQuery(parsedUrl);
         const expectedMethod = isTransition ? 'POST' : 'GET';
         if (request.method !== expectedMethod) throw new ApiError(405, 'METHOD_NOT_ALLOWED');
         const principal = await principalGuard.require(request, { csrf: isTransition });
         authorizationPolicy.assertRecognizedPrincipal(principal);
         const tenantContext = await tenantGuard.requireActive(principal);
         if (!requestService) throw new ApiError(503, 'REQUEST_SERVICE_UNAVAILABLE');
-        const requestIdValue = (transitionMatch || requestMatch)[1];
+        const requestIdValue = (transitionMatch || requestHistoryMatch || requestMatch)[1];
+
+        if (isHistory) {
+          statusCode = 200;
+          sendJson(response, statusCode, await requestService.getRequestHistory({
+            principal,
+            tenantContext,
+            requestId: requestIdValue,
+            correlationId: requestId,
+            query: historyQuery,
+          }), config.maxResponseBytes);
+          return;
+        }
 
         const record = isTransition
           ? await requestService.transitionRequest({
@@ -696,7 +720,11 @@ export function createApp({
             correlationId: requestId,
           });
         statusCode = 200;
-        sendJson(response, statusCode, { request: publicRequest(record), requestId }, config.maxResponseBytes);
+        sendJson(response, statusCode, {
+          schemaVersion: 2,
+          request: toPublicRequest(record),
+          requestId,
+        }, config.maxResponseBytes);
         return;
       }
 

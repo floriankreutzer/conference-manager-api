@@ -114,6 +114,8 @@ function requestRecord(overrides = {}) {
     tenantId: TENANT_ID,
     id: 'REQ-1',
     requesterUserId: USER_ID,
+    schemaVersion: 1,
+    version: 1,
     roomId: 'room-a',
     status: REQUEST_STATUS.SUBMITTED,
     statusReason: null,
@@ -159,6 +161,25 @@ function requestServiceFor(initialRecord) {
       async findByTenantIdAndId(tenantId, requestId) {
         if (!record || record.tenantId !== tenantId || record.id !== requestId) return null;
         return record;
+      },
+      async listHistoryPageByTenantIdAndId(tenantId, requestId, { limit }) {
+        if (!record || record.tenantId !== tenantId || record.id !== requestId) return [];
+        return [{
+          version: 1,
+          schemaVersion: 1,
+          operation: 'migrated_legacy',
+          capturedAt: record.updatedAt,
+          request: {
+            schemaVersion: 1,
+            version: 1,
+            id: record.id,
+            details: null,
+            pricing: null,
+            configurationRevisions: null,
+            policy: null,
+            allocations: null,
+          },
+        }].slice(0, limit);
       },
       async transitionByTenantIdAndId({
         tenantId,
@@ -526,16 +547,23 @@ test('employee request endpoint returns own object and conceals another employee
     loadTenant: async () => tenant(),
   };
   await withServer({ ...baseOptions, requestService: requestServiceFor(requestRecord()) }, async ({ port }) => {
-    const own = await request({
+    const injectedScope = await request({
       port,
       path: `/api/v1/requests/REQ-1?tenantId=${OTHER_TENANT_ID}`,
       headers: { 'X-Tenant-Id': OTHER_TENANT_ID },
     });
+    assert.equal(injectedScope.statusCode, 400);
+    const own = await request({ port, path: '/api/v1/requests/REQ-1' });
     assert.equal(own.statusCode, 200);
     assert.equal(own.body.request.id, 'REQ-1');
     assert.equal(own.body.request.status, REQUEST_STATUS.SUBMITTED);
     assert.equal(own.body.request.tenantId, undefined);
     assert.equal(own.body.request.requesterUserId, undefined);
+    const history = await request({ port, path: '/api/v1/requests/REQ-1/history' });
+    assert.equal(history.statusCode, 200);
+    assert.equal(history.body.schemaVersion, 2);
+    assert.equal(history.body.history[0].operation, 'migrated_legacy');
+    assert.equal(history.body.history[0].request.details, null);
   });
 
   await withServer({
@@ -676,8 +704,11 @@ test('confirmed booking proposal and decision routes require CSRF and reject aut
     permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_MANAGE],
   });
   const calls = [];
+  const requestRef = {
+    id: 'REQ-1', schemaVersion: 2, version: 1, status: REQUEST_STATUS.CONFIRMED,
+  };
   const bookingChangeService = {
-    async findOpen() { return null; },
+    async findOpen() { return { change: null, requestRef }; },
     async propose(values) {
       calls.push(['propose', values]);
       return { change: {
@@ -691,11 +722,15 @@ test('confirmed booking proposal and decision routes require CSRF and reject aut
         rejectionReason: null,
         createdAt: '2026-08-26T10:00:00.000Z',
         updatedAt: '2026-08-26T10:00:00.000Z',
-      }, request: requestRecord({ status: REQUEST_STATUS.CONFIRMED }) };
+        requestSchemaVersion: 2,
+        baseRequestVersion: 1,
+        request: values.proposed,
+        proposedRequest: { id: 'REQ-1', schemaVersion: 2, version: 2 },
+      }, requestRef };
     },
     async approve(values) {
       calls.push(['approve', values]);
-      return { status: 'blocked', alternatives: ['room-b'] };
+      return { status: 'blocked', alternatives: ['room-b'], change: { status: 'pending' }, requestRef };
     },
     async reject() { throw new Error('UNEXPECTED'); },
   };
@@ -707,11 +742,28 @@ test('confirmed booking proposal and decision routes require CSRF and reject aut
     bookingChangeService,
   };
   const proposal = {
-    roomId: 'room-b',
-    startsAt: '2026-09-01T12:00:00.000Z',
-    endsAt: '2026-09-01T13:00:00.000Z',
-    internalParticipants: 4,
-    externalParticipants: 0,
+    schemaVersion: 2,
+    expectedVersion: 1,
+    request: {
+      title: 'Updated conference',
+      roomId: 'room-b',
+      startsAt: '2026-09-01T12:00:00.000Z',
+      endsAt: '2026-09-01T13:00:00.000Z',
+      internalParticipants: 4,
+      externalParticipants: 0,
+      serviceIds: [],
+      catering: { participantCount: 0, packageSelection: null, itemQuantities: [] },
+      dietaryRequirements: null,
+      specialRequirements: null,
+      allocations: [],
+      configurationRevisions: {
+        organization: 1,
+        locations: 1,
+        catalogue: 1,
+        bookingPolicies: 1,
+        costAllocation: 1,
+      },
+    },
   };
   await withServer(common, async ({ port }) => {
     const missingCsrf = await request({
@@ -731,8 +783,10 @@ test('confirmed booking proposal and decision routes require CSRF and reject aut
       body: JSON.stringify(proposal),
     });
     assert.equal(accepted.statusCode, 201);
-    assert.equal(accepted.body.schemaVersion, 1);
+    assert.equal(accepted.body.schemaVersion, 2);
     assert.equal(accepted.body.result.change.status, 'pending');
+    assert.deepEqual(Object.keys(accepted.body.result).sort(), ['change', 'requestRef']);
+    assert.equal(Object.hasOwn(accepted.body.result, 'request'), false);
     const decision = await request({
       port,
       path: '/api/v1/requests/REQ-1/booking-change/66666666-6666-4666-8666-666666666666/decision',
@@ -741,9 +795,254 @@ test('confirmed booking proposal and decision routes require CSRF and reject aut
       body: JSON.stringify({ decision: 'approve' }),
     });
     assert.equal(decision.statusCode, 200);
-    assert.deepEqual(decision.body.result, { status: 'blocked', alternatives: ['room-b'] });
+    assert.deepEqual(Object.keys(decision.body.result).sort(), [
+      'alternatives', 'change', 'requestRef', 'status',
+    ]);
   });
   assert.deepEqual(calls.map(([operation]) => operation), ['propose', 'approve']);
+});
+
+test('booking-change response keeps one full projection below the configured response bound', async () => {
+  const change = {
+    id: '66666666-6666-4666-8666-666666666666',
+    status: 'pending',
+    request: { padding: 'd'.repeat(130_000) },
+    proposedRequest: { padding: 'p'.repeat(510_000) },
+  };
+  const requestRef = {
+    id: 'REQ-1', schemaVersion: 2, version: 1, status: REQUEST_STATUS.CONFIRMED,
+  };
+  const result = { change, requestRef };
+  const config = testConfig();
+  assert.ok(Buffer.byteLength(JSON.stringify({ schemaVersion: 2, result })) < config.maxResponseBytes);
+  assert.ok(Buffer.byteLength(JSON.stringify({
+    schemaVersion: 2,
+    result: { ...result, request: change.proposedRequest },
+  })) > config.maxResponseBytes);
+  await withServer({
+    config,
+    resolvePrincipal: async () => principal({
+      roles: [TENANT_ROLE.CONFERENCE_MANAGER],
+      permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_MANAGE],
+    }),
+    verifyCsrf: async () => true,
+    loadTenant: async () => tenant(),
+    bookingChangeService: {
+      async findOpen() { return result; },
+      async propose() { throw new Error('UNEXPECTED'); },
+      async approve() { throw new Error('UNEXPECTED'); },
+      async reject() { throw new Error('UNEXPECTED'); },
+    },
+  }, async ({ port }) => {
+    const response = await request({
+      port,
+      path: '/api/v1/requests/REQ-1/booking-change',
+      method: 'GET',
+    });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(Object.keys(response.body.result).sort(), ['change', 'requestRef']);
+    assert.equal(response.body.result.change.request.padding.length, 130_000);
+    assert.equal(response.body.result.change.proposedRequest.padding.length, 510_000);
+  });
+});
+
+test('Request v2 create and resubmission routes require exact versioned CSRF contracts', async () => {
+  const calls = [];
+  const applicationService = {
+    async createRequest(values) {
+      calls.push(['create', values]);
+      return { schemaVersion: 2, version: 1, id: 'REQ-V2', status: 'Submitted' };
+    },
+    async resubmitRequest(values) {
+      calls.push(['resubmit', values]);
+      return { schemaVersion: 2, version: values.expectedVersion + 1, id: values.requestId, status: 'Submitted' };
+    },
+  };
+  const draft = {
+    title: 'Canonical Request',
+    roomId: 'room-a',
+    startsAt: '2026-09-01T10:00:00.000Z',
+    endsAt: '2026-09-01T11:00:00.000Z',
+    internalParticipants: 2,
+    externalParticipants: 0,
+    serviceIds: [],
+    catering: { participantCount: 0, packageSelection: null, itemQuantities: [] },
+    dietaryRequirements: null,
+    specialRequirements: null,
+    allocations: [],
+    configurationRevisions: {
+      organization: 1,
+      locations: 1,
+      catalogue: 1,
+      bookingPolicies: 1,
+      costAllocation: 1,
+    },
+  };
+  await withServer({
+    config: testConfig(),
+    resolvePrincipal: async () => principal(),
+    verifyCsrf: async (req) => req.headers['x-csrf-token'] === CSRF_TOKEN,
+    loadTenant: async () => tenant(),
+    productionApplicationService: applicationService,
+  }, async ({ port }) => {
+    const withoutCsrf = await request({
+      port,
+      path: '/api/v1/application/requests',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ schemaVersion: 2, request: draft }),
+    });
+    assert.equal(withoutCsrf.statusCode, 403);
+
+    const injected = await request({
+      port,
+      path: '/api/v1/application/requests',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+      body: JSON.stringify({ schemaVersion: 2, request: draft, status: 'Confirmed' }),
+    });
+    assert.equal(injected.statusCode, 400);
+
+    const created = await request({
+      port,
+      path: '/api/v1/application/requests',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+      body: JSON.stringify({ schemaVersion: 2, request: draft }),
+    });
+    assert.equal(created.statusCode, 201);
+    assert.equal(created.body.request.schemaVersion, 2);
+    assert.equal(created.body.schemaVersion, 2);
+    assert.equal(created.body.requestId, created.body.requestId.toLowerCase());
+    assert.deepEqual(Object.keys(created.body).sort(), ['request', 'requestId', 'schemaVersion']);
+
+    const resubmitted = await request({
+      port,
+      path: '/api/v1/application/requests/REQ-V2/resubmissions',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+      body: JSON.stringify({ schemaVersion: 2, expectedVersion: 4, request: draft }),
+    });
+    assert.equal(resubmitted.statusCode, 200);
+    assert.equal(resubmitted.body.request.version, 5);
+    assert.equal(resubmitted.body.schemaVersion, 2);
+    assert.deepEqual(Object.keys(resubmitted.body).sort(), ['request', 'requestId', 'schemaVersion']);
+  });
+  assert.deepEqual(calls.map(([operation]) => operation), ['create', 'resubmit']);
+  assert.deepEqual(calls[0][1].requestDraft, draft);
+  assert.equal(calls[1][1].expectedVersion, 4);
+});
+
+test('paged catalog and Manager report routes expose exact schema-v2 query contracts', async () => {
+  const calls = [];
+  const applicationService = {
+    async listRequests(values) {
+      calls.push(['list', values]);
+      return {
+        schemaVersion: 2,
+        asOf: '2026-08-27T12:00:00.000Z',
+        requests: [],
+        page: { limit: 10, complete: true, nextCursor: null },
+      };
+    },
+    async getCatalog(values) {
+      calls.push(['catalog', values]);
+      return {
+        schemaVersion: 2,
+        configurationRevisions: {
+          organization: 1, locations: 1, catalogue: 1, bookingPolicies: 1, costAllocation: 1,
+        },
+        bookingPolicy: { policyVersionId: 'policy-v1' },
+        organization: { defaultCurrency: 'EUR' },
+        costAllocation: { allocationRequired: false },
+        context: 'catalog-context',
+        section: values.query.section,
+        entries: [],
+        page: { limit: 10, complete: true, nextCursor: null },
+      };
+    },
+    async getRequestReport(values) {
+      calls.push(['report', values]);
+      return {
+        schemaVersion: 2,
+        asOf: '2026-08-27T12:00:00.000Z',
+        range: {
+          field: 'startsAt',
+          fromInclusive: values.query.from,
+          toExclusive: values.query.to,
+          timeZone: 'UTC',
+        },
+        requests: [],
+        page: { limit: 10, complete: true, nextCursor: null },
+      };
+    },
+  };
+  const managerPrincipal = principal({
+    roles: [TENANT_ROLE.EMPLOYEE, TENANT_ROLE.CONFERENCE_MANAGER],
+    permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_MANAGE],
+  });
+  await withServer({
+    config: testConfig(),
+    resolvePrincipal: async () => managerPrincipal,
+    verifyCsrf: async () => true,
+    loadTenant: async () => tenant(),
+    productionApplicationService: applicationService,
+  }, async ({ port }) => {
+    const catalog = await request({
+      port,
+      path: '/api/v1/application/catalog?section=sites&limit=10',
+    });
+    assert.equal(catalog.statusCode, 200);
+    assert.equal(catalog.body.schemaVersion, 2);
+    assert.equal(catalog.body.section, 'sites');
+    assert.equal(catalog.body.catalog, undefined);
+
+    const list = await request({
+      port,
+      path: '/api/v1/application/requests?limit=10',
+    });
+    assert.equal(list.statusCode, 200);
+    assert.equal(list.body.schemaVersion, 2);
+    assert.deepEqual(list.body.requests, []);
+    assert.equal(list.body.page.complete, true);
+
+    const report = await request({
+      port,
+      path: '/api/v1/application/reports/requests?from=2026-01-01T00%3A00%3A00.000Z&to=2027-01-01T00%3A00%3A00.000Z&limit=10',
+    });
+    assert.equal(report.statusCode, 200);
+    assert.equal(report.body.schemaVersion, 2);
+    assert.equal(report.body.range.timeZone, 'UTC');
+    assert.equal(report.body.report, undefined);
+
+    for (const path of [
+      '/api/v1/application/catalog',
+      '/api/v1/application/catalog?section=services&section=rooms',
+      '/api/v1/application/catalog?section=services&tenantId=foreign',
+      '/api/v1/application/requests?limit=2&limit=3',
+      '/api/v1/application/requests?tenantId=foreign',
+      '/api/v1/application/reports/requests?from=2026-01-01T00%3A00%3A00.000Z',
+      '/api/v1/application/reports/requests?from=x&from=y&to=z',
+      '/api/v1/application/reports/requests?from=x&to=y&tenantId=foreign',
+    ]) {
+      const invalid = await request({ port, path });
+      assert.equal(invalid.statusCode, 400);
+      assert.equal(invalid.body.error.code, 'VALIDATION_FAILED');
+    }
+
+    const wrongMethod = await request({
+      port,
+      path: '/api/v1/application/reports/requests?from=x&to=y',
+      method: 'POST',
+    });
+    assert.equal(wrongMethod.statusCode, 405);
+  });
+  assert.deepEqual(calls.map(([name]) => name), ['catalog', 'list', 'report']);
+  assert.deepEqual(calls[0][1].query, {
+    section: 'sites', limit: '10', cursor: undefined, context: undefined,
+  });
+  assert.deepEqual(calls[1][1].query, { limit: '10', cursor: undefined });
+  assert.equal(calls[2][1].query.limit, '10');
 });
 
 test('logs contain only bounded metadata and do not copy authorization or cookie headers', async () => {

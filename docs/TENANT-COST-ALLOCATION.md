@@ -72,9 +72,9 @@ non-empty allocation. Optional empty allocation records the whole amount as
 unallocated. The snapshot also contains schema version, configuration revision,
 server snapshot time and currency.
 
-The #126 Request integration must persist this immutable snapshot. Later
-cost-center rename, regrouping or deactivation must not reinterpret historical
-Requests or Manager reporting.
+Request composition v2 persists this immutable snapshot in every newly
+evaluated Request version. Later cost-center rename, regrouping or deactivation
+must not reinterpret historical Requests or Manager reporting.
 
 ## Persistence, history and rollback
 
@@ -98,6 +98,7 @@ center data, required-policy change or revision advance exists; a forward fix
 or reviewed data migration is then required.
 
 The central composition root registers the route module, service and PostgreSQL
-repository, so the administration API is reachable under schema version 26.
-Request validation and immutable allocation snapshot persistence remain the
-separate #126 integration boundary and are not implemented by this administration package.
+repository, so the administration API and Request integration are reachable
+under schema version 27. Cost Allocation administration remains a separate
+bounded owner; Request composition consumes only its authoritative snapshot
+contract after server pricing.

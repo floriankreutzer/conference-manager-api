@@ -112,6 +112,7 @@ async function loadCurrentWithClient(client, tenantId, { lock = false } = {}) {
     packageRooms,
     itemSites,
     itemRooms,
+    roomPrices,
   ] = await Promise.all([
     queryRows(client, 'tenant-catalogue-services-read', 'services', tenantId,
       'id, name, description, price_minor, currency, active, sort_order'),
@@ -141,6 +142,8 @@ async function loadCurrentWithClient(client, tenantId, { lock = false } = {}) {
       'item_id, site_id'),
     queryRows(client, 'tenant-catalogue-item-rooms-read', 'catering_item_room_applicability', tenantId,
       'item_id, room_id'),
+    queryRows(client, 'tenant-catalogue-room-prices-read', 'tenant_room_prices', tenantId,
+      'room_id, price_minor, currency'),
   ]);
 
   const serviceSiteMap = relationMap(serviceSites, 'service_id', 'site_id');
@@ -177,6 +180,9 @@ async function loadCurrentWithClient(client, tenantId, { lock = false } = {}) {
     cateringItems: items
       .map((row) => simpleEntry(row, itemSiteMap, itemRoomMap))
       .sort((left, right) => left.order - right.order || left.id.localeCompare(right.id)),
+    roomPrices: roomPrices
+      .map((row) => Object.freeze({ roomId: row.room_id, price: moneyFromRow(row) }))
+      .sort((left, right) => left.roomId.localeCompare(right.roomId)),
   });
 
   return Object.freeze({
@@ -244,6 +250,8 @@ function containsCurrentEntities(current, proposed) {
     const proposedVariantIds = identifiers(proposedPackages.get(currentPackage.id)?.variants || []);
     if (currentPackage.variants.some((variant) => !proposedVariantIds.has(variant.id))) return false;
   }
+  const proposedRoomIds = new Set(proposed.roomPrices.map((entry) => entry.roomId));
+  if (current.roomPrices.some((entry) => !proposedRoomIds.has(entry.roomId))) return false;
   return true;
 }
 
@@ -261,6 +269,7 @@ async function referencesExist(client, tenantId, catalogue) {
       entry.roomIds.forEach((id) => roomIds.add(id));
     }
   }
+  catalogue.roomPrices.forEach((entry) => roomIds.add(entry.roomId));
   const [sites, rooms] = await Promise.all([
     client.query({
       name: 'tenant-catalogue-site-references',
@@ -361,6 +370,28 @@ async function persistEntities(client, tenantId, catalogue, changedAt) {
         ],
       });
     }
+  }
+  for (const roomPrice of catalogue.roomPrices) {
+    await client.query({
+      name: 'tenant-catalogue-room-price-upsert',
+      text: `
+        INSERT INTO tenant_room_prices (
+          tenant_id, room_id, price_minor, currency, created_at, updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $5)
+        ON CONFLICT (tenant_id, room_id) DO UPDATE SET
+          price_minor = EXCLUDED.price_minor,
+          currency = EXCLUDED.currency,
+          updated_at = EXCLUDED.updated_at
+      `,
+      values: [
+        tenantId,
+        roomPrice.roomId,
+        roomPrice.price.amountMinor,
+        roomPrice.price.currency,
+        changedAt,
+      ],
+    });
   }
 }
 

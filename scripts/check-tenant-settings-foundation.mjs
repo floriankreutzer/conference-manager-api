@@ -49,8 +49,8 @@ if (/repository|SELECT|UPDATE|INSERT INTO|DELETE FROM/i.test(revision)) {
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 26;/.test(pool)) {
-  throw new Error('Runtime schema readiness must require the integrated SaaS 2 migration version 26.');
+if (!/export const CURRENT_SCHEMA_VERSION = 27;/.test(pool)) {
+  throw new Error('Runtime schema readiness must require Request composition migration version 27.');
 }
 
 const migration = await readFile('migrations/020_tenant_settings_revisions.up.sql', 'utf8');

@@ -9,10 +9,13 @@ const ROUTES = Object.freeze([
   ['application_catalog', 'GET'],
   ['application_site_info', 'GET'],
   ['application_requests', 'POST'],
+  ['application_request_report', 'GET'],
+  ['application_request_resubmission', 'POST'],
   ['application_room_availability', 'POST'],
   ['application_notifications', 'GET'],
   ['application_notification', 'PATCH'],
   ['application_configuration', 'PUT'],
+  ['request_history', 'GET'],
 ]);
 const MICROSOFT365_ROUTES = Object.freeze([
   ['microsoft365_free_busy_verify', 'POST'],

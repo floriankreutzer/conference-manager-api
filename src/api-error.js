@@ -38,6 +38,10 @@ import {
   TenantBookingPolicyViolationError,
 } from './domain/tenant-booking-policies.js';
 import { TenantCostAllocationInputError } from './domain/tenant-cost-allocation.js';
+import {
+  RequestCompositionInputError,
+  RequestCompositionUnavailableError,
+} from './domain/request-composition.js';
 
 const BOOKING_POLICY_VIOLATION_CODES = new Set([
   'BOOKING_POLICY_LEAD_TIME_VIOLATION',
@@ -87,6 +91,7 @@ export function asApiError(error) {
     || error instanceof TenantSettingsInputError
     || error instanceof TenantBookingPolicyInputError
     || error instanceof TenantCostAllocationInputError
+    || error instanceof RequestCompositionInputError
   ) {
     return new ApiError(400, 'VALIDATION_FAILED');
   }
@@ -102,6 +107,9 @@ export function asApiError(error) {
       ? error.code
       : 'BOOKING_POLICY_VIOLATION';
     return new ApiError(409, code, bookingPolicyViolationContext(error.parameters));
+  }
+  if (error instanceof RequestCompositionUnavailableError) {
+    return new ApiError(409, error.code);
   }
   if (error instanceof Microsoft365ConnectionConflictError) return new ApiError(409, error.code);
   if (error instanceof Microsoft365ConnectionUnavailableError) {

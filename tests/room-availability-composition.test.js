@@ -41,7 +41,8 @@ test('production application composition reaches Tenant-bound live room availabi
     repository: {
       async findProfile() {},
       async updateProfile() {},
-      async loadCatalog() {},
+      async loadCatalogPage() {},
+      async loadSites() { return []; },
       async findRoomBookingContext(tenantId, roomId) {
         calls.push(['room-context', tenantId, roomId]);
         return { roomActive: true, siteActive: true, timeZone: 'Europe/Berlin' };
@@ -50,8 +51,22 @@ test('production application composition reaches Tenant-bound live room availabi
       async markNotificationRead() {},
     },
     requestRepository: {
-      async listByTenantId() { return []; },
-      async createForTenant() {},
+      async listPageByTenantId() {
+        return {
+          status: 'ready',
+          snapshot: { revisionWatermark: 0, asOf: '2026-08-25T11:00:00.000Z' },
+          requests: [],
+        };
+      },
+      async listReportPageByTenantId() {
+        return {
+          status: 'ready',
+          snapshot: { revisionWatermark: 0, asOf: '2026-08-25T11:00:00.000Z' },
+          requests: [],
+        };
+      },
+      async createVersionedForTenant() {},
+      async resubmitVersionedForTenant() {},
     },
     authorizationPolicy,
     auditService: { createEvent(values) { return values; } },

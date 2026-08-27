@@ -234,7 +234,7 @@ export function loadConfig(env = process.env) {
       code: 'MAX_BODY_BYTES_INVALID',
     }),
     maxResponseBytes: parseInteger(env.MAX_RESPONSE_BYTES, DEFAULTS.maxResponseBytes, {
-      min: 1_024,
+      min: 786_432,
       max: 4_194_304,
       code: 'MAX_RESPONSE_BYTES_INVALID',
     }),

@@ -93,6 +93,12 @@ Domains whose later changes could reinterpret historical business records must u
 
 A revision identifies a configuration state for optimistic concurrency; it is not a substitute for a historical snapshot.
 
+Request composition v2 requires the client-observed revision of all five aggregates, then locks and
+revalidates the current values while resolving Room/Catalogue/policy/allocation authority. It
+persists the selected facts, not only revision numbers, in the immutable Request snapshot. This
+integration consumes each owner's public domain contract and does not introduce cross-owner writes
+or a generic settings repository. See `docs/REQUEST-COMPOSITION.md`.
+
 ## Existing Site/time-zone migration
 
 Migration 020 adds `locations_revision = 1` without rewriting `sites` or `rooms`. Existing `sites.time_zone` values from migration 018 remain unchanged, including explicit `NULL` for legacy Sites whose authoritative IANA time zone is unknown. No UTC/browser-local/default value is fabricated.

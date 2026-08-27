@@ -12,6 +12,11 @@ import { BOOKING_OPERATION } from '../authorization/policy.js';
 import { isRequestId } from '../domain/request.js';
 import { REQUEST_STATUS, REQUEST_TRANSITION } from '../domain/request-workflow.js';
 import { RESERVATION_PHASE } from '../integrations/calendar-contract.js';
+import { fitPublicPage } from './public-page.js';
+import {
+  createRequestHistoryCursor,
+  normalizeRequestHistoryQuery,
+} from './request-history.js';
 
 function concealedNotFound() {
   return new AuthorizationDeniedError('RESOURCE_NOT_AVAILABLE', { conceal: true });
@@ -36,6 +41,8 @@ export function createRequestService({
   finalRoomConfirmationService,
   bookingServiceFactory = null,
   metrics = null,
+  maxResponseBytes = 1_048_576,
+  cursorSecret = randomUUID(),
   clock = () => Date.now(),
 } = {}) {
   if (
@@ -83,6 +90,12 @@ export function createRequestService({
     throw new TypeError('REQUEST_METRICS_INVALID');
   }
   if (typeof clock !== 'function') throw new TypeError('CLOCK_REQUIRED');
+  if (!Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1_024) {
+    throw new TypeError('REQUEST_RESPONSE_BYTES_INVALID');
+  }
+  if (typeof cursorSecret !== 'string' || Buffer.byteLength(cursorSecret) < 32) {
+    throw new TypeError('REQUEST_CURSOR_SECRET_INVALID');
+  }
 
   async function loadRequest(tenantContext, requestId) {
     assertRequestId(requestId);
@@ -259,6 +272,93 @@ export function createRequestService({
       return request;
     },
 
+    async getRequestHistory({
+      principal,
+      tenantContext,
+      requestId,
+      correlationId,
+      query = { limit: undefined, cursor: undefined },
+    }) {
+      if (typeof repository.listHistoryPageByTenantIdAndId !== 'function') {
+        throw new TypeError('REQUEST_HISTORY_REPOSITORY_REQUIRED');
+      }
+      const evaluatedAt = new Date(clock()).toISOString();
+      const page = normalizeRequestHistoryQuery(query, {
+        requestId,
+        tenantId: tenantContext.tenantId,
+        cursorSecret,
+        evaluatedAt,
+      });
+      const request = await loadRequest(tenantContext, requestId);
+      if (!request) {
+        await recordDenied({
+          principal,
+          tenantContext,
+          requestId,
+          correlationId,
+          operation: 'history',
+        });
+        throw concealedNotFound();
+      }
+      try {
+        authorizationPolicy.authorizeRequestRead(principal, tenantContext, request);
+      } catch (error) {
+        if (error instanceof AuthorizationDeniedError) {
+          await recordDenied({
+            principal,
+            tenantContext,
+            requestId,
+            correlationId,
+            operation: 'history',
+          });
+        }
+        throw error;
+      }
+      const asOfVersion = page.asOfVersion ?? request.version;
+      if (asOfVersion > request.version) {
+        throw new AuthorizationInputError('REQUEST_HISTORY_CURSOR_INVALID');
+      }
+      const history = await repository.listHistoryPageByTenantIdAndId(
+        tenantContext.tenantId,
+        requestId,
+        {
+          asOfVersion,
+          beforeVersion: page.beforeVersion,
+          limit: page.limit + 1,
+        },
+      );
+      if (
+        !Array.isArray(history)
+        || history.length > page.limit + 1
+        || history.some((entry, index) => (
+          !Number.isSafeInteger(entry?.version)
+          || entry.version < 1
+          || entry.version > asOfVersion
+          || (index > 0 && entry.version >= history[index - 1].version)
+        ))
+      ) throw new TypeError('REQUEST_HISTORY_INVALID');
+      return fitPublicPage({
+        items: history,
+        limit: page.limit,
+        maxResponseBytes,
+        cursorFor: (last) => createRequestHistoryCursor({
+          requestId,
+          tenantId: tenantContext.tenantId,
+          asOfVersion,
+          beforeVersion: last.version,
+          evaluatedAt,
+        }, { cursorSecret }),
+        resultFor: (entries, publicPage) => Object.freeze({
+          schemaVersion: 2,
+          asOfVersion,
+          history: entries,
+          page: publicPage,
+          requestId: correlationId,
+        }),
+        envelopeFor: (result) => result,
+      });
+    },
+
     async transitionRequest({
       principal,
       tenantContext,
@@ -394,14 +494,36 @@ export function createRequestService({
         },
         retentionClass: AUDIT_RETENTION_CLASS.BUSINESS,
       });
+      const bookingChangeAuditEvent = releasesCalendarReservation
+        ? auditService.createEvent({
+          principal,
+          tenantContext,
+          correlationId,
+          action: AUDIT_ACTION.REQUEST_BOOKING_CHANGE,
+          targetType: 'request',
+          targetId: requestId,
+          previousState: { status: 'pending' },
+          newState: { status: 'superseded' },
+          outcome: AUDIT_OUTCOME.SUCCESS,
+          occurredAt: changedAt.toISOString(),
+          metadata: {
+            operation: 'supersede',
+            reasonCode: 'request_released',
+            transition: decision.transition,
+          },
+          retentionClass: AUDIT_RETENTION_CLASS.BUSINESS,
+        })
+        : null;
       const updated = await repository.transitionByTenantIdAndId({
         tenantId: tenantContext.tenantId,
         requestId,
+        actorUserId: principal.userId,
         expectedStatus: decision.expectedStatus,
         nextStatus: decision.nextStatus,
         reason: decision.reason,
         changedAt,
         auditEvent,
+        bookingChangeAuditEvent,
       });
       if (!updated) {
         await recordTransitionFailure({
@@ -435,3 +557,4 @@ export function createRequestService({
     },
   });
 }
+import { randomUUID } from 'node:crypto';
