@@ -13,16 +13,18 @@ import {
 import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
 import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
-const TENANT_A = '11111111-1111-4111-8111-111111111111';
-const TENANT_B = '22222222-2222-4222-8222-222222222222';
-const ADMIN_A = '33333333-3333-4333-8333-333333333333';
-const USER_A = '44444444-4444-4444-8444-444444444444';
-const USER_B = '55555555-5555-4555-8555-555555555555';
-const BINDING_A = '66666666-6666-4666-8666-666666666666';
-const CORRELATION_ID = '77777777-7777-4777-8777-777777777777';
-const PROVIDER_TENANT_A = '88888888-8888-4888-8888-888888888888';
-const PROVIDER_USER_A = '99999999-9999-4999-8999-999999999999';
-const SESSION_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+// Keep this integration fixture namespace distinct because node:test executes
+// database suites concurrently against the same PostgreSQL service.
+const TENANT_A = 'd1111111-1111-4111-8111-111111111111';
+const TENANT_B = 'd2222222-2222-4222-8222-222222222222';
+const ADMIN_A = 'd3333333-3333-4333-8333-333333333333';
+const USER_A = 'd4444444-4444-4444-8444-444444444444';
+const USER_B = 'd5555555-5555-4555-8555-555555555555';
+const BINDING_A = 'd6666666-6666-4666-8666-666666666666';
+const CORRELATION_ID = 'd7777777-7777-4777-8777-777777777777';
+const PROVIDER_TENANT_A = 'd8888888-8888-4888-8888-888888888888';
+const PROVIDER_USER_A = 'd9999999-9999-4999-8999-999999999999';
+const SESSION_ID = 'daaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const AUDIT_KEY = 'tenant-user-lifecycle-persistence-audit-key-32-bytes';
 const TENANT_IDS = [TENANT_A, TENANT_B];
 

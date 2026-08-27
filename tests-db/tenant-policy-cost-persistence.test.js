@@ -88,8 +88,9 @@ async function seed(pool) {
     [TENANT_B, 'Policy Tenant B'],
   ]) {
     await pool.query(
-      'INSERT INTO tenants (id, display_name, status) VALUES ($1, $2, $3)',
-      [tenantId, name, 'active'],
+      `INSERT INTO tenants (id, display_name, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $4)`,
+      [tenantId, name, 'active', '2026-08-27T09:00:00.000Z'],
     );
   }
   await pool.query(
