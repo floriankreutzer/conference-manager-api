@@ -326,6 +326,55 @@ test('organization and catalogue persistence is tenant-scoped, concurrent and au
   );
   const audits = await auditRepository.listByTenantId(TENANT_A, { limit: 100 });
   assert.equal(audits.filter((event) => event.action === 'tenant.configuration.changed').length, 3);
+
+  let releaseCatalogueRead;
+  let catalogueRevisionObserved;
+  const catalogueRevisionRead = new Promise((resolve) => { catalogueRevisionObserved = resolve; });
+  const continueCatalogueRead = new Promise((resolve) => { releaseCatalogueRead = resolve; });
+  const pausingCataloguePool = {
+    query: pool.query.bind(pool),
+    async connect() {
+      const client = await pool.connect();
+      let paused = false;
+      return {
+        async query(statement, values) {
+          const result = await client.query(statement, values);
+          if (!paused && statement?.name === 'tenant-catalogue-current-tenant') {
+            paused = true;
+            catalogueRevisionObserved();
+            await continueCatalogueRead;
+          }
+          return result;
+        },
+        release(error) { client.release(error); },
+      };
+    },
+  };
+  const pausingCatalogueRepository = createPostgresTenantCatalogueRepository(
+    pausingCataloguePool,
+    { auditRepository },
+  );
+  const inFlightCatalogueRead = pausingCatalogueRepository.loadCurrent(TENANT_A);
+  await catalogueRevisionRead;
+  try {
+    const revisionThree = await catalogueService.update({
+      principal: principalA,
+      tenantContext: tenantContextA,
+      correlationId: CORRELATION_B,
+      schemaVersion: 1,
+      expectedRevision: 2,
+      catalogue: catalogue('Concurrent revision three'),
+    });
+    assert.equal(revisionThree.revision, 3);
+  } finally {
+    releaseCatalogueRead();
+  }
+  const coherentCatalogueRead = await inFlightCatalogueRead;
+  assert.equal(coherentCatalogueRead.revision, 2);
+  assert.equal(coherentCatalogueRead.catalogue.services[0].name, 'Video support');
+  const currentCatalogue = await catalogueRepository.loadCurrent(TENANT_A);
+  assert.equal(currentCatalogue.revision, 3);
+  assert.equal(currentCatalogue.catalogue.services[0].name, 'Concurrent revision three');
 });
 
 test('migrations 022/023 reapply and refuse destructive rollback after domain use', async (t) => {

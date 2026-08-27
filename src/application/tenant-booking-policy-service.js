@@ -3,7 +3,10 @@ import {
   AUDIT_OUTCOME,
   AUDIT_RETENTION_CLASS,
 } from '../audit/event.js';
-import { AuthorizationInputError } from '../authorization/errors.js';
+import {
+  AuthorizationDeniedError,
+  AuthorizationInputError,
+} from '../authorization/errors.js';
 import { PERMISSION } from '../authorization/policy.js';
 import { isInternalUuid } from '../domain/identifiers.js';
 import {
@@ -49,7 +52,11 @@ function requireRuntime(repository, authorizationPolicy, auditService) {
   ) {
     throw new TypeError('AUTHORIZATION_POLICY_REQUIRED');
   }
-  if (!auditService || typeof auditService.createEvent !== 'function') {
+  if (
+    !auditService
+    || typeof auditService.createEvent !== 'function'
+    || typeof auditService.recordAuthorizationDenied !== 'function'
+  ) {
     throw new TypeError('AUDIT_SERVICE_REQUIRED');
   }
 }
@@ -71,12 +78,36 @@ function changedAt(clock) {
   return new Date(value);
 }
 
-function authorize(policy, principal, tenantContext) {
-  policy.requireTenantPermission(
-    principal,
-    tenantContext,
-    PERMISSION.TENANT_CONFIGURE,
-  );
+async function authorize({
+  policy,
+  auditService,
+  principal,
+  tenantContext,
+  correlationId,
+  operation,
+}) {
+  try {
+    policy.requireTenantPermission(
+      principal,
+      tenantContext,
+      PERMISSION.TENANT_CONFIGURE,
+    );
+  } catch (error) {
+    if (
+      error instanceof AuthorizationDeniedError
+      && principal?.tenantId === tenantContext?.tenantId
+    ) {
+      await auditService.recordAuthorizationDenied({
+        principal,
+        tenantContext,
+        correlationId,
+        targetType: 'tenant_booking_policies',
+        targetId: 'booking-policies',
+        metadata: { operation },
+      });
+    }
+    throw error;
+  }
 }
 
 function auditEvent(auditService, {
@@ -182,7 +213,14 @@ export function createTenantBookingPolicyService({
   return Object.freeze({
     async getCurrent({ principal, tenantContext, correlationId }) {
       requireCorrelationId(correlationId);
-      authorize(authorizationPolicy, principal, tenantContext);
+      await authorize({
+        policy: authorizationPolicy,
+        auditService,
+        principal,
+        tenantContext,
+        correlationId,
+        operation: 'read',
+      });
       return response(await repository.current(tenantContext.tenantId));
     },
 
@@ -195,7 +233,14 @@ export function createTenantBookingPolicyService({
       configuration,
     }) {
       requireCorrelationId(correlationId);
-      authorize(authorizationPolicy, principal, tenantContext);
+      await authorize({
+        policy: authorizationPolicy,
+        auditService,
+        principal,
+        tenantContext,
+        correlationId,
+        operation: 'update',
+      });
       requireTenantSettingsSchemaVersion(schemaVersion);
       const expected = requireTenantSettingsRevision(expectedRevision);
       const normalized = normalizeInput(configuration);
@@ -230,7 +275,14 @@ export function createTenantBookingPolicyService({
       limit = 50,
     }) {
       requireCorrelationId(correlationId);
-      authorize(authorizationPolicy, principal, tenantContext);
+      await authorize({
+        policy: authorizationPolicy,
+        auditService,
+        principal,
+        tenantContext,
+        correlationId,
+        operation: 'history',
+      });
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
         throw new AuthorizationInputError('TENANT_BOOKING_POLICY_HISTORY_LIMIT_INVALID');
       }
@@ -244,7 +296,14 @@ export function createTenantBookingPolicyService({
       revision,
     }) {
       requireCorrelationId(correlationId);
-      authorize(authorizationPolicy, principal, tenantContext);
+      await authorize({
+        policy: authorizationPolicy,
+        auditService,
+        principal,
+        tenantContext,
+        correlationId,
+        operation: 'revision',
+      });
       return repository.revision(
         tenantContext.tenantId,
         requireTenantSettingsRevision(revision),

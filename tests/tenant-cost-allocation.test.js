@@ -214,7 +214,9 @@ function serviceRuntime({ conflict = null } = {}) {
   const authorizationPolicy = createAuthorizationPolicy();
   const audit = createAuditHarness({ authorizationPolicy });
   return {
+    audit,
     calls,
+    repository,
     service: createTenantCostAllocationService({
       repository,
       authorizationPolicy,
@@ -241,7 +243,7 @@ test('Tenant Admin cost-allocation mutation advances only its aggregate revision
 });
 
 test('cost-allocation administration denies missing permission and cross-Tenant context', async () => {
-  const { calls, service } = serviceRuntime();
+  const { audit, calls, service } = serviceRuntime();
   const employee = principal({
     roles: [TENANT_ROLE.EMPLOYEE],
     permissions: [PERMISSION.REQUEST_READ],
@@ -255,6 +257,26 @@ test('cost-allocation administration denies missing permission and cross-Tenant 
     configuration: configuration(),
   };
   await assert.rejects(service.update(input), AuthorizationDeniedError);
+  assert.equal(audit.events.length, 1);
+  assert.deepEqual({
+    action: audit.events[0].action,
+    tenantId: audit.events[0].tenantId,
+    actorUserId: audit.events[0].actorUserId,
+    correlationId: audit.events[0].correlationId,
+    targetType: audit.events[0].targetType,
+    targetId: audit.events[0].targetId,
+    outcome: audit.events[0].outcome,
+    metadata: audit.events[0].metadata,
+  }, {
+    action: 'authorization.denied',
+    tenantId: TENANT_ID,
+    actorUserId: USER_ID,
+    correlationId: CORRELATION_ID,
+    targetType: 'tenant_cost_allocation',
+    targetId: 'cost-allocation',
+    outcome: 'denied',
+    metadata: { operation: 'update' },
+  });
   await assert.rejects(
     service.update({
       ...input,
@@ -263,7 +285,20 @@ test('cost-allocation administration denies missing permission and cross-Tenant 
     }),
     AuthorizationDeniedError,
   );
+  assert.equal(audit.events.length, 1);
   assert.equal(calls.length, 0);
+});
+
+test('cost-allocation service requires durable authorization-denial audit composition', () => {
+  const { repository } = serviceRuntime();
+  assert.throws(
+    () => createTenantCostAllocationService({
+      repository,
+      authorizationPolicy: createAuthorizationPolicy(),
+      auditService: { createEvent() {} },
+    }),
+    /AUDIT_SERVICE_REQUIRED/,
+  );
 });
 
 test('stale cost-allocation writes expose only current revision', async () => {

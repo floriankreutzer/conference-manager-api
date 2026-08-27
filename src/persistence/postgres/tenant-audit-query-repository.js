@@ -26,6 +26,7 @@ function mapRow(row) {
     occurredAt: row.occurred_at.toISOString(),
     correlationId: row.correlation_id,
     outcome: row.outcome,
+    metadata: row.metadata,
   });
 }
 
@@ -80,7 +81,8 @@ export function createPostgresTenantAuditQueryRepository(pool) {
             new_state,
             occurred_at,
             correlation_id,
-            outcome
+            outcome,
+            metadata
           FROM audit_events
           WHERE tenant_id = $1
             AND ($2::bigint IS NULL OR id < $2::bigint)

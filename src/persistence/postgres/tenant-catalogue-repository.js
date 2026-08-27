@@ -425,7 +425,7 @@ export function createPostgresTenantCatalogueRepository(pool, { auditRepository 
       const tenantId = requireUuid(tenantIdValue, 'TENANT_CATALOGUE_TENANT_ID_INVALID');
       return withPostgresTransaction(pool, async (client) => {
         return loadCurrentWithClient(client, tenantId);
-      });
+      }, { isolationLevel: 'REPEATABLE READ', readOnly: true });
     },
 
     async listHistory({ tenantId: tenantIdValue, limit = 25, beforeRevision = null } = {}) {

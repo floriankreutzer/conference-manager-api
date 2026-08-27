@@ -308,8 +308,10 @@ function serviceRuntime({ conflict = null } = {}) {
   const authorizationPolicy = createAuthorizationPolicy();
   const audit = createAuditHarness({ authorizationPolicy });
   return {
+    audit,
     calls,
     currentReads: () => currentReads,
+    repository,
     service: createTenantBookingPolicyService({
       repository,
       authorizationPolicy,
@@ -338,7 +340,7 @@ test('Tenant Admin policy mutation is revisioned and creates bounded audit evide
 });
 
 test('policy administration denies missing permission and cross-Tenant context', async () => {
-  const { calls, service } = serviceRuntime();
+  const { audit, calls, service } = serviceRuntime();
   const employee = principal({
     roles: [TENANT_ROLE.EMPLOYEE],
     permissions: [PERMISSION.REQUEST_READ],
@@ -352,6 +354,26 @@ test('policy administration denies missing permission and cross-Tenant context',
     configuration: configuration(),
   };
   await assert.rejects(service.update(input), AuthorizationDeniedError);
+  assert.equal(audit.events.length, 1);
+  assert.deepEqual({
+    action: audit.events[0].action,
+    tenantId: audit.events[0].tenantId,
+    actorUserId: audit.events[0].actorUserId,
+    correlationId: audit.events[0].correlationId,
+    targetType: audit.events[0].targetType,
+    targetId: audit.events[0].targetId,
+    outcome: audit.events[0].outcome,
+    metadata: audit.events[0].metadata,
+  }, {
+    action: 'authorization.denied',
+    tenantId: TENANT_ID,
+    actorUserId: USER_ID,
+    correlationId: CORRELATION_ID,
+    targetType: 'tenant_booking_policies',
+    targetId: 'booking-policies',
+    outcome: 'denied',
+    metadata: { operation: 'update' },
+  });
   await assert.rejects(
     service.update({
       ...input,
@@ -360,7 +382,20 @@ test('policy administration denies missing permission and cross-Tenant context',
     }),
     AuthorizationDeniedError,
   );
+  assert.equal(audit.events.length, 1);
   assert.equal(calls.length, 0);
+});
+
+test('policy service requires durable authorization-denial audit composition', () => {
+  const { repository } = serviceRuntime();
+  assert.throws(
+    () => createTenantBookingPolicyService({
+      repository,
+      authorizationPolicy: createAuthorizationPolicy(),
+      auditService: { createEvent() {} },
+    }),
+    /AUDIT_SERVICE_REQUIRED/,
+  );
 });
 
 test('stale policy writes expose current revision without a successful mutation', async () => {

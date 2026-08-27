@@ -4,6 +4,9 @@ import { createTenantAuditQueryService } from '../src/audit/tenant-audit-query-s
 import { AuditInputError, AuditIntegrityError } from '../src/audit/errors.js';
 import { AuthorizationDeniedError } from '../src/authorization/errors.js';
 import { createAuthorizationPolicy } from '../src/authorization/policy.js';
+import {
+  createPostgresTenantAuditQueryRepository,
+} from '../src/persistence/postgres/tenant-audit-query-repository.js';
 import { createAuditHarness } from './support/audit-harness.js';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -68,6 +71,41 @@ function service({ rows = [row()], verify = true } = {}) {
     }),
   };
 }
+
+test('PostgreSQL audit query preserves metadata for the public allowlist projection', async () => {
+  let statement;
+  const repository = createPostgresTenantAuditQueryRepository({
+    async query(value) {
+      statement = value;
+      return {
+        rows: [{
+          id: 42,
+          tenant_id: TENANT_ID,
+          actor_user_id: USER_ID,
+          action: 'tenant.configuration.changed',
+          target_type: 'catalogue',
+          target_id: 'tenant-catalogue',
+          previous_state: { revision: 3 },
+          new_state: { revision: 4 },
+          occurred_at: new Date('2026-08-27T10:00:00.000Z'),
+          correlation_id: CORRELATION_ID,
+          outcome: 'success',
+          metadata: { operation: 'update', serviceCount: 4 },
+        }],
+      };
+    },
+  });
+
+  const rows = await repository.listByTenantId({
+    tenantId: TENANT_ID,
+    from: '2026-08-01T00:00:00.000Z',
+    to: '2026-08-27T12:00:00.000Z',
+  });
+
+  assert.equal(statement.name, 'tenant-audit-bounded-query');
+  assert.match(statement.text, /\boutcome,\s+metadata\b/);
+  assert.deepEqual(rows[0].metadata, { operation: 'update', serviceCount: 4 });
+});
 
 test('bounded Tenant audit filters reuse complete-chain verification and return a redacted projection', async () => {
   const harness = service({ rows: [row(), row({ id: '41' })] });
