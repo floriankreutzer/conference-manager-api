@@ -13,6 +13,21 @@ function publicPriced(row) {
   });
 }
 
+function pricedValues(tenantId, item, changedAt) {
+  return [
+    tenantId,
+    item.id,
+    item.name,
+    item.description,
+    item.active,
+    item.priceMinor,
+    item.currency,
+    item.billingUnit,
+    item.sortOrder,
+    changedAt,
+  ];
+}
+
 export function createPostgresTenantCatalogRepository(pool, { auditRepository } = {}) {
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') throw new TypeError('POSTGRES_POOL_REQUIRED');
   if (!auditRepository || typeof auditRepository.appendWithClient !== 'function') throw new TypeError('AUDIT_REPOSITORY_REQUIRED');
@@ -64,11 +79,11 @@ export function createPostgresTenantCatalogRepository(pool, { auditRepository } 
     });
   }
 
-  async function upsertPriced(client, table, statementName, tenantId, item, changedAt) {
+  async function upsertService(client, tenantId, item, changedAt) {
     await client.query({
-      name: statementName,
+      name: 'tenant-catalog-service-upsert',
       text: `
-        INSERT INTO ${table} (
+        INSERT INTO services (
           tenant_id,id,name,description,active,price_minor,currency,billing_unit,sort_order,created_at,updated_at
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)
         ON CONFLICT (tenant_id,id) DO UPDATE SET
@@ -76,7 +91,39 @@ export function createPostgresTenantCatalogRepository(pool, { auditRepository } 
           price_minor=EXCLUDED.price_minor, currency=EXCLUDED.currency,
           billing_unit=EXCLUDED.billing_unit, sort_order=EXCLUDED.sort_order, updated_at=EXCLUDED.updated_at
       `,
-      values: [tenantId,item.id,item.name,item.description,item.active,item.priceMinor,item.currency,item.billingUnit,item.sortOrder,changedAt],
+      values: pricedValues(tenantId, item, changedAt),
+    });
+  }
+
+  async function upsertCateringItem(client, tenantId, item, changedAt) {
+    await client.query({
+      name: 'tenant-catalog-item-upsert',
+      text: `
+        INSERT INTO catering_items (
+          tenant_id,id,name,description,active,price_minor,currency,billing_unit,sort_order,created_at,updated_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)
+        ON CONFLICT (tenant_id,id) DO UPDATE SET
+          name=EXCLUDED.name, description=EXCLUDED.description, active=EXCLUDED.active,
+          price_minor=EXCLUDED.price_minor, currency=EXCLUDED.currency,
+          billing_unit=EXCLUDED.billing_unit, sort_order=EXCLUDED.sort_order, updated_at=EXCLUDED.updated_at
+      `,
+      values: pricedValues(tenantId, item, changedAt),
+    });
+  }
+
+  async function upsertCateringPackage(client, tenantId, item, changedAt) {
+    await client.query({
+      name: 'tenant-catalog-package-upsert',
+      text: `
+        INSERT INTO catering_packages (
+          tenant_id,id,name,description,active,price_minor,currency,billing_unit,sort_order,created_at,updated_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)
+        ON CONFLICT (tenant_id,id) DO UPDATE SET
+          name=EXCLUDED.name, description=EXCLUDED.description, active=EXCLUDED.active,
+          price_minor=EXCLUDED.price_minor, currency=EXCLUDED.currency,
+          billing_unit=EXCLUDED.billing_unit, sort_order=EXCLUDED.sort_order, updated_at=EXCLUDED.updated_at
+      `,
+      values: pricedValues(tenantId, item, changedAt),
     });
   }
 
@@ -93,10 +140,10 @@ export function createPostgresTenantCatalogRepository(pool, { auditRepository } 
         const currentRevision = Number(locked.rows[0].catalog_revision);
         if (currentRevision !== expectedRevision) return Object.freeze({ conflict: true, currentRevision });
 
-        for (const item of catalog.services) await upsertPriced(client, 'services', 'tenant-catalog-service-upsert', tenantId, item, changedAt);
-        for (const item of catalog.cateringItems) await upsertPriced(client, 'catering_items', 'tenant-catalog-item-upsert', tenantId, item, changedAt);
+        for (const item of catalog.services) await upsertService(client, tenantId, item, changedAt);
+        for (const item of catalog.cateringItems) await upsertCateringItem(client, tenantId, item, changedAt);
         for (const item of catalog.cateringPackages) {
-          await upsertPriced(client, 'catering_packages', 'tenant-catalog-package-upsert', tenantId, item, changedAt);
+          await upsertCateringPackage(client, tenantId, item, changedAt);
           await client.query({
             name: 'tenant-catalog-package-items-clear',
             text: 'DELETE FROM catering_package_items WHERE tenant_id=$1 AND catering_package_id=$2',
