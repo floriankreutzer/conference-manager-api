@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 20;/.test(pool)) {
-  throw new Error('Production application contract requires Tenant settings revisions and current schema 20.');
+if (!/export const CURRENT_SCHEMA_VERSION = 21;/.test(pool)) {
+  throw new Error('Production application contract requires bounded Tenant locations and current schema 21.');
 }
 
 const auditEvent = await readFile('src/audit/event.js', 'utf8');
@@ -107,12 +107,18 @@ for (const required of [
   'loadCatalog',
   'listNotifications',
   'markNotificationRead',
-  'updateSites',
   'findRoomBookingContext',
   'time_zone',
   'auditRepository.appendWithClient(client, auditEvent)',
 ]) {
   if (!repository.includes(required)) throw new Error(`Production application persistence is missing ${required}.`);
+}
+if (repository.includes('updateSites')) {
+  throw new Error('Legacy application persistence must not expose a Site write path.');
+}
+const applicationService = await readFile('src/application/production-application-service.js', 'utf8');
+if (applicationService.includes('updateConfiguration')) {
+  throw new Error('Legacy application service must remain read-only for Tenant configuration.');
 }
 
 const timeZone = await readFile('src/domain/site-time-zone.js', 'utf8');

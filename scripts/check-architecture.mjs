@@ -242,6 +242,7 @@ for (const required of [
   'createPostgresMicrosoft365ConnectionRepository',
   'createPostgresMicrosoft365RoomMappingRepository',
   'createPostgresMicrosoft365CapabilityHealthRepository',
+  'createPostgresTenantLocationRepository',
   'auditRepository',
   'entitlementRepository',
   'bookingReferenceRepository',
@@ -251,6 +252,7 @@ for (const required of [
   'microsoft365ConnectionRepository',
   'microsoft365RoomMappingRepository',
   'microsoft365CapabilityHealthRepository',
+  'tenantLocationRepository',
 ]) {
   if (!persistence.includes(required)) throw new Error(`PostgreSQL persistence is missing ${required}.`);
 }
@@ -463,8 +465,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 20;/.test(pool)) {
-  throw new Error('Runtime schema readiness must require Tenant settings revision migration version 20.');
+if (!/export const CURRENT_SCHEMA_VERSION = 21;/.test(pool)) {
+  throw new Error('Runtime schema readiness must require bounded Tenant location migration version 21.');
 }
 
 const index = await readFile('src/index.js', 'utf8');
@@ -485,11 +487,13 @@ for (const required of [
   'createMicrosoft365CapabilityHealthService',
   'createMicrosoft365RoomMappingService',
   'createMicrosoft365BookingServiceFactory',
+  'createTenantLocationAdministrationService',
   'capabilityHealthService',
   'microsoft365ConnectionService',
   'microsoft365RoomMappingService',
   'microsoft365BookingServiceFactory',
   'roomAvailabilityService',
+  'tenantLocationAdministrationService',
 ]) {
   if (!index.includes(required)) throw new Error(`Process composition must wire ${required}.`);
 }
@@ -637,6 +641,34 @@ if (!siteTimeZoneRollback.includes('LOCK TABLE sites IN ACCESS EXCLUSIVE MODE'))
   throw new Error('Site time-zone rollback must lock before checking populated rows.');
 }
 
+const locationMigration = await readFile('migrations/021_tenant_location_self_service.up.sql', 'utf8');
+for (const required of [
+  'tenant_location_revisions',
+  'sites_details_object',
+  'rooms_details_object',
+]) {
+  if (!locationMigration.includes(required)) throw new Error(`Tenant location migration is missing ${required}.`);
+}
+if (/\b(?:BEGIN|COMMIT)\s*;|\bschema_migrations\b/i.test(locationMigration)) {
+  throw new Error('Tenant location migration must leave transactions and schema bookkeeping to the migration runner.');
+}
+if (/UPDATE\s+sites[\s\S]{0,200}time_zone\s*=\s*['\"]?UTC/i.test(locationMigration)) {
+  throw new Error('Tenant location migration must never fabricate an authoritative Site time zone.');
+}
+const locationRollback = await readFile('migrations/021_tenant_location_self_service.down.sql', 'utf8');
+for (const required of [
+  'LOCK TABLE tenant_location_revisions IN ACCESS EXCLUSIVE MODE',
+  'LOCK TABLE tenants IN ACCESS EXCLUSIVE MODE',
+  "FROM sites WHERE details <> '{}'::jsonb",
+  "FROM rooms WHERE details <> '{}'::jsonb",
+  'TENANT_LOCATION_HISTORY_REQUIRE_REVIEW',
+]) {
+  if (!locationRollback.includes(required)) throw new Error(`Tenant location rollback is missing ${required}.`);
+}
+if (/\b(?:BEGIN|COMMIT)\s*;|\bschema_migrations\b/i.test(locationRollback)) {
+  throw new Error('Tenant location rollback must leave transactions and schema bookkeeping to the migration runner.');
+}
+
 for (const migration of [
   'migrations/001_core_tenant_schema.up.sql',
   'migrations/001_core_tenant_schema.down.sql',
@@ -674,6 +706,8 @@ for (const migration of [
   'migrations/019_confirmed_booking_changes.down.sql',
   'migrations/020_tenant_settings_revisions.up.sql',
   'migrations/020_tenant_settings_revisions.down.sql',
+  'migrations/021_tenant_location_self_service.up.sql',
+  'migrations/021_tenant_location_self_service.down.sql',
 ]) {
   await readFile(migration, 'utf8');
 }

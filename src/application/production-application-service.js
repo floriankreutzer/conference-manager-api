@@ -15,7 +15,6 @@ import {
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const DISPLAY_NAME_MAX = 160;
-const SITE_LIMIT = 200;
 const NOTIFICATION_LIMIT = 200;
 
 export class SiteTimeZoneRequiredError extends Error {
@@ -116,44 +115,6 @@ function publicRequest(request) {
   });
 }
 
-function requireSites(value) {
-  if (!Array.isArray(value) || value.length > SITE_LIMIT) {
-    throw new AuthorizationInputError('TENANT_CONFIGURATION_INVALID');
-  }
-  const ids = new Set();
-  return Object.freeze(value.map((site) => {
-    if (!site || typeof site !== 'object' || Array.isArray(site)) {
-      throw new AuthorizationInputError('TENANT_CONFIGURATION_INVALID');
-    }
-    const keys = Object.keys(site);
-    if (keys.some((key) => !['id', 'name', 'active', 'timeZone'].includes(key))) {
-      throw new AuthorizationInputError('TENANT_CONFIGURATION_INVALID');
-    }
-    if (typeof site.id !== 'string' || !SAFE_ID.test(site.id) || ids.has(site.id)) {
-      throw new AuthorizationInputError('TENANT_CONFIGURATION_INVALID');
-    }
-    ids.add(site.id);
-    const name = requireDisplayName(site.name);
-    if (typeof site.active !== 'boolean') {
-      throw new AuthorizationInputError('TENANT_CONFIGURATION_INVALID');
-    }
-    if (!isIanaTimeZone(site.timeZone)) {
-      throw new AuthorizationInputError('TENANT_CONFIGURATION_INVALID');
-    }
-    return Object.freeze({ id: site.id, name, active: site.active, timeZone: site.timeZone });
-  }));
-}
-
-function requireConfiguration(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new AuthorizationInputError('TENANT_CONFIGURATION_INVALID');
-  }
-  if (Object.keys(value).length !== 1 || !Object.hasOwn(value, 'sites')) {
-    throw new AuthorizationInputError('TENANT_CONFIGURATION_INVALID');
-  }
-  return Object.freeze({ sites: requireSites(value.sites) });
-}
-
 function profileAudit(auditService, { principal, tenantContext, correlationId, changedAt }) {
   return auditService.createEvent({
     principal,
@@ -166,29 +127,6 @@ function profileAudit(auditService, { principal, tenantContext, correlationId, c
     newState: { profileUpdated: true },
     outcome: AUDIT_OUTCOME.SUCCESS,
     metadata: { operation: 'profile_update' },
-    retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
-    occurredAt: changedAt.toISOString(),
-  });
-}
-
-function configurationAudit(auditService, {
-  principal,
-  tenantContext,
-  correlationId,
-  changedAt,
-  siteCount,
-}) {
-  return auditService.createEvent({
-    principal,
-    tenantContext,
-    correlationId,
-    action: AUDIT_ACTION.TENANT_CONFIGURATION_CHANGED,
-    targetType: 'tenant_configuration',
-    targetId: 'sites',
-    previousState: null,
-    newState: { siteCount },
-    outcome: AUDIT_OUTCOME.SUCCESS,
-    metadata: { operation: 'site_configuration_update' },
     retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
     occurredAt: changedAt.toISOString(),
   });
@@ -211,7 +149,6 @@ export function createProductionApplicationService({
     || typeof repository.findRoomBookingContext !== 'function'
     || typeof repository.listNotifications !== 'function'
     || typeof repository.markNotificationRead !== 'function'
-    || typeof repository.updateSites !== 'function'
   ) {
     throw new TypeError('APPLICATION_REPOSITORY_REQUIRED');
   }
@@ -386,30 +323,6 @@ export function createProductionApplicationService({
       );
       const catalog = await repository.loadCatalog(tenantContext.tenantId);
       return Object.freeze({ sites: catalog.sites });
-    },
-
-    async updateConfiguration({ principal, tenantContext, correlationId, configuration }) {
-      requireCorrelationId(correlationId);
-      authorizationPolicy.requireTenantPermission(
-        principal,
-        tenantContext,
-        PERMISSION.TENANT_CONFIGURE,
-      );
-      const normalized = requireConfiguration(configuration);
-      const changedAt = clockDate(clock);
-      const sites = await repository.updateSites({
-        tenantId: tenantContext.tenantId,
-        sites: normalized.sites,
-        changedAt,
-        auditEvent: configurationAudit(auditService, {
-          principal,
-          tenantContext,
-          correlationId,
-          changedAt,
-          siteCount: normalized.sites.length,
-        }),
-      });
-      return Object.freeze({ sites });
     },
   });
 }

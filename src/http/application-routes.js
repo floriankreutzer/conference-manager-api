@@ -41,11 +41,6 @@ const NOTIFICATION_BODY_SCHEMA = Object.freeze({
   required: Object.freeze({ read: (value) => value === true }),
   optional: Object.freeze({}),
 });
-const CONFIGURATION_BODY_SCHEMA = Object.freeze({
-  required: Object.freeze({ sites: (value) => Array.isArray(value) && value.length <= 200 }),
-  optional: Object.freeze({}),
-});
-
 function sendJson(response, statusCode, payload, maxResponseBytes) {
   const body = JSON.stringify({ schemaVersion: 1, ...payload });
   if (Buffer.byteLength(body) > maxResponseBytes) throw new ApiError(500, 'RESPONSE_TOO_LARGE');
@@ -98,7 +93,6 @@ export function createApplicationHttpHandler({
   if (!Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1_024) {
     throw new TypeError('MAX_RESPONSE_BYTES_INVALID');
   }
-
   return async function handleApplication({ request, response, parsedUrl, path, requestId }) {
     if (!applicationRouteKey(path)) return null;
     if (!service) throw new ApiError(503, 'APPLICATION_SERVICE_UNAVAILABLE');
@@ -199,21 +193,9 @@ export function createApplicationHttpHandler({
     }
 
     if (path === APPLICATION_ROUTES.configuration) {
-      if (request.method === 'GET') {
-        sendJson(response, 200, { configuration: await service.getConfiguration(common) }, maxResponseBytes);
-        return 200;
-      }
-      if (request.method === 'PUT') {
-        const configuration = validateExactObject(
-          await readJsonObjectBody(request, { maxBytes: maxBodyBytes }),
-          CONFIGURATION_BODY_SCHEMA,
-        );
-        sendJson(response, 200, {
-          configuration: await service.updateConfiguration({ ...common, configuration }),
-        }, maxResponseBytes);
-        return 200;
-      }
-      throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+      if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+      sendJson(response, 200, { configuration: await service.getConfiguration(common) }, maxResponseBytes);
+      return 200;
     }
 
     return null;

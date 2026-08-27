@@ -81,10 +81,6 @@ function harness({
         ? { id: notificationId, kind: 'request', createdAt: '2026-08-25T10:00:00.000Z', readAt: '2026-08-25T11:00:00.000Z' }
         : null;
     },
-    async updateSites(args) {
-      calls.push(['updateSites', args]);
-      return args.sites;
-    },
   };
   const requestRepository = {
     async listByTenantId(tenantId, scope) {
@@ -280,66 +276,26 @@ test('notification ownership is always bound to the authenticated user', async (
   assert.deepEqual(calls[1], ['markNotificationRead', TENANT_A, USER_A, NOTIFICATION_ID]);
 });
 
-test('tenant configuration requires Tenant Admin permission and positive site schema', async () => {
+test('legacy tenant configuration is authorized read-only presentation', async () => {
   const { service, calls } = harness();
   await assert.rejects(
-    service.updateConfiguration({
+    service.getConfiguration({
       principal: employee(),
       tenantContext: { tenantId: TENANT_A },
       correlationId: CORRELATION_ID,
-      configuration: { sites: [] },
     }),
     AuthorizationDeniedError,
   );
   assert.equal(calls.length, 0);
 
-  const updated = await service.updateConfiguration({
+  const configuration = await service.getConfiguration({
     principal: tenantAdmin(),
     tenantContext: { tenantId: TENANT_A },
     correlationId: CORRELATION_ID,
-    configuration: {
-      sites: [{ id: 'berlin', name: 'Berlin', active: true, timeZone: 'Europe/Berlin' }],
-    },
   });
-  assert.deepEqual(updated.sites, [
-    { id: 'berlin', name: 'Berlin', active: true, timeZone: 'Europe/Berlin' },
-  ]);
-
-  await assert.rejects(
-    service.updateConfiguration({
-      principal: tenantAdmin(),
-      tenantContext: { tenantId: TENANT_A },
-      correlationId: CORRELATION_ID,
-      configuration: { sites: [{ id: 'berlin', name: 'Berlin', active: true }] },
-    }),
-    AuthorizationInputError,
-  );
-
-  const utc = await service.updateConfiguration({
-    principal: tenantAdmin(),
-    tenantContext: { tenantId: TENANT_A },
-    correlationId: CORRELATION_ID,
-    configuration: { sites: [{ id: 'utc', name: 'UTC Site', active: true, timeZone: 'UTC' }] },
-  });
-  assert.equal(utc.sites[0].timeZone, 'UTC');
-
-  await assert.rejects(
-    service.updateConfiguration({
-      principal: tenantAdmin(),
-      tenantContext: { tenantId: TENANT_A },
-      correlationId: CORRELATION_ID,
-      configuration: {
-        sites: [{
-          id: 'berlin',
-          name: 'Berlin',
-          active: true,
-          timeZone: 'Europe/Berlin',
-          tenantId: TENANT_B,
-        }],
-      },
-    }),
-    AuthorizationInputError,
-  );
+  assert.deepEqual(configuration, { sites: [] });
+  assert.deepEqual(calls, [['loadCatalog', TENANT_A]]);
+  assert.equal(Object.hasOwn(service, 'updateConfiguration'), false);
 });
 
 test('request creation and availability fail closed when the Site time zone is missing', async () => {

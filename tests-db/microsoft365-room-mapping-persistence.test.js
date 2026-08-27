@@ -45,6 +45,12 @@ function databaseConfig() {
 }
 
 async function clean(pool) {
+  await pool.query('ALTER TABLE tenant_location_revisions DISABLE TRIGGER USER');
+  try {
+    await pool.query('DELETE FROM tenant_location_revisions WHERE tenant_id = ANY($1::uuid[])', [TENANT_IDS]);
+  } finally {
+    await pool.query('ALTER TABLE tenant_location_revisions ENABLE TRIGGER USER');
+  }
   await pool.query('DELETE FROM microsoft365_room_mappings WHERE tenant_id = ANY($1::uuid[])', [TENANT_IDS]);
   await pool.query('DELETE FROM requests WHERE tenant_id = ANY($1::uuid[])', [TENANT_IDS]);
   await pool.query('DELETE FROM rooms WHERE tenant_id = ANY($1::uuid[])', [TENANT_IDS]);
@@ -153,6 +159,7 @@ test('Microsoft 365 room mapping is idempotent, tenant-isolated and preserves lo
 
   const imported = await repository.importRooms({
     tenantId: TENANT_A,
+    actorUserId: ADMIN_A,
     integrationId: INTEGRATION_A,
     connectionVersion: 1,
     providerTenantReference: PROVIDER_TENANT_A,
@@ -175,6 +182,14 @@ test('Microsoft 365 room mapping is idempotent, tenant-isolated and preserves lo
     capacity: 10,
     active: true,
   });
+  assert.equal(Number((await pool.query(
+    'SELECT locations_revision FROM tenants WHERE id = $1',
+    [TENANT_A],
+  )).rows[0].locations_revision), 2);
+  assert.deepEqual((await pool.query(
+    'SELECT revision FROM tenant_location_revisions WHERE tenant_id = $1 ORDER BY revision',
+    [TENANT_A],
+  )).rows.map((row) => Number(row.revision)), [1, 2]);
 
   await pool.query(
     `INSERT INTO requests (
@@ -193,6 +208,7 @@ test('Microsoft 365 room mapping is idempotent, tenant-isolated and preserves lo
 
   const duplicate = await repository.importRooms({
     tenantId: TENANT_A,
+    actorUserId: ADMIN_A,
     integrationId: INTEGRATION_A,
     connectionVersion: 1,
     providerTenantReference: PROVIDER_TENANT_A,
@@ -216,6 +232,10 @@ test('Microsoft 365 room mapping is idempotent, tenant-isolated and preserves lo
     [TENANT_A],
   );
   assert.equal(roomCount.rows[0].count, 1);
+  assert.equal(Number((await pool.query(
+    'SELECT locations_revision FROM tenants WHERE id = $1',
+    [TENANT_A],
+  )).rows[0].locations_revision), 2);
 
   const refreshed = await repository.synchronize({
     tenantId: TENANT_A,
@@ -249,6 +269,10 @@ test('Microsoft 365 room mapping is idempotent, tenant-isolated and preserves lo
   });
   assert.equal(missing[0].providerStatus, 'missing');
   assert.equal(missing[0].localRoom.active, true);
+  assert.equal(Number((await pool.query(
+    'SELECT locations_revision FROM tenants WHERE id = $1',
+    [TENANT_A],
+  )).rows[0].locations_revision), 2);
   const request = await pool.query(
     'SELECT room_id, status FROM requests WHERE tenant_id = $1 AND id = $2',
     [TENANT_A, REQUEST_A],
@@ -261,6 +285,7 @@ test('Microsoft 365 room mapping is idempotent, tenant-isolated and preserves lo
   );
   const tenantB = await repository.importRooms({
     tenantId: TENANT_B,
+    actorUserId: ADMIN_B,
     integrationId: INTEGRATION_B,
     connectionVersion: 1,
     providerTenantReference: PROVIDER_TENANT_B,
@@ -277,7 +302,21 @@ test('Microsoft 365 room mapping is idempotent, tenant-isolated and preserves lo
   assert.equal(tenantB.length, 1);
   assert.equal(tenantB[0].roomId, ROOM_B);
   assert.equal((await repository.listByTenantIdAndIntegrationId(TENANT_A, INTEGRATION_A))[0].roomId, ROOM_A);
+  assert.equal(Number((await pool.query(
+    'SELECT locations_revision FROM tenants WHERE id = $1',
+    [TENANT_B],
+  )).rows[0].locations_revision), 2);
 
+  await pool.query('ALTER TABLE tenant_location_revisions DISABLE TRIGGER USER');
+  try {
+    await pool.query('DELETE FROM tenant_location_revisions WHERE tenant_id = ANY($1::uuid[])', [TENANT_IDS]);
+  } finally {
+    await pool.query('ALTER TABLE tenant_location_revisions ENABLE TRIGGER USER');
+  }
+  await pool.query(
+    'UPDATE tenants SET locations_revision = 1 WHERE id = ANY($1::uuid[])',
+    [TENANT_IDS],
+  );
   assert.equal(await rollbackToVersion(pool, 13), true);
   await assert.rejects(
     () => rollbackLatest(pool),

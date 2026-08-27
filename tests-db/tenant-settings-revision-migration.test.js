@@ -45,6 +45,8 @@ test('Tenant settings revisions migrate without rewriting data and rollback fail
     [1, 1, 1, 1, 1],
   );
 
+  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await isPostgresSchemaReady(pool), false);
   await pool.query(
     'UPDATE tenants SET locations_revision = locations_revision + 1 WHERE id = $1',
     [TENANT_ID],

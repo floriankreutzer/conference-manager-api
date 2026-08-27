@@ -48,7 +48,6 @@ test('production application composition reaches Tenant-bound live room availabi
       },
       async listNotifications() {},
       async markNotificationRead() {},
-      async updateSites() {},
     },
     requestRepository: {
       async listByTenantId() { return []; },

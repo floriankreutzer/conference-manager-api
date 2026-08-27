@@ -7,7 +7,11 @@ import { CAPABILITY } from '../src/entitlements/capabilities.js';
 import { createEntitlementService } from '../src/entitlements/entitlement-service.js';
 import { createPostgresAuditRepository } from '../src/persistence/postgres/audit-repository.js';
 import { createPostgresEntitlementRepository } from '../src/persistence/postgres/entitlement-repository.js';
-import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
+import {
+  CURRENT_SCHEMA_VERSION,
+  createPostgresPool,
+  isPostgresSchemaReady,
+} from '../src/persistence/postgres/pool.js';
 import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
 
 const TENANT_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
@@ -61,7 +65,7 @@ test('entitlement migration rollback fails closed when state or evidence exists'
     correlationId: CORRELATION_ID,
   });
 
-  for (let version = 20; version >= 6; version -= 1) {
+  for (let version = CURRENT_SCHEMA_VERSION; version >= 6; version -= 1) {
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await isPostgresSchemaReady(pool), false);
   }

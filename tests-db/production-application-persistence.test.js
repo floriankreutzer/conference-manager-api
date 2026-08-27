@@ -88,23 +88,6 @@ function requestAudit(tenantId, userId, requestId) {
   });
 }
 
-function configurationAudit(tenantId, userId) {
-  return normalizeAuditEvent({
-    tenantId,
-    actorUserId: userId,
-    action: AUDIT_ACTION.TENANT_CONFIGURATION_CHANGED,
-    targetType: 'tenant_configuration',
-    targetId: 'sites',
-    previousState: null,
-    newState: { siteCount: 1 },
-    occurredAt: AT.toISOString(),
-    correlationId: CORRELATION_ID,
-    outcome: AUDIT_OUTCOME.SUCCESS,
-    metadata: { operation: 'site_configuration_update' },
-    retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
-  });
-}
-
 test('production application persistence is tenant-scoped and request create is atomic with audit', async (t) => {
   const pool = createPostgresPool(databaseConfig());
   const auditRepository = createPostgresAuditRepository(pool, { hmacSecret: AUDIT_KEY });
@@ -140,13 +123,10 @@ test('production application persistence is tenant-scoped and request create is 
   });
   assert.equal(await applicationRepository.findRoomBookingContext(TENANT_A, ROOM_B), null);
 
-  const updatedSites = await applicationRepository.updateSites({
-    tenantId: TENANT_A,
-    sites: [{ id: SITE_A, name: `Site ${SITE_A}`, active: true, timeZone: 'Europe/Berlin' }],
-    changedAt: AT,
-    auditEvent: configurationAudit(TENANT_A, USER_A),
-  });
-  assert.equal(updatedSites[0].timeZone, 'Europe/Berlin');
+  await pool.query(
+    'UPDATE sites SET time_zone = $3 WHERE tenant_id = $1 AND id = $2',
+    [TENANT_A, SITE_A, 'Europe/Berlin'],
+  );
   assert.equal(
     (await applicationRepository.findRoomBookingContext(TENANT_A, ROOM_A)).timeZone,
     'Europe/Berlin',
@@ -204,7 +184,6 @@ test('production application persistence is tenant-scoped and request create is 
     [TENANT_A],
   );
   assert.deepEqual(auditA.rows.map((row) => [row.action, row.target_id]), [
-    [AUDIT_ACTION.TENANT_CONFIGURATION_CHANGED, 'sites'],
     [AUDIT_ACTION.REQUEST_CREATED, REQUEST_A],
   ]);
 

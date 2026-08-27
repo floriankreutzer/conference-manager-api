@@ -97,7 +97,7 @@ A revision identifies a configuration state for optimistic concurrency; it is no
 
 Migration 020 adds `locations_revision = 1` without rewriting `sites` or `rooms`. Existing `sites.time_zone` values from migration 018 remain unchanged, including explicit `NULL` for legacy Sites whose authoritative IANA time zone is unknown. No UTC/browser-local/default value is fabricated.
 
-Issue #82 moves Site/room administration to the bounded locations contract using this revision. The compatibility `/api/v1/application/configuration` route may remain during the coordinated frontend/backend migration window, but it must not acquire new SaaS 2 domains and is removed only after all supported clients use the bounded contract.
+Issue #82 moves Site/room administration to the bounded locations contract using this revision. The compatibility `/api/v1/application/configuration` route remains read-only during the coordinated frontend/backend migration window and must not acquire new SaaS 2 domains.
 
 ## Demo contract
 
@@ -109,7 +109,7 @@ Demo adapters are selected only by the existing explicit Demo composition path. 
 
 Backend changes are additive first. A supported frontend accepts only the explicitly implemented `schemaVersion`; unknown versions fail closed and show a reload/update-required state rather than guessing at fields.
 
-During a coordinated migration window, the old Site-only application configuration endpoint and the new locations endpoint may both exist. They must share the same authoritative Site data. Once #82 is released, all Site writes use the versioned locations contract so stale writes cannot bypass concurrency through the legacy route. Removal of the legacy write path requires explicit regression evidence.
+During a coordinated migration window, the old Site-only application configuration read and the new locations endpoint may both exist. They share the same authoritative Site data. All Site writes use the versioned Locations contract; the legacy `PUT` returns `405 METHOD_NOT_ALLOWED` so it cannot bypass optimistic concurrency.
 
 Database rollback from migration 020 is allowed only while all five aggregate revisions remain `1`. Once any versioned settings mutation has advanced a revision, the down migration fails closed because removing the concurrency state would permit silent stale overwrites after rollback. A reviewed forward fix or compatible application rollback is then required.
 

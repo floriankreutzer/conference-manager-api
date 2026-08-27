@@ -263,6 +263,7 @@ export function createMicrosoft365RoomMappingService({
         providerTenantReference: connection.providerTenantReference,
         rooms: imports,
         changedAt: at,
+        actorUserId: principal.userId,
         auditEventFor: auditEventFor({
           principal,
           tenantContext,

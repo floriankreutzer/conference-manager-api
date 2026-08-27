@@ -12,6 +12,12 @@ Successful JSON responses use `Content-Type: application/json; charset=utf-8` an
 
 Every response receives a server-generated `X-Request-Id`. Public errors expose stable machine codes and request IDs only. They do not expose stack traces, SQL, configuration, provider payloads, provider identifiers, credentials, session tokens or consent state.
 
+A stale bounded Tenant settings mutation returns HTTP 409 with the exact code `TENANT_SETTINGS_REVISION_CONFLICT`. Its only domain context field is the bounded positive safe-integer `currentRevision`, alongside `code` and `requestId`; no current configuration, Tenant identifier or other state is included. The exact envelope is:
+
+```json
+{"error":{"code":"TENANT_SETTINGS_REVISION_CONFLICT","requestId":"<server UUID>","currentRevision":7}}
+```
+
 The browser never establishes Tenant, User, role, permission, object ownership, workflow state, entitlement, provider Tenant or provider destination authority. Protected endpoints derive the internal Tenant from the resolved server session.
 
 Unsafe cookie-authenticated operations require the current session-bound `X-CSRF-Token`, except for separately designed one-time onboarding confirmation that uses its own server-bound claim token and CSRF material.
@@ -145,7 +151,7 @@ The current routes are:
 - `POST /api/v1/application/room-availability`;
 - `GET /api/v1/application/notifications`;
 - `PATCH /api/v1/application/notifications/{notificationId}`;
-- `GET/PUT /api/v1/application/configuration`.
+- `GET /api/v1/application/configuration`.
 
 All routes derive Tenant and User authority from the resolved Principal. Mutations require CSRF and exact positive-schema bodies. Public representations omit internal Tenant ownership, requester identity, provider identities/references, credentials, audit-chain material and other authority-shaped infrastructure fields.
 
@@ -153,7 +159,7 @@ Employee Request lists are restricted to server-side ownership. Conference Manag
 
 `catalog.sites[]`, `siteInfo.sites[]` and `configuration.sites[]` expose the same minimized Site shape: `id`, `name`, `active` and `timeZone`. `timeZone` is the server-authoritative IANA time-zone identifier for that physical Site, for example `Europe/Berlin`. Existing Sites migrated without an established value expose `timeZone: null`; the server and browser must not replace that unknown state with browser-local time or UTC.
 
-`PUT /api/v1/application/configuration` requires every submitted Site to contain a positively validated `timeZone` in addition to `id`, `name` and `active`. Canonical identifiers recognized by the server IANA/`Intl` database, including `UTC`, are accepted. Unknown fields, missing values, surrounding whitespace and unrecognized identifiers fail with HTTP 400 `VALIDATION_FAILED`. Configuration writes remain Tenant-scoped and audit-atomic.
+`PUT /api/v1/application/configuration` is disabled and returns HTTP 405 `METHOD_NOT_ALLOWED` after the normal authentication/CSRF boundary. Tenant Admin writes use the bounded versioned Locations contract below, so the legacy route cannot bypass optimistic concurrency.
 
 A Request or room-availability check for an inactive/missing room or Site is concealed as unavailable. A room whose active Site has no valid authoritative time zone is not bookable and returns HTTP 409 `SITE_TIME_ZONE_REQUIRED` before local Request mutation or provider access.
 
@@ -186,6 +192,20 @@ A successful minimized response is:
 ```
 
 Local or provider busy state returns `available: false`. Missing entitlement/mapping/connection, provider authorization, throttling, timeout or malformed provider data returns the stable HTTP 503 code `ROOM_AVAILABILITY_UNAVAILABLE`; it never produces false availability. The check is advisory: authoritative Conference Manager confirmation still repeats uncached final validation and the local room-lock operation.
+
+## Tenant Locations and Rooms administration
+
+All routes require Tenant Admin plus `tenant:configure`. Tenant authority comes only from the authenticated Principal. `PUT` and rollback require the session-bound CSRF token.
+
+- `GET /api/v1/tenant/settings/locations` returns `{ "locations": { "schemaVersion": 1, "revision", "configuration", "providerContext" } }`.
+- `PUT /api/v1/tenant/settings/locations` accepts exactly `schemaVersion`, `expectedRevision` and `configuration` and returns the advanced aggregate.
+- `GET /api/v1/tenant/settings/locations/history?limit=50` returns bounded immutable revision metadata.
+- `GET /api/v1/tenant/settings/locations/history/{revision}` returns one Tenant-scoped local snapshot or `404 NOT_FOUND`.
+- `POST /api/v1/tenant/settings/locations/rollback` accepts exactly `schemaVersion`, `expectedRevision` and `sourceRevision` and creates a new revision.
+
+The mutable configuration contains only local Site/Room business fields. Microsoft provider identifiers, resource addresses, provider Tenant authority and credentials are rejected. Existing Rooms cannot be physically removed, and new Rooms originate only through the Microsoft-first import boundary. Deactivation is reference-protected. Rollback retains entities created after the source revision as inactive, revalidates the complete writable contract and snapshots the actual resulting state. A readable legacy snapshot with an unknown Site time zone cannot be reapplied.
+
+Microsoft room import advances the Locations revision once when it creates local Rooms. Provider-metadata-only synchronization does not advance local configuration history.
 
 ## Tenant audit
 

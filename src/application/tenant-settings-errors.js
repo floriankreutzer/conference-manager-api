@@ -8,6 +8,13 @@ export class TenantSettingsInputError extends Error {
 
 export class TenantSettingsConflictError extends Error {
   constructor(currentRevision) {
+    if (
+      !Number.isSafeInteger(currentRevision)
+      || currentRevision < 1
+      || currentRevision >= Number.MAX_SAFE_INTEGER
+    ) {
+      throw new TypeError('TENANT_SETTINGS_CURRENT_REVISION_INVALID');
+    }
     super('TENANT_SETTINGS_REVISION_CONFLICT');
     this.name = 'TenantSettingsConflictError';
     this.code = 'TENANT_SETTINGS_REVISION_CONFLICT';

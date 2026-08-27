@@ -5,7 +5,9 @@ const { Pool } = pg;
 // Schema 19 established confirmed-booking change persistence.
 // Schema 20 adds independent optimistic revision state for each mutable
 // Tenant Admin settings aggregate without introducing a generic settings store.
-export const CURRENT_SCHEMA_VERSION = 20;
+// Schema 21 adds the bounded Locations/Rooms owner metadata and immutable
+// location-revision history without fabricating legacy Site time zones.
+export const CURRENT_SCHEMA_VERSION = 21;
 
 export function createPostgresPool(config) {
   if (!config?.databaseUrl) throw new TypeError('DATABASE_URL_REQUIRED');
