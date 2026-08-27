@@ -1,6 +1,8 @@
 import { ApiError } from '../api-error.js';
 import { isInternalUuid } from '../domain/identifiers.js';
 import { readJsonObjectBody, validateExactObject } from '../security.js';
+import { createRouteModuleRegistry } from './route-module.js';
+import { tenantSettingsRouteKey } from './settings/index.js';
 
 export const APPLICATION_ROUTES = Object.freeze({
   profile: '/api/v1/application/profile',
@@ -65,7 +67,7 @@ function notificationId(path) {
   return match[1].toLowerCase();
 }
 
-export function applicationRouteKey(path) {
+function legacyApplicationRouteKey(path) {
   if (path === APPLICATION_ROUTES.profile) return 'application_profile';
   if (path === APPLICATION_ROUTES.catalog) return 'application_catalog';
   if (path === APPLICATION_ROUTES.siteInfo) return 'application_site_info';
@@ -75,6 +77,10 @@ export function applicationRouteKey(path) {
   if (path === APPLICATION_ROUTES.configuration) return 'application_configuration';
   if (NOTIFICATION_PATH.test(path)) return 'application_notification';
   return null;
+}
+
+export function applicationRouteKey(path) {
+  return tenantSettingsRouteKey(path) || legacyApplicationRouteKey(path);
 }
 
 export function createApplicationHttpHandler({
@@ -99,9 +105,22 @@ export function createApplicationHttpHandler({
     throw new TypeError('MAX_RESPONSE_BYTES_INVALID');
   }
 
+  const applicationService = service?.applicationService ?? service;
+  const routeModuleRegistry = createRouteModuleRegistry(service?.routeModules ?? []);
+  const routeModuleDispatcher = routeModuleRegistry.createDispatcher({
+    principalGuard,
+    tenantGuard,
+    maxBodyBytes,
+    maxResponseBytes,
+  });
+
   return async function handleApplication({ request, response, parsedUrl, path, requestId }) {
-    if (!applicationRouteKey(path)) return null;
-    if (!service) throw new ApiError(503, 'APPLICATION_SERVICE_UNAVAILABLE');
+    const moduleRouteKey = routeModuleRegistry.routeKey(path);
+    if (moduleRouteKey) {
+      return routeModuleDispatcher({ request, response, parsedUrl, path, requestId });
+    }
+    if (!legacyApplicationRouteKey(path)) return null;
+    if (!applicationService) throw new ApiError(503, 'APPLICATION_SERVICE_UNAVAILABLE');
     assertNoQuery(parsedUrl);
 
     const mutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method);
@@ -119,7 +138,7 @@ export function createApplicationHttpHandler({
 
     if (path === APPLICATION_ROUTES.profile) {
       if (request.method === 'GET') {
-        sendJson(response, 200, { profile: await service.getProfile(common) }, maxResponseBytes);
+        sendJson(response, 200, { profile: await applicationService.getProfile(common) }, maxResponseBytes);
         return 200;
       }
       if (request.method === 'PUT') {
@@ -128,7 +147,7 @@ export function createApplicationHttpHandler({
           PROFILE_BODY_SCHEMA,
         );
         sendJson(response, 200, {
-          profile: await service.updateProfile({ ...common, profile }),
+          profile: await applicationService.updateProfile({ ...common, profile }),
         }, maxResponseBytes);
         return 200;
       }
@@ -137,19 +156,19 @@ export function createApplicationHttpHandler({
 
     if (path === APPLICATION_ROUTES.catalog) {
       if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
-      sendJson(response, 200, { catalog: await service.getCatalog(common) }, maxResponseBytes);
+      sendJson(response, 200, { catalog: await applicationService.getCatalog(common) }, maxResponseBytes);
       return 200;
     }
 
     if (path === APPLICATION_ROUTES.siteInfo) {
       if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
-      sendJson(response, 200, { siteInfo: await service.getSiteInfo(common) }, maxResponseBytes);
+      sendJson(response, 200, { siteInfo: await applicationService.getSiteInfo(common) }, maxResponseBytes);
       return 200;
     }
 
     if (path === APPLICATION_ROUTES.requests) {
       if (request.method === 'GET') {
-        sendJson(response, 200, { requests: await service.listRequests(common) }, maxResponseBytes);
+        sendJson(response, 200, { requests: await applicationService.listRequests(common) }, maxResponseBytes);
         return 200;
       }
       if (request.method === 'POST') {
@@ -158,7 +177,7 @@ export function createApplicationHttpHandler({
           REQUEST_BODY_SCHEMA,
         );
         sendJson(response, 201, {
-          request: await service.createRequest({ ...common, requestDraft }),
+          request: await applicationService.createRequest({ ...common, requestDraft }),
         }, maxResponseBytes);
         return 201;
       }
@@ -172,14 +191,14 @@ export function createApplicationHttpHandler({
         ROOM_AVAILABILITY_BODY_SCHEMA,
       );
       sendJson(response, 200, {
-        availability: await service.checkRoomAvailability({ ...common, query }),
+        availability: await applicationService.checkRoomAvailability({ ...common, query }),
       }, maxResponseBytes);
       return 200;
     }
 
     if (path === APPLICATION_ROUTES.notifications) {
       if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
-      sendJson(response, 200, { notifications: await service.listNotifications(common) }, maxResponseBytes);
+      sendJson(response, 200, { notifications: await applicationService.listNotifications(common) }, maxResponseBytes);
       return 200;
     }
 
@@ -190,7 +209,7 @@ export function createApplicationHttpHandler({
         NOTIFICATION_BODY_SCHEMA,
       );
       sendJson(response, 200, {
-        notification: await service.markNotificationRead({
+        notification: await applicationService.markNotificationRead({
           ...common,
           notificationId: notificationId(path),
         }),
@@ -200,7 +219,7 @@ export function createApplicationHttpHandler({
 
     if (path === APPLICATION_ROUTES.configuration) {
       if (request.method === 'GET') {
-        sendJson(response, 200, { configuration: await service.getConfiguration(common) }, maxResponseBytes);
+        sendJson(response, 200, { configuration: await applicationService.getConfiguration(common) }, maxResponseBytes);
         return 200;
       }
       if (request.method === 'PUT') {
@@ -209,7 +228,7 @@ export function createApplicationHttpHandler({
           CONFIGURATION_BODY_SCHEMA,
         );
         sendJson(response, 200, {
-          configuration: await service.updateConfiguration({ ...common, configuration }),
+          configuration: await applicationService.updateConfiguration({ ...common, configuration }),
         }, maxResponseBytes);
         return 200;
       }
