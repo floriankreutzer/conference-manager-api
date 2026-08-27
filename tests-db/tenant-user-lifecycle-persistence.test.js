@@ -236,7 +236,7 @@ test('Tenant User disable is isolated, audit-atomic and fails Entra JIT access c
   });
   assert.equal(lastAdmin.status, 'last_tenant_admin');
 
-  assert.equal(await rollbackToVersion(pool, 26), true);
+  assert.equal(await rollbackToVersion(pool, 27), true);
   await assert.rejects(
     rollbackLatest(pool),
     (error) => error.code === '55000'

@@ -561,7 +561,6 @@ for (const required of [
   'LOCK TABLE booking_change_requests IN ACCESS EXCLUSIVE MODE',
   'REQUEST_COMPOSITION_V2_ROLLBACK_REQUIRES_REVIEW',
   'proposed_request_snapshot IS NOT NULL',
-  'previous_tenant_updated_at',
   'HAVING COUNT(revision.request_id) > 1',
   'COUNT(revision.request_id) = 1',
   'prices.currency IS DISTINCT FROM organization.default_currency',

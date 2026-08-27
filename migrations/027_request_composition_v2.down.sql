@@ -58,10 +58,6 @@ BEGIN
     FROM tenants tenant
     JOIN request_v2_migration_state state ON state.tenant_id = tenant.id
     WHERE tenant.catalog_revision <> state.previous_catalog_revision + 1
-       OR tenant.updated_at <> GREATEST(
-         state.previous_tenant_updated_at,
-         state.migrated_at
-       )
     LIMIT 1
   ) OR EXISTS (
     SELECT 1
@@ -185,8 +181,7 @@ ALTER TABLE requests
   DROP COLUMN schema_version;
 
 UPDATE tenants tenant
-SET catalog_revision = state.previous_catalog_revision,
-    updated_at = state.previous_tenant_updated_at
+SET catalog_revision = state.previous_catalog_revision
 FROM request_v2_migration_state state
 WHERE tenant.id = state.tenant_id;
 
