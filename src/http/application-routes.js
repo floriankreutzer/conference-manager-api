@@ -1,6 +1,10 @@
 import { ApiError } from '../api-error.js';
 import { isInternalUuid } from '../domain/identifiers.js';
 import { readJsonObjectBody, validateExactObject } from '../security.js';
+import {
+  createTenantLocationHttpHandler,
+  tenantLocationRouteKey,
+} from './settings/locations.js';
 
 export const APPLICATION_ROUTES = Object.freeze({
   profile: '/api/v1/application/profile',
@@ -66,6 +70,8 @@ function notificationId(path) {
 }
 
 export function applicationRouteKey(path) {
+  const tenantLocationRoute = tenantLocationRouteKey(path);
+  if (tenantLocationRoute) return tenantLocationRoute;
   if (path === APPLICATION_ROUTES.profile) return 'application_profile';
   if (path === APPLICATION_ROUTES.catalog) return 'application_catalog';
   if (path === APPLICATION_ROUTES.siteInfo) return 'application_site_info';
@@ -98,9 +104,19 @@ export function createApplicationHttpHandler({
   if (!Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1_024) {
     throw new TypeError('MAX_RESPONSE_BYTES_INVALID');
   }
+  const tenantLocationHandler = createTenantLocationHttpHandler({
+    service: service?.tenantLocations,
+    principalGuard,
+    tenantGuard,
+    maxBodyBytes,
+    maxResponseBytes,
+  });
 
   return async function handleApplication({ request, response, parsedUrl, path, requestId }) {
     if (!applicationRouteKey(path)) return null;
+    if (tenantLocationRouteKey(path)) {
+      return tenantLocationHandler({ request, response, parsedUrl, path, requestId });
+    }
     if (!service) throw new ApiError(503, 'APPLICATION_SERVICE_UNAVAILABLE');
     assertNoQuery(parsedUrl);
 
