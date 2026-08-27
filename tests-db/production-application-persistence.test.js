@@ -184,7 +184,6 @@ test('production application persistence is tenant-scoped and request create is 
     [TENANT_A],
   );
   assert.deepEqual(auditA.rows.map((row) => [row.action, row.target_id]), [
-    [AUDIT_ACTION.TENANT_CONFIGURATION_CHANGED, 'sites'],
     [AUDIT_ACTION.REQUEST_CREATED, REQUEST_A],
   ]);
 

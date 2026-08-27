@@ -206,7 +206,7 @@ export async function advanceTenantLocationRevisionWithClient(client, {
     name: 'tenant-locations-revision-advance',
     text: `
       UPDATE tenants
-      SET locations_revision = $3, updated_at = $4
+      SET locations_revision = $3, updated_at = GREATEST(updated_at, $4)
       WHERE id = $1 AND locations_revision = $2
       RETURNING locations_revision
     `,

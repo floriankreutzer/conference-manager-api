@@ -167,6 +167,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 18, name: 'site_time_zones' },
       { version: 19, name: 'confirmed_booking_changes' },
       { version: 20, name: 'tenant_settings_revisions' },
+      { version: 21, name: 'tenant_location_self_service' },
     ]);
   });
 
@@ -623,6 +624,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
+    assert.equal(await rollbackLatest(pool), true);
     let remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(remaining.rows, [
       { version: 1 },
@@ -699,6 +701,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
     await migrateUp(pool);
     assert.equal(await isPostgresSchemaReady(pool), true);
 
+    assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
     assert.equal(await rollbackLatest(pool), true);
