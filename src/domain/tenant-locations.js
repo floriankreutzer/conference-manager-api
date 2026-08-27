@@ -47,6 +47,13 @@ function stringList(value, { code, limit = 50, maximum = 80 } = {}) {
   return Object.freeze(result);
 }
 
+function idList(value, code, limit = 200) {
+  if (!Array.isArray(value) || value.length > limit) inputError(code);
+  const result = value.map((entry) => safeId(entry, code));
+  if (new Set(result).size !== result.length) inputError(code);
+  return Object.freeze(result);
+}
+
 function assetList(value) {
   if (!Array.isArray(value) || value.length > 20) inputError('TENANT_ROOM_MEDIA_INVALID');
   const result = value.map((entry) => {
@@ -98,8 +105,8 @@ function normalizeRoom(value, roomIds) {
     floor: room.floor === null ? null : nullableText(room.floor, 'TENANT_ROOM_FLOOR_INVALID', 80),
     equipment: stringList(room.equipment, { code: 'TENANT_ROOM_EQUIPMENT_INVALID' }),
     accessibility: stringList(room.accessibility, { code: 'TENANT_ROOM_ACCESSIBILITY_INVALID', limit: 20 }),
-    serviceIds: Object.freeze(room.serviceIds.map((entry) => safeId(entry, 'TENANT_ROOM_SERVICE_INVALID'))),
-    cateringPackageIds: Object.freeze(room.cateringPackageIds.map((entry) => safeId(entry, 'TENANT_ROOM_CATERING_INVALID'))),
+    serviceIds: idList(room.serviceIds, 'TENANT_ROOM_SERVICE_INVALID'),
+    cateringPackageIds: idList(room.cateringPackageIds, 'TENANT_ROOM_CATERING_INVALID'),
     floorplanAssetId: room.floorplanAssetId,
     mediaAssetIds: assetList(room.mediaAssetIds),
   });
