@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { createTenantBulkTransferOperations } from '../src/application/tenant-bulk-transfer-operations.js';
 import {
@@ -38,6 +39,20 @@ test('bulk documents are exact, bounded and remain owned by their settings aggre
     () => tenantBulkTemplate('services', 'locations'),
     /TENANT_BULK_TYPE_INVALID/,
   );
+});
+
+test('bulk receipt migration declares the exact ledger and a fail-closed rollback guard', async () => {
+  const up = await readFile(new URL('../migrations/028_tenant_bulk_transfer_receipts.up.sql', import.meta.url), 'utf8');
+  const down = await readFile(new URL('../migrations/028_tenant_bulk_transfer_receipts.down.sql', import.meta.url), 'utf8');
+  for (const column of [
+    'tenant_id', 'actor_user_id', 'aggregate', 'document_type', 'source_revision',
+    'payload_sha256', 'status', 'expires_at', 'correlation_id', 'applied_response',
+  ]) assert.match(up, new RegExp(`\\b${column}\\b`));
+  assert.match(up, /REFERENCES tenants\(id\) ON DELETE CASCADE/);
+  assert.match(up, /REFERENCES users\(tenant_id, id\) ON DELETE RESTRICT/);
+  assert.match(down, /LOCK TABLE tenant_bulk_transfer_receipts IN ACCESS EXCLUSIVE MODE/);
+  assert.match(down, /TENANT_BULK_TRANSFER_RECEIPTS_REQUIRE_REVIEW/);
+  assert.match(down, /IF EXISTS \(SELECT 1 FROM tenant_bulk_transfer_receipts LIMIT 1\)/);
 });
 
 test('patch import preserves excluded collections and absent rows', () => {
