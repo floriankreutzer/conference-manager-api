@@ -14,6 +14,11 @@ import { createMicrosoft365RoomMappingService } from './application/microsoft365
 import { createProductionApplicationService } from './application/production-application-service.js';
 import { createRequestService } from './application/request-service.js';
 import { createRoomAvailabilityService } from './application/room-availability-service.js';
+import { createTenantBookingPolicyService } from './application/tenant-booking-policy-service.js';
+import { createTenantCatalogService } from './application/tenant-catalog-service.js';
+import { createTenantCostAllocationService } from './application/tenant-cost-allocation-service.js';
+import { createTenantLocationsService } from './application/tenant-locations-service.js';
+import { createTenantOrganizationService } from './application/tenant-organization-service.js';
 import { createTenantPilotService } from './application/tenant-pilot-service.js';
 import { createTenantUserAdministrationService } from './application/tenant-user-administration-service.js';
 import { createAuditService } from './audit/audit-service.js';
@@ -25,6 +30,7 @@ import { createEntraClient } from './identity/entra-client.js';
 import { createJitUserService } from './identity/jit-user-service.js';
 import { createPendingProviderIdentityResolver } from './identity/provider-identity-resolver.js';
 import { createSessionService } from './identity/session-service.js';
+import { createTenantSettingsRouteModules } from './http/settings/index.js';
 import { createMicrosoft365CalendarProviderFactory } from './integrations/microsoft365-calendar-provider.js';
 import { createMicrosoft365Client } from './integrations/microsoft365-client.js';
 import { createLogger } from './logger.js';
@@ -39,21 +45,13 @@ const metrics = createMetricsRegistry({ write: (line) => process.stdout.write(li
 const persistence = config.databaseUrl ? createPostgresPersistence(config) : null;
 const authorizationPolicy = createAuthorizationPolicy();
 const auditService = persistence
-  ? createAuditService({
-    repository: persistence.auditRepository,
-    authorizationPolicy,
-  })
+  ? createAuditService({ repository: persistence.auditRepository, authorizationPolicy })
   : null;
 const entitlementService = persistence && auditService
-  ? createEntitlementService({
-    repository: persistence.entitlementRepository,
-    auditService,
-  })
+  ? createEntitlementService({ repository: persistence.entitlementRepository, auditService })
   : null;
 const capabilityHealthService = persistence
-  ? createMicrosoft365CapabilityHealthService({
-    repository: persistence.microsoft365CapabilityHealthRepository,
-  })
+  ? createMicrosoft365CapabilityHealthService({ repository: persistence.microsoft365CapabilityHealthRepository })
   : null;
 const sessionService = persistence
   ? createSessionService({
@@ -118,9 +116,7 @@ const microsoft365BookingServiceFactory = persistence
     metrics,
   })
   : null;
-const roomAvailabilityService = persistence
-  && entitlementService
-  && microsoft365CalendarProviderFactory
+const roomAvailabilityService = persistence && entitlementService && microsoft365CalendarProviderFactory
   ? createRoomAvailabilityService({
     repository: persistence.bookingReferenceRepository,
     authorizationPolicy,
@@ -140,10 +136,7 @@ const entraAuthService = persistence && entraClient && sessionService
     transactionTtlSeconds: config.oidcTransactionTtlSeconds,
   })
   : null;
-const finalRoomConfirmationService = persistence
-  && auditService
-  && entitlementService
-  && microsoft365CalendarProviderFactory
+const finalRoomConfirmationService = persistence && auditService && entitlementService && microsoft365CalendarProviderFactory
   ? createFinalRoomConfirmationService({
     repository: persistence.requestRepository,
     authorizationPolicy,
@@ -181,6 +174,54 @@ const productionApplicationService = persistence && auditService
     roomAvailabilityService,
   })
   : null;
+const tenantOrganizationService = persistence && auditService
+  ? createTenantOrganizationService({
+    repository: persistence.tenantOrganizationRepository,
+    authorizationPolicy,
+    auditService,
+  })
+  : null;
+const tenantLocationsService = persistence && auditService
+  ? createTenantLocationsService({
+    repository: persistence.tenantLocationsRepository,
+    authorizationPolicy,
+    auditService,
+  })
+  : null;
+const tenantCatalogService = persistence && auditService
+  ? createTenantCatalogService({
+    repository: persistence.tenantCatalogRepository,
+    authorizationPolicy,
+    auditService,
+  })
+  : null;
+const tenantBookingPolicyService = persistence && auditService
+  ? createTenantBookingPolicyService({
+    repository: persistence.tenantBookingPolicyRepository,
+    authorizationPolicy,
+    auditService,
+  })
+  : null;
+const tenantCostAllocationService = persistence && auditService
+  ? createTenantCostAllocationService({
+    repository: persistence.tenantCostAllocationRepository,
+    authorizationPolicy,
+    auditService,
+  })
+  : null;
+const tenantSettingsRouteModules = tenantOrganizationService
+  && tenantLocationsService
+  && tenantCatalogService
+  && tenantBookingPolicyService
+  && tenantCostAllocationService
+  ? createTenantSettingsRouteModules({
+    organizationService: tenantOrganizationService,
+    locationsService: tenantLocationsService,
+    catalogService: tenantCatalogService,
+    bookingPolicyService: tenantBookingPolicyService,
+    costAllocationService: tenantCostAllocationService,
+  })
+  : [];
 const tenantUserAdministrationService = persistence && auditService
   ? createTenantUserAdministrationService({
     repository: persistence.tenantUserAdminRepository,
@@ -236,8 +277,7 @@ const microsoft365RoomMappingService = persistence && auditService && microsoft3
     auditService,
   })
   : null;
-const microsoft365OnboardingVerificationService = microsoft365RoomMappingService
-  && microsoft365CalendarProviderFactory
+const microsoft365OnboardingVerificationService = microsoft365RoomMappingService && microsoft365CalendarProviderFactory
   ? createMicrosoft365OnboardingVerificationService({
     roomMappingService: microsoft365RoomMappingService,
     calendarProviderFactory: microsoft365CalendarProviderFactory,
@@ -278,6 +318,7 @@ const server = createHttpServer({
   productionApplicationService,
   tenantUserAdministrationService,
   microsoft365ConnectionService: microsoft365Service,
+  routeModules: tenantSettingsRouteModules,
   loadTenant: persistence?.loadTenant,
   readinessChecks: persistence?.readinessChecks || [],
 });
