@@ -21,6 +21,11 @@ import {
   AuthorizationInputError,
   RequestStateConflictError,
 } from './authorization/errors.js';
+import { TenantBookingPolicyInputError } from './domain/tenant-booking-policy.js';
+import { TenantCatalogInputError } from './domain/tenant-catalog.js';
+import { TenantCostAllocationInputError } from './domain/tenant-cost-allocation.js';
+import { TenantLocationsInputError } from './domain/tenant-locations.js';
+import { TenantOrganizationInputError } from './domain/tenant-organization.js';
 import { EntraAuthenticationError } from './identity/entra-errors.js';
 import { EntitlementDeniedError, EntitlementInputError } from './entitlements/errors.js';
 import {
@@ -55,6 +60,11 @@ export function asApiError(error) {
     || error instanceof Microsoft365ConnectionInputError
     || error instanceof EntitlementInputError
     || error instanceof TenantSettingsInputError
+    || error instanceof TenantOrganizationInputError
+    || error instanceof TenantLocationsInputError
+    || error instanceof TenantCatalogInputError
+    || error instanceof TenantBookingPolicyInputError
+    || error instanceof TenantCostAllocationInputError
   ) {
     return new ApiError(400, 'VALIDATION_FAILED');
   }
