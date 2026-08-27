@@ -46,9 +46,12 @@ BEGIN
      AND revision.schema_version = 1
      AND revision.operation = 'migrated_legacy'
     GROUP BY request.tenant_id, request.id
-    HAVING COUNT(revision.request_id) <> 1
-       OR MIN(request.current_revision_sequence)
-         IS DISTINCT FROM MIN(revision.revision_sequence)
+    HAVING COUNT(revision.request_id) > 1
+       OR (
+         COUNT(revision.request_id) = 1
+         AND MIN(request.current_revision_sequence)
+           IS DISTINCT FROM MIN(revision.revision_sequence)
+       )
     LIMIT 1
   ) OR EXISTS (
     SELECT 1

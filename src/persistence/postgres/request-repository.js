@@ -708,7 +708,7 @@ export function createPostgresRequestRepository(
             requesterUserId: row.requester_user_id,
           }))),
         });
-      }, { isolationLevel: 'REPEATABLE READ', readOnly: true });
+      }, { isolationLevel: 'READ COMMITTED', readOnly: true });
     },
 
     async listReportPageByTenantId({
@@ -814,7 +814,7 @@ export function createPostgresRequestRepository(
             requesterUserId: row.requester_user_id,
           }))),
         });
-      }, { isolationLevel: 'REPEATABLE READ', readOnly: true });
+      }, { isolationLevel: 'READ COMMITTED', readOnly: true });
     },
 
     async listHistoryByTenantIdAndId(tenantId, requestId, { limit = 100 } = {}) {
