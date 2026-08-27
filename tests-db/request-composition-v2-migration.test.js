@@ -413,6 +413,10 @@ test('migration 027 backfills explicit legacy history and enforces v2 integrity'
   await migrateUp(pool);
   assert.equal(CURRENT_SCHEMA_VERSION, MIGRATION_VERSION);
   assert.equal(await isPostgresSchemaReady(pool), true);
+  const migratedTenant = await pool.query(
+    'SELECT updated_at FROM tenants WHERE id = $1',
+    [TENANT_ID],
+  );
   const reportIndexes = await pool.query(`
     SELECT
       to_regclass('public.requests_tenant_report_range_idx') AS range_name,
@@ -853,7 +857,10 @@ test('migration 027 backfills explicit legacy history and enforces v2 integrity'
     [TENANT_ID],
   );
   assert.equal(Number(restored.rows[0].catalog_revision), 1);
-  assert.equal(restored.rows[0].updated_at.toISOString(), before.rows[0].updated_at.toISOString());
+  assert.equal(
+    restored.rows[0].updated_at.toISOString(),
+    migratedTenant.rows[0].updated_at.toISOString(),
+  );
   const restoredFutureTenantCatalogue = await pool.query(
     `SELECT revision.snapshot
      FROM tenants tenant
