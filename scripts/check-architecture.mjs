@@ -57,9 +57,26 @@ for (const route of [
   "'/api/v1/onboarding/invitations/start'",
   "'/api/v1/onboarding/claim'",
   "'/api/v1/session'",
-  "'/api/v1/audit'",
 ]) {
   if (!app.includes(route)) throw new Error(`Required route contract is missing: ${route}.`);
+}
+for (const routeModule of [
+  'tenantAuditQueryRouteModule',
+  'tenantUserLifecycleRouteModule',
+  'tenantCapabilityViewRouteModule',
+  'tenantPresentationRouteModule',
+  'tenantOrganizationRouteModule',
+  'tenantLocationRoutes',
+  'tenantCatalogueRouteModule',
+  'tenantBookingPolicyRoutes',
+  'tenantCostAllocationRoutes',
+]) {
+  if (!app.includes(routeModule)) {
+    throw new Error(`Integrated Tenant administration route registry is missing ${routeModule}.`);
+  }
+}
+if (!app.includes('TENANT_ROUTE_REGISTRY.createDispatcher')) {
+  throw new Error('Tenant routes must dispatch through the bounded module registry.');
 }
 if (!app.includes('createPrincipalGuard') || !app.includes('assertSameOrigin') || !app.includes('createRateLimiter')) {
   throw new Error('Required API security boundaries are not composed in src/app.js.');
@@ -109,8 +126,13 @@ if (!app.includes('sessionService?.resolvePrincipal') || !app.includes('sessionS
 if (!app.includes("request.method === 'DELETE'") || !app.includes('sessionService.revoke(principal,')) {
   throw new Error('Session logout must revoke the authenticated server-side session with request correlation.');
 }
-if (!app.includes('auditService.listTenantEvents') || !app.includes('correlationId: requestId')) {
-  throw new Error('Tenant audit reads must use the audit service and server-generated request correlation.');
+const tenantAuditRoutes = await readFile('src/http/tenant-audit-query-routes.js', 'utf8');
+if (
+  !tenantAuditRoutes.includes("const AUDIT_PATH = '/api/v1/audit'")
+  || !tenantAuditRoutes.includes('tenantAuditQueryService.listEvents')
+  || !tenantAuditRoutes.includes('correlationId: requestId')
+) {
+  throw new Error('Tenant audit reads must use the bounded audit query service and server request correlation.');
 }
 if (app.includes('tenantId: parsedUrl')) {
   throw new Error('Audit API must not accept client-selected Tenant authority.');
@@ -243,6 +265,12 @@ for (const required of [
   'createPostgresMicrosoft365RoomMappingRepository',
   'createPostgresMicrosoft365CapabilityHealthRepository',
   'createPostgresTenantLocationRepository',
+  'createPostgresTenantOrganizationRepository',
+  'createPostgresTenantCatalogueRepository',
+  'createPostgresTenantBookingPolicyRepository',
+  'createPostgresTenantCostAllocationRepository',
+  'createPostgresTenantAuditQueryRepository',
+  'createPostgresTenantUserLifecycleRepository',
   'auditRepository',
   'entitlementRepository',
   'bookingReferenceRepository',
@@ -253,6 +281,12 @@ for (const required of [
   'microsoft365RoomMappingRepository',
   'microsoft365CapabilityHealthRepository',
   'tenantLocationRepository',
+  'tenantOrganizationRepository',
+  'tenantCatalogueRepository',
+  'tenantBookingPolicyRepository',
+  'tenantCostAllocationRepository',
+  'tenantAuditQueryRepository',
+  'tenantUserLifecycleRepository',
 ]) {
   if (!persistence.includes(required)) throw new Error(`PostgreSQL persistence is missing ${required}.`);
 }
@@ -465,8 +499,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 21;/.test(pool)) {
-  throw new Error('Runtime schema readiness must require bounded Tenant location migration version 21.');
+if (!/export const CURRENT_SCHEMA_VERSION = 26;/.test(pool)) {
+  throw new Error('Runtime schema readiness must require the integrated SaaS 2 migration version 26.');
 }
 
 const index = await readFile('src/index.js', 'utf8');
@@ -488,14 +522,38 @@ for (const required of [
   'createMicrosoft365RoomMappingService',
   'createMicrosoft365BookingServiceFactory',
   'createTenantLocationAdministrationService',
+  'createCodeShippedManagedBrandPolicy',
+  'createTenantOrganizationService',
+  'createTenantPresentationService',
+  'createTenantCatalogueService',
+  'createTenantBookingPolicyService',
+  'createTenantCostAllocationService',
+  'createTenantUserLifecycleService',
+  'createTenantAuditQueryService',
+  'createTenantCapabilityViewService',
   'capabilityHealthService',
   'microsoft365ConnectionService',
   'microsoft365RoomMappingService',
   'microsoft365BookingServiceFactory',
   'roomAvailabilityService',
   'tenantLocationAdministrationService',
+  'managedBrandPolicy',
+  'tenantOrganizationService',
+  'tenantPresentationService',
+  'tenantCatalogueService',
+  'tenantBookingPolicyService',
+  'tenantCostAllocationService',
+  'tenantUserLifecycleService',
+  'tenantAuditQueryService',
+  'tenantCapabilityViewService',
 ]) {
   if (!index.includes(required)) throw new Error(`Process composition must wire ${required}.`);
+}
+if (!index.includes('managedAssetPolicy: managedBrandPolicy')) {
+  throw new Error('Tenant Organization mutation must use the code-shipped managed-brand policy.');
+}
+if (!index.includes('microsoft365Service: microsoft365ConnectionService')) {
+  throw new Error('Tenant capability view must consume the decorated Microsoft 365 health view.');
 }
 
 const auditMigration = await readFile('migrations/004_tamper_evident_audit.up.sql', 'utf8');
@@ -708,6 +766,16 @@ for (const migration of [
   'migrations/020_tenant_settings_revisions.down.sql',
   'migrations/021_tenant_location_self_service.up.sql',
   'migrations/021_tenant_location_self_service.down.sql',
+  'migrations/022_tenant_organization_settings.up.sql',
+  'migrations/022_tenant_organization_settings.down.sql',
+  'migrations/023_tenant_catalogue_administration.up.sql',
+  'migrations/023_tenant_catalogue_administration.down.sql',
+  'migrations/024_tenant_booking_policies.up.sql',
+  'migrations/024_tenant_booking_policies.down.sql',
+  'migrations/025_tenant_cost_allocation.up.sql',
+  'migrations/025_tenant_cost_allocation.down.sql',
+  'migrations/026_tenant_user_lifecycle_revision.up.sql',
+  'migrations/026_tenant_user_lifecycle_revision.down.sql',
 ]) {
   await readFile(migration, 'utf8');
 }

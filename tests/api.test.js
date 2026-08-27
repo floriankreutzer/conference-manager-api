@@ -3,10 +3,16 @@ import http from 'node:http';
 import test from 'node:test';
 import { createRequestService } from '../src/application/request-service.js';
 import {
+  CODE_SHIPPED_MANAGED_BRAND_REFERENCE,
+  createCodeShippedManagedBrandPolicy,
+} from '../src/application/managed-brand-preset-policy.js';
+import { createTenantPresentationService } from '../src/application/tenant-presentation-service.js';
+import {
   AUDIT_ACTION,
   AUDIT_OUTCOME,
   AUDIT_RETENTION_CLASS,
 } from '../src/audit/event.js';
+import { createTenantAuditQueryService } from '../src/audit/tenant-audit-query-service.js';
 import {
   PERMISSION,
   REQUEST_STATUS,
@@ -178,6 +184,20 @@ function requestServiceFor(initialRecord) {
   });
 }
 
+function auditQueryServiceFor(audit, authorizationPolicy) {
+  return createTenantAuditQueryService({
+    queryRepository: {
+      async listByTenantId({ tenantId, limit, beforeId }) {
+        return audit.repository.listByTenantId(tenantId, { limit, beforeId });
+      },
+    },
+    integrityRepository: audit.repository,
+    authorizationPolicy,
+    auditService: audit.service,
+    clock: () => Date.parse('2026-08-24T09:00:00.000Z'),
+  });
+}
+
 test('liveness and readiness expose no configuration details and set security headers', async () => {
   const config = testConfig();
   await withServer({ config, readinessChecks: [async () => true] }, async ({ port }) => {
@@ -250,6 +270,64 @@ test('protected session endpoint fails closed without principal', async () => {
     const result = await request({ port, path: '/api/v1/session' });
     assert.equal(result.statusCode, 401);
     assert.equal(result.body.error.code, 'UNAUTHENTICATED');
+  });
+});
+
+test('Tenant presentation is integrated as an authenticated Tenant-derived all-role read', async () => {
+  const authorizationPolicy = createAuthorizationPolicy();
+  const audit = createAuditHarness({ authorizationPolicy });
+  let loadedTenantId = null;
+  const tenantPresentationService = createTenantPresentationService({
+    repository: {
+      async loadCurrent(tenantId) {
+        loadedTenantId = tenantId;
+        return {
+          revision: 4,
+          organization: {
+            displayName: 'Presented Tenant',
+            businessMetadata: {
+              legalName: 'Private Legal Name',
+              registrationNumber: 'PRIVATE-123',
+              countryCode: 'DE',
+            },
+            presentation: { defaultLocale: 'de-DE', defaultCurrency: 'EUR' },
+            branding: {
+              logoAssetRef: CODE_SHIPPED_MANAGED_BRAND_REFERENCE,
+              accentToken: 'default',
+            },
+          },
+        };
+      },
+    },
+    authorizationPolicy,
+    auditService: audit.service,
+    managedBrandPolicy: createCodeShippedManagedBrandPolicy(),
+  });
+  await withServer({
+    config: testConfig(),
+    authorizationPolicy,
+    auditService: audit.service,
+    tenantPresentationService,
+    resolvePrincipal: async () => principal(),
+    loadTenant: async (tenantId) => tenantId === TENANT_ID ? tenant() : null,
+  }, async ({ port, logs }) => {
+    const result = await request({ port, path: '/api/v1/tenant/presentation' });
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.body.revision, 4);
+    assert.equal(result.body.presentation.displayName, 'Presented Tenant');
+    assert.equal(result.body.presentation.branding.logoPreset, 'conference-manager-mark');
+    assert.equal(result.body.businessMetadata, undefined);
+    assert.equal(JSON.stringify(result.body).includes('PRIVATE'), false);
+    assert.equal(JSON.stringify(result.body).includes('managed-brand:'), false);
+    assert.equal(loadedTenantId, TENANT_ID);
+    assert.equal(JSON.parse(logs.at(-1)).route, 'tenant_presentation');
+
+    const manipulated = await request({
+      port,
+      path: `/api/v1/tenant/presentation?tenantId=${OTHER_TENANT_ID}`,
+    });
+    assert.equal(manipulated.statusCode, 400);
+    assert.equal(manipulated.body.error.code, 'VALIDATION_FAILED');
   });
 });
 
@@ -374,6 +452,7 @@ test('tenant admin audit endpoint is scoped, minimized, correlated, and permissi
     config: testConfig(),
     authorizationPolicy,
     auditService: audit.service,
+    tenantAuditQueryService: auditQueryServiceFor(audit, authorizationPolicy),
     resolvePrincipal: async () => tenantAdmin,
     loadTenant: async () => tenant(),
   };
@@ -412,7 +491,11 @@ test('audit endpoint rejects manipulated queries and fails closed on chain-integ
     resolvePrincipal: async () => tenantAdmin,
     loadTenant: async () => tenant(),
   };
-  await withServer({ ...common, auditService: validAudit.service }, async ({ port }) => {
+  await withServer({
+    ...common,
+    auditService: validAudit.service,
+    tenantAuditQueryService: auditQueryServiceFor(validAudit, authorizationPolicy),
+  }, async ({ port }) => {
     const injected = await request({
       port,
       path: `/api/v1/audit?tenantId=${OTHER_TENANT_ID}`,
@@ -425,7 +508,11 @@ test('audit endpoint rejects manipulated queries and fails closed on chain-integ
   });
 
   const compromised = createAuditHarness({ authorizationPolicy, verifyResult: false });
-  await withServer({ ...common, auditService: compromised.service }, async ({ port }) => {
+  await withServer({
+    ...common,
+    auditService: compromised.service,
+    tenantAuditQueryService: auditQueryServiceFor(compromised, authorizationPolicy),
+  }, async ({ port }) => {
     const result = await request({ port, path: '/api/v1/audit' });
     assert.equal(result.statusCode, 503);
     assert.equal(result.body.error.code, 'AUDIT_INTEGRITY_UNAVAILABLE');

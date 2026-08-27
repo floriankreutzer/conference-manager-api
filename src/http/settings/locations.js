@@ -40,6 +40,23 @@ function assertNoUnexpectedQuery(parsedUrl, allowed = new Set()) {
   }
 }
 
+async function assertEmptyBody(request) {
+  const contentLength = request.headers['content-length'];
+  if (
+    contentLength !== undefined
+    && (
+      Array.isArray(contentLength)
+      || !/^\d+$/.test(contentLength)
+      || Number(contentLength) !== 0
+    )
+  ) {
+    throw new ApiError(400, 'REQUEST_BODY_NOT_ALLOWED');
+  }
+  for await (const chunk of request) {
+    if (chunk.length > 0) throw new ApiError(400, 'REQUEST_BODY_NOT_ALLOWED');
+  }
+}
+
 export function tenantLocationRouteKey(path) {
   if (path === TENANT_LOCATION_ROUTES.current) return 'tenant_settings_locations';
   if (path === TENANT_LOCATION_ROUTES.history) return 'tenant_settings_locations_history';
@@ -65,6 +82,7 @@ export function createTenantLocationHttpHandler({ service, principalGuard, tenan
     if (path === TENANT_LOCATION_ROUTES.current) {
       assertNoUnexpectedQuery(parsedUrl);
       if (request.method === 'GET') {
+        await assertEmptyBody(request);
         sendJson(response, 200, { locations: await service.getCurrent(common) }, maxResponseBytes);
         return 200;
       }
@@ -81,6 +99,7 @@ export function createTenantLocationHttpHandler({ service, principalGuard, tenan
 
     if (path === TENANT_LOCATION_ROUTES.history) {
       if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+      await assertEmptyBody(request);
       assertNoUnexpectedQuery(parsedUrl, new Set(['limit']));
       const rawLimit = parsedUrl.searchParams.get('limit');
       if (rawLimit !== null && !/^\d{1,3}$/.test(rawLimit)) throw new ApiError(400, 'VALIDATION_FAILED');
@@ -104,6 +123,7 @@ export function createTenantLocationHttpHandler({ service, principalGuard, tenan
     if (match) {
       assertNoUnexpectedQuery(parsedUrl);
       if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+      await assertEmptyBody(request);
       const revision = Number(match[1]);
       const snapshot = await service.getRevision({ ...common, revision });
       if (!snapshot) throw new ApiError(404, 'NOT_FOUND');

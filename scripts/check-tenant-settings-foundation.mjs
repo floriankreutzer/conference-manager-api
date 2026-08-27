@@ -49,8 +49,8 @@ if (/repository|SELECT|UPDATE|INSERT INTO|DELETE FROM/i.test(revision)) {
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 21;/.test(pool)) {
-  throw new Error('Runtime schema readiness must require bounded Tenant location migration version 21.');
+if (!/export const CURRENT_SCHEMA_VERSION = 26;/.test(pool)) {
+  throw new Error('Runtime schema readiness must require the integrated SaaS 2 migration version 26.');
 }
 
 const migration = await readFile('migrations/020_tenant_settings_revisions.up.sql', 'utf8');
@@ -131,7 +131,16 @@ for (const required of ['defineRouteModule', "id: 'tenant-locations'", 'tenantLo
   if (!locationRoutes.includes(required)) throw new Error(`Location route module is missing ${required}.`);
 }
 const app = await readFile('src/app.js', 'utf8');
-for (const required of ['createRouteModuleRegistry', 'tenantLocationRoutes', 'settingsHandler']) {
+for (const required of [
+  'createRouteModuleRegistry',
+  'tenantPresentationRouteModule',
+  'tenantOrganizationRouteModule',
+  'tenantLocationRoutes',
+  'tenantCatalogueRouteModule',
+  'tenantBookingPolicyRoutes',
+  'tenantCostAllocationRoutes',
+  'tenantRouteHandler',
+]) {
   if (!app.includes(required)) throw new Error(`Application route registration is missing ${required}.`);
 }
 for (const file of ['src/logger.js', 'src/observability/metrics.js']) {
@@ -141,6 +150,17 @@ for (const file of ['src/logger.js', 'src/observability/metrics.js']) {
     'tenant_settings_locations_history',
     'tenant_settings_locations_revision',
     'tenant_settings_locations_rollback',
+    'tenant_settings_organization',
+    'tenant_settings_organization_history',
+    'tenant_presentation',
+    'tenant_settings_catalogue',
+    'tenant_settings_catalogue_history',
+    'tenant_settings_booking_policies',
+    'tenant_settings_booking_policies_history',
+    'tenant_settings_booking_policies_revision',
+    'tenant_settings_cost_allocation',
+    'tenant_settings_cost_allocation_history',
+    'tenant_settings_cost_allocation_revision',
   ]) {
     if (!source.includes(`'${routeKey}'`)) throw new Error(`${file} is missing safe route key ${routeKey}.`);
   }

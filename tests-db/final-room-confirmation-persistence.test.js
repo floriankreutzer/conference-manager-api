@@ -8,6 +8,7 @@ import {
 } from '../src/persistence/postgres/calendar-authority-guard.js';
 import { createPostgresRequestRepository } from '../src/persistence/postgres/request-repository.js';
 import { migrateUp } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_A = '11111111-aaaa-4111-8111-111111111111';
 const TENANT_B = '22222222-bbbb-4222-8222-222222222222';
@@ -35,6 +36,7 @@ function databaseConfig() {
 }
 
 async function clean(pool) {
+  await removeSaas2TenantAdministrationFixtures(pool, [TENANT_A, TENANT_B]);
   await pool.query('DELETE FROM microsoft365_room_mappings WHERE tenant_id = ANY($1::uuid[])', [[TENANT_A, TENANT_B]]);
   await pool.query('DELETE FROM booking_provider_references WHERE tenant_id = ANY($1::uuid[])', [[TENANT_A, TENANT_B]]);
   await pool.query('DELETE FROM requests WHERE tenant_id = ANY($1::uuid[])', [[TENANT_A, TENANT_B]]);

@@ -98,7 +98,23 @@ Migration 019 adds confirmed-booking change persistence and enforces one open pr
 
 Migration 020 adds independent optimistic revision counters for the Organization, Locations, Catalogue, Booking Policies and Cost Allocation Tenant Admin aggregates. It does not create a generic settings table/document, and rollback fails closed after any aggregate revision advances beyond its initial value.
 
-Migration 021 adds bounded JSON details columns for Sites and Rooms plus immutable `tenant_location_revisions`. It leaves existing Site time zones and local/provider identifiers unchanged. Runtime schema readiness advances to exactly version 21. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
+Migration 021 adds bounded JSON details columns for Sites and Rooms plus immutable `tenant_location_revisions`. It leaves existing Site time zones and local/provider identifiers unchanged.
+
+Migration 022 adds the bounded current Organization row and append-only Organization revisions. Existing and future Tenants receive a neutral revision-1 snapshot without fabricated legal, registration or branding data.
+
+Migration 023 adds the bounded service/equipment/catering Catalogue model, applicability relations and append-only Catalogue revisions. Existing and future Tenants receive a revision-1 snapshot; existing service identifiers remain authoritative.
+
+Migration 024 adds effective-dated Booking Policy configuration plus immutable policy revisions. Its explicit platform default adds no customer-specific restriction.
+
+Migration 025 adds Cost Allocation configuration, Tenant-scoped cost centers and immutable allocation revisions. Allocation remains disabled unless the Tenant explicitly enables it.
+
+Migration 026 adds monotonic `users.lifecycle_revision` state for disable/reactivate concurrency. It does not replace the independent `security_version` session-authority control.
+
+The all-role Tenant presentation contract reuses the current Organization row and
+`organization_revision`. Its managed-brand policy maps one fixed reference to a code-shipped preset
+and therefore introduces no upload metadata, asset table, external object reference or migration.
+
+Runtime schema readiness advances to exactly version 26. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
 
 No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
 
@@ -206,7 +222,7 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 21.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 26.
 
 ## Transaction contract
 
@@ -277,6 +293,12 @@ Migration 020 down fails closed when any Tenant settings aggregate revision has 
 
 Migration 021 down takes access-exclusive locks and fails closed when Locations history exists, any Locations revision has advanced, or any Site/Room detail value would be discarded. It cannot silently discard versioned Site/Room details or immutable history.
 
+Migrations 022 and 023 down allow only their neutral revision-1 state and fail closed before discarding non-default Organization or Catalogue data, revision advances, history beyond the initial snapshot or new Catalogue relations.
+
+Migrations 024 and 025 down fail closed after policy/allocation history, a revision advance, a non-default policy/allocation configuration or cost-center data exists. Customer history is not destructively rolled back.
+
+Migration 026 down fails closed after any lifecycle revision advances beyond `1`; User disable/reactivate state must be retained or resolved through a reviewed forward migration.
+
 ## Testing evidence required
 
 Database changes require PostgreSQL integration coverage for applicable migration/version/checksum behavior, tenant-scoped repositories, composite FK isolation, invalid constraints, duplicate/concurrent writes, transaction rollback, schema readiness and cross-Tenant persistence.
@@ -314,6 +336,12 @@ Migration 019 adds `booking_change_requests`, its Tenant-scoped foreign keys, bo
 Migration 020 additionally requires integration coverage that each aggregate revision initializes to `1`, only the intended revision is advanced by later owners, rollback remains available before first use, and populated rollback fails closed after any aggregate revision advances.
 
 Migration 021 additionally requires real PostgreSQL coverage for runner-owned up/down/reapply, single-snapshot reads, Tenant isolation, stale and concurrent writes, immutable history, audit rollback, referenced deactivation, exact rollback snapshots and Microsoft room-import revision advancement.
+
+Migrations 022 and 023 additionally require real PostgreSQL coverage for neutral auto-provisioning, immutable initial/current history, Tenant isolation, stale/concurrent writes, audit-atomic mutation, rollback/reapply and fail-closed populated rollback.
+
+Migrations 024 and 025 additionally require real PostgreSQL coverage for explicit defaults, Tenant-scoped references, effective-policy/allocation validation, immutable history, stale/concurrent writes, audit-atomic mutation and fail-closed populated rollback.
+
+Migration 026 additionally requires real PostgreSQL coverage for Tenant-scoped User listing, cross-Tenant concealment, monotonic lifecycle concurrency, last-admin protection, session revocation, audit atomicity and fail-closed populated rollback.
 
 The DB suites share migration state and are therefore executed serially with `--test-concurrency=1` to prevent test-runner races from weakening the migration/integrity evidence.
 

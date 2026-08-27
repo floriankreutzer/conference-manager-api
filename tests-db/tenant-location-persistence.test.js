@@ -23,6 +23,7 @@ import {
 } from '../src/persistence/postgres/tenant-location-repository.js';
 import { createHttpServer } from '../src/server.js';
 import { migrateUp } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_A = '61616161-6161-4161-8161-616161616161';
 const TENANT_B = '62626262-6262-4262-8262-626262626262';
@@ -67,6 +68,7 @@ async function deleteLocationHistory(pool) {
 }
 
 async function clean(pool) {
+  await removeSaas2TenantAdministrationFixtures(pool, TENANT_IDS);
   await deleteLocationHistory(pool);
   await pool.query('DELETE FROM booking_provider_references WHERE tenant_id = ANY($1::uuid[])', [TENANT_IDS]);
   await pool.query('DELETE FROM booking_change_requests WHERE tenant_id = ANY($1::uuid[])', [TENANT_IDS]);

@@ -33,6 +33,36 @@ import {
   TenantUnavailableError,
 } from './tenancy/errors.js';
 import { RoomAvailabilityUnavailableError } from './application/room-availability-service.js';
+import {
+  TenantBookingPolicyInputError,
+  TenantBookingPolicyViolationError,
+} from './domain/tenant-booking-policies.js';
+import { TenantCostAllocationInputError } from './domain/tenant-cost-allocation.js';
+
+const BOOKING_POLICY_VIOLATION_CODES = new Set([
+  'BOOKING_POLICY_LEAD_TIME_VIOLATION',
+  'BOOKING_POLICY_ADVANCE_WINDOW_VIOLATION',
+  'BOOKING_POLICY_CANCELLATION_WINDOW_VIOLATION',
+  'BOOKING_POLICY_CHANGE_WINDOW_VIOLATION',
+  'BOOKING_POLICY_PARTICIPANT_LIMIT_VIOLATION',
+  'BOOKING_POLICY_SITE_NOT_ALLOWED',
+  'BOOKING_POLICY_ROOM_NOT_ALLOWED',
+  'BOOKING_POLICY_SERVICE_NOT_ALLOWED',
+]);
+const BOOKING_POLICY_PARAMETER_BOUNDS = Object.freeze({
+  requiredMinutes: 527_040,
+  maximumMinutes: 527_040,
+  maximumParticipants: 100_000,
+});
+
+function bookingPolicyViolationContext(parameters) {
+  const context = {};
+  for (const [key, maximum] of Object.entries(BOOKING_POLICY_PARAMETER_BOUNDS)) {
+    const value = parameters?.[key];
+    if (Number.isSafeInteger(value) && value >= 0 && value <= maximum) context[key] = value;
+  }
+  return Object.keys(context).length > 0 ? Object.freeze(context) : null;
+}
 
 export class ApiError extends Error {
   constructor(statusCode, code, context = null) {
@@ -55,6 +85,8 @@ export function asApiError(error) {
     || error instanceof Microsoft365ConnectionInputError
     || error instanceof EntitlementInputError
     || error instanceof TenantSettingsInputError
+    || error instanceof TenantBookingPolicyInputError
+    || error instanceof TenantCostAllocationInputError
   ) {
     return new ApiError(400, 'VALIDATION_FAILED');
   }
@@ -64,6 +96,12 @@ export function asApiError(error) {
   if (error instanceof TenantUserRoleConflictError) return new ApiError(409, error.code);
   if (error instanceof TenantSettingsConflictError) {
     return new ApiError(409, error.code, { currentRevision: error.currentRevision });
+  }
+  if (error instanceof TenantBookingPolicyViolationError) {
+    const code = BOOKING_POLICY_VIOLATION_CODES.has(error.code)
+      ? error.code
+      : 'BOOKING_POLICY_VIOLATION';
+    return new ApiError(409, code, bookingPolicyViolationContext(error.parameters));
   }
   if (error instanceof Microsoft365ConnectionConflictError) return new ApiError(409, error.code);
   if (error instanceof Microsoft365ConnectionUnavailableError) {

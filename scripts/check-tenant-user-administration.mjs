@@ -81,11 +81,9 @@ for (const required of [
 
 const app = await readFile('src/app.js', 'utf8');
 for (const required of [
-  "tenantUsers: '/api/v1/tenant/users'",
   'TENANT_USER_ROLES_PATH',
-  'tenantUserAdministrationService.listUsers',
   'tenantUserAdministrationService.setRoles',
-  'csrf: isRoleMutation',
+  'csrf: true',
   'tenantGuard.requireKnown(principal)',
 ]) {
   if (!app.includes(required)) throw new Error(`Tenant role HTTP boundary is missing ${required}.`);

@@ -2,7 +2,6 @@ import { ApiError, asApiError } from './api-error.js';
 import { AuthorizationDeniedError } from './authorization/errors.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { assertProductionConfig } from './config.js';
-import { isInternalUuid } from './domain/identifiers.js';
 import {
   applicationRouteKey,
   createApplicationHttpHandler,
@@ -12,7 +11,15 @@ import {
   microsoft365RouteKey,
 } from './http/microsoft365-routes.js';
 import { createRouteModuleRegistry } from './http/route-module.js';
+import { tenantAuditQueryRouteModule } from './http/tenant-audit-query-routes.js';
+import { tenantBookingPolicyRoutes } from './http/settings/booking-policies.js';
+import { tenantCapabilityViewRouteModule } from './http/settings/tenant-capability-view-routes.js';
+import { tenantCatalogueRouteModule } from './http/settings/catalogue.js';
+import { tenantCostAllocationRoutes } from './http/settings/cost-allocation.js';
 import { tenantLocationRoutes } from './http/settings/locations.js';
+import { tenantOrganizationRouteModule } from './http/settings/organization.js';
+import { tenantPresentationRouteModule } from './http/settings/tenant-presentation-routes.js';
+import { tenantUserLifecycleRouteModule } from './http/settings/tenant-user-lifecycle-routes.js';
 import { EntraAuthenticationError } from './identity/entra-errors.js';
 import { readEntraTransactionCookie } from './identity/entra-transaction-cookie.js';
 import { createLogger } from './logger.js';
@@ -42,8 +49,6 @@ const ROUTES = Object.freeze({
   onboardingStart: '/api/v1/onboarding/invitations/start',
   onboardingClaim: '/api/v1/onboarding/claim',
   principal: '/api/v1/session',
-  audit: '/api/v1/audit',
-  tenantUsers: '/api/v1/tenant/users',
 });
 const REQUEST_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/;
 const REQUEST_TRANSITION_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/transitions$/;
@@ -100,8 +105,6 @@ const TENANT_USER_ROLES_BODY_SCHEMA = Object.freeze({
   }),
   optional: Object.freeze({}),
 });
-const AUDIT_QUERY_KEYS = new Set(['limit', 'beforeId']);
-const TENANT_USERS_QUERY_KEYS = new Set(['limit', 'afterId']);
 const ENTRA_CALLBACK_QUERY_KEYS = new Set([
   'code',
   'state',
@@ -114,7 +117,17 @@ const ENTRA_CALLBACK_QUERY_KEYS = new Set([
   'correlation_id',
   'error_uri',
 ]);
-const SETTINGS_ROUTE_REGISTRY = createRouteModuleRegistry([tenantLocationRoutes]);
+const TENANT_ROUTE_REGISTRY = createRouteModuleRegistry([
+  tenantPresentationRouteModule,
+  tenantAuditQueryRouteModule,
+  tenantUserLifecycleRouteModule,
+  tenantCapabilityViewRouteModule,
+  tenantOrganizationRouteModule,
+  tenantLocationRoutes,
+  tenantCatalogueRouteModule,
+  tenantBookingPolicyRoutes,
+  tenantCostAllocationRoutes,
+]);
 
 function urlOf(rawUrl, publicOrigin) {
   return new URL(rawUrl, publicOrigin);
@@ -181,57 +194,6 @@ function publicRequest(request) {
   });
 }
 
-function publicAuditEvent(event) {
-  return Object.freeze({
-    id: event.id,
-    actorUserId: event.actorUserId,
-    action: event.action,
-    targetType: event.targetType,
-    targetId: event.targetId,
-    previousState: event.previousState,
-    newState: event.newState,
-    occurredAt: event.occurredAt,
-    correlationId: event.correlationId,
-    outcome: event.outcome,
-    metadata: event.metadata,
-    retentionClass: event.retentionClass,
-  });
-}
-
-function auditPageFromUrl(parsedUrl) {
-  for (const key of parsedUrl.searchParams.keys()) {
-    if (!AUDIT_QUERY_KEYS.has(key) || parsedUrl.searchParams.getAll(key).length !== 1) {
-      throw new ApiError(400, 'VALIDATION_FAILED');
-    }
-  }
-  const limitValue = parsedUrl.searchParams.get('limit');
-  const beforeId = parsedUrl.searchParams.get('beforeId');
-  if (limitValue !== null && !/^\d{1,3}$/.test(limitValue)) {
-    throw new ApiError(400, 'VALIDATION_FAILED');
-  }
-  return Object.freeze({
-    limit: limitValue === null ? undefined : Number(limitValue),
-    beforeId,
-  });
-}
-
-function tenantUsersPageFromUrl(parsedUrl) {
-  for (const key of parsedUrl.searchParams.keys()) {
-    if (!TENANT_USERS_QUERY_KEYS.has(key) || parsedUrl.searchParams.getAll(key).length !== 1) {
-      throw new ApiError(400, 'VALIDATION_FAILED');
-    }
-  }
-  const limitValue = parsedUrl.searchParams.get('limit');
-  const afterId = parsedUrl.searchParams.get('afterId');
-  if (limitValue !== null && !/^\d{1,3}$/.test(limitValue)) {
-    throw new ApiError(400, 'VALIDATION_FAILED');
-  }
-  if (afterId !== null && !isInternalUuid(afterId)) throw new ApiError(400, 'VALIDATION_FAILED');
-  const limit = limitValue === null ? undefined : Number(limitValue);
-  if (limit !== undefined && (limit < 1 || limit > 100)) throw new ApiError(400, 'VALIDATION_FAILED');
-  return Object.freeze({ limit, afterUserId: afterId });
-}
-
 function routeKey(path) {
   if (path === ROUTES.live) return 'health_live';
   if (path === ROUTES.ready) return 'health_ready';
@@ -241,11 +203,9 @@ function routeKey(path) {
   if (path === ROUTES.onboardingStart) return 'onboarding_start';
   if (path === ROUTES.onboardingClaim) return 'onboarding_claim';
   if (path === ROUTES.principal) return 'session';
-  if (path === ROUTES.audit) return 'audit';
-  if (path === ROUTES.tenantUsers) return 'tenant_users';
   if (TENANT_USER_ROLES_PATH.test(path)) return 'tenant_user_roles';
-  const settingsRoute = SETTINGS_ROUTE_REGISTRY.routeKey(path);
-  if (settingsRoute) return settingsRoute;
+  const tenantRoute = TENANT_ROUTE_REGISTRY.routeKey(path);
+  if (tenantRoute) return tenantRoute;
   const applicationRoute = applicationRouteKey(path);
   if (applicationRoute) return applicationRoute;
   const microsoft365Route = microsoft365RouteKey(path);
@@ -273,8 +233,16 @@ export function createApp({
   requestService,
   bookingChangeService,
   productionApplicationService,
+  tenantAuditQueryService,
+  tenantBookingPolicyService,
+  tenantCapabilityViewService,
+  tenantCatalogueService,
+  tenantCostAllocationService,
   tenantLocationAdministrationService,
+  tenantOrganizationService,
+  tenantPresentationService,
   tenantUserAdministrationService,
+  tenantUserLifecycleService,
   microsoft365ConnectionService,
   resolvePrincipal,
   verifyCsrf,
@@ -303,8 +271,16 @@ export function createApp({
     verifyCsrf: verifyCsrf || sessionService?.verifyCsrf,
   });
   const tenantGuard = createTenantContextGuard({ loadTenant });
-  const settingsHandler = SETTINGS_ROUTE_REGISTRY.createDispatcher({
+  const tenantRouteHandler = TENANT_ROUTE_REGISTRY.createDispatcher({
+    tenantAuditQueryService,
+    tenantBookingPolicyService,
+    tenantCapabilityViewService,
+    tenantCatalogueService,
+    tenantCostAllocationService,
     tenantLocationAdministrationService,
+    tenantOrganizationService,
+    tenantPresentationService,
+    tenantUserLifecycleService,
     principalGuard,
     tenantGuard,
     maxBodyBytes: config.maxBodyBytes,
@@ -575,39 +551,15 @@ export function createApp({
         return;
       }
 
-      if (path === ROUTES.audit) {
-        if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
-        const principal = await principalGuard.require(request);
-        const tenantContext = await tenantGuard.requireKnown(principal);
-        if (!auditService || typeof auditService.listTenantEvents !== 'function') {
-          throw new ApiError(503, 'AUDIT_SERVICE_UNAVAILABLE');
-        }
-        const page = auditPageFromUrl(parsedUrl);
-        const events = await auditService.listTenantEvents({
-          principal,
-          tenantContext,
-          correlationId: requestId,
-          ...page,
-        });
-        const publicEvents = events.map(publicAuditEvent);
-        statusCode = 200;
-        sendJson(response, statusCode, {
-          events: publicEvents,
-          nextBeforeId: publicEvents.at(-1)?.id || null,
-          requestId,
-        }, config.maxResponseBytes);
-        return;
-      }
-
-      const settingsStatus = await settingsHandler({
+      const tenantRouteStatus = await tenantRouteHandler({
         request,
         response,
         parsedUrl,
         path,
         requestId,
       });
-      if (settingsStatus !== null) {
-        statusCode = settingsStatus;
+      if (tenantRouteStatus !== null) {
+        statusCode = tenantRouteStatus;
         return;
       }
 
@@ -636,46 +588,27 @@ export function createApp({
       }
 
       const tenantUserRoleMatch = path.match(TENANT_USER_ROLES_PATH);
-      if (path === ROUTES.tenantUsers || tenantUserRoleMatch) {
-        const isRoleMutation = Boolean(tenantUserRoleMatch);
-        const expectedMethod = isRoleMutation ? 'PUT' : 'GET';
-        if (request.method !== expectedMethod) throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+      if (tenantUserRoleMatch) {
+        if (request.method !== 'PUT') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
         if (!tenantUserAdministrationService) {
           throw new ApiError(503, 'TENANT_USER_SERVICE_UNAVAILABLE');
         }
-        const principal = await principalGuard.require(request, { csrf: isRoleMutation });
+        const principal = await principalGuard.require(request, { csrf: true });
         const tenantContext = await tenantGuard.requireKnown(principal);
-        if (isRoleMutation) {
-          assertNoQuery(parsedUrl);
-          const body = validateExactObject(
-            await readJsonObjectBody(request, { maxBytes: config.maxBodyBytes }),
-            TENANT_USER_ROLES_BODY_SCHEMA,
-          );
-          const user = await tenantUserAdministrationService.setRoles({
-            principal,
-            tenantContext,
-            targetUserId: tenantUserRoleMatch[1],
-            roles: body.roles,
-            correlationId: requestId,
-          });
-          statusCode = 200;
-          sendJson(response, statusCode, { user, requestId }, config.maxResponseBytes);
-          return;
-        }
-        const page = tenantUsersPageFromUrl(parsedUrl);
-        const users = await tenantUserAdministrationService.listUsers({
+        assertNoQuery(parsedUrl);
+        const body = validateExactObject(
+          await readJsonObjectBody(request, { maxBytes: config.maxBodyBytes }),
+          TENANT_USER_ROLES_BODY_SCHEMA,
+        );
+        const user = await tenantUserAdministrationService.setRoles({
           principal,
           tenantContext,
+          targetUserId: tenantUserRoleMatch[1],
+          roles: body.roles,
           correlationId: requestId,
-          ...page,
         });
-        const effectiveLimit = page.limit ?? 100;
         statusCode = 200;
-        sendJson(response, statusCode, {
-          users,
-          nextAfterId: users.length === effectiveLimit ? users.at(-1)?.id || null : null,
-          requestId,
-        }, config.maxResponseBytes);
+        sendJson(response, statusCode, { user, requestId }, config.maxResponseBytes);
         return;
       }
 

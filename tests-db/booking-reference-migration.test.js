@@ -3,6 +3,7 @@ import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
 import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_ID = '63636363-6363-4636-8636-636363636363';
 const USER_ID = '73737373-7373-4737-8737-737373737373';
@@ -81,6 +82,7 @@ test('booking reference migration rollback fails closed when provider links exis
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
 
+  await removeSaas2TenantAdministrationFixtures(pool, [TENANT_ID]);
   await pool.query('DELETE FROM requests WHERE tenant_id = $1', [TENANT_ID]);
   await pool.query('DELETE FROM integrations WHERE tenant_id = $1', [TENANT_ID]);
   await pool.query('DELETE FROM rooms WHERE tenant_id = $1', [TENANT_ID]);

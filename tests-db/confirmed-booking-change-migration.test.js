@@ -3,6 +3,7 @@ import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
 import { migrateUp, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_ID = '12121212-1212-4121-8121-121212121212';
 const USER_ID = '23232323-2323-4232-8232-232323232323';
@@ -15,6 +16,7 @@ function databaseConfig() {
 }
 
 async function clean(pool) {
+  await removeSaas2TenantAdministrationFixtures(pool, [TENANT_ID]);
   await pool.query('DELETE FROM booking_change_requests WHERE tenant_id = $1', [TENANT_ID]);
   await pool.query('DELETE FROM requests WHERE tenant_id = $1', [TENANT_ID]);
   await pool.query('DELETE FROM rooms WHERE tenant_id = $1', [TENANT_ID]);

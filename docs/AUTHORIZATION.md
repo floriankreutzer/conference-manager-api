@@ -148,6 +148,12 @@ Fields such as `tenantId`, `requesterUserId`, `owner`, `role`, `permission`, `st
 
 The public Request response deliberately omits internal Tenant ownership and requester User ID in this foundation slice. Later business APIs may expose additional required presentation data only through an explicit reviewed contract.
 
+`GET /api/v1/tenant/presentation` is such an explicit minimized contract. Every recognized
+authenticated Tenant role may read it through `authorizeTenantApplicationRead`; the server derives
+Tenant scope from the Principal and returns no internal Tenant ID, business registration data or raw
+managed reference. Tenant Admin plus `tenant:configure` remains mandatory for Organization
+administration reads, history and mutations.
+
 `GET /api/v1/audit` is read-only, accepts only bounded pagination, and returns presentation-safe events for the authenticated Tenant after `tenant:audit:read` authorization and integrity verification.
 
 ## Audit boundary

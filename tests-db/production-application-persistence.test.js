@@ -15,6 +15,7 @@ import {
   createPostgresMicrosoft365CalendarAuthorityGuard,
 } from '../src/persistence/postgres/calendar-authority-guard.js';
 import { migrateUp } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_A = '51515151-5151-4151-8151-515151515151';
 const TENANT_B = '52525252-5252-4252-8252-525252525252';
@@ -38,6 +39,7 @@ function databaseConfig() {
 }
 
 async function clean(pool) {
+  await removeSaas2TenantAdministrationFixtures(pool, TENANTS);
   await pool.query('DELETE FROM notifications WHERE tenant_id = ANY($1::uuid[])', [TENANTS]);
   await pool.query('DELETE FROM requests WHERE tenant_id = ANY($1::uuid[])', [TENANTS]);
   await pool.query('DELETE FROM rooms WHERE tenant_id = ANY($1::uuid[])', [TENANTS]);

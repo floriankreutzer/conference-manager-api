@@ -6,6 +6,7 @@ import {
 } from '../src/persistence/postgres/microsoft365-capability-health-repository.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
 import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_A = '91919191-9191-4919-8919-919191919191';
 const TENANT_B = '92929292-9292-4929-8929-929292929292';
@@ -44,6 +45,7 @@ test('Microsoft capability health is tenant-scoped, preserves last success and r
   const pool = createPostgresPool(databaseConfig());
   t.after(async () => {
     await migrateUp(pool);
+    await removeSaas2TenantAdministrationFixtures(pool, TENANT_IDS);
     await pool.query(
       'DELETE FROM microsoft365_capability_health WHERE tenant_id = ANY($1::uuid[])',
       [TENANT_IDS],

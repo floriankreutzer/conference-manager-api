@@ -19,9 +19,15 @@ import { createPostgresOidcTransactionRepository } from './oidc-transaction-repo
 import { createPostgresRequestRepository } from './request-repository.js';
 import { createPostgresSessionRepository } from './session-repository.js';
 import { createPostgresTenantLocationRepository } from './tenant-location-repository.js';
+import { createPostgresTenantOrganizationRepository } from './tenant-organization-repository.js';
+import { createPostgresTenantCatalogueRepository } from './tenant-catalogue-repository.js';
+import { createPostgresTenantBookingPolicyRepository } from './tenant-booking-policy-repository.js';
+import { createPostgresTenantCostAllocationRepository } from './tenant-cost-allocation-repository.js';
+import { createPostgresTenantAuditQueryRepository } from './tenant-audit-query-repository.js';
 import { createPostgresTenantOnboardingRepository } from './tenant-onboarding-repository.js';
 import { createPostgresTenantRepository } from './tenant-repository.js';
 import { createPostgresTenantUserAdminRepository } from './tenant-user-admin-repository.js';
+import { createPostgresTenantUserLifecycleRepository } from './tenant-user-lifecycle-repository.js';
 
 export function createPostgresPersistence(config) {
   const pool = createPostgresPool(config);
@@ -44,9 +50,23 @@ export function createPostgresPersistence(config) {
     auditRepository,
     calendarAuthorityGuard,
   });
+  const tenantAuditQueryRepository = createPostgresTenantAuditQueryRepository(pool);
+  const tenantBookingPolicyRepository = createPostgresTenantBookingPolicyRepository(pool, {
+    auditRepository,
+  });
+  const tenantCatalogueRepository = createPostgresTenantCatalogueRepository(pool, { auditRepository });
+  const tenantCostAllocationRepository = createPostgresTenantCostAllocationRepository(pool, {
+    auditRepository,
+  });
   const tenantLocationRepository = createPostgresTenantLocationRepository(pool, { auditRepository });
+  const tenantOrganizationRepository = createPostgresTenantOrganizationRepository(pool, {
+    auditRepository,
+  });
   const tenantOnboardingRepository = createPostgresTenantOnboardingRepository(pool, { auditRepository });
   const tenantUserAdminRepository = createPostgresTenantUserAdminRepository(pool, { auditRepository });
+  const tenantUserLifecycleRepository = createPostgresTenantUserLifecycleRepository(pool, {
+    auditRepository,
+  });
 
   return Object.freeze({
     pool,
@@ -62,10 +82,16 @@ export function createPostgresPersistence(config) {
     oidcTransactionRepository,
     sessionRepository,
     requestRepository,
+    tenantAuditQueryRepository,
+    tenantBookingPolicyRepository,
+    tenantCatalogueRepository,
+    tenantCostAllocationRepository,
     tenantLocationRepository,
+    tenantOrganizationRepository,
     tenantOnboardingRepository,
     tenantRepository,
     tenantUserAdminRepository,
+    tenantUserLifecycleRepository,
     loadTenant: (tenantId) => tenantRepository.findById(tenantId),
     readinessChecks: [
       () => isPostgresReady(pool),

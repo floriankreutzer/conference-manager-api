@@ -25,7 +25,7 @@ import { createPostgresSessionRepository } from '../src/persistence/postgres/ses
 import { createPostgresTenantRepository } from '../src/persistence/postgres/tenant-repository.js';
 import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
 import { createTenantScopedRepository } from '../src/tenancy/tenant-scoped-repository.js';
-import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
 
 const TENANT_A = '22222222-2222-4222-8222-222222222222';
 const TENANT_B = '33333333-3333-4333-8333-333333333333';
@@ -168,6 +168,11 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 19, name: 'confirmed_booking_changes' },
       { version: 20, name: 'tenant_settings_revisions' },
       { version: 21, name: 'tenant_location_self_service' },
+      { version: 22, name: 'tenant_organization_settings' },
+      { version: 23, name: 'tenant_catalogue_administration' },
+      { version: 24, name: 'tenant_booking_policies' },
+      { version: 25, name: 'tenant_cost_allocation' },
+      { version: 26, name: 'tenant_user_lifecycle_revision' },
     ]);
   });
 
@@ -612,19 +617,8 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
   });
 
   await t.test('audit migration refuses unreviewed legacy rows before reapplication', async () => {
-    assert.equal(await rollbackLatest(pool), true);
+    assert.equal(await rollbackToVersion(pool, 10), true);
     assert.equal(await isPostgresSchemaReady(pool), false);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
     let remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(remaining.rows, [
       { version: 1 },
@@ -701,26 +695,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
     await migrateUp(pool);
     assert.equal(await isPostgresSchemaReady(pool), true);
 
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
-    assert.equal(await rollbackLatest(pool), true);
+    assert.equal(await rollbackToVersion(pool, 2), true);
     remaining = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
     assert.deepEqual(remaining.rows, [{ version: 1 }]);
 

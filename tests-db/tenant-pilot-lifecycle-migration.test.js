@@ -8,6 +8,7 @@ import { createPostgresAuditRepository } from '../src/persistence/postgres/audit
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
 import { createPostgresTenantRepository } from '../src/persistence/postgres/tenant-repository.js';
 import { migrateUp, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_ID = '67676767-6767-4676-8676-676767676767';
 const CORRELATION_ID = '68686868-6868-4686-8686-686868686868';
@@ -24,6 +25,7 @@ test('Tenant pilot lifecycle change is optimistic, audit-atomic, and rollback-pr
   const pool = createPostgresPool(databaseConfig());
   t.after(async () => {
     await migrateUp(pool);
+    await removeSaas2TenantAdministrationFixtures(pool, [TENANT_ID]);
     await pool.query('ALTER TABLE audit_events DISABLE TRIGGER audit_events_append_only');
     try {
       await pool.query('DELETE FROM audit_events WHERE tenant_id = $1', [TENANT_ID]);

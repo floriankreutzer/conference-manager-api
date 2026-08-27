@@ -16,6 +16,7 @@ import {
   isPostgresSchemaReady,
 } from '../src/persistence/postgres/pool.js';
 import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_A = '31313131-3131-4131-8131-313131313131';
 const TENANT_B = '32323232-3232-4232-8232-323232323232';
@@ -45,6 +46,7 @@ function databaseConfig() {
 }
 
 async function clean(pool) {
+  await removeSaas2TenantAdministrationFixtures(pool, TENANT_IDS);
   await pool.query('ALTER TABLE tenant_location_revisions DISABLE TRIGGER USER');
   try {
     await pool.query('DELETE FROM tenant_location_revisions WHERE tenant_id = ANY($1::uuid[])', [TENANT_IDS]);

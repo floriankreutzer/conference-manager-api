@@ -12,6 +12,7 @@ import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/po
 import { createPostgresSessionRepository } from '../src/persistence/postgres/session-repository.js';
 import { createPostgresTenantOnboardingRepository } from '../src/persistence/postgres/tenant-onboarding-repository.js';
 import { migrateUp } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_A = 'a0a0a0a0-a0a0-40a0-80a0-a0a0a0a0a0a0';
 const TENANT_B = 'b0b0b0b0-b0b0-40b0-80b0-b0b0b0b0b0b0';
@@ -88,6 +89,7 @@ function onboardingService({
 
 async function cleanup(pool) {
   const tenantIds = [TENANT_A, TENANT_B, TENANT_C, TENANT_D, TENANT_E, TENANT_F];
+  await removeSaas2TenantAdministrationFixtures(pool, tenantIds);
   await pool.query('DELETE FROM tenant_claim_transactions');
   await pool.query('DELETE FROM oidc_auth_transactions');
   await pool.query('DELETE FROM sessions WHERE tenant_id = ANY($1::uuid[])', [tenantIds]);

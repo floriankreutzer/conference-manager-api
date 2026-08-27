@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 21;/.test(pool)) {
-  throw new Error('Production application contract requires bounded Tenant locations and current schema 21.');
+if (!/export const CURRENT_SCHEMA_VERSION = 26;/.test(pool)) {
+  throw new Error('Production application contract requires the integrated SaaS 2 schema version 26.');
 }
 
 const auditEvent = await readFile('src/audit/event.js', 'utf8');
