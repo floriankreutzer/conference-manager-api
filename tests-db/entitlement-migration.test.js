@@ -13,6 +13,7 @@ import {
   isPostgresSchemaReady,
 } from '../src/persistence/postgres/pool.js';
 import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const CORRELATION_ID = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
@@ -27,6 +28,8 @@ function databaseConfig() {
 test('entitlement migration rollback fails closed when state or evidence exists', async (t) => {
   const pool = createPostgresPool(databaseConfig());
   t.after(async () => {
+    await migrateUp(pool);
+    await removeSaas2TenantAdministrationFixtures(pool, [TENANT_ID]);
     await pool.query('ALTER TABLE audit_events DISABLE TRIGGER audit_events_append_only');
     try {
       await pool.query('DELETE FROM audit_events WHERE tenant_id = $1', [TENANT_ID]);

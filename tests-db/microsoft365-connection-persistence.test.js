@@ -15,7 +15,8 @@ import {
   createPostgresPool,
   isPostgresSchemaReady,
 } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_A = '12121212-1212-4212-8212-121212121212';
 const TENANT_B = '13131313-1313-4313-8313-131313131313';
@@ -49,6 +50,7 @@ function databaseConfig() {
 }
 
 async function clean(pool) {
+  await removeSaas2TenantAdministrationFixtures(pool, TENANT_IDS);
   await pool.query(
     'DELETE FROM microsoft365_consent_transactions WHERE tenant_id = ANY($1::uuid[])',
     [TENANT_IDS],
@@ -694,17 +696,8 @@ test('Microsoft 365 connection persistence is tenant-isolated, replay-safe and r
     ],
   );
 
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackToVersion(pool, 12), true);
   assert.equal(await isPostgresSchemaReady(pool), false);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await rollbackLatest(pool), true);
   await assert.rejects(
     rollbackLatest(pool),
     /MICROSOFT365_CONNECTION_ROWS_REQUIRE_REVIEW/,

@@ -356,6 +356,11 @@ test('Locations history and rollback progress through immutable Tenant-scoped re
 
 test('Locations history and rollback reject malformed input and preserve Tenant boundaries', async () => {
   await withServer(async ({ port }) => {
+    for (const path of [LOCATIONS_PATH, `${LOCATIONS_PATH}/history`, `${LOCATIONS_PATH}/history/1`]) {
+      const withBody = await request({ port, path, body: {} });
+      assert.equal(withBody.statusCode, 400);
+      assert.equal(withBody.body.error.code, 'REQUEST_BODY_NOT_ALLOWED');
+    }
     for (const path of [
       `${LOCATIONS_PATH}/history?limit=0`,
       `${LOCATIONS_PATH}/history?limit=101`,

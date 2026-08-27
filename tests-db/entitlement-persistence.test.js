@@ -9,6 +9,7 @@ import { createPostgresAuditRepository } from '../src/persistence/postgres/audit
 import { createPostgresEntitlementRepository } from '../src/persistence/postgres/entitlement-repository.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
 import { migrateUp } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_A = '12121212-1212-4212-8212-121212121212';
 const TENANT_B = '13131313-1313-4313-8313-131313131313';
@@ -42,6 +43,7 @@ function serviceFor(repository, auditService, rolloutState = ROLLOUT_STATE.NOT_C
 test('PostgreSQL entitlements are tenant-scoped, constrained, and audit-atomic', async (t) => {
   const pool = createPostgresPool(databaseConfig());
   t.after(async () => {
+    await removeSaas2TenantAdministrationFixtures(pool, [TENANT_A, TENANT_B]);
     await pool.query('ALTER TABLE audit_events DISABLE TRIGGER audit_events_append_only');
     try {
       await pool.query('DELETE FROM audit_events WHERE tenant_id = ANY($1::uuid[])', [[TENANT_A, TENANT_B]]);

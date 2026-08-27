@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_ID = '90909090-9090-4090-8090-909090909090';
 
@@ -13,6 +14,7 @@ function databaseConfig() {
 }
 
 async function clean(pool) {
+  await removeSaas2TenantAdministrationFixtures(pool, [TENANT_ID]);
   await pool.query('DELETE FROM tenants WHERE id = $1', [TENANT_ID]);
 }
 
@@ -25,7 +27,8 @@ test('Tenant settings revisions migrate without rewriting data and rollback fail
   });
 
   await migrateUp(pool);
-  assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackToVersion(pool, 22), true);
+  assert.equal(await isPostgresSchemaReady(pool, 21), true);
   await pool.query(
     'INSERT INTO tenants (id, display_name, status) VALUES ($1, $2, $3)',
     [TENANT_ID, 'Revision Tenant', 'active'],

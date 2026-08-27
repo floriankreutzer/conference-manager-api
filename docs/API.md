@@ -207,6 +207,26 @@ The mutable configuration contains only local Site/Room business fields. Microso
 
 Microsoft room import advances the Locations revision once when it creates local Rooms. Provider-metadata-only synchronization does not advance local configuration history.
 
+## Additional Tenant settings administration
+
+Organization, Catalogue, Booking Policies and Cost Allocation are separate bounded owners. Their administration reads and writes require Tenant Admin plus `tenant:configure`; writes additionally require valid session-bound CSRF. No route accepts Tenant or actor authority from the browser.
+
+- `GET/PUT /api/v1/tenant/settings/organization` and `GET /api/v1/tenant/settings/organization/history` expose the independently versioned Organization aggregate.
+- `GET/PUT /api/v1/tenant/settings/catalogue` and `GET /api/v1/tenant/settings/catalogue/history` expose the independently versioned service, equipment and catering aggregate.
+- `GET/PUT /api/v1/tenant/settings/booking-policies`, `GET /api/v1/tenant/settings/booking-policies/history` and `GET /api/v1/tenant/settings/booking-policies/history/{revision}` expose effective-dated booking policy configuration and immutable history.
+- `GET/PUT /api/v1/tenant/settings/cost-allocation`, `GET /api/v1/tenant/settings/cost-allocation/history` and `GET /api/v1/tenant/settings/cost-allocation/history/{revision}` expose allocation policy, archive-only cost centers and immutable history.
+
+`GET /api/v1/tenant/presentation` is the all-role read-only exception to the administration boundary.
+It requires an authenticated recognized role, derives Tenant scope from that Principal, and accepts
+no query or body. It returns only Organization `revision`, display name, default locale/currency and
+bundled `logoPreset`/`accentToken` identifiers. It omits Tenant identity, business metadata, raw
+managed-brand references and audit state. Unknown or unavailable managed references resolve to the
+code-shipped `product-default` preset.
+
+Every mutation uses its own `expectedRevision`; a stale mutation returns the common 409 settings-conflict envelope. Unknown fields, unsupported methods, invalid references and cross-Tenant references fail closed. Booking policy and cost allocation Request enforcement/snapshot persistence remain the separate #126 integration boundary and are not inferred from configuration API availability.
+
+See `docs/TENANT-ORGANIZATION.md`, `docs/TENANT-CATALOGUE.md`, `docs/TENANT-BOOKING-POLICIES.md` and `docs/TENANT-COST-ALLOCATION.md` for the exact bounded representations.
+
 ## Tenant audit
 
 ### `GET /api/v1/audit`
@@ -216,11 +236,15 @@ Requires Tenant Admin plus `tenant:audit:read`. The endpoint accepts no Tenant s
 Optional query parameters are:
 
 - `limit`: integer 1-100, default 50;
-- `beforeId`: positive numeric cursor.
+- `beforeId`: positive numeric cursor;
+- `category`: `user`, `configuration`, `request`, `integration` or `security`;
+- `outcome`: `success`, `failure` or `denied`;
+- `actorUserId`: internal User UUID constrained to the current Tenant;
+- `from` and `to`: canonical UTC instants defining a window of at most 90 days.
 
-Unknown or duplicate fields and malformed values fail validation. Before any events are returned, the server verifies the complete HMAC chain for the authenticated Tenant. Integrity failure returns HTTP 503 `AUDIT_INTEGRITY_UNAVAILABLE`.
+The default window is the 30 days ending at server evaluation time. Unknown or duplicate fields, Tenant selectors, malformed/future/reversed instants and excessive windows fail validation. Before any filtered page is returned, the server verifies the complete HMAC chain for the authenticated Tenant. Integrity failure returns HTTP 503 `AUDIT_INTEGRITY_UNAVAILABLE`.
 
-Public events omit Tenant ID and HMAC-chain fields. Successful reads append `audit.read`; denied valid-context probes append `authorization.denied`.
+Public events expose only allowlisted presentation-safe category/action, actor, target, outcome, time, correlation and change fields. An optional `change.summary` contains only bounded, allowlisted metadata keys such as a configuration revision or aggregate count. They omit Tenant ID, raw metadata and HMAC-chain fields. Successful reads append `audit.read`; denied valid-context probes append `authorization.denied`.
 
 See `docs/AUDIT.md`.
 
@@ -232,10 +256,18 @@ Requires Tenant Admin plus `tenant:users:manage`. It accepts no Tenant selector.
 
 Optional query parameters are:
 
-- `limit`: integer 1-100, default 100;
-- `afterId`: internal User UUID cursor.
+- `limit`: integer 1-100, default 50;
+- `afterId`: internal User UUID cursor;
+- `search`: bounded case-insensitive display-name fragment;
+- `status`: `all`, `active` or `disabled`;
+- `role`: `all`, `employee_only`, `conference_manager` or `tenant_admin`;
+- `providerLink`: `all`, `linked` or `unlinked`.
 
-The response contains Tenant-scoped presentation-safe Users and `nextAfterId`. Cross-Tenant Users cannot be resolved through this endpoint.
+The response contains Tenant-scoped presentation-safe Users and `nextAfterId`. Each User includes lifecycle status/version, minimized identity-link state, last local sign-in time and open Request ownership count. Provider references, raw claims, sessions and security versions are omitted. Cross-Tenant Users cannot be resolved through this endpoint.
+
+### `PUT /api/v1/tenant/users/{userId}/access`
+
+Requires Tenant Admin plus `tenant:users:manage` and valid CSRF. It accepts exactly `active` and lifecycle-only `expectedVersion`. Disable/reactivate is Tenant-scoped, prevents self-disable and removal of the last viable Tenant Admin, increments lifecycle and security versions, revokes the target User's sessions and appends audit evidence atomically. It does not delete or transfer existing Requests or identity history.
 
 ### `PUT /api/v1/tenant/users/{userId}/roles`
 
@@ -252,6 +284,16 @@ Exact body:
 Only the elevated Tenant roles `conference_manager` and `tenant_admin` are accepted in this administration body. The baseline `employee` role remains server-managed. Duplicate, unknown or oversized role sets fail validation.
 
 The operation prevents removal of the last active Tenant Admin, advances the target User security version and appends `tenant.user_permissions.changed` evidence atomically. Existing sessions with stale authorization snapshots stop resolving.
+
+See `docs/TENANT-USER-LIFECYCLE.md` and `docs/TENANT-ROLE-ADMINISTRATION.md`.
+
+## Tenant effective capability view
+
+### `GET /api/v1/tenant/capabilities`
+
+Requires Tenant Admin configuration authority and accepts no query, body or Tenant selector. It returns a read-only, presentation-safe evaluation of the fixed Tenant administration and Microsoft capability set. State is derived server-side from recognized authority, Tenant lifecycle, entitlement, rollout, connection/permission and recent provider-readiness evidence; unknown or stale authority fails closed.
+
+The response never exposes feature-flag names, Integration/provider identifiers, commercial configuration, provider payloads, credentials or tokens. See `docs/TENANT-CAPABILITY-VIEW.md`.
 
 ## Microsoft 365 connection lifecycle
 

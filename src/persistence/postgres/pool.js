@@ -7,7 +7,9 @@ const { Pool } = pg;
 // Tenant Admin settings aggregate without introducing a generic settings store.
 // Schema 21 adds the bounded Locations/Rooms owner metadata and immutable
 // location-revision history without fabricating legacy Site time zones.
-export const CURRENT_SCHEMA_VERSION = 21;
+// Schemas 22-25 add the bounded Organization, Catalogue, Booking Policies and
+// Cost Allocation owners. Schema 26 adds User lifecycle concurrency state.
+export const CURRENT_SCHEMA_VERSION = 26;
 
 export function createPostgresPool(config) {
   if (!config?.databaseUrl) throw new TypeError('DATABASE_URL_REQUIRED');

@@ -10,7 +10,7 @@ SaaS 2 replaces the legacy tendency to grow `/api/v1/application/configuration` 
 
 | Aggregate | Owning issue | Permission | HTTP boundary | Application owner | Persistence owner | Revision authority |
 | --- | --- | --- | --- | --- | --- | --- |
-| Organization | #81 | `tenant:configure` | bounded organization route module | organization settings service | organization repository | `tenants.organization_revision` |
+| Organization | #81 | `tenant:configure` for administration; recognized Tenant role for minimized presentation | bounded organization and presentation route modules | organization settings and presentation services | organization repository | `tenants.organization_revision` |
 | Locations and rooms | #82 | `tenant:configure` | bounded locations route module | locations settings service | locations repository | `tenants.locations_revision` |
 | Service and catering catalogue | #83 | `tenant:configure` | bounded catalogue route module | catalogue settings service | catalogue repository | `tenants.catalog_revision` |
 | Booking policies | #84 | `tenant:configure` | bounded booking-policy route module | booking-policy settings service | booking-policy repository | `tenants.booking_policies_revision` |

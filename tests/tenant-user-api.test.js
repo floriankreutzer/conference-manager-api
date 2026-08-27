@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import test from 'node:test';
 import { createTenantUserAdministrationService } from '../src/application/tenant-user-administration-service.js';
+import { createTenantUserLifecycleService } from '../src/application/tenant-user-lifecycle-service.js';
 import { createAuthorizationPolicy } from '../src/authorization/policy.js';
 import { loadConfig } from '../src/config.js';
 import { createHttpServer } from '../src/server.js';
@@ -128,11 +129,45 @@ function service() {
   });
 }
 
+function lifecycleService() {
+  const authorizationPolicy = createAuthorizationPolicy();
+  const audit = createAuditHarness({ authorizationPolicy });
+  const target = {
+    tenantId: TENANT_ID,
+    userId: TARGET_ID,
+    displayName: 'Conference User',
+    active: true,
+    securityVersion: 1,
+    lifecycleVersion: 1,
+    elevatedRoles: ['conference_manager'],
+    identityLinked: true,
+    identityLinkedAt: '2026-08-24T09:00:00.000Z',
+    lastSignInAt: '2026-08-24T10:00:00.000Z',
+    ownedOpenRequestCount: 0,
+  };
+  return createTenantUserLifecycleService({
+    authorizationPolicy,
+    auditService: audit.service,
+    repository: {
+      async listByTenantId({ tenantId, limit }) {
+        assert.equal(tenantId, TENANT_ID);
+        return limit === 2
+          ? [target, { ...target, userId: SESSION_ID, displayName: 'Second User' }]
+          : [target];
+      },
+      async changeAccess() {
+        throw new Error('UNEXPECTED_LIFECYCLE_MUTATION');
+      },
+    },
+  });
+}
+
 function options() {
   const config = { ...loadConfig({ NODE_ENV: 'test', PUBLIC_ORIGIN: 'http://localhost:3000' }) };
   return {
     config,
     tenantUserAdministrationService: service(),
+    tenantUserLifecycleService: lifecycleService(),
     resolvePrincipal: async () => principal(),
     verifyCsrf: async (requestValue) => requestValue.headers['x-csrf-token'] === CSRF_TOKEN,
     loadTenant: async (tenantId) => tenantId === TENANT_ID ? tenant() : null,
@@ -149,6 +184,16 @@ test('Tenant Admin can list tenant users without a browser-selected tenant', asy
       displayName: 'Conference User',
       active: true,
       roles: ['employee', 'conference_manager'],
+      lifecycle: { status: 'active', version: 1 },
+      identityProvider: {
+        linked: true,
+        linkedAt: '2026-08-24T09:00:00.000Z',
+      },
+      lastSignInAt: '2026-08-24T10:00:00.000Z',
+      requestOwnership: {
+        openRequestCount: 0,
+        ownershipPreservedOnDisable: true,
+      },
     }]);
     assert.equal(Object.hasOwn(response.body.users[0], 'tenantId'), false);
     assert.equal(response.body.nextAfterId, null);

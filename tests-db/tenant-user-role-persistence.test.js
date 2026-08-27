@@ -22,6 +22,7 @@ import {
   createPostgresTenantUserAdminRepository,
 } from '../src/persistence/postgres/tenant-user-admin-repository.js';
 import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_A = '10101010-1010-4010-8010-101010101010';
 const TENANT_B = '20202020-2020-4020-8020-202020202020';
@@ -59,6 +60,7 @@ function external(tenantReference, userReference, displayName) {
 }
 
 async function clean(pool) {
+  await removeSaas2TenantAdministrationFixtures(pool, TENANT_IDS);
   await pool.query('DELETE FROM sessions WHERE tenant_id = ANY($1::uuid[])', [TENANT_IDS]);
   await pool.query('DELETE FROM tenant_user_roles WHERE tenant_id = ANY($1::uuid[])', [TENANT_IDS]);
   await pool.query('DELETE FROM user_identity_bindings WHERE tenant_id = ANY($1::uuid[])', [TENANT_IDS]);

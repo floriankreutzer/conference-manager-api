@@ -29,7 +29,8 @@ for (const required of [
   'recordAuthenticationFailure',
   'recordAuthorizationDenied',
   'recordApiRequest',
-  "return 'tenant_users'",
+  'tenantUserLifecycleRouteModule',
+  'tenantAuditQueryRouteModule',
   "return 'tenant_user_roles'",
   "return 'request_transition'",
   "return 'booking_change'",
@@ -49,7 +50,21 @@ for (const forbidden of ['cookie', 'csrf', 'providerReference', 'tenantId', 'use
   }
 }
 for (const required of [
-  "'tenant_users'",
+  "'tenant_settings_organization'",
+  "'tenant_settings_organization_history'",
+  "'tenant_presentation'",
+  "'tenant_settings_catalogue'",
+  "'tenant_settings_catalogue_history'",
+  "'tenant_settings_booking_policies'",
+  "'tenant_settings_booking_policies_history'",
+  "'tenant_settings_booking_policies_revision'",
+  "'tenant_settings_cost_allocation'",
+  "'tenant_settings_cost_allocation_history'",
+  "'tenant_settings_cost_allocation_revision'",
+  "'tenant_user_lifecycle_list'",
+  "'tenant_user_lifecycle_access'",
+  "'tenant_audit_query'",
+  "'tenant_capabilities'",
   "'tenant_user_roles'",
   'route: assertEnum(route, ROUTES',
 ]) {

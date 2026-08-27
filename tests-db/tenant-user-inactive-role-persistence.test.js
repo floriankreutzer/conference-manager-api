@@ -5,6 +5,7 @@ import { createPostgresAuditRepository } from '../src/persistence/postgres/audit
 import { createPostgresPool } from '../src/persistence/postgres/pool.js';
 import { createPostgresTenantUserAdminRepository } from '../src/persistence/postgres/tenant-user-admin-repository.js';
 import { migrateUp } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_ID = '91919191-9191-4191-8191-919191919191';
 const ADMIN_ID = '92929292-9292-4292-8292-929292929292';
@@ -19,6 +20,7 @@ function databaseConfig() {
 }
 
 async function cleanup(pool) {
+  await removeSaas2TenantAdministrationFixtures(pool, [TENANT_ID]);
   await pool.query('DELETE FROM tenant_user_roles WHERE tenant_id = $1', [TENANT_ID]);
   await pool.query('ALTER TABLE audit_events DISABLE TRIGGER audit_events_append_only');
   try {

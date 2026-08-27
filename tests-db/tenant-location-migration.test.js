@@ -6,7 +6,8 @@ import {
   createPostgresPool,
   isPostgresSchemaReady,
 } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_ID = '70707070-7070-4070-8070-707070707070';
 const ADMIN_ID = '71717171-7171-4171-8171-717171717171';
@@ -27,6 +28,7 @@ async function deleteHistory(pool) {
 }
 
 async function clean(pool) {
+  await removeSaas2TenantAdministrationFixtures(pool, [TENANT_ID]);
   await deleteHistory(pool);
   await pool.query('DELETE FROM users WHERE tenant_id = $1', [TENANT_ID]);
   await pool.query('DELETE FROM tenants WHERE id = $1', [TENANT_ID]);
@@ -61,8 +63,9 @@ test('migration 021 follows the runner contract, locks rollback and fails closed
 
   await migrateUp(pool);
   await clean(pool);
-  assert.equal(CURRENT_SCHEMA_VERSION, 21);
-  assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackToVersion(pool, 22), true);
+  assert.equal(CURRENT_SCHEMA_VERSION, 26);
+  assert.equal(await isPostgresSchemaReady(pool, 21), true);
   const applied = await pool.query(
     'SELECT version, name, char_length(checksum)::int AS checksum_length FROM schema_migrations ORDER BY version DESC LIMIT 1',
   );
@@ -73,7 +76,7 @@ test('migration 021 follows the runner contract, locks rollback and fails closed
   });
 
   assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await isPostgresSchemaReady(pool), false);
+  assert.equal(await isPostgresSchemaReady(pool, 21), false);
   const removed = await pool.query({
     text: `
       SELECT
@@ -94,7 +97,8 @@ test('migration 021 follows the runner contract, locks rollback and fails closed
     room_details: false,
   });
   await migrateUp(pool);
-  assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackToVersion(pool, 22), true);
+  assert.equal(await isPostgresSchemaReady(pool, 21), true);
 
   await pool.query(
     "INSERT INTO tenants (id, display_name, status) VALUES ($1, 'Migration Lock Tenant', 'active')",
@@ -113,9 +117,10 @@ test('migration 021 follows the runner contract, locks rollback and fails closed
   }
   assert.equal(rollbackWaitedForLock, true);
   assert.equal(await rollback, true);
-  assert.equal(await isPostgresSchemaReady(pool), false);
+  assert.equal(await isPostgresSchemaReady(pool, 21), false);
 
   await migrateUp(pool);
+  assert.equal(await rollbackToVersion(pool, 22), true);
   await pool.query({
     text: `
       INSERT INTO sites (tenant_id, id, name, details)
@@ -160,7 +165,7 @@ test('migration 021 follows the runner contract, locks rollback and fails closed
     rollbackLatest(pool),
     (error) => error.code === '55000' && error.message.includes('TENANT_LOCATION_HISTORY_REQUIRE_REVIEW'),
   );
-  assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await isPostgresSchemaReady(pool, 21), true);
   assert.equal((await pool.query(
     'SELECT count(*)::int AS count FROM schema_migrations WHERE version = 21',
   )).rows[0].count, 1);
@@ -168,7 +173,7 @@ test('migration 021 follows the runner contract, locks rollback and fails closed
   await deleteHistory(pool);
   await pool.query('UPDATE tenants SET locations_revision = 1 WHERE id = $1', [TENANT_ID]);
   assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await isPostgresSchemaReady(pool), false);
+  assert.equal(await isPostgresSchemaReady(pool, 21), false);
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
 });

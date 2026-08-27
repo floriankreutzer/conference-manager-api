@@ -14,10 +14,19 @@ import { createMicrosoft365RoomMappingService } from './application/microsoft365
 import { createProductionApplicationService } from './application/production-application-service.js';
 import { createRequestService } from './application/request-service.js';
 import { createRoomAvailabilityService } from './application/room-availability-service.js';
+import { createTenantBookingPolicyService } from './application/tenant-booking-policy-service.js';
+import { createTenantCapabilityViewService } from './application/tenant-capability-view-service.js';
+import { createTenantCatalogueService } from './application/tenant-catalogue-service.js';
+import { createTenantCostAllocationService } from './application/tenant-cost-allocation-service.js';
 import { createTenantLocationAdministrationService } from './application/tenant-location-administration-service.js';
+import { createCodeShippedManagedBrandPolicy } from './application/managed-brand-preset-policy.js';
+import { createTenantOrganizationService } from './application/tenant-organization-service.js';
+import { createTenantPresentationService } from './application/tenant-presentation-service.js';
 import { createTenantPilotService } from './application/tenant-pilot-service.js';
 import { createTenantUserAdministrationService } from './application/tenant-user-administration-service.js';
+import { createTenantUserLifecycleService } from './application/tenant-user-lifecycle-service.js';
 import { createAuditService } from './audit/audit-service.js';
+import { createTenantAuditQueryService } from './audit/tenant-audit-query-service.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { loadConfig } from './config.js';
 import { createEntitlementService } from './entitlements/entitlement-service.js';
@@ -180,6 +189,44 @@ const tenantLocationAdministrationService = persistence && auditService
     auditService,
   })
   : null;
+const managedBrandPolicy = createCodeShippedManagedBrandPolicy();
+const tenantOrganizationService = persistence && auditService
+  ? createTenantOrganizationService({
+    repository: persistence.tenantOrganizationRepository,
+    authorizationPolicy,
+    auditService,
+    managedAssetPolicy: managedBrandPolicy,
+  })
+  : null;
+const tenantPresentationService = persistence && auditService
+  ? createTenantPresentationService({
+    repository: persistence.tenantOrganizationRepository,
+    authorizationPolicy,
+    auditService,
+    managedBrandPolicy,
+  })
+  : null;
+const tenantCatalogueService = persistence && auditService
+  ? createTenantCatalogueService({
+    repository: persistence.tenantCatalogueRepository,
+    authorizationPolicy,
+    auditService,
+  })
+  : null;
+const tenantBookingPolicyService = persistence && auditService
+  ? createTenantBookingPolicyService({
+    repository: persistence.tenantBookingPolicyRepository,
+    authorizationPolicy,
+    auditService,
+  })
+  : null;
+const tenantCostAllocationService = persistence && auditService
+  ? createTenantCostAllocationService({
+    repository: persistence.tenantCostAllocationRepository,
+    authorizationPolicy,
+    auditService,
+  })
+  : null;
 const productionApplicationService = persistence && auditService
   ? createProductionApplicationService({
     repository: persistence.applicationRepository,
@@ -192,6 +239,21 @@ const productionApplicationService = persistence && auditService
 const tenantUserAdministrationService = persistence && auditService
   ? createTenantUserAdministrationService({
     repository: persistence.tenantUserAdminRepository,
+    authorizationPolicy,
+    auditService,
+  })
+  : null;
+const tenantUserLifecycleService = persistence && auditService
+  ? createTenantUserLifecycleService({
+    repository: persistence.tenantUserLifecycleRepository,
+    authorizationPolicy,
+    auditService,
+  })
+  : null;
+const tenantAuditQueryService = persistence && auditService
+  ? createTenantAuditQueryService({
+    queryRepository: persistence.tenantAuditQueryRepository,
+    integrityRepository: persistence.auditRepository,
     authorizationPolicy,
     auditService,
   })
@@ -225,6 +287,14 @@ const microsoft365ConnectionService = microsoft365ConnectionLifecycleService && 
     capabilityHealthService,
   })
   : microsoft365ConnectionLifecycleService;
+const tenantCapabilityViewService = tenantPilotService && microsoft365ConnectionService
+  ? createTenantCapabilityViewService({
+    authorizationPolicy,
+    auditService,
+    readinessService: tenantPilotService,
+    microsoft365Service: microsoft365ConnectionService,
+  })
+  : null;
 const microsoft365RoomDiscoveryService = persistence && auditService && microsoft365Client
   ? createMicrosoft365RoomDiscoveryService({
     connectionRepository: persistence.microsoft365ConnectionRepository,
@@ -284,8 +354,16 @@ const server = createHttpServer({
   requestService,
   bookingChangeService,
   productionApplicationService,
+  tenantAuditQueryService,
+  tenantBookingPolicyService,
+  tenantCapabilityViewService,
+  tenantCatalogueService,
+  tenantCostAllocationService,
   tenantLocationAdministrationService,
+  tenantOrganizationService,
+  tenantPresentationService,
   tenantUserAdministrationService,
+  tenantUserLifecycleService,
   microsoft365ConnectionService: microsoft365Service,
   loadTenant: persistence?.loadTenant,
   readinessChecks: persistence?.readinessChecks || [],

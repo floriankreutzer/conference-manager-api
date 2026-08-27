@@ -8,6 +8,7 @@ import { createPostgresAuditRepository } from '../src/persistence/postgres/audit
 import { createPostgresBookingReferenceRepository } from '../src/persistence/postgres/booking-reference-repository.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
 import { migrateUp } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_A = '61616161-6161-4616-8616-616161616161';
 const TENANT_B = '62626262-6262-4626-8626-626262626262';
@@ -127,6 +128,7 @@ async function reserveReference({
 test('PostgreSQL booking references are tenant-scoped, idempotent, and audit-atomic', async (t) => {
   const pool = createPostgresPool(databaseConfig());
   t.after(async () => {
+    await removeSaas2TenantAdministrationFixtures(pool, [TENANT_A, TENANT_B]);
     await pool.query('ALTER TABLE audit_events DISABLE TRIGGER audit_events_append_only');
     try {
       await pool.query('DELETE FROM audit_events WHERE tenant_id = ANY($1::uuid[])', [[TENANT_A, TENANT_B]]);

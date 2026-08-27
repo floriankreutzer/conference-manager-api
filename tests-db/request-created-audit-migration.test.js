@@ -3,6 +3,7 @@ import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
 import { migrateUp, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_ID = '56565656-5656-4656-8656-565656565656';
 const CORRELATION_ID = '57575757-5757-4757-8757-575757575757';
@@ -29,6 +30,7 @@ test('request-created audit migration allows evidence and rolls back fail-closed
   t.after(async () => {
     await migrateUp(pool);
     await removeAuditRow(pool);
+    await removeSaas2TenantAdministrationFixtures(pool, [TENANT_ID]);
     await pool.query('DELETE FROM tenants WHERE id = $1', [TENANT_ID]);
     await pool.end();
   });
