@@ -146,9 +146,11 @@ async function cleanAll(pool) {
 async function seed(pool) {
   await cleanAll(pool);
   await pool.query(
-    `INSERT INTO tenants (id, display_name, status)
-     VALUES ($1, 'Tenant A', 'active'), ($2, 'Tenant B', 'active')`,
-    [TENANT_A, TENANT_B],
+    `INSERT INTO tenants (id, display_name, status, created_at, updated_at)
+     VALUES
+       ($1, 'Tenant A', 'active', $3, $3),
+       ($2, 'Tenant B', 'active', $3, $3)`,
+    [TENANT_A, TENANT_B, '2026-08-27T08:00:00.000Z'],
   );
   await pool.query(
     `INSERT INTO users (tenant_id, id, display_name)

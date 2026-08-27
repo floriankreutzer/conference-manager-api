@@ -711,7 +711,11 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
         if (change.status === 'applied' && !appliedRequestMatchesChange(request, change)) {
           return Object.freeze({ status: 'conflict' });
         }
-        return Object.freeze({ status: change.status, change, request });
+        const status = change.status === 'applying'
+          && change.recoveryPhase === 'reconciliation_required'
+          ? 'reconciliation_required'
+          : change.status;
+        return Object.freeze({ status, change, request });
       });
     },
 
