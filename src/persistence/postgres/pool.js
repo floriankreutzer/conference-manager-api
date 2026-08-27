@@ -2,10 +2,10 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
-// Schema 19 established confirmed-booking change persistence.
 // Schema 20 adds independent optimistic revision state for each mutable
 // Tenant Admin settings aggregate without introducing a generic settings store.
-export const CURRENT_SCHEMA_VERSION = 20;
+// Schemas 21-25 add the five bounded Tenant Admin settings aggregates.
+export const CURRENT_SCHEMA_VERSION = 25;
 
 export function createPostgresPool(config) {
   if (!config?.databaseUrl) throw new TypeError('DATABASE_URL_REQUIRED');
