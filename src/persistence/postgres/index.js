@@ -18,6 +18,7 @@ import { createPostgresMicrosoft365RoomMappingRepository } from './microsoft365-
 import { createPostgresOidcTransactionRepository } from './oidc-transaction-repository.js';
 import { createPostgresRequestRepository } from './request-repository.js';
 import { createPostgresSessionRepository } from './session-repository.js';
+import { createPostgresTenantLocationRepository } from './tenant-location-repository.js';
 import { createPostgresTenantOnboardingRepository } from './tenant-onboarding-repository.js';
 import { createPostgresTenantRepository } from './tenant-repository.js';
 import { createPostgresTenantUserAdminRepository } from './tenant-user-admin-repository.js';
@@ -43,6 +44,7 @@ export function createPostgresPersistence(config) {
     auditRepository,
     calendarAuthorityGuard,
   });
+  const tenantLocationRepository = createPostgresTenantLocationRepository(pool, { auditRepository });
   const tenantOnboardingRepository = createPostgresTenantOnboardingRepository(pool, { auditRepository });
   const tenantUserAdminRepository = createPostgresTenantUserAdminRepository(pool, { auditRepository });
 
@@ -60,6 +62,7 @@ export function createPostgresPersistence(config) {
     oidcTransactionRepository,
     sessionRepository,
     requestRepository,
+    tenantLocationRepository,
     tenantOnboardingRepository,
     tenantRepository,
     tenantUserAdminRepository,
