@@ -107,5 +107,5 @@ revision advance or introduction of new catalogue data.
 
 The central composition root injects the PostgreSQL repository and audit service, registers
 `tenantCatalogueRouteModule`, and includes both route keys in the logging/metrics registries.
-Global schema readiness is version 27 and the central architecture/API/persistence documents include
+Global schema readiness is version 28 and the central architecture/API/persistence documents include
 this bounded owner and its Request composition integration.

@@ -23,6 +23,7 @@ import {
   TenantSettingsConflictError,
   TenantSettingsInputError,
 } from './tenant-settings-errors.js';
+import { createTenantBulkTransferOperations } from './tenant-bulk-transfer-operations.js';
 
 const SAFE_REPOSITORY_INPUT_CODES = new Set([
   'TENANT_LOCATION_REFERENCED_REQUEST',
@@ -35,6 +36,8 @@ const SAFE_REPOSITORY_INPUT_CODES = new Set([
   'TENANT_ROOM_ARCHIVE_REQUIRED',
   'TENANT_SITE_ARCHIVE_REQUIRED',
   'TENANT_SITE_TIME_ZONE_INVALID',
+  'TENANT_BULK_RECEIPT_INVALID',
+  'TENANT_BULK_RECEIPT_EXPIRED',
 ]);
 
 function requireRuntime(repository, authorizationPolicy, auditService) {
@@ -151,14 +154,19 @@ function normalizeInput(configuration) {
 
 export function createTenantLocationAdministrationService({
   repository,
+  bulkTransferRepository,
   authorizationPolicy,
   auditService,
   clock = () => Date.now(),
 } = {}) {
   requireRuntime(repository, authorizationPolicy, auditService);
   if (typeof clock !== 'function') throw new TypeError('TENANT_LOCATION_CLOCK_REQUIRED');
+  const bulk = bulkTransferRepository ? createTenantBulkTransferOperations({
+    aggregate: 'locations', bulkTransferRepository, clock,
+  }) : null;
 
-  return Object.freeze({
+  let service;
+  service = Object.freeze({
     async getCurrent({ principal, tenantContext, correlationId }) {
       requireCorrelationId(correlationId);
       await authorize(authorizationPolicy, auditService, {
@@ -167,7 +175,10 @@ export function createTenantLocationAdministrationService({
       return response(await repository.current(tenantContext.tenantId));
     },
 
-    async update({ principal, tenantContext, correlationId, schemaVersion, expectedRevision, configuration }) {
+    async update({
+      principal, tenantContext, correlationId, schemaVersion, expectedRevision, configuration,
+      bulkReceipt = null,
+    }) {
       requireCorrelationId(correlationId);
       await authorize(authorizationPolicy, auditService, {
         principal, tenantContext, correlationId, operation: 'update',
@@ -193,9 +204,58 @@ export function createTenantLocationAdministrationService({
           nextRevision,
           operation: 'tenant_locations_update',
         }),
+        bulkReceipt,
+        bulkResponseFor: response,
       }));
       if (result?.status === 'conflict') throw new TenantSettingsConflictError(result.currentRevision);
+      if (result?.status === 'bulk_replay' || result?.status === 'bulk_applied') return result.response;
       return response(result);
+    },
+
+    async bulkTemplate({ principal, tenantContext, correlationId, type }) {
+      if (!bulk) throw new TypeError('TENANT_BULK_TRANSFER_REPOSITORY_REQUIRED');
+      requireCorrelationId(correlationId);
+      await authorize(authorizationPolicy, auditService, {
+        principal, tenantContext, correlationId, operation: 'bulk_template',
+      });
+      return bulk.template(type);
+    },
+
+    async bulkExport({ principal, tenantContext, correlationId, type }) {
+      if (!bulk) throw new TypeError('TENANT_BULK_TRANSFER_REPOSITORY_REQUIRED');
+      requireCorrelationId(correlationId);
+      await authorize(authorizationPolicy, auditService, {
+        principal, tenantContext, correlationId, operation: 'bulk_export',
+      });
+      const current = await repository.current(tenantContext.tenantId);
+      return Object.freeze({ revision: current.revision, document: bulk.export(type, current.configuration) });
+    },
+
+    async bulkValidate({ principal, tenantContext, correlationId, type, document }) {
+      if (!bulk) throw new TypeError('TENANT_BULK_TRANSFER_REPOSITORY_REQUIRED');
+      requireCorrelationId(correlationId);
+      await authorize(authorizationPolicy, auditService, {
+        principal, tenantContext, correlationId, operation: 'bulk_validate',
+      });
+      const current = await repository.current(tenantContext.tenantId);
+      return bulk.validate({ principal, tenantContext, correlationId, type, document, current });
+    },
+
+    async bulkApply({ principal, tenantContext, correlationId, type, document, receiptId }) {
+      if (!bulk) throw new TypeError('TENANT_BULK_TRANSFER_REPOSITORY_REQUIRED');
+      requireCorrelationId(correlationId);
+      await authorize(authorizationPolicy, auditService, {
+        principal, tenantContext, correlationId, operation: 'bulk_apply',
+      });
+      const current = await repository.current(tenantContext.tenantId);
+      return bulk.apply({
+        principal, tenantContext, type, document, receiptId, current,
+        update: ({ expectedRevision, configuration, bulkReceipt }) => service.update({
+          principal, tenantContext, correlationId,
+          schemaVersion: TENANT_SETTINGS_SCHEMA_VERSION,
+          expectedRevision, configuration, bulkReceipt,
+        }),
+      });
     },
 
     async listHistory({ principal, tenantContext, correlationId, limit = 50 }) {
@@ -249,4 +309,5 @@ export function createTenantLocationAdministrationService({
       return response(result);
     },
   });
+  return service;
 }

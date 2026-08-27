@@ -1,8 +1,18 @@
 import { isInternalUuid } from '../../domain/identifiers.js';
 import { normalizeTenantCatalogue } from '../../domain/tenant-catalogue.js';
 import { withPostgresTransaction } from './transaction.js';
+import {
+  finalizeTenantBulkTransferReceipt,
+  lockTenantBulkTransferReceipt,
+} from './tenant-bulk-transfer-transaction.js';
 
 const RESOURCE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
+function repositoryInputError(code) {
+  const error = new Error(code);
+  error.code = code;
+  return error;
+}
 
 const APPLICABILITY_TABLES = Object.freeze([
   Object.freeze({ kind: 'service', scope: 'site', table: 'service_site_applicability', owner: 'service_id', target: 'site_id' }),
@@ -452,6 +462,12 @@ export function createPostgresTenantCatalogueRepository(pool, { auditRepository 
   }
 
   return Object.freeze({
+    async validateCandidateReferences({ tenantId: tenantIdValue, catalogue: catalogueValue }) {
+      const tenantId = requireUuid(tenantIdValue, 'TENANT_CATALOGUE_TENANT_ID_INVALID');
+      const catalogue = normalizeTenantCatalogue(catalogueValue);
+      return referencesExist(pool, tenantId, catalogue);
+    },
+
     async loadCurrent(tenantIdValue) {
       const tenantId = requireUuid(tenantIdValue, 'TENANT_CATALOGUE_TENANT_ID_INVALID');
       return withPostgresTransaction(pool, async (client) => {
@@ -514,6 +530,8 @@ export function createPostgresTenantCatalogueRepository(pool, { auditRepository 
       catalogue: catalogueValue,
       changedAt,
       auditEventFor,
+      bulkReceipt = null,
+      bulkResponseFor = null,
     } = {}) {
       const tenantId = requireUuid(tenantIdValue, 'TENANT_CATALOGUE_TENANT_ID_INVALID');
       const actorUserId = requireUuid(actorUserIdValue, 'TENANT_CATALOGUE_ACTOR_ID_INVALID');
@@ -528,6 +546,20 @@ export function createPostgresTenantCatalogueRepository(pool, { auditRepository 
       }
 
       return withPostgresTransaction(pool, async (client) => {
+        if (bulkReceipt) {
+          const receipt = await lockTenantBulkTransferReceipt(client, {
+            tenantId, actorUserId, ...bulkReceipt,
+          });
+          if (receipt.status === 'replay') {
+            return Object.freeze({ status: 'bulk_replay', response: receipt.response });
+          }
+          if (receipt.status !== 'ready') {
+            throw repositoryInputError(`TENANT_BULK_RECEIPT_${receipt.status.toUpperCase()}`);
+          }
+          if (receipt.sourceRevision !== expectedRevision || typeof bulkResponseFor !== 'function') {
+            throw repositoryInputError('TENANT_BULK_RECEIPT_INVALID');
+          }
+        }
         const current = await loadCurrentWithClient(client, tenantId, { lock: true });
         if (!current) return Object.freeze({ status: 'not_found' });
         if (current.revision !== expectedRevision) {
@@ -577,10 +609,18 @@ export function createPostgresTenantCatalogueRepository(pool, { auditRepository 
           nextRevision,
         }));
         if (!audit) throw new Error('AUDIT_APPEND_FAILED');
-        return Object.freeze({
+        const result = Object.freeze({
           status: 'updated',
           current: Object.freeze({ revision: nextRevision, catalogue }),
         });
+        if (bulkReceipt) {
+          const bulkResponse = bulkResponseFor(result);
+          await finalizeTenantBulkTransferReceipt(client, {
+            tenantId, actorUserId, ...bulkReceipt, response: bulkResponse,
+          });
+          return Object.freeze({ status: 'bulk_applied', response: bulkResponse });
+        }
+        return result;
       });
     },
   });

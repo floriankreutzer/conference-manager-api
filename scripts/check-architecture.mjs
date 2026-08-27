@@ -511,8 +511,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 27;/.test(pool)) {
-  throw new Error('Runtime schema readiness must require Request composition migration version 27.');
+if (!/export const CURRENT_SCHEMA_VERSION = 28;/.test(pool)) {
+  throw new Error('Runtime schema readiness must require bulk transfer receipt migration version 28.');
 }
 const requestCompositionMigration = await readFile(
   'migrations/027_request_composition_v2.up.sql',
@@ -577,6 +577,29 @@ for (const required of [
   if (!requestCompositionRollback.includes(required)) {
     throw new Error(`Request composition rollback is missing fail-closed boundary ${required}.`);
   }
+}
+
+const bulkReceiptMigration = await readFile(
+  'migrations/028_tenant_bulk_transfer_receipts.up.sql',
+  'utf8',
+);
+for (const required of [
+  'tenant_bulk_transfer_receipts',
+  'FOREIGN KEY (tenant_id, actor_user_id)',
+  "aggregate IN ('locations', 'catalogue', 'cost_allocation')",
+  "expires_at <= created_at + INTERVAL '30 minutes'",
+  'payload_sha256',
+]) {
+  if (!bulkReceiptMigration.includes(required)) {
+    throw new Error(`Bulk receipt migration is missing security boundary ${required}.`);
+  }
+}
+const bulkReceiptRollback = await readFile(
+  'migrations/028_tenant_bulk_transfer_receipts.down.sql',
+  'utf8',
+);
+if (!bulkReceiptRollback.includes('TENANT_BULK_TRANSFER_RECEIPTS_REQUIRE_REVIEW')) {
+  throw new Error('Bulk receipt rollback must fail closed after first use.');
 }
 
 const index = await readFile('src/index.js', 'utf8');

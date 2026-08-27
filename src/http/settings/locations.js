@@ -8,6 +8,8 @@ export const TENANT_LOCATION_ROUTES = Object.freeze({
   rollback: '/api/v1/tenant/settings/locations/rollback',
 });
 const REVISION_PATH = /^\/api\/v1\/tenant\/settings\/locations\/history\/(\d{1,15})$/;
+const BULK_PATH = /^\/api\/v1\/tenant\/settings\/locations\/bulk\/(sites|rooms)\/(template|export|validate|apply)$/;
+const BULK_MAX_BYTES = 65_536;
 const UPDATE_SCHEMA = Object.freeze({
   required: Object.freeze({
     schemaVersion: (value) => Number.isSafeInteger(value),
@@ -21,6 +23,17 @@ const ROLLBACK_SCHEMA = Object.freeze({
     schemaVersion: (value) => Number.isSafeInteger(value),
     expectedRevision: (value) => Number.isSafeInteger(value),
     sourceRevision: (value) => Number.isSafeInteger(value),
+  }),
+  optional: Object.freeze({}),
+});
+const BULK_VALIDATE_SCHEMA = Object.freeze({
+  required: Object.freeze({ document: (value) => value && typeof value === 'object' && !Array.isArray(value) }),
+  optional: Object.freeze({}),
+});
+const BULK_APPLY_SCHEMA = Object.freeze({
+  required: Object.freeze({
+    receiptId: (value) => typeof value === 'string',
+    document: (value) => value && typeof value === 'object' && !Array.isArray(value),
   }),
   optional: Object.freeze({}),
 });
@@ -58,6 +71,8 @@ async function assertEmptyBody(request) {
 }
 
 export function tenantLocationRouteKey(path) {
+  const bulk = path.match(BULK_PATH);
+  if (bulk) return `tenant_settings_locations_bulk_${bulk[2]}`;
   if (path === TENANT_LOCATION_ROUTES.current) return 'tenant_settings_locations';
   if (path === TENANT_LOCATION_ROUTES.history) return 'tenant_settings_locations_history';
   if (path === TENANT_LOCATION_ROUTES.rollback) return 'tenant_settings_locations_rollback';
@@ -78,6 +93,31 @@ export function createTenantLocationHttpHandler({ service, principalGuard, tenan
     const principal = await principalGuard.require(request, { csrf: mutation });
     const tenantContext = await tenantGuard.requireKnown(principal);
     const common = { principal, tenantContext, correlationId: requestId };
+
+    const bulkMatch = path.match(BULK_PATH);
+    if (bulkMatch) {
+      assertNoUnexpectedQuery(parsedUrl);
+      const [, type, operation] = bulkMatch;
+      if (operation === 'template' || operation === 'export') {
+        if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+        await assertEmptyBody(request);
+        const result = operation === 'template'
+          ? await service.bulkTemplate({ ...common, type })
+          : await service.bulkExport({ ...common, type });
+        sendJson(response, 200, result, maxResponseBytes);
+        return 200;
+      }
+      if (request.method !== 'POST') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+      const body = validateExactObject(
+        await readJsonObjectBody(request, { maxBytes: Math.min(maxBodyBytes, BULK_MAX_BYTES) }),
+        operation === 'validate' ? BULK_VALIDATE_SCHEMA : BULK_APPLY_SCHEMA,
+      );
+      const result = operation === 'validate'
+        ? await service.bulkValidate({ ...common, type, ...body })
+        : await service.bulkApply({ ...common, type, ...body });
+      sendJson(response, 200, result, maxResponseBytes);
+      return 200;
+    }
 
     if (path === TENANT_LOCATION_ROUTES.current) {
       assertNoUnexpectedQuery(parsedUrl);

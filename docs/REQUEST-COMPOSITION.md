@@ -323,7 +323,7 @@ Migration 027:
   `booking_change_requests`.
 
 Deployment must run `npm run db:migrate` before application rollout and verify
-exact schema readiness at version 27. The application does not auto-migrate.
+exact schema readiness at version 28. The application does not auto-migrate.
 Operators should expect all pre-migration Catalogue editors to reload because
 the migration advances that aggregate revision. Tenant Admins should configure
 intentional Room prices after rollout; the zero seed preserves deterministic

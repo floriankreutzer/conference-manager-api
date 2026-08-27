@@ -6,6 +6,10 @@ export const TENANT_CATALOGUE_ROUTES = Object.freeze({
   current: '/api/v1/tenant/settings/catalogue',
   history: '/api/v1/tenant/settings/catalogue/history',
 });
+const BULK_PATH = new RegExp(
+  '^/api/v1/tenant/settings/catalogue/bulk/(services|catering-items|catering-packages)/(template|export|validate|apply)$',
+);
+const BULK_MAX_BYTES = 65_536;
 
 const MUTATION_BODY_MAX_BYTES = 262_144;
 const MUTATION_SCHEMA = Object.freeze({
@@ -17,6 +21,17 @@ const MUTATION_SCHEMA = Object.freeze({
   optional: Object.freeze({}),
 });
 const HISTORY_QUERY_KEYS = new Set(['limit', 'beforeRevision']);
+const BULK_VALIDATE_SCHEMA = Object.freeze({
+  required: Object.freeze({ document: (value) => value && typeof value === 'object' && !Array.isArray(value) }),
+  optional: Object.freeze({}),
+});
+const BULK_APPLY_SCHEMA = Object.freeze({
+  required: Object.freeze({
+    receiptId: (value) => typeof value === 'string',
+    document: (value) => value && typeof value === 'object' && !Array.isArray(value),
+  }),
+  optional: Object.freeze({}),
+});
 
 function sendJson(response, statusCode, payload, maxResponseBytes) {
   const body = JSON.stringify(payload);
@@ -72,6 +87,8 @@ function historyPage(parsedUrl) {
 }
 
 export function tenantCatalogueRouteKey(path) {
+  const bulk = path.match(BULK_PATH);
+  if (bulk) return `tenant_settings_catalogue_bulk_${bulk[2]}`;
   if (path === TENANT_CATALOGUE_ROUTES.current) return 'tenant_settings_catalogue';
   if (path === TENANT_CATALOGUE_ROUTES.history) return 'tenant_settings_catalogue_history';
   return null;
@@ -112,6 +129,31 @@ export function createTenantCatalogueHttpHandler({
     const principal = await principalGuard.require(request, { csrf: mutation });
     const tenantContext = await tenantGuard.requireKnown(principal);
     const common = { principal, tenantContext, correlationId: requestId };
+
+    const bulkMatch = path.match(BULK_PATH);
+    if (bulkMatch) {
+      assertNoQuery(parsedUrl);
+      const [, type, operation] = bulkMatch;
+      if (operation === 'template' || operation === 'export') {
+        if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+        await assertEmptyBody(request);
+        const result = operation === 'template'
+          ? await service.bulkTemplate({ ...common, type })
+          : await service.bulkExport({ ...common, type });
+        sendJson(response, 200, result, maxResponseBytes);
+        return 200;
+      }
+      if (request.method !== 'POST') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+      const body = validateExactObject(
+        await readJsonObjectBody(request, { maxBytes: Math.min(mutationMaxBytes, BULK_MAX_BYTES) }),
+        operation === 'validate' ? BULK_VALIDATE_SCHEMA : BULK_APPLY_SCHEMA,
+      );
+      const result = operation === 'validate'
+        ? await service.bulkValidate({ ...common, type, ...body })
+        : await service.bulkApply({ ...common, type, ...body });
+      sendJson(response, 200, result, maxResponseBytes);
+      return 200;
+    }
 
     if (path === TENANT_CATALOGUE_ROUTES.current) {
       assertNoQuery(parsedUrl);

@@ -28,6 +28,7 @@ import { createPostgresTenantOnboardingRepository } from './tenant-onboarding-re
 import { createPostgresTenantRepository } from './tenant-repository.js';
 import { createPostgresTenantUserAdminRepository } from './tenant-user-admin-repository.js';
 import { createPostgresTenantUserLifecycleRepository } from './tenant-user-lifecycle-repository.js';
+import { createPostgresTenantBulkTransferRepository } from './tenant-bulk-transfer-repository.js';
 
 export function createPostgresPersistence(config) {
   const pool = createPostgresPool(config);
@@ -67,6 +68,7 @@ export function createPostgresPersistence(config) {
   const tenantUserLifecycleRepository = createPostgresTenantUserLifecycleRepository(pool, {
     auditRepository,
   });
+  const tenantBulkTransferRepository = createPostgresTenantBulkTransferRepository(pool);
 
   return Object.freeze({
     pool,
@@ -92,6 +94,7 @@ export function createPostgresPersistence(config) {
     tenantRepository,
     tenantUserAdminRepository,
     tenantUserLifecycleRepository,
+    tenantBulkTransferRepository,
     loadTenant: (tenantId) => tenantRepository.findById(tenantId),
     readinessChecks: [
       () => isPostgresReady(pool),

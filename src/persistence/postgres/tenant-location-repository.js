@@ -6,6 +6,10 @@ import {
   tenantLocationRollbackConfiguration,
 } from '../../domain/tenant-locations.js';
 import { withPostgresTransaction } from './transaction.js';
+import {
+  finalizeTenantBulkTransferReceipt,
+  lockTenantBulkTransferReceipt,
+} from './tenant-bulk-transfer-transaction.js';
 
 const SITE_DETAIL_KEYS = new Set(['address']);
 const ROOM_DETAIL_KEYS = new Set([
@@ -388,10 +392,27 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
     throw new TypeError('AUDIT_REPOSITORY_REQUIRED');
   }
 
-  async function mutate({ tenantId, expectedRevision, nextRevision, configuration, changedAt, actorUserId, auditEvent }) {
+  async function mutate({
+    tenantId, expectedRevision, nextRevision, configuration, changedAt, actorUserId, auditEvent,
+    bulkReceipt = null, bulkResponseFor = null,
+  }) {
     requireUuid(tenantId, 'TENANT_ID_INVALID');
     requireUuid(actorUserId, 'ACTOR_USER_ID_INVALID');
     return withPostgresTransaction(pool, async (client) => {
+      if (bulkReceipt) {
+        const receipt = await lockTenantBulkTransferReceipt(client, {
+          tenantId, actorUserId, ...bulkReceipt,
+        });
+        if (receipt.status === 'replay') {
+          return Object.freeze({ status: 'bulk_replay', response: receipt.response });
+        }
+        if (receipt.status !== 'ready') {
+          throw repositoryInputError(`TENANT_BULK_RECEIPT_${receipt.status.toUpperCase()}`);
+        }
+        if (receipt.sourceRevision !== expectedRevision || typeof bulkResponseFor !== 'function') {
+          throw repositoryInputError('TENANT_BULK_RECEIPT_INVALID');
+        }
+      }
       const currentRevision = await lockTenantLocationRevisionWithClient(client, tenantId);
       if (currentRevision !== expectedRevision) return Object.freeze({ status: 'conflict', currentRevision });
       const currentConfiguration = await loadTenantLocationConfigurationWithClient(client, tenantId);
@@ -421,7 +442,15 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
         actorUserId,
       });
       await appendAudit(client, auditRepository, auditEvent);
-      return currentWithClient(client, tenantId, nextRevision);
+      const current = await currentWithClient(client, tenantId, nextRevision);
+      if (bulkReceipt) {
+        const bulkResponse = bulkResponseFor(current);
+        await finalizeTenantBulkTransferReceipt(client, {
+          tenantId, actorUserId, ...bulkReceipt, response: bulkResponse,
+        });
+        return Object.freeze({ status: 'bulk_applied', response: bulkResponse });
+      }
+      return current;
     });
   }
 

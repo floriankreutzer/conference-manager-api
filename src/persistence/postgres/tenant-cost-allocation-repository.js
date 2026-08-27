@@ -5,6 +5,10 @@ import {
   normalizeTenantCostAllocation,
 } from '../../domain/tenant-cost-allocation.js';
 import { withPostgresTransaction } from './transaction.js';
+import {
+  finalizeTenantBulkTransferReceipt,
+  lockTenantBulkTransferReceipt,
+} from './tenant-bulk-transfer-transaction.js';
 
 function persistedStateError() {
   const error = new Error('TENANT_COST_ALLOCATION_PERSISTED_STATE_INVALID');
@@ -256,11 +260,27 @@ export function createPostgresTenantCostAllocationRepository(
       changedAt,
       actorUserId,
       auditEvent,
+      bulkReceipt = null,
+      bulkResponseFor = null,
     }) {
       requireUuid(tenantId, 'TENANT_ID_INVALID');
       requireUuid(actorUserId, 'ACTOR_USER_ID_INVALID');
       requireDate(changedAt, 'TENANT_COST_ALLOCATION_CHANGED_AT_INVALID');
       return withPostgresTransaction(pool, async (client) => {
+        if (bulkReceipt) {
+          const receipt = await lockTenantBulkTransferReceipt(client, {
+            tenantId, actorUserId, ...bulkReceipt,
+          });
+          if (receipt.status === 'replay') {
+            return Object.freeze({ status: 'bulk_replay', response: receipt.response });
+          }
+          if (receipt.status !== 'ready') {
+            throw repositoryInputError(`TENANT_BULK_RECEIPT_${receipt.status.toUpperCase()}`);
+          }
+          if (receipt.sourceRevision !== expectedRevision || typeof bulkResponseFor !== 'function') {
+            throw repositoryInputError('TENANT_BULK_RECEIPT_INVALID');
+          }
+        }
         const currentRevision = await loadRevisionWithClient(
           client,
           tenantId,
@@ -297,10 +317,18 @@ export function createPostgresTenantCostAllocationRepository(
           actorUserId,
         });
         await appendAudit(client, auditRepository, auditEvent);
-        return Object.freeze({
+        const result = Object.freeze({
           revision: nextRevision,
           configuration: proposed,
         });
+        if (bulkReceipt) {
+          const bulkResponse = bulkResponseFor(result);
+          await finalizeTenantBulkTransferReceipt(client, {
+            tenantId, actorUserId, ...bulkReceipt, response: bulkResponse,
+          });
+          return Object.freeze({ status: 'bulk_applied', response: bulkResponse });
+        }
+        return result;
       });
     },
 
