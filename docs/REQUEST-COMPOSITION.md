@@ -317,8 +317,8 @@ Migration 027:
   `requests`;
 - creates append-only `request_revisions` with Tenant-composite ownership;
 - backfills one explicit legacy history record per existing Request;
-- installs deferred current-revision integrity checks that reject obsolete
-  schema-v1 writers which omit or diverge from the immutable revision record;
+- installs deferred current-revision integrity checks that reject mutations of
+  revision-managed Requests when the current row diverges from its immutable revision record;
 - adds v2 schema/base-version/composition storage to
   `booking_change_requests`.
 

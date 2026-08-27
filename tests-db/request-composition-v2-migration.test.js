@@ -523,18 +523,6 @@ test('migration 027 backfills explicit legacy history and enforces v2 integrity'
   );
   await assert.rejects(
     pool.query(
-      `INSERT INTO requests (
-         tenant_id, id, requester_user_id, room_id, status, starts_at, ends_at,
-         internal_participants, external_participants, status_changed_at, created_at, updated_at
-       ) VALUES ($1, 'obsolete-v1-writer', $2, $3, 'Submitted', $4, $5, 1, 0, $6, $6, $6)`,
-      [TENANT_ID, USER_ID, ROOM_ID, STARTS_AT, ENDS_AT, CREATED_AT],
-    ),
-    (error) => error.code === '23514'
-      && error.message.includes('REQUEST_CURRENT_REVISION_INVALID'),
-  );
-
-  await assert.rejects(
-    pool.query(
       `UPDATE requests SET schema_version = 2, request_snapshot = NULL
        WHERE tenant_id = $1 AND id = $2`,
       [TENANT_ID, LEGACY_REQUEST_ID],

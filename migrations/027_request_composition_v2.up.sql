@@ -639,6 +639,12 @@ BEGIN
   WHERE revision.tenant_id = scoped_tenant_id
     AND revision.request_id = scoped_request_id;
 
+  IF current_schema_version = 1
+     AND current_revision_sequence IS NULL
+     AND latest_revision_sequence IS NULL THEN
+    RETURN NEW;
+  END IF;
+
   IF current_revision_sequence IS NULL
      OR latest_revision_sequence IS NULL
      OR current_revision_sequence <> latest_revision_sequence
