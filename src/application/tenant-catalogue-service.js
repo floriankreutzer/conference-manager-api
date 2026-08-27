@@ -252,6 +252,10 @@ export function createTenantCatalogueService({
       return bulk.validate({
         principal, tenantContext, correlationId, type, document,
         current: { revision: current.revision, configuration: current.catalogue },
+        validateCandidate: (catalogue) => repository.validateCandidateReferences({
+          tenantId: tenantContext.tenantId,
+          catalogue,
+        }),
       });
     },
 

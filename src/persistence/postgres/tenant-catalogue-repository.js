@@ -462,6 +462,12 @@ export function createPostgresTenantCatalogueRepository(pool, { auditRepository 
   }
 
   return Object.freeze({
+    async validateCandidateReferences({ tenantId: tenantIdValue, catalogue: catalogueValue }) {
+      const tenantId = requireUuid(tenantIdValue, 'TENANT_CATALOGUE_TENANT_ID_INVALID');
+      const catalogue = normalizeTenantCatalogue(catalogueValue);
+      return referencesExist(pool, tenantId, catalogue);
+    },
+
     async loadCurrent(tenantIdValue) {
       const tenantId = requireUuid(tenantIdValue, 'TENANT_CATALOGUE_TENANT_ID_INVALID');
       return withPostgresTransaction(pool, async (client) => {

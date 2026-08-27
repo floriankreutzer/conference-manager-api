@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { normalizeTenantCatalogue } from './tenant-catalogue.js';
-import { normalizeTenantCostAllocation } from './tenant-cost-allocation.js';
-import { normalizeTenantLocations } from './tenant-locations.js';
+import { assertTenantCostAllocationTransition } from './tenant-cost-allocation.js';
+import { assertTenantLocationTransition } from './tenant-locations.js';
 
 export const TENANT_BULK_SCHEMA_VERSION = 1;
 export const TENANT_BULK_MAX_BYTES = 65_536;
@@ -102,9 +102,9 @@ export function tenantBulkCandidate({ aggregate, type, current, document }) {
   const parsed = parseTenantBulkDocument(document, { type, aggregate });
   const collection = parsed.definition.collection;
   const proposed = { ...current, [collection]: mergeRows(current[collection], parsed.document.rows) };
-  if (aggregate === 'locations') return normalizeTenantLocations(proposed);
+  if (aggregate === 'locations') return assertTenantLocationTransition(current, proposed);
   if (aggregate === 'catalogue') return normalizeTenantCatalogue(proposed);
-  if (aggregate === 'cost_allocation') return normalizeTenantCostAllocation(proposed);
+  if (aggregate === 'cost_allocation') return assertTenantCostAllocationTransition(current, proposed);
   throw new TypeError('TENANT_BULK_AGGREGATE_INVALID');
 }
 

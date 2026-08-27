@@ -56,10 +56,13 @@ export function createTenantBulkTransferOperations({
       return tenantBulkExport(type, aggregate, configuration);
     },
 
-    async validate({ principal, tenantContext, correlationId, type, document, current }) {
+    async validate({ principal, tenantContext, correlationId, type, document, current, validateCandidate }) {
       let candidate;
       try {
         candidate = tenantBulkCandidate({ aggregate, type, current: current.configuration, document });
+        if (validateCandidate && await validateCandidate(candidate) !== true) {
+          throw inputError('TENANT_BULK_REFERENCE_INVALID');
+        }
       } catch (error) {
         return Object.freeze({
           schemaVersion: 1,

@@ -1,5 +1,3 @@
-import { withPostgresTransaction } from './transaction.js';
-
 function receiptRow(row) {
   if (!row) return null;
   return Object.freeze({
@@ -55,38 +53,6 @@ export function createPostgresTenantBulkTransferRepository(pool) {
         values: [tenantId, id],
       });
       return receiptRow(result.rows[0]);
-    },
-
-    async markApplied({ tenantId, id, actorUserId, payloadSha256, appliedAt, response }) {
-      return withPostgresTransaction(pool, async (client) => {
-        const locked = await client.query({
-          name: 'tenant-bulk-receipt-lock',
-          text: `SELECT * FROM tenant_bulk_transfer_receipts
-            WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
-          values: [tenantId, id],
-        });
-        const receipt = receiptRow(locked.rows[0]);
-        if (!receipt) return Object.freeze({ status: 'not_found' });
-        if (receipt.actorUserId !== actorUserId || receipt.payloadSha256 !== payloadSha256) {
-          return Object.freeze({ status: 'forbidden' });
-        }
-        if (receipt.status === 'applied') {
-          return Object.freeze({ status: 'replay', response: receipt.appliedResponse });
-        }
-        if (Date.parse(receipt.expiresAt) < appliedAt.getTime()) {
-          return Object.freeze({ status: 'expired' });
-        }
-        const updated = await client.query({
-          name: 'tenant-bulk-receipt-apply',
-          text: `UPDATE tenant_bulk_transfer_receipts
-            SET status='applied', applied_response=$4::jsonb, applied_at=$5
-            WHERE tenant_id=$1 AND id=$2 AND actor_user_id=$3 AND status='pending'
-            RETURNING *`,
-          values: [tenantId, id, actorUserId, JSON.stringify(response), appliedAt],
-        });
-        if (updated.rowCount !== 1) return Object.freeze({ status: 'conflict' });
-        return Object.freeze({ status: 'applied', response });
-      });
     },
   });
 }

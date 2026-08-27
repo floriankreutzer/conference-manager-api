@@ -57,6 +57,21 @@ test('patch import preserves excluded collections and absent rows', () => {
   assert.deepEqual(tenantBulkExport('rooms', 'locations', candidate).rows, current.rooms);
 });
 
+test('validation applies provider-owned room transition rules before issuing a receipt', async () => {
+  const operations = createTenantBulkTransferOperations({
+    aggregate: 'locations',
+    bulkTransferRepository: { async create() { throw new Error('receipt must not be created'); }, async load() {} },
+  });
+  const current = locations();
+  const result = await operations.validate({
+    principal: { userId: USER_ID }, tenantContext: { tenantId: TENANT_ID }, correlationId: CORRELATION_ID,
+    type: 'rooms', current: { revision: 1, configuration: current },
+    document: { schemaVersion: 1, type: 'rooms', rows: [...current.rooms, { ...current.rooms[0], id: 'room-new' }] },
+  });
+  assert.equal(result.valid, false);
+  assert.equal(result.errors[0].code, 'TENANT_ROOM_PROVIDER_IMPORT_REQUIRED');
+});
+
 test('validation receipts are actor-bound, expiring and replay their applied response', async () => {
   const receipts = new Map();
   const repository = {
