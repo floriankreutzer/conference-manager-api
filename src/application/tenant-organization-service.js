@@ -136,9 +136,9 @@ export function createTenantOrganizationService({
           nextRevision,
         }),
       });
-      if (result?.conflict) {
-        assertTenantSettingsRevision(expectedRevision, result.currentRevision);
-      }
+      if (!result) throw new AuthorizationInputError('TENANT_ORGANIZATION_NOT_FOUND');
+      if (result.conflict) assertTenantSettingsRevision(expectedRevision, result.currentRevision);
+      if (result.missingLogoAsset) throw new AuthorizationInputError('TENANT_BRAND_ASSET_NOT_FOUND');
       return Object.freeze({ schemaVersion: TENANT_SETTINGS_SCHEMA_VERSION, ...result });
     },
 
@@ -168,6 +168,7 @@ export function createTenantOrganizationService({
           mediaType,
         }),
       });
+      if (!stored) throw new AuthorizationInputError('TENANT_BRAND_ASSET_UPLOAD_DENIED');
       return Object.freeze({
         id: stored.id,
         mediaType: stored.mediaType,
