@@ -187,6 +187,7 @@ const bookingChangeService = persistence && auditService && microsoft365BookingS
 const tenantLocationAdministrationService = persistence && auditService
   ? createTenantLocationAdministrationService({
     repository: persistence.tenantLocationRepository,
+    bulkTransferRepository: persistence.tenantBulkTransferRepository,
     authorizationPolicy,
     auditService,
   })
@@ -211,6 +212,7 @@ const tenantPresentationService = persistence && auditService
 const tenantCatalogueService = persistence && auditService
   ? createTenantCatalogueService({
     repository: persistence.tenantCatalogueRepository,
+    bulkTransferRepository: persistence.tenantBulkTransferRepository,
     authorizationPolicy,
     auditService,
   })
@@ -225,6 +227,7 @@ const tenantBookingPolicyService = persistence && auditService
 const tenantCostAllocationService = persistence && auditService
   ? createTenantCostAllocationService({
     repository: persistence.tenantCostAllocationRepository,
+    bulkTransferRepository: persistence.tenantBulkTransferRepository,
     authorizationPolicy,
     auditService,
   })

@@ -21,6 +21,7 @@ import {
   requireTenantSettingsRevision,
   requireTenantSettingsSchemaVersion,
 } from './tenant-settings-revision.js';
+import { createTenantBulkTransferOperations } from './tenant-bulk-transfer-operations.js';
 
 function inputError(code = 'TENANT_CATALOGUE_INPUT_INVALID') {
   return new TenantSettingsInputError(code);
@@ -63,6 +64,7 @@ function page({ limit = 25, beforeRevision = null } = {}) {
 
 export function createTenantCatalogueService({
   repository,
+  bulkTransferRepository,
   authorizationPolicy,
   auditService,
   clock = () => Date.now(),
@@ -87,6 +89,11 @@ export function createTenantCatalogueService({
     throw new TypeError('AUDIT_SERVICE_REQUIRED');
   }
   if (typeof clock !== 'function') throw new TypeError('CLOCK_REQUIRED');
+  const bulk = bulkTransferRepository ? createTenantBulkTransferOperations({
+    aggregate: 'catalogue',
+    bulkTransferRepository,
+    clock,
+  }) : null;
 
   function currentTime() {
     const value = clock();
@@ -120,7 +127,8 @@ export function createTenantCatalogueService({
     }
   }
 
-  return Object.freeze({
+  let service;
+  service = Object.freeze({
     async current({ principal, tenantContext, correlationId }) {
       await authorize({ principal, tenantContext, correlationId, operation: 'read' });
       const result = await repository.loadCurrent(tenantContext.tenantId);
@@ -163,36 +171,48 @@ export function createTenantCatalogueService({
       schemaVersion,
       expectedRevision,
       catalogue,
+      bulkReceipt = null,
     }) {
       requireTenantSettingsSchemaVersion(schemaVersion);
       const expected = requireTenantSettingsRevision(expectedRevision);
       const proposed = normalize(catalogue);
       await authorize({ principal, tenantContext, correlationId, operation: 'update' });
       const changedAt = currentTime();
-      const result = await repository.replace({
-        tenantId: tenantContext.tenantId,
-        actorUserId: principal.userId,
-        correlationId,
-        expectedRevision: expected,
-        catalogue: proposed,
-        changedAt,
-        auditEventFor({ previous, next, nextRevision }) {
-          return auditService.createEvent({
-            principal,
-            tenantContext,
-            correlationId,
-            action: AUDIT_ACTION.TENANT_CONFIGURATION_CHANGED,
-            targetType: 'catalogue',
-            targetId: 'tenant-catalogue',
-            previousState: { revision: expected },
-            newState: { revision: nextRevision },
-            outcome: AUDIT_OUTCOME.SUCCESS,
-            metadata: { operation: 'update', ...tenantCatalogueSummary(next) },
-            retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
-            occurredAt: changedAt.toISOString(),
-          });
-        },
-      });
+      let result;
+      try {
+        result = await repository.replace({
+          tenantId: tenantContext.tenantId,
+          actorUserId: principal.userId,
+          correlationId,
+          expectedRevision: expected,
+          catalogue: proposed,
+          changedAt,
+          auditEventFor({ previous, next, nextRevision }) {
+            return auditService.createEvent({
+              principal,
+              tenantContext,
+              correlationId,
+              action: AUDIT_ACTION.TENANT_CONFIGURATION_CHANGED,
+              targetType: 'catalogue',
+              targetId: 'tenant-catalogue',
+              previousState: { revision: expected },
+              newState: { revision: nextRevision },
+              outcome: AUDIT_OUTCOME.SUCCESS,
+              metadata: { operation: 'update', ...tenantCatalogueSummary(next) },
+              retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
+              occurredAt: changedAt.toISOString(),
+            });
+          },
+          bulkReceipt,
+          bulkResponseFor: (value) => publicCurrent(value.current),
+        });
+      } catch (error) {
+        if (['TENANT_BULK_RECEIPT_INVALID', 'TENANT_BULK_RECEIPT_EXPIRED'].includes(error?.code)) {
+          throw inputError(error.code);
+        }
+        throw error;
+      }
+      if (result?.status === 'bulk_replay' || result?.status === 'bulk_applied') return result.response;
       if (result?.status === 'conflict') throw new TenantSettingsConflictError(result.currentRevision);
       if (result?.status === 'not_found') throw concealedNotFound();
       if (result?.status === 'reference_invalid') {
@@ -205,6 +225,54 @@ export function createTenantCatalogueService({
         throw new TypeError('TENANT_CATALOGUE_UPDATE_RESULT_INVALID');
       }
       return publicCurrent(result.current);
+    },
+
+    async bulkTemplate({ principal, tenantContext, correlationId, type }) {
+      if (!bulk) throw new TypeError('TENANT_BULK_TRANSFER_REPOSITORY_REQUIRED');
+      await authorize({ principal, tenantContext, correlationId, operation: 'bulk_template' });
+      return bulk.template(type);
+    },
+
+    async bulkExport({ principal, tenantContext, correlationId, type }) {
+      if (!bulk) throw new TypeError('TENANT_BULK_TRANSFER_REPOSITORY_REQUIRED');
+      await authorize({ principal, tenantContext, correlationId, operation: 'bulk_export' });
+      const current = await repository.loadCurrent(tenantContext.tenantId);
+      if (!current) throw concealedNotFound();
+      return Object.freeze({
+        revision: current.revision,
+        document: bulk.export(type, current.catalogue),
+      });
+    },
+
+    async bulkValidate({ principal, tenantContext, correlationId, type, document }) {
+      if (!bulk) throw new TypeError('TENANT_BULK_TRANSFER_REPOSITORY_REQUIRED');
+      await authorize({ principal, tenantContext, correlationId, operation: 'bulk_validate' });
+      const current = await repository.loadCurrent(tenantContext.tenantId);
+      if (!current) throw concealedNotFound();
+      return bulk.validate({
+        principal, tenantContext, correlationId, type, document,
+        current: { revision: current.revision, configuration: current.catalogue },
+      });
+    },
+
+    async bulkApply({ principal, tenantContext, correlationId, type, document, receiptId }) {
+      if (!bulk) throw new TypeError('TENANT_BULK_TRANSFER_REPOSITORY_REQUIRED');
+      await authorize({ principal, tenantContext, correlationId, operation: 'bulk_apply' });
+      const current = await repository.loadCurrent(tenantContext.tenantId);
+      if (!current) throw concealedNotFound();
+      return bulk.apply({
+        principal, tenantContext, type, document, receiptId,
+        current: { revision: current.revision, configuration: current.catalogue },
+        update: ({ expectedRevision, configuration, bulkReceipt }) => service.update({
+          principal,
+          tenantContext,
+          correlationId,
+          schemaVersion: TENANT_SETTINGS_SCHEMA_VERSION,
+          expectedRevision,
+          catalogue: configuration,
+          bulkReceipt,
+        }),
+      });
     },
 
     async snapshotForRequest({ tenantId, siteId, roomId, selection }) {
@@ -235,4 +303,5 @@ export function createTenantCatalogueService({
       }
     },
   });
+  return service;
 }

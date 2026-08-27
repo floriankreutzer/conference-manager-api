@@ -321,6 +321,10 @@ Microsoft room import advances the Locations revision once when it creates local
 
 ## Additional Tenant settings administration
 
+Bulk JSON template, stable export, validation-receipt and apply routes are documented in
+`docs/TENANT-BULK-TRANSFER.md`. They remain below the owning Locations, Catalogue or Cost Allocation
+route family and never accept a browser-selected Tenant.
+
 Organization, Catalogue, Booking Policies and Cost Allocation are separate bounded owners. Their administration reads and writes require Tenant Admin plus `tenant:configure`; writes additionally require valid session-bound CSRF. No route accepts Tenant or actor authority from the browser.
 
 - `GET/PUT /api/v1/tenant/settings/organization` and `GET /api/v1/tenant/settings/organization/history` expose the independently versioned Organization aggregate.

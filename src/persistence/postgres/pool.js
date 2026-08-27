@@ -11,7 +11,7 @@ const { Pool } = pg;
 // Cost Allocation owners. Schema 26 adds User lifecycle concurrency state.
 // Schema 27 adds authoritative Request composition snapshots, immutable Request
 // history, Room pricing, and full confirmed-booking draft/snapshot proposals.
-export const CURRENT_SCHEMA_VERSION = 27;
+export const CURRENT_SCHEMA_VERSION = 28;
 
 export function createPostgresPool(config) {
   if (!config?.databaseUrl) throw new TypeError('DATABASE_URL_REQUIRED');

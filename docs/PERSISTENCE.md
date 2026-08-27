@@ -98,6 +98,10 @@ Migration 019 adds confirmed-booking change persistence and enforces one open pr
 
 Migration 020 adds independent optimistic revision counters for the Organization, Locations, Catalogue, Booking Policies and Cost Allocation Tenant Admin aggregates. It does not create a generic settings table/document, and rollback fails closed after any aggregate revision advances beyond its initial value.
 
+Migration 028 adds the Tenant- and actor-scoped bulk-validation receipt ledger described in
+`docs/TENANT-BULK-TRANSFER.md`. It stores hashes and bounded replay responses rather than imported
+settings payloads, and its rollback refuses to remove receipt evidence after first use.
+
 Migration 021 adds bounded JSON details columns for Sites and Rooms plus immutable `tenant_location_revisions`. It leaves existing Site time zones and local/provider identifiers unchanged.
 
 Migration 022 adds the bounded current Organization row and append-only Organization revisions. Existing and future Tenants receive a neutral revision-1 snapshot without fabricated legal, registration or branding data.
@@ -127,7 +131,7 @@ The all-role Tenant presentation contract reuses the current Organization row an
 `organization_revision`. Its managed-brand policy maps one fixed reference to a code-shipped preset
 and therefore introduces no upload metadata, asset table, external object reference or migration.
 
-Runtime schema readiness advances to exactly version 27. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
+Runtime schema readiness advances to exactly version 28. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
 
 No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
 
@@ -258,7 +262,7 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 27.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 28.
 
 ## Transaction contract
 
