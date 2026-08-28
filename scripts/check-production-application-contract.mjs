@@ -87,12 +87,10 @@ for (const required of [
   if (!routes.includes(required)) throw new Error(`Production application HTTP contract is missing ${required}.`);
 }
 
-for (const file of ['src/logger.js', 'src/observability/metrics.js']) {
-  const source = await readFile(file, 'utf8');
-  for (const routeKey of applicationRouteKeys) {
-    if (!source.includes(`'${routeKey}'`)) {
-      throw new Error(`${file} cannot safely observe production application route ${routeKey}.`);
-    }
+const routeVocabulary = await readFile('src/observability/route-vocabulary.js', 'utf8');
+for (const routeKey of applicationRouteKeys) {
+  if (!routeVocabulary.includes(`'${routeKey}'`)) {
+    throw new Error(`Shared observability vocabulary is missing production application route ${routeKey}.`);
   }
 }
 

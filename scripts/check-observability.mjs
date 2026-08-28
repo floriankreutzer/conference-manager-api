@@ -1,4 +1,21 @@
 import { readFile } from 'node:fs/promises';
+import { TELEMETRY_ROUTE_KEYS } from '../src/observability/route-vocabulary.js';
+
+const routeKeySet = new Set(TELEMETRY_ROUTE_KEYS);
+if (!Object.isFrozen(TELEMETRY_ROUTE_KEYS) || routeKeySet.size !== TELEMETRY_ROUTE_KEYS.length) {
+  throw new Error('Operational route vocabulary must be frozen and contain unique identities.');
+}
+for (const route of TELEMETRY_ROUTE_KEYS) {
+  if (typeof route !== 'string' || !/^[a-z][a-z0-9_]{0,95}$/.test(route)) {
+    throw new Error(`Operational route identity is not fixed and bounded: ${String(route)}.`);
+  }
+}
+for (const aggregate of ['locations', 'catalogue', 'cost_allocation']) {
+  for (const operation of ['template', 'export', 'validate', 'apply']) {
+    const route = `tenant_settings_${aggregate}_bulk_${operation}`;
+    if (!routeKeySet.has(route)) throw new Error(`Operational route vocabulary is missing ${route}.`);
+  }
+}
 
 const metrics = await readFile('src/observability/metrics.js', 'utf8');
 for (const forbidden of ['tenantId', 'userId', 'requestId', 'providerReference', 'email', 'cookie', 'token']) {
@@ -15,6 +32,9 @@ for (const required of [
   'dependency_health_observations_total',
 ]) {
   if (!metrics.includes(required)) throw new Error(`Metrics registry is missing ${required}.`);
+}
+if (!metrics.includes("assertTelemetryRouteKey(route, 'METRIC_ROUTE_INVALID')")) {
+  throw new Error('Metrics registry must consume the shared bounded route vocabulary.');
 }
 
 const health = await readFile('src/observability/health.js', 'utf8');
@@ -36,6 +56,7 @@ for (const required of [
   "return 'booking_change'",
   "return 'booking_change_decision'",
   "return 'request'",
+  'recordRequestCompletionSafely',
 ]) {
   if (!app.includes(required)) throw new Error(`HTTP observability composition is missing ${required}.`);
 }
@@ -49,26 +70,8 @@ for (const forbidden of ['cookie', 'csrf', 'providerReference', 'tenantId', 'use
     throw new Error(`Operational logger must not accept sensitive or tenant/object identifier ${forbidden}.`);
   }
 }
-for (const required of [
-  "'tenant_settings_organization'",
-  "'tenant_settings_organization_history'",
-  "'tenant_presentation'",
-  "'tenant_settings_catalogue'",
-  "'tenant_settings_catalogue_history'",
-  "'tenant_settings_booking_policies'",
-  "'tenant_settings_booking_policies_history'",
-  "'tenant_settings_booking_policies_revision'",
-  "'tenant_settings_cost_allocation'",
-  "'tenant_settings_cost_allocation_history'",
-  "'tenant_settings_cost_allocation_revision'",
-  "'tenant_user_lifecycle_list'",
-  "'tenant_user_lifecycle_access'",
-  "'tenant_audit_query'",
-  "'tenant_capabilities'",
-  "'tenant_user_roles'",
-  'route: assertEnum(route, ROUTES',
-]) {
-  if (!logger.includes(required)) throw new Error(`Operational request logging is missing bounded route contract ${required}.`);
+if (!logger.includes("assertTelemetryRouteKey(route, 'LOG_ROUTE_INVALID')")) {
+  throw new Error('Operational request logging must consume the shared bounded route vocabulary.');
 }
 
 const booking = await readFile('src/application/booking-integration-service.js', 'utf8');

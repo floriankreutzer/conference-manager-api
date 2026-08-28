@@ -27,8 +27,7 @@ const applicationRbacContract = await text('docs/EXCHANGE-APPLICATION-RBAC.md');
 const applicationRbacEvidence = await text('src/operator/exchange-application-rbac-evidence.js');
 const applicationRbacCommand = await text('scripts/exchange-application-rbac-check.mjs');
 const boundedEvidenceFile = await text('scripts/lib/bounded-evidence-file.mjs');
-const loggerContract = await text('src/logger.js');
-const metricsContract = await text('src/observability/metrics.js');
+const routeVocabulary = await text('src/observability/route-vocabulary.js');
 
 requireContains(migrationUp, [
   'microsoft365_consent_transactions',
@@ -187,11 +186,9 @@ requireContains(boundedEvidenceFile, [
   'await file.read(',
 ], 'Shared bounded evidence file reader');
 
-for (const [name, contract] of [['Logger', loggerContract], ['Metrics', metricsContract]]) {
-  requireContains(contract, [
-    'microsoft365_free_busy_verify',
-    'microsoft365_pilot_readiness',
-  ], `${name} Microsoft 365 route vocabulary`);
-}
+requireContains(routeVocabulary, [
+  'microsoft365_free_busy_verify',
+  'microsoft365_pilot_readiness',
+], 'Shared Microsoft 365 route vocabulary');
 
 console.log('Microsoft 365 connection lifecycle gate passed.');

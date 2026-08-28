@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { tenantCatalogueRouteKey } from '../src/http/settings/catalogue.js';
+import { tenantCostAllocationRouteKey } from '../src/http/settings/cost-allocation.js';
+import { tenantLocationRouteKey } from '../src/http/settings/locations.js';
 import { createLogger } from '../src/logger.js';
+import { createMetricsRegistry } from '../src/observability/metrics.js';
 
 const REQUEST_ID = '44444444-4444-4444-8444-444444444444';
 
@@ -23,6 +27,45 @@ test('Tenant user administration uses bounded operational route labels', () => {
   assert.equal(loggedRoute('tenant_user_roles', 'PUT').route, 'tenant_user_roles');
 });
 
+test('every modular bulk route identity is accepted by logger and metrics', () => {
+  const routeFamilies = [
+    [tenantLocationRouteKey, '/api/v1/tenant/settings/locations/bulk/sites'],
+    [tenantCatalogueRouteKey, '/api/v1/tenant/settings/catalogue/bulk/services'],
+    [tenantCostAllocationRouteKey, '/api/v1/tenant/settings/cost-allocation/bulk/cost-centers'],
+  ];
+  const operations = ['template', 'export', 'validate', 'apply'];
+  const metrics = createMetricsRegistry();
+  const actualRoutes = [];
+
+  for (const [routeKey, prefix] of routeFamilies) {
+    for (const operation of operations) {
+      const route = routeKey(`${prefix}/${operation}`);
+      const method = operation === 'template' || operation === 'export' ? 'GET' : 'POST';
+      actualRoutes.push(route);
+      assert.equal(loggedRoute(route, method).route, route);
+      metrics.recordApiRequest({ route, method, statusCode: 200, durationMs: 1 });
+    }
+  }
+
+  assert.deepEqual(actualRoutes, [
+    'tenant_settings_locations_bulk_template',
+    'tenant_settings_locations_bulk_export',
+    'tenant_settings_locations_bulk_validate',
+    'tenant_settings_locations_bulk_apply',
+    'tenant_settings_catalogue_bulk_template',
+    'tenant_settings_catalogue_bulk_export',
+    'tenant_settings_catalogue_bulk_validate',
+    'tenant_settings_catalogue_bulk_apply',
+    'tenant_settings_cost_allocation_bulk_template',
+    'tenant_settings_cost_allocation_bulk_export',
+    'tenant_settings_cost_allocation_bulk_validate',
+    'tenant_settings_cost_allocation_bulk_apply',
+  ]);
+  const snapshot = JSON.stringify(metrics.snapshot());
+  for (const route of actualRoutes) assert.match(snapshot, new RegExp(route));
+  assert.doesNotMatch(snapshot, /\/api\/v1\/tenant\/settings/);
+});
+
 test('operational logger still rejects arbitrary dynamic route labels', () => {
   const logger = createLogger({ write: () => {} });
   assert.throws(() => logger.requestCompleted({
@@ -32,4 +75,12 @@ test('operational logger still rejects arbitrary dynamic route labels', () => {
     statusCode: 200,
     durationMs: 1,
   }), /LOG_ROUTE_INVALID/);
+
+  const metrics = createMetricsRegistry();
+  assert.throws(() => metrics.recordApiRequest({
+    route: '/api/v1/tenant/users/attacker-controlled',
+    method: 'GET',
+    statusCode: 200,
+    durationMs: 1,
+  }), /METRIC_ROUTE_INVALID/);
 });

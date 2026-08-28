@@ -14,6 +14,7 @@ const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const INTEGRATION_ID = '33333333-3333-4333-8333-333333333333';
 const CORRELATION_ID = '44444444-4444-4444-8444-444444444444';
+const SESSION_ID = '55555555-5555-4555-8555-555555555555';
 
 function httpRequest({ port, path }) {
   return new Promise((resolve, reject) => {
@@ -171,6 +172,79 @@ test('operational logs and HTTP metrics do not contain dynamic request identifie
   const snapshot = JSON.stringify(metrics.snapshot());
   assert.match(snapshot, /authentication_failures_total/);
   assert.doesNotMatch(snapshot, /SECRET-OBJECT-123/);
+});
+
+test('successful modular bulk route completes with its bounded route identity', async () => {
+  const logs = [];
+  const metrics = createMetricsRegistry();
+  const principal = {
+    userId: USER_ID,
+    tenantId: TENANT_ID,
+    providerIdentity: { provider: 'test_oidc', reference: 'bulk-admin' },
+    roles: ['tenant_admin'],
+    permissions: ['tenant:configure'],
+    session: {
+      id: SESSION_ID,
+      issuedAt: '2026-08-28T08:00:00.000Z',
+      expiresAt: '2026-08-28T18:00:00.000Z',
+      securityVersion: 1,
+    },
+  };
+
+  await withServer({
+    config: testConfig(),
+    logger: createLogger({ write: (line) => logs.push(JSON.parse(line)) }),
+    metrics,
+    resolvePrincipal: async () => principal,
+    loadTenant: async () => ({
+      id: TENANT_ID,
+      displayName: 'Bulk Tenant',
+      status: 'active',
+      createdAt: '2026-08-28T08:00:00.000Z',
+      updatedAt: '2026-08-28T08:00:00.000Z',
+    }),
+    tenantLocationAdministrationService: {
+      async bulkTemplate({ type, tenantContext }) {
+        assert.equal(type, 'sites');
+        assert.equal(tenantContext.tenantId, TENANT_ID);
+        return { schemaVersion: 1, columns: ['id', 'name'], rows: [] };
+      },
+    },
+  }, async (port) => {
+    const result = await httpRequest({
+      port,
+      path: '/api/v1/tenant/settings/locations/bulk/sites/template',
+    });
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.body.schemaVersion, 1);
+  });
+
+  const completion = logs.find((entry) => entry.event === 'request_completed');
+  assert.equal(completion.route, 'tenant_settings_locations_bulk_template');
+  assert.match(JSON.stringify(metrics.snapshot()), /tenant_settings_locations_bulk_template/);
+});
+
+test('post-response telemetry observer failures cannot replace an HTTP outcome', async () => {
+  const calls = [];
+  const metrics = createMetricsRegistry({
+    write(line) {
+      calls.push(JSON.parse(line).event);
+      throw new Error('METRIC_SINK_FAILED');
+    },
+  });
+  const logger = createLogger({
+    write(line) {
+      calls.push(JSON.parse(line).event);
+      throw new Error('LOG_SINK_FAILED');
+    },
+  });
+
+  await withServer({ config: testConfig(), logger, metrics }, async (port) => {
+    const result = await httpRequest({ port, path: '/api/v1/health/live' });
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.body.status, 'ok');
+  });
+  assert.deepEqual(calls, ['metric_sample', 'request_completed']);
 });
 
 test('booking service records booking and provider outcomes without tenant or provider references', async () => {

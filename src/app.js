@@ -220,6 +220,19 @@ function metricMethod(method) {
   return ALLOWED_METRIC_METHODS.has(method) ? method : 'OTHER';
 }
 
+function recordRequestCompletionSafely({ metrics, logger, requestId, method, route, statusCode, durationMs }) {
+  try {
+    metrics.recordApiRequest({ route, method: metricMethod(method), statusCode, durationMs });
+  } catch {
+    // Completion telemetry is non-authoritative and must not replace the determined HTTP outcome.
+  }
+  try {
+    logger.requestCompleted({ requestId, method, route, statusCode, durationMs });
+  } catch {
+    // Keep observer failures isolated so one telemetry sink cannot suppress another or reject the handler.
+  }
+}
+
 export function createApp({
   config,
   readinessChecks = [],
@@ -755,13 +768,9 @@ export function createApp({
       }
     } finally {
       const durationMs = Math.max(0, clock() - startedAt);
-      metrics.recordApiRequest({
-        route,
-        method: metricMethod(request.method),
-        statusCode,
-        durationMs,
-      });
-      logger.requestCompleted({
+      recordRequestCompletionSafely({
+        metrics,
+        logger,
         requestId,
         method: request.method,
         route,

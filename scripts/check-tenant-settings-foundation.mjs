@@ -18,6 +18,7 @@ for (const path of [
   'src/application/tenant-location-administration-service.js',
   'src/persistence/postgres/tenant-location-repository.js',
   'src/http/settings/locations.js',
+  'src/observability/route-vocabulary.js',
   'migrations/021_tenant_location_self_service.up.sql',
   'migrations/021_tenant_location_self_service.down.sql',
 ]) await mustExist(path);
@@ -143,26 +144,38 @@ for (const required of [
 ]) {
   if (!app.includes(required)) throw new Error(`Application route registration is missing ${required}.`);
 }
-for (const file of ['src/logger.js', 'src/observability/metrics.js']) {
-  const source = await readFile(file, 'utf8');
-  for (const routeKey of [
-    'tenant_settings_locations',
-    'tenant_settings_locations_history',
-    'tenant_settings_locations_revision',
-    'tenant_settings_locations_rollback',
-    'tenant_settings_organization',
-    'tenant_settings_organization_history',
-    'tenant_presentation',
-    'tenant_settings_catalogue',
-    'tenant_settings_catalogue_history',
-    'tenant_settings_booking_policies',
-    'tenant_settings_booking_policies_history',
-    'tenant_settings_booking_policies_revision',
-    'tenant_settings_cost_allocation',
-    'tenant_settings_cost_allocation_history',
-    'tenant_settings_cost_allocation_revision',
-  ]) {
-    if (!source.includes(`'${routeKey}'`)) throw new Error(`${file} is missing safe route key ${routeKey}.`);
+const routeVocabulary = await readFile('src/observability/route-vocabulary.js', 'utf8');
+for (const routeKey of [
+  'tenant_settings_locations',
+  'tenant_settings_locations_history',
+  'tenant_settings_locations_revision',
+  'tenant_settings_locations_rollback',
+  'tenant_settings_locations_bulk_template',
+  'tenant_settings_locations_bulk_export',
+  'tenant_settings_locations_bulk_validate',
+  'tenant_settings_locations_bulk_apply',
+  'tenant_settings_organization',
+  'tenant_settings_organization_history',
+  'tenant_presentation',
+  'tenant_settings_catalogue',
+  'tenant_settings_catalogue_history',
+  'tenant_settings_catalogue_bulk_template',
+  'tenant_settings_catalogue_bulk_export',
+  'tenant_settings_catalogue_bulk_validate',
+  'tenant_settings_catalogue_bulk_apply',
+  'tenant_settings_booking_policies',
+  'tenant_settings_booking_policies_history',
+  'tenant_settings_booking_policies_revision',
+  'tenant_settings_cost_allocation',
+  'tenant_settings_cost_allocation_history',
+  'tenant_settings_cost_allocation_revision',
+  'tenant_settings_cost_allocation_bulk_template',
+  'tenant_settings_cost_allocation_bulk_export',
+  'tenant_settings_cost_allocation_bulk_validate',
+  'tenant_settings_cost_allocation_bulk_apply',
+]) {
+  if (!routeVocabulary.includes(`'${routeKey}'`)) {
+    throw new Error(`Shared observability vocabulary is missing safe route key ${routeKey}.`);
   }
 }
 
