@@ -97,20 +97,23 @@ export function createDemoStaticHandler({ root, surface } = {}) {
     const pathname = safePathname(request?.url);
     if (!pathname) {
       sendEmpty(response, surface, 400);
-      return true;
+      return;
     }
     const relativePath = assetPath(surface, pathname);
-    if (!relativePath) return false;
+    if (!relativePath) {
+      sendEmpty(response, surface, 404);
+      return;
+    }
     if (!['GET', 'HEAD'].includes(request.method || '')) {
       sendEmpty(response, surface, 405, { Allow: 'GET, HEAD' });
-      return true;
+      return;
     }
 
     const filePath = path.resolve(resolvedRoot, relativePath);
     const prefix = `${resolvedRoot}${path.sep}`;
     if (!filePath.startsWith(prefix)) {
       sendEmpty(response, surface, 400);
-      return true;
+      return;
     }
 
     let fileStat;
@@ -119,19 +122,19 @@ export function createDemoStaticHandler({ root, surface } = {}) {
     } catch (error) {
       if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') {
         sendEmpty(response, surface, 404);
-        return true;
+        return;
       }
       throw error;
     }
     if (!fileStat.isFile()) {
       sendEmpty(response, surface, 404);
-      return true;
+      return;
     }
 
     const contentType = CONTENT_TYPES[path.extname(filePath).toLowerCase()];
     if (!contentType) {
       sendEmpty(response, surface, 415);
-      return true;
+      return;
     }
     applyStaticHeaders(response, {
       surface,
@@ -141,13 +144,12 @@ export function createDemoStaticHandler({ root, surface } = {}) {
     response.statusCode = 200;
     if (request.method === 'HEAD') {
       response.end();
-      return true;
+      return;
     }
     try {
       await pipeline(createReadStream(filePath), response);
     } catch (error) {
       if (!response.destroyed) response.destroy(error);
     }
-    return true;
   };
 }
