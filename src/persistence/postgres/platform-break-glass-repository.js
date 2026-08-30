@@ -118,8 +118,7 @@ export function createPostgresPlatformBreakGlassRepository(pool, { auditReposito
     throw new TypeError('PLATFORM_AUDIT_REPOSITORY_REQUIRED');
   }
 
-  async function consumeWithClient(client, consumptionValue) {
-    const consumption = normalizePlatformBreakGlassConsumption(consumptionValue);
+  async function consumeWithClient(client, consumption) {
     const result = await client.query({
       name: 'platform-break-glass-consume',
       text: `
