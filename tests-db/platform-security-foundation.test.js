@@ -1,4 +1,5 @@
 import { clearSaas3TestState } from './support/saas3-test-state.js';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
@@ -104,8 +105,10 @@ async function cleanup(pool) {
   await pool.query('DELETE FROM platform_sessions');
   await pool.query('DELETE FROM platform_operator_tenant_scopes');
   await pool.query('DELETE FROM platform_operators');
+  const tenantIds = [TENANT_ID, OTHER_TENANT_ID];
+  await removeSaas2TenantAdministrationFixtures(pool, tenantIds);
   await clearSaas3TestState(pool);
-  await pool.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [[TENANT_ID, OTHER_TENANT_ID]]);
+  await pool.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [tenantIds]);
 }
 
 function identity(securityVersion, {
@@ -139,6 +142,7 @@ function auditEvent({
   targetType = 'platform_runtime',
   targetId = 'fleet',
   assuranceLevel = 'step_up',
+  outcome = PLATFORM_AUDIT_OUTCOME.SUCCESS,
   metadata = {},
 } = {}) {
   return normalizePlatformAuditEvent({
@@ -154,7 +158,7 @@ function auditEvent({
     newState: null,
     occurredAt: new Date().toISOString(),
     correlationId: CORRELATION_ID,
-    outcome: PLATFORM_AUDIT_OUTCOME.SUCCESS,
+    outcome,
     metadata,
     retentionClass: PLATFORM_AUDIT_RETENTION.SECURITY,
   });
@@ -317,6 +321,7 @@ test('PostgreSQL Platform identity, scope, session, break-glass, OIDC and audit 
       targetTenantId: TENANT_ID,
       targetType: 'platform_break_glass_grant',
       targetId: 'attempt',
+      outcome: PLATFORM_AUDIT_OUTCOME.DENIED,
       metadata: { reasonCode: 'grant_rejected' },
     }),
     async mutation({ authorization }) { return authorization.grantId; },
@@ -341,6 +346,7 @@ test('PostgreSQL Platform identity, scope, session, break-glass, OIDC and audit 
       targetTenantId: TENANT_ID,
       targetType: 'platform_break_glass_grant',
       targetId: 'attempt',
+      outcome: PLATFORM_AUDIT_OUTCOME.DENIED,
       metadata: { reasonCode: 'grant_rejected' },
     }),
     async mutation() { throw new Error('BREAK_GLASS_REPLAY_MUTATION_MUST_NOT_RUN'); },
