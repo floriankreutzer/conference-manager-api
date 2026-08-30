@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 
@@ -92,6 +92,7 @@ export function createDemoStaticHandler({ root, surface } = {}) {
   if (typeof root !== 'string' || !root) throw new TypeError('DEMO_STATIC_ROOT_REQUIRED');
   if (!SURFACES.has(surface)) throw new TypeError('DEMO_STATIC_SURFACE_INVALID');
   const resolvedRoot = path.resolve(root);
+  const realRootPromise = realpath(resolvedRoot);
 
   return async function handleDemoStatic(request, response) {
     const pathname = safePathname(request?.url);
@@ -110,21 +111,23 @@ export function createDemoStaticHandler({ root, surface } = {}) {
     }
 
     const filePath = path.resolve(resolvedRoot, relativePath);
-    const prefix = `${resolvedRoot}${path.sep}`;
-    if (!filePath.startsWith(prefix)) {
-      sendEmpty(response, surface, 400);
-      return;
-    }
-
+    let realRoot;
+    let realFilePath;
     let fileStat;
     try {
-      fileStat = await stat(filePath);
+      [realRoot, realFilePath] = await Promise.all([realRootPromise, realpath(filePath)]);
+      fileStat = await stat(realFilePath);
     } catch (error) {
       if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') {
         sendEmpty(response, surface, 404);
         return;
       }
       throw error;
+    }
+    const prefix = `${realRoot}${path.sep}`;
+    if (!realFilePath.startsWith(prefix)) {
+      sendEmpty(response, surface, 400);
+      return;
     }
     if (!fileStat.isFile()) {
       sendEmpty(response, surface, 404);
@@ -147,7 +150,7 @@ export function createDemoStaticHandler({ root, surface } = {}) {
       return;
     }
     try {
-      await pipeline(createReadStream(filePath), response);
+      await pipeline(createReadStream(realFilePath), response);
     } catch (error) {
       if (!response.destroyed) response.destroy(error);
     }
