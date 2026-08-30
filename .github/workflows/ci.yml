@@ -101,7 +101,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager
-          ref: c85694ac94a187a7c33a57ce1945aeea8d5bb977
+          ref: 8bef6173f9a6c660e1d0062c430b01e6b44075fc
           path: frontend
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
