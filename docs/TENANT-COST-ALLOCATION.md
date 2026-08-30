@@ -99,6 +99,6 @@ or reviewed data migration is then required.
 
 The central composition root registers the route module, service and PostgreSQL
 repository, so the administration API and Request integration are reachable
-under schema version 28. Cost Allocation administration remains a separate
+under schema version 33. Cost Allocation administration remains a separate
 bounded owner; Request composition consumes only its authoritative snapshot
 contract after server pricing.

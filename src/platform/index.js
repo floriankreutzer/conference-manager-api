@@ -23,9 +23,15 @@ function close(server) {
   });
 }
 
-export function createPlatformProcess({ env, config = loadPlatformConfig(env), ...dependencies } = {}) {
+export function createPlatformProcess({
+  env,
+  config = loadPlatformConfig(env),
+  httpServerFactory = createPlatformHttpServer,
+  ...dependencies
+} = {}) {
   if (!env && !config) throw new TypeError('PLATFORM_ENV_OR_CONFIG_REQUIRED');
-  const server = createPlatformHttpServer({ config, ...dependencies });
+  if (typeof httpServerFactory !== 'function') throw new TypeError('PLATFORM_HTTP_SERVER_FACTORY_REQUIRED');
+  const server = httpServerFactory({ config, ...dependencies });
   let started = false;
   return Object.freeze({
     config,

@@ -66,6 +66,7 @@ export function createPostgresPlatformPersistence(config) {
     tenantAuditRepository,
     platformAuditRepository: auditRepository,
     onboardingRepository: tenantOnboardingRepository,
+    tenantLifecycleRepository: tenantRepository,
     cursorSecret: config.cursorSecret,
   });
   const readinessSnapshotRepository = createPostgresPlatformReadinessSnapshotRepository(pool, {

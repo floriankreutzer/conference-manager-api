@@ -21,10 +21,6 @@ import { createPlatformRuntimeStatusService } from './platform/application/runti
 import { createPlatformTenantOperationsService } from './platform/application/tenant-operations-service.js';
 import { createPlatformAuditService } from './platform/audit/audit-service.js';
 import { loadPlatformConfig } from './platform/config.js';
-import { createPlatformClaimPolicy } from './platform/identity/claim-policy.js';
-import { createPlatformEntraAuthService } from './platform/identity/entra-auth-service.js';
-import { createPlatformEntraClient } from './platform/identity/entra-client.js';
-import { createPlatformIdentityService } from './platform/identity/identity-service.js';
 import { createPlatformAuthorizationPolicy } from './platform/identity/policy.js';
 import { createPlatformBreakGlassService } from './platform/identity/break-glass-service.js';
 import { createPlatformSessionService } from './platform/identity/session-service.js';
@@ -48,6 +44,11 @@ const HEALTH_PRESENTATION_CONTRACT = Object.freeze({
 export function createPlatformComposition({
   config = loadPlatformConfig(),
   persistence = createPostgresPlatformPersistence(config),
+  authenticationFactory,
+  httpServerFactory,
+  routeModules,
+  routeModulesFactory,
+  projectionRunGate,
 } = {}) {
   const authorizationPolicy = createPlatformAuthorizationPolicy();
   const tenantTargetPolicy = createPlatformTenantTargetPolicy({
@@ -81,44 +82,14 @@ export function createPlatformComposition({
     stepUpTtlSeconds: config.stepUpTtlSeconds,
     authenticationMaxAgeSeconds: config.authenticationMaxAgeSeconds,
   });
-  const entraClient = createPlatformEntraClient({
-    clientId: config.entraClientId,
-    clientSecret: config.entraClientSecret,
-    tenantReference: config.entraTenantId,
-    authority: config.entraAuthority,
-    redirectUri: config.entraRedirectUri,
-    publicOrigin: config.publicOrigin,
-    mfaAuthenticationContext: config.mfaAuthenticationContext,
-    stepUpAuthenticationContext: config.stepUpAuthenticationContext,
-    authenticationMaxAgeSeconds: config.authenticationMaxAgeSeconds,
-  });
-  const claimPolicy = createPlatformClaimPolicy({
-    provider: 'microsoft_entra',
-    issuer: `${config.entraAuthority}/v2.0`,
-    audience: config.entraClientId,
-    tenantReference: config.entraTenantId,
-    mfaAuthenticationContext: config.mfaAuthenticationContext,
-    stepUpAuthenticationContext: config.stepUpAuthenticationContext,
-  });
-  const identityService = createPlatformIdentityService({
-    claimVerifier: entraClient,
-    claimPolicy,
-    operatorRepository: persistence.operatorRepository,
-    auditService: platformAuditService,
-  });
-  const platformAuthService = createPlatformEntraAuthService({
-    repository: persistence.oidcTransactionRepository,
-    entraClient,
-    identityService,
-    sessionService,
-    auditService: platformAuditService,
-    transactionSecret: config.oidcTransactionSecret,
-    publicOrigin: config.publicOrigin,
-    securityEpoch: config.securityEpoch,
-    mfaAuthenticationContext: config.mfaAuthenticationContext,
-    stepUpAuthenticationContext: config.stepUpAuthenticationContext,
-    transactionTtlSeconds: config.oidcTransactionTtlSeconds,
-  });
+  const platformAuthService = typeof authenticationFactory === 'function'
+    ? authenticationFactory({
+      config,
+      persistence,
+      platformAuditService,
+      platformSessionService: sessionService,
+    })
+    : null;
   const common = Object.freeze({
     platformAuthorizationPolicy: authorizationPolicy,
     tenantTargetPolicy,
@@ -185,9 +156,16 @@ export function createPlatformComposition({
   });
   const projectionWorker = createPlatformProjectionWorker({
     repository: persistence.projectionRepository,
+    ...(projectionRunGate ? { runGate: projectionRunGate } : {}),
   });
+  const selectedRouteModules = typeof routeModulesFactory === 'function'
+    ? routeModulesFactory({ platformSessionService: sessionService })
+    : routeModules;
   const platformProcess = createPlatformProcess({
     config,
+    persistence,
+    ...(httpServerFactory ? { httpServerFactory } : {}),
+    routeModules: selectedRouteModules,
     platformAuthService,
     platformAuditService,
     platformDiagnosticOperationsService,

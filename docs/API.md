@@ -579,6 +579,36 @@ Approval rechecks current Request version, room/site state, capacity, local over
 
 See `docs/AUTHORIZATION.md` and `docs/REQUEST-COMPOSITION.md`.
 
+## Shared Demo control routes
+
+The following routes are registered only by `src/demo/customer-main.js` and
+`src/demo/platform-main.js`. Production customer and Platform compositions cannot reach them.
+
+Customer Demo routes are:
+
+- `GET /api/v1/demo/session` — reuse a recognized Demo session or issue the server-defined default
+  Employee session;
+- `GET /api/v1/demo/tenants` — return the bounded synthetic Tenant directory after customer
+  authentication;
+- `PUT /api/v1/demo/session/context` — require customer authentication and CSRF, validate the exact
+  `{ "tenantId": "<uuid>", "persona": "<name>" }` body, and rotate to a server-known context.
+
+Platform Demo routes are:
+
+- `GET /api/v1/platform/demo/session` — reuse a recognized Platform Demo session or issue the
+  server-defined support-reader session;
+- `PUT /api/v1/platform/demo/session/persona` — require Platform authentication and CSRF, validate
+  the exact `{ "persona": "<name>" }` body, and rotate to a server-known persona;
+- `POST /api/v1/platform/demo/reset` — require Platform authentication, CSRF, fresh step-up
+  `platform:recovery:execute` authorization and exact `{ "confirm": true }`; atomically restore the
+  pinned seed, clear the caller cookie and return its `seedVersion`, semantic `checksum` and request
+  ID.
+
+Persona/context bodies express only demonstration intent. The server supplies User/operator IDs,
+roles, permissions, security versions, target scope, assurance and provider identity. Unknown
+contexts fail closed and customer/Platform session namespaces never cross. See
+`docs/SHARED-DEMO-RUNTIME.md`.
+
 ## Request-boundary invariants
 
 - Allowed methods are GET, POST, PUT, PATCH and DELETE; unsupported methods fail closed.

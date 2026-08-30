@@ -52,6 +52,12 @@ The SaaS 0 foundation through issue #57 now provides:
 
 The SaaS 1 repository implementation now includes the production Entra identity adapter, Tenant claiming and JIT provisioning, Tenant role administration, Microsoft 365 consent lifecycle, room discovery/mapping, Free/Busy, calendar synchronization, integration health, Tenant Pilot lifecycle, adversarial multi-Tenant gates, and controlled Pilot operations/readiness evidence. Real Microsoft, deployment, browser, restore, DAST, penetration-test, and operational evidence remains an external Pilot gate; see `docs/PILOT-READINESS-RUNBOOK.md`. Calendar Write remains disabled unless the release also satisfies `docs/EXCHANGE-APPLICATION-RBAC.md`.
 
+SaaS 3.5 adds an isolated Shared Demo Runtime with separate customer and Platform process entrypoints,
+one authoritative PostgreSQL state, deterministic simulated identity/Microsoft scenarios, and a
+sentinel/checksum/lock-protected reset. It reuses the canonical server application and authorization
+boundaries; Production cannot import or fall back to Demo behavior. See
+`docs/SHARED-DEMO-RUNTIME.md`.
+
 ## Run locally
 
 ```bash
@@ -69,6 +75,23 @@ Do not rotate `AUDIT_HMAC_SECRET` as an ordinary configuration change. Key rotat
 
 The checked-in `.env.example` is a development template. Pilot/Production configuration and secrets must be supplied by protected deployment configuration according to `docs/PRODUCTION-SECURE-CONFIGURATION.md`.
 
+## Run the Shared Demo Runtime
+
+The Shared Demo uses a dedicated database named `conference_manager_demo_*`, canonical schema
+version `33`, Demo overlay version `1`, four distinct database roles and only `DEMO_*`
+configuration. After provisioning and applying canonical migrations, run:
+
+```bash
+npm run demo:db:migrate
+npm run demo:db:reset -- --confirm-seed-version=saas-3.5-shared-demo-v1
+npm run start:demo:customer
+npm run start:demo:platform
+```
+
+The two start commands are independent processes and must be routed through separate HTTPS origins.
+Do not supply Production/real-provider credentials. The complete configuration, provisioning,
+reset, validation and rollback contract is in `docs/SHARED-DEMO-RUNTIME.md`.
+
 ## API foundation
 
 - `GET /api/v1/health/live` — process liveness only.
@@ -82,7 +105,7 @@ The checked-in `.env.example` is a development template. Pilot/Production config
 - `POST /api/v1/requests/{requestId}/booking-change/{changeId}/decision` — Conference Manager approve/reject decision with live revalidation.
 - `GET /api/v1/audit` — Tenant Admin audit read after Tenant authorization and integrity-chain verification.
 
-There is intentionally no browser-controlled session issuance, entitlement-administration, metrics or direct calendar-provider endpoint. The production Entra OIDC flow validates and maps provider identity server-side before issuing an opaque application session. Platform/operator changes use separately authorized process-local contracts, while production Request, availability and calendar synchronization remain composed behind the existing authenticated and object-authorized application use cases.
+There is intentionally no browser-controlled session issuance, entitlement-administration, metrics or direct calendar-provider endpoint. The production Entra OIDC flow validates and maps provider identity server-side before issuing an opaque application session. Normal Platform/operator changes use the separate authenticated Platform HTTP boundary; the only local mutation fallback is the dual-control, grant-bound recovery wrapper. Production Request, availability and calendar synchronization remain composed behind the existing authenticated and object-authorized application use cases.
 
 See:
 
@@ -108,6 +131,7 @@ See:
 - `docs/PILOT-READINESS-RUNBOOK.md`
 - `docs/PRODUCTION-SECURE-CONFIGURATION.md`
 - `docs/SECURITY.md`
+- `docs/SHARED-DEMO-RUNTIME.md`
 - `docs/TENANCY.md`
 - `docs/THREAT-MODEL.md`
 

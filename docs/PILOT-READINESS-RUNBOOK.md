@@ -31,22 +31,11 @@ The normal browser application remains untrusted. The browser cannot establish o
 - provider destinations or Microsoft Graph scope;
 - audit actor, outcome, or correlation data.
 
-The production HTTP composition deliberately keeps Platform/operator mutations default-deny. The operator CLI is a separate, local control-plane adapter. It is not imported by `src/index.js`, is not exposed through `/api/*`, and does not create a `platform_admin` Tenant role.
+The customer HTTP composition keeps Platform/operator mutations default-deny. Normal Pilot operations use the authenticated Platform Control Plane on its dedicated operator origin and Platform API process. Every mutation requires a server-resolved Platform Principal and session, CSRF validation, the exact operation permission, server-owned target-Tenant scope, fresh step-up where policy requires it, positive input and confirmation, concurrency/idempotency controls, and atomic Platform/Tenant audit evidence where applicable.
 
-Operator authorization is represented by a process-local object identity that is injected into the existing application services. The object cannot be supplied through a command argument, environment value, browser request, session, Tenant role, Entra claim, or provider response.
+Readiness is read-only. Tenant Admins may read their own server-derived Pilot readiness through `GET /api/v1/integrations/microsoft365/pilot-readiness`. Authorized Platform operators may read minimized fleet readiness through `GET /api/v1/platform/readiness`. Both routes reject unsafe methods and request bodies. The `pilot:readiness` command validates a protected release-evidence document only; it has no Tenant mutation authority.
 
-Every mutating command requires:
-
-- a Pilot or Production environment that exactly matches `NODE_ENV`;
-- the complete secure runtime configuration;
-- a ready PostgreSQL connection and current schema;
-- a server correlation UUID;
-- an explicit `--apply` gate;
-- an exact target-bound `--confirm` value;
-- successful authorization through the process-local operator context;
-- the existing transactional repository and audit path.
-
-The CLI accepts no provider Tenant ID, Microsoft application ID, client secret, role, permission, user identity, access token, refresh token, or arbitrary outbound URL.
+The retired Tenant-operator CLI and a process-local object marker are not authentication or authorization and must not be reintroduced. During a Control Plane outage, only the grant-bound Platform recovery fallback documented in `docs/PLATFORM-OPERATIONS-READINESS-RUNBOOK.md` may perform one of its fixed recovery operations. It still requires live Platform sessions, dual control, an exact Tenant/permission-bound one-use grant, canonical application services, audit, alerting, and post-restoration reconciliation.
 
 ## 3. Remaining external and manual prerequisites
 
@@ -66,20 +55,18 @@ A failed or incomplete prerequisite is a release blocker. It must not be convert
 
 ## 4. Secure operator environment
 
-Run the operator CLI only from an approved administrative execution environment with:
+Use the approved Platform operator origin and access layer with:
 
-- controlled human access and change authorization;
-- no shared shell history or terminal recording that captures sensitive output files;
-- the deployed release checkout at the exact backend commit under review;
-- Node.js 22 and the locked repository dependencies installed with `npm ci`;
-- protected environment variables defined by `docs/PRODUCTION-SECURE-CONFIGURATION.md`;
-- network access to the authoritative PostgreSQL service;
-- filesystem access to a protected directory for one-time invitation artifacts;
-- an incident/change record that stores the server correlation UUID and command outcome.
+- controlled named human access and change authorization;
+- the exact deployed Platform release under review;
+- dedicated operator identity, MFA, server-side Platform session, and fresh step-up for high-impact operations;
+- protected configuration defined by `docs/PRODUCTION-SECURE-CONFIGURATION.md`;
+- an incident/change record containing bounded correlation and outcome evidence, never credentials;
+- an approved one-time secret-delivery channel for invitation credentials.
 
-Do not place invitation artifacts in the repository, source checkout, shared temporary directories, chat, email, issue descriptions, CI logs, or normal application logs.
+Do not place invitation credentials, Platform cookies, CSRF values, session tokens, fallback grants, internal Tenant identifiers, or customer data in the repository, chat, email, issue descriptions, CI logs, shell history, or normal application logs.
 
-Before any command, verify:
+Before approving the exact release candidate for operation, verify:
 
 ```bash
 npm run check
@@ -89,60 +76,33 @@ npm run test:db
 
 These commands validate the repository checkout. They do not replace deployed evidence.
 
-## 5. Command safety contract
+## 5. Operational channel safety contract
 
-The command entry point is:
+All normal mutations use authenticated Platform HTTP through the released Platform UI/API. Tenant creation/invitation and lifecycle operations are under `/api/v1/platform/tenants`; entitlement/package preview and apply operations use the bounded Tenant entitlement routes; approved recovery uses the fixed preview/execution routes. These routes require the dedicated Platform session boundary and never accept a customer session or Tenant role as Platform authority.
 
-```bash
-npm run operator:tenant -- <command> <arguments>
-```
+Mutation requests require CSRF, positive exact schemas, target confirmation, server-owned target scope, fresh step-up where required, expected revisions, and idempotency keys where applicable. Unknown operations, capabilities, targets, fields, lifecycle transitions, stale revisions, confirmation mismatches, audit failures, or persistence failures fail closed without partial success.
 
-Supported commands are:
-
-- `invite`;
-- `readiness`;
-- `entitlement`;
-- `lifecycle`;
-- `unbind-identity`.
-
-Unknown commands, duplicate flags, unsupported fields, malformed UUIDs, unsafe text, relative invitation paths, unknown capabilities, unknown lifecycle targets, confirmation mismatches, and missing apply gates fail before mutation.
-
-The CLI emits bounded JSON only. Invitation tokens and internal Tenant IDs are never written to standard output or standard error. The invitation command writes its sensitive result to the explicitly selected protected artifact file.
+Readiness remains a GET-only operation. It cannot create an invitation, alter entitlement or lifecycle state, execute recovery, or grant authority. The retired Tenant-operator entry point is absent. The only local mutation wrappers are the separately governed Platform recovery fallback and its grant issuer; neither is a normal Pilot operating channel.
 
 ## 6. Standard Pilot onboarding procedure
 
 ### 6.1 Create the change and correlation context
 
-Create or select the approved operational change record. Generate one UUID for each independently auditable mutation. Store the mapping between the change record and correlation UUID in the controlled operational system, not in application logs.
+Create or select the approved operational change record. Use a fresh client idempotency UUID for each independently auditable mutation and retain the server-generated request/correlation UUID returned by the Platform boundary. Store the mapping in the controlled operational system, not in application logs.
 
-Do not reuse a correlation UUID as an authentication credential or invitation token.
+Do not reuse an idempotency or correlation UUID as an authentication credential or invitation token.
 
 ### 6.2 Create the pending Tenant and invitation
 
-Select a new absolute path in a protected directory. The target file must not exist.
+1. authenticate to the approved Platform operator origin as `platform_tenant_operator` and obtain fresh step-up;
+2. search the authoritative Tenant directory and resolve any possible duplicate organization before creation;
+3. open the create-Tenant operation, enter the bounded display name and approved non-secret reason, and verify the exact action/display-name confirmation;
+4. execute once through the authenticated Platform HTTP boundary with its server correlation and idempotency context;
+5. verify that the canonical onboarding service atomically creates the pending internal Tenant, invitation, operation receipt, and required audit evidence;
+6. reveal the one-time invitation token only from the deliberate first successful response and transfer it immediately through the approved secret-delivery channel;
+7. verify the resulting directory/invitation state and audit references without copying the token into the procedure record.
 
-```bash
-npm run operator:tenant -- invite \
-  --environment pilot \
-  --correlation-id <correlation-uuid> \
-  --display-name "<customer-organization-name>" \
-  --output /secure/path/customer-invitation.json \
-  --confirm invite \
-  --apply
-```
-
-The command:
-
-1. verifies secure Pilot configuration and database/schema readiness;
-2. creates the output file exclusively with mode `0600` and refuses an existing file or symlink;
-3. generates the single-use invitation token without printing it;
-4. uses the existing `TenantOnboardingService` to create the internal Tenant and invitation atomically with audit evidence;
-5. replaces the prepared token artifact atomically with the final artifact containing the internal Tenant ID, token, expiry, and correlation UUID;
-6. prints only a non-sensitive completion status and correlation UUID.
-
-If persistence fails, the prepared token file is removed. If final artifact replacement fails after persistence, the original token-only artifact is preserved so the credential is not silently lost. Treat that condition as an operational exception and investigate using the correlation UUID; do not create repeated invitations blindly.
-
-The artifact is an operator credential container. Store it in the approved protected location, transfer only the invitation token to the intended customer administrator through an approved secret-delivery channel, and delete the local artifact after successful claim and evidence capture according to the retention policy.
+An exact idempotent retry never reveals the token again. If delivery fails after successful creation, follow the authenticated revoke/reissue workflow and its expected revision; do not repeat creation blindly or recover the credential from database rows or logs.
 
 The standard customer never receives or enters:
 
@@ -176,33 +136,16 @@ The baseline Microsoft Enterprise Pilot requires these server-side entitlements:
 
 Calendar Write is optional and remains disabled unless the release decision explicitly enables it.
 
-Enable directory discovery:
+Through the authenticated Platform Control Plane:
 
-```bash
-npm run operator:tenant -- entitlement \
-  --environment pilot \
-  --correlation-id <correlation-uuid> \
-  --tenant-id <internal-tenant-uuid> \
-  --capability microsoft.directory \
-  --enabled true \
-  --confirm "entitlement:<internal-tenant-uuid>:microsoft.directory:true" \
-  --apply
-```
+1. select the Tenant from the authoritative directory;
+2. read the canonical capability catalogue and current entitlement revision;
+3. preview proposals enabling `microsoft.directory` and `microsoft.calendar` while leaving `microsoft.calendar.write` disabled unless separately approved;
+4. compare the complete preview with the approved Pilot scope;
+5. apply the exact proposal using the displayed revision, target confirmation, fresh step-up, CSRF, and idempotency context;
+6. verify the resulting entitlement state, readiness impact, and Platform/Tenant audit evidence.
 
-Enable calendar read/Free-Busy:
-
-```bash
-npm run operator:tenant -- entitlement \
-  --environment pilot \
-  --correlation-id <correlation-uuid> \
-  --tenant-id <internal-tenant-uuid> \
-  --capability microsoft.calendar \
-  --enabled true \
-  --confirm "entitlement:<internal-tenant-uuid>:microsoft.calendar:true" \
-  --apply
-```
-
-The service validates the capability, scopes the mutation to the supplied internal Tenant in the trusted operator domain, and commits the entitlement and `tenant.entitlement.changed` audit evidence atomically.
+The service validates each capability, applies server-owned target scope and dependencies, and commits the entitlement, operation receipt, and required audit evidence atomically.
 
 A Tenant Admin cannot grant or alter these commercial/operator entitlements through the browser API.
 
@@ -242,24 +185,17 @@ Successful verification records server-side capability health. Authorization, th
 
 ### 6.8 Review server-derived readiness
 
-Use the internal Tenant UUID from the protected invitation artifact or trusted operational record:
+Select the Tenant from the authenticated Platform directory and load `GET /api/v1/platform/readiness` through the released Platform UI/API. A Tenant Admin may independently load the same Tenant's customer-scoped readiness through `GET /api/v1/integrations/microsoft365/pilot-readiness`. Do not use a copied identifier as independent target authority.
 
-```bash
-npm run operator:tenant -- readiness \
-  --environment pilot \
-  --correlation-id <correlation-uuid> \
-  --tenant-id <internal-tenant-uuid>
-```
+The Platform result contains only the bounded fleet projection authorized for the Platform Principal, including:
 
-The output contains only:
+- the Tenant identity/display label authorized for the operator scope;
+- lifecycle status/revision and onboarding state;
+- evaluated readiness state, bounded checks, blockers, and freshness;
+- enabled and required-missing entitlement counts;
+- bounded repository/deployment/external evidence classifications and timestamps.
 
-- the Tenant lifecycle status;
-- the aggregate ready decision;
-- boolean readiness checks;
-- boolean entitlement states;
-- the supplied correlation UUID.
-
-It does not print the Tenant ID, provider Tenant reference, room address, user identity, invitation token, session, CSRF value, provider token, secret, or raw provider response.
+It does not expose provider Tenant references, room addresses, user identity, invitation credentials, sessions, CSRF values, provider tokens, secrets, or raw provider responses. The customer result remains scoped to the authenticated Tenant Principal.
 
 Required readiness checks are server-derived from authoritative persistence:
 
@@ -274,33 +210,13 @@ Calendar Write is reported separately and is not required for baseline activatio
 
 ### 6.9 Mark ready and activate
 
-After the technical and operational review, mark the Tenant `ready`:
+After the technical and operational review, use the authenticated Platform lifecycle operation to transition the Tenant to `ready`. Verify the directory-selected Tenant, current lifecycle status/revision, fresh readiness snapshot, non-secret reason, and exact Tenant/action confirmation before execution.
 
-```bash
-npm run operator:tenant -- lifecycle \
-  --environment pilot \
-  --correlation-id <correlation-uuid> \
-  --tenant-id <internal-tenant-uuid> \
-  --target ready \
-  --confirm "lifecycle:<internal-tenant-uuid>:ready" \
-  --apply
-```
-
-Activate only after the same release/change record approves productive Pilot use:
-
-```bash
-npm run operator:tenant -- lifecycle \
-  --environment pilot \
-  --correlation-id <correlation-uuid> \
-  --tenant-id <internal-tenant-uuid> \
-  --target active \
-  --confirm "lifecycle:<internal-tenant-uuid>:active" \
-  --apply
-```
+Activate only after the same release/change record approves productive Pilot use. Obtain another fresh readiness snapshot, then execute the authenticated Platform transition to `active` using the current lifecycle revision, fresh step-up, CSRF, idempotency key, and exact confirmation.
 
 Both transitions are readiness-gated and audit-atomic. A stale status, failed readiness check, missing entitlement, missing binding, missing room, missing capability health, or persistence/audit failure blocks the transition.
 
-The lifecycle state machine permits only `onboarding` to `ready`, `ready` to `active`, `active` to `suspended`, and readiness-gated `suspended` to `active`. Repeating the current target is an idempotent no-op. `pending` remains owned by the claiming flow, while `archived` is terminal. Unsupported or concurrently stale transitions fail with `TENANT_PILOT_LIFECYCLE_CONFLICT`; the CLI must never print `completed` for them.
+The lifecycle state machine permits only the canonical transitions implemented by the Platform service. `pending` remains owned by the claiming flow and `archived` is terminal. Unsupported or concurrently stale transitions fail without a success receipt or partial lifecycle/audit mutation.
 
 ## 7. Optional Calendar Write and Exchange Application RBAC
 
@@ -320,9 +236,9 @@ When Calendar Write is enabled, all of the following become mandatory release ga
 2. implement `docs/EXCHANGE-APPLICATION-RBAC.md`, including removal of the central app registration's static `Calendars.ReadWrite` request and every unscoped customer-Tenant grant;
 3. build the protected non-sensitive evidence input from the complete enabled room-mapping inventory and run `npm run pilot:exchange-rbac -- /protected/path/exchange-rbac-evidence.json` from the release commit;
 4. verify the exact in-scope inventory and prove that out-of-scope mailboxes are denied through both `Test-ServicePrincipalAuthorization` and a live Graph negative control;
-5. only after steps 1–4 pass, enable `microsoft.calendar.write` through the operator entitlement command for the controlled acceptance window;
+5. only after steps 1–4 pass, enable `microsoft.calendar.write` through the authenticated Platform entitlement preview/apply workflow for the controlled acceptance window;
 6. complete the real create/update/delete calendar-write acceptance test in each representative Pilot organization;
-7. on any failure, immediately disable the entitlement, execute the documented rollback, and reconcile every persisted provider reference before retrying;
+7. on any failure, immediately disable the entitlement through the same authenticated Platform workflow, execute the documented rollback, and reconcile every persisted provider reference before retrying;
 8. retain rollback and audit evidence;
 9. mark both conditional evidence items `verified`.
 
@@ -330,17 +246,7 @@ Exchange Application RBAC guidance is defined in `docs/EXCHANGE-APPLICATION-RBAC
 
 ## 8. Suspension and reactivation
 
-Suspend a Tenant when access must stop without deleting evidence:
-
-```bash
-npm run operator:tenant -- lifecycle \
-  --environment pilot \
-  --correlation-id <correlation-uuid> \
-  --tenant-id <internal-tenant-uuid> \
-  --target suspended \
-  --confirm "lifecycle:<internal-tenant-uuid>:suspended" \
-  --apply
-```
+Suspend a Tenant when access must stop without deleting evidence. Use the authenticated Platform lifecycle operation after selecting the Tenant from the directory, verifying its current revision and impact, obtaining fresh step-up, and confirming the exact `suspended` transition.
 
 Suspension is server-authoritative. Existing sessions and protected business operations must fail closed according to the lifecycle/session contract.
 
@@ -348,8 +254,8 @@ Before reactivation:
 
 1. resolve the incident or commercial reason;
 2. verify binding, connection, permissions, mappings, capability health, and entitlements again;
-3. run the readiness command;
-4. use a new correlation UUID;
+3. obtain a new read-only Platform readiness snapshot;
+4. use a new idempotency UUID and retain the new server request/correlation UUID;
 5. transition to `active` only when readiness is true and change approval exists.
 
 Do not reactivate by editing the Tenant row directly.
@@ -369,7 +275,7 @@ Procedure:
 5. rediscover/synchronize rooms where required;
 6. verify Free/Busy again;
 7. confirm readiness;
-8. reactivate through the operator lifecycle command.
+8. reactivate through the authenticated Platform lifecycle operation.
 
 Never copy a callback URL, state, authorization code, access token, refresh token, or client secret into a ticket or command.
 
@@ -377,45 +283,35 @@ Never copy a callback URL, state, authorization code, access token, refresh toke
 
 The normal recovery path is another active Tenant Admin. The application prevents removal of the last viable Tenant Admin.
 
-If no viable Tenant Admin remains because all administrators are disabled or an older binding lacks trustworthy claimant linkage, recovery is an exceptional controlled maintenance activity. There is intentionally no browser bypass and no role flag in the operator CLI.
+If no viable Tenant Admin remains because all administrators are disabled or an older binding lacks trustworthy claimant linkage, recovery is an exceptional controlled Platform operation. There is no Tenant Admin/customer bypass and no client-selected role flag.
 
 Required recovery controls are:
 
 1. verify the customer organization and intended recovery user out of band;
 2. identify the internal Tenant and user through trusted backend records;
 3. obtain approved change and security authorization;
-4. restore exactly one `tenant_admin` assignment through an approved privileged maintenance path that preserves repository invariants;
+4. preview and execute the fixed last-Tenant-Admin Platform recovery use case, or use the grant-bound fallback only during an approved Control Plane outage;
 5. increment the affected user's `security_version` in the same transaction;
 6. append `tenant.user_permissions.changed` audit evidence atomically with a non-secret recovery classification;
 7. require fresh authentication;
 8. confirm that cross-Tenant user identifiers remain unavailable and the last-admin invariant still holds.
 
-Direct ad-hoc SQL is not the normal recovery mechanism. Until a separately reviewed operator recovery service exists, this remains a manual prerequisite under change control and must be exercised in a non-production recovery drill before Pilot acceptance.
+Direct ad-hoc SQL is not a recovery mechanism. The released recovery service must preserve target scope, one-use context, security-version/session effects, idempotency, and dual audit, and it must be exercised in a non-production recovery drill before Pilot acceptance.
 
 ## 11. Identity unbinding before activation
 
-Identity unbinding is an exceptional pre-activation recovery operation. It must not be used to transfer an active productive Tenant casually.
-
-```bash
-npm run operator:tenant -- unbind-identity \
-  --environment pilot \
-  --correlation-id <correlation-uuid> \
-  --tenant-id <internal-tenant-uuid> \
-  --reason "<approved non-secret recovery reason>" \
-  --confirm "unbind-identity:<internal-tenant-uuid>" \
-  --apply
-```
+Identity unbinding is an exceptional pre-activation recovery operation. It must not be used to transfer an active productive Tenant casually. Use the fixed authenticated Platform identity-unbind preview/execution route with a fresh step-up session, exact Tenant confirmation, one-use recovery context, bounded non-secret reason, correlation ID, and idempotency key. During an approved Control Plane outage, the same canonical recovery may be reached only through the dual-control, grant-bound fallback.
 
 The existing onboarding service restricts unbinding by lifecycle state and appends security audit evidence atomically. Create a new single-use invitation only after the unbind result and change approval are confirmed.
 
-Do not place personal data, provider references, tokens, secrets, or incident narrative in `--reason`.
+Do not place personal data, provider references, tokens, secrets, or incident narrative in the bounded recovery reason.
 
 ## 12. Audit and correlation procedure
 
 For each mutation, retain:
 
 - repository and deployed release commit;
-- command type, not the raw command line where it contains customer names or internal identifiers;
+- Platform operation type, not a raw request containing customer names, internal identifiers, or credentials;
 - server correlation UUID;
 - change/incident record reference in the controlled operational system;
 - bounded success or failure code;
@@ -445,7 +341,7 @@ Do not store invitation tokens, claim tokens, session IDs, cookies, CSRF values,
 | Room import rejected | Server discovery set, local site, capacity, duplicate mapping | Correct bounded local mapping input | Insert mapping rows manually |
 | Free/Busy fails | Active mapping, calendar permission, throttling/auth status, health timestamp | Reconsent, synchronize, and retry after bounded delay | Treat repository unit tests as live proof |
 | Readiness false | Every returned boolean check and entitlement | Resolve the authoritative missing prerequisite | Force lifecycle row to active |
-| Tenant access must stop | Incident/change authorization and current lifecycle | Suspend through the operator command | Delete Tenant data or revoke audit rows |
+| Tenant access must stop | Incident/change authorization and current lifecycle | Suspend through authenticated Platform lifecycle operation | Delete Tenant data or revoke audit rows |
 | Cross-Tenant object appears accessible | Stop testing, preserve correlation and evidence | Escalate as a security incident | Continue with real customer data |
 
 Public errors remain bounded. Investigate internal details only in approved protected diagnostics that preserve redaction and Tenant boundaries.
@@ -580,4 +476,4 @@ The standard customer flow requires only:
 
 The customer does not need an internal Tenant ID, Microsoft application ID, Microsoft Tenant ID, client secret, source-code change, database access, API token, or PowerShell command.
 
-The Platform operator uses the trusted CLI only for pending Tenant creation, per-Tenant commercial entitlements, readiness review, lifecycle activation/suspension, and exceptional pre-activation identity unbinding. Every mutation remains explicit, bounded, auditable, and server-authoritative.
+The Platform operator uses authenticated Platform HTTP for pending Tenant creation, commercial entitlement changes, lifecycle transitions, and approved recovery. Readiness remains read-only. The retired Tenant-operator CLI is absent; only the separately governed, grant-bound Platform recovery fallback may mutate during an approved Control Plane outage. Every mutation remains explicit, target-scoped, bounded, auditable, and server-authoritative.

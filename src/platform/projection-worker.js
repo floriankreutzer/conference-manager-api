@@ -5,6 +5,7 @@ export function createPlatformProjectionWorker({
   intervalMs = DEFAULT_INTERVAL_MS,
   batchLimit = 25,
   onError = () => {},
+  runGate = (work) => work(),
 } = {}) {
   if (!repository || typeof repository.refreshBatch !== 'function') {
     throw new TypeError('PLATFORM_PROJECTION_REPOSITORY_REQUIRED');
@@ -16,12 +17,15 @@ export function createPlatformProjectionWorker({
     throw new TypeError('PLATFORM_PROJECTION_BATCH_LIMIT_INVALID');
   }
   if (typeof onError !== 'function') throw new TypeError('PLATFORM_PROJECTION_ERROR_HANDLER_REQUIRED');
+  if (typeof runGate !== 'function') throw new TypeError('PLATFORM_PROJECTION_RUN_GATE_REQUIRED');
   let timer = null;
   let active = null;
 
   async function runOnce() {
     if (active) return active;
-    active = repository.refreshBatch({ limit: batchLimit });
+    active = Promise.resolve().then(() => runGate(
+      () => repository.refreshBatch({ limit: batchLimit }),
+    ));
     try {
       return await active;
     } finally {

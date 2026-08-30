@@ -182,6 +182,42 @@ See `docs/BOOKING-INTEGRATION.md`.
 
 See `docs/MICROSOFT365-CONNECTION.md`.
 
+## Shared Demo Runtime controls (SaaS 3.5)
+
+- Customer Demo and Platform Demo are separate server processes with separate HTTPS origins,
+  cookie namespaces, CSRF/session secrets and database roles.
+- One dedicated `DEMO_TENANT_AUDIT_HMAC_SECRET` is shared only for the Tenant audit chain both
+  processes access. Platform control-plane audit/cursor integrity remains a distinct secret domain;
+  the Tenant-audit key grants no session, CSRF or authorization authority.
+- Both processes use one isolated PostgreSQL database so Demo state is server-authoritative and
+  shared; browser storage is never Demo identity, authorization, Tenant or business authority.
+- Demo configuration rejects Pilot/Production mode, real Entra/Microsoft configuration,
+  conflicting normal database/origin/session/Platform configuration, administrative or aliased
+  database roles, mismatched database targets, aliased secrets and non-verifying database TLS in a
+  deployed Demo.
+- Persona names and customer Tenant/persona pairs are bounded presentation intent mapped only to
+  source-defined server identities. The browser cannot submit roles, permissions, security
+  versions, Platform target scope or assurance authority.
+- Customer and Platform session issue/resolve/revoke and CSRF checks reuse the canonical
+  PostgreSQL-backed boundaries. Persona switches rotate sessions and fail closed when old-session
+  revocation cannot be completed.
+- The simulated Microsoft 365 adapter has no outbound network transport. It validates the same
+  provider-neutral inputs and produces only deterministic success, conflict or degradation
+  outcomes.
+- A reset-only database role, separate from the migration owner and both runtime roles, verifies an immutable Demo sentinel, current database/role,
+  exact canonical schema `001..033`, exact table inventory and the source fixture checksum before
+  destructive work.
+- Normal Demo requests hold a shared advisory lock; reset holds the corresponding exclusive lock.
+  Truncate, deterministic seed and semantic checksum readback commit in one serializable
+  transaction or roll back completely.
+- Platform reset additionally requires a valid Platform session, CSRF, exact confirmation and
+  fresh step-up `platform:recovery:execute` authorization; success invalidates all Demo sessions
+  and clears the caller cookie.
+- Production composition cannot import Demo identity, routes, fixture, provider or reset code, and
+  Demo composition cannot instantiate the real Entra/Microsoft adapters.
+
+See `docs/SHARED-DEMO-RUNTIME.md`.
+
 ## Secret, token and PII minimization
 
 - Secrets are supplied only through protected runtime configuration and are environment-separated.
@@ -207,6 +243,8 @@ GitHub-native security feature availability depends on repository/account entitl
 - The audit chain is tamper-evident but is not external completeness proof against privileged suffix deletion or stale backup restoration.
 - The in-process limiter is not a distributed quota solution; Pilot and Production require trusted shared edge abuse controls.
 - Places synchronization, room mapping, free/busy and entitlement-gated create/update/cancel adapters are implemented, but repository tests do not prove them against a live customer Microsoft Tenant. Live Graph/Exchange acceptance for the post-confirmation workflow (#68), operational recovery evidence, deployment IaC and independent penetration testing remain completion gates.
+- Shared Demo results are simulated product evidence. They do not prove Production identity,
+  provider, edge, backup/restore, DAST, penetration-test or external acceptance controls.
 
 ## OWASP and CWE mapping
 

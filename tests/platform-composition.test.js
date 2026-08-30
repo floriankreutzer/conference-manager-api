@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createPlatformComposition } from '../src/platform-composition.js';
 import { loadPlatformConfig } from '../src/platform/config.js';
+import { createProductionPlatformAuthentication } from '../src/platform-production-authentication.js';
 
 function secret(character) {
   return character.repeat(32);
@@ -28,7 +29,10 @@ function config() {
 }
 
 test('production Platform composition wires every HTTP service without opening a database connection', async () => {
-  const composition = createPlatformComposition({ config: config() });
+  const composition = createPlatformComposition({
+    config: config(),
+    authenticationFactory: createProductionPlatformAuthentication,
+  });
   try {
     assert.equal(typeof composition.process.start, 'function');
     assert.equal(typeof composition.process.stop, 'function');

@@ -1,0 +1,213 @@
+# Shared Server-Backed Demo Runtime
+
+## Authority and scope
+
+This document is the backend deployment and operations contract for the SaaS 3.5 Shared Demo Runtime. It implements the accepted cross-repository decision in `conference-manager/docs/ADR-010-SHARED-SERVER-BACKED-DEMO-RUNTIME.md`.
+
+The Demo is a real server-backed product runtime with deterministic simulated identities, data and Microsoft 365 outcomes. It is not Production, a Production fallback, a browser-owned data store, external acceptance evidence or proof of a live Microsoft integration.
+
+The runtime has two independently started API processes:
+
+- `src/demo/customer-main.js` composes the customer API and customer Demo control routes;
+- `src/demo/platform-main.js` composes the Platform API and Platform Demo control routes.
+
+Both processes use the canonical application, authorization and PostgreSQL adapters. They connect with different database principals to one isolated PostgreSQL database. This one database is the authoritative state observed by both browser surfaces, so a customer mutation is visible to an authorized Platform read and a Platform mutation is visible to the affected customer flow.
+
+## Runtime topology
+
+```text
+Customer Demo browser
+  -> dedicated HTTPS origin
+     -> customer Demo process
+        -> customer Demo PostgreSQL role
+           -> one isolated Demo database
+
+Platform Demo browser
+  -> separate dedicated HTTPS origin
+     -> Platform Demo process
+        -> Platform Demo PostgreSQL role
+           -> the same isolated Demo database
+
+Reset/seed command or authorized Platform reset route
+  -> reset-only PostgreSQL role
+     -> the same isolated Demo database
+
+Demo schema commands
+  -> migration-owner PostgreSQL role
+     -> the same isolated Demo database
+```
+
+The customer and Platform origins, session cookies, CSRF secrets, session secrets and database credentials are distinct. Neither browser surface can reuse the other surface's cookie as authority. The database name must match `conference_manager_demo_*`; a Production database name or target is rejected before reset.
+
+## Production and Demo isolation
+
+Production entrypoints remain `src/index.js` and `src/platform-main.js`. They must not import `src/demo/`, register Demo control routes, instantiate Demo personas or select the deterministic provider. Authentication, provider, database or configuration failure in Production must fail closed and must never activate Demo behavior.
+
+The Demo entrypoints are separate composition roots and require all of the following before they start:
+
+- `NODE_ENV=demo` for a deployed Demo, or `NODE_ENV=test` for isolated automated tests;
+- `DEMO_RUNTIME=shared-postgres-v1`;
+- the exact source-defined `DEMO_SEED_VERSION`;
+- separate customer and Platform HTTPS origins;
+- four distinct database URLs, roles and passwords pointing to the same host, port and Demo database;
+- distinct customer session, customer CSRF, Platform session and Platform CSRF secrets, plus one
+  dedicated Tenant-audit HMAC secret shared only where both processes access the same Tenant audit
+  chain;
+- certificate- and hostname-verifying database TLS for a deployed Demo.
+
+`loadDemoConfig` rejects Pilot/Production mode, aliased origins, database principals, passwords or
+secrets, mismatched database targets, administrative database role names, real-provider variables,
+and conflicting normal database/origin/session/Platform configuration. Real Entra, Microsoft Graph,
+customer or Production credentials must not be present in the Demo process environment.
+
+`DEMO_TENANT_AUDIT_HMAC_SECRET` is deliberately common to customer Tenant-audit writes/reads and
+Platform operations that append or verify that same Tenant audit chain. The Platform control-plane
+audit HMAC and signed-cursor secrets remain a different domain derived from the Platform session
+secret. The shared Tenant-audit key must be unique from every other Demo secret and database
+password; it is not a general cross-process session or authorization secret.
+
+The Demo uses `src/demo/provider/microsoft365-client.js`, which implements the provider-neutral Microsoft 365 contract without a network transport. The source-defined scenarios produce deterministic success, transient conflict and degraded-provider behavior. Inputs and outputs retain the production provider contract's positive validation and bounded shapes. Demo consent URLs remain on the configured Demo origin and never target Microsoft.
+
+## PostgreSQL roles and schema
+
+Provision four purpose-specific login roles with unique credentials:
+
+| Role purpose | Allowed responsibility | Prohibited responsibility |
+| --- | --- | --- |
+| Customer runtime | Canonical customer reads and mutations plus the customer Demo persona view | Platform identity/control-plane authority, Demo reset, schema ownership |
+| Platform runtime | Canonical Platform reads and mutations plus Platform persona/provider simulation views | Customer session authority, Demo reset, schema ownership |
+| Reset/seed | Verified destructive reset and deterministic seed over the fixed Demo table inventory | Normal browser request handling, schema ownership, use against a non-Demo database |
+| Migration owner | Canonical and Demo migration DDL/ledger ownership for this isolated database | Normal browser request handling or reset execution |
+
+The deployed database first receives the canonical Production schema migrations `001` through `033`. The Demo overlay is a separate checksum-protected migration stream under `demo-migrations/`; its current schema version is `001`. The overlay adds only the Demo sentinel, deterministic provider/persona references, immutable-sentinel protection, views and role grants. It does not replace or modify `schema_migrations`, and the runtime does not auto-migrate at startup.
+
+The Demo migration runner refuses a missing, gapped or non-exact canonical migration ledger. A future canonical migration therefore requires an explicit Demo inventory, grant, reset and fixture review before the Demo schema version can advance.
+
+## Deterministic seed and reset contract
+
+`src/demo/fixture.js` is the source of the deterministic baseline. It contains bounded synthetic Tenants, customer personas, Platform personas, settings, Requests, provider scenarios, deployment inventory and metering facts. It contains no real customer identifiers, provider tokens, credentials or Production references.
+
+The seed descriptor contains:
+
+- runtime schema version `1`;
+- seed version `saas-3.5-shared-demo-v1`;
+- a domain-separated SHA-256 semantic checksum over canonicalized fixture meaning.
+
+Reset is destructive by design and is allowed only in the isolated Demo database. Before truncation, the reset repository verifies all of the following:
+
+- the immutable Demo sentinel and sentinel key;
+- the current database name and expected reset role;
+- distinct recorded customer, Platform and reset roles;
+- the complete canonical migration sequence `1..33`;
+- the exact expected table inventory;
+- the source fixture's calculated domain-separated semantic checksum.
+
+Every normal customer or Platform request takes the shared Demo advisory lock. Reset takes the matching exclusive lock and then performs the complete truncate, seed, Demo provider/persona insertion and semantic readback in one `SERIALIZABLE` transaction. A lock acquisition/release failure, sentinel mismatch, schema drift, table drift, seed failure or checksum mismatch fails the operation; partial state cannot commit. The post-seed semantic projection must reproduce the source checksum before success is returned.
+
+The reset service returns only `seedVersion` and `checksum`. The CLI wraps that descriptor in a
+bounded completion envelope; the HTTP reset route adds its server request ID. Reset truncates all
+customer and Platform sessions. The authorized Platform reset route therefore also clears the
+caller's Platform cookie; every browser must establish a new Demo session after reset.
+
+Platform process startup refreshes the canonical Platform projections under the shared gate before
+accepting traffic. The HTTP reset path performs the same bounded projection refresh after the
+authoritative reset commits and before reporting success. If that post-reset refresh fails, the HTTP
+operation fails and Platform readiness must not be claimed; restart or retry the canonical refresh
+rather than editing projection rows. It does not undo or conceal the already verified reset commit.
+
+Do not bypass a failed reset with direct SQL, disabled triggers, a Production credential or a manually edited checksum. Stop both Demo processes, preserve the bounded error code, correct the configuration/schema mismatch, and recreate the isolated Demo database when integrity cannot be established.
+
+## Demo sessions, personas and CSRF
+
+The browser may request a named Demo persona only as bounded demonstration intent. It cannot submit roles, permissions, User/operator IDs, security versions, Tenant lifecycle state, target scope, assurance timestamps or provider identity.
+
+Customer control routes:
+
+| Method and path | Contract |
+| --- | --- |
+| `GET /api/v1/demo/session` | Reuse a recognized valid customer Demo session or issue the server-defined default Employee session. |
+| `GET /api/v1/demo/tenants` | Return the bounded synthetic Tenant directory only after customer session authentication. |
+| `PUT /api/v1/demo/session/context` | Require customer session authentication and CSRF, then rotate to an exact server-known Tenant/persona pair. |
+
+Platform control routes:
+
+| Method and path | Contract |
+| --- | --- |
+| `GET /api/v1/platform/demo/session` | Reuse a recognized valid Platform Demo session or issue the server-defined support-reader session. |
+| `PUT /api/v1/platform/demo/session/persona` | Require Platform session authentication and CSRF, then rotate to an exact server-known Platform persona. |
+| `POST /api/v1/platform/demo/reset` | Require Platform session authentication, CSRF, exact `{ "confirm": true }`, and fresh step-up `platform:recovery:execute` authorization; reset and clear the Platform session. |
+
+Persona and Tenant values are positively validated and matched against source-defined server mappings. A missing mapping is rejected; it never creates an ad hoc identity. Session issue uses the canonical PostgreSQL session repositories. A persona switch issues the new session and revokes the old one; if old-session revocation fails, the new session is revoked and the switch fails. The two establish routes deliberately issue their documented defaults when no cookie exists; protected routes reject absence, and malformed, expired, revoked or security-version-stale session state fails through the canonical session boundary.
+
+Customer roles remain `employee`, `conference_manager` and `tenant_admin`; customer permissions are derived from the canonical Tenant authorization policy. Platform personas use the canonical Platform role/permission policy and server-owned target scope. A customer session never authorizes Platform routes, a Platform session never becomes a Tenant Principal, and choosing a different Demo Tenant creates a new server-issued customer Principal instead of using the submitted Tenant ID directly on business queries.
+
+## Deployment and initial seed
+
+Provisioning order is mandatory:
+
+1. create a dedicated empty PostgreSQL database whose name matches `conference_manager_demo_*`;
+2. create the four distinct purpose-specific Demo roles and store their credentials in protected deployment configuration;
+3. apply canonical migrations `001..033` with the reviewed database migration identity;
+4. remove normal `DATABASE_URL`, `PUBLIC_ORIGIN`, session/CSRF, `PLATFORM_*` and real-provider variables from the Demo command environment;
+5. supply the complete `DEMO_*` configuration and run `npm run demo:db:migrate`;
+6. run `npm run demo:db:reset -- --confirm-seed-version=saas-3.5-shared-demo-v1` to install and verify the initial deterministic seed;
+7. start `npm run start:demo:customer` and `npm run start:demo:platform` as separate processes;
+8. route the customer and Platform HTTPS origins only to their matching process;
+9. verify both session endpoints, a customer persona/Tenant switch, a denied Platform operation, a shared-state journey and one deterministic provider-degradation journey;
+10. run an authorized reset, verify the returned seed descriptor, re-establish both sessions and confirm the baseline checksum is unchanged.
+
+The commands are intentionally separate:
+
+```bash
+npm run demo:db:migrate
+npm run demo:db:reset -- --confirm-seed-version=saas-3.5-shared-demo-v1
+npm run start:demo:customer
+npm run start:demo:platform
+```
+
+`npm run demo:db:reset -- --confirm-seed-version=saas-3.5-shared-demo-v1` is the only supported
+initial seed and reseed operation. `npm run demo:db:rollback` rolls back only the latest Demo
+overlay migration and is not a routine populated-environment recovery mechanism. The overlay down
+migration fails closed while Demo persona/provider state is in use. Prefer replacement of the
+isolated Demo database over destructive manual cleanup.
+
+## Required configuration
+
+| Variable | Requirement |
+| --- | --- |
+| `NODE_ENV` | `demo` for deployment; `test` only for isolated tests |
+| `DEMO_RUNTIME` | Exact `shared-postgres-v1` |
+| `DEMO_SEED_VERSION` | Exact `saas-3.5-shared-demo-v1` |
+| `DEMO_CUSTOMER_ORIGIN` | Exact dedicated HTTPS origin |
+| `DEMO_PLATFORM_ORIGIN` | Different exact dedicated HTTPS origin |
+| `DEMO_CUSTOMER_DATABASE_URL` | Customer role; isolated shared Demo target |
+| `DEMO_PLATFORM_DATABASE_URL` | Platform role; same target, different role/password |
+| `DEMO_RESET_DATABASE_URL` | Reset role; same target, different role/password |
+| `DEMO_MIGRATION_DATABASE_URL` | Migration owner; same target, different role/password |
+| `DEMO_DATABASE_SSL` | `verify-full` in deployed Demo; `disable` permitted only in Test |
+| `DEMO_CUSTOMER_SESSION_SECRET` | Protected unique secret, at least 32 bytes |
+| `DEMO_CUSTOMER_CSRF_SECRET` | Protected unique secret, at least 32 bytes |
+| `DEMO_PLATFORM_SESSION_SECRET` | Protected unique secret, at least 32 bytes |
+| `DEMO_PLATFORM_CSRF_SECRET` | Protected unique secret, at least 32 bytes |
+| `DEMO_TENANT_AUDIT_HMAC_SECRET` | Protected stable key shared by customer and Platform only for per-Tenant audit chains, at least 32 bytes |
+
+Do not place any of these values in source, documentation examples, browser configuration, logs, audit metadata, screenshots, issue comments or test evidence.
+
+## Operations and evidence
+
+For each deployed Demo candidate, record:
+
+- backend and frontend commit/artifact identifiers;
+- canonical schema version `33` and Demo overlay version `1`;
+- seed version and semantic checksum returned by reset;
+- customer and Platform origin identities without credentials;
+- the browser/integration test run covering cross-process shared state;
+- deterministic success, conflict and degradation scenarios;
+- negative persona, CSRF, role, target-scope and cross-Tenant results;
+- confirmation that real provider/Production configuration was absent.
+
+Demo evidence proves only the deterministic simulated runtime behavior exercised. It does not satisfy Production Entra, Microsoft Graph, Exchange Application RBAC, edge, backup/restore, DAST, penetration-test, security-owner or customer acceptance requirements.
+
+## Retired trusted CLI
+
+The former process-local Tenant-operator CLI, invitation-artifact helper and trusted source-marker authorization model are retired and must not be reintroduced for Demo convenience. Normal Platform operations use authenticated Platform HTTP. The separately governed, dual-control, grant-bound Production recovery fallback remains an exceptional operational control and is not Demo identity or reset authority.

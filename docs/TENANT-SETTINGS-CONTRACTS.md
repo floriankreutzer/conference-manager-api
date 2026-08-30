@@ -107,9 +107,15 @@ Issue #82 moves Site/room administration to the bounded locations contract using
 
 ## Demo contract
 
-The frontend Demo runtime implements one explicit in-memory adapter per aggregate with the same `schemaVersion`, revision, validation-visible failure and stale-write semantics as Production. Demo reset restores deterministic revision `1` fixtures for every aggregate.
+The Shared Demo Runtime exercises the canonical backend aggregate services and PostgreSQL adapters
+through the dedicated customer Demo process. It does not provide in-memory or browser-owned
+aggregate authority. Demo reset restores the source-defined deterministic fixtures and their
+documented revisions in the one shared Demo PostgreSQL database.
 
-Demo adapters are selected only by the existing explicit Demo composition path. Production must never fall back to Demo state when a backend/domain adapter is absent, unavailable, malformed or version-incompatible.
+Demo control routes and the deterministic provider are selected only by the explicit Demo
+composition roots. Production must never import or fall back to Demo identity, state or provider
+behavior when a backend/domain adapter is absent, unavailable, malformed or version-incompatible.
+See `docs/SHARED-DEMO-RUNTIME.md`.
 
 ## Compatibility and rollout
 

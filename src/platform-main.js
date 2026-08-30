@@ -1,7 +1,11 @@
 import { createPlatformComposition } from './platform-composition.js';
 import { loadPlatformConfig } from './platform/config.js';
+import { createProductionPlatformAuthentication } from './platform-production-authentication.js';
 
-const composition = createPlatformComposition({ config: loadPlatformConfig(process.env) });
+const composition = createPlatformComposition({
+  config: loadPlatformConfig(process.env),
+  authenticationFactory: createProductionPlatformAuthentication,
+});
 await composition.start();
 
 let stopping = false;

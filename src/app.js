@@ -119,7 +119,7 @@ const ENTRA_CALLBACK_QUERY_KEYS = new Set([
   'correlation_id',
   'error_uri',
 ]);
-const TENANT_ROUTE_REGISTRY = createRouteModuleRegistry([
+export const CUSTOMER_OPERATIONAL_ROUTE_MODULES = Object.freeze([
   tenantPresentationRouteModule,
   tenantAuditQueryRouteModule,
   tenantUserLifecycleRouteModule,
@@ -130,6 +130,7 @@ const TENANT_ROUTE_REGISTRY = createRouteModuleRegistry([
   tenantBookingPolicyRoutes,
   tenantCostAllocationRoutes,
 ]);
+const TENANT_ROUTE_REGISTRY = createRouteModuleRegistry(CUSTOMER_OPERATIONAL_ROUTE_MODULES);
 
 function urlOf(rawUrl, publicOrigin) {
   return new URL(rawUrl, publicOrigin);
@@ -192,7 +193,7 @@ function entraCallbackFromUrl(parsedUrl) {
   return Object.freeze({ state, code, providerError: false });
 }
 
-function routeKey(path) {
+function routeKey(path, routeRegistry = TENANT_ROUTE_REGISTRY) {
   if (path === ROUTES.live) return 'health_live';
   if (path === ROUTES.ready) return 'health_ready';
   if (path === ROUTES.status) return 'health_status';
@@ -202,7 +203,7 @@ function routeKey(path) {
   if (path === ROUTES.onboardingClaim) return 'onboarding_claim';
   if (path === ROUTES.principal) return 'session';
   if (TENANT_USER_ROLES_PATH.test(path)) return 'tenant_user_roles';
-  const tenantRoute = TENANT_ROUTE_REGISTRY.routeKey(path);
+  const tenantRoute = routeRegistry.routeKey(path);
   if (tenantRoute) return tenantRoute;
   const applicationRoute = applicationRouteKey(path);
   if (applicationRoute) return applicationRoute;
@@ -256,6 +257,7 @@ export function createApp({
   tenantUserAdministrationService,
   tenantUserLifecycleService,
   microsoft365ConnectionService,
+  additionalRouteModules = [],
   resolvePrincipal,
   verifyCsrf,
   loadTenant,
@@ -283,7 +285,10 @@ export function createApp({
     verifyCsrf: verifyCsrf || sessionService?.verifyCsrf,
   });
   const tenantGuard = createTenantContextGuard({ loadTenant });
-  const tenantRouteHandler = TENANT_ROUTE_REGISTRY.createDispatcher({
+  const routeRegistry = additionalRouteModules.length === 0
+    ? TENANT_ROUTE_REGISTRY
+    : createRouteModuleRegistry([...CUSTOMER_OPERATIONAL_ROUTE_MODULES, ...additionalRouteModules]);
+  const tenantRouteHandler = routeRegistry.createDispatcher({
     tenantAuditQueryService,
     tenantBookingPolicyService,
     tenantCapabilityViewService,
@@ -335,7 +340,7 @@ export function createApp({
       rateLimiter.consume(clientKey(request));
       const parsedUrl = urlOf(request.url, config.publicOrigin);
       const path = parsedUrl.pathname;
-      route = routeKey(path);
+      route = routeKey(path, routeRegistry);
 
       if (path === ROUTES.live) {
         if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');

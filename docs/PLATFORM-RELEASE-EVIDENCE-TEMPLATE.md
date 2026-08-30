@@ -38,9 +38,13 @@ Repository evidence never substitutes for deployed evidence. Demo evidence never
 | `conference-manager-api` commit | `<full-sha>` | `PENDING` |
 | Customer frontend artifact | `<digest-reference>` | `PENDING` |
 | Platform frontend artifact | `<digest-reference>` | `PENDING` |
+| Customer Demo artifact | `<digest-reference>` | `PENDING` |
 | Platform Demo artifact | `<digest-reference>` | `PENDING` |
 | Customer API artifact | `<digest-reference>` | `PENDING` |
 | Platform API artifact | `<digest-reference>` | `PENDING` |
+| Customer Demo API artifact | `<digest-reference>` | `PENDING` |
+| Platform Demo API artifact | `<digest-reference>` | `PENDING` |
+| Shared Demo PostgreSQL/schema/seed | `<service-schema-33-overlay-1-seed-checksum-reference>` | `PENDING` |
 | Deployment/IaC revision | `<immutable-reference>` | `PENDING` |
 | PostgreSQL engine/schema | `<protected-service-and-version-reference>` | `PENDING` |
 | Operator identity policy | `<registration-and-policy-reference>` | `PENDING` |
@@ -107,13 +111,14 @@ Review checklist:
 
 Review checklist:
 
-- [ ] Customer, Platform Production and Platform Demo composition roots remain independent.
+- [ ] Customer Production, Platform Production, customer Demo and Platform Demo composition roots remain independent.
 - [ ] Customer `src/app.js` and Tenant Admin cannot import Platform authority.
 - [ ] Platform frontend cannot import customer capability/session/storage internals.
 - [ ] Production cannot fall back to Demo identity, API adapters, state or storage.
 - [ ] Required Chromium and WebKit/iPhone projects ran.
 - [ ] Keyboard, focus, label, confirmation, announcement, zoom/reflow and overflow checks are recorded.
-- [ ] Demo reset/reseed is deterministic and external-call free.
+- [ ] Demo uses one isolated PostgreSQL state through distinct migration/customer/Platform/reset roles.
+- [ ] Demo reset/reseed verifies schema `33`, overlay `1`, sentinel, table inventory and semantic checksum and is external-call free.
 
 ## Identity, session, origin, and CSRF evidence
 
@@ -226,12 +231,12 @@ Penetration-test record:
 
 | Evidence ID | Scenario | Result | Protected reference |
 | --- | --- | --- | --- |
-| DEMO-01 | Exact Demo build and visible environment identity | `PENDING` | `<reference>` |
-| DEMO-02 | Reset/reseed returns deterministic documented baseline | `PENDING` | `<reference>` |
+| DEMO-01 | Exact customer/Platform frontend and API Demo builds, origins and visible environment identity | `PENDING` | `<reference>` |
+| DEMO-02 | Reset/reseed verifies canonical schema `33`, Demo overlay `1` and returns the pinned seed version/checksum | `PENDING` | `<reference>` |
 | DEMO-03 | All delivered roles/capabilities and denied paths | `PENDING` | `<reference>` |
 | DEMO-04 | Full invitation-to-recovery critical journey | `PENDING` | `<reference>` |
 | DEMO-05 | Degraded/stale/concurrent/replay/audit failure simulations | `PENDING` | `<reference>` |
-| DEMO-06 | Customer Demo, Platform Demo and Production storage/session isolation | `PENDING` | `<reference>` |
+| DEMO-06 | Customer/Platform Demo share PostgreSQL state while their process, role, origin and session authority remain isolated from each other and Production | `PENDING` | `<reference>` |
 | DEMO-07 | No real invitation, provider call, customer data or Production credential | `PENDING` | `<reference>` |
 | DEMO-08 | Chromium and WebKit/iPhone critical flows | `PENDING` | `<reference>` |
 
@@ -251,7 +256,7 @@ For each record, verify environment, role/assurance, preconditions, target confi
 | OPS-08 | Platform audit read/correlation/export | `PENDING` | `<reference>` | `<role>` |
 | OPS-09 | Build/deployment/schema/runtime identification | `PENDING` | `<reference>` | `<role>` |
 | OPS-10 | Operator joiner/mover/leaver and periodic review | `PENDING` | `<reference>` | `<role>` |
-| OPS-11 | Control-plane outage and compliant CLI fallback | `PENDING` | `<reference>` | `<role>` |
+| OPS-11 | Control-plane outage and compliant grant-bound fallback | `PENDING` | `<reference>` | `<role>` |
 | OPS-12 | Last Tenant Admin recovery | `PENDING` | `<reference>` | `<role>` |
 | OPS-13 | Pre-activation identity unbind | `PENDING` | `<reference>` | `<role>` |
 | OPS-14 | Compromised operator session/identity | `PENDING` | `<reference>` | `<role>` |
@@ -274,7 +279,7 @@ For each record, verify environment, role/assurance, preconditions, target confi
 | Normal UI/API post-restoration reconciliation | `PENDING` | `<reference>` |
 | Independent post-action review | `PENDING` | `<reference>` |
 
-If the released CLI/wrapper does not enforce every item, break-glass readiness is `FAIL` or `PENDING`; do not execute direct SQL or a generic shell as a substitute.
+If the released fallback wrapper does not enforce every item, break-glass readiness is `FAIL` or `PENDING`; do not execute direct SQL or a generic shell as a substitute.
 
 ## Backup, restore, and rollback evidence
 
@@ -340,7 +345,7 @@ Explicit limitations/non-claims:
 | Decision timestamp UTC | `<timestamp>` |
 | Blocking procedure IDs | `<list-or-none>` |
 | Normal Control Plane operation approved | `PENDING` |
-| CLI fallback drill passed | `PENDING` |
+| Grant-bound fallback drill passed | `PENDING` |
 | Restore/rollback drill passed | `PENDING` |
 | External acceptance complete | `PENDING` |
 

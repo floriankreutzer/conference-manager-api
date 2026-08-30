@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { PlatformHttpError } from './errors.js';
 
-const ALLOWED_METHODS = new Set(['GET', 'POST', 'DELETE']);
-const UNSAFE_METHODS = new Set(['POST', 'DELETE']);
+const ALLOWED_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE']);
+const UNSAFE_METHODS = new Set(['POST', 'PUT', 'DELETE']);
 const JSON_CONTENT_TYPE = /^application\/json(?:\s*;\s*charset=utf-8)?$/i;
 const REQUEST_TARGET_LIMIT = 8_192;
 
@@ -88,7 +88,7 @@ export function applyPlatformSecurityHeaders(response, { mode }) {
   response.setHeader('Referrer-Policy', 'no-referrer');
   response.setHeader('X-Content-Type-Options', 'nosniff');
   response.setHeader('X-Frame-Options', 'DENY');
-  if (mode === 'pilot' || mode === 'production') {
+  if (mode === 'demo' || mode === 'pilot' || mode === 'production') {
     response.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   }
 }

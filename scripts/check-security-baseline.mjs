@@ -19,6 +19,7 @@ const cookie = await text('src/identity/session-cookie.js');
 const entraClient = await text('src/identity/entra-client.js');
 const entraAuth = await text('src/identity/entra-auth-service.js');
 const microsoft365Client = await text('src/integrations/microsoft365-client.js');
+const microsoft365ProviderContract = await text('src/integrations/microsoft365-contract.js');
 const microsoft365Routes = await text('src/http/microsoft365-routes.js');
 const microsoft365Repository = await text(
   'src/persistence/postgres/microsoft365-connection-repository.js',
@@ -110,9 +111,14 @@ requireContains(microsoft365Client, [
   'AbortSignal.timeout(timeoutMs)',
   'response.body?.getReader?.()',
   'await cancelReader(reader)',
+  "from './microsoft365-contract.js'",
+], 'Microsoft 365 provider client');
+requireContains(microsoft365ProviderContract, [
   "'Place.Read.All'",
   "'Calendars.ReadBasic.All'",
-], 'Microsoft 365 provider client');
+  "'Calendars.ReadWrite'",
+  'Microsoft365ProviderError',
+], 'Microsoft 365 provider-neutral contract');
 if (microsoft365Client.includes('await response.text()')) {
   throw new Error('Microsoft provider responses must be bounded while streaming, not after response.text().');
 }

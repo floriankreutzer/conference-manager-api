@@ -111,7 +111,21 @@ if (revokeBoundary.indexOf('lockSessionOwner(') > revokeBoundary.indexOf("name: 
   throw new Error('Session revocation must lock Tenant/User ownership before the Session.');
 }
 
-const runtime = await readFile('src/index.js', 'utf8');
+const entrypoint = await readFile('src/index.js', 'utf8');
+for (const required of [
+  "import { createCustomerComposition } from './customer-composition.js'",
+  'const composition = createCustomerComposition({',
+  'await composition.start()',
+]) {
+  if (!entrypoint.includes(required)) {
+    throw new Error(`Production customer entrypoint is missing composition linkage ${required}.`);
+  }
+}
+if (entrypoint.includes('createJitUserService')) {
+  throw new Error('Production customer entrypoint must remain thin and delegate JIT User wiring.');
+}
+
+const runtime = await readFile('src/customer-composition.js', 'utf8');
 for (const required of ['createJitUserService', 'persistence.jitUserRepository', 'jitUserService']) {
   if (!runtime.includes(required)) throw new Error(`Runtime composition is missing ${required}.`);
 }

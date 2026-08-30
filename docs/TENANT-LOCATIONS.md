@@ -72,6 +72,7 @@ Before issue #82 is complete:
 
 - unit tests cover exact schemas, missing/invalid time zones, provider-field rejection, manual-room rejection and stale revisions;
 - PostgreSQL integration tests cover tenant isolation, migration up/down, concurrent writers, audit rollback and referenced deactivation;
-- frontend Production and Demo adapters exercise the same `schemaVersion`/revision/conflict behavior;
+- frontend Production and Shared Demo server-backed journeys exercise the same
+  `schemaVersion`/revision/conflict behavior;
 - Employee room search, final availability, Manager planning and history continue to use the canonical Room IDs;
 - Microsoft discovery/import/resync is externally exercised against the configured Entra development/pilot environment; that evidence is tracked with `external-acceptance-evidence`.

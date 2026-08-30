@@ -53,6 +53,7 @@ export function createPostgresPlatformRecoveryRepository(pool, {
   tenantAuditRepository,
   platformAuditRepository,
   onboardingRepository,
+  tenantLifecycleRepository,
   cursorSecret,
   idFactory = randomUUID,
 } = {}) {
@@ -63,6 +64,10 @@ export function createPostgresPlatformRecoveryRepository(pool, {
   if (!onboardingRepository || typeof onboardingRepository.unbindActiveWithClient !== 'function') {
     throw new TypeError('ONBOARDING_REPOSITORY_REQUIRED');
   }
+  if (
+    !tenantLifecycleRepository
+    || typeof tenantLifecycleRepository.changeStatusWithClient !== 'function'
+  ) throw new TypeError('TENANT_LIFECYCLE_REPOSITORY_REQUIRED');
   if (typeof idFactory !== 'function') throw new TypeError('ID_FACTORY_REQUIRED');
   const cursorCodec = createPlatformOperationCursorCodec({ secret: cursorSecret });
   const audit = { tenantAuditRepository, platformAuditRepository };
@@ -732,20 +737,19 @@ export function createPostgresPlatformRecoveryRepository(pool, {
 
     executeTenantLifecycle(values) {
       return execute(values, async (client) => {
-        const updated = await client.query({
-          name: 'platform-recovery-change-tenant-lifecycle',
-          text: `UPDATE tenants SET status = $4, lifecycle_revision = lifecycle_revision + 1,
-                 updated_at = $3 WHERE id = $1 AND lifecycle_revision = $2
-                 AND status = $5 RETURNING lifecycle_revision, updated_at`,
-          values: [values.tenantId, values.expectedStateBinding.lifecycleRevision,
-            values.occurredAt, values.targetStatus, values.expectedStateBinding.lifecycleStatus],
+        const changed = await tenantLifecycleRepository.changeStatusWithClient(client, {
+          tenantId: values.tenantId,
+          expectedStatus: values.expectedStateBinding.lifecycleStatus,
+          expectedRevision: values.expectedStateBinding.lifecycleRevision,
+          targetStatus: values.targetStatus,
+          changedAt: new Date(values.occurredAt),
         });
-        if (updated.rowCount !== 1) return Object.freeze({ outcome: 'stale' });
+        if (changed.outcome !== 'updated') return changed;
         return Object.freeze({ outcome: 'updated', result: Object.freeze({
           tenantId: values.tenantId,
-          status: values.targetStatus,
-          revision: Number(updated.rows[0].lifecycle_revision),
-          changedAt: instant(updated.rows[0].updated_at),
+          status: changed.tenant.status,
+          revision: changed.revision,
+          changedAt: changed.tenant.updatedAt,
         }) });
       });
     },

@@ -76,11 +76,11 @@ Entitlement reads and writes are scoped by internal Tenant ID plus capability ID
 
 Runtime capability evaluation additionally requires the authenticated Principal Tenant to equal the active Tenant context. A client Tenant selector is not part of the entitlement contract.
 
-## Operator-controlled changes
+## Platform-controlled changes
 
-Commercial entitlement mutation is not a Tenant Admin permission. The entitlement service exposes a server-internal operator authorization port rather than creating a public Platform Admin HTTP endpoint before the platform-operator authorization domain exists.
+Commercial entitlement mutation is not a Tenant Admin permission. Normal reads, previews and applications enter through the separate authenticated Platform HTTP boundary and its `PlatformEntitlementOperationsService`. Mutations require the Platform Principal/session, CSRF, the canonical operation permission, target-Tenant scope, fresh step-up, exact confirmation, expected revision, idempotency and atomic audit contracts.
 
-The default operator authorization is deny-all. A future developer/platform administration service must provide a trusted server-side authorization function before it can call `setEntitlement`.
+The canonical entitlement service retains a deny-all default for operator authorization. Only the Platform composition supplies the server-side authorization function used by the Platform operations service; customer composition and Tenant roles cannot call `setEntitlement` with mutation authority.
 
 Tenant Admin, Employee, Conference Manager, browser role values and frontend flags cannot enable an entitlement.
 
@@ -97,7 +97,7 @@ The Tenant-visible event contains:
 - administrative retention class;
 - non-secret `actorType=platform_operator` metadata.
 
-The Tenant audit actor User ID is null because the platform/operator identity belongs to the separate platform authorization/audit domain. The Tenant model does not pretend that a platform operator is a Tenant User. A future platform audit system must retain the actual operator identity independently.
+The Tenant audit actor User ID is null because the Platform operator identity belongs to the separate Platform authorization/audit domain. The Tenant model does not pretend that a Platform operator is a Tenant User. Platform audit retains the actual operator identity independently.
 
 The entitlement write and Tenant audit append commit in one PostgreSQL transaction. If audit persistence fails, the entitlement change rolls back. Repeating the same effective value is idempotent and does not emit a misleading `changed` event.
 
@@ -122,7 +122,6 @@ Migration 005 down remains fail-closed when entitlement rows or `tenant.entitlem
 
 ## Deferred ownership
 
-- a public Platform Admin/developer administration API and its operator Principal model;
 - a server-side operational rollout service, if needed beyond deployment/configuration controls;
 - Exchange Application RBAC verification and customer hardening guidance;
 - billing/subscription lifecycle.

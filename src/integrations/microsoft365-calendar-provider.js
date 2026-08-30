@@ -5,7 +5,7 @@ import {
   isProviderConnectionReference,
   isProviderResourceReference,
 } from './calendar-contract.js';
-import { Microsoft365ProviderError } from './microsoft365-client.js';
+import { Microsoft365ProviderError } from './microsoft365-contract.js';
 import { executeSafeProviderOperation } from './provider-retry.js';
 
 const ROOM_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;

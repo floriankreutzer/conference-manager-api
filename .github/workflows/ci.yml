@@ -65,3 +65,97 @@ jobs:
         run: npm ci --ignore-scripts --no-fund
       - name: Run PostgreSQL migration and persistence integration tests
         run: npm run test:db
+
+  shared-demo-e2e:
+    runs-on: ubuntu-latest
+    needs: quality
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout API
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: api
+      - name: Checkout immutable frontend commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: floriankreutzer/conference-manager
+          ref: 0e0ac0a66fbd1e347b5465f49fac570c9a54e67e
+          path: frontend
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - name: Install locked API dependencies
+        working-directory: api
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install browser engines
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium webkit
+      - name: Add fixed Demo hosts
+        run: echo "127.0.0.1 customer.demo.test platform.demo.test" | sudo tee -a /etc/hosts >/dev/null
+      - name: Provision isolated Demo database roles
+        working-directory: api
+        run: node scripts/provision-shared-demo-ci.mjs
+      - name: Apply canonical and Demo migrations
+        working-directory: api
+        run: |
+          DATABASE_URL="$DEMO_MIGRATION_DATABASE_URL" DATABASE_SSL=disable npm run db:migrate
+          npm run demo:db:migrate
+          npm run demo:db:reset -- --confirm-seed-version=saas-3.5-shared-demo-v1
+      - name: Start separate Customer and Platform Demo APIs
+        working-directory: api
+        run: |
+          npm run start:demo:customer >customer-demo-api.log 2>&1 &
+          echo $! >customer-demo-api.pid
+          npm run start:demo:platform >platform-demo-api.log 2>&1 &
+          echo $! >platform-demo-api.pid
+      - name: Wait for both Demo APIs
+        working-directory: api
+        run: |
+          for attempt in {1..60}; do
+            customer=0
+            platform=0
+            curl --fail --silent --show-error \
+              -H "Host: customer.demo.test:4443" \
+              http://127.0.0.1:3000/api/v1/health/live >/dev/null && customer=1 || true
+            curl --fail --silent --show-error \
+              -H "Host: platform.demo.test:4443" \
+              http://127.0.0.1:3100/api/v1/platform/health/live >/dev/null && platform=1 || true
+            if [[ "$customer" == 1 && "$platform" == 1 ]]; then exit 0; fi
+            sleep 1
+          done
+          echo "The separate Demo API processes did not become live." >&2
+          exit 1
+      - name: Run shared PostgreSQL browser journey
+        working-directory: frontend
+        run: npm run test:e2e:shared-demo
+      - name: Stop Demo API processes
+        if: always()
+        working-directory: api
+        run: |
+          if [[ -f customer-demo-api.pid ]]; then kill "$(cat customer-demo-api.pid)" || true; fi
+          if [[ -f platform-demo-api.pid ]]; then kill "$(cat platform-demo-api.pid)" || true; fi
+      - name: Upload shared Demo browser report on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: shared-demo-playwright-report
+          path: frontend/playwright-report-shared-demo/
+          if-no-files-found: ignore

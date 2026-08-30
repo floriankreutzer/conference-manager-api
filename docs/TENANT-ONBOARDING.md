@@ -16,7 +16,7 @@ The normal customer flow requires no client secret, application ID, Entra tenant
 
 ## Flow
 
-1. An authorized Platform/operator process creates a pending internal Tenant and one short-lived invitation through `TenantOnboardingService.createTenantInvitation(...)`.
+1. An authenticated and authorized Platform operator creates a pending internal Tenant and one short-lived invitation through the dedicated Platform HTTP boundary and canonical `TenantOnboardingService` contract.
 2. The raw invitation token is returned once. PostgreSQL stores only its SHA-256 hash.
 3. The customer browser submits the invitation token to `POST /api/v1/onboarding/invitations/start`.
 4. The API resolves the invitation server-side and starts the existing Microsoft Entra OIDC flow. The internal invitation ID is attached to the server-side OIDC transaction; it is not accepted as browser Tenant authority.
@@ -134,18 +134,19 @@ Audit records use the internal Tenant ID and trusted server correlation context.
 
 ## Operator authorization and recovery
 
-Operator invitation creation and identity unbinding are deliberately not exposed as Tenant Admin browser APIs in this slice.
+Invitation creation and identity unbinding are deliberately not exposed as Tenant Admin/customer APIs.
 
-`TenantOnboardingService` requires an explicit `authorizeOperator` decision for operator mutations. The public HTTP composition denies these operations by default. The implemented `npm run operator:tenant -- ...` path supplies a process-local trusted operator context after production configuration/schema validation; it is deliberately separate from Tenant roles and browser authority.
+`TenantOnboardingService` requires explicit operator authorization for privileged mutations, and the customer HTTP composition denies those operations by default. Normal operations use the dedicated Platform HTTP composition, which resolves a Platform Principal from the Platform session and enforces CSRF, canonical permission, target-Tenant scope, step-up, exact confirmation, concurrency/idempotency, and Platform/Tenant audit requirements. A process-local marker is not operator authority and the retired Tenant-operator entry point must not be reintroduced.
 
 The supported recovery contract is therefore:
 
 1. identify the internal Tenant through trusted operational records;
 2. inspect audit evidence and the current binding state without using customer-supplied Tenant/provider IDs as authority;
-3. use the trusted Tenant-operator CLI, which composes `authorizeOperator` without exposing a browser bootstrap API;
-4. never edit binding rows manually as the normal recovery mechanism;
-5. record an unbind/rebind action through the service so audit evidence is generated;
-6. create a new single-use invitation for a new claim when recovery policy allows it.
+3. preview and execute the fixed identity-unbind recovery through authenticated Platform HTTP;
+4. during an approved Control Plane outage, use only the dual-control, exact Tenant/permission-bound, one-use-grant Platform recovery fallback;
+5. never edit binding rows manually as a recovery mechanism;
+6. record the unbind/rebind action through the canonical service so Platform and Tenant audit evidence is generated;
+7. create a new single-use invitation through authenticated Platform HTTP when recovery policy allows it.
 
 The current service permits unbinding only while the Tenant is `pending`, `onboarding` or `ready`, before productive activation. The repository serializes the Tenant, Microsoft 365 Integration and active binding and rejects the unbind while any booking-provider reference is `pending`, `active`, `compensating` or `compensated`; only terminal `cancelled` references permit the authority change.
 

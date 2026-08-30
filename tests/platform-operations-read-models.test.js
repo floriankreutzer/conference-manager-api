@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {
-  createPlatformFleetReadinessService,
-  evaluateFleetReadinessSnapshot,
-} from '../src/platform/application/fleet-readiness-service.js';
+import { createPlatformFleetReadinessService } from '../src/platform/application/fleet-readiness-service.js';
 import { createPlatformMicrosoftFleetHealthService } from '../src/platform/application/microsoft-fleet-health-service.js';
 import { createPlatformDiagnosticOperationsService } from '../src/platform/application/diagnostic-operations-service.js';
 import { PLATFORM_PERMISSION } from '../src/platform/identity/policy.js';
+import {
+  evaluateTenantReadinessSnapshot,
+  TENANT_READINESS_CHECK,
+} from '../src/tenancy/tenant-readiness-policy.js';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const CORRELATION_ID = '22222222-2222-4222-8222-222222222222';
@@ -33,20 +34,23 @@ function targetPolicy(scope = { mode: 'all', securityVersion: 1, scopeKey: 'all-
 }
 
 test('shared readiness projection distinguishes blocked, stale, and unknown without browser flags', () => {
-  const blocked = evaluateFleetReadinessSnapshot({
+  const blocked = evaluateTenantReadinessSnapshot({
     asOfMs: Date.parse(NOW),
-    requiredCheckIds: ['identity.claimed', 'microsoft.free_busy'],
+    requiredCheckIds: [
+      TENANT_READINESS_CHECK.IDENTITY_ACTIVE,
+      TENANT_READINESS_CHECK.FREE_BUSY_HEALTHY,
+    ],
     checks: [
       {
-        checkId: 'identity.claimed',
+        checkId: TENANT_READINESS_CHECK.IDENTITY_ACTIVE,
         category: 'identity',
         state: 'fail',
-        reasonCode: 'identity.unbound',
+        reasonCode: 'tenant.identity.inactive',
         observedAt: OBSERVED,
         freshUntil: FRESH,
       },
       {
-        checkId: 'microsoft.free_busy',
+        checkId: TENANT_READINESS_CHECK.FREE_BUSY_HEALTHY,
         category: 'capability_health',
         state: 'pass',
         reasonCode: null,
@@ -56,13 +60,19 @@ test('shared readiness projection distinguishes blocked, stale, and unknown with
     ],
   });
   assert.equal(blocked.state, 'blocked');
-  assert.deepEqual(blocked.blockerCodes, ['identity.unbound', 'microsoft.free_busy.stale']);
+  assert.deepEqual(blocked.blockerCodes, [
+    'microsoft.free_busy.healthy.stale',
+    'tenant.identity.inactive',
+  ]);
 
-  const unknown = evaluateFleetReadinessSnapshot({
+  const unknown = evaluateTenantReadinessSnapshot({
     asOfMs: Date.parse(NOW),
-    requiredCheckIds: ['identity.claimed', 'microsoft.free_busy'],
+    requiredCheckIds: [
+      TENANT_READINESS_CHECK.IDENTITY_ACTIVE,
+      TENANT_READINESS_CHECK.FREE_BUSY_HEALTHY,
+    ],
     checks: [{
-      checkId: 'identity.claimed',
+      checkId: TENANT_READINESS_CHECK.IDENTITY_ACTIVE,
       category: 'identity',
       state: 'pass',
       reasonCode: null,
@@ -71,7 +81,7 @@ test('shared readiness projection distinguishes blocked, stale, and unknown with
     }],
   });
   assert.equal(unknown.state, 'unknown');
-  assert.deepEqual(unknown.blockerCodes, ['microsoft.free_busy.unknown']);
+  assert.deepEqual(unknown.blockerCodes, ['microsoft.free_busy.healthy.unknown']);
 });
 
 test('fleet readiness is a bounded authoritative snapshot and redacts provider data', async () => {
@@ -92,7 +102,7 @@ test('fleet readiness is a bounded authoritative snapshot and redacts provider d
             missingRequiredEntitlementCount: 0,
             checks: [
               {
-                checkId: 'identity.claimed',
+                checkId: TENANT_READINESS_CHECK.IDENTITY_ACTIVE,
                 category: 'identity',
                 state: 'pass',
                 reasonCode: null,
@@ -100,7 +110,7 @@ test('fleet readiness is a bounded authoritative snapshot and redacts provider d
                 freshUntil: FRESH,
               },
               {
-                checkId: 'microsoft.free_busy',
+                checkId: TENANT_READINESS_CHECK.FREE_BUSY_HEALTHY,
                 category: 'capability_health',
                 state: 'pass',
                 reasonCode: null,
@@ -119,7 +129,19 @@ test('fleet readiness is a bounded authoritative snapshot and redacts provider d
       },
     },
     readinessPolicy: {
-      requiredCheckIds() { return ['identity.claimed', 'microsoft.free_busy']; },
+      requiredCheckIds() {
+        return [TENANT_READINESS_CHECK.IDENTITY_ACTIVE, TENANT_READINESS_CHECK.FREE_BUSY_HEALTHY];
+      },
+      evaluateSnapshot({ checks, asOfMs }) {
+        return evaluateTenantReadinessSnapshot({
+          checks,
+          requiredCheckIds: [
+            TENANT_READINESS_CHECK.IDENTITY_ACTIVE,
+            TENANT_READINESS_CHECK.FREE_BUSY_HEALTHY,
+          ],
+          asOfMs,
+        });
+      },
     },
     platformAuthorizationPolicy: authorizationPolicy(permissions),
     tenantTargetPolicy: targetPolicy(),
