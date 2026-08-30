@@ -49,6 +49,7 @@ export function createPlatformComposition({
   routeModules,
   routeModulesFactory,
   projectionRunGate,
+  shutdownTimeoutMs,
 } = {}) {
   const authorizationPolicy = createPlatformAuthorizationPolicy();
   const tenantTargetPolicy = createPlatformTenantTargetPolicy({
@@ -164,6 +165,7 @@ export function createPlatformComposition({
   const platformProcess = createPlatformProcess({
     config,
     persistence,
+    ...(shutdownTimeoutMs ? { shutdownTimeoutMs } : {}),
     ...(httpServerFactory ? { httpServerFactory } : {}),
     routeModules: selectedRouteModules,
     platformAuthService,
@@ -195,9 +197,12 @@ export function createPlatformComposition({
       return platformProcess.start();
     },
     async stop() {
-      await projectionWorker.stop();
-      await platformProcess.stop();
-      await persistence.close();
+      try {
+        await projectionWorker.stop();
+        await platformProcess.stop();
+      } finally {
+        await persistence.close();
+      }
     },
   });
 }
