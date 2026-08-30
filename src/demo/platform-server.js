@@ -43,7 +43,12 @@ function requestPath(request, publicOrigin) {
 }
 
 export function createDemoPlatformHttpServer(options) {
-  const { config, persistence, demoRuntimeGatePool } = options || {};
+  const {
+    config,
+    persistence,
+    demoRuntimeGatePool,
+    staticFileAdapter,
+  } = options || {};
   if (
     !config?.demoRuntime
     || !persistence?.pool
@@ -55,7 +60,11 @@ export function createDemoPlatformHttpServer(options) {
   }
   const app = createPlatformApp(options);
   const staticHandler = config.staticRoot
-    ? createDemoStaticHandler({ root: config.staticRoot, surface: 'platform' })
+    ? createDemoStaticHandler({
+      root: config.staticRoot,
+      surface: 'platform',
+      fileAdapter: staticFileAdapter,
+    })
     : null;
   const server = http.createServer({
     maxHeaderSize: 16_384,
