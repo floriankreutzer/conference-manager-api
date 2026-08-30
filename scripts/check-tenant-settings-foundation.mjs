@@ -50,8 +50,8 @@ if (/repository|SELECT|UPDATE|INSERT INTO|DELETE FROM/i.test(revision)) {
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 28;/.test(pool)) {
-  throw new Error('Runtime schema readiness must require bulk transfer receipt migration version 28.');
+if (!/export const CURRENT_SCHEMA_VERSION = 33;/.test(pool)) {
+  throw new Error('Runtime schema readiness must require Platform operations migration version 33.');
 }
 
 const migration = await readFile('migrations/020_tenant_settings_revisions.up.sql', 'utf8');

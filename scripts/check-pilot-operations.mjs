@@ -113,6 +113,43 @@ for (const script of [
   }
 }
 
+const platformFallback = await readFile('scripts/platform-recovery-fallback.mjs', 'utf8');
+const platformGrant = await readFile('scripts/platform-break-glass-grant.mjs', 'utf8');
+const fixedDescriptor = await readFile('scripts/lib/fixed-descriptor-json.mjs', 'utf8');
+for (const required of [
+  'readFixedDescriptorJson(3)',
+  'executePlatformRecoveryFallback',
+  "['pilot', 'production'].includes(config.mode)",
+  'persistence.readinessChecks',
+]) {
+  if (!platformFallback.includes(required)) {
+    throw new Error(`Platform recovery fallback is missing invariant ${required}.`);
+  }
+}
+for (const required of [
+  'readFixedDescriptorJson(3)',
+  'writeSecretToFixedDescriptor(issued.token, 4)',
+  'issuePlatformFallbackGrant',
+  'persistence.readinessChecks',
+]) {
+  if (!platformGrant.includes(required)) {
+    throw new Error(`Platform grant fallback is missing invariant ${required}.`);
+  }
+}
+if (/process\.argv|process\.env\.[A-Z_]*(?:TOKEN|SESSION|GRANT)/.test(`${platformFallback}\n${platformGrant}`)) {
+  throw new Error('Platform fallback credentials must not use arguments or environment variables.');
+}
+for (const required of ['MAX_BYTES', 'fstatSync', 'readSync', 'writeSync', '0o077']) {
+  if (!fixedDescriptor.includes(required)) {
+    throw new Error(`Platform fixed-descriptor transport is missing invariant ${required}.`);
+  }
+}
+for (const script of ['operator:platform-grant', 'operator:platform-recovery', 'test:dast:platform']) {
+  if (typeof packageDocument.scripts?.[script] !== 'string') {
+    throw new Error(`Package script ${script} is required.`);
+  }
+}
+
 const runbook = await readFile('docs/PILOT-READINESS-RUNBOOK.md', 'utf8');
 for (const required of [
   'No live Pilot evidence is claimed by this document',

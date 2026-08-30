@@ -25,7 +25,10 @@ if (JSON.stringify(runtimeDependencies) !== JSON.stringify(approvedRuntimeDepend
 const files = await sourceFiles('src');
 for (const file of files) {
   const content = await readFile(file, 'utf8');
-  if (file !== 'src/config.js' && /process\.env/.test(content)) {
+  if (
+    !['src/config.js', 'src/platform/config.js', 'src/platform-main.js'].includes(file)
+    && /process\.env/.test(content)
+  ) {
     throw new Error(`${file} accesses process.env directly; runtime configuration belongs in src/config.js.`);
   }
   if (/from ['"](?:node:)?(?:fs|child_process|vm)['"]/.test(content)) {
@@ -464,7 +467,8 @@ for (const required of [
 const onboardingService = await readFile('src/onboarding/tenant-onboarding-service.js', 'utf8');
 for (const required of [
   'authorizeOperator = async () => false',
-  "createHash('sha256')",
+  'hashTenantInvitationToken',
+  'normalizeTenantInvitationDisplayName',
   "createHmac('sha256'",
   'timingSafeEqual',
   'claimCsrf',
@@ -475,6 +479,18 @@ for (const required of [
 ]) {
   if (!onboardingService.includes(required)) {
     throw new Error(`Tenant onboarding service is missing security invariant ${required}.`);
+  }
+}
+
+const invitationPolicy = await readFile('src/onboarding/invitation-policy.js', 'utf8');
+for (const required of [
+  "createHash('sha256')",
+  'TENANT_INVITATION_TOKEN_PATTERN',
+  'createTenantInvitationSecretFactory',
+  'hashTenantInvitationToken',
+]) {
+  if (!invitationPolicy.includes(required)) {
+    throw new Error(`Tenant invitation policy is missing security invariant ${required}.`);
   }
 }
 
@@ -511,8 +527,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 28;/.test(pool)) {
-  throw new Error('Runtime schema readiness must require bulk transfer receipt migration version 28.');
+if (!/export const CURRENT_SCHEMA_VERSION = 33;/.test(pool)) {
+  throw new Error('Runtime schema readiness must require Platform operations migration version 33.');
 }
 const requestCompositionMigration = await readFile(
   'migrations/027_request_composition_v2.up.sql',
@@ -600,6 +616,107 @@ const bulkReceiptRollback = await readFile(
 );
 if (!bulkReceiptRollback.includes('TENANT_BULK_TRANSFER_RECEIPTS_REQUIRE_REVIEW')) {
   throw new Error('Bulk receipt rollback must fail closed after first use.');
+}
+
+const platformIdentityMigration = await readFile(
+  'migrations/029_platform_identity_sessions.up.sql',
+  'utf8',
+);
+for (const required of [
+  'platform_operators',
+  'platform_sessions',
+  'platform_break_glass_grants',
+  'platform_break_glass_alert_outbox',
+  'platform_permissions_for_roles',
+  'platform_operator_security_version',
+  'PLATFORM_BREAK_GLASS_AUTHORITY_IMMUTABLE',
+]) {
+  if (!platformIdentityMigration.includes(required)) {
+    throw new Error(`Platform identity migration is missing security boundary ${required}.`);
+  }
+}
+const platformIdentityRollback = await readFile(
+  'migrations/029_platform_identity_sessions.down.sql',
+  'utf8',
+);
+if (!platformIdentityRollback.includes('PLATFORM_IDENTITY_SESSION_ROLLBACK_REQUIRES_REVIEW')) {
+  throw new Error('Platform identity rollback must fail closed after first use.');
+}
+
+const platformAuditMigration = await readFile('migrations/030_platform_audit.up.sql', 'utf8');
+for (const required of [
+  'platform_audit_events',
+  'platform_audit_checkpoints',
+  'platform_audit_chain_state',
+  'platform_audit_events_append_only',
+  'platform_audit_checkpoints_append_only',
+  'platform.tenant.configuration.changed',
+  'platform.tenant.quota.changed',
+]) {
+  if (!platformAuditMigration.includes(required)) {
+    throw new Error(`Platform audit migration is missing integrity boundary ${required}.`);
+  }
+}
+const platformAuditRollback = await readFile('migrations/030_platform_audit.down.sql', 'utf8');
+if (!platformAuditRollback.includes('PLATFORM_AUDIT_ROLLBACK_REQUIRES_REVIEW')) {
+  throw new Error('Platform audit rollback must fail closed after first use.');
+}
+for (const migration of [
+  platformIdentityMigration,
+  platformIdentityRollback,
+  platformAuditMigration,
+  platformAuditRollback,
+]) {
+  if (/\b(?:BEGIN|COMMIT)\s*;|\bschema_migrations\b/i.test(migration)) {
+    throw new Error('Platform migrations must leave transactions and bookkeeping to the migration runner.');
+  }
+}
+
+const platformPolicy = await readFile('src/platform/identity/policy.js', 'utf8');
+for (const required of [
+  'platform_support_reader',
+  'platform_tenant_operator',
+  'platform_security_auditor',
+  'platform_security_admin',
+  'platform:tenant:read',
+  'platform:integration-health:read',
+  'platform:break-glass:manage',
+]) {
+  if (!platformPolicy.includes(required)) {
+    throw new Error(`Platform authorization policy is missing canonical authority ${required}.`);
+  }
+}
+const platformSessionCookie = await readFile('src/platform/identity/session-cookie.js', 'utf8');
+for (const required of ['cm_platform_session', '/api/v1/platform', 'HttpOnly', 'SameSite=Strict']) {
+  if (!platformSessionCookie.includes(required)) {
+    throw new Error(`Platform session cookie is missing isolation boundary ${required}.`);
+  }
+}
+const platformSessionRepository = await readFile(
+  'src/persistence/postgres/platform-session-repository.js',
+  'utf8',
+);
+const platformAuditRepository = await readFile(
+  'src/persistence/postgres/platform-audit-repository.js',
+  'utf8',
+);
+for (const required of ['security_epoch = $2', 'clock_timestamp()', 'appendWithClient']) {
+  if (!platformSessionRepository.includes(required)) {
+    throw new Error(`Platform session persistence is missing boundary ${required}.`);
+  }
+}
+for (const required of [
+  'PLATFORM_AUDIT_HMAC_SECRET_REQUIRED',
+  'appendWithClient',
+  'expectedTargetTenantId',
+  'MAX_VERIFICATION_EVENTS',
+]) {
+  if (!platformAuditRepository.includes(required)) {
+    throw new Error(`Platform audit persistence is missing boundary ${required}.`);
+  }
+}
+if (app.includes("from './platform/") || app.includes("from './persistence/postgres/platform-")) {
+  throw new Error('Customer application composition must not import the Platform control plane.');
 }
 
 const index = await readFile('src/index.js', 'utf8');

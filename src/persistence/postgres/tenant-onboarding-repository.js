@@ -45,6 +45,18 @@ function mapBinding(row) {
   });
 }
 
+function mapInvitation(row) {
+  if (!row) return null;
+  return Object.freeze({
+    invitationId: row.id,
+    tenantId: row.tenant_id,
+    revision: Number(row.revision ?? 1),
+    expiresAt: iso(row.expires_at),
+    consumedAt: row.consumed_at ? iso(row.consumed_at) : null,
+    revokedAt: row.revoked_at ? iso(row.revoked_at) : null,
+  });
+}
+
 export function createPostgresTenantOnboardingRepository(pool, { auditRepository } = {}) {
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
@@ -53,7 +65,142 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
     throw new TypeError('AUDIT_REPOSITORY_REQUIRED');
   }
 
+  async function createTenantInvitationWithClient(client, {
+    tenantId,
+    displayName,
+    invitationId,
+    tokenHash,
+    createdAt,
+    expiresAt,
+  }) {
+    assertUuid(tenantId, 'ONBOARDING_TENANT_ID_INVALID');
+    assertUuid(invitationId, 'ONBOARDING_INVITATION_ID_INVALID');
+    assertHash(tokenHash, 'ONBOARDING_INVITATION_HASH_INVALID');
+    assertDate(createdAt, 'ONBOARDING_CREATED_AT_INVALID');
+    assertDate(expiresAt, 'ONBOARDING_EXPIRES_AT_INVALID');
+    const tenant = await client.query({
+      name: 'onboarding-create-pending-tenant',
+      text: `
+        INSERT INTO tenants (id, display_name, status, created_at, updated_at)
+        VALUES ($1, $2, 'pending', $3, $3)
+        ON CONFLICT (id) DO NOTHING
+        RETURNING id, display_name, status, lifecycle_revision, created_at
+      `,
+      values: [tenantId, displayName, createdAt],
+    });
+    if (tenant.rowCount !== 1) return null;
+    const invitation = await client.query({
+      name: 'onboarding-create-invitation',
+      text: `
+        INSERT INTO tenant_onboarding_invitations (
+          id, tenant_id, token_hash, created_at, expires_at
+        ) VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT DO NOTHING
+        RETURNING id, tenant_id, revision, expires_at, consumed_at, revoked_at
+      `,
+      values: [invitationId, tenantId, tokenHash, createdAt, expiresAt],
+    });
+    if (invitation.rowCount !== 1) throw new Error('ONBOARDING_INVITATION_COLLISION');
+    return Object.freeze({
+      tenant: Object.freeze({
+        tenantId: tenant.rows[0].id,
+        displayName: tenant.rows[0].display_name,
+        status: tenant.rows[0].status,
+        revision: Number(tenant.rows[0].lifecycle_revision),
+        createdAt: iso(tenant.rows[0].created_at),
+      }),
+      invitation: mapInvitation(invitation.rows[0]),
+    });
+  }
+
+  async function revokeInvitationWithClient(client, {
+    tenantId,
+    invitationId,
+    expectedRevision,
+    changedAt,
+    allowExpired = false,
+  }) {
+    assertUuid(tenantId, 'ONBOARDING_TENANT_ID_INVALID');
+    assertUuid(invitationId, 'ONBOARDING_INVITATION_ID_INVALID');
+    assertDate(changedAt, 'ONBOARDING_CHANGED_AT_INVALID');
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
+      throw new TypeError('ONBOARDING_INVITATION_REVISION_INVALID');
+    }
+    const updated = await client.query({
+      name: 'onboarding-revoke-invitation-cas',
+      text: `
+        UPDATE tenant_onboarding_invitations
+        SET revoked_at = $4
+        WHERE tenant_id = $1 AND id = $2 AND revision = $3
+          AND consumed_at IS NULL AND revoked_at IS NULL
+          AND ($5::boolean = true OR expires_at > $4)
+        RETURNING id, tenant_id, revision, expires_at, consumed_at, revoked_at
+      `,
+      values: [tenantId, invitationId, expectedRevision, changedAt, allowExpired],
+    });
+    if (updated.rowCount !== 1) return null;
+    await client.query({
+      name: 'onboarding-revoke-invitation-claims',
+      text: 'DELETE FROM tenant_claim_transactions WHERE invitation_id = $1',
+      values: [invitationId],
+    });
+    return mapInvitation(updated.rows[0]);
+  }
+
+  async function reissueInvitationWithClient(client, {
+    tenantId,
+    invitationId,
+    expectedRevision,
+    newInvitationId,
+    tokenHash,
+    changedAt,
+    expiresAt,
+  }) {
+    assertUuid(newInvitationId, 'ONBOARDING_INVITATION_ID_INVALID');
+    assertHash(tokenHash, 'ONBOARDING_INVITATION_HASH_INVALID');
+    assertDate(expiresAt, 'ONBOARDING_EXPIRES_AT_INVALID');
+    const revoked = await revokeInvitationWithClient(client, {
+      tenantId,
+      invitationId,
+      expectedRevision,
+      changedAt,
+      allowExpired: true,
+    });
+    if (!revoked) return null;
+    const inserted = await client.query({
+      name: 'onboarding-reissue-invitation',
+      text: `
+        INSERT INTO tenant_onboarding_invitations (
+          id, tenant_id, token_hash, created_at, expires_at, reissued_from_id
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, tenant_id, revision, expires_at, consumed_at, revoked_at
+      `,
+      values: [newInvitationId, tenantId, tokenHash, changedAt, expiresAt, invitationId],
+    });
+    return mapInvitation(inserted.rows[0]);
+  }
+
   return Object.freeze({
+    createTenantInvitationWithClient,
+    revokeInvitationWithClient,
+    reissueInvitationWithClient,
+
+    async findInvitationByTenantId(tenantId, invitationId, { client = pool } = {}) {
+      assertUuid(tenantId, 'ONBOARDING_TENANT_ID_INVALID');
+      assertUuid(invitationId, 'ONBOARDING_INVITATION_ID_INVALID');
+      const result = await client.query({
+        name: 'onboarding-find-invitation-by-tenant',
+        text: `
+          SELECT id, tenant_id, revision, expires_at, consumed_at, revoked_at
+          FROM tenant_onboarding_invitations
+          WHERE tenant_id = $1 AND id = $2
+          LIMIT 1
+        `,
+        values: [tenantId, invitationId],
+      });
+      return mapInvitation(result.rows[0]);
+    },
+
     async createTenantInvitation({
       tenantId,
       displayName,
@@ -69,30 +216,10 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
       assertDate(createdAt, 'ONBOARDING_CREATED_AT_INVALID');
       assertDate(expiresAt, 'ONBOARDING_EXPIRES_AT_INVALID');
       return withPostgresTransaction(pool, async (client) => {
-        const tenant = await client.query({
-          name: 'onboarding-create-pending-tenant',
-          text: `
-            INSERT INTO tenants (id, display_name, status, created_at, updated_at)
-            VALUES ($1, $2, 'pending', $3, $3)
-            ON CONFLICT (id) DO NOTHING
-            RETURNING id
-          `,
-          values: [tenantId, displayName, createdAt],
+        const created = await createTenantInvitationWithClient(client, {
+          tenantId, displayName, invitationId, tokenHash, createdAt, expiresAt,
         });
-        if (tenant.rowCount !== 1) return null;
-        const invitation = await client.query({
-          name: 'onboarding-create-invitation',
-          text: `
-            INSERT INTO tenant_onboarding_invitations (
-              id, tenant_id, token_hash, created_at, expires_at
-            )
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (token_hash) DO NOTHING
-            RETURNING id
-          `,
-          values: [invitationId, tenantId, tokenHash, createdAt, expiresAt],
-        });
-        if (invitation.rowCount !== 1) throw new Error('ONBOARDING_INVITATION_COLLISION');
+        if (!created) return null;
         const audit = await auditRepository.appendWithClient(client, auditEvent);
         if (!audit) throw new Error('AUDIT_APPEND_FAILED');
         return Object.freeze({ tenantId, invitationId });
@@ -110,6 +237,7 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
           JOIN tenants t ON t.id = i.tenant_id
           WHERE i.token_hash = $1
             AND i.consumed_at IS NULL
+            AND i.revoked_at IS NULL
             AND i.expires_at > $2
             AND t.status IN ('pending', 'onboarding')
         `,
@@ -151,6 +279,7 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
             JOIN tenants t ON t.id = i.tenant_id
             WHERE i.id = $1
               AND i.consumed_at IS NULL
+              AND i.revoked_at IS NULL
               AND i.expires_at > $2
               AND t.status IN ('pending', 'onboarding')
             FOR UPDATE OF i, t
@@ -227,6 +356,7 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
           WHERE c.token_hash = $1
             AND c.expires_at > $2
             AND i.consumed_at IS NULL
+            AND i.revoked_at IS NULL
             AND i.expires_at > $2
             AND t.status IN ('pending', 'onboarding')
         `,
@@ -276,6 +406,7 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
             JOIN tenants t ON t.id = i.tenant_id
             WHERE i.id = $1
               AND i.consumed_at IS NULL
+              AND i.revoked_at IS NULL
               AND i.expires_at > $2
               AND t.status IN ('pending', 'onboarding')
             FOR UPDATE OF i, t

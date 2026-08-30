@@ -15,6 +15,9 @@ import {
 } from './microsoft365-capability-health-repository.js';
 import { createPostgresMicrosoft365ConnectionRepository } from './microsoft365-connection-repository.js';
 import { createPostgresMicrosoft365RoomMappingRepository } from './microsoft365-room-mapping-repository.js';
+import {
+  createPostgresMicrosoft365RoomObservationRepository,
+} from './microsoft365-room-observation-repository.js';
 import { createPostgresOidcTransactionRepository } from './oidc-transaction-repository.js';
 import { createPostgresRequestRepository } from './request-repository.js';
 import { createPostgresSessionRepository } from './session-repository.js';
@@ -45,6 +48,7 @@ export function createPostgresPersistence(config) {
   const microsoft365CapabilityHealthRepository = createPostgresMicrosoft365CapabilityHealthRepository(pool);
   const microsoft365ConnectionRepository = createPostgresMicrosoft365ConnectionRepository(pool, { auditRepository });
   const microsoft365RoomMappingRepository = createPostgresMicrosoft365RoomMappingRepository(pool, { auditRepository });
+  const microsoft365RoomObservationRepository = createPostgresMicrosoft365RoomObservationRepository(pool);
   const oidcTransactionRepository = createPostgresOidcTransactionRepository(pool);
   const sessionRepository = createPostgresSessionRepository(pool, { auditRepository });
   const requestRepository = createPostgresRequestRepository(pool, {
@@ -81,6 +85,7 @@ export function createPostgresPersistence(config) {
     microsoft365CapabilityHealthRepository,
     microsoft365ConnectionRepository,
     microsoft365RoomMappingRepository,
+    microsoft365RoomObservationRepository,
     oidcTransactionRepository,
     sessionRepository,
     requestRepository,
