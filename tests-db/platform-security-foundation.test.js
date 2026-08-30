@@ -370,7 +370,10 @@ test('PostgreSQL Platform identity, scope, session, break-glass, OIDC and audit 
     tokenFactory: () => FAILED_TOKEN,
   });
   await assert.rejects(failingBreakGlass.issue(failedGrant.record, () => auditEvent({
+    action: PLATFORM_AUDIT_ACTION.BREAK_GLASS_GRANTED,
     targetTenantId: TENANT_ID,
+    targetType: 'platform_break_glass_grant',
+    targetId: FAILED_GRANT_ID,
   })), /EXPECTED_PLATFORM_AUDIT_FAILURE/);
   assert.equal((await pool.query(
     'SELECT count(*)::int AS count FROM platform_break_glass_grants WHERE id = $1',
