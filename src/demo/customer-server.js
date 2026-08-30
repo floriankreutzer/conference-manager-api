@@ -7,6 +7,16 @@ import {
 } from '../persistence/postgres/demo-runtime-gate.js';
 import { applySecurityHeaders, createRequestId } from '../security.js';
 
+const LIVENESS_PATH = '/api/v1/health/live';
+
+function requestPath(request, publicOrigin) {
+  try {
+    return new URL(request.url, publicOrigin).pathname;
+  } catch {
+    return null;
+  }
+}
+
 function sendRuntimeFailure(response, config, error) {
   if (response.writableEnded) return;
   if (response.headersSent) {
@@ -43,6 +53,10 @@ export function createDemoCustomerHttpServer(options) {
     maxHeaderSize: 16_384,
     requireHostHeader: true,
   }, async (request, response) => {
+    if (requestPath(request, config.publicOrigin) === LIVENESS_PATH) {
+      await app(request, response);
+      return;
+    }
     try {
       await withDemoRuntimeSharedGate(demoRuntimeGatePool, () => app(request, response));
     } catch (error) {

@@ -9,6 +9,8 @@ test('Demo HTTP servers serialize normal requests with reset and keep reset excl
   ]);
   assert.match(customer, /withDemoRuntimeSharedGate\(demoRuntimeGatePool/);
   assert.match(platform, /withDemoRuntimeSharedGate\(demoRuntimeGatePool/);
+  assert.match(customer, /LIVENESS_PATH[\s\S]*await app\(request, response\)[\s\S]*withDemoRuntimeSharedGate/);
+  assert.match(platform, /LIVENESS_PATH[\s\S]*await app\(request, response\)[\s\S]*withDemoRuntimeSharedGate/);
   assert.match(customer, /demoRuntimeGatePool === persistence\.pool/);
   assert.match(platform, /demoRuntimeGatePool === persistence\.pool/);
   assert.match(platform, /RESET_PATH/);

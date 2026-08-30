@@ -11,6 +11,7 @@ import {
 } from '../platform/http/security.js';
 
 const RESET_PATH = '/api/v1/platform/demo/reset';
+const LIVENESS_PATH = '/api/v1/platform/health/live';
 
 function sendRuntimeFailure(response, config, error) {
   if (response.writableEnded) return;
@@ -56,7 +57,8 @@ export function createDemoPlatformHttpServer(options) {
     maxHeaderSize: 16_384,
     requireHostHeader: true,
   }, async (request, response) => {
-    if (request.method === 'POST' && requestPath(request, config.publicOrigin) === RESET_PATH) {
+    const path = requestPath(request, config.publicOrigin);
+    if (path === LIVENESS_PATH || (request.method === 'POST' && path === RESET_PATH)) {
       await app(request, response);
       return;
     }
