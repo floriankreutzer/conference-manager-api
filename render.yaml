@@ -11,7 +11,7 @@ services:
     plan: free
     region: frankfurt
     repo: https://github.com/floriankreutzer/conference-manager-api
-    branch: codex/saas35-render-demo-deployment
+    branch: main
     autoDeployTrigger: off
     buildCommand: npm ci --ignore-scripts --no-audit --no-fund && npm run demo:hosted:prepare
     startCommand: npm run start:demo:customer
@@ -52,7 +52,7 @@ services:
     plan: free
     region: frankfurt
     repo: https://github.com/floriankreutzer/conference-manager-api
-    branch: codex/saas35-render-demo-deployment
+    branch: main
     autoDeployTrigger: off
     buildCommand: npm ci --ignore-scripts --no-audit --no-fund && npm run demo:hosted:prepare
     startCommand: npm run start:demo:platform
