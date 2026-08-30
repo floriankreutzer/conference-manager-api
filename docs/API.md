@@ -279,7 +279,8 @@ room inventory because no historical capacity/open-hours denominator exists.
 
 ### `POST /api/v1/application/room-availability`
 
-This is the advisory production Employee room-search check required before the browser creates a Request. It accepts only:
+This is the advisory production Employee room-search check required before the browser creates or
+resubmits a Request. The create check accepts exactly:
 
 ```json
 {
@@ -288,6 +289,12 @@ This is the advisory production Employee room-search check required before the b
   "endsAt": "2026-09-01T11:00:00.000Z"
 }
 ```
+
+For a `Change Requested` resubmission, the same exact body may additionally contain
+`"resubmissionRequestId": "request-id"`. The server loads that Request inside the authenticated
+Tenant, requires Employee ownership plus the `Change Requested` state, and only then excludes its
+existing provisional hold from the local overlap check. Unknown, cross-Tenant, other-Employee and
+non-resubmittable identifiers remain concealed; the field cannot exclude arbitrary bookings.
 
 The server requires an active Employee Principal, the internal `microsoft.calendar` entitlement, a canonical UTC interval of at most 24 hours, the Tenant-owned local room, its active Site with an authoritative IANA time zone and its active Microsoft mapping. It checks Tenant-scoped local Request overlap first and then performs a live Free/Busy lookup through the fixed Microsoft provider boundary. The browser cannot submit a Tenant, User, provider Tenant, mailbox, Graph URL, token or availability result.
 
@@ -303,7 +310,11 @@ A successful minimized response is:
 }
 ```
 
-Local or provider busy state returns `available: false`. Missing entitlement/mapping/connection, provider authorization, throttling, timeout or malformed provider data returns the stable HTTP 503 code `ROOM_AVAILABILITY_UNAVAILABLE`; it never produces false availability. The check is advisory: authoritative Conference Manager confirmation still repeats uncached final validation and the local room-lock operation.
+Local or provider busy state returns `available: false`. Missing entitlement/mapping/connection,
+provider authorization, throttling, timeout, malformed provider data or a failed resubmission lookup
+returns the stable HTTP 503 code `ROOM_AVAILABILITY_UNAVAILABLE`; it never produces false
+availability. The check is advisory: the create/resubmission write and authoritative Conference
+Manager confirmation still repeat uncached validation and the applicable local room-lock operation.
 
 ## Tenant Locations and Rooms administration
 

@@ -38,23 +38,27 @@ function harness({
   entitlementError,
   providerError,
   resubmissionRequest = null,
+  resubmissionLookupError = null,
 } = {}) {
   const calls = [];
   const service = createRoomAvailabilityService({
     repository: {
+      async hasConflictingRequest(values) {
+        calls.push(['local', values]);
+        if (localError) throw localError;
+        return localConflict;
+      },
+    },
+    requestRepository: {
       async findByTenantIdAndId(_tenantId, requestId) {
         calls.push(['request', requestId]);
+        if (resubmissionLookupError) throw resubmissionLookupError;
         return resubmissionRequest || {
           tenantId: TENANT_ID,
           id: requestId,
           requesterUserId: USER_ID,
           status: 'Change Requested',
         };
-      },
-      async hasConflictingRequest(values) {
-        calls.push(['local', values]);
-        if (localError) throw localError;
-        return localConflict;
       },
     },
     authorizationPolicy: createAuthorizationPolicy(),
@@ -145,6 +149,21 @@ test('resubmission availability conceals another employee or ineligible request 
     await assert.rejects(
       check(service, { query: { ...query, resubmissionRequestId: requestId } }),
       AuthorizationDeniedError,
+    );
+    assert.deepEqual(calls.map(([type]) => type), ['request']);
+  }
+});
+
+test('resubmission lookup dependency and malformed persistence preserve the availability error contract', async () => {
+  const requestId = '55555555-5555-4555-8555-555555555555';
+  for (const options of [
+    { resubmissionLookupError: new Error('database unavailable') },
+    { resubmissionRequest: { id: requestId, tenantId: TENANT_ID } },
+  ]) {
+    const { service, calls } = harness(options);
+    await assert.rejects(
+      check(service, { query: { ...query, resubmissionRequestId: requestId } }),
+      RoomAvailabilityUnavailableError,
     );
     assert.deepEqual(calls.map(([type]) => type), ['request']);
   }

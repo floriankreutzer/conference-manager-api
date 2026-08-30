@@ -13,12 +13,12 @@ test('production application composition reaches Tenant-bound live room availabi
   const authorizationPolicy = createAuthorizationPolicy();
   const roomAvailabilityService = createRoomAvailabilityService({
     repository: {
-      async findByTenantIdAndId() { return null; },
       async hasConflictingRequest(values) {
         calls.push(['local', values]);
         return false;
       },
     },
+    requestRepository: { async findByTenantIdAndId() { return null; } },
     authorizationPolicy,
     entitlementService: {
       async requireAccess(values) {

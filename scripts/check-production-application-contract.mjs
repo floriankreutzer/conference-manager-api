@@ -45,6 +45,7 @@ for (const required of [
   'authorizationPolicy.authorizeRequestCreate',
   'CAPABILITY.MICROSOFT_CALENDAR',
   'repository.hasConflictingRequest',
+  'requestRepository.findByTenantIdAndId',
   'calendarProviderFactory.forRoom',
   'normalizeAvailabilityResult',
   'authorizationPolicy.authorizeRequestRead',
@@ -204,6 +205,7 @@ const composition = await readFile('src/customer-composition.js', 'utf8');
 for (const required of [
   'createRoomAvailabilityService',
   'repository: persistence.bookingReferenceRepository',
+  'requestRepository: persistence.requestRepository',
   'calendarProviderFactory: microsoft365CalendarProviderFactory',
   'roomAvailabilityService,',
 ]) {

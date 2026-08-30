@@ -134,6 +134,7 @@ const roomAvailabilityService = persistence
   && microsoft365CalendarProviderFactory
   ? createRoomAvailabilityService({
     repository: persistence.bookingReferenceRepository,
+    requestRepository: persistence.requestRepository,
     authorizationPolicy,
     entitlementService,
     calendarProviderFactory: microsoft365CalendarProviderFactory,

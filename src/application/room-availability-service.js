@@ -62,6 +62,7 @@ export function normalizeRoomAvailabilityQuery(value) {
 
 export function createRoomAvailabilityService({
   repository,
+  requestRepository,
   authorizationPolicy,
   entitlementService,
   calendarProviderFactory,
@@ -69,9 +70,11 @@ export function createRoomAvailabilityService({
   if (
     !repository
     || typeof repository.hasConflictingRequest !== 'function'
-    || typeof repository.findByTenantIdAndId !== 'function'
   ) {
     throw new TypeError('ROOM_AVAILABILITY_REPOSITORY_REQUIRED');
+  }
+  if (!requestRepository || typeof requestRepository.findByTenantIdAndId !== 'function') {
+    throw new TypeError('ROOM_AVAILABILITY_REQUEST_REPOSITORY_REQUIRED');
   }
   if (
     !authorizationPolicy
@@ -97,10 +100,27 @@ export function createRoomAvailabilityService({
 
       let excludeRequestId = null;
       if (normalized.resubmissionRequestId !== null) {
-        const request = await repository.findByTenantIdAndId(
-          tenantContext.tenantId,
-          normalized.resubmissionRequestId,
-        );
+        let request;
+        try {
+          request = await requestRepository.findByTenantIdAndId(
+            tenantContext.tenantId,
+            normalized.resubmissionRequestId,
+          );
+        } catch (error) {
+          throw new RoomAvailabilityUnavailableError(undefined, { cause: error });
+        }
+        if (
+          request !== null
+          && (
+            typeof request !== 'object'
+            || request.id !== normalized.resubmissionRequestId
+            || request.tenantId !== tenantContext.tenantId
+            || !isInternalUuid(request.requesterUserId)
+            || typeof request.status !== 'string'
+          )
+        ) {
+          throw new RoomAvailabilityUnavailableError();
+        }
         authorizationPolicy.authorizeRequestRead(principal, tenantContext, request);
         if (
           request.requesterUserId !== principal.userId
