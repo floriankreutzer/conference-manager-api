@@ -63,9 +63,23 @@ if (/\b(?:SELECT|INSERT INTO|UPDATE|DELETE FROM)\b/.test(adapter)) {
   throw new Error('Hosted Demo static file adapter must not contain SQL.');
 }
 
+const loader = await readFile('src/demo/static-file-loader.js', 'utf8');
+for (const required of [
+  "STATIC_FILE_ADAPTER_MODULE = './static-file-adapter.mjs'",
+  'await import(STATIC_FILE_ADAPTER_MODULE)',
+  'module.createDemoStaticFileAdapter({ root })',
+]) {
+  if (!loader.includes(required)) {
+    throw new Error(`Hosted Demo static adapter loader is missing fixed composition boundary ${required}.`);
+  }
+}
+if (/process\.env|https?:\/\/|GITHUB_TOKEN|SHARED_DEMO_API_READ_TOKEN/.test(loader)) {
+  throw new Error('Hosted Demo static adapter loader must not accept environment-selected modules, outbound URLs or credentials.');
+}
+
 const handler = await readFile('src/demo/static-handler.js', 'utf8');
 for (const required of [
-  "from './static-file-adapter.mjs'",
+  'DEMO_STATIC_FILE_ADAPTER_REQUIRED',
   "pathname.startsWith('/assets/')",
   "pathname.startsWith('/src/')",
   "connect-src 'self'",
@@ -77,18 +91,43 @@ for (const required of [
     throw new Error(`Hosted Demo static transport is missing boundary ${required}.`);
   }
 }
-if (/from ['"](?:node:)?(?:fs|child_process|vm)/.test(handler)) {
-  throw new Error('Hosted Demo static transport must delegate privileged filesystem I/O to the reviewed adapter.');
+if (/from ['"](?:node:)?(?:fs|child_process|vm)/.test(handler) || /static-file-adapter\.mjs/.test(handler)) {
+  throw new Error('Hosted Demo static transport must receive privileged filesystem I/O only through its injected port.');
 }
 if (/https?:\/\//.test(handler)) {
   throw new Error('Hosted Demo static transport must not contain outbound URLs.');
 }
 
+for (const file of ['src/demo/customer-main.js', 'src/demo/platform-main.js']) {
+  const source = await readFile(file, 'utf8');
+  for (const required of [
+    'loadDemoStaticFileAdapter',
+    'config.staticRoot',
+    'staticFileAdapter',
+  ]) {
+    if (!source.includes(required)) {
+      throw new Error(`${file} is missing explicit hosted Demo infrastructure injection ${required}.`);
+    }
+  }
+}
+for (const file of ['src/demo/customer-composition.js', 'src/demo/platform-composition.js']) {
+  const source = await readFile(file, 'utf8');
+  for (const required of [
+    'staticFileAdapter = null',
+    'config.staticRoot && !staticFileAdapter',
+    'staticFileAdapter,',
+  ]) {
+    if (!source.includes(required)) {
+      throw new Error(`${file} is missing explicit hosted Demo static-port composition ${required}.`);
+    }
+  }
+}
 for (const file of ['src/demo/customer-server.js', 'src/demo/platform-server.js']) {
   const source = await readFile(file, 'utf8');
   for (const required of [
     'createDemoStaticHandler',
     'config.staticRoot',
+    'fileAdapter: staticFileAdapter',
     "!path?.startsWith('/api/')",
   ]) {
     if (!source.includes(required)) {
@@ -132,7 +171,7 @@ for (const required of [
   'FRONTEND_REF_PATTERN = /^[0-9a-f]{40}$/',
   "git('init', '--quiet', TARGET_DIRECTORY)",
   "'FETCH_HEAD'",
-  "stdout.trim() !== frontendRef",
+  'stdout.trim() !== frontendRef',
   "rm(path.join(TARGET_DIRECTORY, '.git')",
 ]) {
   if (!prepare.includes(required)) {
