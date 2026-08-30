@@ -177,6 +177,9 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 28, name: 'tenant_bulk_transfer_receipts' },
       { version: 29, name: 'platform_identity_sessions' },
       { version: 30, name: 'platform_audit' },
+      { version: 31, name: 'platform_operations_core' },
+      { version: 32, name: 'platform_operations_projections' },
+      { version: 33, name: 'platform_metering_runtime' },
     ]);
   });
 
