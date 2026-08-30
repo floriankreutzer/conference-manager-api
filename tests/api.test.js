@@ -245,6 +245,12 @@ test('liveness remains available after the application rate-limit bucket is exha
     assert.equal(first.statusCode, 200);
     const limited = await request({ port, path: '/api/v1/health/ready' });
     assert.equal(limited.statusCode, 429);
+    const invalidMethod = await request({
+      port,
+      path: '/api/v1/health/live',
+      method: 'POST',
+    });
+    assert.equal(invalidMethod.statusCode, 429);
     const live = await request({ port, path: '/api/v1/health/live' });
     assert.equal(live.statusCode, 200);
     assert.equal(live.body.status, 'ok');
