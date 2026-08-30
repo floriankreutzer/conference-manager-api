@@ -95,9 +95,9 @@ async function insertSession(client, session) {
         issued_at, expires_at, step_up_expires_at
       )
       SELECT $1, $2, $3, $4, $5, $6, $7::text[], $8::text[], $9, $10, $11,
-        $12, $13, $14, database_time.issued_at,
+        $12::text, $13::text, $14::timestamptz, database_time.issued_at,
         database_time.issued_at + ($15::integer * INTERVAL '1 second'),
-        CASE WHEN $12 = 'step_up' THEN LEAST(
+        CASE WHEN $12::text = 'step_up' THEN LEAST(
           database_time.issued_at + ($15::integer * INTERVAL '1 second'),
           $14::timestamptz + ($16::integer * INTERVAL '1 second')
         ) ELSE NULL END
