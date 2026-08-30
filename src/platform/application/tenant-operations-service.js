@@ -442,6 +442,7 @@ export function createPlatformTenantOperationsService({
         occurredAt,
       });
       const result = await invitationTransactions.create({
+        operation: PLATFORM_OPERATION.TENANT_INVITATION_CREATE,
         tenantId,
         displayName,
         invitationId,
@@ -644,6 +645,7 @@ export function createPlatformTenantOperationsService({
         occurredAt,
       });
       const result = await lifecycleTransactions.compareAndSet({
+        operation: PLATFORM_OPERATION.LIFECYCLE_TRANSITION,
         tenantId,
         expectedRevision,
         expectedStatus: currentStatus,
