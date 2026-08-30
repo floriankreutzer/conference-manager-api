@@ -6,6 +6,7 @@ import {
   withDemoRuntimeSharedGate,
 } from '../persistence/postgres/demo-runtime-gate.js';
 import { applySecurityHeaders, createRequestId } from '../security.js';
+import { createDemoStaticHandler } from './static-handler.js';
 
 const LIVENESS_PATH = '/api/v1/health/live';
 
@@ -49,12 +50,24 @@ export function createDemoCustomerHttpServer(options) {
     throw new TypeError('DEMO_CUSTOMER_SERVER_CONFIG_REQUIRED');
   }
   const app = createApp(options);
+  const staticHandler = config.staticRoot
+    ? createDemoStaticHandler({ root: config.staticRoot, surface: 'customer' })
+    : null;
   const server = http.createServer({
     maxHeaderSize: 16_384,
     requireHostHeader: true,
   }, async (request, response) => {
-    if (requestPath(request, config.publicOrigin) === LIVENESS_PATH) {
+    const path = requestPath(request, config.publicOrigin);
+    if (path === LIVENESS_PATH) {
       await app(request, response);
+      return;
+    }
+    if (staticHandler && !path?.startsWith('/api/')) {
+      try {
+        await staticHandler(request, response);
+      } catch (error) {
+        sendRuntimeFailure(response, config, error);
+      }
       return;
     }
     try {
