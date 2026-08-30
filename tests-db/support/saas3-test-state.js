@@ -43,4 +43,7 @@ export async function clearSaas3TestState(pool) {
   const tables = SAAS3_TABLES.filter((table) => existing.has(table));
   if (!tables.length) return;
   await pool.query(`TRUNCATE ${tables.map((table) => `"${table}"`).join(', ')} RESTART IDENTITY CASCADE`);
+  if (existing.has('platform_audit_chain_state')) {
+    await pool.query('INSERT INTO platform_audit_chain_state (singleton) VALUES (true)');
+  }
 }
