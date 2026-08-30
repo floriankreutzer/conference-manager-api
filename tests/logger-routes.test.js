@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { Writable } from 'node:stream';
 import test from 'node:test';
 
 import { tenantCatalogueRouteKey } from '../src/http/settings/catalogue.js';
@@ -21,6 +22,24 @@ function loggedRoute(route, method) {
   });
   return JSON.parse(lines.at(-1));
 }
+
+test('the default output writer contains asynchronous stream failures', async () => {
+  let writes = 0;
+  const output = new Writable({
+    write(_chunk, _encoding, callback) {
+      writes += 1;
+      setImmediate(() => callback(Object.assign(new Error('collector unavailable'), { code: 'EPIPE' })));
+    },
+  });
+  const logger = createLogger({ output });
+
+  logger.lifecycle({ event: 'startup' });
+  await new Promise((resolve) => setImmediate(() => setImmediate(resolve)));
+
+  assert.equal(writes, 1);
+  assert.doesNotThrow(() => logger.lifecycle({ event: 'shutdown' }));
+  assert.equal(writes, 1);
+});
 
 test('Tenant user administration uses bounded operational route labels', () => {
   assert.equal(loggedRoute('tenant_users', 'GET').route, 'tenant_users');
