@@ -11,7 +11,6 @@ function closeHttpServerWithinDeadline(server, timeoutMs) {
       }
       reject(new Error('CUSTOMER_SHUTDOWN_TIMEOUT'));
     }, timeoutMs);
-    timeout.unref();
 
     try {
       server.close((error) => {
