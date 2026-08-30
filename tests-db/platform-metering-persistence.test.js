@@ -8,6 +8,7 @@ import {
 } from '../src/persistence/postgres/platform-metering-repository.js';
 import { createPostgresPool } from '../src/persistence/postgres/pool.js';
 import { migrateUp, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_A = 'a1111111-1111-4111-8111-111111111111';
 const TENANT_B = 'a2222222-2222-4222-8222-222222222222';
@@ -22,6 +23,7 @@ const PAYLOAD_DIGEST_B = '7'.repeat(64);
 const QUOTA_OPERATION_A = 'a4444444-4444-4444-8444-444444444444';
 const QUOTA_OPERATION_B = 'a5555555-5555-4555-8555-555555555555';
 const QUOTA_OPERATION_C = 'a6666666-6666-4666-8666-666666666666';
+const QUOTA_OPERATION_D = 'a7777777-7777-4777-8777-777777777777';
 const REQUEST_DIGEST_A = 'd'.repeat(64);
 const REQUEST_DIGEST_B = 'e'.repeat(64);
 const PERIOD_START = '2026-08-01T00:00:00.000Z';
@@ -76,6 +78,7 @@ async function resetFixtures(pool) {
   await pool.query('DELETE FROM platform_operator_tenant_scopes WHERE operator_id = $1', [OPERATOR_ID]);
   await pool.query('DELETE FROM platform_operators WHERE id = $1', [OPERATOR_ID]);
   await clearSaas3TestState(pool);
+  await removeSaas2TenantAdministrationFixtures(pool, [TENANT_A, TENANT_B]);
   await pool.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [[TENANT_A, TENANT_B]]);
 }
 
@@ -540,7 +543,7 @@ test('Platform metering PostgreSQL ledger, reconciliation and quota invariants',
     await assert.rejects(
       repository.setOperationalQuota(quotaInput(operatorSecurityVersion, {
         dimension: 'active_users',
-        idempotencyKey: QUOTA_OPERATION_C,
+        idempotencyKey: QUOTA_OPERATION_D,
         requestDigest: '2'.repeat(64),
       })),
       { message: 'AUDIT_PROBE_REJECTED' },
@@ -556,7 +559,7 @@ test('Platform metering PostgreSQL ledger, reconciliation and quota invariants',
     )).rowCount, 0);
     assert.equal((await pool.query(
       'SELECT 1 FROM platform_quota_operation_receipts WHERE idempotency_key = $1',
-      [QUOTA_OPERATION_C],
+      [QUOTA_OPERATION_D],
     )).rowCount, 0);
   });
 
