@@ -10,6 +10,21 @@ const APPROVED_STATIC_ADAPTER_IMPORTS = new Set([
   'node:path',
   'node:stream/promises',
 ]);
+const FORBIDDEN_ADAPTER_PATTERN = new RegExp([
+  'process\\.env',
+  'child_process',
+  '\\bvm\\b',
+  '\\bpg\\b',
+  'localStorage',
+  'sessionStorage',
+  'https?:\\/\\/',
+].join('|'), 'i');
+const FORBIDDEN_LOADER_PATTERN = new RegExp([
+  'process\\.env',
+  'https?:\\/\\/',
+  'GITHUB_TOKEN',
+  'SHARED_DEMO_API_READ_TOKEN',
+].join('|'));
 
 async function filesUnder(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -29,12 +44,12 @@ function importsOf(source) {
 const runtimeMjs = await filesUnder('src');
 for (const file of runtimeMjs) {
   if (!APPROVED_RUNTIME_MJS.has(file)) {
-    throw new Error(`${file} is an unreviewed .mjs runtime module outside the normal src/*.js architecture scan.`);
+    throw new Error(`${file} is an unreviewed .mjs runtime module.`);
   }
 }
 for (const required of APPROVED_RUNTIME_MJS) {
   if (!runtimeMjs.includes(required)) {
-    throw new Error(`Approved hosted Demo infrastructure module is missing: ${required}.`);
+    throw new Error(`Approved hosted Demo module is missing: ${required}.`);
   }
 }
 
@@ -44,7 +59,7 @@ if (
   adapterImports.length !== APPROVED_STATIC_ADAPTER_IMPORTS.size
   || adapterImports.some((specifier) => !APPROVED_STATIC_ADAPTER_IMPORTS.has(specifier))
 ) {
-  throw new Error('Hosted Demo static file adapter may import only the reviewed read-only Node filesystem/path/stream modules.');
+  throw new Error('Hosted Demo file adapter imports are outside the reviewed allowlist.');
 }
 for (const required of [
   'realpath(resolvedRoot)',
@@ -53,14 +68,14 @@ for (const required of [
   'pipeline(createReadStream(file.path), response)',
 ]) {
   if (!adapter.includes(required)) {
-    throw new Error(`Hosted Demo static file adapter is missing fail-closed boundary ${required}.`);
+    throw new Error(`Hosted Demo file adapter lacks boundary ${required}.`);
   }
 }
-if (/process\.env|child_process|\bvm\b|\bpg\b|localStorage|sessionStorage|https?:\/\//i.test(adapter)) {
-  throw new Error('Hosted Demo static file adapter must remain read-only filesystem infrastructure without environment, provider, database, browser-storage or outbound-network authority.');
+if (FORBIDDEN_ADAPTER_PATTERN.test(adapter)) {
+  throw new Error('Hosted Demo file adapter has forbidden runtime authority.');
 }
 if (/\b(?:SELECT|INSERT INTO|UPDATE|DELETE FROM)\b/.test(adapter)) {
-  throw new Error('Hosted Demo static file adapter must not contain SQL.');
+  throw new Error('Hosted Demo file adapter must not contain SQL.');
 }
 
 const loader = await readFile('src/demo/static-file-loader.js', 'utf8');
@@ -70,11 +85,11 @@ for (const required of [
   'module.createDemoStaticFileAdapter({ root })',
 ]) {
   if (!loader.includes(required)) {
-    throw new Error(`Hosted Demo static adapter loader is missing fixed composition boundary ${required}.`);
+    throw new Error(`Hosted Demo adapter loader lacks boundary ${required}.`);
   }
 }
-if (/process\.env|https?:\/\/|GITHUB_TOKEN|SHARED_DEMO_API_READ_TOKEN/.test(loader)) {
-  throw new Error('Hosted Demo static adapter loader must not accept environment-selected modules, outbound URLs or credentials.');
+if (FORBIDDEN_LOADER_PATTERN.test(loader)) {
+  throw new Error('Hosted Demo adapter loader has forbidden runtime authority.');
 }
 
 const handler = await readFile('src/demo/static-handler.js', 'utf8');
@@ -88,11 +103,13 @@ for (const required of [
   "file?.kind === 'invalid'",
 ]) {
   if (!handler.includes(required)) {
-    throw new Error(`Hosted Demo static transport is missing boundary ${required}.`);
+    throw new Error(`Hosted Demo static transport lacks boundary ${required}.`);
   }
 }
-if (/from ['"](?:node:)?(?:fs|child_process|vm)/.test(handler) || /static-file-adapter\.mjs/.test(handler)) {
-  throw new Error('Hosted Demo static transport must receive privileged filesystem I/O only through its injected port.');
+const handlerImportsPrivilegedModule = /from ['"](?:node:)?(?:fs|child_process|vm)/.test(handler);
+const handlerImportsAdapter = /static-file-adapter\.mjs/.test(handler);
+if (handlerImportsPrivilegedModule || handlerImportsAdapter) {
+  throw new Error('Hosted Demo static transport bypasses its injected file port.');
 }
 if (/https?:\/\//.test(handler)) {
   throw new Error('Hosted Demo static transport must not contain outbound URLs.');
@@ -106,7 +123,7 @@ for (const file of ['src/demo/customer-main.js', 'src/demo/platform-main.js']) {
     'staticFileAdapter',
   ]) {
     if (!source.includes(required)) {
-      throw new Error(`${file} is missing explicit hosted Demo infrastructure injection ${required}.`);
+      throw new Error(`${file} lacks hosted Demo injection ${required}.`);
     }
   }
 }
@@ -118,7 +135,7 @@ for (const file of ['src/demo/customer-composition.js', 'src/demo/platform-compo
     'staticFileAdapter,',
   ]) {
     if (!source.includes(required)) {
-      throw new Error(`${file} is missing explicit hosted Demo static-port composition ${required}.`);
+      throw new Error(`${file} lacks hosted Demo composition ${required}.`);
     }
   }
 }
@@ -131,7 +148,7 @@ for (const file of ['src/demo/customer-server.js', 'src/demo/platform-server.js'
     "!path?.startsWith('/api/')",
   ]) {
     if (!source.includes(required)) {
-      throw new Error(`${file} is missing hosted same-origin boundary ${required}.`);
+      throw new Error(`${file} lacks hosted same-origin boundary ${required}.`);
     }
   }
 }
@@ -152,7 +169,7 @@ for (const required of [
   'DEMO_RESET_DATABASE_URL',
 ]) {
   if (!blueprint.includes(required)) {
-    throw new Error(`Hosted Demo Render Blueprint is missing required boundary ${required}.`);
+    throw new Error(`Hosted Demo Render Blueprint lacks ${required}.`);
   }
 }
 for (const forbidden of [
@@ -162,7 +179,7 @@ for (const forbidden of [
   'CORS',
 ]) {
   if (blueprint.includes(forbidden)) {
-    throw new Error(`Hosted Demo Render Blueprint contains forbidden deployment authority ${forbidden}.`);
+    throw new Error(`Hosted Demo Render Blueprint contains ${forbidden}.`);
   }
 }
 
@@ -175,11 +192,11 @@ for (const required of [
   "rm(path.join(TARGET_DIRECTORY, '.git')",
 ]) {
   if (!prepare.includes(required)) {
-    throw new Error(`Hosted Demo immutable frontend preparation is missing ${required}.`);
+    throw new Error(`Hosted Demo frontend preparation lacks ${required}.`);
   }
 }
 if (/\bshell\s*:\s*true\b|GITHUB_TOKEN|SHARED_DEMO_API_READ_TOKEN/.test(prepare)) {
-  throw new Error('Hosted Demo frontend preparation must not depend on shell interpolation or checkout credentials.');
+  throw new Error('Hosted Demo frontend preparation uses forbidden checkout authority.');
 }
 
 console.log('Hosted Demo deployment/filesystem architecture boundary check passed.');
