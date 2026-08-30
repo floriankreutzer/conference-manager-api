@@ -63,7 +63,7 @@ function assetPath(surface, pathname) {
 }
 
 function extensionOf(relativePath) {
-  const match = /\.[A-Za-z0-9]+$/.exec(relativePath);
+  const match = relativePath.match(/\.[A-Za-z0-9]+$/);
   return match ? match[0].toLowerCase() : null;
 }
 
