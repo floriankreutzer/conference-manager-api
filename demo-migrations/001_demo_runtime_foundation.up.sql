@@ -181,13 +181,13 @@ DECLARE
   ];
   platform_read_tables text[] := ARRAY[
     'tenants', 'users', 'rooms', 'integrations', 'sessions', 'tenant_entitlements',
-    'tenant_user_roles', 'booking_provider_references', 'microsoft365_room_mappings',
-    'microsoft365_capability_health'
+    'tenant_user_roles', 'booking_provider_references'
   ];
   platform_write_tables text[] := ARRAY[
     'tenants', 'users', 'sessions', 'tenant_entitlements', 'integrations', 'audit_events',
     'booking_provider_references', 'tenant_onboarding_invitations', 'tenant_identity_bindings',
     'tenant_claim_transactions', 'user_identity_bindings', 'tenant_user_roles',
+    'microsoft365_room_mappings', 'microsoft365_capability_health',
     'tenant_organization_settings', 'tenant_organization_revisions', 'tenant_catalogue_revisions',
     'tenant_booking_policy_configuration', 'tenant_booking_policy_revisions',
     'tenant_cost_allocation_configuration', 'tenant_cost_allocation_revisions', 'platform_operators',

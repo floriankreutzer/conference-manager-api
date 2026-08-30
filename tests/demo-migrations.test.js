@@ -29,6 +29,10 @@ test('Demo migration stream is versioned independently from Production', async (
   assert.match(demo[0].up, /platform_write_tables text\[\] := ARRAY\[[\s\S]*?'audit_events'/);
   assert.match(
     demo[0].up,
+    /platform_write_tables text\[\] := ARRAY\[[\s\S]*?'microsoft365_room_mappings', 'microsoft365_capability_health'/,
+  );
+  assert.match(
+    demo[0].up,
     /ALTER FUNCTION project_tenant_audit_diagnostic_event\(\)[\s\S]*?SECURITY DEFINER[\s\S]*?SET search_path = pg_catalog, public/,
   );
   assert.match(
