@@ -157,6 +157,12 @@ jobs:
       - name: Run shared PostgreSQL browser journey
         working-directory: frontend
         run: npm run test:e2e:shared-demo
+      - name: Print bounded Demo API logs on failure
+        if: failure()
+        working-directory: api
+        run: |
+          if [[ -f customer-demo-api.log ]]; then tail -n 200 customer-demo-api.log; fi
+          if [[ -f platform-demo-api.log ]]; then tail -n 200 platform-demo-api.log; fi
       - name: Stop Demo API processes
         if: always()
         working-directory: api
