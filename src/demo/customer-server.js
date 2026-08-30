@@ -39,7 +39,12 @@ function sendRuntimeFailure(response, config, error) {
 }
 
 export function createDemoCustomerHttpServer(options) {
-  const { config, persistence, demoRuntimeGatePool } = options || {};
+  const {
+    config,
+    persistence,
+    demoRuntimeGatePool,
+    staticFileAdapter,
+  } = options || {};
   if (
     !config?.demoRuntime
     || !persistence?.pool
@@ -51,7 +56,11 @@ export function createDemoCustomerHttpServer(options) {
   }
   const app = createApp(options);
   const staticHandler = config.staticRoot
-    ? createDemoStaticHandler({ root: config.staticRoot, surface: 'customer' })
+    ? createDemoStaticHandler({
+      root: config.staticRoot,
+      surface: 'customer',
+      fileAdapter: staticFileAdapter,
+    })
     : null;
   const server = http.createServer({
     maxHeaderSize: 16_384,
