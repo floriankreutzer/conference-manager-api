@@ -73,7 +73,7 @@ async function seedCustomerIdentities(client, fixture) {
           tenant_id, provider, provider_tenant_reference,
           provider_user_reference, user_id, created_at, updated_at
         )
-        VALUES ($1, $2, $1::text, $3, $4, $5, $5)
+        VALUES ($1::uuid, $2, $1::text, $3, $4, $5, $5)
       `,
       values: [
         persona.tenantId,
