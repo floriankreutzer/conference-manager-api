@@ -15,14 +15,14 @@ function room(value) {
     throw new TypeError('MICROSOFT365_ROOM_OBSERVATION_INVALID');
   }
   if (
-    value.providerCapacity !== null
-    && (!Number.isSafeInteger(value.providerCapacity) || value.providerCapacity < 0 || value.providerCapacity > 1_000_000)
+    value.capacity !== null
+    && (!Number.isSafeInteger(value.capacity) || value.capacity < 0 || value.capacity > 1_000_000)
   ) throw new TypeError('MICROSOFT365_ROOM_OBSERVATION_INVALID');
   return Object.freeze({
     externalRoomId: identifier(value.externalRoomId, 512, 'MICROSOFT365_ROOM_OBSERVATION_INVALID'),
     resourceAddress: identifier(value.resourceAddress, 320, 'MICROSOFT365_ROOM_OBSERVATION_INVALID'),
-    providerDisplayName: identifier(value.providerDisplayName, 512, 'MICROSOFT365_ROOM_OBSERVATION_INVALID'),
-    providerCapacity: value.providerCapacity,
+    providerDisplayName: identifier(value.displayName, 512, 'MICROSOFT365_ROOM_OBSERVATION_INVALID'),
+    providerCapacity: value.capacity,
     providerStatus: value.providerStatus === 'inactive' ? 'inactive' : 'active',
   });
 }
@@ -37,7 +37,7 @@ export function createPostgresMicrosoft365RoomObservationRepository(pool) {
       if (!Number.isSafeInteger(connectionVersion) || connectionVersion < 1) {
         throw new TypeError('MICROSOFT365_ROOM_OBSERVATION_VERSION_INVALID');
       }
-      if (!Array.isArray(rooms) || rooms.length > 500) {
+      if (!Array.isArray(rooms) || rooms.length > 1_000) {
         throw new TypeError('MICROSOFT365_ROOM_OBSERVATION_INVALID');
       }
       const normalized = rooms.map(room);

@@ -10,6 +10,8 @@ import {
 import { requirePlatformOperatorId } from './platform-operations-query.js';
 import { createPlatformOperationCursorCodec } from './platform-operations-query.js';
 
+const ENTRA_IDENTITY_PROVIDER = 'microsoft_entra';
+
 function instant(value) {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
@@ -50,6 +52,7 @@ function stateEquals(left, right) {
 export function createPostgresPlatformRecoveryRepository(pool, {
   tenantAuditRepository,
   platformAuditRepository,
+  onboardingRepository,
   cursorSecret,
   idFactory = randomUUID,
 } = {}) {
@@ -57,6 +60,9 @@ export function createPostgresPlatformRecoveryRepository(pool, {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
   }
   requireRepositories(tenantAuditRepository, platformAuditRepository);
+  if (!onboardingRepository || typeof onboardingRepository.unbindActiveWithClient !== 'function') {
+    throw new TypeError('ONBOARDING_REPOSITORY_REQUIRED');
+  }
   if (typeof idFactory !== 'function') throw new TypeError('ID_FACTORY_REQUIRED');
   const cursorCodec = createPlatformOperationCursorCodec({ secret: cursorSecret });
   const audit = { tenantAuditRepository, platformAuditRepository };
@@ -224,9 +230,9 @@ export function createPostgresPlatformRecoveryRepository(pool, {
         text: `
           SELECT binding.revision AS binding_revision,
                  tenant.lifecycle_revision, tenant.status AS lifecycle_status,
-                 (SELECT count(*)::integer FROM requests request
-                  WHERE request.tenant_id = tenant.id
-                    AND request.status IN ('Submitted', 'In Review', 'Confirmed', 'Change Requested'))
+                 (SELECT count(*)::integer FROM booking_provider_references reference
+                  WHERE reference.tenant_id = tenant.id
+                    AND reference.state <> 'cancelled')
                    AS nonterminal_count,
                  (SELECT count(*)::integer FROM sessions session
                   WHERE session.tenant_id = tenant.id AND session.revoked_at IS NULL
@@ -646,57 +652,19 @@ export function createPostgresPlatformRecoveryRepository(pool, {
 
     executeIdentityUnbind(values) {
       return execute(values, async (client) => {
-        const current = await client.query({
-          name: 'platform-recovery-lock-identity-unbind',
-          text: `
-            SELECT binding.id, binding.revision, tenant.lifecycle_revision, tenant.status,
-                   (SELECT count(*)::integer FROM requests request
-                    WHERE request.tenant_id = tenant.id
-                      AND request.status IN ('Submitted', 'In Review', 'Confirmed', 'Change Requested'))
-                     AS nonterminal_count
-            FROM tenants tenant JOIN tenant_identity_bindings binding
-              ON binding.tenant_id = tenant.id AND binding.status = 'active'
-            WHERE tenant.id = $1 FOR UPDATE OF tenant, binding
-          `,
-          values: [values.tenantId],
+        const result = await onboardingRepository.unbindActiveWithClient(client, {
+          tenantId: values.tenantId,
+          provider: ENTRA_IDENTITY_PROVIDER,
+          changedAt: new Date(values.occurredAt),
+          expectedBindingRevision: values.expectedStateBinding.bindingRevision,
+          expectedLifecycleRevision: values.expectedStateBinding.lifecycleRevision,
+          expectedLifecycleStatus: values.expectedStateBinding.lifecycleStatus,
         });
-        const row = current.rows[0];
-        if (
-          !row
-          || Number(row.revision) !== values.expectedStateBinding.bindingRevision
-          || Number(row.lifecycle_revision) !== values.expectedStateBinding.lifecycleRevision
-          || row.status !== values.expectedStateBinding.lifecycleStatus
-          || !['pending', 'onboarding'].includes(row.status)
-          || Number(row.nonterminal_count) !== 0
-        ) return Object.freeze({ outcome: 'stale' });
-        const revoked = await client.query({
-          name: 'platform-recovery-revoke-unbound-tenant-sessions',
-          text: `UPDATE sessions SET revoked_at = $2 WHERE tenant_id = $1
-                 AND revoked_at IS NULL AND expires_at > $2`,
-          values: [values.tenantId, values.occurredAt],
-        });
-        await client.query({
-          name: 'platform-recovery-delete-unbound-user-identities',
-          text: 'DELETE FROM user_identity_bindings WHERE tenant_id = $1',
-          values: [values.tenantId],
-        });
-        const binding = await client.query({
-          name: 'platform-recovery-unbind-tenant-identity',
-          text: `UPDATE tenant_identity_bindings
-                 SET status = 'unbound', revision = revision + 1, updated_at = $2
-                 WHERE id = $1 RETURNING revision`,
-          values: [row.id, values.occurredAt],
-        });
-        await client.query({
-          name: 'platform-recovery-bump-unbound-tenant-session-revision',
-          text: `UPDATE tenants SET customer_session_revision = customer_session_revision + 1,
-                 updated_at = $2 WHERE id = $1`,
-          values: [values.tenantId, values.occurredAt],
-        });
+        if (!result) return Object.freeze({ outcome: 'stale' });
         return Object.freeze({ outcome: 'updated', result: Object.freeze({
           status: 'unbound',
-          bindingRevision: Number(binding.rows[0].revision),
-          revokedSessionCount: revoked.rowCount,
+          bindingRevision: result.bindingRevision,
+          revokedSessionCount: result.revokedSessionCount,
         }) });
       });
     },
