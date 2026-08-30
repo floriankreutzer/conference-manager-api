@@ -16,9 +16,34 @@ const CONTENT_TYPES = Object.freeze({
   '.woff2': 'font/woff2',
 });
 
+const CUSTOMER_STYLE_SOURCES = Object.freeze([
+  "'self'",
+  "'sha256-IwFkyCVIyurW9bJF80THrt85tGm07bI5WVzgH12f8GE='",
+  "'sha256-/ZJyhxwkFy8aRB7cj/3aOjLSm85p3cPyLmPldxKhD3s='",
+]);
+const COMMON_CSP_DIRECTIVES = Object.freeze([
+  "script-src 'self'",
+  "style-src-attr 'none'",
+  "img-src 'self' data:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'self'",
+  "worker-src 'none'",
+  "frame-ancestors 'none'",
+]);
 const CONTENT_SECURITY_POLICIES = Object.freeze({
-  customer: "default-src 'self'; script-src 'self'; style-src 'self' 'sha256-IwFkyCVIyurW9bJF80THrt85tGm07bI5WVzgH12f8GE=' 'sha256-/ZJyhxwkFy8aRB7cj/3aOjLSm85p3cPyLmPldxKhD3s='; style-src-attr 'none'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; worker-src 'none'; frame-ancestors 'none'",
-  platform: "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'none'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; worker-src 'none'; frame-ancestors 'none'",
+  customer: [
+    "default-src 'self'",
+    `style-src ${CUSTOMER_STYLE_SOURCES.join(' ')}`,
+    ...COMMON_CSP_DIRECTIVES,
+  ].join('; '),
+  platform: [
+    "default-src 'self'",
+    "style-src 'self'",
+    ...COMMON_CSP_DIRECTIVES,
+  ].join('; '),
 });
 
 function safePathname(rawUrl) {
