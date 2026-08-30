@@ -11,6 +11,7 @@
     "start:platform": "node src/platform-main.js",
     "start:demo:customer": "node src/demo/customer-main.js",
     "start:demo:platform": "node src/demo/platform-main.js",
+    "demo:hosted:prepare": "node scripts/prepare-hosted-demo-frontend.mjs",
     "db:migrate": "node scripts/db-migrate.mjs up",
     "db:rollback": "node scripts/db-migrate.mjs down",
     "demo:db:migrate": "node scripts/demo-db-migrate.mjs up",
