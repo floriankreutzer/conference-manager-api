@@ -1,5 +1,3 @@
-import { createDemoStaticFileAdapter } from './static-file-adapter.mjs';
-
 const SURFACES = new Set(['customer', 'platform']);
 const REQUEST_TARGET_LIMIT = 8_192;
 const CONTENT_TYPES = Object.freeze({
@@ -93,8 +91,7 @@ function sendEmpty(response, surface, statusCode, headers = {}) {
 export function createDemoStaticHandler({ root, surface, fileAdapter } = {}) {
   if (typeof root !== 'string' || !root) throw new TypeError('DEMO_STATIC_ROOT_REQUIRED');
   if (!SURFACES.has(surface)) throw new TypeError('DEMO_STATIC_SURFACE_INVALID');
-  const files = fileAdapter || createDemoStaticFileAdapter({ root });
-  if (!files || typeof files.open !== 'function' || typeof files.pipe !== 'function') {
+  if (!fileAdapter || typeof fileAdapter.open !== 'function' || typeof fileAdapter.pipe !== 'function') {
     throw new TypeError('DEMO_STATIC_FILE_ADAPTER_REQUIRED');
   }
 
@@ -114,7 +111,7 @@ export function createDemoStaticHandler({ root, surface, fileAdapter } = {}) {
       return;
     }
 
-    const file = await files.open(relativePath);
+    const file = await fileAdapter.open(relativePath);
     if (file?.kind === 'invalid') {
       sendEmpty(response, surface, 400);
       return;
@@ -140,7 +137,7 @@ export function createDemoStaticHandler({ root, surface, fileAdapter } = {}) {
       return;
     }
     try {
-      await files.pipe(file, response);
+      await fileAdapter.pipe(file, response);
     } catch (error) {
       if (!response.destroyed) response.destroy(error);
     }
