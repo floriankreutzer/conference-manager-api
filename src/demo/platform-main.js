@@ -1,7 +1,7 @@
 import { createDemoPlatformComposition } from './platform-composition.js';
-import { loadDemoConfig } from './config.js';
+import { loadDemoPlatformConfig } from './config.js';
 
-const composition = createDemoPlatformComposition({ config: loadDemoConfig(process.env) });
+const composition = createDemoPlatformComposition({ config: loadDemoPlatformConfig(process.env) });
 await composition.start();
 
 let stopping = false;

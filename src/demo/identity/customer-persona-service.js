@@ -1,4 +1,5 @@
 import { tenantAuthorizationSnapshot } from '../../authorization/policy.js';
+import { hasSessionCookie } from '../../identity/session-cookie.js';
 import { DEMO_FIXTURE } from '../fixture.js';
 
 const PERSONA_PATTERN = /^[a-z][a-z0-9_]{1,31}$/;
@@ -98,7 +99,12 @@ export function createDemoCustomerPersonaService({
 
     async establish(request, { correlationId } = {}) {
       const principal = await sessionService.resolvePrincipal(request);
-      if (!principal) return issue(await defaultSelection(), correlationId);
+      if (!principal) {
+        if (hasSessionCookie(request?.headers)) {
+          throw new TypeError('DEMO_CUSTOMER_SESSION_INVALID');
+        }
+        return issue(await defaultSelection(), correlationId);
+      }
       const selection = await personaRepository.findCustomerForPrincipal({
         tenantId: principal.tenantId,
         userId: principal.userId,

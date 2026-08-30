@@ -93,7 +93,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager
-          ref: 9651672bba2811c25d4ccaa6ef38ec8c205b19cb
+          ref: 26aae6b142c22418f139ec37ca9d518bc999c564
           path: frontend
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -122,9 +122,20 @@ jobs:
       - name: Start separate Customer and Platform Demo APIs
         working-directory: api
         run: |
-          npm run start:demo:customer >customer-demo-api.log 2>&1 &
+          env \
+            -u DEMO_PLATFORM_DATABASE_URL \
+            -u DEMO_RESET_DATABASE_URL \
+            -u DEMO_MIGRATION_DATABASE_URL \
+            -u DEMO_PLATFORM_SESSION_SECRET \
+            -u DEMO_PLATFORM_CSRF_SECRET \
+            npm run start:demo:customer >customer-demo-api.log 2>&1 &
           echo $! >customer-demo-api.pid
-          npm run start:demo:platform >platform-demo-api.log 2>&1 &
+          env \
+            -u DEMO_CUSTOMER_DATABASE_URL \
+            -u DEMO_MIGRATION_DATABASE_URL \
+            -u DEMO_CUSTOMER_SESSION_SECRET \
+            -u DEMO_CUSTOMER_CSRF_SECRET \
+            npm run start:demo:platform >platform-demo-api.log 2>&1 &
           echo $! >platform-demo-api.pid
       - name: Wait for both Demo APIs
         working-directory: api

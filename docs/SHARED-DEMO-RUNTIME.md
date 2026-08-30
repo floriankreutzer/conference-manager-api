@@ -104,6 +104,12 @@ Reset is destructive by design and is allowed only in the isolated Demo database
 
 Every normal customer or Platform request takes the shared Demo advisory lock. Reset takes the matching exclusive lock and then performs the complete truncate, seed, Demo provider/persona insertion and semantic readback in one `SERIALIZABLE` transaction. A lock acquisition/release failure, sentinel mismatch, schema drift, table drift, seed failure or checksum mismatch fails the operation; partial state cannot commit. The post-seed semantic projection must reproduce the source checksum before success is returned.
 
+An authenticated HTTP reset also revalidates its exact internal Platform session, operator and
+security version after acquiring the exclusive lock and before destructive SQL. A second request
+that authorized concurrently cannot continue after the first reset revoked all sessions. Reset
+does not restart PostgreSQL sequences: generated audit and operational identifiers remain
+monotonic, and the reset role does not require sequence ownership or migration-owner membership.
+
 The reset service returns only `seedVersion` and `checksum`. The CLI wraps that descriptor in a
 bounded completion envelope; the HTTP reset route adds its server request ID. Reset truncates all
 customer and Platform sessions. The authorized Platform reset route therefore also clears the
@@ -139,6 +145,10 @@ Platform control routes:
 
 Persona and Tenant values are positively validated and matched against source-defined server mappings. A missing mapping is rejected; it never creates an ad hoc identity. Session issue uses the canonical PostgreSQL session repositories. A persona switch issues the new session and revokes the old one; if old-session revocation fails, the new session is revoked and the switch fails. The two establish routes deliberately issue their documented defaults when no cookie exists; protected routes reject absence, and malformed, expired, revoked or security-version-stale session state fails through the canonical session boundary.
 
+A default is issued only when the matching Demo cookie is genuinely absent. A presented malformed,
+duplicated, expired, revoked or unknown Customer or Platform Demo cookie fails closed and is never
+silently replaced by a new default session.
+
 Customer roles remain `employee`, `conference_manager` and `tenant_admin`; customer permissions are derived from the canonical Tenant authorization policy. Platform personas use the canonical Platform role/permission policy and server-owned target scope. A customer session never authorizes Platform routes, a Platform session never becomes a Tenant Principal, and choosing a different Demo Tenant creates a new server-issued customer Principal instead of using the submitted Tenant ID directly on business queries.
 
 ## Deployment and initial seed
@@ -155,6 +165,12 @@ Provisioning order is mandatory:
 8. route the customer and Platform HTTPS origins only to their matching process;
 9. verify both session endpoints, a customer persona/Tenant switch, a denied Platform operation, a shared-state journey and one deterministic provider-degradation journey;
 10. run an authorized reset, verify the returned seed descriptor, re-establish both sessions and confirm the baseline checksum is unchanged.
+
+The Customer process receives only its Customer database URL and Customer session/CSRF secrets.
+The Platform process receives its Platform database URL plus the reset URL used exclusively by its
+authenticated reset component; it does not receive Customer or migration-owner credentials.
+Migration and initial-reset commands receive their additional purpose-specific credentials only
+for their bounded command lifetime. Surface-specific loaders reject excess database credentials.
 
 The commands are intentionally separate:
 

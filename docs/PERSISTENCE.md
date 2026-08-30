@@ -305,9 +305,14 @@ exclusive lock and runs truncate, seed, provider/persona insertion and semantic 
 serializable transaction. A checksum, inventory, lock, seed or readback failure rolls back the
 complete operation.
 
+For an HTTP reset, the reset transaction revalidates the exact internal Platform session and
+operator security version while holding the exclusive lock. Truncation preserves PostgreSQL
+sequence positions; audit and operational identifiers therefore remain monotonic, and the reset
+role requires sequence usage rather than sequence ownership.
+
 Reset intentionally preserves the two migration ledgers and immutable sentinel. It resets all
-authoritative customer/Platform business, session, audit, projection and metering state, including
-identity sequences. It is not a Production migration or backup/restore mechanism and its role must
+authoritative customer/Platform business, session, audit, projection and metering rows while
+preserving identity-sequence positions. It is not a Production migration or backup/restore mechanism and its role must
 never be provisioned against a Pilot/Production database. See `docs/SHARED-DEMO-RUNTIME.md`.
 
 ## Transaction contract

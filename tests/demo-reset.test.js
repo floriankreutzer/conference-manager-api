@@ -39,7 +39,11 @@ function validSentinel(overrides = {}) {
   };
 }
 
-function createFakePool({ sentinel = validSentinel(), sentinelRowCount = 1 } = {}) {
+function createFakePool({
+  sentinel = validSentinel(),
+  sentinelRowCount = 1,
+  authorityResults = null,
+} = {}) {
   const queries = [];
   const waiters = [];
   let exclusiveHeld = false;
@@ -81,6 +85,10 @@ function createFakePool({ sentinel = validSentinel(), sentinelRowCount = 1 } = {
               rows: [...DEMO_RESET_TABLES, ...META_TABLES].sort().map((tablename) => ({ tablename })),
             };
           }
+          if (query?.name === 'demo-reset-authority-revalidation') {
+            const allowed = authorityResults === null ? true : authorityResults.shift() === true;
+            return { rowCount: allowed ? 1 : 0, rows: allowed ? [{ '?column?': 1 }] : [] };
+          }
           return { rowCount: 1, rows: [] };
         },
         release() {},
@@ -91,11 +99,17 @@ function createFakePool({ sentinel = validSentinel(), sentinelRowCount = 1 } = {
 
 const OPERATOR_ID = '22222222-2222-4222-8222-222222222222';
 const CORRELATION_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const SESSION_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const RESET_ACTOR = Object.freeze({
   operatorId: OPERATOR_ID,
   roles: Object.freeze([PLATFORM_ROLE.SECURITY_ADMIN]),
   permissions: permissionsForPlatformRoles([PLATFORM_ROLE.SECURITY_ADMIN]),
   assuranceLevel: 'step_up',
+});
+const RESET_AUTHORITY = Object.freeze({
+  operatorId: OPERATOR_ID,
+  sessionId: SESSION_ID,
+  securityVersion: 1,
 });
 
 function createAuditRepository() {
@@ -148,6 +162,7 @@ test('reset is atomic, reseeds deterministic state and returns an immutable seed
   }).reset({
     fixture: DEMO_FIXTURE,
     checksum: DEMO_FIXTURE_CHECKSUM,
+    authority: RESET_AUTHORITY,
     auditEventFor: ({ outcome }) => ({ outcome }),
   });
   assert.deepEqual(result, {
@@ -159,6 +174,13 @@ test('reset is atomic, reseeds deterministic state and returns an immutable seed
   const names = pool.queries.map(({ name }) => name).filter(Boolean);
   assert.ok(names.indexOf('demo-reset-sentinel') < names.indexOf('demo-reset-truncate'));
   assert.ok(names.indexOf('demo-reset-truncate') < names.indexOf('demo-reset-insert-provider-simulation'));
+  const truncate = pool.queries.find(({ name }) => name === 'demo-reset-truncate').text;
+  assert.doesNotMatch(truncate, /RESTART\s+IDENTITY/i);
+  const authorityQuery = pool.queries.find(
+    ({ name }) => name === 'demo-reset-authority-revalidation',
+  ).text;
+  assert.match(authorityQuery, /platform_session\.principal_version = \$3/);
+  assert.match(authorityQuery, /platform_session\.revoked_at IS NULL/);
   assert.equal(auditRepository.transactional.length, 1);
   assert.deepEqual(auditRepository.transactional[0], { outcome: 'success' });
   assert.equal(auditRepository.attempts.length, 0);
@@ -189,6 +211,30 @@ test('exclusive Demo gate serializes concurrent resets', async () => {
   assert.equal(results.every(({ checksum }) => checksum === DEMO_FIXTURE_CHECKSUM), true);
 });
 
+test('a queued reset revalidates its concrete session under the exclusive gate', async () => {
+  const pool = createFakePool({ authorityResults: [true, false] });
+  const auditRepository = createAuditRepository();
+  const resetRepository = repository(pool, { auditRepository });
+  const input = {
+    fixture: DEMO_FIXTURE,
+    checksum: DEMO_FIXTURE_CHECKSUM,
+    authority: RESET_AUTHORITY,
+    auditEventFor: ({ outcome, reasonCode }) => ({ outcome, reasonCode }),
+  };
+  const results = await Promise.allSettled([
+    resetRepository.reset(input),
+    resetRepository.reset(input),
+  ]);
+  assert.equal(results.filter(({ status }) => status === 'fulfilled').length, 1);
+  const rejection = results.find(({ status }) => status === 'rejected');
+  assert.equal(rejection.reason.code, 'DEMO_RESET_AUTHORITY_REVOKED');
+  assert.equal(
+    pool.queries.filter(({ name }) => name === 'demo-reset-authority-revalidation').length,
+    2,
+  );
+  assert.equal(pool.queries.filter(({ name }) => name === 'demo-reset-truncate').length, 1);
+});
+
 test('semantic projection mismatch rolls the transaction back', async () => {
   const pool = createFakePool();
   const auditRepository = createAuditRepository();
@@ -201,6 +247,7 @@ test('semantic projection mismatch rolls the transaction back', async () => {
     }).reset({
       fixture: DEMO_FIXTURE,
       checksum: DEMO_FIXTURE_CHECKSUM,
+      authority: RESET_AUTHORITY,
       auditEventFor: ({ outcome, reasonCode }) => ({ outcome, reasonCode }),
     }),
     (error) => error.code === 'DEMO_RESET_SEMANTIC_CHECKSUM_MISMATCH',
@@ -223,6 +270,7 @@ test('success audit append failure rolls reset back and records only bounded fai
     repository(pool, { auditRepository }).reset({
       fixture: DEMO_FIXTURE,
       checksum: DEMO_FIXTURE_CHECKSUM,
+      authority: RESET_AUTHORITY,
       auditEventFor: ({ outcome, reasonCode }) => ({ outcome, reasonCode }),
     }),
     /simulated audit persistence failure/,
@@ -277,6 +325,7 @@ test('reset service validates the minimized actor and creates bounded correlated
   await assert.rejects(
     service.reset({
       actor: { ...RESET_ACTOR, sessionId: 'forbidden' },
+      authority: RESET_AUTHORITY,
       correlationId: CORRELATION_ID,
       auditEventFor() {},
     }),
@@ -284,6 +333,7 @@ test('reset service validates the minimized actor and creates bounded correlated
   );
   await service.reset({
     actor: RESET_ACTOR,
+    authority: RESET_AUTHORITY,
     correlationId: CORRELATION_ID,
     auditEventFor(input) {
       attempts.push(input);
@@ -325,6 +375,8 @@ test('Platform reset route passes only minimized authenticated actor authority',
     roles: [PLATFORM_ROLE.SECURITY_ADMIN],
     permissions: permissionsForPlatformRoles([PLATFORM_ROLE.SECURITY_ADMIN]),
     assurance: { level: 'step_up' },
+    securityVersion: 1,
+    session: { id: SESSION_ID },
   };
   const module = createDemoPlatformControlRoutes({
     personaService: { async establish() {}, async switch() {} },
@@ -355,6 +407,7 @@ test('Platform reset route passes only minimized authenticated actor authority',
   });
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].actor, RESET_ACTOR);
+  assert.deepEqual(calls[0].authority, RESET_AUTHORITY);
   assert.equal(calls[0].correlationId, CORRELATION_ID);
   assert.equal(typeof calls[0].auditEventFor, 'function');
   const success = calls[0].auditEventFor({
@@ -376,6 +429,8 @@ test('Platform reset route records a bounded denial before rejecting missing rec
     roles: [PLATFORM_ROLE.SECURITY_ADMIN],
     permissions: permissionsForPlatformRoles([PLATFORM_ROLE.SECURITY_ADMIN]),
     assurance: { level: 'step_up' },
+    securityVersion: 1,
+    session: { id: SESSION_ID },
   };
   const module = createDemoPlatformControlRoutes({
     personaService: { async establish() {}, async switch() {} },

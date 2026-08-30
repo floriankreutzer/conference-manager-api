@@ -47,6 +47,14 @@ function resetActor(principal) {
   });
 }
 
+function resetAuthority(principal) {
+  return Object.freeze({
+    operatorId: principal.operatorId,
+    sessionId: principal.session.id,
+    securityVersion: principal.securityVersion,
+  });
+}
+
 function resetAuditEvent({ actor, correlationId, outcome, reasonCode, seedVersion }) {
   const failed = outcome !== PLATFORM_AUDIT_OUTCOME.SUCCESS;
   return normalizePlatformAuditEvent({
@@ -206,6 +214,7 @@ export function createDemoPlatformControlRoutes({
         }
         const reset = await resetService.reset({
           actor,
+          authority: resetAuthority(principal),
           correlationId: requestId,
           auditEventFor: resetAuditEvent,
         });

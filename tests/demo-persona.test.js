@@ -209,3 +209,67 @@ test('Platform Demo sessions fail closed when canonical roles or scopes change',
 
   await assert.rejects(service.establish({}), /DEMO_PLATFORM_SESSION_AUTHORITY_INVALID/);
 });
+
+test('Demo establish issues defaults only when its own session cookie is genuinely absent', async () => {
+  const customerIssues = [];
+  const customer = createDemoCustomerPersonaService({
+    sessionService: {
+      async issue(identity) {
+        customerIssues.push(identity);
+        return { principal: {}, csrfToken: 'csrf', setCookie: 'cookie' };
+      },
+      async resolvePrincipal() { return null; },
+      async revoke() { return true; },
+      csrfTokenForPrincipal() { return 'csrf'; },
+    },
+    personaRepository: {
+      async listTenants() { return []; },
+      async findCustomer() { return customerSelection(); },
+      async findCustomerForPrincipal() { return null; },
+      async findDefaultCustomer() { return customerSelection(); },
+    },
+  });
+  await customer.establish({ headers: {} });
+  assert.equal(customerIssues.length, 1);
+  for (const cookie of [
+    'cm_session=malformed',
+    `other=value; cm_session=${'a'.repeat(43)}; cm_session=${'b'.repeat(43)}`,
+    'cm_session',
+  ]) {
+    await assert.rejects(
+      customer.establish({ headers: { cookie } }),
+      /DEMO_CUSTOMER_SESSION_INVALID/,
+    );
+  }
+  assert.equal(customerIssues.length, 1);
+
+  const platformIssues = [];
+  const platform = createDemoPlatformPersonaService({
+    sessionService: {
+      async issue(identity) {
+        platformIssues.push(identity);
+        return { principal: {}, csrfToken: 'csrf', setCookie: 'cookie' };
+      },
+      async resolvePrincipal() { return null; },
+      async revoke() { return true; },
+      csrfTokenForPrincipal() { return 'csrf'; },
+    },
+    personaRepository: {
+      async findPlatform() { return platformSelection(); },
+      async findPlatformForPrincipal() { return null; },
+    },
+  });
+  await platform.establish({ headers: { cookie: 'unrelated=value' } });
+  assert.equal(platformIssues.length, 1);
+  for (const cookie of [
+    'cm_platform_session=expired',
+    `cm_platform_session=${'a'.repeat(43)}; cm_platform_session=${'b'.repeat(43)}`,
+    'cm_platform_session',
+  ]) {
+    await assert.rejects(
+      platform.establish({ headers: { cookie } }),
+      /DEMO_PLATFORM_SESSION_INVALID/,
+    );
+  }
+  assert.equal(platformIssues.length, 1);
+});

@@ -120,8 +120,8 @@ function assertNoRealProviderConfiguration(env) {
   }
 }
 
-function parseSecrets(env, databaseConfigs) {
-  const secrets = SECRET_KEYS.map((key) => [key, required(env, key)]);
+function parseSelectedSecrets(env, databaseConfigs, keys) {
+  const secrets = keys.map((key) => [key, required(env, key)]);
   if (secrets.some(([, value]) => value.length < 32)) fail('DEMO_CONFIG_SECRET_TOO_SHORT');
   if (new Set(secrets.map(([, value]) => value)).size !== secrets.length) {
     fail('DEMO_CONFIG_SECRET_ALIAS_FORBIDDEN');
@@ -136,13 +136,90 @@ function parseSecrets(env, databaseConfigs) {
   ])));
 }
 
-export function loadDemoConfig(env) {
+function parseSecrets(env, databaseConfigs) {
+  return parseSelectedSecrets(env, databaseConfigs, SECRET_KEYS);
+}
+
+function commonEnvironment(env) {
   if (!env || typeof env !== 'object' || Array.isArray(env)) fail('DEMO_CONFIG_ENV_REQUIRED');
   const environment = required(env, 'NODE_ENV');
   if (!DEMO_ENVIRONMENTS.has(environment)) fail('DEMO_CONFIG_ENVIRONMENT_FORBIDDEN');
   if (required(env, 'DEMO_RUNTIME') !== DEMO_RUNTIME) fail('DEMO_CONFIG_RUNTIME_INVALID');
   if (required(env, 'DEMO_SEED_VERSION') !== DEMO_SEED_VERSION) fail('DEMO_CONFIG_SEED_VERSION_INVALID');
   assertNoRealProviderConfiguration(env);
+  const databaseSsl = required(env, 'DEMO_DATABASE_SSL');
+  if (environment === 'demo' ? databaseSsl !== 'verify-full' : !['verify-full', 'disable'].includes(databaseSsl)) {
+    fail('DEMO_CONFIG_DATABASE_SSL_INVALID');
+  }
+  return Object.freeze({ environment, databaseSsl });
+}
+
+function rejectCredentials(env, forbidden) {
+  if (forbidden.some((key) => env[key] !== undefined && env[key] !== '')) {
+    fail('DEMO_CONFIG_EXCESS_CREDENTIAL_FORBIDDEN');
+  }
+}
+
+export function loadDemoCustomerConfig(env) {
+  const common = commonEnvironment(env);
+  rejectCredentials(env, [
+    'DEMO_PLATFORM_DATABASE_URL',
+    'DEMO_RESET_DATABASE_URL',
+    'DEMO_MIGRATION_DATABASE_URL',
+    'DEMO_PLATFORM_SESSION_SECRET',
+    'DEMO_PLATFORM_CSRF_SECRET',
+  ]);
+  const customer = parseDatabaseUrl(env, 'DEMO_CUSTOMER_DATABASE_URL');
+  return Object.freeze({
+    ...common,
+    runtime: DEMO_RUNTIME,
+    seedVersion: DEMO_SEED_VERSION,
+    databaseSentinelKey: DEMO_DATABASE_SENTINEL_KEY,
+    origins: Object.freeze({ customer: parseOrigin(env, 'DEMO_CUSTOMER_ORIGIN') }),
+    databases: Object.freeze({ customer }),
+    databaseTarget: customer.target,
+    secrets: parseSelectedSecrets(env, [customer], [
+      'DEMO_CUSTOMER_SESSION_SECRET',
+      'DEMO_CUSTOMER_CSRF_SECRET',
+      'DEMO_TENANT_AUDIT_HMAC_SECRET',
+    ]),
+  });
+}
+
+export function loadDemoPlatformConfig(env) {
+  const common = commonEnvironment(env);
+  rejectCredentials(env, [
+    'DEMO_CUSTOMER_DATABASE_URL',
+    'DEMO_MIGRATION_DATABASE_URL',
+    'DEMO_CUSTOMER_SESSION_SECRET',
+    'DEMO_CUSTOMER_CSRF_SECRET',
+  ]);
+  const platform = parseDatabaseUrl(env, 'DEMO_PLATFORM_DATABASE_URL');
+  const reset = parseDatabaseUrl(env, 'DEMO_RESET_DATABASE_URL');
+  if (!sameTarget(platform.target, reset.target)) fail('DEMO_CONFIG_DATABASE_TARGET_MISMATCH');
+  if (
+    platform.url === reset.url
+    || platform.role === reset.role
+    || platform.password === reset.password
+  ) fail('DEMO_CONFIG_DATABASE_PRINCIPAL_ALIAS_FORBIDDEN');
+  return Object.freeze({
+    ...common,
+    runtime: DEMO_RUNTIME,
+    seedVersion: DEMO_SEED_VERSION,
+    databaseSentinelKey: DEMO_DATABASE_SENTINEL_KEY,
+    origins: Object.freeze({ platform: parseOrigin(env, 'DEMO_PLATFORM_ORIGIN') }),
+    databases: Object.freeze({ platform, reset }),
+    databaseTarget: platform.target,
+    secrets: parseSelectedSecrets(env, [platform, reset], [
+      'DEMO_PLATFORM_SESSION_SECRET',
+      'DEMO_PLATFORM_CSRF_SECRET',
+      'DEMO_TENANT_AUDIT_HMAC_SECRET',
+    ]),
+  });
+}
+
+export function loadDemoConfig(env) {
+  const { environment, databaseSsl } = commonEnvironment(env);
 
   const customerOrigin = parseOrigin(env, 'DEMO_CUSTOMER_ORIGIN');
   const platformOrigin = parseOrigin(env, 'DEMO_PLATFORM_ORIGIN');
@@ -165,11 +242,6 @@ export function loadDemoConfig(env) {
     || new Set(databases.map(({ role }) => role)).size !== databases.length
     || new Set(databases.map(({ password }) => password)).size !== databases.length
   ) fail('DEMO_CONFIG_DATABASE_PRINCIPAL_ALIAS_FORBIDDEN');
-
-  const databaseSsl = required(env, 'DEMO_DATABASE_SSL');
-  if (environment === 'demo' ? databaseSsl !== 'verify-full' : !['verify-full', 'disable'].includes(databaseSsl)) {
-    fail('DEMO_CONFIG_DATABASE_SSL_INVALID');
-  }
 
   return Object.freeze({
     environment,

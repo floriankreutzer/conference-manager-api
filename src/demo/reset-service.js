@@ -38,6 +38,24 @@ function requireCorrelationId(value) {
   return value;
 }
 
+function normalizeResetAuthority(value, actor) {
+  if (
+    !value
+    || typeof value !== 'object'
+    || Array.isArray(value)
+    || Object.keys(value).sort().join(',') !== 'operatorId,securityVersion,sessionId'
+    || value.operatorId !== actor.operatorId
+    || !isInternalUuid(value.sessionId)
+    || !Number.isSafeInteger(value.securityVersion)
+    || value.securityVersion < 1
+  ) throw new TypeError('DEMO_RESET_AUTHORITY_INVALID');
+  return Object.freeze({
+    operatorId: value.operatorId,
+    sessionId: value.sessionId,
+    securityVersion: value.securityVersion,
+  });
+}
+
 export class DemoResetServiceError extends Error {
   constructor(code, options) {
     super(code, options);
@@ -67,6 +85,7 @@ export function createDemoResetService({
       expectedChecksum = fixtureChecksum,
       correlationId = null,
       actor = null,
+      authority = null,
       auditEventFor = null,
     } = {}) {
       if (expectedChecksum !== fixtureChecksum) {
@@ -79,6 +98,12 @@ export function createDemoResetService({
       if ((resetActor === null) !== (auditEventFor === null)) {
         throw new TypeError('DEMO_RESET_AUDIT_FACTORY_INCOMPLETE');
       }
+      if ((resetActor === null) !== (authority === null)) {
+        throw new TypeError('DEMO_RESET_AUTHORITY_INCOMPLETE');
+      }
+      const resetAuthority = resetActor === null
+        ? null
+        : normalizeResetAuthority(authority, resetActor);
       if (auditEventFor !== null && typeof auditEventFor !== 'function') {
         throw new TypeError('DEMO_RESET_AUDIT_EVENT_FACTORY_INVALID');
       }
@@ -88,6 +113,7 @@ export function createDemoResetService({
       const result = await repository.reset({
         fixture,
         checksum: fixtureChecksum,
+        authority: resetAuthority,
         auditEventFor: resetActor === null
           ? null
           : ({ outcome, reasonCode }) => auditEventFor({

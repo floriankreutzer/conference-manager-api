@@ -1,4 +1,5 @@
 import { permissionsForPlatformRoles } from '../../platform/identity/policy.js';
+import { hasPlatformSessionCookie } from '../../platform/identity/session-cookie.js';
 import { DEMO_FIXTURE } from '../fixture.js';
 
 const PERSONA_PATTERN = /^[a-z][a-z0-9_]{1,31}$/;
@@ -87,7 +88,12 @@ export function createDemoPlatformPersonaService({
   return Object.freeze({
     async establish(request, { correlationId } = {}) {
       const principal = await sessionService.resolvePrincipal(request);
-      if (!principal) return issue(await requirePersona(defaultPersona), correlationId);
+      if (!principal) {
+        if (hasPlatformSessionCookie(request?.headers)) {
+          throw new TypeError('DEMO_PLATFORM_SESSION_INVALID');
+        }
+        return issue(await requirePersona(defaultPersona), correlationId);
+      }
       const persona = await personaRepository.findPlatformForPrincipal({
         operatorId: principal.operatorId,
       });

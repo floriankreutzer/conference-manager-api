@@ -116,7 +116,7 @@ const EXPECTED_TABLES = Object.freeze([
 ].sort());
 const TRUNCATE_SQL = `TRUNCATE TABLE ${DEMO_RESET_TABLES
   .map((table) => `public.${table}`)
-  .join(', ')} RESTART IDENTITY`;
+  .join(', ')}`;
 
 export class DemoResetRepositoryError extends Error {
   constructor(code, options) {
@@ -218,6 +218,30 @@ async function verifyPreconditions(client, expectedDatabaseName, expectedResetRo
   assertTableInventory(inventory.rows);
 }
 
+async function verifyResetAuthority(client, authority) {
+  const result = await client.query({
+    name: 'demo-reset-authority-revalidation',
+    text: `
+      SELECT 1
+      FROM platform_sessions AS platform_session
+      JOIN platform_operators AS operator
+        ON operator.id = platform_session.operator_id
+      WHERE platform_session.id = $1
+        AND platform_session.operator_id = $2
+        AND platform_session.principal_version = $3
+        AND platform_session.revoked_at IS NULL
+        AND platform_session.expires_at > clock_timestamp()
+        AND platform_session.step_up_expires_at > clock_timestamp()
+        AND platform_session.assurance_level = 'step_up'
+        AND operator.status = 'active'
+        AND operator.security_version = $3
+      FOR UPDATE OF platform_session, operator
+    `,
+    values: [authority.sessionId, authority.operatorId, authority.securityVersion],
+  });
+  if (result.rowCount !== 1) fail('DEMO_RESET_AUTHORITY_REVOKED');
+}
+
 async function insertProviderState(client, fixture) {
   for (const tenant of fixture.tenants) {
     const state = tenant.providerSimulation;
@@ -305,7 +329,7 @@ export function createPostgresDemoResetRepository({
   assertFactoryConfiguration({ expectedDatabaseName, expectedResetRole, seedBusinessState, readSemanticState });
 
   return Object.freeze({
-    async reset({ fixture, checksum, auditEventFor = null } = {}) {
+    async reset({ fixture, checksum, authority = null, auditEventFor = null } = {}) {
       validateDemoFixture(fixture);
       if (typeof checksum !== 'string' || !CHECKSUM_PATTERN.test(checksum)) {
         throw new TypeError('DEMO_RESET_CHECKSUM_INVALID');
@@ -317,11 +341,15 @@ export function createPostgresDemoResetRepository({
       if (auditEventFor !== null && auditRepository === null) {
         throw new TypeError('DEMO_RESET_AUDIT_REPOSITORY_REQUIRED');
       }
+      if ((auditEventFor === null) !== (authority === null)) {
+        throw new TypeError('DEMO_RESET_AUTHORITY_REQUIRED');
+      }
       try {
         return await withDemoRuntimeExclusiveGate(pool, async (gateClient) => {
           return withPostgresTransaction(borrowedPool(gateClient), async (client) => {
             await acquireDemoRuntimeResetTransactionLock(client);
             await verifyPreconditions(client, expectedDatabaseName, expectedResetRole);
+            if (authority !== null) await verifyResetAuthority(client, authority);
             await client.query({ name: 'demo-reset-truncate', text: TRUNCATE_SQL });
             await client.query({
               name: 'demo-reset-audit-chain-state',

@@ -1,7 +1,7 @@
 import { createDemoCustomerComposition } from './customer-composition.js';
-import { loadDemoConfig } from './config.js';
+import { loadDemoCustomerConfig } from './config.js';
 
-const composition = createDemoCustomerComposition({ config: loadDemoConfig(process.env) });
+const composition = createDemoCustomerComposition({ config: loadDemoCustomerConfig(process.env) });
 await composition.start();
 
 let stopping = false;

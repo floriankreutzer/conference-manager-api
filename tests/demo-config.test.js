@@ -3,7 +3,9 @@ import test from 'node:test';
 
 import {
   DemoConfigError,
+  loadDemoCustomerConfig,
   loadDemoConfig,
+  loadDemoPlatformConfig,
 } from '../src/demo/config.js';
 
 function validEnv(overrides = {}) {
@@ -159,4 +161,47 @@ test('shared Demo mode requires verified database TLS', () => {
     NODE_ENV: 'demo',
     DEMO_DATABASE_SSL: 'verify-full',
   })).databaseSsl, 'verify-full');
+});
+
+test('surface loaders reject credentials outside their process responsibility', () => {
+  const customerEnv = validEnv();
+  delete customerEnv.DEMO_PLATFORM_DATABASE_URL;
+  delete customerEnv.DEMO_RESET_DATABASE_URL;
+  delete customerEnv.DEMO_MIGRATION_DATABASE_URL;
+  delete customerEnv.DEMO_PLATFORM_SESSION_SECRET;
+  delete customerEnv.DEMO_PLATFORM_CSRF_SECRET;
+  const customer = loadDemoCustomerConfig(customerEnv);
+  assert.deepEqual(Object.keys(customer.databases), ['customer']);
+  assert.deepEqual(Object.keys(customer.secrets).sort(), [
+    'customer_csrf_secret',
+    'customer_session_secret',
+    'tenant_audit_hmac_secret',
+  ]);
+  assert.throws(
+    () => loadDemoCustomerConfig({
+      ...customerEnv,
+      DEMO_MIGRATION_DATABASE_URL: validEnv().DEMO_MIGRATION_DATABASE_URL,
+    }),
+    configError('DEMO_CONFIG_EXCESS_CREDENTIAL_FORBIDDEN'),
+  );
+
+  const platformEnv = validEnv();
+  delete platformEnv.DEMO_CUSTOMER_DATABASE_URL;
+  delete platformEnv.DEMO_MIGRATION_DATABASE_URL;
+  delete platformEnv.DEMO_CUSTOMER_SESSION_SECRET;
+  delete platformEnv.DEMO_CUSTOMER_CSRF_SECRET;
+  const platform = loadDemoPlatformConfig(platformEnv);
+  assert.deepEqual(Object.keys(platform.databases).sort(), ['platform', 'reset']);
+  assert.deepEqual(Object.keys(platform.secrets).sort(), [
+    'platform_csrf_secret',
+    'platform_session_secret',
+    'tenant_audit_hmac_secret',
+  ]);
+  assert.throws(
+    () => loadDemoPlatformConfig({
+      ...platformEnv,
+      DEMO_CUSTOMER_DATABASE_URL: validEnv().DEMO_CUSTOMER_DATABASE_URL,
+    }),
+    configError('DEMO_CONFIG_EXCESS_CREDENTIAL_FORBIDDEN'),
+  );
 });
