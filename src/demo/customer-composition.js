@@ -50,10 +50,14 @@ export function createDemoCustomerComposition({
   persistence,
   gatePool,
   readiness,
+  staticFileAdapter = null,
   logger = createLogger(),
   metrics = createMetricsRegistry(),
 } = {}) {
   if (!config) throw new TypeError('DEMO_CONFIG_REQUIRED');
+  if (config.staticRoot && !staticFileAdapter) {
+    throw new TypeError('DEMO_STATIC_FILE_ADAPTER_REQUIRED');
+  }
   const runtimeConfig = createDemoCustomerRuntimeConfig(config);
   const selectedPersistence = persistence || createPostgresPersistence(runtimeConfig);
   const selectedReadiness = readiness || createPostgresDemoRuntimeReadiness({
@@ -89,6 +93,7 @@ export function createDemoCustomerComposition({
     httpServerFactory: (options) => createDemoCustomerHttpServer({
       ...options,
       demoRuntimeGatePool: selectedGatePool,
+      staticFileAdapter,
     }),
     routeModulesFactory({ sessionService }) {
       const personaService = createDemoCustomerPersonaService({
