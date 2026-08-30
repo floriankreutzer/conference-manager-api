@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -109,9 +109,13 @@ test('Platform hosted Demo serves its own entrypoint while sharing only approved
   assert.equal(asset.headers['content-type'], 'text/css; charset=utf-8');
 });
 
-test('hosted Demo static serving rejects traversal, unknown content and unsafe methods', async (t) => {
+test('hosted Demo static serving rejects traversal, symlink escape, unknown content and unsafe methods', async (t) => {
   const root = await fixtureRoot();
+  const outside = await mkdtemp(path.join(os.tmpdir(), 'conference-manager-demo-outside-'));
   t.after(() => rm(root, { recursive: true, force: true }));
+  t.after(() => rm(outside, { recursive: true, force: true }));
+  await writeFile(path.join(outside, 'escape.js'), 'throw new Error("escaped");', 'utf8');
+  await symlink(path.join(outside, 'escape.js'), path.join(root, 'src', 'escape.js'));
   const { server, origin } = await startStaticServer({ root, surface: 'customer' });
   t.after(() => closeServer(server));
 
@@ -120,6 +124,9 @@ test('hosted Demo static serving rejects traversal, unknown content and unsafe m
 
   const encodedSeparator = await rawRequest(origin, '/assets%2fapp.css');
   assert.equal(encodedSeparator.status, 400);
+
+  const symlinkEscape = await rawRequest(origin, '/src/escape.js');
+  assert.equal(symlinkEscape.status, 400);
 
   const unknown = await rawRequest(origin, '/dashboard');
   assert.equal(unknown.status, 404);
