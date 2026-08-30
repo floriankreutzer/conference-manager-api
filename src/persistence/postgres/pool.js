@@ -11,10 +11,16 @@ const { Pool } = pg;
 // Cost Allocation owners. Schema 26 adds User lifecycle concurrency state.
 // Schema 27 adds authoritative Request composition snapshots, immutable Request
 // history, Room pricing, and full confirmed-booking draft/snapshot proposals.
-export const CURRENT_SCHEMA_VERSION = 28;
+// Schema 28 adds bounded bulk-transfer receipts. Schemas 29-33 establish the
+// independent Platform security, operations, metering and runtime stores.
+export const CURRENT_SCHEMA_VERSION = 33;
 
 export function createPostgresPool(config) {
   if (!config?.databaseUrl) throw new TypeError('DATABASE_URL_REQUIRED');
+  const applicationName = config.applicationName || 'conference-manager-api';
+  if (!['conference-manager-api', 'conference-manager-platform-api'].includes(applicationName)) {
+    throw new TypeError('DATABASE_APPLICATION_NAME_INVALID');
+  }
 
   const pool = new Pool({
     connectionString: config.databaseUrl,
@@ -24,7 +30,7 @@ export function createPostgresPool(config) {
     idleTimeoutMillis: config.databaseIdleTimeoutMs,
     statement_timeout: config.databaseStatementTimeoutMs,
     query_timeout: config.databaseStatementTimeoutMs,
-    application_name: 'conference-manager-api',
+    application_name: applicationName,
     allowExitOnIdle: config.mode === 'test',
   });
 

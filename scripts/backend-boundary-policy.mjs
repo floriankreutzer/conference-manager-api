@@ -21,7 +21,13 @@ const GENERIC_SETTINGS_MODULES = new Set([
   'tenant-settings-repository.js',
   'tenant-settings-routes.js',
 ]);
-const COMPOSITION_FILES = new Set(['src/index.js', 'src/server.js', 'src/app.js']);
+const COMPOSITION_FILES = new Set([
+  'src/index.js',
+  'src/server.js',
+  'src/app.js',
+  'src/platform-composition.js',
+  'src/platform-main.js',
+]);
 const PROVIDER_NEUTRAL_INTEGRATION_MODULES = new Set([
   'src/integrations/booking-reference.js',
   'src/integrations/calendar-contract.js',
@@ -65,6 +71,15 @@ function isConcreteProviderModule(file) {
 
 function isNewSettingsRoute(file) {
   return isInside(file, 'src/http/settings') || /-settings-routes\.js$/.test(file);
+}
+
+function isPlatformDomain(file) {
+  return isInside(file, 'src/platform/identity') || isInside(file, 'src/platform/audit');
+}
+
+function isPlatformPersistence(file) {
+  return isInside(file, 'src/persistence/postgres')
+    && basename(file).startsWith('platform-');
 }
 
 function importsRouteModuleContract(source) {
@@ -122,6 +137,48 @@ export function backendSaas2BoundaryViolations(sourceEntries) {
 
   for (const [sourceFile, dependencies] of graph) {
     for (const dependency of dependencies) {
+      if (
+        isInside(sourceFile, 'src/platform')
+        && (isInside(dependency, 'src/http')
+          || isInside(dependency, 'src/application')
+          || isInside(dependency, 'src/identity')
+          || isInside(dependency, 'src/audit')
+          || isInside(dependency, 'src/authorization')
+          || isInside(dependency, 'src/tenancy')
+          || isInside(dependency, 'src/entitlements')
+          || isInside(dependency, 'src/persistence')
+          || isInside(dependency, 'src/integrations')
+          || COMPOSITION_FILES.has(dependency)
+          || dependency === 'src/config.js')
+      ) {
+        violations.push(violation(
+          sourceFile,
+          `Platform code must remain independent from the customer runtime boundary ${dependency}.`,
+        ));
+      }
+
+      if (
+        isPlatformDomain(sourceFile)
+        && isInside(dependency, 'src/platform/application')
+      ) {
+        violations.push(violation(
+          sourceFile,
+          `Platform identity and audit policy must remain independent of application module ${dependency}.`,
+        ));
+      }
+
+      if (
+        !isInside(sourceFile, 'src/platform')
+        && !['src/platform-composition.js', 'src/platform-main.js'].includes(sourceFile)
+        && !isPlatformPersistence(sourceFile)
+        && isInside(dependency, 'src/platform')
+      ) {
+        violations.push(violation(
+          sourceFile,
+          `Customer runtime code must not import the Platform control-plane boundary ${dependency}.`,
+        ));
+      }
+
       if (isInside(sourceFile, 'src/application')) {
         if (isInside(dependency, 'src/http')
           || isInside(dependency, 'src/persistence')

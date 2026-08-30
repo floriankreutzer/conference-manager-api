@@ -1,3 +1,4 @@
+import { clearSaas3TestState } from './support/saas3-test-state.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
@@ -5,7 +6,7 @@ import {
   createPostgresMicrosoft365CapabilityHealthRepository,
 } from '../src/persistence/postgres/microsoft365-capability-health-repository.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackLatest, rollbackToVersion } from './support/db-migrations.js';
 import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_A = '91919191-9191-4919-8919-919191919191';
@@ -54,6 +55,7 @@ test('Microsoft capability health is tenant-scoped, preserves last success and r
       "DELETE FROM integrations WHERE tenant_id = ANY($1::uuid[]) AND provider = 'microsoft365'",
       [TENANT_IDS],
     );
+    await clearSaas3TestState(pool);
     await pool.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [TENANT_IDS]);
     await pool.end();
   });

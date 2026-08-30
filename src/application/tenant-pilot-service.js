@@ -1,24 +1,17 @@
 import { AUDIT_ACTION, AUDIT_OUTCOME, AUDIT_RETENTION_CLASS } from '../audit/event.js';
 import { PERMISSION } from '../authorization/policy.js';
 import { isInternalUuid } from '../domain/identifiers.js';
+import {
+  isTenantLifecycleTransitionAllowed,
+} from '../tenancy/tenant-lifecycle-policy.js';
+import { TENANT_ACTIVATION_CAPABILITIES } from '../tenancy/tenant-readiness-policy.js';
 import { TenantPilotLifecycleConflictError } from './tenant-pilot-errors.js';
 
-const REQUIRED_ENTITLEMENTS = Object.freeze([
-  'microsoft.directory',
-  'microsoft.calendar',
-]);
+const REQUIRED_ENTITLEMENTS = TENANT_ACTIVATION_CAPABILITIES;
 const OPTIONAL_ENTITLEMENTS = Object.freeze([
   'microsoft.calendar.write',
 ]);
 const LIFECYCLE_TARGETS = new Set(['ready', 'active', 'suspended']);
-const LIFECYCLE_TRANSITIONS = Object.freeze({
-  pending: new Set(),
-  onboarding: new Set(['ready']),
-  ready: new Set(['active']),
-  active: new Set(['suspended']),
-  suspended: new Set(['active']),
-  archived: new Set(),
-});
 
 function requireCorrelationId(value) {
   if (!isInternalUuid(value)) throw new TypeError('PILOT_CORRELATION_INVALID');
@@ -137,7 +130,7 @@ export function createTenantPilotService({
       const current = await tenantRepository.findById(tenantId);
       if (!current) throw new TypeError('TENANT_NOT_FOUND');
       if (current.status === targetStatus) return current;
-      if (LIFECYCLE_TRANSITIONS[current.status]?.has(targetStatus) !== true) {
+      if (!isTenantLifecycleTransitionAllowed({ currentStatus: current.status, targetStatus })) {
         throw new TenantPilotLifecycleConflictError();
       }
       const changedAtMs = clock();

@@ -1,9 +1,10 @@
+import { clearSaas3TestState } from './support/saas3-test-state.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresOidcTransactionRepository } from '../src/persistence/postgres/oidc-transaction-repository.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackToVersion } from './support/db-migrations.js';
 import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const STATE_HASH = 'a'.repeat(64);
@@ -23,6 +24,7 @@ async function clean(pool) {
   await removeSaas2TenantAdministrationFixtures(pool, [TENANT_ID]);
   await pool.query('DELETE FROM oidc_auth_transactions');
   await pool.query('DELETE FROM tenant_onboarding_invitations WHERE id = $1', [INVITATION_ID]);
+  await clearSaas3TestState(pool);
   await pool.query('DELETE FROM tenants WHERE id = $1', [TENANT_ID]);
 }
 

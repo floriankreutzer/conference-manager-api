@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 28;/.test(pool)) {
-  throw new Error('Pilot activation requires the integrated SaaS 2 schema version 28.');
+if (!/export const CURRENT_SCHEMA_VERSION = 33;/.test(pool)) {
+  throw new Error('Pilot activation requires the integrated SaaS 3 schema version 33.');
 }
 
 const service = await readFile('src/application/tenant-pilot-service.js', 'utf8');
@@ -12,11 +12,19 @@ for (const required of [
   'authorizeOperator = async () => false',
   'AUDIT_ACTION.TENANT_LIFECYCLE_CHANGED',
   'tenantRepository.changeStatus',
-  "'microsoft.directory'",
-  "'microsoft.calendar'",
   "'microsoft.calendar.write'",
 ]) {
   if (!service.includes(required)) throw new Error(`Tenant pilot service is missing invariant ${required}.`);
+}
+
+const readinessPolicy = await readFile('src/tenancy/tenant-readiness-policy.js', 'utf8');
+for (const required of ["'microsoft.directory'", "'microsoft.calendar'"]) {
+  if (!readinessPolicy.includes(required)) {
+    throw new Error(`Canonical Tenant readiness policy is missing activation capability ${required}.`);
+  }
+}
+if (!service.includes('TENANT_ACTIVATION_CAPABILITIES')) {
+  throw new Error('Tenant pilot service must consume the canonical activation capability policy.');
 }
 
 const index = await readFile('src/index.js', 'utf8');

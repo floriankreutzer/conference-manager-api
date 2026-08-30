@@ -27,8 +27,12 @@ function labelsKey(metric, labels) {
   return `${metric}:${Object.entries(labels).map(([key, value]) => `${key}=${value}`).join(',')}`;
 }
 
-export function createMetricsRegistry({ write = null } = {}) {
+export function createMetricsRegistry({
+  write = null,
+  assertRouteKey = (route) => assertTelemetryRouteKey(route, 'METRIC_ROUTE_INVALID'),
+} = {}) {
   if (write !== null && typeof write !== 'function') throw new TypeError('METRIC_WRITER_INVALID');
+  if (typeof assertRouteKey !== 'function') throw new TypeError('METRIC_ROUTE_VALIDATOR_INVALID');
   const counters = new Map();
   const durations = new Map();
 
@@ -71,7 +75,7 @@ export function createMetricsRegistry({ write = null } = {}) {
   return Object.freeze({
     recordApiRequest({ route, method, statusCode, durationMs }) {
       const labels = Object.freeze({
-        route: assertTelemetryRouteKey(route, 'METRIC_ROUTE_INVALID'),
+        route: assertRouteKey(route),
         method: assertEnum(method, METHODS, 'METRIC_METHOD_INVALID'),
         status: statusClass(statusCode),
       });

@@ -1,3 +1,4 @@
+import { clearSaas3TestState } from './support/saas3-test-state.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createAuditService } from '../src/audit/audit-service.js';
@@ -7,7 +8,7 @@ import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresAuditRepository } from '../src/persistence/postgres/audit-repository.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
 import { createPostgresTenantRepository } from '../src/persistence/postgres/tenant-repository.js';
-import { migrateUp, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackToVersion } from './support/db-migrations.js';
 import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_ID = '67676767-6767-4676-8676-676767676767';
@@ -32,6 +33,7 @@ test('Tenant pilot lifecycle change is optimistic, audit-atomic, and rollback-pr
     } finally {
       await pool.query('ALTER TABLE audit_events ENABLE TRIGGER audit_events_append_only');
     }
+    await clearSaas3TestState(pool);
     await pool.query('DELETE FROM tenants WHERE id = $1', [TENANT_ID]);
     await pool.end();
   });

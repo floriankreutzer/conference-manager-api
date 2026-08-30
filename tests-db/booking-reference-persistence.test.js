@@ -1,3 +1,4 @@
+import { clearSaas3TestState } from './support/saas3-test-state.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createAuditService } from '../src/audit/audit-service.js';
@@ -144,6 +145,7 @@ test('PostgreSQL booking references are tenant-scoped, idempotent, and audit-ato
     await pool.query('DELETE FROM rooms WHERE tenant_id = ANY($1::uuid[])', [[TENANT_A, TENANT_B]]);
     await pool.query('DELETE FROM sites WHERE tenant_id = ANY($1::uuid[])', [[TENANT_A, TENANT_B]]);
     await pool.query('DELETE FROM users WHERE tenant_id = ANY($1::uuid[])', [[TENANT_A, TENANT_B]]);
+    await clearSaas3TestState(pool);
     await pool.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [[TENANT_A, TENANT_B]]);
     await pool.end();
   });

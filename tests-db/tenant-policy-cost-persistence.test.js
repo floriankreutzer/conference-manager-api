@@ -1,3 +1,4 @@
+import { clearSaas3TestState } from './support/saas3-test-state.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createAuditService } from '../src/audit/audit-service.js';
@@ -18,7 +19,7 @@ import { createPostgresAuditRepository } from '../src/persistence/postgres/audit
 import { createPostgresTenantBookingPolicyRepository } from '../src/persistence/postgres/tenant-booking-policy-repository.js';
 import { createPostgresTenantCostAllocationRepository } from '../src/persistence/postgres/tenant-cost-allocation-repository.js';
 import { createPostgresPool } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackToVersion } from './support/db-migrations.js';
 import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_A = '81818181-8181-4181-8181-818181818181';
@@ -177,6 +178,7 @@ async function clean(pool) {
     'DELETE FROM users WHERE tenant_id = ANY($1::uuid[])',
     [tenants],
   );
+  await clearSaas3TestState(pool);
   await pool.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [tenants]);
 }
 

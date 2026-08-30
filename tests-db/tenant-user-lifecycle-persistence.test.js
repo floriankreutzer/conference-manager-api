@@ -1,3 +1,4 @@
+import { clearSaas3TestState } from './support/saas3-test-state.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createTenantUserLifecycleService } from '../src/application/tenant-user-lifecycle-service.js';
@@ -10,7 +11,7 @@ import { createPostgresPool } from '../src/persistence/postgres/pool.js';
 import {
   createPostgresTenantUserLifecycleRepository,
 } from '../src/persistence/postgres/tenant-user-lifecycle-repository.js';
-import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackLatest, rollbackToVersion } from './support/db-migrations.js';
 import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 // Keep this integration fixture namespace distinct because node:test executes
@@ -64,6 +65,7 @@ async function clean(pool) {
     await pool.query('ALTER TABLE audit_events ENABLE TRIGGER audit_events_append_only');
   }
   await pool.query('DELETE FROM users WHERE tenant_id = ANY($1::uuid[])', [TENANT_IDS]);
+  await clearSaas3TestState(pool);
   await pool.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [TENANT_IDS]);
 }
 

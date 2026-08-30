@@ -1,3 +1,4 @@
+import { clearSaas3TestState } from './support/saas3-test-state.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createTenantCatalogueService } from '../src/application/tenant-catalogue-service.js';
@@ -19,7 +20,7 @@ import {
   migrateUp,
   rollbackLatest,
   rollbackToVersion,
-} from '../scripts/db-migrations.mjs';
+} from './support/db-migrations.js';
 import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_A = '61111111-1111-4111-8111-111111111111';
@@ -140,6 +141,7 @@ async function cleanAll(pool) {
   await pool.query('DELETE FROM rooms WHERE tenant_id = ANY($1::uuid[])', [TENANTS]);
   await pool.query('DELETE FROM sites WHERE tenant_id = ANY($1::uuid[])', [TENANTS]);
   await pool.query('DELETE FROM users WHERE tenant_id = ANY($1::uuid[])', [TENANTS]);
+  await clearSaas3TestState(pool);
   await pool.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [TENANTS]);
 }
 
@@ -417,6 +419,7 @@ test('migrations 022/023 reapply and refuse destructive rollback after domain us
   await pool.query('DELETE FROM rooms WHERE tenant_id = ANY($1::uuid[])', [TENANTS]);
   await pool.query('DELETE FROM sites WHERE tenant_id = ANY($1::uuid[])', [TENANTS]);
   await pool.query('DELETE FROM users WHERE tenant_id = ANY($1::uuid[])', [TENANTS]);
+  await clearSaas3TestState(pool);
   await pool.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [TENANTS]);
   assert.equal(await rollbackLatest(pool), true);
   const precedingVersion = (await loadMigrations())

@@ -25,7 +25,7 @@ import { createPostgresSessionRepository } from '../src/persistence/postgres/ses
 import { createPostgresTenantRepository } from '../src/persistence/postgres/tenant-repository.js';
 import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
 import { createTenantScopedRepository } from '../src/tenancy/tenant-scoped-repository.js';
-import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackLatest, rollbackToVersion } from './support/db-migrations.js';
 
 const TENANT_A = '22222222-2222-4222-8222-222222222222';
 const TENANT_B = '33333333-3333-4333-8333-333333333333';
@@ -175,6 +175,11 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 26, name: 'tenant_user_lifecycle_revision' },
       { version: 27, name: 'request_composition_v2' },
       { version: 28, name: 'tenant_bulk_transfer_receipts' },
+      { version: 29, name: 'platform_identity_sessions' },
+      { version: 30, name: 'platform_audit' },
+      { version: 31, name: 'platform_operations_core' },
+      { version: 32, name: 'platform_operations_projections' },
+      { version: 33, name: 'platform_metering_runtime' },
     ]);
   });
 

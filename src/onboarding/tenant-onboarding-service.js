@@ -1,5 +1,4 @@
 import {
-  createHash,
   createHmac,
   randomBytes,
   randomUUID,
@@ -22,15 +21,15 @@ import {
   OnboardingDeniedError,
   OnboardingInputError,
 } from './errors.js';
+import {
+  DEFAULT_TENANT_INVITATION_TTL_SECONDS,
+  hashTenantInvitationToken,
+  normalizeTenantInvitationDisplayName,
+  requireTenantInvitationToken,
+} from './invitation-policy.js';
 
-const INVITATION_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const PROVIDER_REFERENCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const DEFAULT_INVITATION_TTL_SECONDS = 86_400;
 const DEFAULT_CLAIM_TTL_SECONDS = 600;
-
-function sha256Hex(value) {
-  return createHash('sha256').update(value, 'utf8').digest('hex');
-}
 
 function normalizeSecret(value) {
   const secret = Buffer.from(value || '', 'utf8');
@@ -58,23 +57,16 @@ function safeTokenEqual(left, right) {
   return timingSafeEqual(Buffer.from(left, 'ascii'), Buffer.from(right, 'ascii'));
 }
 
-function normalizeDisplayName(value) {
-  if (typeof value !== 'string') throw new OnboardingInputError();
-  const normalized = value.trim();
-  if (
-    normalized.length < 1
-    || normalized.length > 160
-    || normalized !== value
-    || /[\u0000-\u001f\u007f]/.test(normalized)
-  ) {
-    throw new OnboardingInputError();
+function requireToken(value, pattern = null) {
+  try {
+    if (pattern !== null) {
+      if (typeof value !== 'string' || !pattern.test(value)) throw new TypeError();
+      return value;
+    }
+    return requireTenantInvitationToken(value);
+  } catch {
+    throw new OnboardingDeniedError();
   }
-  return normalized;
-}
-
-function requireToken(value, pattern = INVITATION_TOKEN_PATTERN) {
-  if (typeof value !== 'string' || !pattern.test(value)) throw new OnboardingDeniedError();
-  return value;
 }
 
 function requireCorrelationId(value) {
@@ -113,7 +105,7 @@ export function createTenantOnboardingService({
   authorizeOperator = async () => false,
   transactionSecret,
   publicOrigin,
-  invitationTtlSeconds = DEFAULT_INVITATION_TTL_SECONDS,
+  invitationTtlSeconds = DEFAULT_TENANT_INVITATION_TTL_SECONDS,
   claimTtlSeconds = DEFAULT_CLAIM_TTL_SECONDS,
   clock = () => Date.now(),
   randomToken = () => randomBytes(32).toString('base64url'),
@@ -147,7 +139,12 @@ export function createTenantOnboardingService({
 
   return Object.freeze({
     async createTenantInvitation({ operatorContext, displayName, correlationId }) {
-      const normalizedDisplayName = normalizeDisplayName(displayName);
+      let normalizedDisplayName;
+      try {
+        normalizedDisplayName = normalizeTenantInvitationDisplayName(displayName);
+      } catch {
+        throw new OnboardingInputError();
+      }
       requireCorrelationId(correlationId);
       const tenantId = randomId();
       const invitationId = randomId();
@@ -182,7 +179,7 @@ export function createTenantOnboardingService({
         tenantId,
         displayName: normalizedDisplayName,
         invitationId,
-        tokenHash: sha256Hex(invitationToken),
+        tokenHash: hashTenantInvitationToken(invitationToken),
         createdAt,
         expiresAt,
         auditEvent,
@@ -195,7 +192,7 @@ export function createTenantOnboardingService({
       const token = requireToken(invitationToken);
       const nowMs = requireClock(clock);
       const invitation = await repository.findOpenInvitationByTokenHash({
-        tokenHash: sha256Hex(token),
+        tokenHash: hashTenantInvitationToken(token),
         now: new Date(nowMs),
       });
       if (!invitation) throw new OnboardingDeniedError();
@@ -211,7 +208,7 @@ export function createTenantOnboardingService({
       const createdAt = new Date(nowMs);
       const expiresAt = new Date(nowMs + (claimTtlSeconds * 1000));
       const prepared = await repository.prepareClaim({
-        tokenHash: sha256Hex(claimToken),
+        tokenHash: hashTenantInvitationToken(claimToken),
         invitationId,
         provider: identity.provider,
         providerTenantReference: identity.tenantReference,
@@ -234,7 +231,7 @@ export function createTenantOnboardingService({
       const token = requireToken(claimToken, TENANT_CLAIM_TOKEN_PATTERN);
       const nowMs = requireClock(clock);
       const claim = await repository.findPendingClaim({
-        tokenHash: sha256Hex(token),
+        tokenHash: hashTenantInvitationToken(token),
         now: new Date(nowMs),
       });
       if (!claim) throw new OnboardingDeniedError();
@@ -254,7 +251,7 @@ export function createTenantOnboardingService({
       const nowMs = requireClock(clock);
       const confirmedAt = new Date(nowMs);
       const preview = await repository.findPendingClaim({
-        tokenHash: sha256Hex(token),
+        tokenHash: hashTenantInvitationToken(token),
         now: confirmedAt,
       });
       if (!preview) throw new OnboardingDeniedError();
@@ -275,7 +272,7 @@ export function createTenantOnboardingService({
         occurredAt: confirmedAt.toISOString(),
       });
       const claimed = await repository.confirmClaim({
-        tokenHash: sha256Hex(token),
+        tokenHash: hashTenantInvitationToken(token),
         bindingId,
         confirmedAt,
         auditEvent,

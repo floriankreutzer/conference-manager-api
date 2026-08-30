@@ -57,6 +57,7 @@ export function createMicrosoft365RoomDiscoveryService({
   auditService,
   providerClient,
   capabilityHealthService = null,
+  observationRepository = null,
   retrySleep,
 } = {}) {
   if (!connectionRepository || typeof connectionRepository.findByTenantId !== 'function') {
@@ -85,6 +86,9 @@ export function createMicrosoft365RoomDiscoveryService({
   }
   if (retrySleep !== undefined && typeof retrySleep !== 'function') {
     throw new TypeError('MICROSOFT365_RETRY_SLEEP_INVALID');
+  }
+  if (observationRepository && typeof observationRepository.recordDiscovery !== 'function') {
+    throw new TypeError('MICROSOFT365_ROOM_OBSERVATION_REPOSITORY_INVALID');
   }
 
   async function authorize({ principal, tenantContext, correlationId }) {
@@ -153,6 +157,15 @@ export function createMicrosoft365RoomDiscoveryService({
           capability: MICROSOFT365_CAPABILITY.PLACES,
         });
         if (capabilityHealthService && !recorded) {
+          throw new Microsoft365ConnectionConflictError('MICROSOFT365_CONNECTION_REQUIRED');
+        }
+        const observed = await observationRepository?.recordDiscovery({
+          tenantId: tenantContext.tenantId,
+          integrationId: connection.integrationId,
+          connectionVersion: connection.connectionVersion,
+          rooms,
+        });
+        if (observationRepository && observed !== true) {
           throw new Microsoft365ConnectionConflictError('MICROSOFT365_CONNECTION_REQUIRED');
         }
         return rooms;

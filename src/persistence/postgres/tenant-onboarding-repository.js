@@ -45,6 +45,18 @@ function mapBinding(row) {
   });
 }
 
+function mapInvitation(row) {
+  if (!row) return null;
+  return Object.freeze({
+    invitationId: row.id,
+    tenantId: row.tenant_id,
+    revision: Number(row.revision ?? 1),
+    expiresAt: iso(row.expires_at),
+    consumedAt: row.consumed_at ? iso(row.consumed_at) : null,
+    revokedAt: row.revoked_at ? iso(row.revoked_at) : null,
+  });
+}
+
 export function createPostgresTenantOnboardingRepository(pool, { auditRepository } = {}) {
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
@@ -53,7 +65,302 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
     throw new TypeError('AUDIT_REPOSITORY_REQUIRED');
   }
 
+  async function createTenantInvitationWithClient(client, {
+    tenantId,
+    displayName,
+    invitationId,
+    tokenHash,
+    createdAt,
+    expiresAt,
+  }) {
+    assertUuid(tenantId, 'ONBOARDING_TENANT_ID_INVALID');
+    assertUuid(invitationId, 'ONBOARDING_INVITATION_ID_INVALID');
+    assertHash(tokenHash, 'ONBOARDING_INVITATION_HASH_INVALID');
+    assertDate(createdAt, 'ONBOARDING_CREATED_AT_INVALID');
+    assertDate(expiresAt, 'ONBOARDING_EXPIRES_AT_INVALID');
+    const tenant = await client.query({
+      name: 'onboarding-create-pending-tenant',
+      text: `
+        INSERT INTO tenants (id, display_name, status, created_at, updated_at)
+        VALUES ($1, $2, 'pending', $3, $3)
+        ON CONFLICT (id) DO NOTHING
+        RETURNING id, display_name, status, lifecycle_revision, created_at
+      `,
+      values: [tenantId, displayName, createdAt],
+    });
+    if (tenant.rowCount !== 1) return null;
+    const invitation = await client.query({
+      name: 'onboarding-create-invitation',
+      text: `
+        INSERT INTO tenant_onboarding_invitations (
+          id, tenant_id, token_hash, created_at, expires_at
+        ) VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT DO NOTHING
+        RETURNING id, tenant_id, revision, expires_at, consumed_at, revoked_at
+      `,
+      values: [invitationId, tenantId, tokenHash, createdAt, expiresAt],
+    });
+    if (invitation.rowCount !== 1) throw new Error('ONBOARDING_INVITATION_COLLISION');
+    return Object.freeze({
+      tenant: Object.freeze({
+        tenantId: tenant.rows[0].id,
+        displayName: tenant.rows[0].display_name,
+        status: tenant.rows[0].status,
+        revision: Number(tenant.rows[0].lifecycle_revision),
+        createdAt: iso(tenant.rows[0].created_at),
+      }),
+      invitation: mapInvitation(invitation.rows[0]),
+    });
+  }
+
+  async function revokeInvitationWithClient(client, {
+    tenantId,
+    invitationId,
+    expectedRevision,
+    changedAt,
+    allowExpired = false,
+  }) {
+    assertUuid(tenantId, 'ONBOARDING_TENANT_ID_INVALID');
+    assertUuid(invitationId, 'ONBOARDING_INVITATION_ID_INVALID');
+    assertDate(changedAt, 'ONBOARDING_CHANGED_AT_INVALID');
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
+      throw new TypeError('ONBOARDING_INVITATION_REVISION_INVALID');
+    }
+    const updated = await client.query({
+      name: 'onboarding-revoke-invitation-cas',
+      text: `
+        UPDATE tenant_onboarding_invitations
+        SET revoked_at = $4
+        WHERE tenant_id = $1 AND id = $2 AND revision = $3
+          AND consumed_at IS NULL AND revoked_at IS NULL
+          AND ($5::boolean = true OR expires_at > $4)
+        RETURNING id, tenant_id, revision, expires_at, consumed_at, revoked_at
+      `,
+      values: [tenantId, invitationId, expectedRevision, changedAt, allowExpired],
+    });
+    if (updated.rowCount !== 1) return null;
+    await client.query({
+      name: 'onboarding-revoke-invitation-claims',
+      text: 'DELETE FROM tenant_claim_transactions WHERE invitation_id = $1',
+      values: [invitationId],
+    });
+    return mapInvitation(updated.rows[0]);
+  }
+
+  async function reissueInvitationWithClient(client, {
+    tenantId,
+    invitationId,
+    expectedRevision,
+    newInvitationId,
+    tokenHash,
+    changedAt,
+    expiresAt,
+  }) {
+    assertUuid(newInvitationId, 'ONBOARDING_INVITATION_ID_INVALID');
+    assertHash(tokenHash, 'ONBOARDING_INVITATION_HASH_INVALID');
+    assertDate(expiresAt, 'ONBOARDING_EXPIRES_AT_INVALID');
+    const revoked = await revokeInvitationWithClient(client, {
+      tenantId,
+      invitationId,
+      expectedRevision,
+      changedAt,
+      allowExpired: true,
+    });
+    if (!revoked) return null;
+    const inserted = await client.query({
+      name: 'onboarding-reissue-invitation',
+      text: `
+        INSERT INTO tenant_onboarding_invitations (
+          id, tenant_id, token_hash, created_at, expires_at, reissued_from_id
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, tenant_id, revision, expires_at, consumed_at, revoked_at
+      `,
+      values: [newInvitationId, tenantId, tokenHash, changedAt, expiresAt, invitationId],
+    });
+    return mapInvitation(inserted.rows[0]);
+  }
+
+  async function unbindActiveWithClient(client, {
+    tenantId,
+    provider,
+    changedAt,
+    expectedBindingRevision = null,
+    expectedLifecycleRevision = null,
+    expectedLifecycleStatus = null,
+  }) {
+    assertUuid(tenantId, 'ONBOARDING_TENANT_ID_INVALID');
+    assertProvider(provider);
+    assertDate(changedAt, 'ONBOARDING_CHANGED_AT_INVALID');
+    for (const revision of [expectedBindingRevision, expectedLifecycleRevision]) {
+      if (revision !== null && (!Number.isSafeInteger(revision) || revision < 1)) {
+        throw new TypeError('ONBOARDING_REVISION_INVALID');
+      }
+    }
+    if (expectedLifecycleStatus !== null && typeof expectedLifecycleStatus !== 'string') {
+      throw new TypeError('ONBOARDING_LIFECYCLE_STATUS_INVALID');
+    }
+    const tenant = await client.query({
+      name: 'onboarding-lock-tenant-for-unbind',
+      text: `
+        SELECT status, lifecycle_revision
+        FROM tenants
+        WHERE id = $1
+          AND status IN ('pending', 'onboarding', 'ready')
+        FOR UPDATE
+      `,
+      values: [tenantId],
+    });
+    const tenantRow = tenant.rows[0];
+    if (
+      !tenantRow
+      || (expectedLifecycleRevision !== null
+        && Number(tenantRow.lifecycle_revision) !== expectedLifecycleRevision)
+      || (expectedLifecycleStatus !== null && tenantRow.status !== expectedLifecycleStatus)
+    ) return null;
+    await client.query({
+      name: 'onboarding-lock-microsoft365-for-unbind',
+      text: `
+        SELECT id
+        FROM integrations
+        WHERE tenant_id = $1
+          AND provider = 'microsoft365'
+        FOR UPDATE
+      `,
+      values: [tenantId],
+    });
+    const activeBinding = await client.query({
+      name: 'onboarding-lock-active-identity-for-unbind',
+      text: `
+        SELECT
+          id,
+          tenant_id,
+          provider,
+          provider_tenant_reference,
+          claimant_provider_user_reference,
+          status,
+          revision,
+          created_at,
+          updated_at
+        FROM tenant_identity_bindings
+        WHERE tenant_id = $1
+          AND provider = $2
+          AND status = 'active'
+        FOR UPDATE
+      `,
+      values: [tenantId, provider],
+    });
+    if (
+      activeBinding.rowCount !== 1
+      || (expectedBindingRevision !== null
+        && Number(activeBinding.rows[0].revision) !== expectedBindingRevision)
+    ) return null;
+    const unresolvedBookings = await client.query({
+      name: 'onboarding-unbind-block-unresolved-bookings',
+      text: `
+        SELECT 1
+        FROM booking_provider_references
+        WHERE tenant_id = $1
+          AND state <> 'cancelled'
+        LIMIT 1
+        FOR UPDATE
+      `,
+      values: [tenantId],
+    });
+    if (unresolvedBookings.rowCount > 0) return null;
+    const result = await client.query({
+      name: 'onboarding-unbind-active-identity',
+      text: `
+        UPDATE tenant_identity_bindings
+        SET status = 'unbound', revision = revision + 1, updated_at = $2
+        WHERE id = $1
+          AND status = 'active'
+        RETURNING
+          id,
+          tenant_id,
+          provider,
+          provider_tenant_reference,
+          claimant_provider_user_reference,
+          status,
+          revision,
+          created_at,
+          updated_at
+      `,
+      values: [activeBinding.rows[0].id, changedAt],
+    });
+    if (result.rowCount !== 1) return null;
+    await client.query({
+      name: 'onboarding-unbind-invalidate-user-security-versions',
+      text: `
+        UPDATE users
+        SET security_version = security_version + 1,
+            updated_at = GREATEST(updated_at, $2)
+        WHERE tenant_id = $1
+      `,
+      values: [tenantId, changedAt],
+    });
+    const revoked = await client.query({
+      name: 'onboarding-unbind-revoke-sessions',
+      text: `
+        UPDATE sessions
+        SET revoked_at = GREATEST(issued_at, $2)
+        WHERE tenant_id = $1
+          AND revoked_at IS NULL
+      `,
+      values: [tenantId, changedAt],
+    });
+    await client.query({
+      name: 'onboarding-unbind-delete-microsoft365-consent',
+      text: `
+        DELETE FROM microsoft365_consent_transactions
+        WHERE tenant_id = $1
+      `,
+      values: [tenantId],
+    });
+    await client.query({
+      name: 'onboarding-unbind-disconnect-microsoft365',
+      text: `
+        UPDATE integrations
+        SET status = 'disconnected',
+            connection_version = connection_version + 1,
+            last_verified_at = NULL,
+            connection_reason = NULL,
+            places_permission_status = 'unknown',
+            calendars_permission_status = 'unknown',
+            updated_at = GREATEST(updated_at, $2)
+        WHERE tenant_id = $1
+          AND provider = 'microsoft365'
+      `,
+      values: [tenantId, changedAt],
+    });
+    return Object.freeze({
+      binding: mapBinding(result.rows[0]),
+      bindingRevision: Number(result.rows[0].revision),
+      revokedSessionCount: revoked.rowCount,
+    });
+  }
+
   return Object.freeze({
+    createTenantInvitationWithClient,
+    revokeInvitationWithClient,
+    reissueInvitationWithClient,
+    unbindActiveWithClient,
+
+    async findInvitationByTenantId(tenantId, invitationId, { client = pool } = {}) {
+      assertUuid(tenantId, 'ONBOARDING_TENANT_ID_INVALID');
+      assertUuid(invitationId, 'ONBOARDING_INVITATION_ID_INVALID');
+      const result = await client.query({
+        name: 'onboarding-find-invitation-by-tenant',
+        text: `
+          SELECT id, tenant_id, revision, expires_at, consumed_at, revoked_at
+          FROM tenant_onboarding_invitations
+          WHERE tenant_id = $1 AND id = $2
+          LIMIT 1
+        `,
+        values: [tenantId, invitationId],
+      });
+      return mapInvitation(result.rows[0]);
+    },
+
     async createTenantInvitation({
       tenantId,
       displayName,
@@ -69,30 +376,10 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
       assertDate(createdAt, 'ONBOARDING_CREATED_AT_INVALID');
       assertDate(expiresAt, 'ONBOARDING_EXPIRES_AT_INVALID');
       return withPostgresTransaction(pool, async (client) => {
-        const tenant = await client.query({
-          name: 'onboarding-create-pending-tenant',
-          text: `
-            INSERT INTO tenants (id, display_name, status, created_at, updated_at)
-            VALUES ($1, $2, 'pending', $3, $3)
-            ON CONFLICT (id) DO NOTHING
-            RETURNING id
-          `,
-          values: [tenantId, displayName, createdAt],
+        const created = await createTenantInvitationWithClient(client, {
+          tenantId, displayName, invitationId, tokenHash, createdAt, expiresAt,
         });
-        if (tenant.rowCount !== 1) return null;
-        const invitation = await client.query({
-          name: 'onboarding-create-invitation',
-          text: `
-            INSERT INTO tenant_onboarding_invitations (
-              id, tenant_id, token_hash, created_at, expires_at
-            )
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (token_hash) DO NOTHING
-            RETURNING id
-          `,
-          values: [invitationId, tenantId, tokenHash, createdAt, expiresAt],
-        });
-        if (invitation.rowCount !== 1) throw new Error('ONBOARDING_INVITATION_COLLISION');
+        if (!created) return null;
         const audit = await auditRepository.appendWithClient(client, auditEvent);
         if (!audit) throw new Error('AUDIT_APPEND_FAILED');
         return Object.freeze({ tenantId, invitationId });
@@ -110,6 +397,7 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
           JOIN tenants t ON t.id = i.tenant_id
           WHERE i.token_hash = $1
             AND i.consumed_at IS NULL
+            AND i.revoked_at IS NULL
             AND i.expires_at > $2
             AND t.status IN ('pending', 'onboarding')
         `,
@@ -151,6 +439,7 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
             JOIN tenants t ON t.id = i.tenant_id
             WHERE i.id = $1
               AND i.consumed_at IS NULL
+              AND i.revoked_at IS NULL
               AND i.expires_at > $2
               AND t.status IN ('pending', 'onboarding')
             FOR UPDATE OF i, t
@@ -227,6 +516,7 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
           WHERE c.token_hash = $1
             AND c.expires_at > $2
             AND i.consumed_at IS NULL
+            AND i.revoked_at IS NULL
             AND i.expires_at > $2
             AND t.status IN ('pending', 'onboarding')
         `,
@@ -276,6 +566,7 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
             JOIN tenants t ON t.id = i.tenant_id
             WHERE i.id = $1
               AND i.consumed_at IS NULL
+              AND i.revoked_at IS NULL
               AND i.expires_at > $2
               AND t.status IN ('pending', 'onboarding')
             FOR UPDATE OF i, t
@@ -394,134 +685,12 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
     },
 
     async unbindActive({ tenantId, provider, changedAt, auditEvent }) {
-      assertUuid(tenantId, 'ONBOARDING_TENANT_ID_INVALID');
-      assertProvider(provider);
-      assertDate(changedAt, 'ONBOARDING_CHANGED_AT_INVALID');
       return withPostgresTransaction(pool, async (client) => {
-        const tenant = await client.query({
-          name: 'onboarding-lock-tenant-for-unbind',
-          text: `
-            SELECT status
-            FROM tenants
-            WHERE id = $1
-              AND status IN ('pending', 'onboarding', 'ready')
-            FOR SHARE
-          `,
-          values: [tenantId],
-        });
-        if (tenant.rowCount !== 1) return null;
-        await client.query({
-          name: 'onboarding-lock-microsoft365-for-unbind',
-          text: `
-            SELECT id
-            FROM integrations
-            WHERE tenant_id = $1
-              AND provider = 'microsoft365'
-            FOR UPDATE
-          `,
-          values: [tenantId],
-        });
-        const activeBinding = await client.query({
-          name: 'onboarding-lock-active-identity-for-unbind',
-          text: `
-            SELECT
-              id,
-              tenant_id,
-              provider,
-              provider_tenant_reference,
-              claimant_provider_user_reference,
-              status,
-              created_at,
-              updated_at
-            FROM tenant_identity_bindings
-            WHERE tenant_id = $1
-              AND provider = $2
-              AND status = 'active'
-            FOR UPDATE
-          `,
-          values: [tenantId, provider],
-        });
-        if (activeBinding.rowCount !== 1) return null;
-        const unresolvedBookings = await client.query({
-          name: 'onboarding-unbind-block-unresolved-bookings',
-          text: `
-            SELECT 1
-            FROM booking_provider_references
-            WHERE tenant_id = $1
-              AND state <> 'cancelled'
-            LIMIT 1
-            FOR UPDATE
-          `,
-          values: [tenantId],
-        });
-        if (unresolvedBookings.rowCount > 0) return null;
-        const result = await client.query({
-          name: 'onboarding-unbind-active-identity',
-          text: `
-            UPDATE tenant_identity_bindings
-            SET status = 'unbound', updated_at = $2
-            WHERE id = $1
-              AND status = 'active'
-            RETURNING
-              id,
-              tenant_id,
-              provider,
-              provider_tenant_reference,
-              claimant_provider_user_reference,
-              status,
-              created_at,
-              updated_at
-          `,
-          values: [activeBinding.rows[0].id, changedAt],
-        });
-        if (result.rowCount !== 1) return null;
-        await client.query({
-          name: 'onboarding-unbind-invalidate-user-security-versions',
-          text: `
-            UPDATE users
-            SET security_version = security_version + 1,
-                updated_at = GREATEST(updated_at, $2)
-            WHERE tenant_id = $1
-          `,
-          values: [tenantId, changedAt],
-        });
-        await client.query({
-          name: 'onboarding-unbind-revoke-sessions',
-          text: `
-            UPDATE sessions
-            SET revoked_at = GREATEST(issued_at, $2)
-            WHERE tenant_id = $1
-              AND revoked_at IS NULL
-          `,
-          values: [tenantId, changedAt],
-        });
-        await client.query({
-          name: 'onboarding-unbind-delete-microsoft365-consent',
-          text: `
-            DELETE FROM microsoft365_consent_transactions
-            WHERE tenant_id = $1
-          `,
-          values: [tenantId],
-        });
-        await client.query({
-          name: 'onboarding-unbind-disconnect-microsoft365',
-          text: `
-            UPDATE integrations
-            SET status = 'disconnected',
-                connection_version = connection_version + 1,
-                last_verified_at = NULL,
-                connection_reason = NULL,
-                places_permission_status = 'unknown',
-                calendars_permission_status = 'unknown',
-                updated_at = GREATEST(updated_at, $2)
-            WHERE tenant_id = $1
-              AND provider = 'microsoft365'
-          `,
-          values: [tenantId, changedAt],
-        });
+        const result = await unbindActiveWithClient(client, { tenantId, provider, changedAt });
+        if (!result) return null;
         const audit = await auditRepository.appendWithClient(client, auditEvent);
         if (!audit) throw new Error('AUDIT_APPEND_FAILED');
-        return mapBinding(result.rows[0]);
+        return result.binding;
       });
     },
   });

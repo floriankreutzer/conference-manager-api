@@ -1,3 +1,4 @@
+import { clearSaas3TestState } from './support/saas3-test-state.js';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import test from 'node:test';
@@ -84,6 +85,7 @@ async function clean(pool) {
     await pool.query('ALTER TABLE audit_events ENABLE TRIGGER audit_events_append_only');
   }
   await pool.query('DELETE FROM users WHERE tenant_id = ANY($1::uuid[])', [TENANT_IDS]);
+  await clearSaas3TestState(pool);
   await pool.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [TENANT_IDS]);
 }
 

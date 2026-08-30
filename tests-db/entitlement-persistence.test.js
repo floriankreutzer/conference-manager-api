@@ -1,3 +1,4 @@
+import { clearSaas3TestState } from './support/saas3-test-state.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createAuditService } from '../src/audit/audit-service.js';
@@ -51,6 +52,7 @@ test('PostgreSQL entitlements are tenant-scoped, constrained, and audit-atomic',
       await pool.query('ALTER TABLE audit_events ENABLE TRIGGER audit_events_append_only');
     }
     await pool.query('DELETE FROM tenant_entitlements WHERE tenant_id = ANY($1::uuid[])', [[TENANT_A, TENANT_B]]);
+    await clearSaas3TestState(pool);
     await pool.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [[TENANT_A, TENANT_B]]);
     await pool.end();
   });

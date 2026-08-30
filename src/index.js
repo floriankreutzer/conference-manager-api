@@ -113,6 +113,7 @@ const microsoft365CalendarProviderFactory = persistence && microsoft365Client
     mappingRepository: persistence.microsoft365RoomMappingRepository,
     providerClient: microsoft365Client,
     capabilityHealthService,
+    observationRepository: persistence.microsoft365RoomObservationRepository,
   })
   : null;
 const microsoft365BookingServiceFactory = persistence
