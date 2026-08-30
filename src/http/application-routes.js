@@ -49,7 +49,9 @@ const ROOM_AVAILABILITY_BODY_SCHEMA = Object.freeze({
     startsAt: (value) => typeof value === 'string' && value.length <= 64,
     endsAt: (value) => typeof value === 'string' && value.length <= 64,
   }),
-  optional: Object.freeze({}),
+  optional: Object.freeze({
+    resubmissionRequestId: (value) => typeof value === 'string' && value.length >= 1 && value.length <= 128,
+  }),
 });
 const NOTIFICATION_BODY_SCHEMA = Object.freeze({
   required: Object.freeze({ read: (value) => value === true }),

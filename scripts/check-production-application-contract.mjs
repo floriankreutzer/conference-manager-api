@@ -47,7 +47,10 @@ for (const required of [
   'repository.hasConflictingRequest',
   'calendarProviderFactory.forRoom',
   'normalizeAvailabilityResult',
-  'excludeRequestId: null',
+  'authorizationPolicy.authorizeRequestRead',
+  'request.requesterUserId !== principal.userId',
+  "request.status !== 'Change Requested'",
+  'excludeRequestId,',
   'RoomAvailabilityUnavailableError',
 ]) {
   if (!availabilityService.includes(required)) {

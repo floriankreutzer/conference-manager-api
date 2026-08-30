@@ -123,15 +123,17 @@ export function createDemoMicrosoft365Client({
   }
 
   return Object.freeze({
-    redirectUri: new URL('/api/v1/demo/provider/consent', origin).toString(),
+    redirectUri: new URL('/api/v1/integrations/microsoft365/callback', origin).toString(),
 
     adminConsentUrl({ tenantReference: tenantValue, state }) {
       tenantReference(tenantValue);
       if (typeof state !== 'string' || !STATE_PATTERN.test(state)) {
         invalid('MICROSOFT365_CONSENT_STATE_INVALID');
       }
-      const url = new URL('/api/v1/demo/provider/consent', origin);
+      const url = new URL('/api/v1/integrations/microsoft365/callback', origin);
       url.searchParams.set('state', state);
+      url.searchParams.set('tenant', tenantReference(tenantValue));
+      url.searchParams.set('admin_consent', 'true');
       return url.toString();
     },
 

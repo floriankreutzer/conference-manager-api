@@ -33,6 +33,11 @@ function client() {
 
 test('Demo provider is deterministic, provider-shaped, and performs no outbound request', async () => {
   const provider = client();
+  const consent = new URL(provider.adminConsentUrl({ tenantReference: TENANT_A, state: 'a'.repeat(43) }));
+  assert.equal(consent.pathname, '/api/v1/integrations/microsoft365/callback');
+  assert.equal(consent.searchParams.get('tenant'), TENANT_A);
+  assert.equal(consent.searchParams.get('admin_consent'), 'true');
+  assert.equal(consent.searchParams.get('state'), 'a'.repeat(43));
   assert.deepEqual(await provider.discoverRooms({ tenantReference: TENANT_A }), [{
     externalRoomId: 'northwind-room-1',
     displayName: 'Northwind Demo Room',
