@@ -116,6 +116,66 @@ async function seedTenantBusinessState(client, fixture) {
         fixture.fixedClock,
       ],
     });
+    const advancedOrganization = await client.query({
+      name: 'demo-fixture-advance-organization-revision',
+      text: `
+        UPDATE tenants
+        SET organization_revision = 2,
+            updated_at = $2
+        WHERE id = $1 AND organization_revision = 1
+      `,
+      values: [tenant.id, fixture.fixedClock],
+    });
+    if (advancedOrganization.rowCount !== 1) {
+      throw new Error('DEMO_FIXTURE_ORGANIZATION_REVISION_ADVANCE_FAILED');
+    }
+    const organizationRevision = await client.query({
+      name: 'demo-fixture-insert-organization-revision',
+      text: `
+        INSERT INTO tenant_organization_revisions (
+          tenant_id,
+          revision,
+          snapshot,
+          effective_at,
+          actor_user_id,
+          correlation_id
+        )
+        VALUES (
+          $1,
+          2,
+          jsonb_build_object(
+            'displayName', $2::text,
+            'businessMetadata', jsonb_build_object(
+              'legalName', $3::text,
+              'registrationNumber', NULL,
+              'countryCode', $4::text
+            ),
+            'presentation', jsonb_build_object(
+              'defaultLocale', 'de-DE',
+              'defaultCurrency', $5::text
+            ),
+            'branding', jsonb_build_object(
+              'logoAssetRef', NULL,
+              'accentToken', 'default'
+            )
+          ),
+          $6,
+          NULL,
+          NULL
+        )
+      `,
+      values: [
+        tenant.id,
+        tenant.displayName,
+        tenant.settings.organization.name,
+        tenant.settings.organization.countryCode,
+        tenant.settings.catalogue.currency,
+        fixture.fixedClock,
+      ],
+    });
+    if (organizationRevision.rowCount !== 1) {
+      throw new Error('DEMO_FIXTURE_ORGANIZATION_REVISION_INSERT_FAILED');
+    }
     for (const location of tenant.settings.locations) {
       await client.query({
         name: 'demo-fixture-insert-site',

@@ -34,6 +34,23 @@ test('concrete Demo seeder uses bounded named parameterized writes and never see
   assert.equal(queries.every(({ name, values }) => typeof name === 'string' && Array.isArray(values)), true);
   assert.equal(queries.some(({ name }) => name.includes('session')), false);
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-tenant').length, 2);
+  assert.equal(
+    queries.filter(({ name }) => name === 'demo-fixture-advance-organization-revision').length,
+    2,
+  );
+  const organizationRevisions = queries.filter(
+    ({ name }) => name === 'demo-fixture-insert-organization-revision',
+  );
+  assert.equal(organizationRevisions.length, 2);
+  assert.deepEqual(
+    organizationRevisions.map(({ values }) => values.slice(1, 5)),
+    DEMO_FIXTURE.tenants.map((tenant) => [
+      tenant.displayName,
+      tenant.settings.organization.name,
+      tenant.settings.organization.countryCode,
+      tenant.settings.catalogue.currency,
+    ]),
+  );
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-user').length, 6);
   const userIdentityWrites = queries.filter(({ name }) => name === 'demo-fixture-insert-user-identity');
   assert.equal(userIdentityWrites.length, 6);
