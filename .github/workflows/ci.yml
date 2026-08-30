@@ -136,6 +136,7 @@ jobs:
             -u DEMO_MIGRATION_DATABASE_URL \
             -u DEMO_PLATFORM_SESSION_SECRET \
             -u DEMO_PLATFORM_CSRF_SECRET \
+            RATE_LIMIT_MAX=1000 \
             npm run start:demo:customer >customer-demo-api.log 2>&1 &
           echo $! >customer-demo-api.pid
           env \
@@ -143,6 +144,7 @@ jobs:
             -u DEMO_MIGRATION_DATABASE_URL \
             -u DEMO_CUSTOMER_SESSION_SECRET \
             -u DEMO_CUSTOMER_CSRF_SECRET \
+            PLATFORM_RATE_LIMIT_MAX=1000 \
             npm run start:demo:platform >platform-demo-api.log 2>&1 &
           echo $! >platform-demo-api.pid
       - name: Wait for both Demo APIs
