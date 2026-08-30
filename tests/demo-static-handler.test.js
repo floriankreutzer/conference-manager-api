@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
+import { createDemoStaticFileAdapter } from '../src/demo/static-file-adapter.mjs';
 import { createDemoStaticHandler } from '../src/demo/static-handler.js';
 
 async function fixtureRoot() {
@@ -25,7 +26,11 @@ async function fixtureRoot() {
 }
 
 async function startStaticServer({ root, surface }) {
-  const handler = createDemoStaticHandler({ root, surface });
+  const handler = createDemoStaticHandler({
+    root,
+    surface,
+    fileAdapter: createDemoStaticFileAdapter({ root }),
+  });
   const server = http.createServer((request, response) => {
     handler(request, response).catch(() => {
       if (!response.headersSent) response.statusCode = 500;
@@ -137,4 +142,11 @@ test('hosted Demo static serving rejects traversal, symlink escape, unknown cont
   const post = await rawRequest(origin, '/', { method: 'POST' });
   assert.equal(post.status, 405);
   assert.equal(post.headers.allow, 'GET, HEAD');
+});
+
+test('hosted Demo static transport fails closed without its injected filesystem port', () => {
+  assert.throws(
+    () => createDemoStaticHandler({ root: '.demo-frontend', surface: 'customer' }),
+    /DEMO_STATIC_FILE_ADAPTER_REQUIRED/,
+  );
 });
