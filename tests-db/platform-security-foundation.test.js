@@ -319,7 +319,7 @@ test('PostgreSQL Platform identity, scope, session, break-glass, OIDC and audit 
       targetId: 'attempt',
       metadata: { reasonCode: 'grant_rejected' },
     }),
-    async mutation({ authorization }) { return authorization.id; },
+    async mutation({ authorization }) { return authorization.grantId; },
   });
   assert.deepEqual(consumedGrant, { executed: true, result: GRANT_ID });
   const alerts = await pool.query(

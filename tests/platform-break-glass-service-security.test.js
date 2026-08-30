@@ -3,6 +3,7 @@ import test from 'node:test';
 import { createPlatformAuditService } from '../src/platform/audit/audit-service.js';
 import { PLATFORM_AUDIT_ACTION, PLATFORM_AUDIT_OUTCOME } from '../src/platform/audit/event.js';
 import { createPlatformBreakGlassService } from '../src/platform/identity/break-glass-service.js';
+import { createPlatformBreakGlassAuthorizationContext } from '../src/platform/identity/break-glass.js';
 import { PlatformAuthorizationError } from '../src/platform/identity/errors.js';
 import {
   PLATFORM_PERMISSION,
@@ -90,7 +91,8 @@ function harness({ denyConsumption = false } = {}) {
         return null;
       }
       const consumed = Object.freeze({ ...grant, consumedAt: '2026-08-28T12:02:00.000Z' });
-      const result = await mutation(Object.freeze({ client: { transaction: true }, authorization: consumed }));
+      const authorization = createPlatformBreakGlassAuthorizationContext(consumed);
+      const result = await mutation(Object.freeze({ client: { transaction: true }, authorization }));
       state.mutationCalls += 1;
       state.events.push(eventFactory(consumed));
       return Object.freeze({ executed: true, result });
@@ -139,7 +141,7 @@ test('break-glass issue and consume require two step-up actors and bind audit to
     correlationId: CORRELATION_ID,
     async mutation({ client, authorization }) {
       assert.equal(client.transaction, true);
-      assert.equal(authorization.id, GRANT_ID);
+      assert.equal(authorization.grantId, GRANT_ID);
       return { repaired: true };
     },
   });
