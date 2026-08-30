@@ -107,6 +107,14 @@ function sessionProjection(result, requestId) {
 }
 
 function normalizePersonaError(error) {
+  if (
+    error?.message === 'DEMO_PLATFORM_SESSION_INVALID'
+    || error?.message === 'DEMO_PLATFORM_SESSION_AUTHORITY_INVALID'
+  ) {
+    return new PlatformHttpError(401, 'PLATFORM_AUTHENTICATION_FAILED', {
+      securityCategory: 'authentication',
+    });
+  }
   if (error?.message === 'DEMO_PLATFORM_PERSONA_INVALID') {
     return new PlatformHttpError(400, 'PLATFORM_VALIDATION_FAILED');
   }
@@ -158,7 +166,12 @@ export function createDemoPlatformControlRoutes({
             throw new PlatformHttpError(405, 'PLATFORM_METHOD_NOT_ALLOWED');
           }
           await assertNoPlatformRequestBody(request);
-          const result = await personaService.establish(request, { correlationId: requestId });
+          let result;
+          try {
+            result = await personaService.establish(request, { correlationId: requestId });
+          } catch (error) {
+            throw normalizePersonaError(error);
+          }
           if (result.setCookie) response.setHeader('Set-Cookie', sessionCookie(result.setCookie));
           sendPlatformJson(response, 200, sessionProjection(result, requestId), maxResponseBytes);
           return 200;

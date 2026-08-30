@@ -57,7 +57,8 @@ The Demo entrypoints are separate composition roots and require all of the follo
 
 `loadDemoConfig` rejects Pilot/Production mode, aliased origins, database principals, passwords or
 secrets, mismatched database targets, administrative database role names, real-provider variables,
-and conflicting normal database/origin/session/Platform configuration. Real Entra, Microsoft Graph,
+and conflicting normal database/origin/session/Platform configuration, including the Production
+`AUDIT_HMAC_SECRET`. Real Entra, Microsoft Graph,
 customer or Production credentials must not be present in the Demo process environment.
 
 `DEMO_TENANT_AUDIT_HMAC_SECRET` is deliberately common to customer Tenant-audit writes/reads and
@@ -66,7 +67,7 @@ audit HMAC and signed-cursor secrets remain a different domain derived from the 
 secret. The shared Tenant-audit key must be unique from every other Demo secret and database
 password; it is not a general cross-process session or authorization secret.
 
-The Demo uses `src/demo/provider/microsoft365-client.js`, which implements the provider-neutral Microsoft 365 contract without a network transport. The source-defined scenarios produce deterministic success, transient conflict and degraded-provider behavior. Inputs and outputs retain the production provider contract's positive validation and bounded shapes. Demo consent URLs remain on the configured Demo origin and never target Microsoft.
+The Demo uses `src/demo/provider/microsoft365-client.js`, which implements the provider-neutral Microsoft 365 contract without a network transport. The source-defined scenarios produce deterministic success, transient conflict and degraded-provider behavior. Its room inventory is derived from every fixture room mapping, so healthy discovery and mapping journeys return the same rooms that the canonical seed persists. Inputs and outputs retain the production provider contract's positive validation and bounded shapes. Demo consent URLs remain on the configured Demo origin and never target Microsoft.
 
 ## PostgreSQL roles and schema
 
@@ -79,7 +80,12 @@ Provision four purpose-specific login roles with unique credentials:
 | Reset/seed | Verified destructive reset and deterministic seed over the fixed Demo table inventory | Normal browser request handling, schema ownership, use against a non-Demo database |
 | Migration owner | Canonical and Demo migration DDL/ledger ownership for this isolated database | Normal browser request handling or reset execution |
 
-The deployed database first receives the canonical Production schema migrations `001` through `033`. The Demo overlay is a separate checksum-protected migration stream under `demo-migrations/`; its current schema version is `001`. The overlay adds only the Demo sentinel, deterministic provider/persona references, immutable-sentinel protection, views and role grants. It does not replace or modify `schema_migrations`, and the runtime does not auto-migrate at startup.
+The deployed database first receives the canonical Production schema migrations `001` through `033`. The Demo overlay is a separate checksum-protected migration stream under `demo-migrations/`; its current schema version is `002`. The overlay adds only the Demo sentinel, deterministic provider/persona references, immutable-sentinel protection, views and least-privilege role grants. Migration `002` grants both runtime roles read-only access to the Demo migration ledger solely for readiness verification. It does not replace or modify `schema_migrations`, and the runtime does not auto-migrate at startup.
+
+Before either HTTP listener starts, its runtime verifies the connected database and role against the
+immutable sentinel, the exact Demo overlay ledger `1..2`, and its complete persona seed. Platform
+also verifies the provider-simulation Tenant inventory. The same check remains in normal readiness;
+missing, stale or mismatched state therefore fails closed both before serving and while running.
 
 The Demo migration runner refuses a missing, gapped or non-exact canonical migration ledger. A future canonical migration therefore requires an explicit Demo inventory, grant, reset and fixture review before the Demo schema version can advance.
 
@@ -103,6 +109,11 @@ Reset is destructive by design and is allowed only in the isolated Demo database
 - the source fixture's calculated domain-separated semantic checksum.
 
 Every normal customer or Platform request takes the shared Demo advisory lock. Reset takes the matching exclusive lock and then performs the complete truncate, seed, Demo provider/persona insertion and semantic readback in one `SERIALIZABLE` transaction. A lock acquisition/release failure, sentinel mismatch, schema drift, table drift, seed failure or checksum mismatch fails the operation; partial state cannot commit. The post-seed semantic projection must reproduce the source checksum before success is returned.
+
+Fixture business timestamps remain fixed for reproducible semantic checksums. Operational Platform
+projection freshness is different: each seed/reset reads PostgreSQL `clock_timestamp()` inside the
+reset transaction and uses that reset-time instant as the projection observation time, so a later
+reset cannot immediately produce stale readiness projections.
 
 An authenticated HTTP reset also revalidates its exact internal Platform session, operator and
 security version after acquiring the exclusive lock and before destructive SQL. A second request
@@ -183,8 +194,8 @@ npm run start:demo:platform
 
 `npm run demo:db:reset -- --confirm-seed-version=saas-3.5-shared-demo-v1` is the only supported
 initial seed and reseed operation. `npm run demo:db:rollback` rolls back only the latest Demo
-overlay migration and is not a routine populated-environment recovery mechanism. The overlay down
-migration fails closed while Demo persona/provider state is in use. Prefer replacement of the
+overlay migration and is not a routine populated-environment recovery mechanism. The foundation
+down migration fails closed while Demo persona/provider state is in use. Prefer replacement of the
 isolated Demo database over destructive manual cleanup.
 
 ## Required configuration
@@ -214,7 +225,7 @@ Do not place any of these values in source, documentation examples, browser conf
 For each deployed Demo candidate, record:
 
 - backend and frontend commit/artifact identifiers;
-- canonical schema version `33` and Demo overlay version `1`;
+- canonical schema version `33` and Demo overlay version `2`;
 - seed version and semantic checksum returned by reset;
 - customer and Platform origin identities without credentials;
 - the browser/integration test run covering cross-process shared state;

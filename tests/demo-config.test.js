@@ -78,6 +78,10 @@ test('Demo config rejects Production, Pilot and real provider configuration', ()
     () => loadDemoConfig(validEnv({ MICROSOFT_GRAPH_URL: 'https://graph.microsoft.invalid' })),
     configError('DEMO_CONFIG_PRODUCTION_CONFIGURATION_FORBIDDEN'),
   );
+  assert.throws(
+    () => loadDemoConfig(validEnv({ AUDIT_HMAC_SECRET: 'production-audit-secret' })),
+    configError('DEMO_CONFIG_PRODUCTION_CONFIGURATION_FORBIDDEN'),
+  );
 });
 
 test('Demo config permits provider-named runner metadata that cannot configure the application', () => {
@@ -171,6 +175,10 @@ test('surface loaders reject credentials outside their process responsibility', 
   delete customerEnv.DEMO_PLATFORM_SESSION_SECRET;
   delete customerEnv.DEMO_PLATFORM_CSRF_SECRET;
   const customer = loadDemoCustomerConfig(customerEnv);
+  assert.deepEqual(customer.origins, {
+    customer: customerEnv.DEMO_CUSTOMER_ORIGIN,
+    platform: customerEnv.DEMO_PLATFORM_ORIGIN,
+  });
   assert.deepEqual(Object.keys(customer.databases), ['customer']);
   assert.deepEqual(Object.keys(customer.secrets).sort(), [
     'customer_csrf_secret',
@@ -184,6 +192,13 @@ test('surface loaders reject credentials outside their process responsibility', 
     }),
     configError('DEMO_CONFIG_EXCESS_CREDENTIAL_FORBIDDEN'),
   );
+  assert.throws(
+    () => loadDemoCustomerConfig({
+      ...customerEnv,
+      DEMO_PLATFORM_ORIGIN: customerEnv.DEMO_CUSTOMER_ORIGIN,
+    }),
+    configError('DEMO_CONFIG_ORIGIN_ALIAS_FORBIDDEN'),
+  );
 
   const platformEnv = validEnv();
   delete platformEnv.DEMO_CUSTOMER_DATABASE_URL;
@@ -191,6 +206,10 @@ test('surface loaders reject credentials outside their process responsibility', 
   delete platformEnv.DEMO_CUSTOMER_SESSION_SECRET;
   delete platformEnv.DEMO_CUSTOMER_CSRF_SECRET;
   const platform = loadDemoPlatformConfig(platformEnv);
+  assert.deepEqual(platform.origins, {
+    customer: platformEnv.DEMO_CUSTOMER_ORIGIN,
+    platform: platformEnv.DEMO_PLATFORM_ORIGIN,
+  });
   assert.deepEqual(Object.keys(platform.databases).sort(), ['platform', 'reset']);
   assert.deepEqual(Object.keys(platform.secrets).sort(), [
     'platform_csrf_secret',
@@ -203,5 +222,12 @@ test('surface loaders reject credentials outside their process responsibility', 
       DEMO_CUSTOMER_DATABASE_URL: validEnv().DEMO_CUSTOMER_DATABASE_URL,
     }),
     configError('DEMO_CONFIG_EXCESS_CREDENTIAL_FORBIDDEN'),
+  );
+  assert.throws(
+    () => loadDemoPlatformConfig({
+      ...platformEnv,
+      DEMO_CUSTOMER_ORIGIN: platformEnv.DEMO_PLATFORM_ORIGIN,
+    }),
+    configError('DEMO_CONFIG_ORIGIN_ALIAS_FORBIDDEN'),
   );
 });

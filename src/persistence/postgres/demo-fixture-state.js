@@ -485,9 +485,23 @@ export async function seedDemoBusinessState({
   await seedTenantBusinessState(client, fixture);
   await seedTenantReadinessState(client, fixture);
   await seedPlatformState(client, fixture);
+  const projectionClock = await client.query({
+    name: 'demo-fixture-projection-clock',
+    text: 'SELECT clock_timestamp() AS observed_at',
+    values: [],
+  });
+  const observedAtValue = projectionClock.rows[0]?.observed_at;
+  const observedAt = observedAtValue instanceof Date
+    ? observedAtValue.toISOString()
+    : observedAtValue;
+  if (
+    typeof observedAt !== 'string'
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(observedAt)
+    || !Number.isFinite(Date.parse(observedAt))
+  ) throw new Error('DEMO_FIXTURE_PROJECTION_CLOCK_INVALID');
   const projection = await refreshProjections(client, {
     limit: fixture.tenants.length,
-    observedAt: fixture.fixedClock,
+    observedAt,
   });
   if (projection.refreshedCount !== fixture.tenants.length) {
     throw new Error('DEMO_FIXTURE_PLATFORM_PROJECTION_INCOMPLETE');

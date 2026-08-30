@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { demoProviderRooms } from '../src/demo/customer-composition.js';
+import { DEMO_FIXTURE } from '../src/demo/fixture.js';
 import { createDemoMicrosoft365Client } from '../src/demo/provider/microsoft365-client.js';
 import { Microsoft365ProviderError } from '../src/integrations/microsoft365-contract.js';
 
@@ -63,6 +65,30 @@ test('Demo provider is deterministic, provider-shaped, and performs no outbound 
     disposition: 'created',
   });
   assert.deepEqual(await provider.createCalendarEvent(input), await provider.createCalendarEvent(input));
+});
+
+test('Customer Demo composition derives provider inventory from every mapped fixture room', () => {
+  const inventory = demoProviderRooms();
+  assert.deepEqual(
+    Object.keys(inventory).sort(),
+    DEMO_FIXTURE.tenants.map(({ providerSimulation }) => (
+      providerSimulation.providerTenantReference
+    )).sort(),
+  );
+  for (const tenant of DEMO_FIXTURE.tenants) {
+    const mapping = tenant.providerSimulation.roomMapping;
+    const location = tenant.settings.locations.find(({ rooms }) => (
+      rooms.some(({ id }) => id === mapping.roomId)
+    ));
+    const room = location.rooms.find(({ id }) => id === mapping.roomId);
+    assert.deepEqual(inventory[tenant.providerSimulation.providerTenantReference], [{
+      id: mapping.externalRoomId,
+      displayName: room.name,
+      resourceAddress: mapping.resourceAddress,
+      capacity: room.capacity,
+      building: location.name,
+    }]);
+  }
 });
 
 test('Demo provider exposes explicit degradation and validates caller-controlled inputs', async () => {

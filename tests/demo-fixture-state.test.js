@@ -13,19 +13,23 @@ import {
 
 test('concrete Demo seeder uses bounded named parameterized writes and never seeds sessions', async () => {
   const queries = [];
+  const resetObservedAt = '2026-08-30T12:34:56.789Z';
   await seedDemoBusinessState({
     fixture: DEMO_FIXTURE,
     async refreshProjections(client, input) {
       assert.equal(typeof client.query, 'function');
       assert.deepEqual(input, {
         limit: DEMO_FIXTURE.tenants.length,
-        observedAt: DEMO_FIXTURE.fixedClock,
+        observedAt: resetObservedAt,
       });
       return { refreshedCount: DEMO_FIXTURE.tenants.length };
     },
     client: {
       async query(query) {
         queries.push(query);
+        if (query.name === 'demo-fixture-projection-clock') {
+          return { rowCount: 1, rows: [{ observed_at: new Date(resetObservedAt) }] };
+        }
         return { rowCount: 1, rows: [] };
       },
     },
@@ -33,6 +37,7 @@ test('concrete Demo seeder uses bounded named parameterized writes and never see
   assert.equal(queries.length > 20, true);
   assert.equal(queries.every(({ name, values }) => typeof name === 'string' && Array.isArray(values)), true);
   assert.equal(queries.some(({ name }) => name.includes('session')), false);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-projection-clock').length, 1);
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-tenant').length, 2);
   assert.equal(
     queries.filter(({ name }) => name === 'demo-fixture-advance-organization-revision').length,

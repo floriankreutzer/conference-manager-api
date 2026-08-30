@@ -39,6 +39,9 @@ import { createMetricsRegistry } from './observability/metrics.js';
 import { createTenantOnboardingService } from './onboarding/tenant-onboarding-service.js';
 import { createPostgresPersistence } from './persistence/postgres/index.js';
 import { createHttpServer } from './server.js';
+import { shutdownCustomerRuntime } from './customer-shutdown.js';
+
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
 export function createCustomerComposition({
   config,
@@ -48,11 +51,15 @@ export function createCustomerComposition({
   logger = createLogger(),
   metrics = createMetricsRegistry(),
   httpServerFactory = createHttpServer,
+  shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
   additionalRouteModules = [],
   routeModulesFactory,
 } = {}) {
 if (!config) throw new TypeError('CUSTOMER_CONFIG_REQUIRED');
 if (typeof httpServerFactory !== 'function') throw new TypeError('CUSTOMER_HTTP_SERVER_FACTORY_REQUIRED');
+if (!Number.isSafeInteger(shutdownTimeoutMs) || shutdownTimeoutMs <= 0) {
+  throw new TypeError('CUSTOMER_SHUTDOWN_TIMEOUT_INVALID');
+}
 if (!Array.isArray(additionalRouteModules)) throw new TypeError('CUSTOMER_ROUTE_MODULES_INVALID');
 if (routeModulesFactory !== undefined && typeof routeModulesFactory !== 'function') {
   throw new TypeError('CUSTOMER_ROUTE_MODULES_FACTORY_INVALID');
@@ -412,13 +419,11 @@ return Object.freeze({
   async stop() {
     if (closed) return;
     closed = true;
-    if (started) {
-      await new Promise((resolve, reject) => {
-        server.close((error) => error ? reject(error) : resolve());
-      });
+    try {
+      await shutdownCustomerRuntime({ server, persistence, started, timeoutMs: shutdownTimeoutMs });
+    } finally {
+      started = false;
     }
-    await persistence?.close?.();
-    started = false;
   },
 });
 }

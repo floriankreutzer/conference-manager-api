@@ -1,5 +1,6 @@
 import { createPostgresDemoPersonaRepository } from '../persistence/postgres/demo-persona-repository.js';
 import { createPostgresDemoResetRepository } from '../persistence/postgres/demo-reset-repository.js';
+import { createPostgresDemoRuntimeReadiness } from '../persistence/postgres/demo-runtime-readiness.js';
 import { withDemoRuntimeSharedGate } from '../persistence/postgres/demo-runtime-gate.js';
 import { createPostgresPlatformPersistence } from '../persistence/postgres/platform-index.js';
 import { createPostgresPool } from '../persistence/postgres/pool.js';
@@ -25,10 +26,25 @@ export function createDemoPlatformComposition({
   persistence,
   gatePool,
   resetPool,
+  readiness,
 } = {}) {
   if (!config) throw new TypeError('DEMO_CONFIG_REQUIRED');
   const runtimeConfig = createDemoPlatformRuntimeConfig(config);
   const selectedPersistence = persistence || createPostgresPlatformPersistence(runtimeConfig);
+  const selectedReadiness = readiness || createPostgresDemoRuntimeReadiness({
+    pool: selectedPersistence.pool,
+    surface: 'platform',
+    expectedDatabaseName: config.databaseTarget.database,
+    expectedRole: config.databases.platform.role,
+    expectedSentinelKey: config.databaseSentinelKey,
+  });
+  const runtimePersistence = Object.freeze({
+    ...selectedPersistence,
+    readinessChecks: Object.freeze([
+      ...(selectedPersistence.readinessChecks || []),
+      () => selectedReadiness.isReady(),
+    ]),
+  });
   const selectedGatePool = gatePool || createPostgresPool(auxiliaryConfig(
     runtimeConfig,
     runtimeConfig.databaseUrl,
@@ -57,7 +73,7 @@ export function createDemoPlatformComposition({
   const resetService = createDemoResetService({ repository: resetRepository });
   const composition = createPlatformComposition({
     config: runtimeConfig,
-    persistence: selectedPersistence,
+    persistence: runtimePersistence,
     httpServerFactory: (options) => createDemoPlatformHttpServer({
       ...options,
       demoRuntimeGatePool: selectedGatePool,
@@ -85,6 +101,7 @@ export function createDemoPlatformComposition({
     resetDescriptor: resetService.descriptor,
     async start() {
       if (stopped) throw new TypeError('DEMO_PLATFORM_PROCESS_STOPPED');
+      await selectedReadiness.assertReady();
       return composition.start();
     },
     async stop() {

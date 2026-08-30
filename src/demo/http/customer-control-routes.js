@@ -59,6 +59,12 @@ function sessionProjection(result, tenantContext, requestId) {
 }
 
 function normalizeContextError(error) {
+  if (
+    error?.message === 'DEMO_CUSTOMER_SESSION_INVALID'
+    || error?.message === 'DEMO_CUSTOMER_SESSION_AUTHORITY_INVALID'
+  ) {
+    return new ApiError(401, 'UNAUTHENTICATED');
+  }
   if (error?.message === 'DEMO_CUSTOMER_CONTEXT_INVALID') {
     return new ApiError(400, 'VALIDATION_FAILED');
   }
@@ -88,7 +94,12 @@ export function createDemoCustomerControlRoutes({ personaService } = {}) {
         if (path === DEMO_CUSTOMER_SESSION_PATH) {
           if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
           await assertNoBody(request);
-          const result = await personaService.establish(request, { correlationId: requestId });
+          let result;
+          try {
+            result = await personaService.establish(request, { correlationId: requestId });
+          } catch (error) {
+            throw normalizeContextError(error);
+          }
           const tenantContext = await tenantGuard.requireKnown(result.principal);
           if (result.setCookie) response.setHeader('Set-Cookie', result.setCookie);
           sendJson(response, 200, sessionProjection(result, tenantContext, requestId), maxResponseBytes);

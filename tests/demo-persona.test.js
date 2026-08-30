@@ -1,10 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { ApiError } from '../src/api-error.js';
 import { tenantAuthorizationSnapshot } from '../src/authorization/policy.js';
+import {
+  createDemoCustomerControlRoutes,
+  DEMO_CUSTOMER_SESSION_PATH,
+} from '../src/demo/http/customer-control-routes.js';
+import {
+  createDemoPlatformControlRoutes,
+  DEMO_PLATFORM_SESSION_PATH,
+} from '../src/demo/http/platform-control-routes.js';
 import { createDemoCustomerPersonaService } from '../src/demo/identity/customer-persona-service.js';
 import { createDemoPlatformPersonaService } from '../src/demo/identity/platform-persona-service.js';
 import { permissionsForPlatformRoles } from '../src/platform/identity/policy.js';
+import { PlatformHttpError } from '../src/platform/http/errors.js';
 import { createPostgresDemoPersonaRepository } from '../src/persistence/postgres/demo-persona-repository.js';
 
 const TENANT_ID = '10000000-0000-4000-8000-000000000001';
@@ -272,4 +282,65 @@ test('Demo establish issues defaults only when its own session cookie is genuine
     );
   }
   assert.equal(platformIssues.length, 1);
+});
+
+test('Demo session HTTP routes map invalid or revoked cookies to stable authentication failures', async () => {
+  const request = {
+    method: 'GET',
+    headers: { cookie: 'presented=invalid' },
+    async *[Symbol.asyncIterator]() {},
+  };
+  const response = { setHeader() {}, end() {} };
+  const customerModule = createDemoCustomerControlRoutes({
+    personaService: {
+      async establish() { throw new TypeError('DEMO_CUSTOMER_SESSION_INVALID'); },
+      async switch() {},
+      async tenants() { return []; },
+    },
+  });
+  const customerHandler = customerModule.createHandler({
+    principalGuard: {},
+    tenantGuard: {},
+    maxBodyBytes: 1024,
+    maxResponseBytes: 4096,
+  });
+  await assert.rejects(
+    customerHandler({
+      request,
+      response,
+      parsedUrl: new URL(`https://customer.demo.invalid${DEMO_CUSTOMER_SESSION_PATH}`),
+      path: DEMO_CUSTOMER_SESSION_PATH,
+      requestId: '11111111-1111-4111-8111-111111111111',
+    }),
+    (error) => error instanceof ApiError
+      && error.statusCode === 401
+      && error.code === 'UNAUTHENTICATED',
+  );
+
+  const platformModule = createDemoPlatformControlRoutes({
+    personaService: {
+      async establish() { throw new TypeError('DEMO_PLATFORM_SESSION_INVALID'); },
+      async switch() {},
+    },
+    resetService: { async reset() {} },
+  });
+  const platformHandler = platformModule.createHandler({
+    platformPrincipalGuard: {},
+    platformSessionService: {},
+    maxBodyBytes: 1024,
+    maxResponseBytes: 4096,
+  });
+  await assert.rejects(
+    platformHandler({
+      request,
+      response,
+      parsedUrl: new URL(`https://platform.demo.invalid${DEMO_PLATFORM_SESSION_PATH}`),
+      path: DEMO_PLATFORM_SESSION_PATH,
+      requestId: '22222222-2222-4222-8222-222222222222',
+    }),
+    (error) => error instanceof PlatformHttpError
+      && error.statusCode === 401
+      && error.code === 'PLATFORM_AUTHENTICATION_FAILED'
+      && error.securityCategory === 'authentication',
+  );
 });

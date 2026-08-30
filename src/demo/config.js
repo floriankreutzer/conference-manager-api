@@ -21,7 +21,7 @@ const FORBIDDEN_PROVIDER_KEY = new RegExp([
   '|MICROSOFT(?:365)?_(?:CLIENT_ID|CLIENT_SECRET|GRAPH_URL|TENANT_ID)',
   '|OIDC_(?:AUTHORITY|CLIENT_ID|CLIENT_SECRET|ISSUER|TENANT_ID|TRANSACTION_SECRET))$',
 ].join(''), 'i');
-const FORBIDDEN_PRODUCTION_KEY = /^(?:DATABASE_URL|PUBLIC_ORIGIN|SESSION_SECRET|CSRF_SECRET|PLATFORM_)/;
+const FORBIDDEN_PRODUCTION_KEY = /^(?:DATABASE_URL|PUBLIC_ORIGIN|SESSION_SECRET|CSRF_SECRET|AUDIT_HMAC_SECRET|PLATFORM_)/;
 
 export class DemoConfigError extends Error {
   constructor(code) {
@@ -170,12 +170,15 @@ export function loadDemoCustomerConfig(env) {
     'DEMO_PLATFORM_CSRF_SECRET',
   ]);
   const customer = parseDatabaseUrl(env, 'DEMO_CUSTOMER_DATABASE_URL');
+  const customerOrigin = parseOrigin(env, 'DEMO_CUSTOMER_ORIGIN');
+  const platformOrigin = parseOrigin(env, 'DEMO_PLATFORM_ORIGIN');
+  if (customerOrigin === platformOrigin) fail('DEMO_CONFIG_ORIGIN_ALIAS_FORBIDDEN');
   return Object.freeze({
     ...common,
     runtime: DEMO_RUNTIME,
     seedVersion: DEMO_SEED_VERSION,
     databaseSentinelKey: DEMO_DATABASE_SENTINEL_KEY,
-    origins: Object.freeze({ customer: parseOrigin(env, 'DEMO_CUSTOMER_ORIGIN') }),
+    origins: Object.freeze({ customer: customerOrigin, platform: platformOrigin }),
     databases: Object.freeze({ customer }),
     databaseTarget: customer.target,
     secrets: parseSelectedSecrets(env, [customer], [
@@ -202,12 +205,15 @@ export function loadDemoPlatformConfig(env) {
     || platform.role === reset.role
     || platform.password === reset.password
   ) fail('DEMO_CONFIG_DATABASE_PRINCIPAL_ALIAS_FORBIDDEN');
+  const customerOrigin = parseOrigin(env, 'DEMO_CUSTOMER_ORIGIN');
+  const platformOrigin = parseOrigin(env, 'DEMO_PLATFORM_ORIGIN');
+  if (customerOrigin === platformOrigin) fail('DEMO_CONFIG_ORIGIN_ALIAS_FORBIDDEN');
   return Object.freeze({
     ...common,
     runtime: DEMO_RUNTIME,
     seedVersion: DEMO_SEED_VERSION,
     databaseSentinelKey: DEMO_DATABASE_SENTINEL_KEY,
-    origins: Object.freeze({ platform: parseOrigin(env, 'DEMO_PLATFORM_ORIGIN') }),
+    origins: Object.freeze({ customer: customerOrigin, platform: platformOrigin }),
     databases: Object.freeze({ platform, reset }),
     databaseTarget: platform.target,
     secrets: parseSelectedSecrets(env, [platform, reset], [
