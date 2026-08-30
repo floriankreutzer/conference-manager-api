@@ -1,0 +1,90 @@
+envVarGroups:
+  - name: conference-manager-demo-shared
+    envVars:
+      - key: DEMO_TENANT_AUDIT_HMAC_SECRET
+        generateValue: true
+
+services:
+  - type: web
+    name: conference-manager-demo
+    runtime: node
+    plan: free
+    region: frankfurt
+    repo: https://github.com/floriankreutzer/conference-manager-api
+    branch: codex/saas35-render-demo-deployment
+    autoDeployTrigger: off
+    buildCommand: npm ci --ignore-scripts --no-audit --no-fund && npm run demo:hosted:prepare
+    startCommand: npm run start:demo:customer
+    healthCheckPath: /api/v1/health/live
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - fromGroup: conference-manager-demo-shared
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: demo
+      - key: DEMO_RUNTIME
+        value: shared-postgres-v1
+      - key: DEMO_SEED_VERSION
+        value: saas-3.5-shared-demo-v1
+      - key: DEMO_DATABASE_SSL
+        value: verify-full
+      - key: DEMO_LISTEN_HOST
+        value: 0.0.0.0
+      - key: DEMO_STATIC_ROOT
+        value: .demo-frontend
+      - key: DEMO_FRONTEND_REF
+        value: be792b828507a818cbd485746fa91a43ec47072d
+      - key: DEMO_CUSTOMER_ORIGIN
+        value: https://conference-manager-demo.onrender.com
+      - key: DEMO_PLATFORM_ORIGIN
+        value: https://conference-manager-ops-demo.onrender.com
+      - key: DEMO_CUSTOMER_DATABASE_URL
+        sync: false
+      - key: DEMO_CUSTOMER_SESSION_SECRET
+        generateValue: true
+      - key: DEMO_CUSTOMER_CSRF_SECRET
+        generateValue: true
+
+  - type: web
+    name: conference-manager-ops-demo
+    runtime: node
+    plan: free
+    region: frankfurt
+    repo: https://github.com/floriankreutzer/conference-manager-api
+    branch: codex/saas35-render-demo-deployment
+    autoDeployTrigger: off
+    buildCommand: npm ci --ignore-scripts --no-audit --no-fund && npm run demo:hosted:prepare
+    startCommand: npm run start:demo:platform
+    healthCheckPath: /api/v1/platform/health/live
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - fromGroup: conference-manager-demo-shared
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: demo
+      - key: DEMO_RUNTIME
+        value: shared-postgres-v1
+      - key: DEMO_SEED_VERSION
+        value: saas-3.5-shared-demo-v1
+      - key: DEMO_DATABASE_SSL
+        value: verify-full
+      - key: DEMO_LISTEN_HOST
+        value: 0.0.0.0
+      - key: DEMO_STATIC_ROOT
+        value: .demo-frontend
+      - key: DEMO_FRONTEND_REF
+        value: be792b828507a818cbd485746fa91a43ec47072d
+      - key: DEMO_CUSTOMER_ORIGIN
+        value: https://conference-manager-demo.onrender.com
+      - key: DEMO_PLATFORM_ORIGIN
+        value: https://conference-manager-ops-demo.onrender.com
+      - key: DEMO_PLATFORM_DATABASE_URL
+        sync: false
+      - key: DEMO_RESET_DATABASE_URL
+        sync: false
+      - key: DEMO_PLATFORM_SESSION_SECRET
+        generateValue: true
+      - key: DEMO_PLATFORM_CSRF_SECRET
+        generateValue: true
