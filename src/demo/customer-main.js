@@ -1,7 +1,10 @@
 import { createDemoCustomerComposition } from './customer-composition.js';
 import { loadDemoCustomerConfig } from './config.js';
+import { loadDemoStaticFileAdapter } from './static-file-loader.js';
 
-const composition = createDemoCustomerComposition({ config: loadDemoCustomerConfig(process.env) });
+const config = loadDemoCustomerConfig(process.env);
+const staticFileAdapter = await loadDemoStaticFileAdapter(config.staticRoot);
+const composition = createDemoCustomerComposition({ config, staticFileAdapter });
 await composition.start();
 
 let stopping = false;
