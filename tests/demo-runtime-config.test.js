@@ -43,8 +43,16 @@ test('Demo runtime configs preserve one database target while separating securit
   assert.equal(customer.auditHmacSecret, platform.tenantAuditHmacSecret);
   assert.notEqual(platform.auditHmacSecret, platform.tenantAuditHmacSecret);
   assert.notEqual(platform.auditHmacSecret, platform.cursorSecret);
+  assert.equal(customer.rateLimitMax, 120);
+  assert.equal(platform.rateLimitMax, 120);
   assert.equal(customer.entraClientId, null);
   assert.equal(platform.entraClientId, null);
   assert.equal(Object.isFrozen(customer), true);
   assert.equal(Object.isFrozen(platform), true);
+});
+
+test('Demo runtime configs preserve a bounded explicit Demo request capacity', () => {
+  const configured = Object.freeze({ ...base, rateLimitMax: 1000 });
+  assert.equal(createDemoCustomerRuntimeConfig(configured).rateLimitMax, 1000);
+  assert.equal(createDemoPlatformRuntimeConfig(configured).rateLimitMax, 1000);
 });

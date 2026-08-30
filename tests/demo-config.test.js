@@ -94,6 +94,17 @@ test('Demo config permits provider-named runner metadata that cannot configure t
   assert.equal(config.environment, 'test');
 });
 
+test('Demo config accepts only a bounded Demo-specific request capacity', () => {
+  assert.equal(loadDemoConfig(validEnv({ DEMO_RATE_LIMIT_MAX: '1000' })).rateLimitMax, 1000);
+  assert.equal(loadDemoConfig(validEnv()).rateLimitMax, 120);
+  for (const value of ['0', '10001', '1.5', ' 1000']) {
+    assert.throws(
+      () => loadDemoConfig(validEnv({ DEMO_RATE_LIMIT_MAX: value })),
+      configError('DEMO_CONFIG_RATE_LIMIT_MAX_INVALID'),
+    );
+  }
+});
+
 test('Demo config rejects target mismatches and aliased database principals', () => {
   assert.throws(
     () => loadDemoConfig(validEnv({

@@ -43,6 +43,15 @@ function required(env, key) {
   return value;
 }
 
+function optionalBoundedInteger(env, key, defaultValue, { min, max, code }) {
+  const value = env[key];
+  if (value === undefined) return defaultValue;
+  if (typeof value !== 'string' || !/^(?:0|[1-9]\d*)$/.test(value)) fail(code);
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) fail(code);
+  return parsed;
+}
+
 function parseOrigin(env, key) {
   const value = required(env, key);
   let url;
@@ -151,7 +160,12 @@ function commonEnvironment(env) {
   if (environment === 'demo' ? databaseSsl !== 'verify-full' : !['verify-full', 'disable'].includes(databaseSsl)) {
     fail('DEMO_CONFIG_DATABASE_SSL_INVALID');
   }
-  return Object.freeze({ environment, databaseSsl });
+  const rateLimitMax = optionalBoundedInteger(env, 'DEMO_RATE_LIMIT_MAX', 120, {
+    min: 1,
+    max: 10_000,
+    code: 'DEMO_CONFIG_RATE_LIMIT_MAX_INVALID',
+  });
+  return Object.freeze({ environment, databaseSsl, rateLimitMax });
 }
 
 function rejectCredentials(env, forbidden) {
@@ -225,7 +239,7 @@ export function loadDemoPlatformConfig(env) {
 }
 
 export function loadDemoConfig(env) {
-  const { environment, databaseSsl } = commonEnvironment(env);
+  const common = commonEnvironment(env);
 
   const customerOrigin = parseOrigin(env, 'DEMO_CUSTOMER_ORIGIN');
   const platformOrigin = parseOrigin(env, 'DEMO_PLATFORM_ORIGIN');
@@ -250,14 +264,13 @@ export function loadDemoConfig(env) {
   ) fail('DEMO_CONFIG_DATABASE_PRINCIPAL_ALIAS_FORBIDDEN');
 
   return Object.freeze({
-    environment,
+    ...common,
     runtime: DEMO_RUNTIME,
     seedVersion: DEMO_SEED_VERSION,
     databaseSentinelKey: DEMO_DATABASE_SENTINEL_KEY,
     origins: Object.freeze({ customer: customerOrigin, platform: platformOrigin }),
     databases: Object.freeze({ customer, platform, reset, migration }),
     databaseTarget: customer.target,
-    databaseSsl,
     secrets: parseSecrets(env, databases),
   });
 }

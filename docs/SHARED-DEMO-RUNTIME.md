@@ -212,6 +212,7 @@ isolated Demo database over destructive manual cleanup.
 | `DEMO_RESET_DATABASE_URL` | Reset role; same target, different role/password |
 | `DEMO_MIGRATION_DATABASE_URL` | Migration owner; same target, different role/password |
 | `DEMO_DATABASE_SSL` | `verify-full` in deployed Demo; `disable` permitted only in Test |
+| `DEMO_RATE_LIMIT_MAX` | Optional bounded per-process request capacity (`1`–`10000`); default `120`; isolated full-journey CI uses `1000` |
 | `DEMO_CUSTOMER_SESSION_SECRET` | Protected unique secret, at least 32 bytes |
 | `DEMO_CUSTOMER_CSRF_SECRET` | Protected unique secret, at least 32 bytes |
 | `DEMO_PLATFORM_SESSION_SECRET` | Protected unique secret, at least 32 bytes |

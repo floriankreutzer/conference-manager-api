@@ -25,7 +25,7 @@ function common(config, surface, defaults) {
     port: defaults.port,
     maxBodyBytes: 65_536,
     maxResponseBytes: 1_048_576,
-    rateLimitMax: 120,
+    rateLimitMax: config.rateLimitMax ?? 120,
     rateLimitWindowMs: 60_000,
     requestTimeoutMs: 15_000,
     headersTimeoutMs: 10_000,
