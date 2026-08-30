@@ -9,6 +9,7 @@ import {
   applyPlatformSecurityHeaders,
   createPlatformRequestId,
 } from '../platform/http/security.js';
+import { createDemoStaticHandler } from './static-handler.js';
 
 const RESET_PATH = '/api/v1/platform/demo/reset';
 const LIVENESS_PATH = '/api/v1/platform/health/live';
@@ -53,6 +54,9 @@ export function createDemoPlatformHttpServer(options) {
     throw new TypeError('DEMO_PLATFORM_SERVER_CONFIG_REQUIRED');
   }
   const app = createPlatformApp(options);
+  const staticHandler = config.staticRoot
+    ? createDemoStaticHandler({ root: config.staticRoot, surface: 'platform' })
+    : null;
   const server = http.createServer({
     maxHeaderSize: 16_384,
     requireHostHeader: true,
@@ -60,6 +64,14 @@ export function createDemoPlatformHttpServer(options) {
     const path = requestPath(request, config.publicOrigin);
     if (path === LIVENESS_PATH || (request.method === 'POST' && path === RESET_PATH)) {
       await app(request, response);
+      return;
+    }
+    if (staticHandler && !path?.startsWith('/api/')) {
+      try {
+        await staticHandler(request, response);
+      } catch (error) {
+        sendRuntimeFailure(response, config, error);
+      }
       return;
     }
     try {
