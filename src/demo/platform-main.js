@@ -1,7 +1,10 @@
-import { createDemoPlatformComposition } from './platform-composition.js';
 import { loadDemoPlatformConfig } from './config.js';
+import { createDemoPlatformComposition } from './platform-composition.js';
+import { loadDemoStaticFileAdapter } from './static-file-loader.js';
 
-const composition = createDemoPlatformComposition({ config: loadDemoPlatformConfig(process.env) });
+const config = loadDemoPlatformConfig(process.env);
+const staticFileAdapter = await loadDemoStaticFileAdapter(config.staticRoot);
+const composition = createDemoPlatformComposition({ config, staticFileAdapter });
 await composition.start();
 
 let stopping = false;
