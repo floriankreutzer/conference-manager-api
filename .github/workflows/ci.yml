@@ -70,6 +70,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: quality
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
     services:
       postgres:
         image: postgres:18.6-alpine
@@ -93,7 +97,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager
-          ref: 6eb1c0795d3abf86cc01a6f92e533e4ba782fe33
+          ref: b06cabf6565a9b7c0bf30e7c533b53c67dbc6474
           path: frontend
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -107,7 +111,7 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Install browser engines
         working-directory: frontend
-        run: npx playwright install --with-deps chromium webkit
+        run: npx playwright install --with-deps "${{ matrix.browser }}"
       - name: Add fixed Demo hosts
         run: echo "127.0.0.1 customer.demo.test platform.demo.test" | sudo tee -a /etc/hosts >/dev/null
       - name: Provision isolated Demo database roles
@@ -156,7 +160,7 @@ jobs:
           exit 1
       - name: Run shared PostgreSQL browser journey
         working-directory: frontend
-        run: npm run test:e2e:shared-demo
+        run: npm run test:e2e:shared-demo -- --project="${{ matrix.browser }}"
       - name: Print bounded Demo API logs on failure
         if: failure()
         working-directory: api
@@ -173,6 +177,6 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: shared-demo-playwright-report
+          name: shared-demo-playwright-report-${{ matrix.browser }}
           path: frontend/playwright-report-shared-demo/
           if-no-files-found: ignore
