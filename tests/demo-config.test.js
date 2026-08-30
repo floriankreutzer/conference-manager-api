@@ -78,6 +78,16 @@ test('Demo config rejects Production, Pilot and real provider configuration', ()
   );
 });
 
+test('Demo config permits provider-named runner metadata that cannot configure the application', () => {
+  const config = loadDemoConfig(validEnv({
+    AZURE_HTTP_USER_AGENT: 'github-actions-runner',
+    GITHUB_ACTION_REPOSITORY: 'actions/setup-node',
+    RUNNER_ENVIRONMENT: 'github-hosted',
+  }));
+
+  assert.equal(config.environment, 'test');
+});
+
 test('Demo config rejects target mismatches and aliased database principals', () => {
   assert.throws(
     () => loadDemoConfig(validEnv({
