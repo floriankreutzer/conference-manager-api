@@ -1,7 +1,4 @@
-import { createReadStream } from 'node:fs';
-import { realpath, stat } from 'node:fs/promises';
-import path from 'node:path';
-import { pipeline } from 'node:stream/promises';
+import { createDemoStaticFileAdapter } from './static-file-adapter.mjs';
 
 const SURFACES = new Set(['customer', 'platform']);
 const REQUEST_TARGET_LIMIT = 8_192;
@@ -38,7 +35,7 @@ function safePathname(rawUrl) {
 
   let pathname;
   try {
-    pathname = new URL(rawUrl, 'https://demo.invalid').pathname;
+    pathname = new URL(rawUrl, 'demo://local').pathname;
   } catch {
     return null;
   }
@@ -67,6 +64,11 @@ function assetPath(surface, pathname) {
   return null;
 }
 
+function extensionOf(relativePath) {
+  const match = /\.[A-Za-z0-9]+$/.exec(relativePath);
+  return match ? match[0].toLowerCase() : null;
+}
+
 function applyStaticHeaders(response, { surface, contentType, contentLength }) {
   response.setHeader('Cache-Control', 'no-cache');
   response.setHeader('Content-Security-Policy', CONTENT_SECURITY_POLICIES[surface]);
@@ -88,11 +90,13 @@ function sendEmpty(response, surface, statusCode, headers = {}) {
   response.end();
 }
 
-export function createDemoStaticHandler({ root, surface } = {}) {
+export function createDemoStaticHandler({ root, surface, fileAdapter } = {}) {
   if (typeof root !== 'string' || !root) throw new TypeError('DEMO_STATIC_ROOT_REQUIRED');
   if (!SURFACES.has(surface)) throw new TypeError('DEMO_STATIC_SURFACE_INVALID');
-  const resolvedRoot = path.resolve(root);
-  const realRootPromise = realpath(resolvedRoot);
+  const files = fileAdapter || createDemoStaticFileAdapter({ root });
+  if (!files || typeof files.open !== 'function' || typeof files.pipe !== 'function') {
+    throw new TypeError('DEMO_STATIC_FILE_ADAPTER_REQUIRED');
+  }
 
   return async function handleDemoStatic(request, response) {
     const pathname = safePathname(request?.url);
@@ -110,31 +114,17 @@ export function createDemoStaticHandler({ root, surface } = {}) {
       return;
     }
 
-    const filePath = path.resolve(resolvedRoot, relativePath);
-    let realRoot;
-    let realFilePath;
-    let fileStat;
-    try {
-      [realRoot, realFilePath] = await Promise.all([realRootPromise, realpath(filePath)]);
-      fileStat = await stat(realFilePath);
-    } catch (error) {
-      if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') {
-        sendEmpty(response, surface, 404);
-        return;
-      }
-      throw error;
-    }
-    const prefix = `${realRoot}${path.sep}`;
-    if (!realFilePath.startsWith(prefix)) {
+    const file = await files.open(relativePath);
+    if (file?.kind === 'invalid') {
       sendEmpty(response, surface, 400);
       return;
     }
-    if (!fileStat.isFile()) {
+    if (file?.kind !== 'file') {
       sendEmpty(response, surface, 404);
       return;
     }
 
-    const contentType = CONTENT_TYPES[path.extname(filePath).toLowerCase()];
+    const contentType = CONTENT_TYPES[extensionOf(relativePath)];
     if (!contentType) {
       sendEmpty(response, surface, 415);
       return;
@@ -142,7 +132,7 @@ export function createDemoStaticHandler({ root, surface } = {}) {
     applyStaticHeaders(response, {
       surface,
       contentType,
-      contentLength: fileStat.size,
+      contentLength: file.size,
     });
     response.statusCode = 200;
     if (request.method === 'HEAD') {
@@ -150,7 +140,7 @@ export function createDemoStaticHandler({ root, surface } = {}) {
       return;
     }
     try {
-      await pipeline(createReadStream(realFilePath), response);
+      await files.pipe(file, response);
     } catch (error) {
       if (!response.destroyed) response.destroy(error);
     }
