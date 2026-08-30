@@ -38,6 +38,10 @@ BEGIN
 END;
 $$;
 
+ALTER FUNCTION project_tenant_audit_diagnostic_event() SECURITY INVOKER;
+ALTER FUNCTION project_tenant_audit_diagnostic_event() RESET ALL;
+GRANT EXECUTE ON FUNCTION project_tenant_audit_diagnostic_event() TO PUBLIC;
+
 DROP VIEW demo_platform_persona_references;
 DROP VIEW demo_customer_persona_references;
 DROP TABLE demo_persona_references;

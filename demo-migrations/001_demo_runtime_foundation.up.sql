@@ -146,6 +146,14 @@ REVOKE ALL ON demo_persona_references FROM PUBLIC;
 REVOKE ALL ON demo_customer_persona_references FROM PUBLIC;
 REVOKE ALL ON demo_platform_persona_references FROM PUBLIC;
 
+-- Customer audit writes feed the Platform diagnostic projection through a
+-- canonical trigger. Keep the Customer role off the Platform table while
+-- allowing that fixed trigger projection to run as the migration owner.
+ALTER FUNCTION project_tenant_audit_diagnostic_event()
+  SECURITY DEFINER
+  SET search_path = pg_catalog, public;
+REVOKE ALL ON FUNCTION project_tenant_audit_diagnostic_event() FROM PUBLIC;
+
 DO $$
 DECLARE
   customer_role text := current_setting('conference_manager.demo_customer_role');

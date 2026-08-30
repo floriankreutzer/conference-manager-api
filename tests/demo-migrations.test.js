@@ -27,6 +27,18 @@ test('Demo migration stream is versioned independently from Production', async (
   assert.match(demo[0].up, /demo_customer_persona_references TO %I/);
   assert.match(demo[0].up, /demo_platform_persona_references, demo_provider_simulations TO %I/);
   assert.match(demo[0].up, /platform_write_tables text\[\] := ARRAY\[[\s\S]*?'audit_events'/);
+  assert.match(
+    demo[0].up,
+    /ALTER FUNCTION project_tenant_audit_diagnostic_event\(\)[\s\S]*?SECURITY DEFINER[\s\S]*?SET search_path = pg_catalog, public/,
+  );
+  assert.match(
+    demo[0].up,
+    /REVOKE ALL ON FUNCTION project_tenant_audit_diagnostic_event\(\) FROM PUBLIC/,
+  );
+  assert.doesNotMatch(
+    demo[0].up,
+    /GRANT [^;]*platform_diagnostic_events[^;]*customer_role/,
+  );
   assert.doesNotMatch(demo[0].up, /demo_runtime_generations/);
   assert.doesNotMatch(demo[0].up, /CREATE TABLE schema_migrations/);
 });
