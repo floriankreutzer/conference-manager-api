@@ -27,7 +27,7 @@ function databaseUrl(role, password) {
 
 async function createRole(client, role, password) {
   const statement = await client.query({
-    text: "SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L', $1, $2) AS sql",
+    text: "SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L', $1::text, $2::text) AS sql",
     values: [role, password],
   });
   await client.query(statement.rows[0].sql);
