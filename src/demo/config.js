@@ -8,6 +8,8 @@ const DEMO_ENVIRONMENTS = new Set(['demo', 'test']);
 const DATABASE_PROTOCOLS = new Set(['postgres:', 'postgresql:']);
 const ADMIN_DATABASE_ROLES = new Set(['postgres', 'rds_superuser', 'cloudsqlsuperuser']);
 const DATABASE_ROLE_PATTERN = /^[a-z][a-z0-9_]{2,62}$/;
+const LISTEN_HOSTS = new Set(['127.0.0.1', '0.0.0.0']);
+const STATIC_ROOT_SEGMENT_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
 const SECRET_KEYS = Object.freeze([
   'DEMO_CUSTOMER_SESSION_SECRET',
   'DEMO_CUSTOMER_CSRF_SECRET',
@@ -149,6 +151,28 @@ function parseSecrets(env, databaseConfigs) {
   return parseSelectedSecrets(env, databaseConfigs, SECRET_KEYS);
 }
 
+function parseStaticRoot(env) {
+  const value = env.DEMO_STATIC_ROOT;
+  if (value === undefined) return null;
+  if (
+    typeof value !== 'string'
+    || !value
+    || value !== value.trim()
+    || value.startsWith('/')
+    || value.includes('\\')
+    || value.length > 512
+  ) fail('DEMO_CONFIG_STATIC_ROOT_INVALID');
+  const segments = value.split('/');
+  if (
+    segments.some((segment) => (
+      segment === '.'
+      || segment === '..'
+      || !STATIC_ROOT_SEGMENT_PATTERN.test(segment)
+    ))
+  ) fail('DEMO_CONFIG_STATIC_ROOT_INVALID');
+  return value;
+}
+
 function commonEnvironment(env) {
   if (!env || typeof env !== 'object' || Array.isArray(env)) fail('DEMO_CONFIG_ENV_REQUIRED');
   const environment = required(env, 'NODE_ENV');
@@ -165,7 +189,23 @@ function commonEnvironment(env) {
     max: 10_000,
     code: 'DEMO_CONFIG_RATE_LIMIT_MAX_INVALID',
   });
-  return Object.freeze({ environment, databaseSsl, rateLimitMax });
+  const port = optionalBoundedInteger(env, 'PORT', null, {
+    min: 1,
+    max: 65_535,
+    code: 'DEMO_CONFIG_PORT_INVALID',
+  });
+  const listenHost = env.DEMO_LISTEN_HOST ?? '127.0.0.1';
+  if (typeof listenHost !== 'string' || !LISTEN_HOSTS.has(listenHost)) {
+    fail('DEMO_CONFIG_LISTEN_HOST_INVALID');
+  }
+  const staticRoot = parseStaticRoot(env);
+  return Object.freeze({
+    environment,
+    databaseSsl,
+    rateLimitMax,
+    listen: Object.freeze({ host: listenHost, port }),
+    staticRoot,
+  });
 }
 
 function rejectCredentials(env, forbidden) {
