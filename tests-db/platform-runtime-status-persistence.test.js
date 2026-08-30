@@ -7,6 +7,7 @@ import {
   createPostgresPlatformRuntimeStatusRepository,
 } from '../src/persistence/postgres/platform-runtime-status-repository.js';
 import { migrateUp } from '../scripts/db-migrations.mjs';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_A = 'b1111111-1111-4111-8111-111111111111';
 const TENANT_B = 'b2222222-2222-4222-8222-222222222222';
@@ -45,6 +46,7 @@ async function resetFixtures(pool) {
     await setRuntimeTriggers(pool, true);
   }
   await pool.query('DROP TABLE IF EXISTS platform_runtime_audit_probe');
+  await removeSaas2TenantAdministrationFixtures(pool, [TENANT_A, TENANT_B, TENANT_UNMAPPED]);
   await pool.query(
     'DELETE FROM tenants WHERE id = ANY($1::uuid[])',
     [[TENANT_A, TENANT_B, TENANT_UNMAPPED]],
