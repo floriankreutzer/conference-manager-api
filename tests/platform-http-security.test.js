@@ -906,6 +906,15 @@ test('Platform liveness remains available after the application rate-limit bucke
   assert.equal(first.statusCode, 200);
   const limited = await request(runtime.server, { path: '/api/v1/platform/health/ready' });
   assert.equal(limited.statusCode, 429);
+  const invalidMethod = await request(runtime.server, {
+    path: '/api/v1/platform/health/live',
+    method: 'POST',
+  });
+  assert.equal(invalidMethod.statusCode, 429);
+  const invalidQuery = await request(runtime.server, {
+    path: '/api/v1/platform/health/live?probe=unexpected',
+  });
+  assert.equal(invalidQuery.statusCode, 429);
   const live = await request(runtime.server, { path: '/api/v1/platform/health/live' });
   assert.equal(live.statusCode, 200);
   assert.deepEqual(live.body, { status: 'live' });
