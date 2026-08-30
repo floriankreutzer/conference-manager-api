@@ -341,7 +341,8 @@ export function createApp({
       const path = parsedUrl.pathname;
       route = routeKey(path, routeRegistry);
 
-      if (path !== ROUTES.live) rateLimiter.consume(clientKey(request));
+      const isLivenessProbe = path === ROUTES.live && request.method === 'GET';
+      if (!isLivenessProbe) rateLimiter.consume(clientKey(request));
 
       if (path === ROUTES.live) {
         if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
