@@ -25,7 +25,7 @@ import { createPostgresSessionRepository } from '../src/persistence/postgres/ses
 import { createPostgresTenantRepository } from '../src/persistence/postgres/tenant-repository.js';
 import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
 import { createTenantScopedRepository } from '../src/tenancy/tenant-scoped-repository.js';
-import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackLatest, rollbackToVersion } from './support/db-migrations.js';
 
 const TENANT_A = '22222222-2222-4222-8222-222222222222';
 const TENANT_B = '33333333-3333-4333-8333-333333333333';

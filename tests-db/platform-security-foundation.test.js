@@ -1,3 +1,4 @@
+import { clearSaas3TestState } from './support/saas3-test-state.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
@@ -103,6 +104,7 @@ async function cleanup(pool) {
   await pool.query('DELETE FROM platform_sessions');
   await pool.query('DELETE FROM platform_operator_tenant_scopes');
   await pool.query('DELETE FROM platform_operators');
+  await clearSaas3TestState(pool);
   await pool.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [[TENANT_ID, OTHER_TENANT_ID]]);
 }
 

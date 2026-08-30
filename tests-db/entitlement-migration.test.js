@@ -1,3 +1,4 @@
+import { clearSaas3TestState } from './support/saas3-test-state.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createAuditService } from '../src/audit/audit-service.js';
@@ -12,7 +13,7 @@ import {
   createPostgresPool,
   isPostgresSchemaReady,
 } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackLatest } from './support/db-migrations.js';
 import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
@@ -37,6 +38,7 @@ test('entitlement migration rollback fails closed when state or evidence exists'
       await pool.query('ALTER TABLE audit_events ENABLE TRIGGER audit_events_append_only');
     }
     await pool.query('DELETE FROM tenant_entitlements WHERE tenant_id = $1', [TENANT_ID]);
+    await clearSaas3TestState(pool);
     await pool.query('DELETE FROM tenants WHERE id = $1', [TENANT_ID]);
     await pool.end();
   });

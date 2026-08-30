@@ -1,3 +1,4 @@
+import { clearSaas3TestState } from './support/saas3-test-state.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
@@ -10,7 +11,7 @@ import {
   createPostgresPool,
   isPostgresSchemaReady,
 } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackToVersion } from './support/db-migrations.js';
 import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_ID = '71717171-7171-4171-8171-717171717171';
@@ -50,6 +51,7 @@ async function clean(pool) {
   await pool.query('DELETE FROM rooms WHERE tenant_id = ANY($1::uuid[])', [tenantIds]);
   await pool.query('DELETE FROM sites WHERE tenant_id = ANY($1::uuid[])', [tenantIds]);
   await pool.query('DELETE FROM users WHERE tenant_id = ANY($1::uuid[])', [tenantIds]);
+  await clearSaas3TestState(pool);
   await pool.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [tenantIds]);
 }
 

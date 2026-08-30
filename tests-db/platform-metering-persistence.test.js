@@ -1,3 +1,4 @@
+import { clearSaas3TestState } from './support/saas3-test-state.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
@@ -74,6 +75,7 @@ async function resetFixtures(pool) {
   await pool.query('DROP TABLE IF EXISTS platform_quota_audit_probe');
   await pool.query('DELETE FROM platform_operator_tenant_scopes WHERE operator_id = $1', [OPERATOR_ID]);
   await pool.query('DELETE FROM platform_operators WHERE id = $1', [OPERATOR_ID]);
+  await clearSaas3TestState(pool);
   await pool.query('DELETE FROM tenants WHERE id = ANY($1::uuid[])', [[TENANT_A, TENANT_B]]);
 }
 

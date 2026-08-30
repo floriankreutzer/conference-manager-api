@@ -1,8 +1,9 @@
+import { clearSaas3TestState } from './support/saas3-test-state.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackLatest, rollbackToVersion } from './support/db-migrations.js';
 import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_ID = '91919191-9191-4919-8919-919191919191';
@@ -48,6 +49,7 @@ test('tenant onboarding migration refuses rollback when invitation or binding ev
 
   await pool.query('DELETE FROM tenant_onboarding_invitations WHERE id = $1', [INVITATION_ID]);
   await removeSaas2TenantAdministrationFixtures(pool, [TENANT_ID]);
+  await clearSaas3TestState(pool);
   await pool.query('DELETE FROM tenants WHERE id = $1', [TENANT_ID]);
   assert.equal(await rollbackLatest(pool), true);
   const missing = await pool.query("SELECT to_regclass('public.tenant_identity_bindings') AS table_name");

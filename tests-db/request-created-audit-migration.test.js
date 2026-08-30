@@ -1,8 +1,9 @@
+import { clearSaas3TestState } from './support/saas3-test-state.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackToVersion } from './support/db-migrations.js';
 import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_ID = '56565656-5656-4656-8656-565656565656';
@@ -31,6 +32,7 @@ test('request-created audit migration allows evidence and rolls back fail-closed
     await migrateUp(pool);
     await removeAuditRow(pool);
     await removeSaas2TenantAdministrationFixtures(pool, [TENANT_ID]);
+    await clearSaas3TestState(pool);
     await pool.query('DELETE FROM tenants WHERE id = $1', [TENANT_ID]);
     await pool.end();
   });
