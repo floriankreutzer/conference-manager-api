@@ -900,6 +900,17 @@ test('Platform workload health is separate, minimized, and dependency-aware', as
   assert.doesNotMatch(readiness.rawBody, /database|host|dependency/i);
 });
 
+test('Platform liveness remains available after the application rate-limit bucket is exhausted', async (t) => {
+  const runtime = await harness(t, {}, { rateLimitMax: 1 });
+  const first = await request(runtime.server, { path: '/api/v1/platform/health/ready' });
+  assert.equal(first.statusCode, 200);
+  const limited = await request(runtime.server, { path: '/api/v1/platform/health/ready' });
+  assert.equal(limited.statusCode, 429);
+  const live = await request(runtime.server, { path: '/api/v1/platform/health/live' });
+  assert.equal(live.statusCode, 200);
+  assert.deepEqual(live.body, { status: 'live' });
+});
+
 test('entitlement routes separate previews from idempotent audited applications', async (t) => {
   const runtime = await harness(t);
   const preview = await request(runtime.server, {

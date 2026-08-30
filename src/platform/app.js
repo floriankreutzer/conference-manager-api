@@ -155,7 +155,10 @@ export function createPlatformApp({
       assertPlatformMethod(request.method);
       assertPlatformRequestTarget(request.url);
       assertPlatformRequestHost(request.headers, config.publicOrigin);
-      rateLimiter.consume(clientKey(request));
+      const parsedUrl = new URL(request.url, config.publicOrigin);
+      if (parsedUrl.pathname !== '/api/v1/platform/health/live') {
+        rateLimiter.consume(clientKey(request));
+      }
       try {
         assertPlatformRequestOrigin(request.headers, config.publicOrigin, {
           required: isPlatformUnsafeMethod(request.method),
@@ -167,7 +170,6 @@ export function createPlatformApp({
         throw error;
       }
 
-      const parsedUrl = new URL(request.url, config.publicOrigin);
       const context = Object.freeze({
         method: request.method,
         path: parsedUrl.pathname,

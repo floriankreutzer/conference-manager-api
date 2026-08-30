@@ -238,6 +238,19 @@ test('liveness and readiness expose no configuration details and set security he
   });
 });
 
+test('liveness remains available after the application rate-limit bucket is exhausted', async () => {
+  const config = { ...testConfig(), rateLimitMax: 1 };
+  await withServer({ config }, async ({ port }) => {
+    const first = await request({ port, path: '/api/v1/health/ready' });
+    assert.equal(first.statusCode, 200);
+    const limited = await request({ port, path: '/api/v1/health/ready' });
+    assert.equal(limited.statusCode, 429);
+    const live = await request({ port, path: '/api/v1/health/live' });
+    assert.equal(live.statusCode, 200);
+    assert.equal(live.body.status, 'ok');
+  });
+});
+
 test('readiness fails closed when a dependency check fails or times out', async () => {
   const config = { ...testConfig(), readinessTimeoutMs: 20 };
   await withServer({ config, readinessChecks: [async () => false] }, async ({ port }) => {

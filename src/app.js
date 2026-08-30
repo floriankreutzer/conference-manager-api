@@ -337,10 +337,11 @@ export function createApp({
       assertSafeRequestTarget(request.url);
       assertRequestHost(request.headers, config.publicOrigin);
       assertSameOrigin(request.headers, config.publicOrigin);
-      rateLimiter.consume(clientKey(request));
       const parsedUrl = urlOf(request.url, config.publicOrigin);
       const path = parsedUrl.pathname;
       route = routeKey(path, routeRegistry);
+
+      if (path !== ROUTES.live) rateLimiter.consume(clientKey(request));
 
       if (path === ROUTES.live) {
         if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
