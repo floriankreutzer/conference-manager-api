@@ -69,6 +69,8 @@ test('shared Demo runtime gate normalizes pool acquisition failure without expos
         throw new Error('postgresql://sensitive-user:sensitive-password@database.internal/demo');
       },
     }, async () => true),
-    (error) => error.message !== 'postgresql://sensitive-user:sensitive-password@database.internal/demo',
+    (error) => error instanceof DemoRuntimeGateError
+      && error.code === 'DEMO_RUNTIME_GATE_ACQUIRE_FAILED'
+      && error.message === 'DEMO_RUNTIME_GATE_ACQUIRE_FAILED',
   );
 });
