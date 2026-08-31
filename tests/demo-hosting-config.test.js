@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import test from 'node:test';
 
 import {
@@ -104,10 +105,14 @@ test('local/test Demo defaults remain unchanged when hosted settings are absent'
   assert.equal(runtime.staticRoot, null);
 });
 
-test('hosted frontend fetch strips inherited Git and GitHub checkout credentials', () => {
+test('hosted frontend fetch strips checkout credentials and isolates credential homes', () => {
+  const isolatedHome = path.resolve('.test-hosted-demo-git-home');
   const environment = createAnonymousGitEnvironment({
     PATH: '/usr/bin',
     HOME: '/tmp/render-home',
+    XDG_CONFIG_HOME: '/tmp/render-xdg',
+    CURL_HOME: '/tmp/render-curl',
+    USERPROFILE: '/tmp/render-profile',
     SAFE_VALUE: 'preserved',
     GIT_ASKPASS: '/opt/render/askpass',
     GIT_CONFIG_COUNT: '1',
@@ -116,11 +121,14 @@ test('hosted frontend fetch strips inherited Git and GitHub checkout credentials
     GITHUB_TOKEN: 'inherited-github-token',
     GH_TOKEN: 'inherited-gh-token',
     SSH_ASKPASS: '/opt/render/ssh-askpass',
-  });
+  }, isolatedHome);
 
   assert.equal(environment.PATH, '/usr/bin');
-  assert.equal(environment.HOME, '/tmp/render-home');
   assert.equal(environment.SAFE_VALUE, 'preserved');
+  assert.equal(environment.HOME, isolatedHome);
+  assert.equal(environment.XDG_CONFIG_HOME, isolatedHome);
+  assert.equal(environment.CURL_HOME, isolatedHome);
+  assert.equal(environment.USERPROFILE, isolatedHome);
   assert.equal(environment.GIT_ASKPASS, undefined);
   assert.equal(environment.GIT_CONFIG_KEY_0, undefined);
   assert.equal(environment.GIT_CONFIG_VALUE_0, undefined);
@@ -134,6 +142,10 @@ test('hosted frontend fetch strips inherited Git and GitHub checkout credentials
   assert.equal(typeof environment.GIT_CONFIG_GLOBAL, 'string');
   assert.equal(environment.GIT_CONFIG_GLOBAL.length > 0, true);
   assert.equal(Object.isFrozen(environment), true);
+  assert.throws(
+    () => createAnonymousGitEnvironment({}, 'relative-home'),
+    /HOSTED_DEMO_GIT_HOME_INVALID/,
+  );
 });
 
 test('Render Blueprint keeps the operational Demo free, separate and manually deployed', async () => {
