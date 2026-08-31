@@ -120,4 +120,8 @@ test('Render Blueprint keeps the operational Demo free, separate and manually de
   assert.match(blueprint, /DEMO_CUSTOMER_DATABASE_URL\n\s+sync: false/);
   assert.match(blueprint, /DEMO_PLATFORM_DATABASE_URL\n\s+sync: false/);
   assert.match(blueprint, /DEMO_RESET_DATABASE_URL\n\s+sync: false/);
+
+  const workflow = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /name: Prepare immutable hosted Demo browser artifacts/);
+  assert.match(workflow, /DEMO_FRONTEND_REF="\$frontend_ref" npm run demo:hosted:prepare/);
 });
