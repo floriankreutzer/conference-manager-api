@@ -159,28 +159,92 @@ The workflow generates parser-only transient session/CSRF/HMAC values for the co
 
 A failed migration or reset blocks Render deployment. Do not bypass it with manual table edits or by granting a runtime role broader privileges.
 
-## 6. Create the two Render services from the Blueprint
+## 6. Create the two Render Free Web Services manually
 
-Only after the hosted database initialization succeeds:
+Use manual Web Service creation when Blueprint synchronization would require a paid Render workspace feature. The committed `render.yaml` remains the reviewed configuration reference; manual service settings must match it exactly. Do not upgrade the workspace merely to provision this SaaS 3.5 Demo.
 
-1. Open Render.
-2. Select **New → Blueprint**.
-3. Select `floriankreutzer/conference-manager-api`.
-4. Use the Blueprint file `render.yaml` from `main`.
-5. Review that exactly two Web Services will be created:
-   - `conference-manager-demo`;
-   - `conference-manager-ops-demo`.
-6. Confirm both are **Free** and **Frankfurt**.
-7. Render prompts for the `sync: false` database values. Provide:
-   - Customer service: `DEMO_CUSTOMER_DATABASE_URL` = Customer Neon URL.
-   - Platform service: `DEMO_PLATFORM_DATABASE_URL` = Platform Neon URL.
-   - Platform service: `DEMO_RESET_DATABASE_URL` = Reset Neon URL.
-8. Do not add the migration URL to either service.
-9. Create/sync the Blueprint.
+Only after the hosted database initialization succeeds, create the Customer service:
 
-Render generates the Customer session/CSRF secrets, Platform session/CSRF secrets and the shared Tenant-audit HMAC value defined by the Blueprint. Secret values remain provider configuration and must not be copied into source.
+1. Open Render and select **New → Web Service**.
+2. Select `floriankreutzer/conference-manager-api` through the connected GitHub provider.
+3. Configure:
+   - Name: `conference-manager-demo`
+   - Branch: `main`
+   - Runtime: Node
+   - Region: Frankfurt
+   - Compute plan: **Free**
+   - Build command: `npm ci --ignore-scripts --no-audit --no-fund && npm run demo:hosted:prepare`
+   - Start command: `npm run start:demo:customer`
+   - Health check path: `/api/v1/health/ready`
+4. Set the Customer environment variables from the table below.
+5. Disable automatic deploys after creation so deployment remains an explicit release operation.
 
-`autoDeployTrigger` is intentionally `off`. Provider deployment is a deliberate release operation after repository checks and release refs are reviewed.
+Then create the Platform service with **New → Web Service** from the same repository:
+
+1. Configure:
+   - Name: `conference-manager-ops-demo`
+   - Branch: `main`
+   - Runtime: Node
+   - Region: Frankfurt
+   - Compute plan: **Free**
+   - Build command: `npm ci --ignore-scripts --no-audit --no-fund && npm run demo:hosted:prepare`
+   - Start command: `npm run start:demo:platform`
+   - Health check path: `/api/v1/platform/health/ready`
+2. Set the Platform environment variables from the table below.
+3. Disable automatic deploys after creation.
+
+Generate five independent high-entropy secret values outside source control:
+
+- one shared `DEMO_TENANT_AUDIT_HMAC_SECRET` used identically by both Render services;
+- one Customer session secret;
+- one Customer CSRF secret;
+- one Platform session secret;
+- one Platform CSRF secret.
+
+Use at least 32 random bytes of entropy for each. The shared Tenant-audit HMAC secret must be the same on both services because both participate in the same canonical Demo Tenant audit chain. Session and CSRF secrets must not be shared between Customer and Platform.
+
+### Customer service environment
+
+| Key | Value |
+| --- | --- |
+| `NODE_VERSION` | `22` |
+| `NODE_ENV` | `demo` |
+| `DEMO_RUNTIME` | `shared-postgres-v1` |
+| `DEMO_SEED_VERSION` | `saas-3.5-shared-demo-v1` |
+| `DEMO_DATABASE_SSL` | `verify-full` |
+| `DEMO_LISTEN_HOST` | `0.0.0.0` |
+| `DEMO_STATIC_ROOT` | `.demo-frontend` |
+| `DEMO_FRONTEND_REF` | `07f2896d56e6f66a9f8daf96457ab12c763adf80` |
+| `DEMO_CUSTOMER_ORIGIN` | `https://conference-manager-demo.onrender.com` |
+| `DEMO_PLATFORM_ORIGIN` | `https://conference-manager-ops-demo.onrender.com` |
+| `DEMO_CUSTOMER_DATABASE_URL` | direct Neon URL for `cm_demo_customer` |
+| `DEMO_CUSTOMER_SESSION_SECRET` | unique high-entropy Customer session secret |
+| `DEMO_CUSTOMER_CSRF_SECRET` | unique high-entropy Customer CSRF secret |
+| `DEMO_TENANT_AUDIT_HMAC_SECRET` | shared high-entropy audit HMAC secret |
+
+### Platform service environment
+
+| Key | Value |
+| --- | --- |
+| `NODE_VERSION` | `22` |
+| `NODE_ENV` | `demo` |
+| `DEMO_RUNTIME` | `shared-postgres-v1` |
+| `DEMO_SEED_VERSION` | `saas-3.5-shared-demo-v1` |
+| `DEMO_DATABASE_SSL` | `verify-full` |
+| `DEMO_LISTEN_HOST` | `0.0.0.0` |
+| `DEMO_STATIC_ROOT` | `.demo-frontend` |
+| `DEMO_FRONTEND_REF` | `07f2896d56e6f66a9f8daf96457ab12c763adf80` |
+| `DEMO_CUSTOMER_ORIGIN` | `https://conference-manager-demo.onrender.com` |
+| `DEMO_PLATFORM_ORIGIN` | `https://conference-manager-ops-demo.onrender.com` |
+| `DEMO_PLATFORM_DATABASE_URL` | direct Neon URL for `cm_demo_platform` |
+| `DEMO_RESET_DATABASE_URL` | direct Neon URL for `cm_demo_reset` |
+| `DEMO_PLATFORM_SESSION_SECRET` | unique high-entropy Platform session secret |
+| `DEMO_PLATFORM_CSRF_SECRET` | unique high-entropy Platform CSRF secret |
+| `DEMO_TENANT_AUDIT_HMAC_SECRET` | the same shared audit HMAC secret used by Customer |
+
+Do not add the migration URL to either Render service. Customer credentials must not be present on the Platform service; Platform/reset credentials must not be present on the Customer service.
+
+If Render makes Blueprint deployment available on the selected free workspace without a charge, `render.yaml` may instead be used to provision the same two services. Manual and Blueprint provisioning are equivalent only when the resulting settings match the reviewed configuration exactly.
 
 ## 7. Immutable frontend packaging
 
@@ -199,7 +263,7 @@ The API process serves the pinned browser files itself so each surface remains s
 
 ## 8. Runtime binding and health
 
-Render requires the public HTTP process to bind to `0.0.0.0` and the provider-supplied `PORT`. The Blueprint supplies `DEMO_LISTEN_HOST=0.0.0.0`; the Demo runtime consumes Render's `PORT` dynamically.
+Render requires the public HTTP process to bind to `0.0.0.0` and the provider-supplied `PORT`. Set `DEMO_LISTEN_HOST=0.0.0.0`; the Demo runtime consumes Render's `PORT` dynamically. Do not set a fixed public `PORT` value unless Render explicitly requires one for the service.
 
 Readiness health checks are:
 
@@ -229,10 +293,13 @@ The Demo accepts the following Free-tier behavior:
 - Render Free services spin down after inactivity and can take roughly one minute to wake;
 - Render local filesystem is ephemeral, so only Neon PostgreSQL is authoritative;
 - no availability SLA is claimed;
+- free instance hours, included bandwidth and build/pipeline usage remain provider-limited and must be monitored;
 - no artificial keep-alive traffic is used to defeat Free-tier limits;
 - if Free-tier limits or provider terms become unsuitable, the hosting decision is revisited rather than weakening application architecture.
 
-A cold start may delay the first page load. It must never cause fallback to browser business persistence, local fixtures or a different security mode.
+The accepted EUR 0 target assumes normal low-volume Demo use remains within Render and Neon included Free-tier allowances. It is not an unlimited-usage cost guarantee.
+
+A cold start may delay first access. It must never cause fallback to browser business persistence, local fixtures or a different security mode.
 
 ## Rollback and recovery
 
@@ -254,16 +321,16 @@ Never record values. The expected names are:
 ### Render Customer service
 
 - `DEMO_CUSTOMER_DATABASE_URL`
-- generated `DEMO_CUSTOMER_SESSION_SECRET`
-- generated `DEMO_CUSTOMER_CSRF_SECRET`
-- shared generated `DEMO_TENANT_AUDIT_HMAC_SECRET`
+- `DEMO_CUSTOMER_SESSION_SECRET`
+- `DEMO_CUSTOMER_CSRF_SECRET`
+- shared `DEMO_TENANT_AUDIT_HMAC_SECRET`
 
 ### Render Platform service
 
 - `DEMO_PLATFORM_DATABASE_URL`
 - `DEMO_RESET_DATABASE_URL`
-- generated `DEMO_PLATFORM_SESSION_SECRET`
-- generated `DEMO_PLATFORM_CSRF_SECRET`
-- shared generated `DEMO_TENANT_AUDIT_HMAC_SECRET`
+- `DEMO_PLATFORM_SESSION_SECRET`
+- `DEMO_PLATFORM_CSRF_SECRET`
+- the same shared `DEMO_TENANT_AUDIT_HMAC_SECRET`
 
 The migration credential must never be added to Render. Customer credentials must never be added to the Platform service and Platform/reset credentials must never be added to the Customer service.
