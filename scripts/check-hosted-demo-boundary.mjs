@@ -183,9 +183,29 @@ for (const forbidden of [
   }
 }
 
+const gitEnvironment = await readFile('scripts/hosted-demo-git-environment.mjs', 'utf8');
+for (const required of [
+  "FORBIDDEN_PREFIXES = Object.freeze(['GIT_', 'GH_', 'GITHUB_'])",
+  "FORBIDDEN_KEYS = new Set(['SSH_ASKPASS'])",
+  "GIT_TERMINAL_PROMPT: '0'",
+  "GIT_CONFIG_NOSYSTEM: '1'",
+  'GIT_CONFIG_GLOBAL: devNull',
+  "GIT_CONFIG_COUNT: '0'",
+  "GCM_INTERACTIVE: 'Never'",
+]) {
+  if (!gitEnvironment.includes(required)) {
+    throw new Error(`Hosted Demo Git environment lacks credential boundary ${required}.`);
+  }
+}
+if (/https?:\/\//.test(gitEnvironment)) {
+  throw new Error('Hosted Demo Git environment must not contain an alternate remote destination.');
+}
+
 const prepare = await readFile('scripts/prepare-hosted-demo-frontend.mjs', 'utf8');
 for (const required of [
   'FRONTEND_REF_PATTERN = /^[0-9a-f]{40}$/',
+  'createAnonymousGitEnvironment(process.env)',
+  'env: GIT_ENVIRONMENT',
   "git('init', '--quiet', TARGET_DIRECTORY)",
   "'FETCH_HEAD'",
   'stdout.trim() !== frontendRef',
