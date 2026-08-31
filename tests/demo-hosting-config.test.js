@@ -56,9 +56,13 @@ function configError(code) {
   return (error) => error instanceof DemoConfigError && error.code === code;
 }
 
-test('hosted Customer and Platform Demo use Render listen values and the bounded static root', () => {
-  const customer = createDemoCustomerRuntimeConfig(loadDemoCustomerConfig(customerEnv()));
-  const platform = createDemoPlatformRuntimeConfig(loadDemoPlatformConfig(platformEnv()));
+test('hosted Customer and Platform Demo use Render listen values, bounded request capacity, and static root', () => {
+  const customer = createDemoCustomerRuntimeConfig(loadDemoCustomerConfig(customerEnv({
+    DEMO_RATE_LIMIT_MAX: '1000',
+  })));
+  const platform = createDemoPlatformRuntimeConfig(loadDemoPlatformConfig(platformEnv({
+    DEMO_RATE_LIMIT_MAX: '1000',
+  })));
 
   for (const runtime of [customer, platform]) {
     assert.equal(runtime.host, '0.0.0.0');
@@ -66,6 +70,8 @@ test('hosted Customer and Platform Demo use Render listen values and the bounded
     assert.equal(runtime.staticRoot, '.demo-frontend');
     assert.equal(runtime.databaseSsl, 'verify-full');
     assert.equal(runtime.databaseStatementTimeoutMs, 10_000);
+    assert.equal(runtime.rateLimitMax, 1000);
+    assert.equal(runtime.rateLimitWindowMs, 60_000);
   }
   assert.equal(platform.resetDatabaseStatementTimeoutMs, 60_000);
   assert.equal(customer.publicOrigin, 'https://conference-manager-demo.onrender.com');
@@ -150,13 +156,15 @@ test('hosted frontend fetch strips checkout credentials and isolates credential 
   );
 });
 
-test('Render Blueprint keeps the operational Demo free, separate and manually deployed', async () => {
+test('Render Blueprint keeps the operational Demo free, separate, bounded, and manually deployed', async () => {
   const blueprint = await readFile(new URL('../render.yaml', import.meta.url), 'utf8');
   assert.match(blueprint, /name: conference-manager-demo\n/);
   assert.match(blueprint, /name: conference-manager-ops-demo\n/);
   assert.equal((blueprint.match(/plan: free/g) || []).length, 2);
   assert.equal((blueprint.match(/region: frankfurt/g) || []).length, 2);
   assert.equal((blueprint.match(/autoDeployTrigger: off/g) || []).length, 2);
+  assert.equal((blueprint.match(/DEMO_RATE_LIMIT_MAX/g) || []).length, 2);
+  assert.equal((blueprint.match(/value: "1000"/g) || []).length, 2);
   assert.equal((blueprint.match(/DEMO_LISTEN_HOST/g) || []).length, 2);
   assert.equal((blueprint.match(/value: 0\.0\.0\.0/g) || []).length, 2);
   assert.equal((blueprint.match(/DEMO_STATIC_ROOT/g) || []).length, 2);
