@@ -118,22 +118,22 @@ postgresql://ROLE:PASSWORD@HOST/conference_manager_demo_shared
 
 Do not paste any real connection string into GitHub issues, Confluence, chat, documentation or logs.
 
-## 4. Configure GitHub initialization secrets
+## 4. Configure the protected GitHub initialization environment
 
-In `floriankreutzer/conference-manager-api` open:
+In `floriankreutzer/conference-manager-api` open **Settings → Environments** and create the environment `hosted-demo-initialize`.
 
-**Settings → Secrets and variables → Actions → New repository secret**
+Configure its deployment branches and tags policy to allow only the protected `main` branch. Add required reviewers according to repository governance. Do not allow arbitrary branches or tags to deploy to this environment.
 
-Create exactly these four repository secrets:
+Create exactly these four **environment secrets** inside `hosted-demo-initialize`:
 
 - `HOSTED_DEMO_CUSTOMER_DATABASE_URL`
 - `HOSTED_DEMO_PLATFORM_DATABASE_URL`
 - `HOSTED_DEMO_RESET_DATABASE_URL`
 - `HOSTED_DEMO_MIGRATION_DATABASE_URL`
 
-Each value is the matching direct Neon URL from the previous step.
+Each value is the matching direct Neon URL from the previous step. Do not create repository-level copies: keeping the credentials only in the protected environment prevents a workflow dispatched from an unreviewed ref from receiving them.
 
-The migration credential exists only in GitHub Actions. It is intentionally absent from both Render runtime services.
+The initialization job additionally rejects every ref except `refs/heads/main`. The migration credential exists only in this GitHub Actions environment and is intentionally absent from both Render runtime services.
 
 ## 5. Initialize schema and deterministic seed from GitHub
 
@@ -244,7 +244,7 @@ For Demo data corruption or an invalid seed state, prefer the supported determin
 
 Never record values. The expected names are:
 
-### GitHub Actions only
+### Protected GitHub Actions environment only
 
 - `HOSTED_DEMO_CUSTOMER_DATABASE_URL`
 - `HOSTED_DEMO_PLATFORM_DATABASE_URL`
