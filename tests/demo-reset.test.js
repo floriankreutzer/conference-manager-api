@@ -13,6 +13,7 @@ import {
   permissionsForPlatformRoles,
 } from '../src/platform/identity/policy.js';
 import {
+  DEMO_RESET_FAILURE_REASON,
   DEMO_RESET_TABLES,
   DemoResetRepositoryError,
   createPostgresDemoResetRepository,
@@ -256,7 +257,7 @@ test('semantic projection mismatch rolls the transaction back', async () => {
   assert.equal(pool.queries.some(({ text }) => text === 'COMMIT'), false);
   assert.deepEqual(auditRepository.attempts, [{
     outcome: 'failure',
-    reasonCode: 'reset_failed',
+    reasonCode: DEMO_RESET_FAILURE_REASON.SEMANTIC_CHECKSUM,
   }]);
 });
 
@@ -279,7 +280,7 @@ test('success audit append failure rolls reset back and records only bounded fai
   assert.equal(pool.queries.some(({ text }) => text === 'COMMIT'), false);
   assert.deepEqual(auditRepository.attempts, [{
     outcome: 'failure',
-    reasonCode: 'reset_failed',
+    reasonCode: DEMO_RESET_FAILURE_REASON.SUCCESS_AUDIT,
   }]);
 });
 
