@@ -186,7 +186,12 @@ for (const forbidden of [
 const gitEnvironment = await readFile('scripts/hosted-demo-git-environment.mjs', 'utf8');
 for (const required of [
   "FORBIDDEN_PREFIXES = Object.freeze(['GIT_', 'GH_', 'GITHUB_'])",
-  "FORBIDDEN_KEYS = new Set(['SSH_ASKPASS'])",
+  "'HOME', 'XDG_CONFIG_HOME', 'CURL_HOME', 'USERPROFILE'",
+  'path.isAbsolute(isolatedHome)',
+  'HOME: isolatedHome',
+  'XDG_CONFIG_HOME: isolatedHome',
+  'CURL_HOME: isolatedHome',
+  'USERPROFILE: isolatedHome',
   "GIT_TERMINAL_PROMPT: '0'",
   "GIT_CONFIG_NOSYSTEM: '1'",
   'GIT_CONFIG_GLOBAL: devNull',
@@ -204,12 +209,15 @@ if (/https?:\/\//.test(gitEnvironment)) {
 const prepare = await readFile('scripts/prepare-hosted-demo-frontend.mjs', 'utf8');
 for (const required of [
   'FRONTEND_REF_PATTERN = /^[0-9a-f]{40}$/',
-  'createAnonymousGitEnvironment(process.env)',
-  'env: GIT_ENVIRONMENT',
-  "git('init', '--quiet', TARGET_DIRECTORY)",
+  'mkdtemp(GIT_HOME_PREFIX)',
+  'createAnonymousGitEnvironment(process.env, gitHome)',
+  'env: environment',
+  "git(gitEnvironment, 'init', '--quiet', TARGET_DIRECTORY)",
   "'FETCH_HEAD'",
   'stdout.trim() !== frontendRef',
   "rm(path.join(TARGET_DIRECTORY, '.git')",
+  'finally {',
+  'rm(gitHome, { recursive: true, force: true })',
 ]) {
   if (!prepare.includes(required)) {
     throw new Error(`Hosted Demo frontend preparation lacks ${required}.`);
