@@ -28,6 +28,8 @@ services:
         value: saas-3.5-shared-demo-v1
       - key: DEMO_DATABASE_SSL
         value: verify-full
+      - key: DEMO_RATE_LIMIT_MAX
+        value: "1000"
       - key: DEMO_LISTEN_HOST
         value: 0.0.0.0
       - key: DEMO_STATIC_ROOT
@@ -68,6 +70,8 @@ services:
         value: saas-3.5-shared-demo-v1
       - key: DEMO_DATABASE_SSL
         value: verify-full
+      - key: DEMO_RATE_LIMIT_MAX
+        value: "1000"
       - key: DEMO_LISTEN_HOST
         value: 0.0.0.0
       - key: DEMO_STATIC_ROOT
