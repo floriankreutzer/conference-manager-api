@@ -101,11 +101,21 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: api
+      - name: Resolve deployed immutable frontend ref
+        id: frontend_ref
+        shell: bash
+        run: |
+          frontend_refs="$(awk '/key: DEMO_FRONTEND_REF/{getline; print $2}' api/render.yaml | sort -u)"
+          if [[ "$(wc -l <<< "$frontend_refs")" -ne 1 || ! "$frontend_refs" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "render.yaml must contain exactly one immutable DEMO_FRONTEND_REF." >&2
+            exit 1
+          fi
+          echo "ref=$frontend_refs" >> "$GITHUB_OUTPUT"
       - name: Checkout immutable frontend commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager
-          ref: 8bef6173f9a6c660e1d0062c430b01e6b44075fc
+          ref: ${{ steps.frontend_ref.outputs.ref }}
           path: frontend
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
