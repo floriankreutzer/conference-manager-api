@@ -14,9 +14,21 @@ function assertGateInput(pool, work) {
   if (typeof work !== 'function') throw new TypeError('DEMO_RUNTIME_GATE_WORK_REQUIRED');
 }
 
+function guardedPool(pool) {
+  return Object.freeze({
+    async connect() {
+      try {
+        return await pool.connect();
+      } catch (error) {
+        throw new DemoRuntimeGateError('DEMO_RUNTIME_GATE_ACQUIRE_FAILED', { cause: error });
+      }
+    },
+  });
+}
+
 export async function withDemoRuntimeSharedGate(pool, work) {
   assertGateInput(pool, work);
-  return withPostgresTransaction(pool, async (client) => {
+  return withPostgresTransaction(guardedPool(pool), async (client) => {
     try {
       await client.query('SELECT pg_advisory_xact_lock_shared($1)', [DEMO_RUNTIME_ADVISORY_LOCK]);
     } catch (error) {
