@@ -24,7 +24,7 @@ const RESET_AUTHORITY = Object.freeze({
   securityVersion: 1,
 });
 
-function fakeResetPool({ failQueryName = null, failCommit = false, failUnlock = false } = {}) {
+function fakeResetPool({ failQueryName = null, failCommit = false, failTransactionLock = false } = {}) {
   return {
     async connect() {
       return {
@@ -33,6 +33,9 @@ function fakeResetPool({ failQueryName = null, failCommit = false, failUnlock = 
           const name = typeof query === 'object' ? query.name : null;
           if (failQueryName !== null && name === failQueryName) {
             throw new Error('sensitive-driver-detail-must-not-enter-audit');
+          }
+          if (text === 'SELECT pg_advisory_xact_lock($1)' && failTransactionLock) {
+            throw new Error('sensitive-lock-detail-must-not-enter-audit');
           }
           if (text === 'COMMIT' && failCommit) {
             throw new Error('sensitive-commit-detail-must-not-enter-audit');
@@ -62,10 +65,6 @@ function fakeResetPool({ failQueryName = null, failCommit = false, failUnlock = 
             };
           }
           if (name === 'demo-reset-authority-revalidation') return { rowCount: 1, rows: [{ '?column?': 1 }] };
-          if (text === 'SELECT pg_advisory_unlock($1)') {
-            if (failUnlock) throw new Error('sensitive-unlock-detail-must-not-enter-audit');
-            return { rowCount: 1, rows: [{ pg_advisory_unlock: true }] };
-          }
           return { rowCount: 1, rows: [] };
         },
         release() {},
@@ -136,20 +135,20 @@ test('Demo reset classifies commit failure as transaction evidence', async () =>
   assert.doesNotMatch(JSON.stringify(attempts), /sensitive-commit-detail|password|sql/i);
 });
 
-test('Demo reset classifies exclusive gate release failure as gate evidence', async () => {
+test('Demo reset classifies transaction lock failure as transaction-lock evidence', async () => {
   const attempts = [];
-  const repository = repositoryForPhase(fakeResetPool({ failUnlock: true }), attempts);
+  const repository = repositoryForPhase(fakeResetPool({ failTransactionLock: true }), attempts);
 
   await assert.rejects(
     repository.reset(resetInput()),
-    (error) => error?.code === 'DEMO_RUNTIME_GATE_RELEASE_FAILED',
+    /sensitive-lock-detail-must-not-enter-audit/,
   );
 
   assert.deepEqual(attempts, [{
     outcome: 'failure',
-    reasonCode: DEMO_RESET_FAILURE_REASON.GATE,
+    reasonCode: DEMO_RESET_FAILURE_REASON.TRANSACTION_LOCK,
   }]);
-  assert.doesNotMatch(JSON.stringify(attempts), /sensitive-unlock-detail|password|sql/i);
+  assert.doesNotMatch(JSON.stringify(attempts), /sensitive-lock-detail|password|sql/i);
 });
 
 test('Demo reset failure reasons remain a closed bounded taxonomy', () => {

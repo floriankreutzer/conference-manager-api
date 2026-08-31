@@ -111,7 +111,7 @@ Reset is destructive by design and is allowed only in the isolated Demo database
 - the exact expected table inventory;
 - the source fixture's calculated domain-separated semantic checksum.
 
-Every normal customer or Platform request takes the shared Demo advisory lock. Reset takes the matching exclusive lock and then performs the complete truncate, seed, Demo provider/persona insertion and semantic readback in one `SERIALIZABLE` transaction. A lock acquisition/release failure, sentinel mismatch, schema drift, table drift, seed failure or checksum mismatch fails the operation; partial state cannot commit. The post-seed semantic projection must reproduce the source checksum before success is returned.
+Every normal customer or Platform request executes under a transaction-scoped shared Demo advisory lock. Reset acquires the matching transaction-scoped exclusive advisory lock inside the same `SERIALIZABLE` transaction that performs the complete truncate, seed, Demo provider/persona insertion and semantic readback. PostgreSQL releases these transaction locks automatically on commit or rollback; there is no separate session-level reset lock/unlock lifecycle. A transaction-lock acquisition or transaction-completion failure, sentinel mismatch, schema drift, table drift, seed failure or checksum mismatch fails the operation; partial state cannot commit. The post-seed semantic projection must reproduce the source checksum before success is returned.
 
 Fixture business timestamps remain fixed for reproducible semantic checksums. Operational Platform
 projection freshness is different: each seed/reset reads PostgreSQL `clock_timestamp()` inside the
@@ -119,7 +119,7 @@ reset transaction and uses that reset-time instant as the projection observation
 reset cannot immediately produce stale readiness projections.
 
 An authenticated HTTP reset also revalidates its exact internal Platform session, operator and
-security version after acquiring the exclusive lock and before destructive SQL. A second request
+security version after acquiring the exclusive transaction lock and before destructive SQL. A second request
 that authorized concurrently cannot continue after the first reset revoked all sessions. Reset
 does not restart PostgreSQL sequences: generated audit and operational identifiers remain
 monotonic, and the reset role does not require sequence ownership or migration-owner membership.

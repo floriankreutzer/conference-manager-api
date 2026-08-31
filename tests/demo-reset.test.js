@@ -44,6 +44,7 @@ function createFakePool({
   sentinel = validSentinel(),
   sentinelRowCount = 1,
   authorityResults = null,
+  transactionLockError = null,
 } = {}) {
   const queries = [];
   const waiters = [];
@@ -66,17 +67,23 @@ function createFakePool({
   return {
     queries,
     async connect() {
+      let transactionLockHeld = false;
       return {
         async query(query, values) {
           const text = typeof query === 'string' ? query : query.text;
           queries.push({ name: query?.name, text, values: query?.values || values });
-          if (text === 'SELECT pg_advisory_lock($1)') {
+          if (text === 'SELECT pg_advisory_xact_lock($1)') {
+            if (transactionLockError) throw transactionLockError;
             await lock();
+            transactionLockHeld = true;
             return { rows: [] };
           }
-          if (text === 'SELECT pg_advisory_unlock($1)') {
-            unlock();
-            return { rows: [{ pg_advisory_unlock: true }] };
+          if (text === 'COMMIT' || text === 'ROLLBACK') {
+            if (transactionLockHeld) {
+              transactionLockHeld = false;
+              unlock();
+            }
+            return { rows: [] };
           }
           if (query?.name === 'demo-reset-sentinel') {
             return { rowCount: sentinelRowCount, rows: sentinelRowCount === 1 ? [sentinel] : [] };
@@ -150,7 +157,7 @@ test('reset rejects a missing or wrong sentinel before destructive SQL', async (
   }
 });
 
-test('reset is atomic, reseeds deterministic state and returns an immutable seed descriptor', async () => {
+test('reset is atomic, transaction-gated, reseeds deterministic state and returns an immutable seed descriptor', async () => {
   const pool = createFakePool();
   const auditRepository = createAuditRepository();
   let seeded = 0;
@@ -185,10 +192,13 @@ test('reset is atomic, reseeds deterministic state and returns an immutable seed
   assert.equal(auditRepository.transactional.length, 1);
   assert.deepEqual(auditRepository.transactional[0], { outcome: 'success' });
   assert.equal(auditRepository.attempts.length, 0);
+  assert.equal(pool.queries.some(({ text }) => text === 'SELECT pg_advisory_xact_lock($1)'), true);
+  assert.equal(pool.queries.some(({ text }) => text === 'SELECT pg_advisory_lock($1)'), false);
+  assert.equal(pool.queries.some(({ text }) => text === 'SELECT pg_advisory_unlock($1)'), false);
   assert.equal(pool.queries.some(({ text }) => text === 'COMMIT'), true);
 });
 
-test('exclusive Demo gate serializes concurrent resets', async () => {
+test('transaction-scoped Demo reset gate serializes concurrent resets', async () => {
   const pool = createFakePool();
   let activeSeeds = 0;
   let maximumActiveSeeds = 0;
@@ -212,7 +222,7 @@ test('exclusive Demo gate serializes concurrent resets', async () => {
   assert.equal(results.every(({ checksum }) => checksum === DEMO_FIXTURE_CHECKSUM), true);
 });
 
-test('a queued reset revalidates its concrete session under the exclusive gate', async () => {
+test('a queued reset revalidates its concrete session under the transaction-scoped exclusive lock', async () => {
   const pool = createFakePool({ authorityResults: [true, false] });
   const auditRepository = createAuditRepository();
   const resetRepository = repository(pool, { auditRepository });
@@ -234,6 +244,26 @@ test('a queued reset revalidates its concrete session under the exclusive gate',
     2,
   );
   assert.equal(pool.queries.filter(({ name }) => name === 'demo-reset-truncate').length, 1);
+});
+
+test('transaction lock failure records the precise bounded reset phase', async () => {
+  const pool = createFakePool({ transactionLockError: new Error('sensitive driver detail') });
+  const auditRepository = createAuditRepository();
+  await assert.rejects(
+    repository(pool, { auditRepository }).reset({
+      fixture: DEMO_FIXTURE,
+      checksum: DEMO_FIXTURE_CHECKSUM,
+      authority: RESET_AUTHORITY,
+      auditEventFor: ({ outcome, reasonCode }) => ({ outcome, reasonCode }),
+    }),
+    /sensitive driver detail/,
+  );
+  assert.deepEqual(auditRepository.attempts, [{
+    outcome: 'failure',
+    reasonCode: DEMO_RESET_FAILURE_REASON.TRANSACTION_LOCK,
+  }]);
+  assert.equal(pool.queries.some(({ text }) => text === 'ROLLBACK'), true);
+  assert.equal(pool.queries.some(({ name }) => name === 'demo-reset-truncate'), false);
 });
 
 test('semantic projection mismatch rolls the transaction back', async () => {
