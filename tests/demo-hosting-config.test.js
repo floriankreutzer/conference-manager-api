@@ -124,4 +124,15 @@ test('Render Blueprint keeps the operational Demo free, separate and manually de
   const workflow = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
   assert.match(workflow, /name: Prepare immutable hosted Demo browser artifacts/);
   assert.match(workflow, /DEMO_FRONTEND_REF="\$frontend_ref" npm run demo:hosted:prepare/);
+  assert.match(workflow, /name: Resolve deployed immutable frontend ref/);
+  assert.match(workflow, /ref: \$\{\{ steps\.frontend_ref\.outputs\.ref \}\}/);
+  assert.doesNotMatch(workflow, /ref: 8bef6173f9a6c660e1d0062c430b01e6b44075fc/);
+
+  const initialize = await readFile(
+    new URL('../.github/workflows/hosted-demo-initialize.yml', import.meta.url),
+    'utf8',
+  );
+  assert.match(initialize, /github\.ref == 'refs\/heads\/main'/);
+  assert.match(initialize, /name: hosted-demo-initialize/);
+  assert.match(initialize, /Require reviewed main ref/);
 });
