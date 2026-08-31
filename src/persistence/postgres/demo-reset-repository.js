@@ -370,7 +370,7 @@ export function createPostgresDemoResetRepository({
       try {
         return await withDemoRuntimeExclusiveGate(pool, async (gateClient) => {
           phase = DEMO_RESET_FAILURE_REASON.TRANSACTION;
-          return withPostgresTransaction(borrowedPool(gateClient), async (client) => {
+          const result = await withPostgresTransaction(borrowedPool(gateClient), async (client) => {
             phase = DEMO_RESET_FAILURE_REASON.TRANSACTION_LOCK;
             await acquireDemoRuntimeResetTransactionLock(client);
             phase = DEMO_RESET_FAILURE_REASON.PRECONDITIONS;
@@ -403,11 +403,14 @@ export function createPostgresDemoResetRepository({
                 reasonCode: null,
               }));
             }
+            phase = DEMO_RESET_FAILURE_REASON.TRANSACTION;
             return Object.freeze({
               seedVersion: fixture.seedVersion,
               checksum,
             });
           }, { isolationLevel: 'SERIALIZABLE' });
+          phase = DEMO_RESET_FAILURE_REASON.GATE;
+          return result;
         });
       } catch (error) {
         if (auditEventFor !== null) {
