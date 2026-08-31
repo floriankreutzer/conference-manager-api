@@ -27,8 +27,12 @@ export function createDemoPlatformComposition({
   gatePool,
   resetPool,
   readiness,
+  staticFileAdapter = null,
 } = {}) {
   if (!config) throw new TypeError('DEMO_CONFIG_REQUIRED');
+  if (config.staticRoot && !staticFileAdapter) {
+    throw new TypeError('DEMO_STATIC_FILE_ADAPTER_REQUIRED');
+  }
   const runtimeConfig = createDemoPlatformRuntimeConfig(config);
   const selectedPersistence = persistence || createPostgresPlatformPersistence(runtimeConfig);
   const selectedReadiness = readiness || createPostgresDemoRuntimeReadiness({
@@ -77,6 +81,7 @@ export function createDemoPlatformComposition({
     httpServerFactory: (options) => createDemoPlatformHttpServer({
       ...options,
       demoRuntimeGatePool: selectedGatePool,
+      staticFileAdapter,
     }),
     projectionRunGate: (work) => withDemoRuntimeSharedGate(selectedGatePool, work),
     routeModulesFactory({ platformSessionService }) {

@@ -26,6 +26,10 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci --ignore-scripts --no-fund
+      - name: Prepare immutable hosted Demo browser artifacts
+        run: |
+          frontend_ref="$(awk '/key: DEMO_FRONTEND_REF/{getline; print $2}' render.yaml | sort -u)"
+          DEMO_FRONTEND_REF="$frontend_ref" npm run demo:hosted:prepare
       - name: Audit high-severity dependencies
         run: npm run audit
       - name: Run syntax, architecture, static security, secret, style, and test gates
@@ -97,11 +101,21 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: api
+      - name: Resolve deployed immutable frontend ref
+        id: frontend_ref
+        shell: bash
+        run: |
+          frontend_refs="$(awk '/key: DEMO_FRONTEND_REF/{getline; print $2}' api/render.yaml | sort -u)"
+          if [[ "$(wc -l <<< "$frontend_refs")" -ne 1 || ! "$frontend_refs" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "render.yaml must contain exactly one immutable DEMO_FRONTEND_REF." >&2
+            exit 1
+          fi
+          echo "ref=$frontend_refs" >> "$GITHUB_OUTPUT"
       - name: Checkout immutable frontend commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager
-          ref: 8b09f038c0cfb9acae07b8bbd6e63f4bb657ee73
+          ref: ${{ steps.frontend_ref.outputs.ref }}
           path: frontend
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

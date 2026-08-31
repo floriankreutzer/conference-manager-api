@@ -1,0 +1,87 @@
+name: Initialize Hosted Shared Demo
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_seed_version:
+        description: Type saas-3.5-shared-demo-v1 to migrate and reset the hosted Demo database
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosted-shared-demo-database-initialize
+  cancel-in-progress: false
+
+jobs:
+  initialize:
+    if: ${{ github.ref == 'refs/heads/main' && inputs.confirm_seed_version == 'saas-3.5-shared-demo-v1' }}
+    environment:
+      name: hosted-demo-initialize
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_ENV: test
+      DEMO_RUNTIME: shared-postgres-v1
+      DEMO_SEED_VERSION: saas-3.5-shared-demo-v1
+      DEMO_CUSTOMER_ORIGIN: https://conference-manager-demo.onrender.com
+      DEMO_PLATFORM_ORIGIN: https://conference-manager-ops-demo.onrender.com
+      DEMO_DATABASE_SSL: verify-full
+      DEMO_CUSTOMER_DATABASE_URL: ${{ secrets.HOSTED_DEMO_CUSTOMER_DATABASE_URL }}
+      DEMO_PLATFORM_DATABASE_URL: ${{ secrets.HOSTED_DEMO_PLATFORM_DATABASE_URL }}
+      DEMO_RESET_DATABASE_URL: ${{ secrets.HOSTED_DEMO_RESET_DATABASE_URL }}
+      DEMO_MIGRATION_DATABASE_URL: ${{ secrets.HOSTED_DEMO_MIGRATION_DATABASE_URL }}
+    steps:
+      - name: Require reviewed main ref
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Hosted Demo initialization is restricted to reviewed main." >&2
+            exit 1
+          fi
+      - name: Require hosted Demo database credentials
+        run: |
+          for key in \
+            DEMO_CUSTOMER_DATABASE_URL \
+            DEMO_PLATFORM_DATABASE_URL \
+            DEMO_RESET_DATABASE_URL \
+            DEMO_MIGRATION_DATABASE_URL; do
+            if [[ -z "${!key}" ]]; then
+              echo "Required hosted Demo database credential is not configured: $key" >&2
+              exit 1
+            fi
+          done
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Generate migration-only parser secrets
+        shell: bash
+        run: |
+          for key in \
+            DEMO_CUSTOMER_SESSION_SECRET \
+            DEMO_CUSTOMER_CSRF_SECRET \
+            DEMO_PLATFORM_SESSION_SECRET \
+            DEMO_PLATFORM_CSRF_SECRET \
+            DEMO_TENANT_AUDIT_HMAC_SECRET; do
+            value="$(openssl rand -hex 32)"
+            echo "::add-mask::$value"
+            echo "$key=$value" >> "$GITHUB_ENV"
+          done
+      - name: Apply canonical PostgreSQL migrations
+        env:
+          NODE_ENV: test
+          DATABASE_URL: ${{ secrets.HOSTED_DEMO_MIGRATION_DATABASE_URL }}
+          DATABASE_SSL: verify-full
+        run: npm run db:migrate
+      - name: Apply shared Demo migrations
+        run: npm run demo:db:migrate
+      - name: Reset and seed deterministic shared Demo state
+        run: npm run demo:db:reset -- --confirm-seed-version=${{ inputs.confirm_seed_version }}
