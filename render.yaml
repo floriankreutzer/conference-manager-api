@@ -34,7 +34,7 @@ services:
       - key: DEMO_STATIC_ROOT
         value: .demo-frontend
       - key: DEMO_FRONTEND_REF
-        value: 5eec67ebf6762c4369329b264b8aa0eb0ab62a97
+        value: 07f2896d56e6f66a9f8daf96457ab12c763adf80
       - key: DEMO_CUSTOMER_ORIGIN
         value: https://conference-manager-demo.onrender.com
       - key: DEMO_PLATFORM_ORIGIN
@@ -75,7 +75,7 @@ services:
       - key: DEMO_STATIC_ROOT
         value: .demo-frontend
       - key: DEMO_FRONTEND_REF
-        value: 5eec67ebf6762c4369329b264b8aa0eb0ab62a97
+        value: 07f2896d56e6f66a9f8daf96457ab12c763adf80
       - key: DEMO_CUSTOMER_ORIGIN
         value: https://conference-manager-demo.onrender.com
       - key: DEMO_PLATFORM_ORIGIN
