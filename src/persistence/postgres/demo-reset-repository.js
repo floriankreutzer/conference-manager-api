@@ -25,6 +25,24 @@ const PRODUCTION_SCHEMA_VERSIONS = Object.freeze(Array.from(
   (_, index) => index + 1,
 ));
 
+export const DEMO_RESET_FAILURE_REASON = Object.freeze({
+  GATE: 'gate_failed',
+  TRANSACTION: 'transaction_failed',
+  TRANSACTION_LOCK: 'transaction_lock_failed',
+  PRECONDITIONS: 'preconditions_failed',
+  AUTHORITY: 'authority_failed',
+  TRUNCATE: 'truncate_failed',
+  AUDIT_CHAIN: 'audit_chain_failed',
+  BUSINESS_SEED: 'business_seed_failed',
+  PROVIDER_SEED: 'provider_seed_failed',
+  PERSONA_SEED: 'persona_seed_failed',
+  SEMANTIC_READ: 'semantic_read_failed',
+  SEMANTIC_CHECKSUM: 'semantic_checksum_failed',
+  SUCCESS_AUDIT: 'success_audit_failed',
+  UNKNOWN: 'reset_failed',
+});
+const RESET_FAILURE_REASONS = new Set(Object.values(DEMO_RESET_FAILURE_REASON));
+
 export const DEMO_RESET_TABLES = Object.freeze([
   'tenants',
   'users',
@@ -128,6 +146,10 @@ export class DemoResetRepositoryError extends Error {
 
 function fail(code, cause) {
   throw new DemoResetRepositoryError(code, cause ? { cause } : undefined);
+}
+
+function failureReason(value) {
+  return RESET_FAILURE_REASONS.has(value) ? value : DEMO_RESET_FAILURE_REASON.UNKNOWN;
 }
 
 function assertFactoryConfiguration({ expectedDatabaseName, expectedResetRole, seedBusinessState, readSemanticState }) {
@@ -344,23 +366,38 @@ export function createPostgresDemoResetRepository({
       if ((auditEventFor === null) !== (authority === null)) {
         throw new TypeError('DEMO_RESET_AUTHORITY_REQUIRED');
       }
+      let phase = DEMO_RESET_FAILURE_REASON.GATE;
       try {
         return await withDemoRuntimeExclusiveGate(pool, async (gateClient) => {
+          phase = DEMO_RESET_FAILURE_REASON.TRANSACTION;
           return withPostgresTransaction(borrowedPool(gateClient), async (client) => {
+            phase = DEMO_RESET_FAILURE_REASON.TRANSACTION_LOCK;
             await acquireDemoRuntimeResetTransactionLock(client);
+            phase = DEMO_RESET_FAILURE_REASON.PRECONDITIONS;
             await verifyPreconditions(client, expectedDatabaseName, expectedResetRole);
-            if (authority !== null) await verifyResetAuthority(client, authority);
+            if (authority !== null) {
+              phase = DEMO_RESET_FAILURE_REASON.AUTHORITY;
+              await verifyResetAuthority(client, authority);
+            }
+            phase = DEMO_RESET_FAILURE_REASON.TRUNCATE;
             await client.query({ name: 'demo-reset-truncate', text: TRUNCATE_SQL });
+            phase = DEMO_RESET_FAILURE_REASON.AUDIT_CHAIN;
             await client.query({
               name: 'demo-reset-audit-chain-state',
               text: 'INSERT INTO platform_audit_chain_state (singleton) VALUES (true)',
             });
+            phase = DEMO_RESET_FAILURE_REASON.BUSINESS_SEED;
             await seedBusinessState({ client, fixture });
+            phase = DEMO_RESET_FAILURE_REASON.PROVIDER_SEED;
             await insertProviderState(client, fixture);
+            phase = DEMO_RESET_FAILURE_REASON.PERSONA_SEED;
             await insertPersonaReferences(client, fixture);
+            phase = DEMO_RESET_FAILURE_REASON.SEMANTIC_READ;
             const semanticState = await readSemanticState({ client });
+            phase = DEMO_RESET_FAILURE_REASON.SEMANTIC_CHECKSUM;
             if (semanticChecksum(semanticState) !== checksum) fail('DEMO_RESET_SEMANTIC_CHECKSUM_MISMATCH');
             if (auditEventFor !== null) {
+              phase = DEMO_RESET_FAILURE_REASON.SUCCESS_AUDIT;
               await auditRepository.appendWithClient(client, auditEventFor({
                 outcome: 'success',
                 reasonCode: null,
@@ -377,7 +414,7 @@ export function createPostgresDemoResetRepository({
           try {
             await auditRepository.append(auditEventFor({
               outcome: 'failure',
-              reasonCode: 'reset_failed',
+              reasonCode: failureReason(phase),
             }));
           } catch (auditError) {
             throw new DemoResetRepositoryError('DEMO_RESET_FAILURE_AUDIT_FAILED', {
