@@ -1,5 +1,4 @@
 import { DEMO_RUNTIME_ADVISORY_LOCK } from '../../demo/runtime-contract.js';
-import { withPostgresTransaction } from './transaction.js';
 
 export class DemoRuntimeGateError extends Error {
   constructor(code, options) {
@@ -14,28 +13,48 @@ function assertGateInput(pool, work) {
   if (typeof work !== 'function') throw new TypeError('DEMO_RUNTIME_GATE_WORK_REQUIRED');
 }
 
-function guardedPool(pool) {
-  return Object.freeze({
-    async connect() {
-      try {
-        return await pool.connect();
-      } catch (error) {
-        throw new DemoRuntimeGateError('DEMO_RUNTIME_GATE_ACQUIRE_FAILED', { cause: error });
-      }
-    },
-  });
+async function acquireGateClient(pool) {
+  try {
+    return await pool.connect();
+  } catch (error) {
+    throw new DemoRuntimeGateError('DEMO_RUNTIME_GATE_ACQUIRE_FAILED', { cause: error });
+  }
+}
+
+async function rollbackQuietly(client) {
+  try {
+    await client.query('ROLLBACK');
+  } catch {
+    // Preserve the original gate or application failure. The connection is discarded below.
+  }
 }
 
 export async function withDemoRuntimeSharedGate(pool, work) {
   assertGateInput(pool, work);
-  return withPostgresTransaction(guardedPool(pool), async (client) => {
+  const client = await acquireGateClient(pool);
+  let committed = false;
+  try {
     try {
+      await client.query('BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE');
+      await client.query("SET LOCAL TIME ZONE 'UTC'");
       await client.query('SELECT pg_advisory_xact_lock_shared($1)', [DEMO_RUNTIME_ADVISORY_LOCK]);
     } catch (error) {
       throw new DemoRuntimeGateError('DEMO_RUNTIME_GATE_ACQUIRE_FAILED', { cause: error });
     }
-    return work(client);
-  });
+
+    const result = await work(client);
+
+    try {
+      await client.query('COMMIT');
+      committed = true;
+    } catch (error) {
+      throw new DemoRuntimeGateError('DEMO_RUNTIME_GATE_RELEASE_FAILED', { cause: error });
+    }
+    return result;
+  } finally {
+    if (!committed) await rollbackQuietly(client);
+    client.release(committed ? undefined : new Error('DEMO_RUNTIME_GATE_TRANSACTION_ABORTED'));
+  }
 }
 
 export async function withDemoRuntimeExclusiveGate(pool, work) {
