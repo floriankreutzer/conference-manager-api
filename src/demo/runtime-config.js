@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 
 const CUSTOMER_DEFAULTS = Object.freeze({ host: '127.0.0.1', port: 3000 });
 const PLATFORM_DEFAULTS = Object.freeze({ host: '127.0.0.1', port: 3100 });
+const DEMO_RESET_DATABASE_STATEMENT_TIMEOUT_MS = 60_000;
 
 function derivedSecret(secret, purpose) {
   return createHmac('sha256', secret)
@@ -96,5 +97,6 @@ export function createDemoPlatformRuntimeConfig(config) {
     auditHmacSecret: derivedSecret(sessionSecret, 'platform-audit'),
     cursorSecret: derivedSecret(sessionSecret, 'platform-cursor'),
     tenantAuditHmacSecret,
+    resetDatabaseStatementTimeoutMs: DEMO_RESET_DATABASE_STATEMENT_TIMEOUT_MS,
   });
 }
