@@ -279,7 +279,8 @@ room inventory because no historical capacity/open-hours denominator exists.
 
 ### `POST /api/v1/application/room-availability`
 
-This is the advisory production Employee room-search check required before the browser creates a Request. It accepts only:
+This is the advisory production Employee room-search check required before the browser creates or
+resubmits a Request. The create check accepts exactly:
 
 ```json
 {
@@ -288,6 +289,12 @@ This is the advisory production Employee room-search check required before the b
   "endsAt": "2026-09-01T11:00:00.000Z"
 }
 ```
+
+For a `Change Requested` resubmission, the same exact body may additionally contain
+`"resubmissionRequestId": "request-id"`. The server loads that Request inside the authenticated
+Tenant, requires Employee ownership plus the `Change Requested` state, and only then excludes its
+existing provisional hold from the local overlap check. Unknown, cross-Tenant, other-Employee and
+non-resubmittable identifiers remain concealed; the field cannot exclude arbitrary bookings.
 
 The server requires an active Employee Principal, the internal `microsoft.calendar` entitlement, a canonical UTC interval of at most 24 hours, the Tenant-owned local room, its active Site with an authoritative IANA time zone and its active Microsoft mapping. It checks Tenant-scoped local Request overlap first and then performs a live Free/Busy lookup through the fixed Microsoft provider boundary. The browser cannot submit a Tenant, User, provider Tenant, mailbox, Graph URL, token or availability result.
 
@@ -303,7 +310,11 @@ A successful minimized response is:
 }
 ```
 
-Local or provider busy state returns `available: false`. Missing entitlement/mapping/connection, provider authorization, throttling, timeout or malformed provider data returns the stable HTTP 503 code `ROOM_AVAILABILITY_UNAVAILABLE`; it never produces false availability. The check is advisory: authoritative Conference Manager confirmation still repeats uncached final validation and the local room-lock operation.
+Local or provider busy state returns `available: false`. Missing entitlement/mapping/connection,
+provider authorization, throttling, timeout, malformed provider data or a failed resubmission lookup
+returns the stable HTTP 503 code `ROOM_AVAILABILITY_UNAVAILABLE`; it never produces false
+availability. The check is advisory: the create/resubmission write and authoritative Conference
+Manager confirmation still repeat uncached validation and the applicable local room-lock operation.
 
 ## Tenant Locations and Rooms administration
 
@@ -578,6 +589,36 @@ The exact body is `{ "decision": "approve" }` or `{ "decision": "reject", "reaso
 Approval rechecks current Request version, room/site state, capacity, local overlap and live provider availability. A conflict returns the common result family with `status: "blocked"`, the unchanged pending `change`, current `requestRef` and up to five server-derived alternative room IDs. Successful application installs the persisted immutable v2 proposal snapshot, advances the Request version and records `booking_changed` history. Provider exhaustion returns HTTP 503 and leaves the original booking active with the proposal pending for a later retry. Room moves use a durable monotonic attempt and explicit move-pending, target-active, restore-pending and reconciliation-required phases; timeout ambiguity never permits cleanup of both the original and replacement event.
 
 See `docs/AUTHORIZATION.md` and `docs/REQUEST-COMPOSITION.md`.
+
+## Shared Demo control routes
+
+The following routes are registered only by `src/demo/customer-main.js` and
+`src/demo/platform-main.js`. Production customer and Platform compositions cannot reach them.
+
+Customer Demo routes are:
+
+- `GET /api/v1/demo/session` — reuse a recognized Demo session or issue the server-defined default
+  Employee session;
+- `GET /api/v1/demo/tenants` — return the bounded synthetic Tenant directory after customer
+  authentication;
+- `PUT /api/v1/demo/session/context` — require customer authentication and CSRF, validate the exact
+  `{ "tenantId": "<uuid>", "persona": "<name>" }` body, and rotate to a server-known context.
+
+Platform Demo routes are:
+
+- `GET /api/v1/platform/demo/session` — reuse a recognized Platform Demo session or issue the
+  server-defined support-reader session;
+- `PUT /api/v1/platform/demo/session/persona` — require Platform authentication and CSRF, validate
+  the exact `{ "persona": "<name>" }` body, and rotate to a server-known persona;
+- `POST /api/v1/platform/demo/reset` — require Platform authentication, CSRF, fresh step-up
+  `platform:recovery:execute` authorization and exact `{ "confirm": true }`; atomically restore the
+  pinned seed, clear the caller cookie and return its `seedVersion`, semantic `checksum` and request
+  ID.
+
+Persona/context bodies express only demonstration intent. The server supplies User/operator IDs,
+roles, permissions, security versions, target scope, assurance and provider identity. Unknown
+contexts fail closed and customer/Platform session namespaces never cross. See
+`docs/SHARED-DEMO-RUNTIME.md`.
 
 ## Request-boundary invariants
 

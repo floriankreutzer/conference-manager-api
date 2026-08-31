@@ -1,4 +1,5 @@
 const MODES = new Set(['development', 'test', 'pilot', 'production']);
+const HTTP_MODES = new Set([...MODES, 'demo']);
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SUPPORT_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,79}$/;
 const AUTHENTICATION_CONTEXT = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -261,6 +262,7 @@ export function loadPlatformConfig(env) {
   const supportFallback = mode === 'development' || mode === 'test';
   return Object.freeze({
     mode,
+    identityMode: 'microsoft_entra',
     serviceVersion: parseIdentifier(
       env.PLATFORM_SERVICE_VERSION,
       supportFallback ? '0.1.0' : null,
@@ -393,7 +395,7 @@ export function assertPlatformHttpConfig(config) {
     throw new TypeError('PLATFORM_CONFIG_REQUIRED');
   }
   parseOrigin(config.publicOrigin);
-  if (!MODES.has(config.mode)) throw new TypeError('PLATFORM_MODE_INVALID');
+  if (!HTTP_MODES.has(config.mode)) throw new TypeError('PLATFORM_MODE_INVALID');
   for (const [value, minimum, maximum, code] of [
     [config.maxBodyBytes, 1_024, 1_048_576, 'PLATFORM_MAX_BODY_BYTES_INVALID'],
     [config.maxResponseBytes, 4_096, 4_194_304, 'PLATFORM_MAX_RESPONSE_BYTES_INVALID'],
@@ -403,8 +405,22 @@ export function assertPlatformHttpConfig(config) {
   ]) {
     if (!Number.isSafeInteger(value) || value < minimum || value > maximum) throw new TypeError(code);
   }
-  if (!config.entraAuthority || !config.entraClientId || !config.entraRedirectUri) {
-    throw new TypeError('PLATFORM_ENTRA_HTTP_CONFIG_REQUIRED');
+  const identityMode = config.identityMode || 'microsoft_entra';
+  if (identityMode === 'microsoft_entra') {
+    if (!config.entraAuthority || !config.entraClientId || !config.entraRedirectUri) {
+      throw new TypeError('PLATFORM_ENTRA_HTTP_CONFIG_REQUIRED');
+    }
+  } else if (identityMode === 'demo') {
+    if (
+      config.demoRuntime !== true
+      || config.mode === 'pilot'
+      || config.mode === 'production'
+      || config.entraAuthority !== null
+      || config.entraClientId !== null
+      || config.entraRedirectUri !== null
+    ) throw new TypeError('PLATFORM_DEMO_HTTP_CONFIG_INVALID');
+  } else {
+    throw new TypeError('PLATFORM_IDENTITY_MODE_INVALID');
   }
   return config;
 }

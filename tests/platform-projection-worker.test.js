@@ -38,3 +38,23 @@ test('projection worker exposes refresh failures and remains retryable', async (
   await assert.rejects(worker.runOnce(), /dependency unavailable/);
   assert.deepEqual(await worker.runOnce(), { refreshedCount: 0 });
 });
+
+test('projection worker executes every refresh inside the injected runtime gate', async () => {
+  const events = [];
+  const worker = createPlatformProjectionWorker({
+    repository: {
+      async refreshBatch() {
+        events.push('refresh');
+        return { refreshedCount: 2 };
+      },
+    },
+    async runGate(work) {
+      events.push('gate:start');
+      const result = await work();
+      events.push('gate:end');
+      return result;
+    },
+  });
+  assert.deepEqual(await worker.runOnce(), { refreshedCount: 2 });
+  assert.deepEqual(events, ['gate:start', 'refresh', 'gate:end']);
+});

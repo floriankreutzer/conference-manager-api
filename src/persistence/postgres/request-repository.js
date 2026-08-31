@@ -817,9 +817,30 @@ export function createPostgresRequestRepository(
       }, { isolationLevel: 'READ COMMITTED', readOnly: true });
     },
 
-    async listHistoryByTenantIdAndId(tenantId, requestId, { limit = 100 } = {}) {
+    async listHistoryPageByTenantIdAndId(tenantId, requestId, {
+      asOfVersion,
+      beforeVersion = null,
+      limit,
+    } = {}) {
+      if (
+        !isRequestId(requestId)
+        || !Number.isSafeInteger(asOfVersion)
+        || asOfVersion < 1
+        || asOfVersion >= Number.MAX_SAFE_INTEGER
+        || (
+          beforeVersion !== null
+          && (
+            !Number.isSafeInteger(beforeVersion)
+            || beforeVersion < 1
+            || beforeVersion > asOfVersion
+          )
+        )
+        || !Number.isSafeInteger(limit)
+        || limit < 1
+        || limit > 11
+      ) throw new TypeError('REQUEST_HISTORY_PAGE_INVALID');
       const result = await pool.query({
-        name: 'request-history-by-tenant-and-id',
+        name: 'request-history-page-by-tenant-and-id',
         text: `
           SELECT revision.request_version, revision.schema_version, revision.operation,
             revision.record, revision.captured_at, request.requester_user_id
@@ -827,10 +848,12 @@ export function createPostgresRequestRepository(
           JOIN requests request
             ON request.tenant_id = revision.tenant_id AND request.id = revision.request_id
           WHERE revision.tenant_id = $1 AND revision.request_id = $2
+            AND revision.request_version <= $3
+            AND ($4::bigint IS NULL OR revision.request_version < $4::bigint)
           ORDER BY revision.request_version DESC
-          LIMIT $3
+          LIMIT $5
         `,
-        values: [tenantId, requestId, limit],
+        values: [tenantId, requestId, asOfVersion, beforeVersion, limit],
       });
       return Object.freeze(result.rows.map((row) => Object.freeze({
         version: Number(row.request_version),

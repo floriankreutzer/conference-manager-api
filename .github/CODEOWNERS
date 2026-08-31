@@ -1,0 +1,10 @@
+# Default trusted-backend ownership.
+* @floriankreutzer
+
+# Platform API trust boundary, persistence and release gates.
+/src/platform/ @floriankreutzer
+/src/platform-*.js @floriankreutzer
+/src/persistence/postgres/platform-*.js @floriankreutzer
+/migrations/*platform* @floriankreutzer
+/scripts/*platform* @floriankreutzer
+/docs/PLATFORM*.md @floriankreutzer

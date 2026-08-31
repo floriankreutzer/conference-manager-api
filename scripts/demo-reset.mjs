@@ -1,0 +1,65 @@
+import pg from 'pg';
+
+import { loadDemoConfig } from '../src/demo/config.js';
+import { createDemoResetService } from '../src/demo/reset-service.js';
+import { createPostgresDemoResetRepository } from '../src/persistence/postgres/demo-reset-repository.js';
+import { migrateDemoUp } from './demo-db-migrations.mjs';
+
+const { Pool } = pg;
+const SAFE_ERROR = /^[A-Z][A-Z0-9_]{2,127}$/;
+
+function output(stream, value) {
+  stream.write(`${JSON.stringify(value)}\n`);
+}
+
+let migrationPool;
+let resetPool;
+try {
+  const config = loadDemoConfig(process.env);
+  if (process.argv[2] !== `--confirm-seed-version=${config.seedVersion}`) {
+    throw new Error('DEMO_RESET_CONFIRMATION_REQUIRED');
+  }
+  migrationPool = new Pool({
+    connectionString: config.databases.migration.url,
+    ssl: config.databaseSsl === 'verify-full' ? { rejectUnauthorized: true } : false,
+    max: 1,
+    application_name: 'conference-manager-demo-migrator',
+  });
+  resetPool = new Pool({
+    connectionString: config.databases.reset.url,
+    ssl: config.databaseSsl === 'verify-full' ? { rejectUnauthorized: true } : false,
+    max: 1,
+    application_name: 'conference-manager-demo-reset',
+  });
+  const roles = Object.freeze({
+    customer: config.databases.customer.role,
+    platform: config.databases.platform.role,
+    reset: config.databases.reset.role,
+  });
+  await migrateDemoUp(migrationPool, { roles });
+  const repository = createPostgresDemoResetRepository({
+    pool: resetPool,
+    expectedDatabaseName: config.databaseTarget.database,
+    expectedResetRole: config.databases.reset.role,
+  });
+  const result = await createDemoResetService({ repository }).reset();
+  output(process.stdout, Object.freeze({ status: 'completed', result }));
+} catch (error) {
+  const candidate = error?.code || error?.message;
+  output(process.stderr, Object.freeze({
+    status: 'failed',
+    code: SAFE_ERROR.test(candidate || '') ? candidate : 'DEMO_RESET_FAILED',
+  }));
+  process.exitCode = 1;
+} finally {
+  try {
+    await migrationPool?.end();
+  } catch {
+    process.exitCode = 1;
+  }
+  try {
+    await resetPool?.end();
+  } catch {
+    process.exitCode = 1;
+  }
+}

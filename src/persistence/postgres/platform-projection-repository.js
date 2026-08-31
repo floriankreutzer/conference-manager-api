@@ -1,22 +1,12 @@
+import {
+  createTenantReadinessCheck,
+  createTenantReadinessPolicy,
+  TENANT_ACTIVATION_CAPABILITIES,
+  TENANT_READINESS_CHECK,
+} from '../../tenancy/tenant-readiness-policy.js';
 import { withPostgresTransaction } from './transaction.js';
 
-const REQUIRED_CAPABILITIES = Object.freeze([
-  'microsoft.directory',
-  'microsoft.calendar',
-]);
-
-function check(checkId, category, passed, observedAt, reasonCode) {
-  return Object.freeze({
-    checkId,
-    category,
-    state: passed === null ? 'unknown' : passed ? 'pass' : 'fail',
-    reasonCode: passed === false ? reasonCode : null,
-    observedAt,
-    freshUntil: observedAt === null
-      ? null
-      : new Date(Date.parse(observedAt) + (15 * 60 * 1000)).toISOString(),
-  });
-}
+const readinessPolicy = createTenantReadinessPolicy();
 
 function connectionState(status) {
   if (!status || status === 'pending') return 'not_configured';
@@ -31,19 +21,6 @@ function incidentScope(status, reason) {
   if (!status || ['not_configured', 'permission_missing', 'revoked'].includes(status)) return 'tenant';
   if (typeof reason === 'string' && /^(provider_|graph_|microsoft_)/.test(reason)) return 'provider';
   return ['degraded', 'unavailable'].includes(status) ? 'unknown' : 'tenant';
-}
-
-function readinessState(checks) {
-  if (checks.some((item) => item.state === 'fail')) return 'blocked';
-  if (checks.some((item) => item.state === 'unknown')) return 'unknown';
-  return 'ready';
-}
-
-function blockerCodes(checks) {
-  return Object.freeze(checks
-    .filter((item) => item.state !== 'pass')
-    .map((item) => item.reasonCode ?? `${item.checkId}.unknown`)
-    .sort());
 }
 
 async function loadSource(client, tenantId) {
@@ -110,24 +87,54 @@ async function storeProjection(client, source, observedAt) {
   const calendarsGranted = tenant.calendars_permission_status === 'granted';
   const mappingActive = Number(mappings.active) > 0 && Number(mappings.missing) === 0;
   const checks = Object.freeze([
-    check('tenant.identity.active', 'identity', identityActive, observedAt, 'tenant.identity.inactive'),
-    check('microsoft.connection.connected', 'microsoft_connection', connected,
-      tenant.last_verified_at?.toISOString() ?? observedAt, 'microsoft.connection.not_connected'),
-    check('microsoft.permission.places', 'permissions', placesGranted,
-      tenant.last_verified_at?.toISOString() ?? observedAt, 'microsoft.permission.places_missing'),
-    check('microsoft.permission.calendars', 'permissions', calendarsGranted,
-      tenant.last_verified_at?.toISOString() ?? observedAt, 'microsoft.permission.calendars_missing'),
-    check('microsoft.room_mapping.active', 'room_mapping', mappingActive,
-      observedAt, 'microsoft.room_mapping.missing'),
-    check('microsoft.free_busy.healthy', 'capability_health',
-      freeBusy ? freeBusy.status === 'healthy' : null,
-      freeBusy?.last_checked_at?.toISOString() ?? null, 'microsoft.free_busy.unhealthy'),
-    check('entitlement.microsoft_directory', 'entitlement', enabled.has('microsoft.directory'),
-      observedAt, 'entitlement.microsoft_directory.missing'),
-    check('entitlement.microsoft_calendar', 'entitlement', enabled.has('microsoft.calendar'),
-      observedAt, 'entitlement.microsoft_calendar.missing'),
+    createTenantReadinessCheck({
+      checkId: TENANT_READINESS_CHECK.IDENTITY_ACTIVE,
+      passed: identityActive,
+      observedAt,
+    }),
+    createTenantReadinessCheck({
+      checkId: TENANT_READINESS_CHECK.MICROSOFT_CONNECTED,
+      passed: connected,
+      observedAt: tenant.last_verified_at?.toISOString() ?? observedAt,
+    }),
+    createTenantReadinessCheck({
+      checkId: TENANT_READINESS_CHECK.PLACES_PERMISSION,
+      passed: placesGranted,
+      observedAt: tenant.last_verified_at?.toISOString() ?? observedAt,
+    }),
+    createTenantReadinessCheck({
+      checkId: TENANT_READINESS_CHECK.CALENDARS_PERMISSION,
+      passed: calendarsGranted,
+      observedAt: tenant.last_verified_at?.toISOString() ?? observedAt,
+    }),
+    createTenantReadinessCheck({
+      checkId: TENANT_READINESS_CHECK.ROOM_MAPPING_ACTIVE,
+      passed: mappingActive,
+      observedAt,
+    }),
+    createTenantReadinessCheck({
+      checkId: TENANT_READINESS_CHECK.FREE_BUSY_HEALTHY,
+      passed: freeBusy ? freeBusy.status === 'healthy' : null,
+      observedAt: freeBusy?.last_checked_at?.toISOString() ?? null,
+    }),
+    createTenantReadinessCheck({
+      checkId: TENANT_READINESS_CHECK.DIRECTORY_ENTITLED,
+      passed: enabled.has(TENANT_ACTIVATION_CAPABILITIES[0]),
+      observedAt,
+    }),
+    createTenantReadinessCheck({
+      checkId: TENANT_READINESS_CHECK.CALENDAR_ENTITLED,
+      passed: enabled.has(TENANT_ACTIVATION_CAPABILITIES[1]),
+      observedAt,
+    }),
   ]);
-  const missingRequired = REQUIRED_CAPABILITIES.filter((item) => !enabled.has(item)).length;
+  const readiness = readinessPolicy.evaluateSnapshot({
+    lifecycleStatus: tenant.status,
+    checks,
+    asOfMs: Date.parse(observedAt),
+  });
+  const missingRequired = TENANT_ACTIVATION_CAPABILITIES
+    .filter((item) => !enabled.has(item)).length;
   const onboardingState = identityActive
     ? 'complete'
     : tenant.invitation_id === null
@@ -156,7 +163,7 @@ async function storeProjection(client, source, observedAt) {
         invalidated_at = NULL, invalidation_reason = NULL, updated_at = EXCLUDED.updated_at
     `,
     values: [tenant.id, tenant.lifecycle_revision, tenant.entitlement_revision,
-      onboardingState, readinessState(checks), blockerCodes(checks), JSON.stringify(checks),
+      onboardingState, readiness.state, readiness.blockerCodes, JSON.stringify(checks),
       enabled.size, missingRequired, observedAt],
   });
   await client.query({
@@ -202,37 +209,60 @@ async function storeProjection(client, source, observedAt) {
   }
 }
 
+export async function refreshPlatformProjectionBatchWithClient(
+  client,
+  { limit = 25, observedAt } = {},
+) {
+  if (!client || typeof client.query !== 'function') throw new TypeError('POSTGRES_CLIENT_REQUIRED');
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    throw new TypeError('PLATFORM_PROJECTION_BATCH_LIMIT_INVALID');
+  }
+  const candidates = await client.query({
+    name: 'platform-projection-refresh-candidates',
+    text: `
+      SELECT tenant.id FROM tenants tenant
+      LEFT JOIN platform_tenant_readiness_snapshots snapshot ON snapshot.tenant_id = tenant.id
+      ORDER BY snapshot.updated_at ASC NULLS FIRST, tenant.id ASC
+      LIMIT $1 FOR UPDATE OF tenant SKIP LOCKED
+    `,
+    values: [limit],
+  });
+  let selectedObservedAt = observedAt;
+  if (selectedObservedAt === undefined) {
+    const clock = await client.query({
+      name: 'platform-projection-refresh-clock',
+      text: 'SELECT date_trunc(\'milliseconds\', clock_timestamp()) AS observed_at',
+    });
+    selectedObservedAt = clock.rows[0].observed_at.toISOString();
+  } else {
+    const observedAtEpoch = typeof selectedObservedAt === 'string'
+      ? Date.parse(selectedObservedAt)
+      : Number.NaN;
+    if (
+      !Number.isFinite(observedAtEpoch)
+      || new Date(observedAtEpoch).toISOString() !== selectedObservedAt
+    ) throw new TypeError('PLATFORM_PROJECTION_OBSERVED_AT_INVALID');
+  }
+  for (const candidate of candidates.rows) {
+    const source = await loadSource(client, candidate.id);
+    if (source) await storeProjection(client, source, selectedObservedAt);
+  }
+  return Object.freeze({
+    refreshedCount: candidates.rowCount,
+    observedAt: selectedObservedAt,
+  });
+}
+
 export function createPostgresPlatformProjectionRepository(pool) {
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
   }
   return Object.freeze({
     async refreshBatch({ limit = 25 } = {}) {
-      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
-        throw new TypeError('PLATFORM_PROJECTION_BATCH_LIMIT_INVALID');
-      }
-      return withPostgresTransaction(pool, async (client) => {
-        const candidates = await client.query({
-          name: 'platform-projection-refresh-candidates',
-          text: `
-            SELECT tenant.id FROM tenants tenant
-            LEFT JOIN platform_tenant_readiness_snapshots snapshot ON snapshot.tenant_id = tenant.id
-            ORDER BY snapshot.updated_at ASC NULLS FIRST, tenant.id ASC
-            LIMIT $1 FOR UPDATE OF tenant SKIP LOCKED
-          `,
-          values: [limit],
-        });
-        const clock = await client.query({
-          name: 'platform-projection-refresh-clock',
-          text: 'SELECT date_trunc(\'milliseconds\', clock_timestamp()) AS observed_at',
-        });
-        const observedAt = clock.rows[0].observed_at.toISOString();
-        for (const candidate of candidates.rows) {
-          const source = await loadSource(client, candidate.id);
-          if (source) await storeProjection(client, source, observedAt);
-        }
-        return Object.freeze({ refreshedCount: candidates.rowCount, observedAt });
-      });
+      return withPostgresTransaction(
+        pool,
+        (client) => refreshPlatformProjectionBatchWithClient(client, { limit }),
+      );
     },
   });
 }

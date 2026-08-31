@@ -85,7 +85,7 @@ Final confirmation authority remains a separate concern owned by the subsequent 
 
 The application service first requires Employee Request-create authorization and the internal `microsoft.calendar` entitlement. It then checks Tenant-scoped local Request overlap and, when locally free, resolves the Tenant-owned Microsoft connection and active room mapping server-side before performing live Free/Busy. Its versioned response exposes only `available` and `conflictCount`; subjects, schedule items, mailbox addresses, provider identifiers and raw errors never cross the API boundary.
 
-The production browser invalidates a successful check whenever room or time input changes and permits Request creation only for the exact currently verified tuple. Missing provider configuration, authorization, entitlement, throttling, timeout or malformed output returns `ROOM_AVAILABILITY_UNAVAILABLE`, never `available=true`. The explicit demo workflow keeps its simulated occupancy path and never calls this endpoint.
+The production browser invalidates a successful check whenever room or time input changes and permits Request creation only for the exact currently verified tuple. Missing provider configuration, authorization, entitlement, throttling, timeout or malformed output returns `ROOM_AVAILABILITY_UNAVAILABLE`, never `available=true`. The Shared Demo customer uses this same server endpoint and application contract, but its Demo-only composition injects the deterministic network-free Microsoft provider described in `docs/SHARED-DEMO-RUNTIME.md`.
 
 ## Verification
 

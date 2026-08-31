@@ -31,7 +31,15 @@ const query = Object.freeze({
   endsAt: '2026-09-01T11:00:00.000Z',
 });
 
-function harness({ localConflict = false, localError, providerResult, entitlementError, providerError } = {}) {
+function harness({
+  localConflict = false,
+  localError,
+  providerResult,
+  entitlementError,
+  providerError,
+  resubmissionRequest = null,
+  resubmissionLookupError = null,
+} = {}) {
   const calls = [];
   const service = createRoomAvailabilityService({
     repository: {
@@ -39,6 +47,18 @@ function harness({ localConflict = false, localError, providerResult, entitlemen
         calls.push(['local', values]);
         if (localError) throw localError;
         return localConflict;
+      },
+    },
+    requestRepository: {
+      async findByTenantIdAndId(_tenantId, requestId) {
+        calls.push(['request', requestId]);
+        if (resubmissionLookupError) throw resubmissionLookupError;
+        return resubmissionRequest || {
+          tenantId: TENANT_ID,
+          id: requestId,
+          requesterUserId: USER_ID,
+          status: 'Change Requested',
+        };
       },
     },
     authorizationPolicy: createAuthorizationPolicy(),
@@ -95,6 +115,58 @@ test('a local overlap returns busy without calling Microsoft Graph', async () =>
   const { service, calls } = harness({ localConflict: true });
   assert.deepEqual(await check(service), { available: false, conflictCount: 1 });
   assert.deepEqual(calls.map(([type]) => type), ['entitlement', 'local']);
+});
+
+test('resubmission availability excludes only the authenticated employee own change request', async () => {
+  const { service, calls } = harness();
+  const requestId = '55555555-5555-4555-8555-555555555555';
+  assert.deepEqual(await check(service, {
+    query: { ...query, resubmissionRequestId: requestId },
+  }), { available: true, conflictCount: 0 });
+  assert.deepEqual(calls.map(([type]) => type), [
+    'request', 'entitlement', 'local', 'provider', 'lookup',
+  ]);
+  assert.equal(calls[2][1].excludeRequestId, requestId);
+});
+
+test('resubmission availability conceals another employee or ineligible request before exclusion', async () => {
+  const requestId = '55555555-5555-4555-8555-555555555555';
+  for (const resubmissionRequest of [
+    {
+      tenantId: TENANT_ID,
+      id: requestId,
+      requesterUserId: '66666666-6666-4666-8666-666666666666',
+      status: 'Change Requested',
+    },
+    {
+      tenantId: TENANT_ID,
+      id: requestId,
+      requesterUserId: USER_ID,
+      status: 'Submitted',
+    },
+  ]) {
+    const { service, calls } = harness({ resubmissionRequest });
+    await assert.rejects(
+      check(service, { query: { ...query, resubmissionRequestId: requestId } }),
+      AuthorizationDeniedError,
+    );
+    assert.deepEqual(calls.map(([type]) => type), ['request']);
+  }
+});
+
+test('resubmission lookup dependency and malformed persistence preserve the availability error contract', async () => {
+  const requestId = '55555555-5555-4555-8555-555555555555';
+  for (const options of [
+    { resubmissionLookupError: new Error('database unavailable') },
+    { resubmissionRequest: { id: requestId, tenantId: TENANT_ID } },
+  ]) {
+    const { service, calls } = harness(options);
+    await assert.rejects(
+      check(service, { query: { ...query, resubmissionRequestId: requestId } }),
+      RoomAvailabilityUnavailableError,
+    );
+    assert.deepEqual(calls.map(([type]) => type), ['request']);
+  }
 });
 
 test('missing entitlement and provider failures never become available', async () => {

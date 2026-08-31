@@ -18,6 +18,13 @@ const approvedRuntimeDependencies = {
   '@azure/msal-node': '5.4.3',
   pg: '8.23.0',
 };
+const runtimeEnvironmentAuthority = new Set([
+  'src/config.js',
+  'src/platform/config.js',
+  'src/platform-main.js',
+  'src/demo/customer-main.js',
+  'src/demo/platform-main.js',
+]);
 if (JSON.stringify(runtimeDependencies) !== JSON.stringify(approvedRuntimeDependencies)) {
   throw new Error('Runtime dependencies must remain exactly the reviewed PostgreSQL and Microsoft identity adapters.');
 }
@@ -26,10 +33,10 @@ const files = await sourceFiles('src');
 for (const file of files) {
   const content = await readFile(file, 'utf8');
   if (
-    !['src/config.js', 'src/platform/config.js', 'src/platform-main.js'].includes(file)
+    !runtimeEnvironmentAuthority.has(file)
     && /process\.env/.test(content)
   ) {
-    throw new Error(`${file} accesses process.env directly; runtime configuration belongs in src/config.js.`);
+    throw new Error(`${file} accesses process.env directly outside an approved configuration or process entrypoint.`);
   }
   if (/from ['"](?:node:)?(?:fs|child_process|vm)['"]/.test(content)) {
     throw new Error(`${file} imports a privileged runtime module outside the approved foundation.`);
@@ -78,8 +85,15 @@ for (const routeModule of [
     throw new Error(`Integrated Tenant administration route registry is missing ${routeModule}.`);
   }
 }
-if (!app.includes('TENANT_ROUTE_REGISTRY.createDispatcher')) {
-  throw new Error('Tenant routes must dispatch through the bounded module registry.');
+for (const required of [
+  'additionalRouteModules = []',
+  'createRouteModuleRegistry([...CUSTOMER_OPERATIONAL_ROUTE_MODULES, ...additionalRouteModules])',
+  'routeRegistry.createDispatcher',
+  'routeKey(path, routeRegistry)',
+]) {
+  if (!app.includes(required)) {
+    throw new Error(`Tenant routes must preserve the injectable bounded module registry contract ${required}.`);
+  }
 }
 if (!app.includes('createPrincipalGuard') || !app.includes('assertSameOrigin') || !app.includes('createRateLimiter')) {
   throw new Error('Required API security boundaries are not composed in src/app.js.');
@@ -335,7 +349,7 @@ if (!principal.includes('providerIdentity') || !principal.includes('permissions'
 }
 
 const sessionCookie = await readFile('src/identity/session-cookie.js', 'utf8');
-for (const required of ['HttpOnly', 'SameSite=Lax', 'Path=/api', 'Secure']) {
+for (const required of ['cm_session', 'HttpOnly', 'SameSite=Lax', 'Path=/api', 'Secure']) {
   if (!sessionCookie.includes(required)) throw new Error(`Session cookie contract is missing ${required}.`);
 }
 if (sessionCookie.includes('Domain=')) throw new Error('Session cookie must not set a broad Domain attribute.');
@@ -721,17 +735,32 @@ if (app.includes("from './platform/") || app.includes("from './persistence/postg
 
 const index = await readFile('src/index.js', 'utf8');
 for (const required of [
+  'createCustomerComposition',
+  'loadConfig',
+  'createEntraClient',
+  'createMicrosoft365Client',
+  'entraClient,',
+  'microsoft365Client,',
+  'await composition.start()',
+]) {
+  if (!index.includes(required)) throw new Error(`Production customer entrypoint must wire ${required}.`);
+}
+if (index.includes("from './demo/") || index.includes('demoRuntime: true')) {
+  throw new Error('Production customer entrypoint must not select or import the Demo runtime.');
+}
+
+const customerComposition = await readFile('src/customer-composition.js', 'utf8');
+for (const required of [
+  'createCustomerComposition',
   'createSessionService',
   'createAuthorizationPolicy',
   'createRequestService',
   'createRoomAvailabilityService',
   'createAuditService',
-  'createEntraClient',
   'createEntraAuthService',
   'createTenantOnboardingService',
   'createJitUserService',
   'createPendingProviderIdentityResolver({ onboardingService, jitUserService })',
-  'createMicrosoft365Client',
   'createMicrosoft365ConnectionService',
   'createMicrosoft365ConnectionHealthView',
   'createMicrosoft365CapabilityHealthService',
@@ -762,13 +791,16 @@ for (const required of [
   'tenantUserLifecycleService',
   'tenantAuditQueryService',
   'tenantCapabilityViewService',
+  'httpServerFactory({',
 ]) {
-  if (!index.includes(required)) throw new Error(`Process composition must wire ${required}.`);
+  if (!customerComposition.includes(required)) {
+    throw new Error(`Shared customer composition must wire ${required}.`);
+  }
 }
-if (!index.includes('managedAssetPolicy: managedBrandPolicy')) {
+if (!customerComposition.includes('managedAssetPolicy: managedBrandPolicy')) {
   throw new Error('Tenant Organization mutation must use the code-shipped managed-brand policy.');
 }
-if (!index.includes('microsoft365Service: microsoft365ConnectionService')) {
+if (!customerComposition.includes('microsoft365Service: microsoft365ConnectionService')) {
   throw new Error('Tenant capability view must consume the decorated Microsoft 365 health view.');
 }
 

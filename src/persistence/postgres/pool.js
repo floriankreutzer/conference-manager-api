@@ -15,10 +15,23 @@ const { Pool } = pg;
 // independent Platform security, operations, metering and runtime stores.
 export const CURRENT_SCHEMA_VERSION = 33;
 
+const PRODUCTION_APPLICATION_NAMES = new Set([
+  'conference-manager-api',
+  'conference-manager-platform-api',
+]);
+const DEMO_APPLICATION_NAMES = new Set([
+  'conference-manager-demo-customer-gate',
+  'conference-manager-demo-platform-gate',
+  'conference-manager-demo-reset',
+]);
+
 export function createPostgresPool(config) {
   if (!config?.databaseUrl) throw new TypeError('DATABASE_URL_REQUIRED');
   const applicationName = config.applicationName || 'conference-manager-api';
-  if (!['conference-manager-api', 'conference-manager-platform-api'].includes(applicationName)) {
+  if (
+    !PRODUCTION_APPLICATION_NAMES.has(applicationName)
+    && !(config.demoRuntime === true && DEMO_APPLICATION_NAMES.has(applicationName))
+  ) {
     throw new TypeError('DATABASE_APPLICATION_NAME_INVALID');
   }
 

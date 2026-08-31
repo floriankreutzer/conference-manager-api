@@ -133,6 +133,7 @@ function fixtures(overrides = {}) {
     lifecycleTransactions: {
       async compareAndSet(values) {
         state.lifecycleWrites += 1;
+        state.lifecycleChanged = values;
         const tenant = { tenantId: TENANT_ID, status: values.targetStatus, revision: 8, changedAt: NOW };
         state.receipt = { requestDigest: values.requestDigest, result: { tenant } };
         return { outcome: 'updated', tenant };
@@ -304,6 +305,7 @@ test('pending Tenant creation returns its purpose-bound invitation once and exac
   assert.equal(first.tenant.status, 'pending');
   assert.deepEqual(first.oneTimeDelivery, { available: true, token: TOKEN, expiresAt: EXPIRES_AT });
   assert.equal(state.created.tokenHash, TOKEN_HASH);
+  assert.equal(state.created.operation, PLATFORM_OPERATION.TENANT_INVITATION_CREATE);
   assert.equal(Object.hasOwn(state.created, 'token'), false);
   assert.equal(state.permissions[0], PLATFORM_PERMISSION.INVITATION_MANAGE);
   assert.equal(state.creationAuthorizations, 1);
@@ -511,6 +513,7 @@ test('suspended to archived is terminal CAS and retries consult the receipt befo
   };
   const first = await service.transitionLifecycle(input);
   assert.equal(first.lifecycle.status, 'archived');
+  assert.equal(state.lifecycleChanged.operation, PLATFORM_OPERATION.LIFECYCLE_TRANSITION);
   assert.equal(state.policyTransition, undefined, 'archive extension must not duplicate the canonical transition matrix');
 
   const replay = await service.transitionLifecycle(input);

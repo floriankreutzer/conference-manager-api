@@ -33,8 +33,7 @@ import { platformSessionRoutes } from './http/session-routes.js';
 import { platformTenantRoutes } from './http/tenant-routes.js';
 import { platformRuntimeRoutes } from './http/runtime-routes.js';
 
-const PLATFORM_ROUTE_REGISTRY = createPlatformRouteRegistry([
-  platformAuthenticationRoutes,
+export const PLATFORM_OPERATIONAL_ROUTE_MODULES = Object.freeze([
   platformHealthRoutes,
   platformSessionRoutes,
   platformTenantRoutes,
@@ -47,6 +46,13 @@ const PLATFORM_ROUTE_REGISTRY = createPlatformRouteRegistry([
   platformMeteringRoutes,
   platformRuntimeRoutes,
 ]);
+
+export const PLATFORM_PRODUCTION_ROUTE_MODULES = Object.freeze([
+  platformAuthenticationRoutes,
+  ...PLATFORM_OPERATIONAL_ROUTE_MODULES,
+]);
+
+const PLATFORM_ROUTE_REGISTRY = createPlatformRouteRegistry(PLATFORM_PRODUCTION_ROUTE_MODULES);
 
 function safeObserverCall(callback) {
   try {
@@ -70,6 +76,7 @@ export function createPlatformApp({
   platformRuntimeStatusService,
   platformSessionService,
   platformTenantOperationsService,
+  routeModules = PLATFORM_PRODUCTION_ROUTE_MODULES,
   readTransactionCookie,
   clientKey = (request) => request.socket.remoteAddress || 'unknown',
   logger = createPlatformLogger(),
@@ -88,6 +95,10 @@ export function createPlatformApp({
   if (typeof clock !== 'function') throw new TypeError('PLATFORM_CLOCK_REQUIRED');
   if (typeof requestIdFactory !== 'function') throw new TypeError('PLATFORM_REQUEST_ID_FACTORY_REQUIRED');
 
+  const routeRegistry = routeModules === PLATFORM_PRODUCTION_ROUTE_MODULES
+    ? PLATFORM_ROUTE_REGISTRY
+    : createPlatformRouteRegistry(routeModules);
+
   const platformPrincipalGuard = createPlatformPrincipalGuard({
     platformSessionService,
     platformAuditService,
@@ -98,7 +109,7 @@ export function createPlatformApp({
     maxKeys: config.rateLimitMaxKeys,
     clock,
   });
-  const dispatch = PLATFORM_ROUTE_REGISTRY.createDispatcher({
+  const dispatch = routeRegistry.createDispatcher({
     platformAuthService,
     platformAuditService,
     platformDiagnosticOperationsService,
@@ -144,7 +155,11 @@ export function createPlatformApp({
       assertPlatformMethod(request.method);
       assertPlatformRequestTarget(request.url);
       assertPlatformRequestHost(request.headers, config.publicOrigin);
-      rateLimiter.consume(clientKey(request));
+      const parsedUrl = new URL(request.url, config.publicOrigin);
+      const isLivenessProbe = request.method === 'GET'
+        && parsedUrl.pathname === '/api/v1/platform/health/live'
+        && parsedUrl.search === '';
+      if (!isLivenessProbe) rateLimiter.consume(clientKey(request));
       try {
         assertPlatformRequestOrigin(request.headers, config.publicOrigin, {
           required: isPlatformUnsafeMethod(request.method),
@@ -156,7 +171,6 @@ export function createPlatformApp({
         throw error;
       }
 
-      const parsedUrl = new URL(request.url, config.publicOrigin);
       const context = Object.freeze({
         method: request.method,
         path: parsedUrl.pathname,
@@ -165,7 +179,7 @@ export function createPlatformApp({
         response,
         requestId,
       });
-      route = PLATFORM_ROUTE_REGISTRY.routeKey(context) || PLATFORM_HTTP_ROUTE.NOT_FOUND;
+      route = routeRegistry.routeKey(context) || PLATFORM_HTTP_ROUTE.NOT_FOUND;
       const dispatchedStatus = await dispatch(context);
       if (dispatchedStatus === null) throw new PlatformHttpError(404, 'PLATFORM_NOT_FOUND');
       statusCode = dispatchedStatus;

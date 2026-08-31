@@ -1,65 +1,125 @@
-import { readFile, readdir } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-async function javascriptFiles(directory) {
+async function filesWithExtension(directory, extension) {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = [];
   for (const entry of entries) {
     const current = join(directory, entry.name);
-    if (entry.isDirectory()) files.push(...await javascriptFiles(current));
-    else if (entry.name.endsWith('.js')) files.push(current);
+    if (entry.isDirectory()) files.push(...await filesWithExtension(current, extension));
+    else if (entry.name.endsWith(extension)) files.push(current);
   }
   return files;
 }
 
-const runtime = await readFile('scripts/tenant-operator.mjs', 'utf8');
-for (const required of [
-  'assertProductionConfig(config)',
-  'config.mode !== command.environment',
-  'candidate === operatorContext',
-  'persistence.readinessChecks',
-  'prepareInvitationArtifact',
-  'publicTenantOperatorResult',
-]) {
-  if (!runtime.includes(required)) {
-    throw new Error(`Tenant operator runtime is missing invariant ${required}.`);
+async function requireMissing(path) {
+  try {
+    await access(path);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return;
+    throw error;
   }
-}
-if (runtime.includes("from '../src/http/")) {
-  throw new Error('Tenant operator runtime must not depend on the public HTTP boundary.');
+  throw new Error(`Retired Tenant operator path must remain absent: ${path}.`);
 }
 
-const artifact = await readFile('scripts/operator-invitation-artifact.mjs', 'utf8');
-for (const required of ['O_NOFOLLOW', 'O_EXCL', '0o600', 'normalizeInvitationResult']) {
-  if (!artifact.includes(required)) {
-    throw new Error(`Invitation artifact writer is missing invariant ${required}.`);
+for (const path of [
+  'src/operator/tenant-operator.js',
+  'scripts/tenant-operator.mjs',
+  'scripts/operator-invitation-artifact.mjs',
+  'tests/tenant-operator.test.js',
+  'tests/operator-invitation-artifact.test.js',
+]) {
+  await requireMissing(path);
+}
+
+const packageDocument = JSON.parse(await readFile('package.json', 'utf8'));
+if (packageDocument.scripts?.['operator:tenant'] !== undefined) {
+  throw new Error('The retired operator:tenant package entry point must remain absent.');
+}
+for (const [name, command] of Object.entries(packageDocument.scripts || {})) {
+  if (command.includes('tenant-operator.mjs')) {
+    throw new Error(`Package script ${name} must not restore the retired Tenant operator runtime.`);
   }
 }
-if (/process\.(?:stdout|stderr)/.test(artifact)) {
-  throw new Error('Invitation artifact writer must never emit credential material to process streams.');
+
+for (const file of await filesWithExtension('src', '.js')) {
+  const content = await readFile(file, 'utf8');
+  if (
+    content.includes('tenant-operator.js')
+    || content.includes('TENANT_OPERATOR_COMMAND')
+    || content.includes('trusted_tenant_operator_cli')
+  ) {
+    throw new Error(`Runtime source ${file} must not restore process-local Tenant operator authority.`);
+  }
 }
 
 const productionComposition = await readFile('src/index.js', 'utf8');
-if (productionComposition.includes('tenant-operator') || /authorizeOperator\s*:/.test(productionComposition)) {
-  throw new Error('Public production composition must keep Platform operator mutation default-deny.');
+if (/authorizeOperator\s*:/.test(productionComposition)) {
+  throw new Error('Customer production composition must keep Platform mutation authority default-deny.');
 }
-for (const file of await javascriptFiles('src/http')) {
-  const content = await readFile(file, 'utf8');
-  if (content.includes('tenant-operator') || content.includes('TENANT_OPERATOR_COMMAND')) {
-    throw new Error(`Public HTTP file ${file} must not expose the trusted operator adapter.`);
+
+const customerReadinessRoutes = await readFile('src/http/microsoft365-routes.js', 'utf8');
+for (const required of [
+  "pilotReadiness: '/api/v1/integrations/microsoft365/pilot-readiness'",
+  'service.getPilotReadiness',
+  'principalGuard.require(request)',
+  'tenantGuard.requireKnown(principal)',
+]) {
+  if (!customerReadinessRoutes.includes(required)) {
+    throw new Error(`Customer Pilot readiness route is missing read-only invariant ${required}.`);
+  }
+}
+if (!/path === MICROSOFT365_ROUTES\.pilotReadiness[\s\S]{0,120}request\.method !== 'GET'/.test(customerReadinessRoutes)) {
+  throw new Error('Customer Pilot readiness route must reject every method except GET.');
+}
+
+const platformReadinessRoutes = await readFile('src/platform/http/readiness-routes.js', 'utf8');
+for (const required of [
+  "PLATFORM_READINESS_PATH = '/api/v1/platform/readiness'",
+  'platformPrincipalGuard.require(request',
+  'assertNoPlatformRequestBody(request)',
+  'platformFleetReadinessService.listFleetReadiness',
+]) {
+  if (!platformReadinessRoutes.includes(required)) {
+    throw new Error(`Platform readiness route is missing read-only invariant ${required}.`);
+  }
+}
+if (!/path !== PLATFORM_READINESS_PATH[\s\S]{0,120}request\.method !== 'GET'/.test(platformReadinessRoutes)) {
+  throw new Error('Platform readiness route must reject every method except GET.');
+}
+
+const mutationAuthority = await readFile('src/platform/http/privileged-operation.js', 'utf8');
+for (const required of [
+  'platformPrincipalGuard.require(request',
+  'csrf: true',
+  'requirePlatformIdempotencyKey(request)',
+]) {
+  if (!mutationAuthority.includes(required)) {
+    throw new Error(`Platform HTTP mutation authority is missing invariant ${required}.`);
   }
 }
 
-const commandContract = await readFile('src/operator/tenant-operator.js', 'utf8');
-for (const required of [
-  'TENANT_OPERATOR_APPLY_REQUIRED',
-  'TENANT_OPERATOR_CONFIRMATION_INVALID',
-  'isInternalUuid',
-  'isKnownCapability',
-  'publicTenantOperatorResult',
+for (const [file, required] of [
+  ['src/platform/http/tenant-routes.js', [
+    'platformMutationAuthority',
+    'createTenantInvitation',
+    'transitionLifecycle',
+  ]],
+  ['src/platform/http/entitlement-routes.js', [
+    'platformMutationAuthority',
+    'applyEntitlementChanges',
+    'applyPackage',
+  ]],
+  ['src/platform/http/recovery-routes.js', [
+    'platformMutationAuthority',
+    'executeRecovery',
+  ]],
 ]) {
-  if (!commandContract.includes(required)) {
-    throw new Error(`Tenant operator command contract is missing invariant ${required}.`);
+  const content = await readFile(file, 'utf8');
+  for (const invariant of required) {
+    if (!content.includes(invariant)) {
+      throw new Error(`Authenticated Platform mutation route ${file} is missing ${invariant}.`);
+    }
   }
 }
 
@@ -80,12 +140,8 @@ for (const required of [
 
 const exchangeRbacRuntime = await readFile('scripts/exchange-application-rbac-check.mjs', 'utf8');
 const boundedEvidenceReader = await readFile('scripts/lib/bounded-evidence-file.mjs', 'utf8');
-for (const required of [
-  'readBoundedRegularFile',
-]) {
-  if (!exchangeRbacRuntime.includes(required)) {
-    throw new Error(`Exchange Application RBAC evidence reader is missing invariant ${required}.`);
-  }
+if (!exchangeRbacRuntime.includes('readBoundedRegularFile')) {
+  throw new Error('Exchange Application RBAC evidence reader must use the bounded file contract.');
 }
 for (const required of [
   'O_NOFOLLOW',
@@ -100,9 +156,7 @@ if (boundedEvidenceReader.includes('file.readFile')) {
   throw new Error('Operator evidence reader must enforce its bound while reading.');
 }
 
-const packageDocument = JSON.parse(await readFile('package.json', 'utf8'));
 for (const script of [
-  'operator:tenant',
   'pilot:readiness',
   'pilot:exchange-rbac',
   'check:pilot-operations',
@@ -150,9 +204,12 @@ for (const script of ['operator:platform-grant', 'operator:platform-recovery', '
   }
 }
 
-const runbook = await readFile('docs/PILOT-READINESS-RUNBOOK.md', 'utf8');
+const pilotRunbook = await readFile('docs/PILOT-READINESS-RUNBOOK.md', 'utf8');
 for (const required of [
   'No live Pilot evidence is claimed by this document',
+  'authenticated Platform Control Plane',
+  'Readiness is read-only',
+  'grant-bound Platform recovery fallback',
   'Role recovery',
   'Backup, restore, rollback, and escalation',
   'Microsoft Entra and Graph acceptance',
@@ -162,9 +219,51 @@ for (const required of [
   'only after steps 1–4 pass',
   'immediately disable the entitlement',
 ]) {
-  if (!runbook.includes(required)) {
+  if (!pilotRunbook.includes(required)) {
     throw new Error(`Pilot readiness runbook is missing section ${required}.`);
   }
 }
 
-console.log('Pilot operator and readiness architecture gate passed.');
+const platformRunbook = await readFile('docs/PLATFORM-OPERATIONS-READINESS-RUNBOOK.md', 'utf8');
+for (const required of [
+  'All normal mutations use authenticated Platform HTTP',
+  'The retired Tenant-operator CLI is not a fallback',
+  'npm run operator:platform-grant',
+  'npm run operator:platform-recovery',
+  'grant consumption, mutation, receipt, dual audit and used-alert',
+]) {
+  if (!platformRunbook.includes(required)) {
+    throw new Error(`Platform operations runbook is missing invariant ${required}.`);
+  }
+}
+
+const architecture = await readFile('docs/ARCHITECTURE.md', 'utf8');
+for (const required of [
+  'Platform readiness is read-only',
+  'the only local privileged mutation wrappers',
+  'dual-control, exact Tenant/permission-bound, one-use grant',
+  'retired process-local Tenant-operator runtime and package entry point are prohibited',
+]) {
+  if (!architecture.includes(required)) {
+    throw new Error(`Backend architecture is missing operator-retirement invariant ${required}.`);
+  }
+}
+
+const readme = await readFile('README.md', 'utf8');
+for (const required of [
+  'separate authenticated Platform HTTP boundary',
+  'the only local mutation fallback is the dual-control, grant-bound recovery wrapper',
+]) {
+  if (!readme.includes(required)) {
+    throw new Error(`Backend overview is missing operator-retirement invariant ${required}.`);
+  }
+}
+
+for (const file of await filesWithExtension('docs', '.md')) {
+  const content = await readFile(file, 'utf8');
+  if (content.includes('npm run operator:tenant')) {
+    throw new Error(`Documentation ${file} must not advertise the retired Tenant operator entry point.`);
+  }
+}
+
+console.log('Pilot readiness and authenticated Platform operations architecture gate passed.');

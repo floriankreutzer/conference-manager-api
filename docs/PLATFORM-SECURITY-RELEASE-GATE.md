@@ -37,8 +37,12 @@ Record all of the following before executing the gate:
 | Frontend repository | Exact immutable `conference-manager` commit SHA |
 | API repository | Exact immutable `conference-manager-api` commit SHA |
 | Platform frontend artifact | Immutable artifact digest for `platform-admin/index.html` composition |
-| Platform API artifact | Immutable artifact digest for the separate `src/platform/index.js` process |
-| Demo artifact | Immutable artifact digest for `platform-admin-demo/index.html` composition |
+| Customer API artifact | Immutable artifact digest for the `src/index.js` process |
+| Platform API artifact | Immutable artifact digest for the separate `src/platform-main.js` process |
+| Customer Demo artifact | Immutable artifact digest for the customer Demo composition |
+| Platform Demo artifact | Immutable artifact digest for `platform-admin-demo/index.html` composition |
+| Demo API artifacts | Immutable customer and Platform Demo process artifacts from the same API commit |
+| Shared Demo database | Isolated PostgreSQL reference; canonical schema `33`, Demo overlay `1`, seed version/checksum |
 | Deployment/IaC | Reviewed immutable revision from #113 |
 | Database | PostgreSQL 18 service reference and exact schema version |
 | Operator origin | Exact approved HTTPS origin, recorded only in the protected evidence system |
@@ -53,10 +57,12 @@ The candidate is ineligible when any of the following is true:
 - customer and operator origins, processes, cookies, secrets, sessions, or database runtime roles are not distinct;
 - Platform routes are registered in the customer process or customer routes are registered in the Platform process;
 - the Production composition can load Demo identity, API adapters, state, storage, or credentials;
+- either Demo API can load real Entra/Microsoft providers, Production credentials or a non-Demo
+  database, or migration/customer/Platform/reset database principals are aliased;
 - the Platform API accepts a permission without independently enforcing the operator's server-owned target-Tenant scope;
 - the configured step-up lifetime exceeds five minutes without a new accepted architecture/security decision;
 - required Platform or Tenant audit evidence can fail without rolling back its authoritative mutation;
-- the SaaS 1 process-local CLI can mutate Production as a purported break-glass path without the approved one-use grant, dual control, Platform authorization, target scope, Platform audit, Tenant audit where applicable, and alerting;
+- the retired Tenant-operator runtime, package entry point, or process-local authority marker is present, or any local fallback mutation can bypass the approved one-use grant, dual control, Platform authorization, target scope, Platform audit, Tenant audit where applicable, and alerting;
 - #113 has not delivered an accepted deployment target on which deployed evidence can be reproduced.
 
 ## Test identities and fixtures
@@ -74,6 +80,8 @@ Use synthetic, dedicated, non-production test data:
 - healthy, degraded, unavailable, revoked, stale, and unknown Microsoft/readiness states;
 - deterministic stale revisions, duplicate idempotency keys, replayed recovery contexts, denied targets, and audit-integrity failures;
 - separate deterministic Demo fixtures containing no real customer identifiers, credentials, provider tokens, or Production references.
+- one isolated Shared Demo database with distinct migration, customer, Platform and reset roles, canonical
+  schema `33`, Demo overlay `1`, and the recorded source seed version/checksum.
 
 Do not record raw Tenant/User/operator/provider identifiers, cookies, tokens, claims, secrets, URLs containing credentials, connection strings, invitation artifacts, or customer content in repository evidence.
 
@@ -128,7 +136,7 @@ The focused Platform suite must include, at minimum:
 | Locked install | `npm ci` | Lockfile-only install succeeds | Supply chain |
 | Full frontend gate | `npm run check` | Syntax, instructions, localization, architecture, persistence, roles, static, secret, design and unit gates exit zero | Frontend baseline and customer regression |
 | Dependency audit | `npm run audit` | No unmitigated high/critical vulnerability under repository policy | SCA |
-| Browser suite | `npm run test:e2e` | Required Chromium and WebKit/iPhone projects pass for customer regression, Platform Production composition and isolated Demo composition | Browser/runtime behavior |
+| Browser suite | `npm run test:e2e` | Required Chromium and WebKit/iPhone projects pass for customer regression, Platform Production composition and both server-backed Demo surfaces | Browser/runtime behavior |
 
 The frontend architecture and browser evidence must prove:
 
@@ -138,6 +146,8 @@ The frontend architecture and browser evidence must prove:
 - one Production manifest cannot serve customer and Platform entries on one origin;
 - Production cannot fall back to Demo after identity, session, API or configuration failure;
 - Demo cannot make real provider calls, send invitations, mutate Production Tenants or use Production credentials;
+- customer and Platform Demo observe one PostgreSQL state through independent API processes and
+  distinct session/database authority;
 - every delivered operator capability has deterministic Demo coverage;
 - keyboard operation, focus order and visibility, labels, semantics, confirmation, error/status announcements, zoom/reflow and page-overflow behavior meet repository requirements.
 
@@ -228,7 +238,7 @@ Any secret or cross-Tenant disclosure is a release blocker.
 | Database grants | Executed role/grant inspection and negative SQL capability tests from each runtime identity | Customer role cannot reach Platform tables; Platform role has only approved access; neither owns schema |
 | Abuse controls | Edge/API rate, size, timeout and bounded-query tests | Safe limits apply without cross-Tenant/shared-state bypass |
 | Observability | Alert delivery and redaction checks | Required alerts fire; telemetry contains no prohibited material |
-| Demo isolation | Deployed Demo reset/reseed and no-fallback/browser-storage tests | Demo is deterministic, visibly simulated and cannot reach Production authority |
+| Demo isolation | Deployed shared-state journey, reset/reseed and no-fallback/browser-storage tests | Demo is server-backed and deterministic; exact schema/seed/checksum match; no Production authority is reachable |
 | Accessibility | Chromium and WebKit/iPhone critical flows plus manual keyboard/zoom review | Required operator flows remain perceivable and operable |
 | Restore/rollback | Isolated restore plus application/schema rollback or forward-recovery drill | RPO/RTO measured; Platform sessions/audit and Tenant isolation remain correct |
 
@@ -298,7 +308,7 @@ The #103 gate passes only when:
 2. both repository command matrices pass on the exact candidate;
 3. PostgreSQL and architecture tests prove the separate process, identity/session/audit and database boundaries;
 4. customer regression and every customer-to-Platform negative case pass;
-5. every delivered operator capability has isolated Demo and applicable deployed coverage;
+5. every delivered operator capability has Shared Demo and applicable deployed coverage;
 6. deployed topology, identity, MFA/step-up, routing, session, CSRF, target-Tenant, audit and redaction evidence is verified;
 7. deployed DAST and independent penetration-test exit criteria pass;
 8. restore/rollback evidence covers Platform sessions and Platform audit;

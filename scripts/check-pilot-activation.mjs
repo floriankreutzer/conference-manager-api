@@ -27,11 +27,14 @@ if (!service.includes('TENANT_ACTIVATION_CAPABILITIES')) {
   throw new Error('Tenant pilot service must consume the canonical activation capability policy.');
 }
 
-const index = await readFile('src/index.js', 'utf8');
-if (!index.includes('createTenantPilotService') || !index.includes('getPilotReadiness')) {
+const customerComposition = await readFile('src/customer-composition.js', 'utf8');
+if (
+  !customerComposition.includes('createTenantPilotService')
+  || !customerComposition.includes('getPilotReadiness')
+) {
   throw new Error('Production composition must expose read-only Tenant pilot readiness.');
 }
-if (/authorizeOperator\s*:/.test(index)) {
+if (/authorizeOperator\s*:/.test(customerComposition)) {
   throw new Error('Production composition must keep Tenant lifecycle operator mutation default-deny.');
 }
 

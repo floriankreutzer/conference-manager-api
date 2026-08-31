@@ -72,7 +72,7 @@ export function applySecurityHeaders(response, { mode }) {
   response.setHeader('Referrer-Policy', 'no-referrer');
   response.setHeader('X-Content-Type-Options', 'nosniff');
   response.setHeader('X-Frame-Options', 'DENY');
-  if (mode === 'pilot' || mode === 'production') {
+  if (mode === 'demo' || mode === 'pilot' || mode === 'production') {
     response.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   }
 }

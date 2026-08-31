@@ -1,5 +1,6 @@
-import { AuthorizationInputError } from '../authorization/errors.js';
+import { AuthorizationDeniedError, AuthorizationInputError } from '../authorization/errors.js';
 import { isInternalUuid } from '../domain/identifiers.js';
+import { isRequestId } from '../domain/request.js';
 import { CAPABILITY } from '../entitlements/capabilities.js';
 import { normalizeAvailabilityResult } from '../integrations/calendar-contract.js';
 
@@ -25,7 +26,9 @@ export function normalizeRoomAvailabilityQuery(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new AuthorizationInputError('ROOM_AVAILABILITY_INPUT_INVALID');
   }
-  if (Object.keys(value).some((key) => !['roomId', 'startsAt', 'endsAt'].includes(key))) {
+  if (Object.keys(value).some((key) => ![
+    'roomId', 'startsAt', 'endsAt', 'resubmissionRequestId',
+  ].includes(key))) {
     throw new AuthorizationInputError('ROOM_AVAILABILITY_INPUT_INVALID');
   }
   if (typeof value.roomId !== 'string' || !ROOM_ID_PATTERN.test(value.roomId)) {
@@ -45,19 +48,39 @@ export function normalizeRoomAvailabilityQuery(value) {
     roomId: value.roomId,
     startsAt: startsAt.toISOString(),
     endsAt: endsAt.toISOString(),
+    resubmissionRequestId: value.resubmissionRequestId === undefined
+      || value.resubmissionRequestId === null
+      ? null
+      : (() => {
+        if (!isRequestId(value.resubmissionRequestId)) {
+          throw new AuthorizationInputError('ROOM_AVAILABILITY_INPUT_INVALID');
+        }
+        return value.resubmissionRequestId;
+      })(),
   });
 }
 
 export function createRoomAvailabilityService({
   repository,
+  requestRepository,
   authorizationPolicy,
   entitlementService,
   calendarProviderFactory,
 } = {}) {
-  if (!repository || typeof repository.hasConflictingRequest !== 'function') {
+  if (
+    !repository
+    || typeof repository.hasConflictingRequest !== 'function'
+  ) {
     throw new TypeError('ROOM_AVAILABILITY_REPOSITORY_REQUIRED');
   }
-  if (!authorizationPolicy || typeof authorizationPolicy.authorizeRequestCreate !== 'function') {
+  if (!requestRepository || typeof requestRepository.findByTenantIdAndId !== 'function') {
+    throw new TypeError('ROOM_AVAILABILITY_REQUEST_REPOSITORY_REQUIRED');
+  }
+  if (
+    !authorizationPolicy
+    || typeof authorizationPolicy.authorizeRequestCreate !== 'function'
+    || typeof authorizationPolicy.authorizeRequestRead !== 'function'
+  ) {
     throw new TypeError('ROOM_AVAILABILITY_AUTHORIZATION_REQUIRED');
   }
   if (!entitlementService || typeof entitlementService.requireAccess !== 'function') {
@@ -75,6 +98,39 @@ export function createRoomAvailabilityService({
       const normalized = normalizeRoomAvailabilityQuery(query);
       authorizationPolicy.authorizeRequestCreate(principal, tenantContext);
 
+      let excludeRequestId = null;
+      if (normalized.resubmissionRequestId !== null) {
+        let request;
+        try {
+          request = await requestRepository.findByTenantIdAndId(
+            tenantContext.tenantId,
+            normalized.resubmissionRequestId,
+          );
+        } catch (error) {
+          throw new RoomAvailabilityUnavailableError(undefined, { cause: error });
+        }
+        if (
+          request !== null
+          && (
+            typeof request !== 'object'
+            || request.id !== normalized.resubmissionRequestId
+            || request.tenantId !== tenantContext.tenantId
+            || !isInternalUuid(request.requesterUserId)
+            || typeof request.status !== 'string'
+          )
+        ) {
+          throw new RoomAvailabilityUnavailableError();
+        }
+        authorizationPolicy.authorizeRequestRead(principal, tenantContext, request);
+        if (
+          request.requesterUserId !== principal.userId
+          || request.status !== 'Change Requested'
+        ) {
+          throw new AuthorizationDeniedError('RESOURCE_NOT_AVAILABLE', { conceal: true });
+        }
+        excludeRequestId = request.id;
+      }
+
       try {
         await entitlementService.requireAccess({
           principal,
@@ -87,7 +143,7 @@ export function createRoomAvailabilityService({
           roomId: normalized.roomId,
           startsAt: normalized.startsAt,
           endsAt: normalized.endsAt,
-          excludeRequestId: null,
+          excludeRequestId,
         });
         if (localConflict) return Object.freeze({ available: false, conflictCount: 1 });
 

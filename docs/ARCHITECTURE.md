@@ -26,6 +26,8 @@ The service uses Node.js 22 native HTTP and ECMAScript modules. The implemented 
 - bounded Organization, Catalogue, Booking Policies and Cost Allocation self-service owners;
 - one versioned server-authoritative Request composition model with immutable configuration, price,
   policy and allocation snapshots;
+- an isolated two-process Shared Demo Runtime backed by one deterministic PostgreSQL state and a
+  network-free simulated Microsoft 365 adapter;
 - production observability, threat-model and secure-configuration gates.
 
 Runtime dependencies are limited to exact-pinned `pg` and `@azure/msal-node`. Provider-specific Microsoft handling uses bounded native HTTP plus a bounded MSAL transport isolated inside identity/integration adapters; Microsoft SDK types do not enter application or domain contracts.
@@ -140,7 +142,24 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
 - `scripts/db-migrations.mjs` owns source-controlled migration discovery, checksums, advisory locking and transactional up/down execution.
 - `src/logger.js` owns bounded non-sensitive operational logs, separate from durable audit evidence.
 - `src/app.js` composes transport, session, CSRF, Tenant, audit and application boundaries without importing PostgreSQL or provider SDKs.
-- `src/index.js` is the runtime composition root and graceful-shutdown owner.
+- `src/customer-composition.js` composes the reusable customer application/runtime graph from
+  injected persistence, identity, provider, HTTP, logging and metrics adapters.
+- `src/index.js` is the Production customer entrypoint. It supplies the real Entra/Microsoft
+  adapters and owns start, stop and signal handling.
+- `src/platform-composition.js` composes the reusable Platform application/runtime graph;
+  `src/platform-main.js` supplies Production Platform authentication and owns process lifecycle.
+- `src/platform/http/` owns the separate authenticated Platform HTTP boundary. Platform readiness is read-only; Tenant, invitation, lifecycle, entitlement and recovery mutations require the Platform session/Principal, CSRF, operation permission, target scope, step-up and the applicable confirmation, concurrency, idempotency and audit contracts.
+- `src/demo/customer-main.js` and `src/demo/platform-main.js` are the independent customer and
+  Platform Demo composition roots. They reuse the canonical application/persistence boundaries,
+  add only the bounded Demo session/persona/reset routes, and connect through distinct roles to one
+  isolated Demo PostgreSQL database.
+- `src/demo/provider/microsoft365-client.js` implements deterministic provider-neutral Microsoft
+  outcomes without network access. `src/demo/fixture.js` owns the source-defined seed version and
+  semantic checksum; `src/persistence/postgres/demo-reset-repository.js` owns the sentinel-verified,
+  exclusively locked, transactional reset/readback contract.
+- `scripts/demo-db-migrations.mjs` owns the independent checksum-protected Demo overlay migration
+  ledger after verifying the exact canonical schema `001..033`.
+- `scripts/platform-break-glass-grant.mjs` and `scripts/platform-recovery-fallback.mjs` are the only local privileged mutation wrappers. They accept credentials only through fixed descriptors and require live Platform sessions plus a dual-control, exact Tenant/permission-bound, one-use grant. The retired process-local Tenant-operator runtime and package entry point are prohibited.
 - `scripts/check-architecture.mjs` prevents architecture, migration and composition drift.
 - `scripts/check-security-baseline.mjs` prevents drift between the documented Pilot/Production security baseline and executable controls.
 - `scripts/security-dast.mjs` exercises the real HTTP server in isolated Test mode.
@@ -149,6 +168,8 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
 - `docs/TENANT-SETTINGS-CONTRACTS.md` defines the bounded SaaS 2 aggregate versioning, concurrency, history and rollback contract without creating a generic settings owner.
 - `docs/REQUEST-COMPOSITION.md` defines Request v2 drafting, pricing, configuration snapshot,
   version/history and legacy compatibility semantics.
+- `docs/SHARED-DEMO-RUNTIME.md` defines the Shared Demo composition, configuration, migration,
+  seed/reset, security and operations contract.
 - `docs/THREAT-MODEL.md` is the canonical SaaS threat, control and residual-risk model.
 - `docs/PRODUCTION-SECURE-CONFIGURATION.md` is the canonical Pilot/Production deployment security baseline.
 - `docs/PILOT-PENETRATION-TEST.md` defines the independent Pilot security-assessment scope and exit criteria.
@@ -160,6 +181,11 @@ HTTP handlers call security, identity, Tenant, application and audit contracts. 
 PostgreSQL adapters implement repository contracts using fixed source-controlled SQL and parameter binding. Identity-provider adapters translate validated provider claims to internal identity contracts before business/session code sees them. Microsoft provider adapters construct fixed endpoint templates internally and translate validated provider results into bounded internal contracts before application services consume them.
 
 Security governance and test scripts may inspect repository source and configuration, but they do not become runtime dependencies and must not introduce alternate business rules.
+
+Production composition roots must not import `src/demo/`, register Demo routes or instantiate the
+simulated provider. Demo composition roots must not instantiate Entra or the real Microsoft client.
+Architecture gates enforce both directions so a Production dependency failure cannot select Demo
+behavior and a Demo request cannot perform external provider I/O.
 
 ## Tenant and identity trust boundary
 
@@ -223,7 +249,7 @@ See `docs/AUDIT.md` for the normative event/integrity contract.
 
 Schema ownership lives in `migrations/`. Migrations are paired up/down files, numerically versioned, checksum protected and serialized by a PostgreSQL advisory lock.
 
-The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 28.
+The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 33.
 
 - Migration 001 establishes Tenant-owned product structures.
 - Migration 002 adds User security-version state and server-side sessions.
@@ -253,8 +279,51 @@ The application never auto-migrates at startup. Deployment automation runs migra
 - Migration 026 adds monotonic User lifecycle revisions without changing the existing security-version authority.
 - Migration 027 adds Room pricing, Request schema/version snapshots, append-only Request history and
   full versioned confirmed-change proposal storage while preserving explicit legacy v1 facts.
+- Migration 028 adds Tenant- and actor-scoped bulk-transfer validation receipts without persisting
+  imported document payloads.
+- Migration 029 adds the dedicated Platform operator, target-scope, session and authentication-
+  transaction authority.
+- Migration 030 adds append-only, HMAC-chained Platform audit evidence and its checkpoint state.
+- Migration 031 adds Platform operation revisions, idempotency receipts, entitlement packages,
+  recovery contexts, grant/alert state and the canonical transactional operations foundation.
+- Migration 032 adds bounded readiness, Microsoft fleet-health and diagnostic projections.
+- Migration 033 adds metering, quota and runtime-deployment inventories and their immutable history.
 
 Every migration that removes security/business evidence includes a fail-closed rollback guard.
+
+## Shared Demo architecture
+
+The Shared Demo Runtime preserves the normal customer/Platform process separation while deliberately
+sharing one isolated PostgreSQL state. The customer and Platform processes have separate HTTPS
+origins, cookies, CSRF/session secrets and least-privilege database principals. Reset/seed and
+migration ownership are separate additional roles; neither serves browser requests.
+
+The customer and Platform compositions receive one dedicated shared Tenant-audit HMAC key because
+both may append to or verify the same Tenant audit chains. Platform control-plane audit and cursor
+integrity remain separate cryptographic domains derived from the Platform session secret; the
+Tenant-audit key does not bridge sessions, CSRF or authorization.
+
+Demo persona selection is presentation intent, not authority. The server maps an exact allowlisted
+Tenant/persona or Platform persona to canonical roles, permissions, security version, target scope
+and assurance, then issues a normal PostgreSQL-backed session. Persona switches require CSRF and
+rotate authority; failure to revoke the prior session also revokes the replacement and fails the
+operation. Customer and Platform session namespaces never cross.
+
+Normal Demo requests take a shared PostgreSQL advisory lock. Reset validates the source fixture and
+semantic checksum, takes the matching exclusive lock, and then verifies the immutable Demo
+sentinel, database/role identity, complete canonical migration ledger and exact table inventory.
+Truncate, seed and semantic readback commit together at `SERIALIZABLE` isolation. A reset clears all
+sessions and returns only the pinned seed version/checksum; the HTTP route adds its server request
+ID.
+
+The Platform Demo composition refreshes its canonical projections under the shared gate before
+listening. Its HTTP reset path performs the same bounded refresh after reset commit and before
+returning success. Projection failure remains visible and is not represented as a rolled-back
+authoritative reset.
+
+The canonical schema remains migrations `001..033`; the Demo-only overlay is independently tracked
+as `demo-migrations/001`. Neither application process auto-migrates or auto-seeds. See
+`docs/SHARED-DEMO-RUNTIME.md` for provisioning and operations.
 
 ## Request composition architecture
 

@@ -98,10 +98,6 @@ Migration 019 adds confirmed-booking change persistence and enforces one open pr
 
 Migration 020 adds independent optimistic revision counters for the Organization, Locations, Catalogue, Booking Policies and Cost Allocation Tenant Admin aggregates. It does not create a generic settings table/document, and rollback fails closed after any aggregate revision advances beyond its initial value.
 
-Migration 028 adds the Tenant- and actor-scoped bulk-validation receipt ledger described in
-`docs/TENANT-BULK-TRANSFER.md`. It stores hashes and bounded replay responses rather than imported
-settings payloads, and its rollback refuses to remove receipt evidence after first use.
-
 Migration 021 adds bounded JSON details columns for Sites and Rooms plus immutable `tenant_location_revisions`. It leaves existing Site time zones and local/provider identifiers unchanged.
 
 Migration 022 adds the bounded current Organization row and append-only Organization revisions. Existing and future Tenants receive a neutral revision-1 snapshot without fabricated legal, registration or branding data.
@@ -127,11 +123,33 @@ Migration 027 establishes Request composition v2 persistence:
 - one explicit `migrated_legacy` schema-v1/version-1 history row per pre-existing Request;
 - full schema/base-version/composition fields for confirmed-booking proposals.
 
+Migration 028 adds the Tenant- and actor-scoped bulk-validation receipt ledger described in
+`docs/TENANT-BULK-TRANSFER.md`. It stores hashes and bounded replay responses rather than imported
+settings payloads, and its rollback refuses to remove receipt evidence after first use.
+
+Migration 029 establishes the dedicated Platform identity boundary: normalized operators, canonical
+roles/permissions, target-Tenant scopes, opaque sessions, one-time authentication transactions and
+security-version invalidation.
+
+Migration 030 establishes append-only, HMAC-chained Platform audit evidence and the singleton chain
+state/checkpoint contract. Platform audit is a separate authorization and integrity domain from
+Tenant audit.
+
+Migration 031 establishes the transactional Platform operations core: Tenant lifecycle/entitlement/
+session revisions, invitation lineage, idempotency receipts, package history, recovery contexts,
+dual-control grants, alert outboxes and the persistence needed by canonical operation services.
+
+Migration 032 establishes bounded read-model persistence for fleet readiness, readiness evidence,
+Microsoft fleet health, discovery observations and support diagnostics.
+
+Migration 033 establishes append-only metering, period/revision projections, operational quotas,
+quota receipts and the deployment-to-Tenant runtime inventory.
+
 The all-role Tenant presentation contract reuses the current Organization row and
 `organization_revision`. Its managed-brand policy maps one fixed reference to a code-shipped preset
 and therefore introduces no upload metadata, asset table, external object reference or migration.
 
-Runtime schema readiness advances to exactly version 28. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
+Runtime schema readiness advances to exactly version 33. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
 
 No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
 
@@ -262,7 +280,40 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 28.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 33.
+
+## Shared Demo persistence
+
+The SaaS 3.5 Shared Demo Runtime uses one isolated PostgreSQL database for both the customer and
+Platform process. It is deliberately not an in-memory/browser state authority. Four distinct
+database principals separate normal customer access, normal Platform access, destructive
+reset/seed capability and migration ownership. All four URLs must resolve to the same
+`conference_manager_demo_*` database, while their roles, passwords and complete URLs must remain
+distinct.
+
+The canonical `migrations/` stream remains the source of the business schema and must contain the
+exact applied sequence `001..033`. The independent `demo-migrations/` stream has its own
+`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `001`
+installs the immutable database sentinel, provider/persona reference tables, minimized views and
+role grants. It reads but never writes the canonical `schema_migrations` ledger.
+
+Reset uses the reset-only role and first verifies the sentinel key, current database and role,
+recorded distinct principals, complete canonical migration sequence and exact expected table
+inventory. It validates the source fixture's domain-separated semantic checksum before destructive
+SQL. Normal customer and Platform requests hold one shared advisory lock; reset holds the matching
+exclusive lock and runs truncate, seed, provider/persona insertion and semantic readback in one
+serializable transaction. A checksum, inventory, lock, seed or readback failure rolls back the
+complete operation.
+
+For an HTTP reset, the reset transaction revalidates the exact internal Platform session and
+operator security version while holding the exclusive lock. Truncation preserves PostgreSQL
+sequence positions; audit and operational identifiers therefore remain monotonic, and the reset
+role requires sequence usage rather than sequence ownership.
+
+Reset intentionally preserves the two migration ledgers and immutable sentinel. It resets all
+authoritative customer/Platform business, session, audit, projection and metering rows while
+preserving identity-sequence positions. It is not a Production migration or backup/restore mechanism and its role must
+never be provisioned against a Pilot/Production database. See `docs/SHARED-DEMO-RUNTIME.md`.
 
 ## Transaction contract
 

@@ -33,6 +33,15 @@ const PROVIDER_NEUTRAL_INTEGRATION_MODULES = new Set([
   'src/integrations/calendar-contract.js',
   'src/integrations/errors.js',
 ]);
+const TENANT_READINESS_POLICY_FILE = 'src/tenancy/tenant-readiness-policy.js';
+const PLATFORM_PROJECTION_REPOSITORY_FILE = 'src/persistence/postgres/platform-projection-repository.js';
+const PLATFORM_FLEET_READINESS_SERVICE_FILE = 'src/platform/application/fleet-readiness-service.js';
+const TENANT_READINESS_CHECK_LITERAL = new RegExp([
+  "['\"](?:tenant\\.identity\\.active|microsoft\\.connection\\.connected",
+  '|microsoft\\.permission\\.(?:places|calendars)|microsoft\\.room_mapping\\.active',
+  '|microsoft\\.free_busy\\.healthy|entitlement\\.microsoft_(?:directory|calendar))',
+  "['\"]",
+].join(''));
 
 function normalized(file) {
   return String(file).replaceAll('\\', '/');
@@ -55,7 +64,8 @@ function isDomainPolicy(file) {
     || isInside(file, 'src/authorization')
     || file === 'src/entitlements/capabilities.js'
     || file === 'src/tenancy/tenant.js'
-    || file === 'src/tenancy/tenant-scoped-repository.js';
+    || file === 'src/tenancy/tenant-scoped-repository.js'
+    || file === TENANT_READINESS_POLICY_FILE;
 }
 
 function isProviderApplicationException(file) {
@@ -118,6 +128,40 @@ export function backendSaas2BoundaryViolations(sourceEntries) {
         file,
         'generic mutable Tenant settings modules are forbidden; use the owning bounded domain.',
       ));
+    }
+    if (file === PLATFORM_PROJECTION_REPOSITORY_FILE) {
+      if (!graph.get(file)?.includes(TENANT_READINESS_POLICY_FILE)) {
+        violations.push(violation(
+          file,
+          'Platform readiness projection persistence must consume the canonical Tenant readiness policy.',
+        ));
+      }
+      if (
+        /\b(?:function|const)\s+(?:readinessState|blockerCodes|REQUIRED_CAPABILITIES)\b/.test(source)
+        || TENANT_READINESS_CHECK_LITERAL.test(source)
+      ) {
+        violations.push(violation(
+          file,
+          'Platform readiness projection persistence must not redefine readiness checks, state, or blockers.',
+        ));
+      }
+    }
+    if (file === PLATFORM_FLEET_READINESS_SERVICE_FILE) {
+      if (!/\breadinessPolicy\.evaluateSnapshot\s*\(/.test(source)) {
+        violations.push(violation(
+          file,
+          'Platform fleet readiness must delegate state and blocker evaluation to its canonical policy port.',
+        ));
+      }
+      if (
+        /\b(?:function|const)\s+(?:evaluateFleetReadinessSnapshot|freshnessForObservation|requiredIds)\b/.test(source)
+        || TENANT_READINESS_CHECK_LITERAL.test(source)
+      ) {
+        violations.push(violation(
+          file,
+          'Platform fleet readiness must not redefine Tenant readiness checks, freshness, state, or blockers.',
+        ));
+      }
     }
     if (isNewSettingsRoute(file) && file !== 'src/http/route-module.js') {
       if (!importsRouteModuleContract(source)) {

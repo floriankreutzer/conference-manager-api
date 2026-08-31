@@ -43,3 +43,20 @@ test('Recovery persistence rechecks live Platform session authority before consu
   assert.match(recovery, /used_at = \$2/);
   assert.match(recovery, /microsoft365_room_discovery_observations/);
 });
+
+test('Recovery lifecycle persistence delegates to the canonical Tenant lifecycle repository', async () => {
+  const [recovery, platformPersistence] = await Promise.all([
+    source('src/persistence/postgres/platform-operations-recovery-repository.js'),
+    source('src/persistence/postgres/platform-index.js'),
+  ]);
+  assert.match(recovery, /TENANT_LIFECYCLE_REPOSITORY_REQUIRED/);
+  assert.match(
+    recovery,
+    /executeTenantLifecycle[\s\S]*tenantLifecycleRepository\.changeStatusWithClient/,
+  );
+  assert.doesNotMatch(recovery, /platform-recovery-change-tenant-lifecycle/);
+  assert.match(
+    platformPersistence,
+    /createPostgresPlatformRecoveryRepository[\s\S]*tenantLifecycleRepository: tenantRepository/,
+  );
+});

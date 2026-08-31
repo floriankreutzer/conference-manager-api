@@ -45,9 +45,13 @@ for (const required of [
   'authorizationPolicy.authorizeRequestCreate',
   'CAPABILITY.MICROSOFT_CALENDAR',
   'repository.hasConflictingRequest',
+  'requestRepository.findByTenantIdAndId',
   'calendarProviderFactory.forRoom',
   'normalizeAvailabilityResult',
-  'excludeRequestId: null',
+  'authorizationPolicy.authorizeRequestRead',
+  'request.requesterUserId !== principal.userId',
+  "request.status !== 'Change Requested'",
+  'excludeRequestId,',
   'RoomAvailabilityUnavailableError',
 ]) {
   if (!availabilityService.includes(required)) {
@@ -183,10 +187,25 @@ if (!timeZoneRollback.includes('SITE_TIME_ZONE_ROWS_REQUIRE_REVIEW')) {
   throw new Error('Site time-zone rollback must fail closed while configured values exist.');
 }
 
-const composition = await readFile('src/index.js', 'utf8');
+const entrypoint = await readFile('src/index.js', 'utf8');
+for (const required of [
+  "import { createCustomerComposition } from './customer-composition.js'",
+  'const composition = createCustomerComposition({',
+  'await composition.start()',
+]) {
+  if (!entrypoint.includes(required)) {
+    throw new Error(`Production customer entrypoint is missing composition linkage ${required}.`);
+  }
+}
+if (entrypoint.includes('createRoomAvailabilityService')) {
+  throw new Error('Production customer entrypoint must remain thin and delegate room availability wiring.');
+}
+
+const composition = await readFile('src/customer-composition.js', 'utf8');
 for (const required of [
   'createRoomAvailabilityService',
   'repository: persistence.bookingReferenceRepository',
+  'requestRepository: persistence.requestRepository',
   'calendarProviderFactory: microsoft365CalendarProviderFactory',
   'roomAvailabilityService,',
 ]) {

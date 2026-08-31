@@ -18,6 +18,7 @@ test('production application composition reaches Tenant-bound live room availabi
         return false;
       },
     },
+    requestRepository: { async findByTenantIdAndId() { return null; } },
     authorizationPolicy,
     entitlementService: {
       async requireAccess(values) {

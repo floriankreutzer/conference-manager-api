@@ -38,6 +38,7 @@ Automated tests and repository gates are evidence for the controls they execute.
 | Provider resource references | Backend/PostgreSQL | Tenant-scoped integration metadata |
 | Operational logs/metrics | Backend/telemetry platform | Secret-minimized operational evidence |
 | Frontend LocalStorage/sessionStorage | Browser only | Never production authority |
+| Demo fixture, checksum and reset capability | Source + isolated Demo PostgreSQL/reset role | Deterministic product state; destructive only inside the verified Demo target |
 
 ## Data-flow and trust-boundary model
 
@@ -114,6 +115,18 @@ The Microsoft 365 lifecycle verifies base Places and Calendar-read permissions. 
 
 Operational telemetry is not an authorization source and must remain low-cardinality and secret-minimized. Business/security audit evidence is a separate Tenant-scoped data model with its own authorization and integrity controls.
 
+### Boundary B8 — Shared Demo composition and reset
+
+The customer and Platform Demo processes are distinct browser/session boundaries connected through
+different least-privilege roles to one isolated PostgreSQL database. Demo configuration rejects
+Production/provider configuration and target mismatch. Browser persona selection maps only to
+server-defined identities and cannot supply role, permission, target scope or assurance authority.
+
+Normal requests hold a shared advisory lock. The reset-only role takes the matching exclusive lock
+and verifies the immutable sentinel, database/role, canonical schema/table inventory and fixture
+checksum before a serializable truncate/seed/readback transaction. Production composition cannot
+import Demo code; Demo composition cannot instantiate a network Microsoft/Entra adapter.
+
 ## Threat-to-control matrix
 
 | Threat | Primary attack path | Required mitigation | Executable / review evidence | OWASP / CWE | Ownership / residual work |
@@ -137,6 +150,9 @@ Operational telemetry is not an authorization source and must remain low-cardina
 | Insecure deployment configuration | HTTP origin, weak DB TLS, absent credentials or incorrect provider registration | Pilot/Production fail-closed parser; HTTPS; `verify-full`; required secrets/build metadata; fixed authorities/origins | Config tests and security-baseline gate | Security Misconfiguration | Application preflight implemented; edge/IaC/provider-registration evidence remains external |
 | Audit tampering / evidence loss | Modify/reorder/delete history or restore stale DB | Append-only trigger; per-Tenant HMAC chain; verified reads; protected key; rollback guards; backup/retention controls | Audit/DB integrity and migration tests | Software/Data Integrity / logging-monitoring failures | Modification/reordering detectable; external completeness/WORM remains operational |
 | Diagnostic information leakage | Stack, SQL, provider error/body, identifiers in logs/health | Stable public codes; no stack/message; fixed route/metric keys; aggregate health; provider error concealment | API/observability/redaction/DAST tests | CWE-200 | Implemented for current routes |
+| Demo-to-Production crossover | Misconfiguration selects Demo in Production or supplies real provider/Production credentials to Demo | Independent composition roots; fail-closed environment parser; forbidden-import architecture gates; distinct origins, secrets and database target | Config, module-boundary and composition tests | Security Misconfiguration; CWE-16 | Repository control implemented; deployed routing/secret inventory remains operational evidence |
+| Demo persona privilege injection | Browser submits Tenant, role, permission, scope or assurance as identity authority | Exact persona/context schemas; source-defined server mappings; canonical session/CSRF/authorization policies; session rotation | Customer/Platform persona, CSRF, permission and cross-Tenant negative tests | Broken Access Control; CWE-269, CWE-639 | Implemented for deterministic Demo identities only |
+| Reset against wrong/drifted state | Stolen reset capability, wrong database target, concurrent request or schema drift causes destructive or partial state | Reset-only role; Demo name/sentinel/current-role/schema/table checks; exclusive advisory lock; serializable reset; semantic checksum readback | Config, migration, gate, reset unit and PostgreSQL integration tests | CWE-362, CWE-284 | Implemented repository scope; database provisioning and credential custody remain deployment controls |
 
 ## Microsoft Entra ID requirements and status
 

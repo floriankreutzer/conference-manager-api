@@ -230,9 +230,9 @@ and compare-and-set checks for Tenant status, entitlement revision, and package 
 
 Factory: `createPlatformFleetReadinessService`.
 
-`evaluateFleetReadinessSnapshot` is the shared pure readiness/freshness projection. It does not hard-code a second readiness matrix;
-the injected canonical `readinessPolicy.requiredCheckIds({ lifecycleStatus })` supplies the authoritative required checks. Activation
-composition must use the same evaluator and required-check policy so fleet display and commit-time activation cannot disagree.
+The injected canonical `readinessPolicy.evaluateSnapshot(...)` is the shared pure readiness/freshness projection. It owns the
+authoritative required-check selection through the same policy instance; the Platform application does not hard-code a second
+readiness matrix. Activation composition must use this same policy so fleet display and commit-time activation cannot disagree.
 
 Each observation carries a state, observation time, and `freshUntil`. Missing observation/freshness is `unknown`; expired evidence is
 `stale`; a failing fresh check is `blocked`. Failure takes precedence over unknown and stale for the overall state.
@@ -339,12 +339,10 @@ The delivered persistence surface includes:
 - separate Platform HTTP modules, CSRF/session handling, size/rate limits, strict wire schemas, and a runnable process;
 - migrations, rollback/restore documentation, architecture gates, database isolation/concurrency tests, and deployed security evidence.
 
-No adapter may weaken these contracts to preserve compatibility with the earlier process-local operator CLI. The CLI and HTTP adapters
-must both call the same canonical application/domain services. A future break-glass CLI adapter must resolve a normalized Platform
-Principal and consume a valid grant bound to the exact Tenant and action before invoking a use case. The legacy
-`{ source: 'trusted_tenant_operator_cli' }` marker is not authentication or authorization. The delivered SaaS 3 recovery fallback
-resolves a current normalized Platform Principal from a protected session credential, consumes a one-use dual-control grant bound to
-the exact permission and Tenant, and invokes the same recovery preview and execution services. Nested persistence work joins the
-grant transaction, so grant consumption, compare-and-set mutation, receipt, Platform/Tenant audit and alert outbox commit or roll back
-together. Credentials are accepted only through fixed descriptors and are never command-line arguments, environment variables or
-normal process output.
+No adapter may retain compatibility with the retired process-local Tenant-operator path. All normal mutations enter through
+authenticated Platform HTTP and call the canonical application/domain services. A process-local source marker is not authentication
+or authorization and must not be reintroduced. The delivered recovery fallback resolves a current normalized Platform Principal from
+a protected session credential, consumes a one-use dual-control grant bound to the exact permission and Tenant, and invokes the same
+recovery preview and execution services. Nested persistence work joins the grant transaction, so grant consumption, compare-and-set
+mutation, receipt, Platform/Tenant audit and alert outbox commit or roll back together. Credentials are accepted only through fixed
+descriptors and are never command-line arguments, environment variables or normal process output.

@@ -19,7 +19,7 @@ This document does not claim that any Production procedure, deployment, operator
 
 ## Readiness decision
 
-The Control Plane may replace the process-local CLI as the normal operating channel only when:
+The Control Plane may be approved as the normal operating channel only when:
 
 - #103 passes against the exact deployed candidate;
 - the procedures below have been exercised by trained operators against at least two independent non-production Tenants;
@@ -40,12 +40,16 @@ Issue #104 requires `external-acceptance-evidence` until trained-operator, outag
 | Environment | Permitted purpose | Prohibited evidence claim |
 | --- | --- | --- |
 | `test` | Repository unit/API/security tests with synthetic adapters | Deployed identity, edge, database, alerting or restore proof |
-| isolated Platform Demo | Deterministic product demonstration and browser E2E without external services | Production MFA, step-up, provider, audit-integrity, break-glass or security proof |
+| Shared customer/Platform Demo | Deterministic server-backed product demonstration and browser E2E without external services | Production MFA, step-up, provider, audit-integrity, break-glass or security proof |
 | Pilot/release candidate | Real deployment rehearsal with dedicated test Tenants and identities | Production acceptance until every release gate passes |
 | Production | Approved normal operations after release decision | Experimentation, destructive testing or use of Demo fixtures/adapters |
 | isolated recovery | Restore, rollback and incident-recovery drills | Normal customer operation or reuse of active Production credentials |
 
-Production, Pilot, Demo, customer and Platform session/storage namespaces remain separate. A Production authentication, API, configuration or dependency failure must fail closed and must never select Demo behavior.
+Production and Pilot state remain isolated from Demo. Inside Shared Demo, customer and Platform
+origins, processes, cookies, sessions, secrets and database roles remain distinct while authorized
+business state is deliberately shared through one Demo PostgreSQL database. A Production
+authentication, API, configuration or dependency failure must fail closed and must never select
+Demo behavior.
 
 ## Mandatory procedure record
 
@@ -277,28 +281,35 @@ Procedure:
 
 | Field | Requirement |
 | --- | --- |
-| Environment | `platform-admin-demo/index.html`, visibly and persistently identified as Demo |
+| Environment | Dedicated customer and `platform-admin-demo/index.html` origins, both visibly and persistently identified as Demo |
 | Role/assurance | Documented simulated Platform roles; simulated MFA/step-up clearly labelled |
-| Preconditions | Exact Demo build; deterministic fixture version; no Production/customer credentials or external provider configuration |
+| Preconditions | Exact customer/API/Platform Demo builds; canonical schema `33`; Demo overlay `1`; deterministic seed version/checksum; no Production/customer credentials or external provider configuration |
 | Target confirmation | Demo Tenant labels and fixture IDs only; verify Demo banner before every mutation |
-| Expected evidence | Demo build, reset seed/version, scenario list, Chromium/WebKit run IDs and reset result |
-| Failure behavior | Demo failure remains local; it never calls Production, sends an invitation or selects Production fallback |
+| Expected evidence | Build IDs, schema versions, reset seed/checksum, scenario list, shared-state/browser run IDs and reset result |
+| Failure behavior | Config, sentinel, role, schema, inventory, lock or checksum mismatch fails closed; Demo never calls Production/Microsoft, sends a real invitation or selects Production fallback |
 | Escalation | Demo/product owner; security immediately if any external/Production interaction is observed |
 
 Procedure:
 
-1. open the isolated Demo entry point without authenticating to the Production operator identity provider;
-2. record the Demo build and fixture baseline;
-3. reset/reseed and verify the documented deterministic Tenant/operator/provider/audit baseline;
-4. demonstrate each representative operator role and its denied operations;
-5. execute invitation, readiness, lifecycle, entitlement/package, Microsoft health, diagnostics, audit and approved recovery journeys;
-6. demonstrate stale revision, concurrent update, denied target, degraded provider, expired session/step-up, break-glass simulation, audit-integrity simulation and recovery outcome;
-7. verify no real invitation, provider call, customer mutation, Production audit or external credential use occurred;
-8. verify Demo customer, Demo Platform and Production storage/session namespaces remain isolated;
-9. reset/reseed again and compare the baseline deterministically;
-10. record P1 metering/quota, rollout and runtime visibility as delivered, `not_applicable`, or formally deferred.
+1. verify the isolated database name, distinct migration/customer/Platform/reset roles, separate HTTPS origins, and absence of Production/real-provider configuration;
+2. apply the canonical `001..033` migrations, then run `npm run demo:db:migrate` for Demo overlay `001`;
+3. run `npm run demo:db:reset -- --confirm-seed-version=saas-3.5-shared-demo-v1` before process start and record the returned source-defined seed version and semantic checksum;
+4. start `npm run start:demo:customer` and `npm run start:demo:platform` as independent processes against the same verified database;
+5. establish separate customer and Platform sessions without authenticating to the Production identity provider; verify cookie/session namespaces do not cross;
+6. demonstrate each representative customer and Platform role and its denied operations, including CSRF, permission and out-of-scope Tenant denials;
+7. execute invitation, readiness, lifecycle, entitlement/package, Microsoft health, diagnostics, audit, approved recovery and customer business journeys;
+8. verify a customer mutation appears in an authorized Platform read and a Platform mutation appears in the affected customer flow without browser-state synchronization;
+9. demonstrate stale revision, concurrent update, degraded provider, expired/stale session, step-up and recovery outcomes using only deterministic simulated state;
+10. execute the authorized Platform reset with exact confirmation, verify its post-reset projection refresh, verify all old sessions fail, re-establish both sessions and compare the seed version/checksum with step 3;
+11. verify no real invitation, provider request, Production mutation/audit, external credential or Production configuration was used;
+12. record P1 metering/quota, rollout and runtime visibility as delivered, `not_applicable`, or formally deferred.
 
 Simulated identity, MFA, step-up, break-glass, provider and audit behavior is product/demo evidence only. It cannot satisfy #103 or #104 Production security and operations evidence.
+
+If reset reports a sentinel, database/role, schema, inventory, advisory-lock or semantic-checksum
+failure, stop both processes. Do not use direct SQL or weaken validation. Recreate the isolated Demo
+database from canonical migrations and the Demo overlay, then reseed. See
+`docs/SHARED-DEMO-RUNTIME.md` for the full configuration and reset contract.
 
 ## Operator access lifecycle
 
@@ -345,9 +356,10 @@ At the approved cadence, reconcile the workforce roster, local Platform operator
 
 ## Control-plane outage and break-glass fallback
 
-The process-local CLI is exceptional fallback only. The current SaaS 1 command contract is documented in
-`docs/PILOT-READINESS-RUNBOOK.md` and remains unauthorized for SaaS 3 Production break-glass use. The SaaS 3 wrapper is
-`npm run operator:platform-recovery`; grant issuance is `npm run operator:platform-grant`.
+All normal mutations use authenticated Platform HTTP with the dedicated Platform Principal/session, CSRF, operation permission,
+target scope, step-up, confirmation, concurrency/idempotency, and audit controls. The retired Tenant-operator CLI is not a fallback
+and must not be restored. The only local mutation wrapper is `npm run operator:platform-recovery`; its dual-control grant is issued
+through `npm run operator:platform-grant`.
 
 | Field | Requirement |
 | --- | --- |
@@ -389,14 +401,14 @@ Platform session credentials, exact Tenant and permission, reason, approval refe
 
 These examples do not authorize Production use by themselves. Both Platform sessions and the grant are revalidated against current
 database authority. The recovery service issues a one-use preview, then grant consumption, mutation, receipt, dual audit and used-alert
-outbox join one serializable transaction. Any failure rolls everything back. Direct SQL and the legacy `operator:tenant` command are
-not substitutes.
+outbox join one serializable transaction. Any failure rolls everything back. Direct SQL and any retired process-local authority path
+are not substitutes.
 
 ### Execution and reconciliation
 
 1. verify release commit, `NODE_ENV`, schema readiness and target from the protected incident record;
 2. verify the grant has a different approver, exact action/target, reason/reference, unused state and remaining lifetime;
-3. execute exactly once with the normal target confirmation, current revision, new correlation ID and `--apply` gate where mutating;
+3. execute exactly once with the normal target confirmation, current revision, new correlation ID and idempotency key;
 4. stop on any grant, authorization, target, audit, persistence, revision or output failure;
 5. verify Platform audit, Tenant audit where applicable and the issued/used alert;
 6. restore the normal Control Plane before further routine operations;
@@ -531,7 +543,7 @@ A provider statement that backups exist is not restore evidence.
 | Secret/customer content in UI/API/log/audit/evidence | Restrict artifact, rotate exposed credential, investigate | Security/privacy | Release blocker until disposition/retest |
 | Invitation/recovery/break-glass replay succeeds | Revoke credential/grants and suspend related operation | Security/onboarding | Release blocker |
 | Control Plane outage | Use approved read-only diagnostics; enter break-glass only if all controls pass | Incident commander/operations | Routine operations paused |
-| CLI wrapper lacks grant/audit/alert enforcement | Do not execute fallback mutation | Operations/security | #104 pending |
+| Fallback wrapper lacks grant/audit/alert enforcement | Do not execute fallback mutation | Operations/security | #104 pending |
 | Build/schema/environment mismatch | Stop mutation and drain/rollback per plan | Release/infrastructure | Deployment blocked |
 | Restore misses RPO/RTO or integrity | Keep recovery environment isolated | Infrastructure/database/security | #104 pending |
 | Critical/High DAST or penetration finding | Stop release; remediate/retest or obtain allowed accountable risk decision | Security/risk owner | #103 pending/failed |

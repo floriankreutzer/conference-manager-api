@@ -47,6 +47,43 @@ test('valid HTTP to application to domain direction passes', () => {
   assert.deepEqual(violations, []);
 });
 
+test('Tenant readiness has one policy owner across projection persistence and Platform reads', () => {
+  const canonical = backendSaas2BoundaryViolations({
+    'src/tenancy/tenant-readiness-policy.js': [
+      'export const TENANT_READINESS_CHECK = Object.freeze({ IDENTITY: \'tenant.identity.active\' });',
+      'export const createTenantReadinessPolicy = () => ({ evaluateSnapshot: () => ({}) });',
+    ].join('\n'),
+    'src/persistence/postgres/platform-projection-repository.js': [
+      "import { createTenantReadinessPolicy } from '../../tenancy/tenant-readiness-policy.js';",
+      'const policy = createTenantReadinessPolicy();',
+      'export const store = (checks) => policy.evaluateSnapshot({ checks });',
+    ].join('\n'),
+    'src/platform/application/fleet-readiness-service.js': [
+      'export const createService = (readinessPolicy) => ({',
+      '  list: (input) => readinessPolicy.evaluateSnapshot(input),',
+      '});',
+    ].join('\n'),
+  });
+  assert.deepEqual(canonical, []);
+
+  const duplicated = backendSaas2BoundaryViolations({
+    'src/tenancy/tenant-readiness-policy.js': 'export const policy = true;',
+    'src/persistence/postgres/platform-projection-repository.js': [
+      'const REQUIRED_CAPABILITIES = [];',
+      'function readinessState() { return \'ready\'; }',
+      'export { readinessState };',
+    ].join('\n'),
+    'src/platform/application/fleet-readiness-service.js': [
+      'function evaluateFleetReadinessSnapshot() { return { state: \'ready\' }; }',
+      'export { evaluateFleetReadinessSnapshot };',
+    ].join('\n'),
+  });
+  assert.ok(duplicated.some((item) => item.includes('must consume the canonical Tenant readiness policy')));
+  assert.ok(duplicated.some((item) => item.includes('must not redefine readiness checks')));
+  assert.ok(duplicated.some((item) => item.includes('must delegate state and blocker evaluation')));
+  assert.ok(duplicated.some((item) => item.includes('must not redefine Tenant readiness')));
+});
+
 test('application to PostgreSQL and domain to HTTP dependencies fail closed', () => {
   const violations = backendSaas2BoundaryViolations({
     'src/application/catalog-service.js': "import '../persistence/postgres/catalog-repository.js';",

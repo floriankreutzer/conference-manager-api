@@ -2,6 +2,14 @@ export const PLATFORM_SESSION_COOKIE_NAME = 'cm_platform_session';
 export const PLATFORM_SESSION_COOKIE_PATH = '/api/v1/platform';
 export const PLATFORM_SESSION_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
+export function hasPlatformSessionCookie(headers) {
+  const raw = headers?.cookie;
+  if (typeof raw !== 'string') return false;
+  return raw.split(';').some((part) => (
+    part.split('=', 1)[0].trim() === PLATFORM_SESSION_COOKIE_NAME
+  ));
+}
+
 function cookie(token, { secure, maxAgeSeconds, expires }) {
   const attributes = [
     `${PLATFORM_SESSION_COOKIE_NAME}=${token}`,

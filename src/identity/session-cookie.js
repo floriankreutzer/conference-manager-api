@@ -1,6 +1,12 @@
 export const SESSION_COOKIE_NAME = 'cm_session';
 export const SESSION_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
+export function hasSessionCookie(headers) {
+  const raw = headers?.cookie;
+  if (typeof raw !== 'string') return false;
+  return raw.split(';').some((part) => part.split('=', 1)[0].trim() === SESSION_COOKIE_NAME);
+}
+
 function cookieAttributes({ secure, maxAgeSeconds }) {
   if (typeof secure !== 'boolean') throw new TypeError('COOKIE_SECURE_REQUIRED');
   if (!Number.isSafeInteger(maxAgeSeconds) || maxAgeSeconds < 0 || maxAgeSeconds > 86_400) {

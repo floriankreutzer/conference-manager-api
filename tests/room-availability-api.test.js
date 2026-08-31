@@ -137,6 +137,15 @@ test('room availability response is versioned, minimized and server-context boun
     assert.equal(calls[0].principal.tenantId, TENANT_ID);
     assert.equal(calls[0].tenantContext.tenantId, TENANT_ID);
     assert.deepEqual(calls[0].query, BODY);
+
+    const resubmissionRequestId = '55555555-5555-4555-8555-555555555555';
+    const resubmission = await request({
+      port,
+      headers: { 'X-CSRF-Token': CSRF_TOKEN },
+      body: { ...BODY, resubmissionRequestId },
+    });
+    assert.equal(resubmission.statusCode, 200);
+    assert.equal(calls[1].query.resubmissionRequestId, resubmissionRequestId);
   });
 });
 

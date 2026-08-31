@@ -137,7 +137,7 @@ The browser may hold the CSRF token in runtime memory. It must not persist the s
 - Pilot/Production use `DATABASE_SSL=verify-full` with a certificate/hostname-valid endpoint.
 - SQL application values remain parameterized.
 - Deployment automation applies migrations before application rollout; startup does not auto-migrate.
-- Readiness requires connectivity and exact repository-defined schema version 28.
+- Readiness requires connectivity and exact repository-defined schema version 33.
 - Tenant ownership and referential integrity are reinforced at database level.
 - Advisory locks and optimistic versions protect concurrent security/business transitions.
 - Migration rollback guards prevent silent removal of security/business evidence.
@@ -244,6 +244,16 @@ High or critical findings block readiness unless an explicit approved risk decis
 - Automated tests include at least two independent internal Tenants for cross-Tenant negative coverage.
 - Real Microsoft acceptance uses controlled non-production Tenants and non-production mail/resource data.
 - Production data is not generic security-test data.
+- Pilot/Production entrypoints must not receive `DEMO_*` configuration or import Demo composition,
+  persona, fixture, provider or reset modules.
+- The Shared Demo Runtime uses only its dedicated `DEMO_*` namespace, distinct origins, secrets and
+  an isolated `conference_manager_demo_*` PostgreSQL target. Its parser rejects normal Production,
+  database/origin/session/Platform and real-provider configuration that could cross the runtime
+  boundary.
+
+The complete Demo configuration and provisioning contract is intentionally separate in
+`docs/SHARED-DEMO-RUNTIME.md`. Demo evidence cannot satisfy any Pilot/Production control in this
+document.
 
 ## Deployment preflight
 

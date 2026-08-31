@@ -1,5 +1,20 @@
 import { ConfidentialClientApplication } from '@azure/msal-node';
 import { APPROVED_OUTBOUND_ORIGINS } from '../config.js';
+import {
+  MICROSOFT365_BASE_PERMISSIONS,
+  MICROSOFT365_CALENDAR_WRITE_PERMISSION,
+  MICROSOFT365_PROVIDER,
+  MICROSOFT365_VERIFICATION,
+  Microsoft365ProviderError,
+} from './microsoft365-contract.js';
+
+export {
+  MICROSOFT365_BASE_PERMISSIONS,
+  MICROSOFT365_CALENDAR_WRITE_PERMISSION,
+  MICROSOFT365_PROVIDER,
+  MICROSOFT365_VERIFICATION,
+  Microsoft365ProviderError,
+} from './microsoft365-contract.js';
 
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STATE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -47,27 +62,6 @@ const FREE_BUSY_VIEW_MAX = FREE_BUSY_MAX_WINDOW_MS / (FREE_BUSY_INTERVAL_MINUTES
 const EVENT_REFERENCE_MAX = 512;
 const CALENDAR_EVENT_SUBJECT = 'Conference Manager room reservation';
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
-
-export const MICROSOFT365_PROVIDER = 'microsoft365';
-export const MICROSOFT365_BASE_PERMISSIONS = Object.freeze([
-  'Place.Read.All',
-  'Calendars.ReadBasic.All',
-]);
-export const MICROSOFT365_CALENDAR_WRITE_PERMISSION = 'Calendars.ReadWrite';
-
-export const MICROSOFT365_VERIFICATION = Object.freeze({
-  CONNECTED: 'connected',
-  DEGRADED: 'degraded',
-  REVOKED: 'revoked',
-});
-
-export class Microsoft365ProviderError extends Error {
-  constructor(code, options = {}) {
-    super(code, options);
-    this.name = 'Microsoft365ProviderError';
-    this.code = code;
-  }
-}
 
 function requireGuid(value, code) {
   if (typeof value !== 'string' || !GUID_PATTERN.test(value)) {

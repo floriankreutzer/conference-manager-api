@@ -86,6 +86,14 @@ async function within(promise, label, milliseconds = 10_000) {
   }
 }
 
+function listRequestHistory(requests, tenantId, requestId) {
+  return requests.listHistoryPageByTenantIdAndId(tenantId, requestId, {
+    asOfVersion: Number.MAX_SAFE_INTEGER - 1,
+    beforeVersion: null,
+    limit: 11,
+  });
+}
+
 function instrumentPool(pool, { beforeQuery = null, afterQuery = null } = {}) {
   return {
     query: (...args) => pool.query(...args),
@@ -551,14 +559,11 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
   );
   assert.equal(created.request.snapshot.allocations.unallocatedMinor, 2650);
 
-  const history = await requests.listHistoryByTenantIdAndId(
-    TENANT_A,
-    'priced-request',
-  );
+  const history = await listRequestHistory(requests, TENANT_A, 'priced-request');
   assert.deepEqual(history.map((entry) => [entry.version, entry.operation]), [[1, 'created']]);
   assert.equal(history[0].request.pricing.totalMinor, 2650);
   assert.deepEqual(
-    await requests.listHistoryByTenantIdAndId(TENANT_B, 'priced-request'),
+    await listRequestHistory(requests, TENANT_B, 'priced-request'),
     [],
   );
   assert.equal(await requests.findByTenantIdAndId(TENANT_B, 'priced-request'), null);
@@ -622,7 +627,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
   assert.equal(resubmitted.request.version, 3);
   assert.equal(resubmitted.request.snapshot.details.title, 'Adjusted persistence request');
   assert.deepEqual(
-    (await requests.listHistoryByTenantIdAndId(TENANT_A, 'priced-request'))
+    (await listRequestHistory(requests, TENANT_A, 'priced-request'))
       .map((entry) => [entry.version, entry.operation]),
     [[3, 'resubmitted'], [2, 'transitioned'], [1, 'created']],
   );
@@ -695,7 +700,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     }),
   }), { status: 'state_conflict' });
   assert.deepEqual(
-    (await requests.listHistoryByTenantIdAndId(TENANT_A, LEGACY_RESUBMIT_REQUEST))
+    (await listRequestHistory(requests, TENANT_A, LEGACY_RESUBMIT_REQUEST))
       .map((entry) => [entry.version, entry.schemaVersion, entry.operation]),
     [[2, 2, 'resubmitted'], [1, 1, 'migrated_legacy']],
   );
@@ -950,7 +955,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     true,
   );
   assert.equal(
-    (await requests.listHistoryByTenantIdAndId(TENANT_A, 'report-inflight')).length,
+    (await listRequestHistory(requests, TENANT_A, 'report-inflight')).length,
     1,
   );
   assert.equal(
@@ -1028,7 +1033,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
   );
   assert.equal(await requests.findByTenantIdAndId(TENANT_A, 'audit-rollback'), null);
   assert.deepEqual(
-    await requests.listHistoryByTenantIdAndId(TENANT_A, 'audit-rollback'),
+    await listRequestHistory(requests, TENANT_A, 'audit-rollback'),
     [],
   );
 
@@ -1085,7 +1090,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     directApplied.request.snapshot,
   );
   assert.deepEqual(
-    (await requests.listHistoryByTenantIdAndId(TENANT_A, 'direct-booking-change'))
+    (await listRequestHistory(requests, TENANT_A, 'direct-booking-change'))
       .map((entry) => [entry.version, entry.operation]),
     [[3, 'booking_changed'], [2, 'transitioned'], [1, 'created']],
   );
@@ -1189,7 +1194,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     2,
   );
   assert.deepEqual(
-    (await requests.listHistoryByTenantIdAndId(TENANT_A, 'direct-booking-atomic'))
+    (await listRequestHistory(requests, TENANT_A, 'direct-booking-atomic'))
       .map((entry) => [entry.version, entry.operation]),
     [[2, 'transitioned'], [1, 'created']],
   );
@@ -1264,7 +1269,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
   assert.equal(approved.request.snapshot.details.specialRequirements, 'Board layout');
   assert.deepEqual(approved.request.snapshot, pendingApproval.change.proposedRequestSnapshot);
   assert.deepEqual(
-    (await requests.listHistoryByTenantIdAndId(TENANT_A, 'approval-booking-change'))
+    (await listRequestHistory(requests, TENANT_A, 'approval-booking-change'))
       .map((entry) => [entry.version, entry.operation]),
     [[3, 'booking_changed'], [2, 'transitioned'], [1, 'created']],
   );
@@ -1357,7 +1362,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     'applying',
   );
   assert.deepEqual(
-    (await requests.listHistoryByTenantIdAndId(TENANT_A, 'approval-booking-atomic'))
+    (await listRequestHistory(requests, TENANT_A, 'approval-booking-atomic'))
       .map((entry) => [entry.version, entry.operation]),
     [[2, 'transitioned'], [1, 'created']],
   );
@@ -1434,7 +1439,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     rejection_reason: null,
   });
   assert.deepEqual(
-    (await requests.listHistoryByTenantIdAndId(TENANT_A, 'superseded-booking-change'))
+    (await listRequestHistory(requests, TENANT_A, 'superseded-booking-change'))
       .map((entry) => [entry.version, entry.operation, entry.request.status]),
     [
       [3, 'transitioned', 'Cancelled'],
@@ -1560,7 +1565,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     'applying',
   );
   assert.deepEqual(
-    (await requests.listHistoryByTenantIdAndId(TENANT_A, 'approval-cancel-race'))
+    (await listRequestHistory(requests, TENANT_A, 'approval-cancel-race'))
       .map((entry) => [entry.version, entry.operation]),
     [[2, 'transitioned'], [1, 'created']],
   );
@@ -1708,7 +1713,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     1,
   );
   assert.equal(
-    (await requests.listHistoryByTenantIdAndId(TENANT_A, 'concurrent-request')).length,
+    (await listRequestHistory(requests, TENANT_A, 'concurrent-request')).length,
     1,
   );
   const concurrentAudits = (await auditRepository.listByTenantId(TENANT_A, { limit: 100 }))
@@ -1794,7 +1799,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     2,
   );
   assert.deepEqual(
-    (await requests.listHistoryByTenantIdAndId(TENANT_A, 'booking-change-window'))
+    (await listRequestHistory(requests, TENANT_A, 'booking-change-window'))
       .map((entry) => [entry.version, entry.operation]),
     [[2, 'transitioned'], [1, 'created']],
   );
@@ -1891,7 +1896,8 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
       .find((entry) => entry.roomId === ROOM_A).price.amountMinor,
     1100,
   );
-  const settingsRaceHistory = await requests.listHistoryByTenantIdAndId(
+  const settingsRaceHistory = await listRequestHistory(
+    requests,
     TENANT_A,
     'settings-race-request',
   );

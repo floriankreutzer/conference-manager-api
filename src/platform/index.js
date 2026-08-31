@@ -17,15 +17,51 @@ function listen(server, { host, port }) {
   });
 }
 
-function close(server) {
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+
+export function closePlatformHttpServerWithinDeadline(server, timeoutMs) {
   return new Promise((resolve, reject) => {
-    server.close((error) => (error ? reject(error) : resolve()));
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try {
+        server.closeAllConnections();
+      } catch {
+        // The timeout remains the authoritative shutdown failure.
+      }
+      reject(new Error('PLATFORM_SHUTDOWN_TIMEOUT'));
+    }, timeoutMs);
+
+    try {
+      server.close((error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        if (error) reject(error);
+        else resolve();
+      });
+    } catch (error) {
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    }
   });
 }
 
-export function createPlatformProcess({ env, config = loadPlatformConfig(env), ...dependencies } = {}) {
+export function createPlatformProcess({
+  env,
+  config = loadPlatformConfig(env),
+  httpServerFactory = createPlatformHttpServer,
+  shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
+  ...dependencies
+} = {}) {
   if (!env && !config) throw new TypeError('PLATFORM_ENV_OR_CONFIG_REQUIRED');
-  const server = createPlatformHttpServer({ config, ...dependencies });
+  if (typeof httpServerFactory !== 'function') throw new TypeError('PLATFORM_HTTP_SERVER_FACTORY_REQUIRED');
+  if (!Number.isSafeInteger(shutdownTimeoutMs) || shutdownTimeoutMs <= 0) {
+    throw new TypeError('PLATFORM_SHUTDOWN_TIMEOUT_INVALID');
+  }
+  const server = httpServerFactory({ config, ...dependencies });
   let started = false;
   return Object.freeze({
     config,
@@ -38,8 +74,11 @@ export function createPlatformProcess({ env, config = loadPlatformConfig(env), .
     },
     async stop() {
       if (!started) return;
-      await close(server);
-      started = false;
+      try {
+        await closePlatformHttpServerWithinDeadline(server, shutdownTimeoutMs);
+      } finally {
+        started = false;
+      }
     },
   });
 }

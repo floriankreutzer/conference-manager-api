@@ -16,6 +16,7 @@ const migrationUp = await text('migrations/011_microsoft365_connection_lifecycle
 const migrationDown = await text('migrations/011_microsoft365_connection_lifecycle.down.sql');
 const service = await text('src/application/microsoft365-connection-service.js');
 const providerClient = await text('src/integrations/microsoft365-client.js');
+const providerContract = await text('src/integrations/microsoft365-contract.js');
 const providerClientTests = await text('tests/microsoft365-client.test.js');
 const routes = await text('src/http/microsoft365-routes.js');
 const repository = await text('src/persistence/postgres/microsoft365-connection-repository.js');
@@ -72,10 +73,15 @@ requireContains(providerClient, [
   'PROVIDER_RESPONSE_MAX_BYTES',
   "redirect: 'error'",
   'AbortSignal.timeout(timeoutMs)',
-  "'Place.Read.All'",
-  "'Calendars.ReadBasic.All'",
+  "from './microsoft365-contract.js'",
   "'calendars_permission_unverified'",
 ], 'Microsoft 365 provider client');
+requireContains(providerContract, [
+  "'Place.Read.All'",
+  "'Calendars.ReadBasic.All'",
+  "'Calendars.ReadWrite'",
+  'Microsoft365ProviderError',
+], 'Microsoft 365 provider-neutral contract');
 
 requireContains(providerClientTests, [
   'MSAL identity transport is fixed-origin',

@@ -118,7 +118,21 @@ if (!schemaVersion || Number(schemaVersion) < 10) {
   throw new Error('Runtime schema readiness must include tenant role administration migration version 10 or later.');
 }
 
-const runtime = await readFile('src/index.js', 'utf8');
+const entrypoint = await readFile('src/index.js', 'utf8');
+for (const required of [
+  "import { createCustomerComposition } from './customer-composition.js'",
+  'const composition = createCustomerComposition({',
+  'await composition.start()',
+]) {
+  if (!entrypoint.includes(required)) {
+    throw new Error(`Production customer entrypoint is missing composition linkage ${required}.`);
+  }
+}
+if (entrypoint.includes('createTenantUserAdministrationService')) {
+  throw new Error('Production customer entrypoint must remain thin and delegate Tenant role wiring.');
+}
+
+const runtime = await readFile('src/customer-composition.js', 'utf8');
 for (const required of [
   'createTenantUserAdministrationService',
   'persistence.tenantUserAdminRepository',

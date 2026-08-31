@@ -1,3 +1,4 @@
+import { classifyObservationFreshness } from '../../domain/observation-freshness.js';
 import {
   authorizePlatformOperation,
   PLATFORM_OPERATION,
@@ -15,7 +16,6 @@ import {
   requireTimestamp,
 } from './platform-operation-contract.js';
 import { PlatformOperationUnavailableError } from './platform-operation-errors.js';
-import { freshnessForObservation } from './fleet-readiness-service.js';
 
 const LIFECYCLE_STATUSES = new Set(['pending', 'onboarding', 'ready', 'active', 'suspended', 'archived']);
 
@@ -26,6 +26,21 @@ function unavailable(code) {
 function requireEnum(value, allowed, code) {
   if (typeof value !== 'string' || !allowed.has(value)) unavailable(code);
   return value;
+}
+
+function healthFreshness({ observedAt, freshUntil }, asOfMs) {
+  try {
+    return classifyObservationFreshness({
+      observedAtMs: observedAt === null ? null : Date.parse(observedAt),
+      freshUntilMs: freshUntil === null ? null : Date.parse(freshUntil),
+      asOfMs,
+    });
+  } catch (error) {
+    if (error instanceof TypeError && error.code === 'OBSERVATION_FRESHNESS_INVALID') {
+      unavailable('PLATFORM_MICROSOFT_HEALTH_INVALID');
+    }
+    throw error;
+  }
 }
 
 function safeEnumSet(value, code) {
@@ -75,7 +90,7 @@ function capabilityHealth(value, asOfMs, contract) {
       : requireSafeCode(value.reasonCode, 'PLATFORM_MICROSOFT_HEALTH_INVALID'),
     checkedAt,
     lastSuccessAt,
-    freshness: freshnessForObservation({ observedAt: checkedAt, freshUntil }, asOfMs),
+    freshness: healthFreshness({ observedAt: checkedAt, freshUntil }, asOfMs),
     incidentScope: requireEnum(value.incidentScope, contract.incidentScopes, 'PLATFORM_MICROSOFT_HEALTH_INVALID'),
   });
 }

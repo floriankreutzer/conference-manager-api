@@ -29,7 +29,7 @@ Provider identifiers such as a Microsoft Entra tenant ID are deliberately not fi
 | `suspended` | denied | denied | Tenant is temporarily disabled. Retained data is unavailable to normal Tenant operations. |
 | `archived` | denied | denied | Tenant is logically retired and unavailable to normal Tenant operations. |
 
-The trusted Pilot operator lifecycle contract permits only these state changes:
+The authenticated Platform lifecycle contract permits only these state changes:
 
 | Current state | Target state | Purpose |
 | --- | --- | --- |
@@ -38,7 +38,7 @@ The trusted Pilot operator lifecycle contract permits only these state changes:
 | `active` | `suspended` | Stop Tenant access without deleting retained data or evidence. |
 | `suspended` | `active` | Reactivate only after readiness and change approval are verified again. |
 
-Repeating the current `ready`, `active`, or `suspended` target is an authorized idempotent no-op. The claiming service, not the Pilot lifecycle operator, owns the `pending` to `onboarding` transition. `archived` is terminal and cannot be returned to `ready`, `active`, or `suspended` through the Pilot operator. Every other state pair fails closed as `TENANT_PILOT_LIFECYCLE_CONFLICT`.
+Repeating the current `ready`, `active`, or `suspended` target is an authorized idempotent no-op. The claiming service, not the Platform lifecycle service, owns the `pending` to `onboarding` transition. `archived` is terminal and cannot be returned to `ready`, `active`, or `suspended` through a Platform lifecycle operation. Every other state pair fails closed as `TENANT_PILOT_LIFECYCLE_CONFLICT`.
 
 Lifecycle persistence uses an expected-current-state condition. A concurrent status change returns the same conflict instead of reporting completion, and no lifecycle audit success is committed for the stale mutation.
 
@@ -113,7 +113,7 @@ PostgreSQL reinforces Tenant ownership rather than relying only on application f
 - transactional/conditional writes preserving ownership and state invariants;
 - versioned migration and schema-readiness checks.
 
-Physical Tenant deletion is not a normal lifecycle operation. Retained records remain owned by the internal Tenant ID. Suspended Tenants can use only the explicit readiness-gated reactivation path above; archived Tenants remain unavailable and cannot be reactivated by the Pilot operator.
+Physical Tenant deletion is not a normal lifecycle operation. Retained records remain owned by the internal Tenant ID. Suspended Tenants can use only the explicit readiness-gated reactivation path above; archived Tenants remain unavailable and cannot be reactivated by a Platform lifecycle operation.
 
 ## Object authorization (#51)
 
