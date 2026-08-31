@@ -1,4 +1,5 @@
 import { DEMO_RUNTIME_ADVISORY_LOCK } from '../../demo/runtime-contract.js';
+import { withPostgresTransaction } from './transaction.js';
 
 export class DemoRuntimeGateError extends Error {
   constructor(code, options) {
@@ -8,10 +9,37 @@ export class DemoRuntimeGateError extends Error {
   }
 }
 
-async function withGate(pool, work, mode) {
+function assertGateInput(pool, work) {
   if (!pool || typeof pool.connect !== 'function') throw new TypeError('POSTGRES_POOL_REQUIRED');
   if (typeof work !== 'function') throw new TypeError('DEMO_RUNTIME_GATE_WORK_REQUIRED');
-  const shared = mode === 'shared';
+}
+
+function guardedPool(pool) {
+  return Object.freeze({
+    async connect() {
+      try {
+        return await pool.connect();
+      } catch (error) {
+        throw new DemoRuntimeGateError('DEMO_RUNTIME_GATE_ACQUIRE_FAILED', { cause: error });
+      }
+    },
+  });
+}
+
+export async function withDemoRuntimeSharedGate(pool, work) {
+  assertGateInput(pool, work);
+  return withPostgresTransaction(guardedPool(pool), async (client) => {
+    try {
+      await client.query('SELECT pg_advisory_xact_lock_shared($1)', [DEMO_RUNTIME_ADVISORY_LOCK]);
+    } catch (error) {
+      throw new DemoRuntimeGateError('DEMO_RUNTIME_GATE_ACQUIRE_FAILED', { cause: error });
+    }
+    return work(client);
+  });
+}
+
+export async function withDemoRuntimeExclusiveGate(pool, work) {
+  assertGateInput(pool, work);
   let client;
   try {
     client = await pool.connect();
@@ -19,10 +47,7 @@ async function withGate(pool, work, mode) {
     throw new DemoRuntimeGateError('DEMO_RUNTIME_GATE_ACQUIRE_FAILED', { cause: error });
   }
   try {
-    await client.query(
-      shared ? 'SELECT pg_advisory_lock_shared($1)' : 'SELECT pg_advisory_lock($1)',
-      [DEMO_RUNTIME_ADVISORY_LOCK],
-    );
+    await client.query('SELECT pg_advisory_lock($1)', [DEMO_RUNTIME_ADVISORY_LOCK]);
   } catch (error) {
     client.release(error);
     throw new DemoRuntimeGateError('DEMO_RUNTIME_GATE_ACQUIRE_FAILED', { cause: error });
@@ -38,31 +63,15 @@ async function withGate(pool, work, mode) {
 
   let unlockError;
   try {
-    const result = await client.query(
-      shared ? 'SELECT pg_advisory_unlock_shared($1)' : 'SELECT pg_advisory_unlock($1)',
-      [DEMO_RUNTIME_ADVISORY_LOCK],
-    );
-    const released = shared
-      ? result.rows[0]?.pg_advisory_unlock_shared
-      : result.rows[0]?.pg_advisory_unlock;
-    if (released !== true) unlockError = new Error('DEMO_RUNTIME_GATE_NOT_HELD');
+    const unlock = await client.query('SELECT pg_advisory_unlock($1)', [DEMO_RUNTIME_ADVISORY_LOCK]);
+    if (unlock.rows[0]?.pg_advisory_unlock !== true) unlockError = new Error('DEMO_RUNTIME_GATE_NOT_HELD');
   } catch (error) {
     unlockError = error;
   }
   client.release(unlockError);
   if (workError) throw workError;
-  if (unlockError) {
-    throw new DemoRuntimeGateError('DEMO_RUNTIME_GATE_RELEASE_FAILED', { cause: unlockError });
-  }
+  if (unlockError) throw new DemoRuntimeGateError('DEMO_RUNTIME_GATE_RELEASE_FAILED', { cause: unlockError });
   return result;
-}
-
-export async function withDemoRuntimeSharedGate(pool, work) {
-  return withGate(pool, work, 'shared');
-}
-
-export async function withDemoRuntimeExclusiveGate(pool, work) {
-  return withGate(pool, work, 'exclusive');
 }
 
 export async function acquireDemoRuntimeResetTransactionLock(client) {
