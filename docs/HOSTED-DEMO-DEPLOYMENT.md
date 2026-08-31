@@ -186,10 +186,12 @@ Render generates the Customer session/CSRF secrets, Platform session/CSRF secret
 
 Each Render build checks out the API repository from reviewed `main` and then fetches the exact 40-character frontend commit configured as `DEMO_FRONTEND_REF`.
 
+`conference-manager` is the public source repository for this pinned browser artifact. The nested frontend fetch must be anonymous even when the surrounding Render build checked out the private API repository with provider-scoped Git credentials. The preparation command strips inherited `GIT_*`, `GH_*`, `GITHUB_*` and askpass configuration, disables global/system Git configuration and terminal prompting for the child Git process, and then fetches only the fixed public repository at the immutable SHA. Do not add a GitHub PAT, deploy key or other cross-repository credential to either Render service as a workaround.
+
 The build fails if:
 
 - the ref is not an immutable commit SHA;
-- the commit cannot be fetched;
+- the commit cannot be fetched anonymously from the fixed public repository;
 - the Customer server-backed Demo entrypoint is missing;
 - the Platform server-backed Demo entrypoint is missing.
 
