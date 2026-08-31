@@ -11,6 +11,7 @@ import {
   createDemoCustomerRuntimeConfig,
   createDemoPlatformRuntimeConfig,
 } from '../src/demo/runtime-config.js';
+import { createAnonymousGitEnvironment } from '../scripts/hosted-demo-git-environment.mjs';
 
 function baseEnv(overrides = {}) {
   return {
@@ -84,7 +85,7 @@ test('hosted Demo listen and static configuration fail closed', () => {
   for (const value of ['/tmp/frontend', '../frontend', 'frontend/../other', 'frontend\\other', '']) {
     assert.throws(
       () => loadDemoCustomerConfig(customerEnv({ DEMO_STATIC_ROOT: value })),
-      configError(value === '' ? 'DEMO_CONFIG_STATIC_ROOT_INVALID' : 'DEMO_CONFIG_STATIC_ROOT_INVALID'),
+      configError('DEMO_CONFIG_STATIC_ROOT_INVALID'),
     );
   }
 });
@@ -101,6 +102,38 @@ test('local/test Demo defaults remain unchanged when hosted settings are absent'
   assert.equal(runtime.host, '127.0.0.1');
   assert.equal(runtime.port, 3000);
   assert.equal(runtime.staticRoot, null);
+});
+
+test('hosted frontend fetch strips inherited Git and GitHub checkout credentials', () => {
+  const environment = createAnonymousGitEnvironment({
+    PATH: '/usr/bin',
+    HOME: '/tmp/render-home',
+    SAFE_VALUE: 'preserved',
+    GIT_ASKPASS: '/opt/render/askpass',
+    GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
+    GIT_CONFIG_VALUE_0: 'AUTHORIZATION: basic inherited-credential',
+    GITHUB_TOKEN: 'inherited-github-token',
+    GH_TOKEN: 'inherited-gh-token',
+    SSH_ASKPASS: '/opt/render/ssh-askpass',
+  });
+
+  assert.equal(environment.PATH, '/usr/bin');
+  assert.equal(environment.HOME, '/tmp/render-home');
+  assert.equal(environment.SAFE_VALUE, 'preserved');
+  assert.equal(environment.GIT_ASKPASS, undefined);
+  assert.equal(environment.GIT_CONFIG_KEY_0, undefined);
+  assert.equal(environment.GIT_CONFIG_VALUE_0, undefined);
+  assert.equal(environment.GITHUB_TOKEN, undefined);
+  assert.equal(environment.GH_TOKEN, undefined);
+  assert.equal(environment.SSH_ASKPASS, undefined);
+  assert.equal(environment.GIT_TERMINAL_PROMPT, '0');
+  assert.equal(environment.GIT_CONFIG_NOSYSTEM, '1');
+  assert.equal(environment.GIT_CONFIG_COUNT, '0');
+  assert.equal(environment.GCM_INTERACTIVE, 'Never');
+  assert.equal(typeof environment.GIT_CONFIG_GLOBAL, 'string');
+  assert.equal(environment.GIT_CONFIG_GLOBAL.length > 0, true);
+  assert.equal(Object.isFrozen(environment), true);
 });
 
 test('Render Blueprint keeps the operational Demo free, separate and manually deployed', async () => {
