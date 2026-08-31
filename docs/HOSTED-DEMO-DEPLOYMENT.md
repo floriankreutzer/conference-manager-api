@@ -199,6 +199,37 @@ Before the first provider deploy, verify that `DEMO_FRONTEND_REF` in `render.yam
 
 The API process serves the pinned browser files itself so each surface remains same-origin with its corresponding API. Do not split the browser to a separate Render Static Site and introduce CORS or browser bearer tokens.
 
+### Build-bound deployment identity evidence
+
+A configured or expected commit ref is not evidence that Render is currently serving that ref. Every real Render build therefore emits the non-secret same-origin file:
+
+```text
+/assets/hosted-demo-deployment.json
+```
+
+The artifact uses schema version `1` and contains exactly these fields:
+
+```json
+{
+  "schemaVersion": 1,
+  "provider": "render",
+  "repository": "floriankreutzer/conference-manager-api",
+  "branch": "main",
+  "serviceName": "conference-manager-demo | conference-manager-ops-demo",
+  "runtimeRef": "<40-character lowercase Render RENDER_GIT_COMMIT>",
+  "frontendRef": "<40-character lowercase DEMO_FRONTEND_REF>"
+}
+```
+
+The build fails closed if the provider repository slug, branch, fixed service name, runtime commit format or frontend commit format does not match this contract. Non-Render preparation does not emit provider identity. The artifact contains no database URL, session identifier, CSRF/HMAC secret, provider credential, SQL detail or internal exception.
+
+After a deliberate deploy, operators and automated hosted acceptance must fetch the artifact from **both** live origins:
+
+- `https://conference-manager-demo.onrender.com/assets/hosted-demo-deployment.json`
+- `https://conference-manager-ops-demo.onrender.com/assets/hosted-demo-deployment.json`
+
+Both responses must use schema version `1`, identify provider `render`, repository `floriankreutzer/conference-manager-api` and branch `main`, report the service name matching the origin, and report the exact reviewed runtime/frontend SHAs selected for the release. Missing metadata, additional fields, malformed or stale refs, a mismatched service identity or any other contract expansion invalidates hosted acceptance. The detailed evidence boundary is documented in `docs/HOSTED-DEMO-DEPLOYMENT-EVIDENCE.md`.
+
 ## 8. Runtime binding and health
 
 Render requires the public HTTP process to bind to `0.0.0.0` and the provider-supplied `PORT`. The Blueprint supplies `DEMO_LISTEN_HOST=0.0.0.0`; the Demo runtime consumes Render's `PORT` dynamically.
@@ -216,15 +247,18 @@ Normal Customer and Platform PostgreSQL statements remain bounded to 10 seconds.
 
 After both services report ready:
 
-1. Open `https://conference-manager-demo.onrender.com` in a fresh browser context.
-2. Open `https://conference-manager-ops-demo.onrender.com` in a different browser context.
-3. Verify that clearing browser LocalStorage/sessionStorage does not remove business state.
-4. Execute Platform → Tenant Admin → Employee → Conference Manager → Employee → Platform using the same Tenant and Request state.
-5. Verify a second Tenant is concealed from unauthorized cross-Tenant access.
-6. Execute the authorized Platform Demo reset.
-7. Re-establish both sessions and verify the deterministic baseline.
-8. Verify the Customer and Platform readiness endpoints return ready.
-9. Record only provider URLs, commit refs, schema/seed versions and non-secret evidence.
+1. Fetch `/assets/hosted-demo-deployment.json` from both public origins and verify the complete schema-v1 deployment identity contract against the reviewed runtime/frontend SHAs.
+2. Open `https://conference-manager-demo.onrender.com` in a fresh browser context.
+3. Open `https://conference-manager-ops-demo.onrender.com` in a different browser context.
+4. Verify that clearing browser LocalStorage/sessionStorage does not remove business state.
+5. Execute Platform → Tenant Admin → Employee → Conference Manager → Employee → Platform using the same Tenant and Request state.
+6. Verify a second Tenant is concealed from unauthorized cross-Tenant access.
+7. Execute the authorized Platform Demo reset.
+8. Re-establish both sessions and verify the deterministic baseline.
+9. Verify the Customer and Platform readiness endpoints return ready.
+10. Record only provider URLs, verified deployment refs, schema/seed versions and non-secret evidence.
+
+The frontend repository's `Hosted Demo Acceptance` workflow automates the readiness wait, validates both build-bound deployment identity artifacts before starting the destructive browser journey, executes the fixed-origin critical journey, and records only bounded non-secret evidence. If the journey fails after mutating shared Demo state, the workflow first captures the bounded reset failure audit evidence, then establishes fresh Platform `security_admin` authority and runs the deterministic reset/reseed cleanup, uploads the evidence, and finally preserves the original journey failure as a failed acceptance result. A cleanup failure is itself a failed acceptance and must never be ignored.
 
 ## Free-tier operating constraints
 
