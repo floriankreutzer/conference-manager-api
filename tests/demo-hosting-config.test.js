@@ -114,6 +114,7 @@ test('Render Blueprint keeps the operational Demo free, separate and manually de
   assert.equal((blueprint.match(/value: 0\.0\.0\.0/g) || []).length, 2);
   assert.equal((blueprint.match(/DEMO_STATIC_ROOT/g) || []).length, 2);
   assert.equal((blueprint.match(/fromGroup: conference-manager-demo-shared/g) || []).length, 2);
+  assert.doesNotMatch(blueprint, /maxShutdownDelaySeconds/);
   assert.doesNotMatch(blueprint, /preDeployCommand/);
   assert.doesNotMatch(blueprint, /DEMO_MIGRATION_DATABASE_URL/);
   assert.doesNotMatch(blueprint, /DATABASE_URL:/);
