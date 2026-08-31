@@ -31,7 +31,9 @@ function fakeResetPool({ failQueryName = null, failCommit = false, failUnlock = 
         async query(query) {
           const text = typeof query === 'string' ? query : query.text;
           const name = typeof query === 'object' ? query.name : null;
-          if (name === failQueryName) throw new Error('sensitive-driver-detail-must-not-enter-audit');
+          if (failQueryName !== null && name === failQueryName) {
+            throw new Error('sensitive-driver-detail-must-not-enter-audit');
+          }
           if (text === 'COMMIT' && failCommit) {
             throw new Error('sensitive-commit-detail-must-not-enter-audit');
           }
