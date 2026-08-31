@@ -6,13 +6,12 @@ import {
   withDemoRuntimeSharedGate,
 } from '../src/persistence/postgres/demo-runtime-gate.js';
 
-test('shared Demo runtime gate holds and releases one checked-out lease', async () => {
+test('shared Demo runtime gate uses a transaction-scoped advisory lock', async () => {
   const queries = [];
   let releasedWith;
   const client = {
-    async query(text) {
-      queries.push(text);
-      if (text.includes('unlock_shared')) return { rows: [{ pg_advisory_unlock_shared: true }] };
+    async query(query) {
+      queries.push(query);
       return { rows: [] };
     },
     release(error) {
@@ -25,17 +24,23 @@ test('shared Demo runtime gate holds and releases one checked-out lease', async 
   });
   assert.equal(result, 'complete');
   assert.deepEqual(queries, [
-    'SELECT pg_advisory_lock_shared($1)',
-    'SELECT pg_advisory_unlock_shared($1)',
+    'BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE',
+    "SET LOCAL TIME ZONE 'UTC'",
+    'SELECT pg_advisory_xact_lock_shared($1)',
+    'COMMIT',
   ]);
   assert.equal(releasedWith, undefined);
 });
 
-test('shared Demo runtime gate discards a connection when PostgreSQL reports no held lock', async () => {
+test('shared Demo runtime gate rolls back and discards the connection when lock acquisition fails', async () => {
+  const queries = [];
   let releasedWith;
   const client = {
-    async query(text) {
-      if (text.includes('unlock_shared')) return { rows: [{ pg_advisory_unlock_shared: false }] };
+    async query(query) {
+      queries.push(query);
+      if (query === 'SELECT pg_advisory_xact_lock_shared($1)') {
+        throw new Error('postgresql://sensitive-user:sensitive-password@database.internal/demo');
+      }
       return { rows: [] };
     },
     release(error) {
@@ -44,8 +49,16 @@ test('shared Demo runtime gate discards a connection when PostgreSQL reports no 
   };
   await assert.rejects(
     withDemoRuntimeSharedGate({ async connect() { return client; } }, async () => true),
-    (error) => error instanceof DemoRuntimeGateError && error.code === 'DEMO_RUNTIME_GATE_RELEASE_FAILED',
+    (error) => error instanceof DemoRuntimeGateError
+      && error.code === 'DEMO_RUNTIME_GATE_ACQUIRE_FAILED'
+      && error.message === 'DEMO_RUNTIME_GATE_ACQUIRE_FAILED',
   );
+  assert.deepEqual(queries, [
+    'BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE',
+    "SET LOCAL TIME ZONE 'UTC'",
+    'SELECT pg_advisory_xact_lock_shared($1)',
+    'ROLLBACK',
+  ]);
   assert.equal(releasedWith instanceof Error, true);
 });
 
@@ -56,8 +69,6 @@ test('shared Demo runtime gate normalizes pool acquisition failure without expos
         throw new Error('postgresql://sensitive-user:sensitive-password@database.internal/demo');
       },
     }, async () => true),
-    (error) => error instanceof DemoRuntimeGateError
-      && error.code === 'DEMO_RUNTIME_GATE_ACQUIRE_FAILED'
-      && error.message === 'DEMO_RUNTIME_GATE_ACQUIRE_FAILED',
+    (error) => error.message !== 'postgresql://sensitive-user:sensitive-password@database.internal/demo',
   );
 });
