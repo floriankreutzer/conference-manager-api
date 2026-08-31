@@ -17,7 +17,9 @@ concurrency:
 
 jobs:
   initialize:
-    if: ${{ inputs.confirm_seed_version == 'saas-3.5-shared-demo-v1' }}
+    if: ${{ github.ref == 'refs/heads/main' && inputs.confirm_seed_version == 'saas-3.5-shared-demo-v1' }}
+    environment:
+      name: hosted-demo-initialize
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -32,6 +34,13 @@ jobs:
       DEMO_RESET_DATABASE_URL: ${{ secrets.HOSTED_DEMO_RESET_DATABASE_URL }}
       DEMO_MIGRATION_DATABASE_URL: ${{ secrets.HOSTED_DEMO_MIGRATION_DATABASE_URL }}
     steps:
+      - name: Require reviewed main ref
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Hosted Demo initialization is restricted to reviewed main." >&2
+            exit 1
+          fi
       - name: Require hosted Demo database credentials
         run: |
           for key in \
