@@ -3,6 +3,8 @@ import { access, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
+import { createAnonymousGitEnvironment } from './hosted-demo-git-environment.mjs';
+
 const execFileAsync = promisify(execFile);
 const FRONTEND_REPOSITORY = 'https://github.com/floriankreutzer/conference-manager.git';
 const FRONTEND_REF_PATTERN = /^[0-9a-f]{40}$/;
@@ -14,6 +16,7 @@ const REQUIRED_FILES = Object.freeze([
   'src/platform-admin/demo/bootstrap.js',
   'assets/tokens.css',
 ]);
+const GIT_ENVIRONMENT = createAnonymousGitEnvironment(process.env);
 
 function requiredRef(env) {
   const value = env.DEMO_FRONTEND_REF;
@@ -27,6 +30,7 @@ async function git(...args) {
   return execFileAsync('git', args, {
     cwd: process.cwd(),
     encoding: 'utf8',
+    env: GIT_ENVIRONMENT,
     maxBuffer: 1_048_576,
     windowsHide: true,
   });
