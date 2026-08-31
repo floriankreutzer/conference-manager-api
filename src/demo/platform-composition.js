@@ -12,12 +12,19 @@ import { createDemoResetService } from './reset-service.js';
 import { createDemoPlatformRuntimeConfig } from './runtime-config.js';
 import { createDemoPlatformHttpServer } from './platform-server.js';
 
-function auxiliaryConfig(runtimeConfig, databaseUrl, applicationName, databasePoolMax) {
+function auxiliaryConfig(
+  runtimeConfig,
+  databaseUrl,
+  applicationName,
+  databasePoolMax,
+  databaseStatementTimeoutMs = runtimeConfig.databaseStatementTimeoutMs,
+) {
   return Object.freeze({
     ...runtimeConfig,
     databaseUrl,
     applicationName,
     databasePoolMax,
+    databaseStatementTimeoutMs,
   });
 }
 
@@ -60,6 +67,7 @@ export function createDemoPlatformComposition({
     config.databases.reset.url,
     'conference-manager-demo-reset',
     1,
+    runtimeConfig.resetDatabaseStatementTimeoutMs,
   ));
   if (
     selectedGatePool === selectedPersistence.pool
