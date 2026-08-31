@@ -7,10 +7,7 @@ import {
   validateDemoFixture,
 } from '../../demo/fixture.js';
 import { withPostgresTransaction } from './transaction.js';
-import {
-  acquireDemoRuntimeResetTransactionLock,
-  withDemoRuntimeExclusiveGate,
-} from './demo-runtime-gate.js';
+import { acquireDemoRuntimeResetTransactionLock } from './demo-runtime-gate.js';
 import {
   readDemoSemanticState,
   seedDemoBusinessState,
@@ -194,17 +191,6 @@ function assertTableInventory(rows) {
   ) fail('DEMO_RESET_SCHEMA_INVENTORY_INVALID');
 }
 
-function borrowedPool(client) {
-  return Object.freeze({
-    async connect() {
-      return Object.freeze({
-        query: client.query.bind(client),
-        release() {},
-      });
-    },
-  });
-}
-
 async function verifyPreconditions(client, expectedDatabaseName, expectedResetRole) {
   const sentinel = await client.query({
     name: 'demo-reset-sentinel',
@@ -366,52 +352,47 @@ export function createPostgresDemoResetRepository({
       if ((auditEventFor === null) !== (authority === null)) {
         throw new TypeError('DEMO_RESET_AUTHORITY_REQUIRED');
       }
-      let phase = DEMO_RESET_FAILURE_REASON.GATE;
+      let phase = DEMO_RESET_FAILURE_REASON.TRANSACTION;
       try {
-        return await withDemoRuntimeExclusiveGate(pool, async (gateClient) => {
+        return await withPostgresTransaction(pool, async (client) => {
+          phase = DEMO_RESET_FAILURE_REASON.TRANSACTION_LOCK;
+          await acquireDemoRuntimeResetTransactionLock(client);
+          phase = DEMO_RESET_FAILURE_REASON.PRECONDITIONS;
+          await verifyPreconditions(client, expectedDatabaseName, expectedResetRole);
+          if (authority !== null) {
+            phase = DEMO_RESET_FAILURE_REASON.AUTHORITY;
+            await verifyResetAuthority(client, authority);
+          }
+          phase = DEMO_RESET_FAILURE_REASON.TRUNCATE;
+          await client.query({ name: 'demo-reset-truncate', text: TRUNCATE_SQL });
+          phase = DEMO_RESET_FAILURE_REASON.AUDIT_CHAIN;
+          await client.query({
+            name: 'demo-reset-audit-chain-state',
+            text: 'INSERT INTO platform_audit_chain_state (singleton) VALUES (true)',
+          });
+          phase = DEMO_RESET_FAILURE_REASON.BUSINESS_SEED;
+          await seedBusinessState({ client, fixture });
+          phase = DEMO_RESET_FAILURE_REASON.PROVIDER_SEED;
+          await insertProviderState(client, fixture);
+          phase = DEMO_RESET_FAILURE_REASON.PERSONA_SEED;
+          await insertPersonaReferences(client, fixture);
+          phase = DEMO_RESET_FAILURE_REASON.SEMANTIC_READ;
+          const semanticState = await readSemanticState({ client });
+          phase = DEMO_RESET_FAILURE_REASON.SEMANTIC_CHECKSUM;
+          if (semanticChecksum(semanticState) !== checksum) fail('DEMO_RESET_SEMANTIC_CHECKSUM_MISMATCH');
+          if (auditEventFor !== null) {
+            phase = DEMO_RESET_FAILURE_REASON.SUCCESS_AUDIT;
+            await auditRepository.appendWithClient(client, auditEventFor({
+              outcome: 'success',
+              reasonCode: null,
+            }));
+          }
           phase = DEMO_RESET_FAILURE_REASON.TRANSACTION;
-          const result = await withPostgresTransaction(borrowedPool(gateClient), async (client) => {
-            phase = DEMO_RESET_FAILURE_REASON.TRANSACTION_LOCK;
-            await acquireDemoRuntimeResetTransactionLock(client);
-            phase = DEMO_RESET_FAILURE_REASON.PRECONDITIONS;
-            await verifyPreconditions(client, expectedDatabaseName, expectedResetRole);
-            if (authority !== null) {
-              phase = DEMO_RESET_FAILURE_REASON.AUTHORITY;
-              await verifyResetAuthority(client, authority);
-            }
-            phase = DEMO_RESET_FAILURE_REASON.TRUNCATE;
-            await client.query({ name: 'demo-reset-truncate', text: TRUNCATE_SQL });
-            phase = DEMO_RESET_FAILURE_REASON.AUDIT_CHAIN;
-            await client.query({
-              name: 'demo-reset-audit-chain-state',
-              text: 'INSERT INTO platform_audit_chain_state (singleton) VALUES (true)',
-            });
-            phase = DEMO_RESET_FAILURE_REASON.BUSINESS_SEED;
-            await seedBusinessState({ client, fixture });
-            phase = DEMO_RESET_FAILURE_REASON.PROVIDER_SEED;
-            await insertProviderState(client, fixture);
-            phase = DEMO_RESET_FAILURE_REASON.PERSONA_SEED;
-            await insertPersonaReferences(client, fixture);
-            phase = DEMO_RESET_FAILURE_REASON.SEMANTIC_READ;
-            const semanticState = await readSemanticState({ client });
-            phase = DEMO_RESET_FAILURE_REASON.SEMANTIC_CHECKSUM;
-            if (semanticChecksum(semanticState) !== checksum) fail('DEMO_RESET_SEMANTIC_CHECKSUM_MISMATCH');
-            if (auditEventFor !== null) {
-              phase = DEMO_RESET_FAILURE_REASON.SUCCESS_AUDIT;
-              await auditRepository.appendWithClient(client, auditEventFor({
-                outcome: 'success',
-                reasonCode: null,
-              }));
-            }
-            phase = DEMO_RESET_FAILURE_REASON.TRANSACTION;
-            return Object.freeze({
-              seedVersion: fixture.seedVersion,
-              checksum,
-            });
-          }, { isolationLevel: 'SERIALIZABLE' });
-          phase = DEMO_RESET_FAILURE_REASON.GATE;
-          return result;
-        });
+          return Object.freeze({
+            seedVersion: fixture.seedVersion,
+            checksum,
+          });
+        }, { isolationLevel: 'SERIALIZABLE' });
       } catch (error) {
         if (auditEventFor !== null) {
           try {
