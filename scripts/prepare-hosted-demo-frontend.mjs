@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
-import { access, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -9,6 +10,7 @@ const execFileAsync = promisify(execFile);
 const FRONTEND_REPOSITORY = 'https://github.com/floriankreutzer/conference-manager.git';
 const FRONTEND_REF_PATTERN = /^[0-9a-f]{40}$/;
 const TARGET_DIRECTORY = path.resolve(process.cwd(), '.demo-frontend');
+const GIT_HOME_PREFIX = path.join(tmpdir(), 'conference-manager-demo-git-');
 const REQUIRED_FILES = Object.freeze([
   'index.html',
   'platform-admin-demo/index.html',
@@ -16,7 +18,6 @@ const REQUIRED_FILES = Object.freeze([
   'src/platform-admin/demo/bootstrap.js',
   'assets/tokens.css',
 ]);
-const GIT_ENVIRONMENT = createAnonymousGitEnvironment(process.env);
 
 function requiredRef(env) {
   const value = env.DEMO_FRONTEND_REF;
@@ -26,11 +27,11 @@ function requiredRef(env) {
   return value;
 }
 
-async function git(...args) {
+async function git(environment, ...args) {
   return execFileAsync('git', args, {
     cwd: process.cwd(),
     encoding: 'utf8',
-    env: GIT_ENVIRONMENT,
+    env: environment,
     maxBuffer: 1_048_576,
     windowsHide: true,
   });
@@ -52,12 +53,18 @@ async function assertFrontendContract(root) {
 
 const frontendRef = requiredRef(process.env);
 await rm(TARGET_DIRECTORY, { recursive: true, force: true });
-await git('init', '--quiet', TARGET_DIRECTORY);
-await git('-C', TARGET_DIRECTORY, 'remote', 'add', 'origin', FRONTEND_REPOSITORY);
-await git('-C', TARGET_DIRECTORY, 'fetch', '--quiet', '--depth=1', 'origin', frontendRef);
-await git('-C', TARGET_DIRECTORY, 'checkout', '--quiet', '--detach', 'FETCH_HEAD');
-const { stdout } = await git('-C', TARGET_DIRECTORY, 'rev-parse', 'HEAD');
-if (stdout.trim() !== frontendRef) throw new Error('DEMO_FRONTEND_REF_MISMATCH');
-await assertFrontendContract(TARGET_DIRECTORY);
-await rm(path.join(TARGET_DIRECTORY, '.git'), { recursive: true, force: true });
-process.stdout.write(`Prepared immutable Demo frontend ${frontendRef}.\n`);
+const gitHome = await mkdtemp(GIT_HOME_PREFIX);
+const gitEnvironment = createAnonymousGitEnvironment(process.env, gitHome);
+try {
+  await git(gitEnvironment, 'init', '--quiet', TARGET_DIRECTORY);
+  await git(gitEnvironment, '-C', TARGET_DIRECTORY, 'remote', 'add', 'origin', FRONTEND_REPOSITORY);
+  await git(gitEnvironment, '-C', TARGET_DIRECTORY, 'fetch', '--quiet', '--depth=1', 'origin', frontendRef);
+  await git(gitEnvironment, '-C', TARGET_DIRECTORY, 'checkout', '--quiet', '--detach', 'FETCH_HEAD');
+  const { stdout } = await git(gitEnvironment, '-C', TARGET_DIRECTORY, 'rev-parse', 'HEAD');
+  if (stdout.trim() !== frontendRef) throw new Error('DEMO_FRONTEND_REF_MISMATCH');
+  await assertFrontendContract(TARGET_DIRECTORY);
+  await rm(path.join(TARGET_DIRECTORY, '.git'), { recursive: true, force: true });
+  process.stdout.write(`Prepared immutable Demo frontend ${frontendRef}.\n`);
+} finally {
+  await rm(gitHome, { recursive: true, force: true });
+}
