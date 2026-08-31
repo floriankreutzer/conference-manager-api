@@ -16,7 +16,6 @@ services:
     buildCommand: npm ci --ignore-scripts --no-audit --no-fund && npm run demo:hosted:prepare
     startCommand: npm run start:demo:customer
     healthCheckPath: /api/v1/health/ready
-    maxShutdownDelaySeconds: 30
     envVars:
       - fromGroup: conference-manager-demo-shared
       - key: NODE_VERSION
@@ -57,7 +56,6 @@ services:
     buildCommand: npm ci --ignore-scripts --no-audit --no-fund && npm run demo:hosted:prepare
     startCommand: npm run start:demo:platform
     healthCheckPath: /api/v1/platform/health/ready
-    maxShutdownDelaySeconds: 30
     envVars:
       - fromGroup: conference-manager-demo-shared
       - key: NODE_VERSION
