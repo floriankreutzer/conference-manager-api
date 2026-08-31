@@ -65,7 +65,9 @@ test('hosted Customer and Platform Demo use Render listen values and the bounded
     assert.equal(runtime.port, 10000);
     assert.equal(runtime.staticRoot, '.demo-frontend');
     assert.equal(runtime.databaseSsl, 'verify-full');
+    assert.equal(runtime.databaseStatementTimeoutMs, 10_000);
   }
+  assert.equal(platform.resetDatabaseStatementTimeoutMs, 60_000);
   assert.equal(customer.publicOrigin, 'https://conference-manager-demo.onrender.com');
   assert.equal(platform.publicOrigin, 'https://conference-manager-ops-demo.onrender.com');
 });
@@ -166,6 +168,13 @@ test('Render Blueprint keeps the operational Demo free, separate and manually de
   assert.match(blueprint, /DEMO_CUSTOMER_DATABASE_URL\n\s+sync: false/);
   assert.match(blueprint, /DEMO_PLATFORM_DATABASE_URL\n\s+sync: false/);
   assert.match(blueprint, /DEMO_RESET_DATABASE_URL\n\s+sync: false/);
+
+  const platformComposition = await readFile(
+    new URL('../src/demo/platform-composition.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(platformComposition, /runtimeConfig\.resetDatabaseStatementTimeoutMs/);
+  assert.match(platformComposition, /'conference-manager-demo-reset',\n\s+1,/);
 
   const workflow = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
   assert.match(workflow, /name: Prepare immutable hosted Demo browser artifacts/);

@@ -45,10 +45,21 @@ test('Demo runtime configs preserve one database target while separating securit
   assert.notEqual(platform.auditHmacSecret, platform.cursorSecret);
   assert.equal(customer.rateLimitMax, 120);
   assert.equal(platform.rateLimitMax, 120);
+  assert.equal(customer.databaseStatementTimeoutMs, 10_000);
+  assert.equal(platform.databaseStatementTimeoutMs, 10_000);
+  assert.equal(platform.resetDatabaseStatementTimeoutMs, 60_000);
   assert.equal(customer.entraClientId, null);
   assert.equal(platform.entraClientId, null);
   assert.equal(Object.isFrozen(customer), true);
   assert.equal(Object.isFrozen(platform), true);
+});
+
+test('Demo reset timeout stays bounded without widening normal runtime statements', () => {
+  const platform = createDemoPlatformRuntimeConfig(base);
+  assert.equal(platform.databaseStatementTimeoutMs, 10_000);
+  assert.equal(platform.resetDatabaseStatementTimeoutMs, 60_000);
+  assert.equal(platform.resetDatabaseStatementTimeoutMs > platform.databaseStatementTimeoutMs, true);
+  assert.equal(platform.resetDatabaseStatementTimeoutMs <= 60_000, true);
 });
 
 test('Demo runtime configs preserve a bounded explicit Demo request capacity', () => {
