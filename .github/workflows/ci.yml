@@ -161,7 +161,7 @@ jobs:
             DEMO_RATE_LIMIT_MAX=1000 \
             npm run start:demo:platform >platform-demo-api.log 2>&1 &
           echo $! >platform-demo-api.pid
-      - name: Wait for both Demo APIs
+      - name: Wait for both Demo APIs to be ready
         working-directory: api
         run: |
           for attempt in {1..60}; do
@@ -169,14 +169,14 @@ jobs:
             platform=0
             curl --fail --silent --show-error \
               -H "Host: customer.demo.test:4443" \
-              http://127.0.0.1:3000/api/v1/health/live >/dev/null && customer=1 || true
+              http://127.0.0.1:3000/api/v1/health/ready >/dev/null && customer=1 || true
             curl --fail --silent --show-error \
               -H "Host: platform.demo.test:4443" \
-              http://127.0.0.1:3100/api/v1/platform/health/live >/dev/null && platform=1 || true
+              http://127.0.0.1:3100/api/v1/platform/health/ready >/dev/null && platform=1 || true
             if [[ "$customer" == 1 && "$platform" == 1 ]]; then exit 0; fi
             sleep 1
           done
-          echo "The separate Demo API processes did not become live." >&2
+          echo "The separate Demo API processes did not become ready." >&2
           exit 1
       - name: Run shared PostgreSQL browser journey
         working-directory: frontend
