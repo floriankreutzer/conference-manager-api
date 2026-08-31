@@ -210,6 +210,8 @@ Readiness health checks are:
 
 These checks include the Demo PostgreSQL/schema/sentinel readiness chain. Liveness alone is not sufficient for hosted acceptance.
 
+Normal Customer and Platform PostgreSQL statements remain bounded to 10 seconds. The separate Demo reset pool uses a 60-second statement/query timeout because the authorized reset performs one exclusive, transactional truncate/reseed/integrity/audit operation across the complete synthetic baseline and can take longer on a remote Free-tier database. This extended budget applies only to the reset database role/pool; it must not be copied to normal runtime pools or Production configuration. A timeout still fails the HTTP reset and rolls the transaction back rather than returning partial success.
+
 ## 9. First hosted acceptance
 
 After both services report ready:
