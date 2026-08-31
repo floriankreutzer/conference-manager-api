@@ -3,10 +3,15 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { DEMO_FIXTURE } from '../src/demo/fixture.js';
+import { DEMO_OVERLAY_MIGRATION_VERSION } from '../src/demo/runtime-contract.js';
 import { createPostgresDemoRuntimeReadiness } from '../src/persistence/postgres/demo-runtime-readiness.js';
 
 const DATABASE = 'conference_manager_demo_test';
 const SENTINEL = 'conference-manager-shared-demo-v1';
+const OVERLAY_VERSIONS = Array.from(
+  { length: DEMO_OVERLAY_MIGRATION_VERSION },
+  (_, index) => index + 1,
+);
 
 function row(surface, overrides = {}) {
   const role = `demo_${surface}`;
@@ -17,7 +22,7 @@ function row(surface, overrides = {}) {
     runtime_schema_version: 1,
     database_name: DATABASE,
     recorded_role: role,
-    overlay_versions: [1, 2],
+    overlay_versions: OVERLAY_VERSIONS,
     persona_keys: surface === 'customer'
       ? DEMO_FIXTURE.customerPersonas.map(({ tenantId, persona }) => `${tenantId}:${persona}`).sort()
       : DEMO_FIXTURE.platform.personas.map(({ persona }) => persona).sort(),
@@ -61,7 +66,7 @@ for (const surface of ['customer', 'platform']) {
     for (const override of [
       { connected_role: 'unexpected_role' },
       { sentinel_key: 'unexpected' },
-      { overlay_versions: [1] },
+      { overlay_versions: OVERLAY_VERSIONS.slice(0, -1) },
       { persona_keys: [] },
       { authority_count: 0 },
       ...(surface === 'platform' ? [{ provider_tenant_ids: [] }] : []),
