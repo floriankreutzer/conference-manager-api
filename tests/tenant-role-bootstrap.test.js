@@ -113,5 +113,7 @@ test('non-claimant cannot request bootstrap and persisted roles remain server-au
     'request:read',
     'request:cancel',
     'request:manage',
+    'tenant:rooms:business:manage',
+    'tenant:catalogue:manage',
   ]);
 });
