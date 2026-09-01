@@ -46,8 +46,18 @@ function principal(tenantId, userId) {
   return {
     tenantId,
     userId,
-    roles: ['tenant_admin'],
-    permissions: ['tenant:configure'],
+    roles: ['employee', 'conference_manager', 'tenant_admin'],
+    permissions: [
+      'request:read',
+      'request:cancel',
+      'request:manage',
+      'tenant:rooms:business:manage',
+      'tenant:catalogue:manage',
+      'tenant:configure',
+      'tenant:users:manage',
+      'tenant:integrations:manage',
+      'tenant:audit:read',
+    ],
   };
 }
 
