@@ -284,7 +284,6 @@ export function createTenantLocationAdministrationService({
       };
       await authorizeAny(authorizationPolicy, auditService, authorizationInput);
       const current = await repository.current(tenantContext.tenantId);
-      if (current.revision !== expected) throw new TenantSettingsConflictError(current.revision);
       await authorizeMutation(
         authorizationPolicy,
         auditService,
@@ -393,7 +392,6 @@ export function createTenantLocationAdministrationService({
       };
       await authorizeAny(authorizationPolicy, auditService, authorizationInput);
       const current = await repository.current(tenantContext.tenantId);
-      if (current.revision !== expected) throw new TenantSettingsConflictError(current.revision);
       const sourceSnapshot = await repository.revision(tenantContext.tenantId, source);
       if (!sourceSnapshot?.configuration) {
         throw new TenantSettingsInputError('TENANT_LOCATION_REVISION_NOT_FOUND');
