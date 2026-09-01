@@ -224,6 +224,11 @@ isolated Demo database over destructive manual cleanup.
 
 Do not place any of these values in source, documentation examples, browser configuration, logs, audit metadata, screenshots, issue comments or test evidence.
 
+The Shared Demo CI provisioner registers every generated database password, complete connection
+string, session/CSRF secret and audit-HMAC key with the GitHub Actions masking boundary before
+database work or `GITHUB_ENV` propagation. Environment command-file output accepts only canonical
+uppercase names and non-empty single-line values.
+
 ## Operations and evidence
 
 For each deployed Demo candidate, record:

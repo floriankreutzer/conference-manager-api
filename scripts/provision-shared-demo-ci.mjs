@@ -3,6 +3,12 @@ import { appendFile } from 'node:fs/promises';
 
 import pg from 'pg';
 
+import {
+  registerGitHubActionsSecretMasks,
+  sensitiveGitHubActionsEnvironmentValues,
+  serializeGitHubActionsEnvironment,
+} from './github-actions-command-files.mjs';
+
 const { Client } = pg;
 const DATABASE = 'conference_manager_demo_ci';
 const ROLES = Object.freeze({
@@ -43,6 +49,23 @@ const secrets = Object.freeze({
   DEMO_PLATFORM_CSRF_SECRET: credential(),
   DEMO_TENANT_AUDIT_HMAC_SECRET: credential(),
 });
+const variables = {
+  NODE_ENV: 'test',
+  DEMO_RUNTIME: 'shared-postgres-v1',
+  DEMO_SEED_VERSION: 'saas-3.5-shared-demo-v1',
+  DEMO_CUSTOMER_ORIGIN: 'https://customer.demo.test:4443',
+  DEMO_PLATFORM_ORIGIN: 'https://platform.demo.test:4443',
+  DEMO_DATABASE_SSL: 'disable',
+  DEMO_CUSTOMER_DATABASE_URL: databaseUrl(ROLES.customer, passwords.customer),
+  DEMO_PLATFORM_DATABASE_URL: databaseUrl(ROLES.platform, passwords.platform),
+  DEMO_RESET_DATABASE_URL: databaseUrl(ROLES.reset, passwords.reset),
+  DEMO_MIGRATION_DATABASE_URL: databaseUrl(ROLES.migration, passwords.migration),
+  ...secrets,
+};
+registerGitHubActionsSecretMasks([
+  ...sensitiveGitHubActionsEnvironmentValues(variables),
+  ...Object.values(passwords),
+]);
 const client = new Client({ connectionString: ADMIN_URL });
 
 try {
@@ -60,22 +83,9 @@ try {
   await client.end();
 }
 
-const variables = {
-  NODE_ENV: 'test',
-  DEMO_RUNTIME: 'shared-postgres-v1',
-  DEMO_SEED_VERSION: 'saas-3.5-shared-demo-v1',
-  DEMO_CUSTOMER_ORIGIN: 'https://customer.demo.test:4443',
-  DEMO_PLATFORM_ORIGIN: 'https://platform.demo.test:4443',
-  DEMO_DATABASE_SSL: 'disable',
-  DEMO_CUSTOMER_DATABASE_URL: databaseUrl(ROLES.customer, passwords.customer),
-  DEMO_PLATFORM_DATABASE_URL: databaseUrl(ROLES.platform, passwords.platform),
-  DEMO_RESET_DATABASE_URL: databaseUrl(ROLES.reset, passwords.reset),
-  DEMO_MIGRATION_DATABASE_URL: databaseUrl(ROLES.migration, passwords.migration),
-  ...secrets,
-};
 await appendFile(
   ENVIRONMENT_FILE,
-  `${Object.entries(variables).map(([key, value]) => `${key}=${value}`).join('\n')}\n`,
+  serializeGitHubActionsEnvironment(variables),
   { encoding: 'utf8', mode: 0o600 },
 );
 process.stdout.write('Shared Demo CI database principals and runtime environment provisioned.\n');
