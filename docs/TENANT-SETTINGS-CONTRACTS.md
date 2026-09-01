@@ -51,7 +51,7 @@ Rules:
 - A stale mutation returns `409 TENANT_SETTINGS_REVISION_CONFLICT` and the current safe numeric `currentRevision`. No current configuration data is echoed by the generic conflict mechanism; the client reloads the owning domain through its authorized GET route.
 - Revision values are concurrency tokens, not timestamps, authorization evidence or ordering authority across different aggregates.
 
-HTTP modules remain transport-only. They validate bounded shape/query/method constraints, require the existing server session and CSRF for unsafe cookie-authenticated operations, derive Tenant and actor from the Principal, and delegate to the owning application service. The Locations owner compares the proposed document with the persisted current snapshot and derives technical, Room-business or mixed permission requirements itself; a browser cannot label a diff to choose weaker authority.
+HTTP modules remain transport-only. They validate bounded shape/query/method constraints, require the existing server session and CSRF for unsafe cookie-authenticated operations, derive Tenant and actor from the Principal, and delegate to the owning application service. For Locations, the repository rejects a stale revision under the Tenant lock before invoking the owning service's synchronous field authorizer with the exact locked current/proposed transition. That application-owned classifier derives technical, Room-business or mixed permission requirements; a browser cannot label a diff to choose weaker authority.
 
 ## Atomic persistence and audit
 
@@ -59,10 +59,11 @@ A successful settings mutation is one PostgreSQL transaction containing:
 
 1. Principal-derived Tenant-scoped aggregate lookup/lock;
 2. expected/current revision comparison;
-3. domain validation and reference-protection checks based on server state;
-4. the authoritative domain mutation;
-5. increment of only the owning aggregate revision;
-6. append of the required server-generated audit event with correlation ID and bounded previous/new summary;
+3. the owning aggregate's server-side authorization check against the locked current/proposed transition, where field-level ownership applies;
+4. domain validation and reference-protection checks based on server state;
+5. the authoritative domain mutation;
+6. increment of only the owning aggregate revision;
+7. append of the required server-generated audit event with correlation ID and bounded previous/new summary;
 7. commit.
 
 An audit append failure rolls the domain mutation and revision increment back. A conflict or validation failure does not create success evidence.

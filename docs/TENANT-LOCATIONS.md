@@ -20,7 +20,7 @@ No generic Tenant settings service or browser-owned authorization decision is in
 
 `PUT /api/v1/tenant/settings/locations` accepts exactly `schemaVersion`, `expectedRevision` and `configuration`. Tenant and actor are always derived from the authenticated server session. Mutating requests require the existing CSRF guard.
 
-Read/history access is available only to recognized authorized principals that require the aggregate for their role. Mutation authorization is field-level and server-classified from a diff against the persisted current snapshot; the client does not select the authorization class.
+Read/history access is available only to recognized authorized principals that require the aggregate for their role. Mutation authorization is field-level and server-classified from a diff against the locked persisted current snapshot; the client does not select the authorization class.
 
 `GET /api/v1/tenant/settings/locations/history` returns bounded revision metadata. `GET /api/v1/tenant/settings/locations/history/{revision}` returns an immutable local-configuration snapshot. A stale write returns `409 TENANT_SETTINGS_REVISION_CONFLICT` with only the current safe numeric revision. No stale mutation, revision increment or success audit event commits.
 
@@ -50,7 +50,7 @@ Those Location-shape changes require `tenant_admin` plus `tenant:configure`. Pro
 
 A mutation containing both technical and Room-business changes requires both permission classes. In practice this means a dual-role Principal. Tenant Admin does not gain Room-business authority from `tenant:configure`, and Conference Manager cannot change Sites, Room stable identity or provider mapping.
 
-The service loads the authoritative current aggregate before classifying the proposed mutation. Classification therefore cannot be weakened by omitting browser fields, submitting a stale UI role label or claiming that a technical change is a business change.
+The service supplies a synchronous, side-effect-free field authorizer to the owning repository. After locking and matching the expected revision, the repository invokes it with the exact persisted current aggregate and proposed mutation that will be validated and applied. Classification therefore cannot be weakened by omitting browser fields, submitting a stale UI role label or claiming that a technical change is a business change.
 
 ## Provider boundary
 
@@ -68,11 +68,11 @@ This preserves the booking invariant: a Room whose Site time zone is unknown is 
 
 ## Concurrency, history and audit
 
-The aggregate uses `tenants.locations_revision`. Provider discovery/resync does not advance that revision merely for provider observation. Import advances it when canonical local Room identities are created. A successful local mutation/import locks the Tenant revision, validates references and authorization against current server-owned state, snapshots the prior local state, applies the mutation, advances the revision, snapshots the actual result and appends server-generated audit evidence in one PostgreSQL transaction.
+The aggregate uses `tenants.locations_revision`. Provider discovery/resync does not advance that revision merely for provider observation. Import advances it when canonical local Room identities are created. Broad aggregate authorization occurs before persistence so unauthorized and cross-Tenant callers cannot learn a revision. For a mutation or rollback, the repository then locks the Tenant revision and rejects a mismatch before field-diff authorization. A matching request is classified synchronously against the same locked current configuration, after which reference validation, the local mutation, revision advancement, immutable snapshots and server-generated success audit evidence commit in one PostgreSQL transaction.
 
-`tenant_location_revisions` is immutable. History contains local configuration only; provider observations are excluded so resync cannot rewrite Tenant-settings history.
+`tenant_location_revisions` is immutable. History contains local configuration only; provider observations are excluded so resync cannot rewrite Tenant-settings history. An already-applied bulk receipt returns its stored response before revision comparison or field authorization; a pending receipt follows the same locked revision and authorization path as a normal mutation.
 
-The persistence-layer write remains the final concurrency authority. A stale optimistic revision or conflicting authoritative change fails closed.
+The persistence-layer write remains the final concurrency authority. A stale optimistic revision or conflicting authoritative change fails closed without field-denial or success audit evidence. If field authorization denies a matching revision, the business transaction rolls back first and the application service then records exactly one denial event outside that aborted transaction.
 
 Historical snapshots can contain both technical and Room-business fields. They are evidence, not an authorization bypass. Reapplying a mixed snapshot requires the same field-level authorization classification as a normal mutation; a single elevated role cannot use history/rollback to gain the other role's field ownership.
 

@@ -85,7 +85,7 @@ leave an unaudited Request version. Validation/conflict paths do not append fals
 
 For Microsoft 365, the atomic boundary covers consent-state persistence, connection-state/version changes, active provider-binding revalidation, callback rejection evidence and local disconnect. External Microsoft consent or Graph calls cannot participate in the PostgreSQL transaction and are never described as transactionally atomic with local state.
 
-Failures that produce no authoritative mutation are appended as separate failure or denial events when a valid Tenant and actor context exists. Events for identities that cannot be mapped to a valid internal Tenant belong to the platform/security telemetry boundary rather than being forced into another Tenant's audit trail.
+Failures that produce no authoritative mutation are appended as separate failure or denial events when a valid Tenant and actor context exists. For Locations field authorization, the locked business transaction rolls back before the application service appends exactly one denial event; a stale revision is a concurrency conflict and creates neither false denial nor success evidence. Events for identities that cannot be mapped to a valid internal Tenant belong to the platform/security telemetry boundary rather than being forced into another Tenant's audit trail.
 
 Migration 034 is a deployment-wide Customer authorization-epoch cutover, not an authenticated User logout. Its bulk one-way update must not fabricate one `session.revoked` event per row with a false actor. Protected deployment evidence instead retains the migration name/version/checksum, release SHA, bounded aggregate active-session counts and old-cookie/fresh-login results without session, User or Tenant identifiers.
 

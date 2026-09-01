@@ -4,6 +4,8 @@ import { createTenantLocationAdministrationService } from '../src/application/te
 import {
   TenantSettingsConflictError,
 } from '../src/application/tenant-settings-errors.js';
+import { AuthorizationDeniedError } from '../src/authorization/errors.js';
+import { PERMISSION } from '../src/authorization/policy.js';
 import {
   TenantLocationInputError,
   assertTenantLocationTransition,
@@ -50,10 +52,20 @@ function locationConfiguration(overrides = {}) {
   };
 }
 
-function runtime({ revision = 4 } = {}) {
+function runtime({
+  revision = 4,
+  lockedRevision = revision,
+  configuration = locationConfiguration(),
+  sourceConfiguration = locationConfiguration(),
+  deniedPermissions = [],
+} = {}) {
   const calls = [];
+  const permissionChecks = [];
+  const authorizationDenials = [];
+  let commits = 0;
   let currentReads = 0;
-  const configuration = locationConfiguration();
+  let revisionReads = 0;
+  let transitionAuthorizations = 0;
   const repository = {
     async current(tenantId) {
       currentReads += 1;
@@ -73,9 +85,12 @@ function runtime({ revision = 4 } = {}) {
     },
     async update(args) {
       calls.push(args);
-      if (args.expectedRevision !== revision) {
-        return { status: 'conflict', currentRevision: revision };
+      if (args.expectedRevision !== lockedRevision) {
+        return { status: 'conflict', currentRevision: lockedRevision };
       }
+      transitionAuthorizations += 1;
+      args.assertAuthorizedTransition(configuration, args.configuration);
+      commits += 1;
       return {
         revision: args.nextRevision,
         configuration: args.configuration,
@@ -83,25 +98,48 @@ function runtime({ revision = 4 } = {}) {
       };
     },
     async history() { return []; },
-    async revision() { return null; },
+    async revision() {
+      revisionReads += 1;
+      return { revision: 1, configuration: sourceConfiguration };
+    },
     async rollback(args) {
       calls.push(args);
-      return { revision: args.nextRevision, configuration, providerContext: [] };
+      if (args.expectedRevision !== lockedRevision) {
+        return { status: 'conflict', currentRevision: lockedRevision };
+      }
+      transitionAuthorizations += 1;
+      args.assertAuthorizedTransition(configuration, sourceConfiguration);
+      commits += 1;
+      return {
+        revision: args.nextRevision,
+        configuration: sourceConfiguration,
+        providerContext: [],
+      };
     },
   };
   const authorizationPolicy = {
-    requireTenantPermission(actualPrincipal, actualTenant) {
+    requireTenantPermission(actualPrincipal, actualTenant, permission) {
       assert.equal(actualPrincipal, principal);
       assert.equal(actualTenant, tenantContext);
+      permissionChecks.push(permission);
+      if (deniedPermissions.includes(permission)) {
+        throw new AuthorizationDeniedError('PERMISSION_REQUIRED');
+      }
+      return true;
     },
   };
   const auditService = {
     createEvent(event) { return { id: 'audit', ...event }; },
-    async recordAuthorizationDenied() {},
+    async recordAuthorizationDenied(event) { authorizationDenials.push(event); },
   };
   return {
+    authorizationDenials,
     calls,
+    commits: () => commits,
     currentReads: () => currentReads,
+    permissionChecks,
+    revisionReads: () => revisionReads,
+    transitionAuthorizations: () => transitionAuthorizations,
     service: createTenantLocationAdministrationService({
       repository,
       authorizationPolicy,
@@ -110,7 +148,6 @@ function runtime({ revision = 4 } = {}) {
     }),
   };
 }
-
 test('location normalization keeps provider authority outside the mutable contract', () => {
   const normalized = normalizeTenantLocations(locationConfiguration(), locationConfiguration());
   assert.equal(normalized.sites[0].timeZone, 'Europe/Berlin');
@@ -164,25 +201,92 @@ test('location service advances revisions and creates audit-bound mutations', as
   assert.equal(calls[0].expectedRevision, 4);
   assert.equal(calls[0].nextRevision, 5);
   assert.equal(calls[0].auditEvent.metadata.domain, 'locations');
-  assert.equal(context.currentReads(), 1);
+  assert.equal(context.commits(), 1);
+  assert.equal(context.transitionAuthorizations(), 1);
+  assert.equal(context.currentReads(), 0);
 });
 
-test('stale location writes are decided under the persistence lock and disclose only current revision', async () => {
-  const context = runtime({ revision: 7 });
-  const { service, calls } = context;
+test('stale location writes conflict before field authorization against a newer technical state', async () => {
+  const current = locationConfiguration();
+  current.sites[0] = { ...current.sites[0], name: 'Berlin Campus' };
+  const proposed = locationConfiguration();
+  proposed.rooms[0] = { ...proposed.rooms[0], name: 'Executive Room' };
+  const context = runtime({
+    revision: 7,
+    configuration: current,
+    deniedPermissions: [PERMISSION.TENANT_CONFIGURE],
+  });
   await assert.rejects(
-    service.update({
+    context.service.update({
       principal,
       tenantContext,
       correlationId: CORRELATION_ID,
       schemaVersion: 1,
       expectedRevision: 6,
-      configuration: locationConfiguration(),
+      configuration: proposed,
     }),
     (error) => error instanceof TenantSettingsConflictError && error.currentRevision === 7,
   );
-  assert.equal(calls.length, 1);
-  assert.equal(context.currentReads(), 1);
+  assert.equal(context.calls.length, 1);
+  assert.equal(context.commits(), 0);
+  assert.equal(context.transitionAuthorizations(), 0);
+  assert.deepEqual(context.permissionChecks, [PERMISSION.TENANT_ROOMS_BUSINESS_MANAGE]);
+  assert.deepEqual(context.authorizationDenials, []);
+  assert.equal(context.currentReads(), 0);
+});
+
+test('current technical changes abort the mutation and record exactly one denial', async () => {
+  const current = locationConfiguration();
+  current.sites[0] = { ...current.sites[0], name: 'Berlin Campus' };
+  const context = runtime({
+    revision: 7,
+    configuration: current,
+    deniedPermissions: [PERMISSION.TENANT_CONFIGURE],
+  });
+  await assert.rejects(
+    context.service.update({
+      principal,
+      tenantContext,
+      correlationId: CORRELATION_ID,
+      schemaVersion: 1,
+      expectedRevision: 7,
+      configuration: locationConfiguration(),
+    }),
+    AuthorizationDeniedError,
+  );
+  assert.equal(context.calls.length, 1);
+  assert.equal(context.commits(), 0);
+  assert.equal(context.transitionAuthorizations(), 1);
+  assert.deepEqual(context.permissionChecks, [
+    PERMISSION.TENANT_ROOMS_BUSINESS_MANAGE,
+    PERMISSION.TENANT_CONFIGURE,
+  ]);
+  assert.equal(context.authorizationDenials.length, 1);
+  assert.equal(context.authorizationDenials[0].metadata.operation, 'update');
+});
+
+test('stale rollbacks conflict before loading or authorizing the historical transition', async () => {
+  const context = runtime({
+    revision: 7,
+    deniedPermissions: [PERMISSION.TENANT_CONFIGURE],
+  });
+  await assert.rejects(
+    context.service.rollback({
+      principal,
+      tenantContext,
+      correlationId: CORRELATION_ID,
+      schemaVersion: 1,
+      expectedRevision: 6,
+      sourceRevision: 1,
+    }),
+    (error) => error instanceof TenantSettingsConflictError && error.currentRevision === 7,
+  );
+  assert.equal(context.calls.length, 1);
+  assert.equal(context.commits(), 0);
+  assert.equal(context.revisionReads(), 0);
+  assert.equal(context.transitionAuthorizations(), 0);
+  assert.deepEqual(context.permissionChecks, [PERMISSION.TENANT_ROOMS_BUSINESS_MANAGE]);
+  assert.deepEqual(context.authorizationDenials, []);
 });
 
 test('provider context is read-only presentation data returned beside local configuration', async () => {

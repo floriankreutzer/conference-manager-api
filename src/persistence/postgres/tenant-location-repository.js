@@ -384,6 +384,17 @@ function requireRollbackConfiguration(current, source) {
   }
 }
 
+function requireTransitionAuthorizer(value) {
+  if (typeof value !== 'function') {
+    throw new TypeError('TENANT_LOCATION_TRANSITION_AUTHORIZATION_REQUIRED');
+  }
+  return (current, proposed) => {
+    if (value(current, proposed) !== true) {
+      throw new TypeError('TENANT_LOCATION_TRANSITION_AUTHORIZATION_INVALID');
+    }
+  };
+}
+
 export function createPostgresTenantLocationRepository(pool, { auditRepository } = {}) {
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
@@ -394,10 +405,11 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
 
   async function mutate({
     tenantId, expectedRevision, nextRevision, configuration, changedAt, actorUserId, auditEvent,
-    bulkReceipt = null, bulkResponseFor = null,
+    assertAuthorizedTransition, bulkReceipt = null, bulkResponseFor = null,
   }) {
     requireUuid(tenantId, 'TENANT_ID_INVALID');
     requireUuid(actorUserId, 'ACTOR_USER_ID_INVALID');
+    const authorizeTransition = requireTransitionAuthorizer(assertAuthorizedTransition);
     return withPostgresTransaction(pool, async (client) => {
       if (bulkReceipt) {
         const receipt = await lockTenantBulkTransferReceipt(client, {
@@ -416,6 +428,7 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
       const currentRevision = await lockTenantLocationRevisionWithClient(client, tenantId);
       if (currentRevision !== expectedRevision) return Object.freeze({ status: 'conflict', currentRevision });
       const currentConfiguration = await loadTenantLocationConfigurationWithClient(client, tenantId);
+      authorizeTransition(currentConfiguration, configuration);
       const proposed = requireTransition(currentConfiguration, configuration);
       const referenceError = await validateReferences(client, tenantId, currentConfiguration, proposed, changedAt);
       if (referenceError) throw repositoryInputError(referenceError);
@@ -503,9 +516,19 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
         actorUserId: requireUuid(row.actor_user_id, 'TENANT_LOCATION_HISTORY_ACTOR_INVALID'),
       }) : null;
     },
-    async rollback({ tenantId, expectedRevision, nextRevision, sourceRevision, changedAt, actorUserId, auditEvent }) {
+    async rollback({
+      tenantId,
+      expectedRevision,
+      nextRevision,
+      sourceRevision,
+      changedAt,
+      actorUserId,
+      auditEvent,
+      assertAuthorizedTransition,
+    }) {
       requireUuid(tenantId, 'TENANT_ID_INVALID');
       requireUuid(actorUserId, 'ACTOR_USER_ID_INVALID');
+      const authorizeTransition = requireTransitionAuthorizer(assertAuthorizedTransition);
       return withPostgresTransaction(pool, async (client) => {
         const currentRevision = await lockTenantLocationRevisionWithClient(client, tenantId);
         if (currentRevision !== expectedRevision) return Object.freeze({ status: 'conflict', currentRevision });
@@ -523,6 +546,7 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
         const source = normalizePersistedConfiguration(sourceResult.rows[0].configuration);
         const current = await loadTenantLocationConfigurationWithClient(client, tenantId);
         const proposed = requireRollbackConfiguration(current, source);
+        authorizeTransition(current, proposed);
         const referenceError = await validateReferences(client, tenantId, current, proposed, changedAt);
         if (referenceError) throw repositoryInputError(referenceError);
         await ensureTenantLocationSnapshotWithClient(client, {

@@ -68,6 +68,7 @@ function locationRuntime() {
       return { revision: 1, configuration: current, providerContext: [] };
     },
     async update(args) {
+      args.assertAuthorizedTransition(current, args.configuration);
       mutations.push(args);
       return {
         revision: args.nextRevision,

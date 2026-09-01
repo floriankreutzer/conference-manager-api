@@ -12,7 +12,6 @@ import { isInternalUuid } from '../domain/identifiers.js';
 import {
   TenantLocationInputError,
   normalizeTenantLocations,
-  tenantLocationRollbackConfiguration,
 } from '../domain/tenant-locations.js';
 import {
   nextTenantSettingsRevision,
@@ -91,25 +90,6 @@ async function recordAuthorizationDenied(auditService, {
   });
 }
 
-async function authorizeOne(policy, auditService, {
-  principal,
-  tenantContext,
-  correlationId,
-  operation,
-  permission,
-}) {
-  try {
-    policy.requireTenantPermission(principal, tenantContext, permission);
-  } catch (error) {
-    if (error instanceof AuthorizationDeniedError) {
-      await recordAuthorizationDenied(auditService, {
-        principal, tenantContext, correlationId, operation,
-      });
-    }
-    throw error;
-  }
-}
-
 async function authorizeAny(policy, auditService, {
   principal,
   tenantContext,
@@ -175,20 +155,12 @@ function requiredMutationPermissions(current, proposed) {
   return required;
 }
 
-async function authorizeMutation(policy, auditService, input, current, proposed) {
+function assertMutationAuthorized(policy, input, current, proposed) {
   const required = requiredMutationPermissions(current, proposed);
   for (const permission of required) {
-    await authorizeOne(policy, auditService, { ...input, permission });
+    policy.requireTenantPermission(input.principal, input.tenantContext, permission);
   }
-}
-
-function rollbackConfiguration(current, source) {
-  try {
-    return tenantLocationRollbackConfiguration(current, source);
-  } catch (error) {
-    if (error instanceof TenantLocationInputError) throw new TenantSettingsInputError(error.code);
-    throw error;
-  }
+  return true;
 }
 
 function auditEvent(auditService, {
@@ -239,6 +211,17 @@ async function safeRepositoryMutation(operation) {
   }
 }
 
+async function authorizedRepositoryMutation(auditService, authorizationInput, operation) {
+  try {
+    return await safeRepositoryMutation(operation);
+  } catch (error) {
+    if (error instanceof AuthorizationDeniedError) {
+      await recordAuthorizationDenied(auditService, authorizationInput);
+    }
+    throw error;
+  }
+}
+
 function normalizeInput(configuration) {
   try {
     return normalizeTenantLocations(configuration);
@@ -283,35 +266,39 @@ export function createTenantLocationAdministrationService({
         principal, tenantContext, correlationId, operation: 'update',
       };
       await authorizeAny(authorizationPolicy, auditService, authorizationInput);
-      const current = await repository.current(tenantContext.tenantId);
-      await authorizeMutation(
-        authorizationPolicy,
-        auditService,
-        authorizationInput,
-        current.configuration,
-        normalized,
-      );
       const nextRevision = nextTenantSettingsRevision(expected);
       const at = changedAt(clock);
-      const result = await safeRepositoryMutation(() => repository.update({
-        tenantId: tenantContext.tenantId,
-        expectedRevision: expected,
-        nextRevision,
-        configuration: normalized,
-        changedAt: at,
-        actorUserId: principal.userId,
-        auditEvent: auditEvent(auditService, {
-          principal,
-          tenantContext,
-          correlationId,
-          at,
-          previousRevision: expected,
+      const result = await authorizedRepositoryMutation(
+        auditService,
+        authorizationInput,
+        () => repository.update({
+          tenantId: tenantContext.tenantId,
+          expectedRevision: expected,
           nextRevision,
-          operation: 'tenant_locations_update',
+          configuration: normalized,
+          changedAt: at,
+          actorUserId: principal.userId,
+          auditEvent: auditEvent(auditService, {
+            principal,
+            tenantContext,
+            correlationId,
+            at,
+            previousRevision: expected,
+            nextRevision,
+            operation: 'tenant_locations_update',
+          }),
+          assertAuthorizedTransition: (current, proposed) => {
+            return assertMutationAuthorized(
+              authorizationPolicy,
+              authorizationInput,
+              current,
+              proposed,
+            );
+          },
+          bulkReceipt,
+          bulkResponseFor: response,
         }),
-        bulkReceipt,
-        bulkResponseFor: response,
-      }));
+      );
       if (result?.status === 'conflict') throw new TenantSettingsConflictError(result.currentRevision);
       if (result?.status === 'bulk_replay' || result?.status === 'bulk_applied') return result.response;
       return response(result);
@@ -391,39 +378,38 @@ export function createTenantLocationAdministrationService({
         principal, tenantContext, correlationId, operation: 'rollback',
       };
       await authorizeAny(authorizationPolicy, auditService, authorizationInput);
-      const current = await repository.current(tenantContext.tenantId);
-      const sourceSnapshot = await repository.revision(tenantContext.tenantId, source);
-      if (!sourceSnapshot?.configuration) {
-        throw new TenantSettingsInputError('TENANT_LOCATION_REVISION_NOT_FOUND');
-      }
-      const proposed = rollbackConfiguration(current.configuration, sourceSnapshot.configuration);
-      await authorizeMutation(
-        authorizationPolicy,
-        auditService,
-        authorizationInput,
-        current.configuration,
-        proposed,
-      );
       const nextRevision = nextTenantSettingsRevision(expected);
       const at = changedAt(clock);
-      const result = await safeRepositoryMutation(() => repository.rollback({
-        tenantId: tenantContext.tenantId,
-        expectedRevision: expected,
-        nextRevision,
-        sourceRevision: source,
-        changedAt: at,
-        actorUserId: principal.userId,
-        auditEvent: auditEvent(auditService, {
-          principal,
-          tenantContext,
-          correlationId,
-          at,
-          previousRevision: expected,
+      const result = await authorizedRepositoryMutation(
+        auditService,
+        authorizationInput,
+        () => repository.rollback({
+          tenantId: tenantContext.tenantId,
+          expectedRevision: expected,
           nextRevision,
-          operation: 'tenant_locations_rollback',
           sourceRevision: source,
+          changedAt: at,
+          actorUserId: principal.userId,
+          auditEvent: auditEvent(auditService, {
+            principal,
+            tenantContext,
+            correlationId,
+            at,
+            previousRevision: expected,
+            nextRevision,
+            operation: 'tenant_locations_rollback',
+            sourceRevision: source,
+          }),
+          assertAuthorizedTransition: (current, proposed) => {
+            return assertMutationAuthorized(
+              authorizationPolicy,
+              authorizationInput,
+              current,
+              proposed,
+            );
+          },
         }),
-      }));
+      );
       if (result?.status === 'conflict') throw new TenantSettingsConflictError(result.currentRevision);
       return response(result);
     },

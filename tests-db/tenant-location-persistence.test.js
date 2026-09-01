@@ -200,6 +200,7 @@ async function update(repository, {
   changedAt,
   correlationId = CORRELATION_A,
   operation = 'locations_update',
+  assertAuthorizedTransition = () => true,
 }) {
   return repository.update({
     tenantId: TENANT_A,
@@ -208,6 +209,7 @@ async function update(repository, {
     configuration,
     changedAt,
     actorUserId: ADMIN_A,
+    assertAuthorizedTransition,
     auditEvent: locationAudit({
       occurredAt: changedAt,
       correlationId,
@@ -267,6 +269,25 @@ test('Tenant Locations persistence is revisioned, atomic, isolated and provider-
   assert.equal(initial.configuration.sites[0].timeZone, 'Europe/Berlin');
   assert.equal((await repository.current(TENANT_B)).revision, 1);
 
+  await assert.rejects(
+    repository.update({
+      tenantId: TENANT_A,
+      expectedRevision: 1,
+      nextRevision: 2,
+      configuration: initial.configuration,
+      changedAt: AT_1,
+      actorUserId: ADMIN_A,
+      auditEvent: locationAudit({
+        occurredAt: AT_1,
+        operation: 'missing_authorizer',
+        previousRevision: 1,
+        nextRevision: 2,
+      }),
+    }),
+    /TENANT_LOCATION_TRANSITION_AUTHORIZATION_REQUIRED/,
+  );
+  assert.equal((await repository.current(TENANT_A)).revision, 1);
+
   const revisionTwo = await update(repository, {
     expectedRevision: 1,
     configuration: changedConfiguration(initial.configuration, { siteName: 'Berlin v2' }),
@@ -275,6 +296,23 @@ test('Tenant Locations persistence is revisioned, atomic, isolated and provider-
   assert.equal(revisionTwo.revision, 2);
   assert.equal(revisionTwo.configuration.sites[0].name, 'Berlin v2');
   assert.deepEqual((await repository.history(TENANT_A, 10)).map(({ revision }) => revision), [2, 1]);
+  let deniedAuthorizations = 0;
+  await assert.rejects(
+    update(repository, {
+      expectedRevision: 2,
+      configuration: changedConfiguration(revisionTwo.configuration, { siteName: 'Denied' }),
+      changedAt: AT_2,
+      operation: 'authorization_denied',
+      assertAuthorizedTransition() {
+        deniedAuthorizations += 1;
+        throw new Error('EXPECTED_AUTHORIZATION_DENIAL');
+      },
+    }),
+    /EXPECTED_AUTHORIZATION_DENIAL/,
+  );
+  assert.equal(deniedAuthorizations, 1);
+  assert.equal((await repository.current(TENANT_A)).revision, 2);
+  assert.equal((await repository.current(TENANT_A)).configuration.sites[0].name, 'Berlin v2');
   assert.equal((await repository.history(TENANT_B, 10)).length, 0);
   assert.equal((await repository.current(TENANT_B)).configuration.sites[0].id, SITE_B);
 
@@ -319,6 +357,11 @@ test('Tenant Locations persistence is revisioned, atomic, isolated and provider-
   assert.equal(consistentSnapshot.configuration.sites[0].name, 'Berlin v2');
 
   const beforeRace = await repository.current(TENANT_A);
+  const raceAuthorizationSnapshots = [];
+  const raceAuthorizer = (current) => {
+    raceAuthorizationSnapshots.push(current.sites[0].name);
+    return true;
+  };
   const race = await Promise.all([
     update(repository, {
       expectedRevision: beforeRace.revision,
@@ -326,6 +369,7 @@ test('Tenant Locations persistence is revisioned, atomic, isolated and provider-
       changedAt: AT_3,
       correlationId: CORRELATION_A,
       operation: 'race_a',
+      assertAuthorizedTransition: raceAuthorizer,
     }),
     update(repository, {
       expectedRevision: beforeRace.revision,
@@ -333,10 +377,12 @@ test('Tenant Locations persistence is revisioned, atomic, isolated and provider-
       changedAt: AT_3,
       correlationId: CORRELATION_B,
       operation: 'race_b',
+      assertAuthorizedTransition: raceAuthorizer,
     }),
   ]);
   assert.equal(race.filter((result) => result.status === 'conflict').length, 1);
   assert.equal(race.filter((result) => result.revision === beforeRace.revision + 1).length, 1);
+  assert.deepEqual(raceAuthorizationSnapshots, [beforeRace.configuration.sites[0].name]);
   const afterRace = await repository.current(TENANT_A);
   assert.equal(afterRace.revision, 4);
   assert.ok(['Race A', 'Race B'].includes(afterRace.configuration.sites[0].name));
@@ -495,6 +541,7 @@ test('Tenant Locations persistence is revisioned, atomic, isolated and provider-
     sourceRevision,
     changedAt: AT_5,
     actorUserId: ADMIN_A,
+    assertAuthorizedTransition: () => true,
     auditEvent: locationAudit({
       occurredAt: AT_5,
       operation: 'locations_rollback',
@@ -680,6 +727,7 @@ test('Tenant Locations persistence is revisioned, atomic, isolated and provider-
     },
     changedAt: AT_6,
     actorUserId: ADMIN_B,
+    assertAuthorizedTransition: () => true,
     auditEvent: locationAudit({
       tenantId: TENANT_B,
       actorUserId: ADMIN_B,
@@ -699,6 +747,7 @@ test('Tenant Locations persistence is revisioned, atomic, isolated and provider-
       sourceRevision: 1,
       changedAt: AT_7,
       actorUserId: ADMIN_B,
+      assertAuthorizedTransition: () => true,
       auditEvent: locationAudit({
         tenantId: TENANT_B,
         actorUserId: ADMIN_B,

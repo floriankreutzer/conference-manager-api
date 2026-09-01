@@ -4,6 +4,7 @@ import test from 'node:test';
 import { createTenantLocationAdministrationService } from '../src/application/tenant-location-administration-service.js';
 import { createAuthorizationPolicy, PERMISSION, TENANT_ROLE } from '../src/authorization/policy.js';
 import { loadConfig } from '../src/config.js';
+import { tenantLocationRollbackConfiguration } from '../src/domain/tenant-locations.js';
 import { createLogger } from '../src/logger.js';
 import { createHttpServer } from '../src/server.js';
 import { TENANT_STATUS } from '../src/tenancy/tenant.js';
@@ -109,6 +110,7 @@ function createMemoryRepository() {
       if (args.expectedRevision !== state.revision) {
         return { status: 'conflict', currentRevision: state.revision };
       }
+      args.assertAuthorizedTransition(state.configuration, args.configuration);
       state.revision = args.nextRevision;
       state.configuration = args.configuration;
       state.history.set(state.revision, {
@@ -142,8 +144,13 @@ function createMemoryRepository() {
         error.code = 'TENANT_LOCATION_REVISION_NOT_FOUND';
         throw error;
       }
+      const proposed = tenantLocationRollbackConfiguration(
+        state.configuration,
+        source.configuration,
+      );
+      args.assertAuthorizedTransition(state.configuration, proposed);
       state.revision = args.nextRevision;
-      state.configuration = source.configuration;
+      state.configuration = proposed;
       state.history.set(state.revision, {
         revision: state.revision,
         configuration: state.configuration,

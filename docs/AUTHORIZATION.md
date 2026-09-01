@@ -68,7 +68,7 @@ Tenant Admin owns:
 - provider connection, discovery/import/resync and provider Room identity/resource mapping;
 - Tenant audit administration.
 
-The Locations application service classifies every proposed mutation against the persisted current Tenant snapshot. A technical-only mutation requires `tenant:configure`; a Room-business-only mutation requires `tenant:rooms:business:manage`; a mixed mutation requires both capabilities and therefore a dual-role Principal. The browser cannot self-classify a mutation into a weaker authorization path.
+The Locations application service owns the field classifier and supplies it as a synchronous, side-effect-free authorizer to the repository transaction. The repository rejects a stale revision first, then invokes the classifier with the exact locked current/proposed transition. A technical-only mutation requires `tenant:configure`; a Room-business-only mutation requires `tenant:rooms:business:manage`; a mixed mutation requires both capabilities and therefore a dual-role Principal. The browser cannot self-classify a mutation into a weaker authorization path.
 
 Catalogue mutation requires `tenant:catalogue:manage`; Tenant Admin alone is denied.
 
