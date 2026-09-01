@@ -86,7 +86,7 @@ const MANAGER_TRANSITIONS = Object.freeze({
     reason: 'required',
   }),
 });
-const EMPLOYEE_CANCEL_FROM = new Set([
+const REQUEST_CANCEL_FROM = new Set([
   REQUEST_STATUS.SUBMITTED,
   REQUEST_STATUS.IN_REVIEW,
   REQUEST_STATUS.CONFIRMED,
@@ -159,11 +159,22 @@ function managerTransition(principal, request, transition, reason) {
   });
 }
 
-function employeeCancellation(principal, request, transition, reason) {
-  if (transition !== REQUEST_TRANSITION.CANCEL) return null;
+function requireRequestCancellationAuthority(principal, request) {
+  if (
+    principal.roles.includes(TENANT_ROLE.CONFERENCE_MANAGER)
+    && principal.permissions.includes(PERMISSION.REQUEST_MANAGE)
+  ) {
+    requirePermission(principal, PERMISSION.REQUEST_MANAGE, [TENANT_ROLE.CONFERENCE_MANAGER]);
+    return;
+  }
   requirePermission(principal, PERMISSION.REQUEST_CANCEL, [TENANT_ROLE.EMPLOYEE]);
   if (request.requesterUserId !== principal.userId) deny('RESOURCE_NOT_AVAILABLE', { conceal: true });
-  if (!EMPLOYEE_CANCEL_FROM.has(request.status)) throw new RequestStateConflictError();
+}
+
+function requestCancellation(principal, request, transition, reason) {
+  if (transition !== REQUEST_TRANSITION.CANCEL) return null;
+  requireRequestCancellationAuthority(principal, request);
+  if (!REQUEST_CANCEL_FROM.has(request.status)) throw new RequestStateConflictError();
   return Object.freeze({
     transition,
     expectedStatus: request.status,
@@ -187,15 +198,7 @@ function authorizeBookingOperation(principal, tenantContext, request, operation)
   }
 
   if (operation === BOOKING_OPERATION.CANCEL) {
-    if (
-      principal.roles.includes(TENANT_ROLE.CONFERENCE_MANAGER)
-      && principal.permissions.includes(PERMISSION.REQUEST_MANAGE)
-    ) {
-      requirePermission(principal, PERMISSION.REQUEST_MANAGE, [TENANT_ROLE.CONFERENCE_MANAGER]);
-      return true;
-    }
-    requirePermission(principal, PERMISSION.REQUEST_CANCEL, [TENANT_ROLE.EMPLOYEE]);
-    if (request.requesterUserId !== principal.userId) deny('RESOURCE_NOT_AVAILABLE', { conceal: true });
+    requireRequestCancellationAuthority(principal, request);
     return true;
   }
 
@@ -368,8 +371,8 @@ export function createAuthorizationPolicy() {
 
       const managerDecision = managerTransition(principal, request, transition, reason);
       if (managerDecision) return managerDecision;
-      const employeeDecision = employeeCancellation(principal, request, transition, reason);
-      if (employeeDecision) return employeeDecision;
+      const cancellationDecision = requestCancellation(principal, request, transition, reason);
+      if (cancellationDecision) return cancellationDecision;
       deny('TRANSITION_NOT_AUTHORIZED');
     },
   });

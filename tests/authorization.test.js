@@ -212,6 +212,96 @@ test('workflow transitions reject missing reasons, injected reasons, invalid sta
   );
 });
 
+test('conference manager cancellation covers eligible same-Tenant Requests without Employee ownership', () => {
+  const policy = createAuthorizationPolicy();
+  const manager = principal({
+    roles: [TENANT_ROLE.EMPLOYEE, TENANT_ROLE.CONFERENCE_MANAGER],
+    permissions: [
+      PERMISSION.REQUEST_READ,
+      PERMISSION.REQUEST_CANCEL,
+      PERMISSION.REQUEST_MANAGE,
+    ],
+  });
+  for (const status of [
+    REQUEST_STATUS.SUBMITTED,
+    REQUEST_STATUS.IN_REVIEW,
+    REQUEST_STATUS.CONFIRMED,
+    REQUEST_STATUS.CHANGE_REQUESTED,
+  ]) {
+    const decision = policy.authorizeRequestTransition(
+      manager,
+      context(),
+      request({ requesterUserId: USER_B, status }),
+      REQUEST_TRANSITION.CANCEL,
+    );
+    assert.deepEqual(decision, {
+      transition: REQUEST_TRANSITION.CANCEL,
+      expectedStatus: status,
+      nextStatus: REQUEST_STATUS.CANCELLED,
+      reason: null,
+    });
+  }
+
+  assert.throws(
+    () => policy.authorizeRequestTransition(
+      manager,
+      context(),
+      request({ tenantId: TENANT_B, requesterUserId: USER_B }),
+      REQUEST_TRANSITION.CANCEL,
+    ),
+    isConcealed,
+  );
+  assert.throws(
+    () => policy.authorizeRequestTransition(
+      manager,
+      context(),
+      request({ requesterUserId: USER_B, status: REQUEST_STATUS.REJECTED }),
+      REQUEST_TRANSITION.CANCEL,
+    ),
+    RequestStateConflictError,
+  );
+  assert.throws(
+    () => policy.authorizeRequestTransition(
+      manager,
+      context(),
+      request({ requesterUserId: USER_B }),
+      REQUEST_TRANSITION.CANCEL,
+      'client reason',
+    ),
+    AuthorizationInputError,
+  );
+});
+
+test('Tenant Admin does not inherit cancellation of another User-owned Request', () => {
+  const policy = createAuthorizationPolicy();
+  const tenantAdmin = principal({
+    roles: [TENANT_ROLE.EMPLOYEE, TENANT_ROLE.TENANT_ADMIN],
+    permissions: [
+      PERMISSION.REQUEST_READ,
+      PERMISSION.REQUEST_CANCEL,
+      PERMISSION.TENANT_CONFIGURE,
+    ],
+  });
+  assert.throws(
+    () => policy.authorizeRequestTransition(
+      tenantAdmin,
+      context(),
+      request({ requesterUserId: USER_B }),
+      REQUEST_TRANSITION.CANCEL,
+    ),
+    isConcealed,
+  );
+  assert.equal(
+    policy.authorizeRequestTransition(
+      tenantAdmin,
+      context(),
+      request(),
+      REQUEST_TRANSITION.CANCEL,
+    ).nextStatus,
+    REQUEST_STATUS.CANCELLED,
+  );
+});
+
 test('employee cancellation is owner-bound and limited to eligible states', () => {
   const policy = createAuthorizationPolicy();
   const employee = principal({

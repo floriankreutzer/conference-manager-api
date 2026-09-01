@@ -681,6 +681,110 @@ test('request transitions require CSRF and reject client-controlled status or ow
   });
 });
 
+test('manager cancellation of another User-owned Request preserves CSRF, state, and no-delete boundaries', async () => {
+  const manager = principal({
+    roles: [TENANT_ROLE.EMPLOYEE, TENANT_ROLE.CONFERENCE_MANAGER],
+    permissions: [
+      PERMISSION.REQUEST_READ,
+      PERMISSION.REQUEST_CANCEL,
+      PERMISSION.REQUEST_MANAGE,
+    ],
+  });
+  const managerOptions = {
+    config: testConfig(),
+    resolvePrincipal: async () => manager,
+    verifyCsrf: async (req) => req.headers['x-csrf-token'] === CSRF_TOKEN,
+    loadTenant: async () => tenant(),
+    requestService: requestServiceFor(requestRecord({ requesterUserId: OTHER_USER_ID })),
+  };
+  await withServer(managerOptions, async ({ port }) => {
+    const noDelete = await request({
+      port,
+      path: '/api/v1/requests/REQ-1',
+      method: 'DELETE',
+      headers: { 'X-CSRF-Token': CSRF_TOKEN },
+    });
+    assert.equal(noDelete.statusCode, 405);
+    assert.equal(noDelete.body.error.code, 'METHOD_NOT_ALLOWED');
+
+    const missingCsrf = await request({
+      port,
+      path: '/api/v1/requests/REQ-1/transitions',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transition: REQUEST_TRANSITION.CANCEL }),
+    });
+    assert.equal(missingCsrf.statusCode, 403);
+    assert.equal(missingCsrf.body.error.code, 'CSRF_INVALID');
+
+    const cancelled = await request({
+      port,
+      path: '/api/v1/requests/REQ-1/transitions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': CSRF_TOKEN,
+      },
+      body: JSON.stringify({ transition: REQUEST_TRANSITION.CANCEL }),
+    });
+    assert.equal(cancelled.statusCode, 200);
+    assert.equal(cancelled.body.request.status, REQUEST_STATUS.CANCELLED);
+  });
+
+  await withServer({
+    config: testConfig(),
+    resolvePrincipal: async () => manager,
+    verifyCsrf: async () => true,
+    loadTenant: async () => tenant(),
+    requestService: requestServiceFor(requestRecord({
+      requesterUserId: OTHER_USER_ID,
+      status: REQUEST_STATUS.REJECTED,
+    })),
+  }, async ({ port }) => {
+    const conflict = await request({
+      port,
+      path: '/api/v1/requests/REQ-1/transitions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': CSRF_TOKEN,
+      },
+      body: JSON.stringify({ transition: REQUEST_TRANSITION.CANCEL }),
+    });
+    assert.equal(conflict.statusCode, 409);
+    assert.equal(conflict.body.error.code, 'REQUEST_STATE_CONFLICT');
+  });
+
+  const tenantAdmin = principal({
+    roles: [TENANT_ROLE.EMPLOYEE, TENANT_ROLE.TENANT_ADMIN],
+    permissions: [
+      PERMISSION.REQUEST_READ,
+      PERMISSION.REQUEST_CANCEL,
+      PERMISSION.TENANT_CONFIGURE,
+    ],
+  });
+  await withServer({
+    config: testConfig(),
+    resolvePrincipal: async () => tenantAdmin,
+    verifyCsrf: async () => true,
+    loadTenant: async () => tenant(),
+    requestService: requestServiceFor(requestRecord({ requesterUserId: OTHER_USER_ID })),
+  }, async ({ port }) => {
+    const denied = await request({
+      port,
+      path: '/api/v1/requests/REQ-1/transitions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': CSRF_TOKEN,
+      },
+      body: JSON.stringify({ transition: REQUEST_TRANSITION.CANCEL }),
+    });
+    assert.equal(denied.statusCode, 404);
+    assert.equal(denied.body.error.code, 'NOT_FOUND');
+  });
+});
+
 test('manager transition is authorized server-side while employee cannot invoke manager workflow action', async () => {
   const manager = principal({
     roles: [TENANT_ROLE.CONFERENCE_MANAGER],

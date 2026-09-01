@@ -283,6 +283,68 @@ test('authorized transitions carry only the server policy decision into the atom
   assert.equal(context.audit.events.length, 0);
 });
 
+test('manager cancellation of another User-owned Request keeps the server actor and audit mutation atomic', async () => {
+  const repository = fakeRepository(requestRecord({ requesterUserId: USER_B }));
+  const context = service(repository);
+  const manager = principal({
+    roles: [TENANT_ROLE.EMPLOYEE, TENANT_ROLE.CONFERENCE_MANAGER],
+    permissions: [
+      PERMISSION.REQUEST_READ,
+      PERMISSION.REQUEST_CANCEL,
+      PERMISSION.REQUEST_MANAGE,
+    ],
+  });
+  const updated = await context.requestService.transitionRequest({
+    principal: manager,
+    tenantContext: { tenantId: TENANT_A },
+    requestId: 'REQ-1',
+    transition: REQUEST_TRANSITION.CANCEL,
+    correlationId: CORRELATION_ID,
+  });
+
+  assert.equal(updated.status, REQUEST_STATUS.CANCELLED);
+  assert.equal(repository.committedAuditEvents.length, 1);
+  assert.equal(repository.committedAuditEvents[0].actorUserId, USER_A);
+  assert.equal(repository.committedAuditEvents[0].tenantId, TENANT_A);
+  assert.deepEqual(repository.committedAuditEvents[0].previousState, {
+    status: REQUEST_STATUS.SUBMITTED,
+  });
+  assert.deepEqual(repository.committedAuditEvents[0].newState, {
+    status: REQUEST_STATUS.CANCELLED,
+  });
+  assert.deepEqual(repository.committedAuditEvents[0].metadata, {
+    reasonProvided: false,
+    transition: REQUEST_TRANSITION.CANCEL,
+  });
+});
+
+test('manager repeat cancellation reconciles an already-cancelled foreign Request without duplicate transition audit', async () => {
+  const repository = fakeRepository(requestRecord({
+    requesterUserId: USER_B,
+    status: REQUEST_STATUS.CANCELLED,
+  }));
+  const context = service(repository);
+  const manager = principal({
+    roles: [TENANT_ROLE.EMPLOYEE, TENANT_ROLE.CONFERENCE_MANAGER],
+    permissions: [
+      PERMISSION.REQUEST_READ,
+      PERMISSION.REQUEST_CANCEL,
+      PERMISSION.REQUEST_MANAGE,
+    ],
+  });
+  const unchanged = await context.requestService.transitionRequest({
+    principal: manager,
+    tenantContext: { tenantId: TENANT_A },
+    requestId: 'REQ-1',
+    transition: REQUEST_TRANSITION.CANCEL,
+    correlationId: CORRELATION_ID,
+  });
+
+  assert.equal(unchanged.status, REQUEST_STATUS.CANCELLED);
+  assert.equal(repository.committedAuditEvents.length, 0);
+  assert.equal(context.audit.events.length, 0);
+});
+
 test('stale authorized transition fails without overwrite and records a correlated failure', async () => {
   const repository = fakeRepository();
   repository.setConflict(true);

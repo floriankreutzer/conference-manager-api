@@ -40,7 +40,7 @@ A capability is granted only when both conditions are true:
 | --- | ---: | ---: | ---: |
 | `request:read` | Own | Tenant through Conference Manager scope | Own through implicit Employee baseline |
 | `request:cancel` | Own eligible Requests | Own through implicit Employee baseline | Own through implicit Employee baseline |
-| `request:manage` | No | Tenant workflow | No |
+| `request:manage` | No | Tenant workflow, including cancellation of eligible same-Tenant Requests | No |
 | `tenant:rooms:business:manage` | No | Tenant Room business fields | No |
 | `tenant:catalogue:manage` | No | Tenant Catalogue and authoritative Room prices | No |
 | `tenant:configure` | No | No | Tenant technical/business-policy configuration excluding Conference Manager-owned Catalogue/Room business fields |
@@ -82,9 +82,9 @@ Request creation and resubmission use the Employee `request:read` capability. Re
 
 A missing Request, a Request from another Tenant and a same-Tenant Request owned by another Employee are exposed to an Employee as the same `404 NOT_FOUND` response. This prevents object-existence disclosure through BOLA/IDOR probing.
 
-A Conference Manager with `request:read` may read Requests belonging to another Employee only inside the authenticated Tenant. Request history applies the same object decision as the current Request read.
+A Conference Manager with `request:read` may read Requests belonging to another Employee only inside the authenticated Tenant. Request history applies the same object decision as the current Request read. A Conference Manager with `request:manage` may cancel another Employee's eligible same-Tenant Request; cross-Tenant Requests remain concealed.
 
-Tenant Admin has no implicit Conference Manager workflow capability. Its own-Request access comes only from the implicit Employee baseline.
+Tenant Admin has no implicit Conference Manager workflow capability. Its own-Request read and cancellation access comes only from the implicit Employee baseline. Tenant Admin alone cannot cancel another Employee's Request.
 
 `GET /api/v1/application/reports/requests` is a separate Conference Manager read. It requires both `conference_manager` and `request:manage`, derives the active Tenant from the Principal and passes that Tenant ID to a range-bounded repository query. Tenant Admin alone is denied before persistence. The opaque continuation cursor contains no Tenant authority.
 
@@ -123,9 +123,9 @@ Client input selects only a supported transition name. It never supplies the nex
 | `confirm` | Submitted, In Review | Confirmed | Conference Manager / `request:manage` | Forbidden |
 | `reject` | Submitted, In Review | Rejected | Conference Manager / `request:manage` | Required |
 | `request_change` | Submitted, In Review | Change Requested | Conference Manager / `request:manage` | Required |
-| `cancel` | Submitted, In Review, Confirmed, Change Requested | Cancelled | Owning Employee / `request:cancel` | Forbidden |
+| `cancel` | Submitted, In Review, Confirmed, Change Requested | Cancelled | Owning Employee / `request:cancel`, or Conference Manager / `request:manage` inside the same Tenant | Forbidden |
 
-Unsupported transitions fail validation. Valid transitions from an ineligible current state return `409 REQUEST_STATE_CONFLICT`.
+Unsupported transitions fail validation. Valid transitions from an ineligible current state return `409 REQUEST_STATE_CONFLICT`. An authorized retry against an already `Cancelled` Request is an idempotent cancellation-reconciliation read: it returns the unchanged Request, performs any still-required Calendar cleanup and writes no duplicate successful transition evidence. Cancellation is a logical workflow transition only; the public Request API exposes no physical delete operation. A pending booking-change proposal is superseded audit-atomically when its Request is cancelled, while an applying proposal makes cancellation fail with a state conflict.
 
 Confirmed-booking proposals are a separate aggregate. The Requester/Organizer may propose changes only for their own confirmed Request; a Conference Manager with `request:manage` may propose for any confirmed Request in the active Tenant. Only a Conference Manager may approve or reject a pending proposal. Self-approval is allowed and the initiator/decider identities remain server-derived and auditable. No decision endpoint permits proposal editing.
 
