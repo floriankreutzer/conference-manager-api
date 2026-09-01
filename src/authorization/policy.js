@@ -21,6 +21,8 @@ export const PERMISSION = Object.freeze({
   REQUEST_READ: 'request:read',
   REQUEST_CANCEL: 'request:cancel',
   REQUEST_MANAGE: 'request:manage',
+  TENANT_ROOMS_BUSINESS_MANAGE: 'tenant:rooms:business:manage',
+  TENANT_CATALOGUE_MANAGE: 'tenant:catalogue:manage',
   TENANT_CONFIGURE: 'tenant:configure',
   TENANT_USERS_MANAGE: 'tenant:users:manage',
   TENANT_INTEGRATIONS_MANAGE: 'tenant:integrations:manage',
@@ -43,6 +45,8 @@ const ROLE_PERMISSIONS = Object.freeze({
   [TENANT_ROLE.CONFERENCE_MANAGER]: Object.freeze([
     PERMISSION.REQUEST_READ,
     PERMISSION.REQUEST_MANAGE,
+    PERMISSION.TENANT_ROOMS_BUSINESS_MANAGE,
+    PERMISSION.TENANT_CATALOGUE_MANAGE,
   ]),
   [TENANT_ROLE.TENANT_ADMIN]: Object.freeze([
     PERMISSION.TENANT_CONFIGURE,
@@ -108,6 +112,11 @@ function rolesAllowPermission(principal, permission, roles) {
   return principal.roles.some((role) => {
     return roles.includes(role) && ROLE_PERMISSIONS[role].includes(permission);
   });
+}
+
+function rolesForPermission(permission) {
+  if (!KNOWN_PERMISSIONS.has(permission)) deny('PERMISSION_NOT_AUTHORIZED');
+  return TENANT_ROLE_ORDER.filter((role) => ROLE_PERMISSIONS[role].includes(permission));
 }
 
 function requirePermission(principal, permission, roles) {
@@ -254,7 +263,24 @@ export function createAuthorizationPolicy() {
 
     requireTenantPermission(principal, tenantContext, permission) {
       assertTenantBinding(principal, tenantContext);
-      requirePermission(principal, permission, [TENANT_ROLE.TENANT_ADMIN]);
+      requirePermission(principal, permission, rolesForPermission(permission));
+      return true;
+    },
+
+    requireAnyTenantPermission(principal, tenantContext, permissions) {
+      assertPrincipalShape(principal);
+      assertTenantBinding(principal, tenantContext);
+      if (!Array.isArray(permissions) || permissions.length < 1 || permissions.length > KNOWN_PERMISSIONS.size) {
+        throw new AuthorizationInputError('PERMISSION_SET_INVALID');
+      }
+      if (new Set(permissions).size !== permissions.length || permissions.some((permission) => !KNOWN_PERMISSIONS.has(permission))) {
+        throw new AuthorizationInputError('PERMISSION_SET_INVALID');
+      }
+      const allowed = permissions.some((permission) => (
+        principal.permissions.includes(permission)
+        && rolesAllowPermission(principal, permission, rolesForPermission(permission))
+      ));
+      if (!allowed) deny('PERMISSION_REQUIRED');
       return true;
     },
 
