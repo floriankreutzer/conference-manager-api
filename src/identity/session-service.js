@@ -20,6 +20,7 @@ import {
 
 const CSRF_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const DEFAULT_SESSION_TTL_SECONDS = 8 * 60 * 60;
+const CUSTOMER_SESSION_SECURITY_EPOCH = 'saas-3.6-role-policy-v1';
 
 export class SessionServiceError extends Error {
   constructor(code) {
@@ -30,7 +31,9 @@ export class SessionServiceError extends Error {
 }
 
 function tokenHash(token) {
-  return createHash('sha256').update(token, 'ascii').digest('hex');
+  return createHash('sha256')
+    .update(`customer-session:${CUSTOMER_SESSION_SECURITY_EPOCH}:${token}`, 'ascii')
+    .digest('hex');
 }
 
 function csrfToken(secret, sessionId) {
