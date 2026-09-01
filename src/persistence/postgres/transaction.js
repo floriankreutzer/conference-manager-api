@@ -6,12 +6,30 @@ const ISOLATION_RANK = new Map([
   ['REPEATABLE READ', 2],
   ['SERIALIZABLE', 3],
 ]);
+const TRANSACTION_INFRASTRUCTURE_PHASE = Object.freeze({
+  CONNECT: 'connect',
+  SETUP: 'setup',
+  COMMIT: 'commit',
+});
 const transactionContext = new AsyncLocalStorage();
 
 function beginStatement({ isolationLevel = 'READ COMMITTED', readOnly = false } = {}) {
   if (!ISOLATION_LEVELS.has(isolationLevel)) throw new TypeError('TRANSACTION_ISOLATION_INVALID');
   if (typeof readOnly !== 'boolean') throw new TypeError('TRANSACTION_READ_ONLY_INVALID');
   return `BEGIN ISOLATION LEVEL ${isolationLevel} ${readOnly ? 'READ ONLY' : 'READ WRITE'}`;
+}
+
+function normalizedInfrastructureErrorMapper(value) {
+  if (value === undefined) return null;
+  if (typeof value !== 'function') throw new TypeError('TRANSACTION_INFRASTRUCTURE_ERROR_MAPPER_INVALID');
+  return value;
+}
+
+function infrastructureError(error, mapper, phase) {
+  if (!mapper) return error;
+  const mapped = mapper(error, phase);
+  if (!(mapped instanceof Error)) throw new TypeError('TRANSACTION_INFRASTRUCTURE_ERROR_MAPPER_RESULT_INVALID');
+  return mapped;
 }
 
 export async function withPostgresTransaction(pool, work, options = {}) {
@@ -22,6 +40,7 @@ export async function withPostgresTransaction(pool, work, options = {}) {
     isolationLevel: options.isolationLevel || 'READ COMMITTED',
     readOnly: options.readOnly || false,
   });
+  const mapInfrastructureError = normalizedInfrastructureErrorMapper(options.mapInfrastructureError);
   beginStatement(requested);
   const active = transactionContext.getStore();
   if (active?.pool === pool) {
@@ -32,19 +51,35 @@ export async function withPostgresTransaction(pool, work, options = {}) {
     return work(active.client);
   }
 
-  const client = await pool.connect();
+  let client;
+  try {
+    client = await pool.connect();
+  } catch (error) {
+    throw infrastructureError(error, mapInfrastructureError, TRANSACTION_INFRASTRUCTURE_PHASE.CONNECT);
+  }
+
   let committed = false;
   try {
-    await client.query(beginStatement(requested));
-    await client.query("SET LOCAL TIME ZONE 'UTC'");
+    try {
+      await client.query(beginStatement(requested));
+      await client.query("SET LOCAL TIME ZONE 'UTC'");
+    } catch (error) {
+      throw infrastructureError(error, mapInfrastructureError, TRANSACTION_INFRASTRUCTURE_PHASE.SETUP);
+    }
+
     const result = await transactionContext.run(Object.freeze({
       pool,
       client,
       isolationLevel: requested.isolationLevel,
       readOnly: requested.readOnly,
     }), () => work(client));
-    await client.query('COMMIT');
-    committed = true;
+
+    try {
+      await client.query('COMMIT');
+      committed = true;
+    } catch (error) {
+      throw infrastructureError(error, mapInfrastructureError, TRANSACTION_INFRASTRUCTURE_PHASE.COMMIT);
+    }
     return result;
   } finally {
     if (!committed) {
