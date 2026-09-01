@@ -17,6 +17,7 @@ import {
 } from '../src/persistence/postgres/pool.js';
 import { createPostgresSessionRepository } from '../src/persistence/postgres/session-repository.js';
 import { migrateUp, rollbackLatest } from './support/db-migrations.js';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_ID = '92929292-9292-4292-8292-929292929292';
 const USER_ID = '93939393-9393-4393-8393-939393939393';
@@ -51,6 +52,7 @@ async function clean(pool) {
   } finally {
     await pool.query('ALTER TABLE audit_events ENABLE TRIGGER audit_events_append_only');
   }
+  await removeSaas2TenantAdministrationFixtures(pool, [TENANT_ID]);
   await pool.query('DELETE FROM users WHERE tenant_id = $1', [TENANT_ID]);
   await pool.query('DELETE FROM tenants WHERE id = $1', [TENANT_ID]);
 }
