@@ -107,7 +107,7 @@ export function createTenantCatalogueService({
       authorizationPolicy.requireTenantPermission(
         principal,
         tenantContext,
-        PERMISSION.TENANT_CONFIGURE,
+        PERMISSION.TENANT_CATALOGUE_MANAGE,
       );
     } catch (error) {
       if (
