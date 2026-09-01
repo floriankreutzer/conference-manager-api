@@ -541,8 +541,31 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 33;/.test(pool)) {
-  throw new Error('Runtime schema readiness must require Platform operations migration version 33.');
+if (!/export const CURRENT_SCHEMA_VERSION = 34;/.test(pool)) {
+  throw new Error('Runtime schema readiness must require the session-epoch revocation migration version 34.');
+}
+const sessionEpochMigration = await readFile(
+  'migrations/034_customer_session_epoch_revocation.up.sql',
+  'utf8',
+);
+for (const required of [
+  'UPDATE sessions',
+  'SET revoked_at = GREATEST(issued_at, clock_timestamp())',
+  'WHERE revoked_at IS NULL',
+]) {
+  if (!sessionEpochMigration.includes(required)) {
+    throw new Error(`Customer session epoch migration is missing ${required}.`);
+  }
+}
+if (/\b(?:BEGIN|COMMIT)\s*;|\bschema_migrations\b/i.test(sessionEpochMigration)) {
+  throw new Error('Customer session epoch migration must leave transactions and bookkeeping to the migration runner.');
+}
+const sessionEpochRollback = await readFile(
+  'migrations/034_customer_session_epoch_revocation.down.sql',
+  'utf8',
+);
+if (/\b(?:UPDATE|INSERT INTO|DELETE FROM)\s+sessions\b/i.test(sessionEpochRollback)) {
+  throw new Error('Customer session epoch rollback must never restore or rewrite revoked Customer sessions.');
 }
 const requestCompositionMigration = await readFile(
   'migrations/027_request_composition_v2.up.sql',

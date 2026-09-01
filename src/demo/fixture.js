@@ -345,7 +345,7 @@ const fixture = {
       id: '32000000-0000-4000-8000-000000000001',
       environment: 'test',
       deploymentReference: 'shared-demo-eu-v1',
-      schemaVersion: 33,
+      schemaVersion: 34,
       requiredDependenciesState: 'ready',
       optionalDependenciesState: 'degraded',
     },

@@ -125,6 +125,58 @@ test('role and permission must both authorize the capability', () => {
   );
 });
 
+test('booking-change policy separates owner, manager, Tenant Admin and Tenant scope', () => {
+  const policy = createAuthorizationPolicy();
+  const employee = principal({
+    userId: USER_B,
+    permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_CANCEL],
+  });
+  const tenantAdmin = principal({
+    userId: USER_B,
+    roles: [TENANT_ROLE.EMPLOYEE, TENANT_ROLE.TENANT_ADMIN],
+    permissions: [
+      PERMISSION.REQUEST_READ,
+      PERMISSION.REQUEST_CANCEL,
+      PERMISSION.TENANT_CONFIGURE,
+    ],
+  });
+  const manager = principal({
+    roles: [TENANT_ROLE.CONFERENCE_MANAGER],
+    permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_MANAGE],
+  });
+  const confirmed = request({ status: REQUEST_STATUS.CONFIRMED });
+
+  assert.throws(
+    () => policy.authorizeBookingChangePropose(employee, context(), confirmed),
+    isConcealed,
+  );
+  assert.throws(
+    () => policy.authorizeBookingChangePropose(tenantAdmin, context(), confirmed),
+    isConcealed,
+  );
+  assert.equal(
+    policy.authorizeBookingChangePropose(manager, context(), confirmed),
+    true,
+  );
+  assert.equal(
+    policy.authorizeBookingChangeDecision(manager, context(), confirmed),
+    true,
+  );
+
+  const crossTenant = request({
+    tenantId: TENANT_B,
+    status: REQUEST_STATUS.CONFIRMED,
+  });
+  assert.throws(
+    () => policy.authorizeBookingChangePropose(manager, context(), crossTenant),
+    isConcealed,
+  );
+  assert.throws(
+    () => policy.authorizeBookingChangeDecision(manager, context(), crossTenant),
+    isConcealed,
+  );
+});
+
 test('conference-manager workflow transitions are explicit and state-aware', () => {
   const policy = createAuthorizationPolicy();
   const manager = principal({

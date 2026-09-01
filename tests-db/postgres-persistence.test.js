@@ -187,6 +187,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 31, name: 'platform_operations_core' },
       { version: 32, name: 'platform_operations_projections' },
       { version: 33, name: 'platform_metering_runtime' },
+      { version: 34, name: 'customer_session_epoch_revocation' },
     ]);
   });
 

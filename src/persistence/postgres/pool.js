@@ -13,7 +13,8 @@ const { Pool } = pg;
 // history, Room pricing, and full confirmed-booking draft/snapshot proposals.
 // Schema 28 adds bounded bulk-transfer receipts. Schemas 29-33 establish the
 // independent Platform security, operations, metering and runtime stores.
-export const CURRENT_SCHEMA_VERSION = 33;
+// Schema 34 irreversibly revokes pre-authorization-epoch Customer sessions.
+export const CURRENT_SCHEMA_VERSION = 34;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

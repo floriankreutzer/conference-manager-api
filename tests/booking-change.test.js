@@ -7,6 +7,7 @@ import {
   BookingChangeConflictError,
   BookingChangeDependencyError,
 } from '../src/application/booking-change-errors.js';
+import { AuthorizationDeniedError } from '../src/authorization/errors.js';
 import { createAuthorizationPolicy, tenantAuthorizationSnapshot } from '../src/authorization/policy.js';
 import { normalizeBookingChange } from '../src/domain/booking-change.js';
 import {
@@ -249,8 +250,15 @@ function service({
       requestRepository: { async findByTenantIdAndId() { return current; } },
       authorizationPolicy: createAuthorizationPolicy(),
       auditService: {
-        createEvent: (event) => Object.freeze(event),
+        createEvent({ principal: actor, tenantContext, ...event }) {
+          return Object.freeze({
+            tenantId: tenantContext.tenantId,
+            actorUserId: actor.userId,
+            ...event,
+          });
+        },
         async record(event) { calls.push(['audit', event]); },
+        async recordAuthorizationDenied(event) { calls.push(['denied', event]); },
         ...audit,
       },
       bookingServiceFactory: {
@@ -431,6 +439,155 @@ test('booking-change projection fails closed for corrupt or cross-object persist
       requestId: 'CR-68',
     }), /BOOKING_CHANGE_PROJECTION_INVALID/);
   }
+});
+
+test('booking-change authorization denials are concealed, minimized and auditable', async () => {
+  const tenantContext = { tenantId: TENANT_ID, status: 'active' };
+  const employee = principal(MANAGER_ID, ['employee']);
+  const tenantAdmin = principal(MANAGER_ID, ['employee', 'tenant_admin']);
+  const manager = principal(MANAGER_ID, ['conference_manager']);
+
+  for (const deniedPrincipal of [employee, tenantAdmin]) {
+    const denied = service();
+    await assert.rejects(denied.instance.propose({
+      principal: deniedPrincipal,
+      tenantContext,
+      correlationId: CORRELATION_ID,
+      requestId: 'CR-68',
+      schemaVersion: 2,
+      expectedVersion: 1,
+      proposed: proposed(),
+    }), (error) => error instanceof AuthorizationDeniedError && error.conceal === true);
+    assert.deepEqual(denied.calls, [[
+      'denied',
+      {
+        principal: deniedPrincipal,
+        tenantContext,
+        correlationId: CORRELATION_ID,
+        targetType: 'request',
+        targetId: 'CR-68',
+        metadata: { operation: 'booking_change_propose' },
+      },
+    ]]);
+  }
+
+  for (const operation of ['propose', 'approve']) {
+    const crossTenant = service({
+      current: request({ tenantId: '66666666-6666-4666-8666-666666666666' }),
+    });
+    const input = {
+      principal: manager,
+      tenantContext,
+      correlationId: CORRELATION_ID,
+      requestId: 'CR-68',
+      ...(operation === 'propose'
+        ? { schemaVersion: 2, expectedVersion: 1, proposed: proposed() }
+        : { changeId: CHANGE_ID }),
+    };
+    await assert.rejects(
+      crossTenant.instance[operation](input),
+      (error) => error instanceof AuthorizationDeniedError && error.conceal === true,
+    );
+    assert.equal(crossTenant.calls.length, 1);
+    assert.equal(crossTenant.calls[0][0], 'denied');
+    assert.equal(
+      crossTenant.calls[0][1].metadata.operation,
+      operation === 'propose' ? 'booking_change_propose' : 'booking_change_decision',
+    );
+    assert.equal('changeId' in crossTenant.calls[0][1].metadata, false);
+  }
+
+  const crossTenantChangeId = service({
+    repository: {
+      async beginApproval(values) {
+        return { status: 'conflict', values };
+      },
+    },
+  });
+  await assert.rejects(
+    crossTenantChangeId.instance.approve({
+      principal: manager,
+      tenantContext,
+      correlationId: CORRELATION_ID,
+      requestId: 'CR-68',
+      changeId: '77777777-7777-4777-8777-777777777777',
+    }),
+    BookingChangeConflictError,
+  );
+  assert.equal(crossTenantChangeId.calls.length, 1);
+  assert.deepEqual(crossTenantChangeId.calls[0], [
+    'denied',
+    {
+      principal: manager,
+      tenantContext,
+      correlationId: CORRELATION_ID,
+      targetType: 'request',
+      targetId: 'CR-68',
+      metadata: { operation: 'booking_change_decision' },
+    },
+  ]);
+});
+
+test('same Conference Manager may propose and approve with attributed audit evidence', async () => {
+  const manager = principal(MANAGER_ID, ['conference_manager']);
+  const tenantContext = { tenantId: TENANT_ID, status: 'active' };
+  const { instance, calls } = service();
+
+  const pending = await instance.propose({
+    principal: manager,
+    tenantContext,
+    correlationId: CORRELATION_ID,
+    requestId: 'CR-68',
+    schemaVersion: 2,
+    expectedVersion: 1,
+    proposed: proposed(),
+  });
+  assert.equal(pending.change.status, 'pending');
+
+  const applied = await instance.approve({
+    principal: manager,
+    tenantContext,
+    correlationId: CORRELATION_ID,
+    requestId: 'CR-68',
+    changeId: CHANGE_ID,
+  });
+  assert.equal(applied.change.status, 'applied');
+
+  const proposal = calls.find(([operation]) => operation === 'propose')[1];
+  const approval = calls.find(([operation]) => operation === 'begin')[1];
+  assert.equal(proposal.initiatorUserId, MANAGER_ID);
+  assert.equal(approval.deciderUserId, MANAGER_ID);
+  assert.equal(proposal.initiatorUserId, approval.deciderUserId);
+
+  const evidence = [
+    proposal.auditEvent,
+    approval.auditEvent,
+    calls.find(([operation]) => operation === 'finish')[1].auditEvent,
+  ];
+  assert.deepEqual(
+    evidence.map((event) => ({
+      tenantId: event.tenantId,
+      actorUserId: event.actorUserId,
+      correlationId: event.correlationId,
+      action: event.action,
+      targetType: event.targetType,
+      targetId: event.targetId,
+      outcome: event.outcome,
+      retentionClass: event.retentionClass,
+      operation: event.metadata.operation,
+    })),
+    ['propose', 'approve_begin', 'approve_applied'].map((operation) => ({
+      tenantId: TENANT_ID,
+      actorUserId: MANAGER_ID,
+      correlationId: CORRELATION_ID,
+      action: 'request.booking_change',
+      targetType: 'request',
+      targetId: 'CR-68',
+      outcome: 'success',
+      retentionClass: 'business',
+      operation,
+    })),
+  );
 });
 
 test('direct-applied v2 proposal returns one exact authoritative projection and a bounded Request ref', async () => {
