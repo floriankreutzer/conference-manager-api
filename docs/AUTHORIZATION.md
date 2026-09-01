@@ -2,25 +2,30 @@
 
 ## Authority
 
-Root `AGENTS.md` remains the canonical repository instruction source. This document defines the SaaS 0 authorization contract implemented by issue #51 and extended by issue #52 for tenant audit reads.
+Root `AGENTS.md` remains the canonical repository instruction source. This document defines the server-enforced Tenant authorization contract and its SaaS 3.6 role/ownership baseline.
 
 Authentication proves the internal Principal. Tenant resolution proves the internal Tenant context. Authorization is a separate deny-by-default decision performed after both steps.
 
-The browser never supplies authoritative Tenant, User, role, permission, owner, workflow status, target status or audit scope values.
+The browser never supplies authoritative Tenant, User, role, permission, owner, workflow status, target status, configuration ownership or audit scope values.
 
 ## Tenant role model
 
-The current Tenant roles are:
+Every active Customer User has the implicit `employee` baseline. Employee is reconstructed server-side and is not stored as a removable elevated role assignment.
 
-| Role | Purpose | Request scope |
-| --- | --- | --- |
-| `employee` | Employee self-service | Own requests only |
-| `conference_manager` | Conference operations | Requests inside the authenticated Tenant |
-| `tenant_admin` | Tenant configuration, User/role administration, integrations and authorized Tenant audit reads | No implicit Conference Manager request access |
+The independent elevated Tenant roles are:
+
+- `conference_manager`;
+- `tenant_admin`.
+
+A User may hold neither, either or both elevated roles. A dual-role Principal is the exact permission union. Neither elevated role inherits the other.
 
 `platform_admin` is explicitly outside the Tenant authorization model. Supplying it as a Tenant session role is treated as an unknown role and fails closed.
 
-The current SaaS 0 manager scope is the authenticated internal Tenant. A future requirement for site/location/department assignment requires an explicit server-side scope model and must not be approximated from browser input or provider claims.
+| Role | Purpose | Scope |
+| --- | --- | --- |
+| `employee` | Customer self-service baseline | Own Requests |
+| `conference_manager` | Conference operations and business configuration | Tenant Requests, Room business data, Tenant Catalogue and Room prices |
+| `tenant_admin` | Technical/Tenant administration | Organization/policy/cost allocation, Sites/technical Room assignment, Users/roles, provider integrations/mappings and Tenant audit |
 
 ## Permission matrix
 
@@ -33,44 +38,59 @@ A capability is granted only when both conditions are true:
 
 | Permission | Employee | Conference Manager | Tenant Admin |
 | --- | ---: | ---: | ---: |
-| `request:read` | Own | Tenant | No |
-| `request:cancel` | Own eligible requests | No | No |
+| `request:read` | Own | Tenant through Conference Manager scope | Own through implicit Employee baseline |
+| `request:cancel` | Own eligible Requests | Own through implicit Employee baseline | Own through implicit Employee baseline |
 | `request:manage` | No | Tenant workflow | No |
-| `tenant:configure` | No | No | Tenant |
-| `tenant:users:manage` | No | No | Tenant |
-| `tenant:integrations:manage` | No | No | Tenant |
+| `tenant:rooms:business:manage` | No | Tenant Room business fields | No |
+| `tenant:catalogue:manage` | No | Tenant Catalogue and authoritative Room prices | No |
+| `tenant:configure` | No | No | Tenant technical/business-policy configuration excluding Conference Manager-owned Catalogue/Room business fields |
+| `tenant:users:manage` | No | No | Tenant Users/elevated roles |
+| `tenant:integrations:manage` | No | No | Tenant provider integrations/mappings |
 | `tenant:audit:read` | No | No | Tenant audit only |
 
-Roles do not automatically grant permissions, and a permission that is not valid for the assigned role does not grant access.
+Roles do not automatically grant arbitrary permissions, and a permission that is not valid for an assigned role does not grant access. `requireTenantPermission` derives allowed roles from the canonical role-to-permission mapping; it does not hard-code Tenant Admin as the owner of every Tenant permission.
 
-## Object-level request authorization
+## Configuration ownership
 
-Request persistence is always queried with the server-resolved internal `tenant_id` plus request ID. The API never performs an unscoped global request lookup and filters afterwards.
+SaaS 3.6 separates business configuration from technical/provider administration.
 
-Employee request access additionally requires `request.requester_user_id === principal.userId`.
+Conference Manager owns:
 
-Request creation and resubmission use the existing Employee `request:read` capability. Resubmission
-additionally requires requester ownership, `Change Requested` status and the expected Request
-version; a Conference Manager cannot use management scope to impersonate the owning Employee.
+- Room business fields: display name, capacity, active state, floor, equipment/accessibility, applicable Service/Catering IDs and local presentation assets;
+- Tenant Catalogue: Services, equipment catalogue, catering items/packages/variants;
+- authoritative Room prices.
 
-A missing request, a request from another Tenant and a same-Tenant request owned by another Employee are exposed to an Employee as the same `404 NOT_FOUND` response. This prevents object-existence disclosure through BOLA/IDOR probing.
+Tenant Admin owns:
 
-A Conference Manager with `request:read` may read requests belonging to another Employee only inside the authenticated Tenant.
+- Site configuration and Room-to-Site technical assignment;
+- Organization, Booking Policy and Cost Allocation configuration;
+- Tenant User/elevated-role administration;
+- provider connection, discovery/import/resync and provider Room identity/resource mapping;
+- Tenant audit administration.
 
-Request history applies exactly the same object decision as the current Request read. A history
-route is not an alternate existence oracle for another Employee or Tenant.
+The Locations application service classifies every proposed mutation against the persisted current Tenant snapshot. A technical-only mutation requires `tenant:configure`; a Room-business-only mutation requires `tenant:rooms:business:manage`; a mixed mutation requires both capabilities and therefore a dual-role Principal. The browser cannot self-classify a mutation into a weaker authorization path.
 
-Tenant Admin has no implicit request-read or Conference Manager workflow capability.
+Catalogue mutation requires `tenant:catalogue:manage`; Tenant Admin alone is denied.
 
-`GET /api/v1/application/reports/requests` is a separate Conference Manager read. It requires both
-the `conference_manager` role and `request:manage`, derives the active Tenant from the Principal and
-passes that Tenant ID to a range-bounded repository query. An Employee, a Tenant Admin, or a
-Tenant Admin carrying an anomalous `request:manage` permission is denied before persistence. The
-opaque continuation cursor contains no Tenant authority and cannot change the authenticated scope.
+## Object-level Request authorization
+
+Request persistence is always queried with the server-resolved internal `tenant_id` plus Request ID. The API never performs an unscoped global Request lookup and filters afterwards.
+
+Employee Request access additionally requires `request.requester_user_id === principal.userId`.
+
+Request creation and resubmission use the Employee `request:read` capability. Resubmission additionally requires requester ownership, `Change Requested` status and the expected Request version; a Conference Manager cannot use management scope to impersonate the owning Employee.
+
+A missing Request, a Request from another Tenant and a same-Tenant Request owned by another Employee are exposed to an Employee as the same `404 NOT_FOUND` response. This prevents object-existence disclosure through BOLA/IDOR probing.
+
+A Conference Manager with `request:read` may read Requests belonging to another Employee only inside the authenticated Tenant. Request history applies the same object decision as the current Request read.
+
+Tenant Admin has no implicit Conference Manager workflow capability. Its own-Request access comes only from the implicit Employee baseline.
+
+`GET /api/v1/application/reports/requests` is a separate Conference Manager read. It requires both `conference_manager` and `request:manage`, derives the active Tenant from the Principal and passes that Tenant ID to a range-bounded repository query. Tenant Admin alone is denied before persistence. The opaque continuation cursor contains no Tenant authority.
 
 ## Tenant audit-read authorization
 
-`GET /api/v1/audit` is a separate Tenant Admin capability. It requires:
+`GET /api/v1/audit` requires:
 
 - authenticated internal Principal;
 - known Tenant context derived from `principal.tenantId`;
@@ -82,9 +102,7 @@ The endpoint accepts no Tenant selector. The audit repository receives only the 
 
 Before events are exposed, the audit service verifies the authenticated Tenant's integrity chain. A verification failure fails closed rather than returning unverified data.
 
-Platform/operator audit remains a separate authorization domain. `tenant_admin` cannot become a platform auditor through this permission.
-
-Successful audit reads and denied Tenant-audit probes with a valid Tenant/actor context create their own correlated security audit events.
+Platform/operator audit remains a separate authorization domain. `tenant_admin` cannot become a Platform auditor through this permission.
 
 ## Request workflow authorization
 
@@ -109,106 +127,49 @@ Client input selects only a supported transition name. It never supplies the nex
 
 Unsupported transitions fail validation. Valid transitions from an ineligible current state return `409 REQUEST_STATE_CONFLICT`.
 
-Confirmed-booking proposals are a separate aggregate and never reuse `request_change`, which remains the pre-confirmation manager transition above. The Requester/Organizer may propose changes only for their own confirmed Request; a Conference Manager with `request:manage` may propose for any confirmed Request in the active Tenant. Only a Conference Manager may approve or reject a pending composition proposal. Self-approval is allowed and the initiator/decider identities remain server-derived and auditable. No decision endpoint permits proposal editing.
+Confirmed-booking proposals are a separate aggregate. The Requester/Organizer may propose changes only for their own confirmed Request; a Conference Manager with `request:manage` may propose for any confirmed Request in the active Tenant. Only a Conference Manager may approve or reject a pending proposal. Self-approval is allowed and the initiator/decider identities remain server-derived and auditable. No decision endpoint permits proposal editing.
 
-Every schema-v2 proposal contains the complete desired composition and expected Request version.
-Participant-count-only changes with unchanged configuration revisions may apply immediately after
-current authority evaluation; Room, schedule, other composition changes and revision-only refreshes
-remain pending manager decision. Neither initiator nor decider can submit prices,
-policy/allocation results, target workflow state or another Tenant's configuration as authority.
+Neither initiator nor decider can submit prices, policy/allocation results, target workflow state or another Tenant's configuration as authority.
 
-Reject/change-request reasons are trimmed server-side, limited to 1-1000 characters and reject control characters. Reasons on transitions that do not use a reason are rejected instead of ignored.
+## Session invalidation and concurrency
 
-## Concurrency, persistence and audit evidence
+Role administration persists only elevated role rows. Production/JIT and Demo identity resolution prepend the Employee baseline and derive permissions from the canonical policy.
 
-Migration 003 constrains persisted request status values and introduces `status_reason` plus `status_changed_at`.
+Every real role change increments `users.security_version` in the same PostgreSQL transaction as the role mutation and success audit event. Sessions snapshot that version. A stale session therefore fails server resolution immediately after a role/security change; browser state cannot keep prior authority alive.
 
-The application service first loads a Tenant-scoped request and authorizes the transition against that exact server-side object state. The PostgreSQL update then includes all three of:
+Request and settings writes use optimistic revisions and Tenant-scoped persistence locks where required. Authorization is revalidated against authoritative persisted state before committing. A stale concurrent mutation fails closed rather than overwriting newer authority/state.
 
-- internal `tenant_id`;
-- request ID;
-- previously authorized current status.
+Database constraints and immutable/audit triggers provide defense in depth; they do not replace application authorization.
 
-If another transaction changed the workflow state between read and write, the update affects no row and the API returns `409 REQUEST_STATE_CONFLICT`. It does not silently overwrite the newer state.
+## HTTP and CSRF contracts
 
-Request status values and reason/status combinations are additionally constrained in PostgreSQL as defense in depth. Database constraints do not replace the application authorization policy.
+Mutating cookie-authenticated routes require the existing session-bound CSRF token. Request bodies are exact schemas and do not accept Tenant/role/permission authority fields.
 
-For a successful Request transition, the application constructs the audit event from the server Principal, Tenant context, current Request, authorized transition decision and request correlation ID. PostgreSQL commits that success event in the same transaction as the Request mutation. Audit append failure prevents the transition from committing.
+Public response contracts deliberately minimize internal Tenant/provider identity and credential data. Historical configuration/Request snapshots are presentation/evidence facts and do not become write authority.
 
-Authorization denials, validation failures and concurrency failures that produce no successful Request mutation are recorded as separate correlated failure/denial events where a valid Tenant/actor context exists.
-
-## HTTP contracts
-
-`GET /api/v1/requests/{requestId}` requires:
-
-- authenticated server-side Principal;
-- active Tenant context;
-- recognized role/permission set;
-- `request:read` plus the applicable object scope.
-
-`POST /api/v1/requests/{requestId}/transitions` additionally requires a valid session-bound CSRF token and an exact JSON body:
-
-```json
-{
-  "transition": "confirm"
-}
-```
-
-or, only for a transition that requires it:
-
-```json
-{
-  "transition": "reject",
-  "reason": "No suitable room is available."
-}
-```
-
-Fields such as `tenantId`, `requesterUserId`, `owner`, `role`, `permission`, `status` or `nextStatus` are not part of the schema and are rejected.
-
-The public Request response deliberately omits internal Tenant ownership and requester User ID. A
-v2 response exposes immutable composition, pricing, configuration-revision, policy and allocation
-facts for presentation; these historical facts do not become write authority. A legacy v1 response
-uses explicit `null` for those unavailable facts.
-
-`GET /api/v1/requests/{requestId}/history` requires the same `request:read` and object scope and
-returns bounded immutable revisions. `POST /api/v1/application/requests` creates a complete v2
-Request for an Employee. `POST /api/v1/application/requests/{requestId}/resubmissions` requires the
-owning Employee, CSRF, a complete v2 draft and `expectedVersion`.
-
-`GET /api/v1/application/reports/requests` requires Conference Manager `request:manage` and returns
-bounded cursor pages of the same public Request representation for the authenticated Tenant. It
-does not grant Tenant Admin an implicit Request capability.
-
-`GET /api/v1/tenant/presentation` is such an explicit minimized contract. Every recognized
-authenticated Tenant role may read it through `authorizeTenantApplicationRead`; the server derives
-Tenant scope from the Principal and returns no internal Tenant ID, business registration data or raw
-managed reference. Tenant Admin plus `tenant:configure` remains mandatory for Organization
-administration reads, history and mutations.
-
-`GET /api/v1/audit` is read-only, accepts only bounded pagination, and returns presentation-safe events for the authenticated Tenant after `tenant:audit:read` authorization and integrity verification.
+`GET /api/v1/tenant/presentation` is an explicit minimized contract readable by a recognized authenticated Tenant role. Tenant scope is server-derived. Tenant Admin plus `tenant:configure` remains mandatory for Organization administration.
 
 ## Audit boundary
 
-Issue #52 implements server-generated Tenant audit events for the currently supported session, authorization and Request workflow paths. Audit actor/Tenant/time/outcome values are not accepted from browser input.
+Audit actor/Tenant/time/outcome values are server-generated. Tenant-scoped successful, failed and denied privileged operations create correlated evidence where a valid authenticated context exists. Audit writes required by a state mutation commit atomically with that mutation.
 
-The audit action taxonomy also reserves identifiers for later Tenant/integration/calendar owning issues. A reserved action name does not imply that the corresponding future workflow is already implemented.
-
-See `docs/AUDIT.md` for the event taxonomy, data-minimization rules, append-only persistence and integrity-chain limitations.
+See `docs/AUDIT.md` for taxonomy, minimization, append-only persistence and integrity-chain rules.
 
 ## Required tests
 
 Changes to this policy require, as applicable:
 
-- full role/permission matrix tests;
+- full Employee/Conference Manager/Tenant Admin/dual-role matrix tests;
 - unknown-role/permission negative tests;
-- Employee owner/non-owner tests;
-- Conference Manager same-Tenant/cross-Tenant tests;
-- Conference Manager report range/cursor completeness and Tenant Admin separation tests;
+- Employee owner/non-owner and cancellation tests;
+- Conference Manager same-Tenant/cross-Tenant Request tests;
 - Tenant Admin separation tests;
+- Room-business versus technical Location field-ownership tests, including mixed dual-role writes;
+- Catalogue ownership tests that deny Employee, Tenant Admin-only and cross-Tenant mutation;
 - Tenant audit-read permission and cross-Tenant isolation tests;
-- every privileged workflow transition;
-- malformed/manipulated ID and body tests;
+- every privileged workflow transition, including self-approval semantics;
+- malformed/manipulated ID and exact-body tests;
 - CSRF tests for state changes;
-- stale/concurrent workflow-state tests;
-- PostgreSQL Tenant-scoping and constraint tests;
-- audit denial/success/failure correlation and integrity verification tests.
+- stale/concurrent workflow-state and configuration tests;
+- PostgreSQL Tenant-scoping/constraint/audit-atomic tests;
+- Demo persona parity tests proving the derived dual-role union without introducing a new persisted role.
