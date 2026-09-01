@@ -64,7 +64,7 @@ A successful settings mutation is one PostgreSQL transaction containing:
 5. the authoritative domain mutation;
 6. increment of only the owning aggregate revision;
 7. append of the required server-generated audit event with correlation ID and bounded previous/new summary;
-7. commit.
+8. commit.
 
 An audit append failure rolls the domain mutation and revision increment back. A conflict or validation failure does not create success evidence.
 

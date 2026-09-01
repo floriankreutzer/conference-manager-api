@@ -534,6 +534,63 @@ test('Tenant Locations persistence is revisioned, atomic, isolated and provider-
   assert.equal((await repository.current(TENANT_A)).revision, afterImport.revision);
 
   const rollbackRevision = afterImport.revision + 1;
+  let staleRollbackAuthorizations = 0;
+  const staleRollback = await repository.rollback({
+    tenantId: TENANT_A,
+    expectedRevision: afterImport.revision - 1,
+    nextRevision: afterImport.revision,
+    sourceRevision: 999_999,
+    changedAt: AT_5,
+    actorUserId: ADMIN_A,
+    assertAuthorizedTransition() {
+      staleRollbackAuthorizations += 1;
+      return true;
+    },
+    auditEvent: locationAudit({
+      occurredAt: AT_5,
+      operation: 'stale_rollback',
+      previousRevision: afterImport.revision - 1,
+      nextRevision: afterImport.revision,
+    }),
+  });
+  assert.deepEqual(staleRollback, {
+    status: 'conflict',
+    currentRevision: afterImport.revision,
+  });
+  assert.equal(staleRollbackAuthorizations, 0);
+
+  let rollbackAuthorizationDenials = 0;
+  await assert.rejects(
+    repository.rollback({
+      tenantId: TENANT_A,
+      expectedRevision: afterImport.revision,
+      nextRevision: rollbackRevision,
+      sourceRevision,
+      changedAt: AT_5,
+      actorUserId: ADMIN_A,
+      assertAuthorizedTransition() {
+        rollbackAuthorizationDenials += 1;
+        throw new Error('EXPECTED_ROLLBACK_AUTHORIZATION_DENIAL');
+      },
+      auditEvent: locationAudit({
+        occurredAt: AT_5,
+        operation: 'rollback_authorization_denied',
+        previousRevision: afterImport.revision,
+        nextRevision: rollbackRevision,
+      }),
+    }),
+    /EXPECTED_ROLLBACK_AUTHORIZATION_DENIAL/,
+  );
+  assert.equal(rollbackAuthorizationDenials, 1);
+  const afterDeniedRollback = await repository.current(TENANT_A);
+  assert.equal(afterDeniedRollback.revision, afterImport.revision);
+  assert.equal(
+    afterDeniedRollback.configuration.rooms.find(({ id }) => id === IMPORTED_ROOM).active,
+    true,
+  );
+  assert.equal(await repository.revision(TENANT_A, rollbackRevision), null);
+
+  let authorizedRollbackTransition = null;
   const rolledBack = await repository.rollback({
     tenantId: TENANT_A,
     expectedRevision: afterImport.revision,
@@ -541,7 +598,10 @@ test('Tenant Locations persistence is revisioned, atomic, isolated and provider-
     sourceRevision,
     changedAt: AT_5,
     actorUserId: ADMIN_A,
-    assertAuthorizedTransition: () => true,
+    assertAuthorizedTransition(current, proposed) {
+      authorizedRollbackTransition = { current, proposed };
+      return true;
+    },
     auditEvent: locationAudit({
       occurredAt: AT_5,
       operation: 'locations_rollback',
@@ -549,6 +609,14 @@ test('Tenant Locations persistence is revisioned, atomic, isolated and provider-
       nextRevision: rollbackRevision,
     }),
   });
+  assert.equal(
+    authorizedRollbackTransition.current.rooms.find(({ id }) => id === IMPORTED_ROOM).active,
+    true,
+  );
+  assert.equal(
+    authorizedRollbackTransition.proposed.rooms.find(({ id }) => id === IMPORTED_ROOM).active,
+    false,
+  );
   const retainedRoom = rolledBack.configuration.rooms.find(({ id }) => id === IMPORTED_ROOM);
   assert.equal(retainedRoom.active, false);
   const persistedRollback = await repository.revision(TENANT_A, rollbackRevision);

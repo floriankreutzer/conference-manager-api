@@ -62,6 +62,7 @@ function runtime({
   const calls = [];
   const permissionChecks = [];
   const authorizationDenials = [];
+  const committedAuditEvents = [];
   let commits = 0;
   let currentReads = 0;
   let revisionReads = 0;
@@ -91,6 +92,7 @@ function runtime({
       transitionAuthorizations += 1;
       args.assertAuthorizedTransition(configuration, args.configuration);
       commits += 1;
+      committedAuditEvents.push(args.auditEvent);
       return {
         revision: args.nextRevision,
         configuration: args.configuration,
@@ -107,12 +109,14 @@ function runtime({
       if (args.expectedRevision !== lockedRevision) {
         return { status: 'conflict', currentRevision: lockedRevision };
       }
+      const proposed = tenantLocationRollbackConfiguration(configuration, sourceConfiguration);
       transitionAuthorizations += 1;
-      args.assertAuthorizedTransition(configuration, sourceConfiguration);
+      args.assertAuthorizedTransition(configuration, proposed);
       commits += 1;
+      committedAuditEvents.push(args.auditEvent);
       return {
         revision: args.nextRevision,
-        configuration: sourceConfiguration,
+        configuration: proposed,
         providerContext: [],
       };
     },
@@ -135,6 +139,7 @@ function runtime({
   return {
     authorizationDenials,
     calls,
+    committedAuditEvents,
     commits: () => commits,
     currentReads: () => currentReads,
     permissionChecks,
@@ -148,6 +153,7 @@ function runtime({
     }),
   };
 }
+
 test('location normalization keeps provider authority outside the mutable contract', () => {
   const normalized = normalizeTenantLocations(locationConfiguration(), locationConfiguration());
   assert.equal(normalized.sites[0].timeZone, 'Europe/Berlin');
@@ -287,6 +293,125 @@ test('stale rollbacks conflict before loading or authorizing the historical tran
   assert.equal(context.transitionAuthorizations(), 0);
   assert.deepEqual(context.permissionChecks, [PERMISSION.TENANT_ROOMS_BUSINESS_MANAGE]);
   assert.deepEqual(context.authorizationDenials, []);
+});
+
+test('current rollback requiring technical authority aborts and records one denial', async () => {
+  const current = locationConfiguration();
+  current.sites[0] = { ...current.sites[0], name: 'Berlin Campus' };
+  const context = runtime({
+    revision: 7,
+    configuration: current,
+    sourceConfiguration: locationConfiguration(),
+    deniedPermissions: [PERMISSION.TENANT_CONFIGURE],
+  });
+  await assert.rejects(
+    context.service.rollback({
+      principal,
+      tenantContext,
+      correlationId: CORRELATION_ID,
+      schemaVersion: 1,
+      expectedRevision: 7,
+      sourceRevision: 1,
+    }),
+    AuthorizationDeniedError,
+  );
+  assert.equal(context.calls.length, 1);
+  assert.equal(context.commits(), 0);
+  assert.equal(context.transitionAuthorizations(), 1);
+  assert.equal(context.currentReads(), 0);
+  assert.equal(context.revisionReads(), 0);
+  assert.deepEqual(context.permissionChecks, [
+    PERMISSION.TENANT_ROOMS_BUSINESS_MANAGE,
+    PERMISSION.TENANT_CONFIGURE,
+  ]);
+  assert.equal(context.authorizationDenials.length, 1);
+  assert.equal(context.authorizationDenials[0].metadata.operation, 'rollback');
+  assert.deepEqual(context.committedAuditEvents, []);
+});
+
+test('rollback classifies retained post-snapshot Rooms from the derived target', async () => {
+  const source = locationConfiguration();
+  const current = locationConfiguration({
+    rooms: [
+      ...source.rooms,
+      { ...source.rooms[0], id: 'room-2', name: 'Room 2' },
+    ],
+  });
+  const context = runtime({
+    revision: 7,
+    configuration: current,
+    sourceConfiguration: source,
+    deniedPermissions: [PERMISSION.TENANT_CONFIGURE],
+  });
+  const result = await context.service.rollback({
+    principal,
+    tenantContext,
+    correlationId: CORRELATION_ID,
+    schemaVersion: 1,
+    expectedRevision: 7,
+    sourceRevision: 1,
+  });
+  assert.equal(result.revision, 8);
+  assert.deepEqual(result.configuration.rooms.map(({ id, active }) => ({ id, active })), [
+    { id: 'room-1', active: true },
+    { id: 'room-2', active: false },
+  ]);
+  assert.equal(context.calls.length, 1);
+  assert.equal(context.commits(), 1);
+  assert.equal(context.transitionAuthorizations(), 1);
+  assert.equal(context.currentReads(), 0);
+  assert.equal(context.revisionReads(), 0);
+  assert.equal(context.calls[0].sourceRevision, 1);
+  assert.deepEqual(context.permissionChecks, [
+    PERMISSION.TENANT_ROOMS_BUSINESS_MANAGE,
+    PERMISSION.TENANT_ROOMS_BUSINESS_MANAGE,
+  ]);
+  assert.deepEqual(context.authorizationDenials, []);
+  assert.equal(context.committedAuditEvents.length, 1);
+  assert.equal(
+    context.committedAuditEvents[0].metadata.operation,
+    'tenant_locations_rollback',
+  );
+  assert.equal(context.committedAuditEvents[0].metadata.sourceRevision, 1);
+});
+
+test('dual-role rollback authorizes the exact derived mixed transition', async () => {
+  const source = locationConfiguration();
+  const current = locationConfiguration();
+  current.sites[0] = { ...current.sites[0], name: 'Berlin Campus' };
+  current.rooms[0] = { ...current.rooms[0], name: 'Executive Room' };
+  const context = runtime({
+    revision: 7,
+    configuration: current,
+    sourceConfiguration: source,
+  });
+  const result = await context.service.rollback({
+    principal,
+    tenantContext,
+    correlationId: CORRELATION_ID,
+    schemaVersion: 1,
+    expectedRevision: 7,
+    sourceRevision: 1,
+  });
+  assert.equal(result.revision, 8);
+  assert.deepEqual(result.configuration, source);
+  assert.equal(context.calls.length, 1);
+  assert.equal(context.commits(), 1);
+  assert.equal(context.transitionAuthorizations(), 1);
+  assert.equal(context.currentReads(), 0);
+  assert.equal(context.revisionReads(), 0);
+  assert.equal(context.calls[0].sourceRevision, 1);
+  assert.deepEqual(context.permissionChecks, [
+    PERMISSION.TENANT_ROOMS_BUSINESS_MANAGE,
+    PERMISSION.TENANT_CONFIGURE,
+    PERMISSION.TENANT_ROOMS_BUSINESS_MANAGE,
+  ]);
+  assert.deepEqual(context.authorizationDenials, []);
+  assert.equal(context.committedAuditEvents.length, 1);
+  assert.equal(
+    context.committedAuditEvents[0].metadata.operation,
+    'tenant_locations_rollback',
+  );
 });
 
 test('provider context is read-only presentation data returned beside local configuration', async () => {
