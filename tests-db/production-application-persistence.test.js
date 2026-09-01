@@ -310,9 +310,20 @@ test('production application persistence is tenant-scoped and request create is 
     'UPDATE rooms SET active = FALSE WHERE tenant_id = $1 AND id = $2',
     [TENANT_A, ROOM_A],
   );
-  const inactiveCatalog = await applicationRepository.loadCatalog(TENANT_A);
-  assert.deepEqual(inactiveCatalog.sites, []);
-  assert.deepEqual(inactiveCatalog.rooms, []);
+  const inactiveSitesPage = await applicationRepository.loadCatalogPage({
+    tenantId: TENANT_A,
+    section: 'sites',
+    limit: 11,
+  });
+  const inactiveRoomsPage = await applicationRepository.loadCatalogPage({
+    tenantId: TENANT_A,
+    section: 'rooms',
+    limit: 11,
+  });
+  assert.equal(inactiveSitesPage.status, 'ready');
+  assert.deepEqual(inactiveSitesPage.entries, []);
+  assert.equal(inactiveRoomsPage.status, 'ready');
+  assert.deepEqual(inactiveRoomsPage.entries, []);
   assert.deepEqual(
     await requestRepository.findRoomContextByTenantIdAndRoomId(TENANT_A, ROOM_A),
     {
@@ -336,9 +347,13 @@ test('production application persistence is tenant-scoped and request create is 
     await requestRepository.findRoomContextByTenantIdAndRoomId(TENANT_B, ROOM_A),
     null,
   );
-  assert.deepEqual((await applicationRepository.loadCatalog(TENANT_B)).rooms.map(
-    (room) => room.id,
-  ), [ROOM_B]);
+  const tenantBRoomsPage = await applicationRepository.loadCatalogPage({
+    tenantId: TENANT_B,
+    section: 'rooms',
+    limit: 11,
+  });
+  assert.equal(tenantBRoomsPage.status, 'ready');
+  assert.deepEqual(tenantBRoomsPage.entries.map((room) => room.id), [ROOM_B]);
 
   await pool.query(
     'UPDATE sites SET active = TRUE, time_zone = $3 WHERE tenant_id = $1 AND id = $2',
