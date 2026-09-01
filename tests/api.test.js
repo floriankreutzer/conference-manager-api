@@ -162,6 +162,29 @@ function requestServiceFor(initialRecord) {
         if (!record || record.tenantId !== tenantId || record.id !== requestId) return null;
         return record;
       },
+      async findRoomContextByTenantIdAndRoomId(tenantId, roomId) {
+        if (
+          !record
+          || record.tenantId !== tenantId
+          || record.roomId !== roomId
+        ) return null;
+        return Object.freeze({
+          locationsRevision: 7,
+          room: Object.freeze({
+            id: roomId,
+            siteId: 'site-a',
+            name: 'Current Room A',
+            capacity: 12,
+            active: false,
+          }),
+          site: Object.freeze({
+            id: 'site-a',
+            name: 'Current Site A',
+            active: false,
+            timeZone: 'Europe/Berlin',
+          }),
+        });
+      },
       async listHistoryPageByTenantIdAndId(tenantId, requestId, { limit }) {
         if (!record || record.tenantId !== tenantId || record.id !== requestId) return [];
         return [{
@@ -592,6 +615,91 @@ test('employee request endpoint returns own object and conceals another employee
     const foreign = await request({ port, path: '/api/v1/requests/REQ-1' });
     assert.equal(foreign.statusCode, 404);
     assert.equal(foreign.body.error.code, 'NOT_FOUND');
+  });
+});
+
+test('request room-context route returns exact current presentation without making inactive Rooms selectable authority', async () => {
+  const baseOptions = {
+    config: testConfig(),
+    resolvePrincipal: async () => principal(),
+    loadTenant: async () => tenant(),
+    requestService: requestServiceFor(requestRecord({
+      schemaVersion: 2,
+      version: 7,
+      status: REQUEST_STATUS.CONFIRMED,
+    })),
+  };
+  await withServer(baseOptions, async ({ port, logs }) => {
+    const result = await request({ port, path: '/api/v1/requests/REQ-1/room-context' });
+    assert.equal(result.statusCode, 200);
+    assert.deepEqual(Object.keys(result.body).sort(), [
+      'currentRoomContext', 'requestId', 'requestRef', 'schemaVersion',
+    ]);
+    assert.equal(result.body.schemaVersion, 1);
+    assert.deepEqual(result.body.requestRef, {
+      id: 'REQ-1',
+      schemaVersion: 2,
+      version: 7,
+      status: REQUEST_STATUS.CONFIRMED,
+    });
+    assert.deepEqual(result.body.currentRoomContext, {
+      locationsRevision: 7,
+      room: {
+        id: 'room-a',
+        siteId: 'site-a',
+        name: 'Current Room A',
+        capacity: 12,
+        active: false,
+      },
+      site: {
+        id: 'site-a',
+        name: 'Current Site A',
+        active: false,
+        timeZone: 'Europe/Berlin',
+      },
+    });
+    assert.match(result.body.requestId, /^[0-9a-f-]{36}$/i);
+    assert.equal(JSON.stringify(result.body).includes('price'), false);
+    assert.equal(JSON.stringify(result.body).includes('provider'), false);
+    assert.equal(JSON.stringify(result.body).includes('selectable'), false);
+    assert.equal(JSON.parse(logs.at(-1)).route, 'request_room_context');
+
+    const injected = await request({
+      port,
+      path: `/api/v1/requests/REQ-1/room-context?tenantId=${OTHER_TENANT_ID}`,
+    });
+    assert.equal(injected.statusCode, 400);
+    assert.equal(injected.body.error.code, 'VALIDATION_FAILED');
+
+    const wrongMethod = await request({
+      port,
+      path: '/api/v1/requests/REQ-1/room-context',
+      method: 'POST',
+    });
+    assert.equal(wrongMethod.statusCode, 405);
+    assert.equal(wrongMethod.body.error.code, 'METHOD_NOT_ALLOWED');
+  });
+
+  const manager = principal({
+    roles: [TENANT_ROLE.CONFERENCE_MANAGER],
+    permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_MANAGE],
+  });
+  await withServer({
+    ...baseOptions,
+    resolvePrincipal: async () => manager,
+    requestService: requestServiceFor(requestRecord({ requesterUserId: OTHER_USER_ID })),
+  }, async ({ port }) => {
+    const result = await request({ port, path: '/api/v1/requests/REQ-1/room-context' });
+    assert.equal(result.statusCode, 200);
+  });
+
+  await withServer({
+    ...baseOptions,
+    requestService: requestServiceFor(requestRecord({ requesterUserId: OTHER_USER_ID })),
+  }, async ({ port }) => {
+    const result = await request({ port, path: '/api/v1/requests/REQ-1/room-context' });
+    assert.equal(result.statusCode, 404);
+    assert.equal(result.body.error.code, 'NOT_FOUND');
   });
 });
 

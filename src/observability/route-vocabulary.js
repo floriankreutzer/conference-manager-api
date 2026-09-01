@@ -66,6 +66,7 @@ export const TELEMETRY_ROUTE_KEYS = Object.freeze([
   'booking_change',
   'booking_change_decision',
   'request_history',
+  'request_room_context',
   'not_found',
   'invalid_request',
 ]);

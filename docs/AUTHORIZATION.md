@@ -82,7 +82,7 @@ Request creation and resubmission use the Employee `request:read` capability. Re
 
 A missing Request, a Request from another Tenant and a same-Tenant Request owned by another Employee are exposed to an Employee as the same `404 NOT_FOUND` response. This prevents object-existence disclosure through BOLA/IDOR probing.
 
-A Conference Manager with `request:read` may read Requests belonging to another Employee only inside the authenticated Tenant. Request history applies the same object decision as the current Request read. A Conference Manager with `request:manage` may cancel another Employee's eligible same-Tenant Request; cross-Tenant Requests remain concealed.
+A Conference Manager with `request:read` may read Requests belonging to another Employee only inside the authenticated Tenant. Request history and `GET /api/v1/requests/{requestId}/room-context` apply the same object decision as the current Request read. The Room-context lookup occurs only after that decision and uses the server-loaded Request `roomId`; Employee non-owner and cross-Tenant probes cannot select a Room identity. A Conference Manager with `request:manage` may cancel another Employee's eligible same-Tenant Request; cross-Tenant Requests remain concealed.
 
 Tenant Admin has no implicit Conference Manager workflow capability. Its own-Request read and cancellation access comes only from the implicit Employee baseline. Tenant Admin alone cannot cancel another Employee's Request.
 

@@ -22,6 +22,7 @@ import { createAuditHarness } from './support/audit-harness.js';
 const USER_A = '11111111-1111-4111-8111-111111111111';
 const USER_B = '44444444-4444-4444-8444-444444444444';
 const TENANT_A = '22222222-2222-4222-8222-222222222222';
+const TENANT_B = '33333333-3333-4333-8333-333333333333';
 const CORRELATION_ID = '77777777-7777-4777-8777-777777777777';
 
 function principal({ userId = USER_A, roles, permissions } = {}) {
@@ -54,10 +55,30 @@ function requestRecord(overrides = {}) {
   };
 }
 
-function fakeRepository(initial = requestRecord()) {
+function roomContextRecord() {
+  return Object.freeze({
+    locationsRevision: 7,
+    room: Object.freeze({
+      id: 'room-a',
+      siteId: 'site-a',
+      name: 'Current Room A',
+      capacity: 12,
+      active: false,
+    }),
+    site: Object.freeze({
+      id: 'site-a',
+      name: 'Current Site A',
+      active: false,
+      timeZone: 'Europe/Berlin',
+    }),
+  });
+}
+
+function fakeRepository(initial = requestRecord(), currentRoomContext = roomContextRecord()) {
   let current = initial;
   let forceConflict = false;
   let openBookingChangeStatus = null;
+  let roomContextLoads = 0;
   const committedAuditEvents = [];
   return {
     committedAuditEvents,
@@ -70,9 +91,21 @@ function fakeRepository(initial = requestRecord()) {
     get openBookingChangeStatus() {
       return openBookingChangeStatus;
     },
+    get roomContextLoads() {
+      return roomContextLoads;
+    },
     async findByTenantIdAndId(tenantId, requestId) {
       if (!current || current.tenantId !== tenantId || current.id !== requestId) return null;
       return current;
+    },
+    async findRoomContextByTenantIdAndRoomId(tenantId, roomId) {
+      roomContextLoads += 1;
+      if (
+        !current
+        || current.tenantId !== tenantId
+        || current.roomId !== roomId
+      ) return null;
+      return currentRoomContext;
     },
     async listHistoryPageByTenantIdAndId(tenantId, requestId, { limit }) {
       if (!current || current.tenantId !== tenantId || current.id !== requestId) return [];
@@ -212,6 +245,93 @@ test('request service returns employee-owned resources and audits concealed cros
   assert.equal(foreign.audit.events[0].action, AUDIT_ACTION.AUTHORIZATION_DENIED);
   assert.equal(foreign.audit.events[0].outcome, AUDIT_OUTCOME.DENIED);
   assert.equal(foreign.audit.events[0].correlationId, CORRELATION_ID);
+});
+
+test('request room context exposes an inactive current Room only after Request object authorization', async () => {
+  const repository = fakeRepository(requestRecord({ status: REQUEST_STATUS.CONFIRMED }));
+  const context = service(repository);
+  const result = await context.requestService.getRequestRoomContext({
+    principal: principal(),
+    tenantContext: { tenantId: TENANT_A },
+    requestId: 'REQ-1',
+    correlationId: CORRELATION_ID,
+  });
+
+  assert.deepEqual(result, {
+    schemaVersion: 1,
+    requestRef: {
+      id: 'REQ-1',
+      schemaVersion: 1,
+      version: 1,
+      status: REQUEST_STATUS.CONFIRMED,
+    },
+    currentRoomContext: roomContextRecord(),
+    requestId: CORRELATION_ID,
+  });
+  assert.equal(repository.roomContextLoads, 1);
+  assert.equal(context.audit.events.length, 0);
+});
+
+test('request room context preserves Manager scope and denies unauthorized probes before Locations lookup', async () => {
+  const managerRepository = fakeRepository(requestRecord({ requesterUserId: USER_B }));
+  const managerContext = service(managerRepository);
+  const manager = principal({
+    roles: [TENANT_ROLE.CONFERENCE_MANAGER],
+    permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_MANAGE],
+  });
+  assert.equal((await managerContext.requestService.getRequestRoomContext({
+    principal: manager,
+    tenantContext: { tenantId: TENANT_A },
+    requestId: 'REQ-1',
+    correlationId: CORRELATION_ID,
+  })).currentRoomContext.room.id, 'room-a');
+  assert.equal(managerRepository.roomContextLoads, 1);
+
+  for (const denied of [
+    {
+      caller: principal(),
+      record: requestRecord({ requesterUserId: USER_B }),
+    },
+    {
+      caller: principal({
+        roles: [TENANT_ROLE.TENANT_ADMIN],
+        permissions: [PERMISSION.TENANT_CONFIGURE],
+      }),
+      record: requestRecord({ requesterUserId: USER_B }),
+    },
+    {
+      caller: principal(),
+      record: requestRecord({ tenantId: TENANT_B }),
+    },
+  ]) {
+    const repository = fakeRepository(denied.record);
+    const context = service(repository);
+    await assert.rejects(context.requestService.getRequestRoomContext({
+      principal: denied.caller,
+      tenantContext: { tenantId: TENANT_A },
+      requestId: 'REQ-1',
+      correlationId: CORRELATION_ID,
+    }), AuthorizationDeniedError);
+    assert.equal(repository.roomContextLoads, 0);
+    assert.equal(context.audit.events.length, 1);
+    assert.equal(context.audit.events[0].action, AUDIT_ACTION.AUTHORIZATION_DENIED);
+    assert.deepEqual(context.audit.events[0].metadata, { operation: 'room_context' });
+    assert.equal(context.audit.events[0].targetId, 'REQ-1');
+  }
+});
+
+test('request room context returns null for a room-less legacy Request without consulting Locations', async () => {
+  const repository = fakeRepository(requestRecord({ roomId: null }), null);
+  const context = service(repository);
+  const result = await context.requestService.getRequestRoomContext({
+    principal: principal(),
+    tenantContext: { tenantId: TENANT_A },
+    requestId: 'REQ-1',
+    correlationId: CORRELATION_ID,
+  });
+
+  assert.equal(result.currentRoomContext, null);
+  assert.equal(repository.roomContextLoads, 0);
 });
 
 test('request service rejects malformed IDs and audits valid absent object probes', async () => {

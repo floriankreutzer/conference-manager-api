@@ -143,7 +143,8 @@ See `docs/IDENTITY-SESSION.md`.
 The production browser uses one same-origin, server-authoritative application contract. Legacy
 profile, Site-information, availability, notification and configuration envelopes remain schema
 version 1. Request drafting, list, detail, transition, history, booking-change and reporting
-contracts are schema version 2. The browser positively validates the documented endpoint-specific
+contracts are schema version 2; the auxiliary current-Room context is an explicit schema-version-1
+read projection. The browser positively validates the documented endpoint-specific
 shape and never falls back to Demo storage.
 
 The current routes are:
@@ -175,6 +176,8 @@ section's cursor until `complete` is true. A stale generation returns HTTP 409; 
 all partial data and restarts from Sites. Each page is produced from a coherent repeatable-read
 snapshot, contains at most ten entries and is additionally response-byte bounded. Supported
 sections are `sites`, `rooms`, `services`, `cateringPackages`, `cateringItems` and `costCenters`.
+Only entries from the active drafting catalogue are returned: inactive Sites and Rooms are never
+selection options, even when an existing Request still references their retained identities.
 Across those pages the exact Request-drafting facts are:
 
 - `configurationRevisions` with positive `organization`, `locations`, `catalogue`,
@@ -514,6 +517,54 @@ the immutable `details`, `pricing`, `configurationRevisions`, `policy` and `allo
 captured by its authoritative write. A migrated legacy v1 Request returns each of those five fields
 explicitly as `null`; the server does not infer missing historical business facts.
 
+### `GET /api/v1/requests/{requestId}/room-context`
+
+Returns a request-scoped current presentation for the Room already referenced by the Request. It
+uses exactly the same active-Tenant, permission and object authorization as Request detail: the
+owning Employee and a Conference Manager with `request:read` may read within the authenticated
+Tenant; Tenant Admin does not inherit Conference Manager scope. Missing, cross-Tenant and
+same-Tenant non-owned Employee probes are concealed consistently. The repository first loads and
+authorizes the Request by Principal Tenant, then reads only its server-loaded `roomId`; no client
+Room or Tenant selector is accepted.
+
+The exact response is:
+
+```json
+{
+  "schemaVersion": 1,
+  "requestRef": {
+    "id": "REQ-42",
+    "schemaVersion": 2,
+    "version": 7,
+    "status": "Confirmed"
+  },
+  "currentRoomContext": {
+    "locationsRevision": 12,
+    "room": {
+      "id": "room-a",
+      "siteId": "site-a",
+      "name": "Room A",
+      "capacity": 20,
+      "active": false
+    },
+    "site": {
+      "id": "site-a",
+      "name": "Berlin",
+      "active": false,
+      "timeZone": "Europe/Berlin"
+    }
+  },
+  "requestId": "server-correlation-uuid"
+}
+```
+
+`currentRoomContext` is `null` when the Request has no Room. This projection deliberately reads
+retained inactive Room/Site identities and current presentation facts, including the Site's current
+nullable time zone. It is not a historical snapshot, does not reconstruct the booking-time time
+zone, and exposes no price, provider identity or `selectable` authority. Only the active application
+catalog defines selectable targets, and every booking-change write revalidates current Room/Site
+authority. Clients use `requestRef.version` to bind follow-on work and reload if it no longer matches.
+
 ### `GET /api/v1/requests/{requestId}/history`
 
 Returns byte-bounded pages of at most ten newest-first immutable Request revisions after the same active-Tenant,
@@ -577,7 +628,10 @@ The Requester/Organizer may mutate only their own confirmed Request. A Conferenc
 initiate a proposal for any confirmed Request in the Tenant. Exactly one `pending` or `applying`
 proposal is permitted. The server locks the current confirmed Request, checks `expectedVersion`,
 reevaluates the complete draft against current Tenant configuration and persists an immutable
-next-version snapshot. A genuinely participant-count-only proposal applies immediately and
+next-version snapshot. `expectedVersion` must be the version of the exact Request snapshot from
+which that complete draft was composed. A client must not reload only a newer version token while
+retaining fields from an older open editor; on HTTP 409 it reloads and deliberately recomposes or
+merges the draft. A genuinely participant-count-only proposal applies immediately and
 atomically when current capacity, policy, Catalogue and allocation authority permit it; catering
 participant count may track that participant change. Any change to room, schedule, service,
 package/item, title, requirements or allocation, and any configuration-revision-only refresh,

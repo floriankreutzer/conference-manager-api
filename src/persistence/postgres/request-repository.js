@@ -67,6 +67,46 @@ function mapRequestRow(row) {
   });
 }
 
+function mapCurrentRoomContextRow(row) {
+  if (!row) return null;
+  const locationsRevision = Number(row.locations_revision);
+  const capacity = Number(row.room_capacity);
+  if (
+    !Number.isSafeInteger(locationsRevision)
+    || locationsRevision < 1
+    || !isRequestId(row.room_id)
+    || !isRequestId(row.room_site_id)
+    || !isRequestId(row.site_id)
+    || row.room_site_id !== row.site_id
+    || typeof row.room_name !== 'string'
+    || row.room_name.length < 1
+    || typeof row.site_name !== 'string'
+    || row.site_name.length < 1
+    || !Number.isSafeInteger(capacity)
+    || capacity < 1
+    || typeof row.room_active !== 'boolean'
+    || typeof row.site_active !== 'boolean'
+    || (row.site_time_zone !== null && !isIanaTimeZone(row.site_time_zone))
+  ) throw new TypeError('REQUEST_ROOM_CONTEXT_INVALID');
+
+  return Object.freeze({
+    locationsRevision,
+    room: Object.freeze({
+      id: row.room_id,
+      siteId: row.room_site_id,
+      name: row.room_name,
+      capacity,
+      active: row.room_active,
+    }),
+    site: Object.freeze({
+      id: row.site_id,
+      name: row.site_name,
+      active: row.site_active,
+      timeZone: row.site_time_zone,
+    }),
+  });
+}
+
 function normalizeRequestRevisionSnapshot(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new TypeError('REQUEST_REVISION_SNAPSHOT_INVALID');
@@ -599,6 +639,36 @@ export function createPostgresRequestRepository(
         values: [tenantId, requestId],
       });
       return mapRequestRow(result.rows[0]);
+    },
+
+    async findRoomContextByTenantIdAndRoomId(tenantId, roomId) {
+      const result = await pool.query({
+        name: 'request-room-context-by-tenant-and-room',
+        text: `
+          SELECT
+            tenant.locations_revision,
+            room.id AS room_id,
+            room.site_id AS room_site_id,
+            room.name AS room_name,
+            room.capacity AS room_capacity,
+            room.active AS room_active,
+            site.id AS site_id,
+            site.name AS site_name,
+            site.active AS site_active,
+            site.time_zone AS site_time_zone
+          FROM tenants tenant
+          JOIN rooms room
+            ON room.tenant_id = tenant.id
+          JOIN sites site
+            ON site.tenant_id = room.tenant_id
+            AND site.id = room.site_id
+          WHERE tenant.id = $1
+            AND room.id = $2
+          LIMIT 1
+        `,
+        values: [tenantId, roomId],
+      });
+      return mapCurrentRoomContextRow(result.rows[0]);
     },
 
     async listByTenantId(tenantId, { requesterUserId = null, limit = 500 } = {}) {

@@ -230,6 +230,16 @@ event execute in one PostgreSQL transaction. Failure of history or audit persist
 Request mutation from committing. History reads use only internal Tenant ID plus Request ID and are
 bounded newest-first.
 
+The auxiliary current-Room projection remains on the Request repository boundary. The service
+first resolves and object-authorizes the Request by internal Tenant ID plus Request ID. Only then
+does `findRoomContextByTenantIdAndRoomId` join `tenants`, `rooms` and `sites` through
+Tenant-composite keys using the server-loaded Request `room_id`. That read intentionally has no
+Room/Site active filter so a retained inactive current identity remains presentationally available;
+it returns the current Locations revision, Room name/capacity/activity and Site
+name/activity/nullable time zone. It is not a write or selection query and requires no migration:
+the existing Tenant-composite Request-to-Room and Room-to-Site foreign keys plus delete restriction
+preserve the identity.
+
 Confirmed-booking proposal creation applies the same full v2 authority evaluation under the locked
 confirmed Request and expected version. It persists the proposed draft/immutable next-version
 snapshot rather than reevaluating historical business facts from a later Catalogue or policy. A
@@ -442,7 +452,7 @@ Entitlement persistence additionally requires real PostgreSQL tests for schema v
 
 Booking-provider persistence additionally requires real PostgreSQL tests for Tenant-composite Request/Integration ownership, same-provider-value cross-Tenant independence, pre-write pending connection/resource binding, attempt/state/reference constraints, same-attempt idempotent finalization, compensated-attempt key rotation, remap/disconnect-safe cleanup, create/final-commit authority loss, overlap lookup, audit-atomic mutations and fail-closed populated migration/rollback.
 
-Site-time-zone persistence additionally requires real PostgreSQL tests for nullable legacy migration, Tenant-scoped catalogue reads, room-to-Site booking context, audit-atomic correction through the versioned Locations owner, invalid bounded database shapes, exact schema readiness and fail-closed populated rollback.
+Site-time-zone persistence additionally requires real PostgreSQL tests for nullable legacy migration, Tenant-scoped active-only catalogue reads, request-authorized retained inactive current-Room context, room-to-Site booking context, audit-atomic correction through the versioned Locations owner, invalid bounded database shapes, exact schema readiness and fail-closed populated rollback.
 
 Migration 019 adds `booking_change_requests`, its Tenant-scoped foreign keys, bounded proposal fields, decision metadata and the partial unique index that enforces exactly one open proposal per confirmed Request. Participant-only application and approved proposal application update the Request, append `request.booking_change` audit evidence and create the Requester notification in one transaction. Room moves additionally swap the persisted active provider reference in that same apply transaction.
 

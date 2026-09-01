@@ -107,6 +107,8 @@ for (const required of [
   '`costAllocation`',
   'currently active `costCenters[]`',
   'GET /api/v1/application/reports/requests',
+  'GET /api/v1/requests/{requestId}/room-context',
+  'Only entries from the active drafting catalogue',
   '`complete`',
 ]) {
   if (!apiContract.includes(required)) {
@@ -165,10 +167,39 @@ for (const required of [
   'starts_at >= $2',
   'starts_at < $3',
   'ORDER BY starts_at, id',
+  'findRoomContextByTenantIdAndRoomId',
+  'request-room-context-by-tenant-and-room',
+  'room.tenant_id = tenant.id',
+  'site.tenant_id = room.tenant_id',
 ]) {
   if (!requestRepository.includes(required)) {
     throw new Error(`Production Request report persistence is missing ${required}.`);
   }
+}
+
+const requestService = await readFile('src/application/request-service.js', 'utf8');
+for (const required of [
+  'getRequestRoomContext',
+  'authorizationPolicy.authorizeRequestRead',
+  "operation: 'room_context'",
+  'repository.findRoomContextByTenantIdAndRoomId',
+]) {
+  if (!requestService.includes(required)) {
+    throw new Error(`Request Room context service is missing ${required}.`);
+  }
+}
+const coreRoutes = await readFile('src/app.js', 'utf8');
+for (const required of [
+  'REQUEST_ROOM_CONTEXT_PATH',
+  "'request_room_context'",
+  'requestService.getRequestRoomContext',
+]) {
+  if (!coreRoutes.includes(required)) {
+    throw new Error(`Request Room context HTTP contract is missing ${required}.`);
+  }
+}
+if (!routeVocabulary.includes("'request_room_context'")) {
+  throw new Error('Shared observability vocabulary is missing request_room_context.');
 }
 
 const timeZone = await readFile('src/domain/site-time-zone.js', 'utf8');
@@ -216,5 +247,7 @@ for (const required of [
 
 await readFile('tests/room-availability-composition.test.js', 'utf8');
 await readFile('tests/request-composition.test.js', 'utf8');
+await readFile('tests/request-service.test.js', 'utf8');
+await readFile('tests-db/production-application-persistence.test.js', 'utf8');
 
 console.log('Production application contract check passed.');

@@ -124,8 +124,8 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
 - `src/persistence/postgres/pool.js` owns bounded PostgreSQL pooling, TLS policy and exact schema readiness.
 - `src/persistence/postgres/session-repository.js` owns session persistence and authoritative expiry, revocation and security-version checks.
 - `src/persistence/postgres/request-repository.js` owns Tenant-scoped Request lookup, coherent
-  current-configuration evaluation, immutable Request snapshots/history and status/version-
-  conditional workflow updates.
+  current-configuration evaluation, immutable Request snapshots/history, the request-authorized
+  current-Room/Site presentation read and status/version-conditional workflow updates.
 - `src/persistence/postgres/audit-repository.js` owns per-Tenant append serialization, HMAC signing, Tenant-scoped listing and chain verification.
 - `src/persistence/postgres/entitlement-repository.js` owns Tenant-scoped entitlement reads and audit-atomic entitlement changes.
 - `src/persistence/postgres/booking-reference-repository.js` owns Tenant-scoped room-conflict lookup and audit-atomic opaque provider-reference persistence.
@@ -344,6 +344,12 @@ entries, evaluates current policy, calculates pricing and allocation, and persis
 snapshot, append-only Request history and server audit evidence before commit. Stale or unavailable
 authority never falls back to a browser-calculated result.
 
+The application drafting catalogue remains active-only. A separate schema-version-1
+`GET /api/v1/requests/{requestId}/room-context` read projection first applies the ordinary Request
+object authorization and then uses only the server-loaded Room ID to present a retained inactive
+current Room/Site. That small current presentation is not a historical snapshot, catalogue entry or
+write authority; the five-owner composition transaction remains the sole mutation authority.
+
 Every workflow mutation advances `request_version`; status-only changes retain the selected
 composition facts while recording a new complete public history revision. Resubmission and an
 applied confirmed change intentionally create a newly evaluated composition snapshot. Migration
@@ -386,6 +392,8 @@ See `docs/BOOKING-INTEGRATION.md` and `docs/MICROSOFT365-CONNECTION.md`.
 - `GET /api/v1/requests/{requestId}` performs active-Tenant and object-level Request authorization.
 - `GET /api/v1/requests/{requestId}/history` applies the same object scope and returns bounded
   append-only Request revisions.
+- `GET /api/v1/requests/{requestId}/room-context` applies that object scope before returning the
+  current minimized Room/Site presentation for the Request's server-loaded Room ID.
 - `POST /api/v1/requests/{requestId}/transitions` additionally requires CSRF and executes only a server-defined authorized transition.
 - `POST /api/v1/application/requests` creates only complete schema-v2 Requests from current
   server-authoritative Tenant configuration.
