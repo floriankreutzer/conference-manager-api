@@ -251,6 +251,19 @@ test('conference manager cancellation covers eligible same-Tenant Requests witho
     ),
     isConcealed,
   );
+  const managerWithoutPermission = principal({
+    roles: [TENANT_ROLE.EMPLOYEE, TENANT_ROLE.CONFERENCE_MANAGER],
+    permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_CANCEL],
+  });
+  assert.throws(
+    () => policy.authorizeRequestTransition(
+      managerWithoutPermission,
+      context(),
+      request({ requesterUserId: USER_B }),
+      REQUEST_TRANSITION.CANCEL,
+    ),
+    isConcealed,
+  );
   assert.throws(
     () => policy.authorizeRequestTransition(
       manager,
@@ -272,13 +285,14 @@ test('conference manager cancellation covers eligible same-Tenant Requests witho
   );
 });
 
-test('Tenant Admin does not inherit cancellation of another User-owned Request', () => {
+test('Tenant Admin cannot inherit tenant-wide cancellation from an injected manager permission', () => {
   const policy = createAuthorizationPolicy();
   const tenantAdmin = principal({
     roles: [TENANT_ROLE.EMPLOYEE, TENANT_ROLE.TENANT_ADMIN],
     permissions: [
       PERMISSION.REQUEST_READ,
       PERMISSION.REQUEST_CANCEL,
+      PERMISSION.REQUEST_MANAGE,
       PERMISSION.TENANT_CONFIGURE,
     ],
   });
