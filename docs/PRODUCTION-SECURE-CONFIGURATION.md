@@ -125,11 +125,29 @@ The `cm_session` cookie must preserve:
 - `SameSite=Lax`;
 - `Path=/api`;
 - no broad `Domain`;
-- bounded `Max-Age` backed by server-side expiry, revocation and User security version.
+- bounded `Max-Age` backed by the current source-controlled Customer authorization-epoch hash, server-side expiry, revocation and User security version.
 
 Every protected POST, PUT, PATCH and DELETE operation using cookie authentication requires a valid server-generated, session-bound CSRF token unless a reviewed endpoint is explicitly designed without cookie authentication.
 
 The browser may hold the CSRF token in runtime memory. It must not persist the session credential, provider tokens, roles, permissions or Tenant authority in browser storage.
+
+## Customer authorization-epoch rollout and emergency rollback
+
+The Customer session hash namespace is fixed in source as `customer-session:saas-3.6-role-policy-v1:<raw-token>`. The epoch is non-secret application policy, not an environment variable, Tenant setting or secret. Never reuse or move an epoch backward. Per-User assignment changes continue to use `users.security_version`; a global role-policy semantic change advances the source epoch and ships a matching one-way revocation migration.
+
+Forward rollout across migration 034 is a global reauthentication event:
+
+1. block new Customer traffic and drain every old-epoch customer instance;
+2. apply migration 034 and retain its ledger/checksum plus protected pre/post active-session counts;
+3. deploy the whole new-epoch customer fleet; mixed old/new customer instances are prohibited;
+4. require schema-34 readiness before resuming traffic;
+5. prove a captured pre-cutover cookie returns unauthenticated and a fresh sign-in returns only current roles/permissions.
+
+Emergency binary rollback must also block Customer traffic and drain the fleet. Run the migration-034 down bookkeeping step, whose SQL deliberately never clears `revoked_at`, then deploy the schema-33-compatible old binary. Pre-cutover legacy rows remain revoked, and new-epoch rows are unresolvable by the old token hash; users must sign in again after traffic resumes. Before a later forward deploy, block traffic and reapply migration 034 so every rollback-window session is revoked.
+
+A restore or PITR target from before migration 034 must not receive Customer traffic. Apply the canonical migrations through 034, deploy one epoch-consistent fleet and repeat the old-cookie/fresh-login checks first. Clearing revocations, rewriting hashes, serving a mixed fleet or merely redeploying old refs without this procedure is a release blocker.
+
+Migration 034 has no authenticated per-session actor and must not fabricate Tenant `session.revoked` events. Store the migration checksum/ledger, release SHA, active-session counts, traffic-drain approval, negative old-cookie result and fresh-Principal verification in protected deployment evidence.
 
 ## Database baseline
 
@@ -137,7 +155,7 @@ The browser may hold the CSRF token in runtime memory. It must not persist the s
 - Pilot/Production use `DATABASE_SSL=verify-full` with a certificate/hostname-valid endpoint.
 - SQL application values remain parameterized.
 - Deployment automation applies migrations before application rollout; startup does not auto-migrate.
-- Readiness requires connectivity and exact repository-defined schema version 33.
+- Readiness requires connectivity and exact repository-defined schema version 34.
 - Tenant ownership and referential integrity are reinforced at database level.
 - Advisory locks and optimistic versions protect concurrent security/business transitions.
 - Migration rollback guards prevent silent removal of security/business evidence.
@@ -269,11 +287,12 @@ Before marking a Pilot/Production release candidate ready:
 8. Confirm exact Entra redirect URI, organizational account model, application owners and credential rotation policy.
 9. Confirm only approved Microsoft Graph application permissions are present.
 10. Apply migrations before rollout and verify readiness exposes only aggregate state.
-11. Verify edge TLS, HSTS/header preservation, `/api/*` routing, shared rate limiting and no wildcard CORS.
-12. Execute independent Tenant sign-in, Tenant claim, admin consent, missing-permission, revocation, reconnect and wrong-Tenant acceptance scenarios.
-13. Run deployed-environment DAST and the Pilot penetration-test scope.
-14. Record backup/restore evidence and rollback owner/procedure.
-15. For calendar writes, record Exchange Online Application RBAC scope evidence before activation.
+11. For an authorization-epoch release, execute the traffic-blocked migration-034 whole-fleet cutover and retain old-cookie/fresh-Principal evidence.
+12. Verify edge TLS, HSTS/header preservation, `/api/*` routing, shared rate limiting and no wildcard CORS.
+13. Execute independent Tenant sign-in, Tenant claim, admin consent, missing-permission, revocation, reconnect and wrong-Tenant acceptance scenarios.
+14. Run deployed-environment DAST and the Pilot penetration-test scope.
+15. Record backup/restore evidence and rollback owner/procedure, including the migration-034/PITR reauthentication procedure.
+16. For calendar writes, record Exchange Online Application RBAC scope evidence before activation.
 
 ## Fail-closed deployment blockers
 
@@ -284,6 +303,7 @@ Do not deploy as Pilot/Production when any of the following is true:
 - `CSRF_SECRET`, `AUDIT_HMAC_SECRET`, release version or build ID is missing/invalid;
 - `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` or `OIDC_TRANSACTION_SECRET` is missing/invalid;
 - required migrations/schema readiness are not current;
+- an authorization-epoch rollout or rollback would serve mixed epochs, skip migration 034, clear revocations or resume traffic without old-cookie/fresh-Principal evidence;
 - repository security/test checks are failing or pending;
 - Tenant isolation tests for a changed Tenant-owned resource are absent/failing;
 - enabled provider destinations are not fixed or lack timeout/response validation;

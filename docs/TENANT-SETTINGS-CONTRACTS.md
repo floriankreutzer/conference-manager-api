@@ -1,20 +1,20 @@
-# Tenant Admin Settings Versioning Contract
+# Tenant Settings Versioning Contract
 
 ## Authority and purpose
 
 Root `AGENTS.md`, `docs/CODING-STANDARDS.md`, `docs/ARCHITECTURE.md`, `docs/AUTHORIZATION.md`, `docs/AUDIT.md`, `docs/PERSISTENCE.md` and `docs/SECURITY.md` remain authoritative.
 
-SaaS 2 replaces the legacy tendency to grow `/api/v1/application/configuration` into one mutable document. Mutable Tenant Admin configuration is split into independently owned aggregates. This document defines only the stable cross-aggregate version, concurrency, compatibility and history rules. It does not create a generic settings service, settings repository, settings table or cross-domain mutation API.
+SaaS 2 replaces the legacy tendency to grow `/api/v1/application/configuration` into one mutable document. Mutable Tenant configuration is split into independently owned aggregates. SaaS 3.6 assigns business configuration to Conference Manager and technical/administrative configuration to Tenant Admin without role inheritance. This document defines only the stable cross-aggregate version, concurrency, compatibility and history rules. It does not create a generic settings service, settings repository, settings table or cross-domain mutation API.
 
 ## Aggregate ownership
 
 | Aggregate | Owning issue | Permission | HTTP boundary | Application owner | Persistence owner | Revision authority |
 | --- | --- | --- | --- | --- | --- | --- |
-| Organization | #81 | `tenant:configure` for administration; recognized Tenant role for minimized presentation | bounded organization and presentation route modules | organization settings and presentation services | organization repository | `tenants.organization_revision` |
-| Locations and rooms | #82 | `tenant:configure` | bounded locations route module | locations settings service | locations repository | `tenants.locations_revision` |
-| Service and catering catalogue | #83 | `tenant:configure` | bounded catalogue route module | catalogue settings service | catalogue repository | `tenants.catalog_revision` |
-| Booking policies | #84 | `tenant:configure` | bounded booking-policy route module | booking-policy settings service | booking-policy repository | `tenants.booking_policies_revision` |
-| Cost allocation | #85 | `tenant:configure` | bounded cost-allocation route module | cost-allocation settings service | cost-allocation repository | `tenants.cost_allocation_revision` |
+| Organization | #81 | Tenant Admin + `tenant:configure`; recognized Tenant role for minimized presentation | bounded organization and presentation route modules | organization settings and presentation services | organization repository | `tenants.organization_revision` |
+| Locations and rooms | #82 | Tenant Admin + `tenant:configure` for Sites/technical Room assignment; Conference Manager + `tenant:rooms:business:manage` for Room business fields; both for a mixed diff | bounded locations route module | locations settings service | locations repository | `tenants.locations_revision` |
+| Service and catering catalogue | #83 | Conference Manager + `tenant:catalogue:manage`; Tenant Admin alone denied | bounded catalogue route module | catalogue settings service | catalogue repository | `tenants.catalog_revision` |
+| Booking policies | #84 | Tenant Admin + `tenant:configure` | bounded booking-policy route module | booking-policy settings service | booking-policy repository | `tenants.booking_policies_revision` |
+| Cost allocation | #85 | Tenant Admin + `tenant:configure` | bounded cost-allocation route module | cost-allocation settings service | cost-allocation repository | `tenants.cost_allocation_revision` |
 
 An owning module may use the shared primitive in `src/application/tenant-settings-revision.js`. It must not import another aggregate's private service or repository. The shared primitive validates schema/revision syntax and stale-write semantics only; it has no persistence or business fields.
 
@@ -51,7 +51,7 @@ Rules:
 - A stale mutation returns `409 TENANT_SETTINGS_REVISION_CONFLICT` and the current safe numeric `currentRevision`. No current configuration data is echoed by the generic conflict mechanism; the client reloads the owning domain through its authorized GET route.
 - Revision values are concurrency tokens, not timestamps, authorization evidence or ordering authority across different aggregates.
 
-HTTP modules remain transport-only. They validate bounded shape/query/method constraints, require the existing server session and CSRF for unsafe cookie-authenticated operations, derive Tenant and actor from the Principal, and delegate to the owning application service.
+HTTP modules remain transport-only. They validate bounded shape/query/method constraints, require the existing server session and CSRF for unsafe cookie-authenticated operations, derive Tenant and actor from the Principal, and delegate to the owning application service. The Locations owner compares the proposed document with the persisted current snapshot and derives technical, Room-business or mixed permission requirements itself; a browser cannot label a diff to choose weaker authority.
 
 ## Atomic persistence and audit
 
@@ -71,7 +71,7 @@ The audit summary must describe business-relevant change facts without credentia
 
 ## Delete, deactivate and archive rules
 
-Mutable master data used by Requests, provider mappings, audit evidence or immutable snapshots is not physically removed through Tenant Admin APIs while referenced.
+Mutable master data used by Requests, provider mappings, audit evidence or immutable snapshots is not physically removed through Tenant administration APIs while referenced.
 
 Each owner must classify its entities before mutation:
 
@@ -129,7 +129,7 @@ Database rollback from migration 020 is allowed only while all five aggregate re
 
 Each aggregate implementation must add progression and regression coverage for:
 
-- recognized Tenant Admin role plus the exact permission and CSRF requirement;
+- the owning role(s), exact permission intersection and CSRF requirement, including dual-role authorization for mixed Locations diffs and Tenant Admin-only denial for Catalogue;
 - cross-Tenant/object-ID concealment or rejection;
 - positive exact schemas and payload bounds;
 - current-revision success and stale-revision `409` with no partial write;

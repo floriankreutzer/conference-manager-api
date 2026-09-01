@@ -22,8 +22,8 @@ The service uses Node.js 22 native HTTP and ECMAScript modules. The implemented 
 - server-side Tenant entitlements;
 - provider-neutral booking/calendar contracts and opaque provider references;
 - a Tenant-scoped Microsoft 365 admin-consent, verification, reconnect and disconnect lifecycle;
-- independent optimistic revision authority for the five SaaS 2 Tenant Admin settings aggregates;
-- bounded Organization, Catalogue, Booking Policies and Cost Allocation self-service owners;
+- independent optimistic revision authority for the five SaaS 2 Tenant settings aggregates;
+- field-classified Locations ownership, Conference Manager-owned Catalogue/Room business configuration, and Tenant Admin-owned Organization, Booking Policies, Cost Allocation and technical configuration;
 - one versioned server-authoritative Request composition model with immutable configuration, price,
   policy and allocation snapshots;
 - an isolated two-process Shared Demo Runtime backed by one deterministic PostgreSQL state and a
@@ -88,7 +88,7 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
 - `src/identity/provider-identity-resolver.js` routes validated external identities to Tenant claiming or JIT User resolution without exposing provider claims to business code.
 - `src/identity/jit-user-service.js` maps an active Tenant identity binding and validated provider User reference to an internal User and server-controlled role/permission snapshot.
 - `src/identity/session-cookie.js` owns strict `cm_session` parsing, serialization and cookie attributes.
-- `src/identity/session-service.js` owns opaque token generation/hashing, CSRF derivation/verification, issuance, resolution, rotation and revocation.
+- `src/identity/session-service.js` owns opaque token generation, source-controlled Customer authorization-epoch hashing, CSRF derivation/verification, issuance, resolution, rotation and revocation.
 - `src/onboarding/tenant-onboarding-service.js` owns invitation redemption, explicit Tenant claim confirmation, binding lifecycle and associated audit evidence.
 - `src/tenancy/tenant.js` owns Tenant lifecycle semantics and the Tenant-owned resource inventory.
 - `src/tenancy/tenant-context.js` resolves Tenant context exclusively from the authenticated Principal's internal Tenant ID.
@@ -96,13 +96,14 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
 - `src/authorization/policy.js` owns recognized Tenant roles/permissions, capability checks, object ownership, Request transition authorization and Tenant audit-read capability.
 - `src/application/request-service.js` coordinates Tenant-scoped Request/history loading,
   authorization, optimistic workflow writes and correlated audit outcomes.
+- `src/application/booking-change-service.js` coordinates confirmed-change propose/decision progression, including intentional same-manager self-approval, provider compensation and minimized authorization-denial evidence.
 - `src/application/production-application-service.js` owns the server-authoritative browser
   application contract, Request v2 create/resubmit use cases, bounded canonical-Request reporting,
   legacy Site reads and the fail-closed Site-time-zone booking gate. `request-report.js` owns only
   the strict UTC range/opaque keyset-cursor value contract.
 - `src/application/tenant-settings-revision.js` owns only the shared SaaS 2 schema/revision primitive and deterministic stale-write conflict semantics; aggregate business fields and persistence stay with their bounded owners.
-- `src/application/tenant-location-administration-service.js` owns authorized versioned Locations/Rooms administration and rollback orchestration.
-- `src/application/tenant-organization-service.js`, `tenant-catalogue-service.js`, `tenant-booking-policy-service.js` and `tenant-cost-allocation-service.js` own their authorized, independently versioned SaaS 2 administration use cases.
+- `src/application/tenant-location-administration-service.js` owns authorized versioned Locations/Rooms administration and rollback orchestration. It classifies persisted diffs into Tenant Admin technical, Conference Manager Room-business or mixed dual-role authority.
+- `src/application/tenant-organization-service.js`, `tenant-catalogue-service.js`, `tenant-booking-policy-service.js` and `tenant-cost-allocation-service.js` own their authorized, independently versioned SaaS 2 use cases. Catalogue is Conference Manager-owned; Organization, Booking Policies and Cost Allocation are Tenant Admin-owned.
 - `src/application/tenant-presentation-service.js` projects the current Organization revision into an all-role, Tenant-derived, business-metadata-free presentation contract. `managed-brand-preset-policy.js` admits and resolves only fixed code-shipped preset references; it has no upload, URL or storage integration.
 - `src/application/tenant-user-administration-service.js` owns authorized Tenant role reads/writes, last-admin protection and stale-session invalidation through User security versions.
 - `src/application/tenant-user-lifecycle-service.js` owns Tenant-scoped User listing, disable/reactivate concurrency, last-admin protection and session revocation without duplicating role assignment.
@@ -158,7 +159,7 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
   semantic checksum; `src/persistence/postgres/demo-reset-repository.js` owns the sentinel-verified,
   exclusively locked, transactional reset/readback contract.
 - `scripts/demo-db-migrations.mjs` owns the independent checksum-protected Demo overlay migration
-  ledger after verifying the exact canonical schema `001..033`.
+  ledger after verifying the exact canonical schema `001..034`.
 - `scripts/platform-break-glass-grant.mjs` and `scripts/platform-recovery-fallback.mjs` are the only local privileged mutation wrappers. They accept credentials only through fixed descriptors and require live Platform sessions plus a dual-control, exact Tenant/permission-bound, one-use grant. The retired process-local Tenant-operator runtime and package entry point are prohibited.
 - `scripts/check-architecture.mjs` prevents architecture, migration and composition drift.
 - `scripts/check-security-baseline.mjs` prevents drift between the documented Pilot/Production security baseline and executable controls.
@@ -213,19 +214,19 @@ Request repositories always receive the server-resolved internal Tenant ID. Empl
 
 Conference Manager Request scope is the authenticated internal Tenant. Tenant Admin capabilities remain separate from Conference Manager Request operations. Tenant audit access requires `tenant:audit:read`; Tenant role administration requires `tenant:users:manage`; Microsoft 365 connection administration requires `tenant:integrations:manage`.
 
-Request workflow transitions are server-defined. The browser selects only a transition identifier; the policy determines eligible current state, target state, role/permission requirement and reason rule. Persistence includes the previously authorized status so concurrent changes yield a conflict instead of a stale overwrite.
+Request workflow transitions are server-defined. The browser selects only a transition identifier; the policy determines eligible current state, target state, role/permission requirement and reason rule. An owning Employee may cancel an eligible own Request; a Conference Manager with `request:manage` may cancel any eligible same-Tenant Request, including another User's, from `Submitted`, `In Review`, `Confirmed` or `Change Requested`. `Rejected` is ineligible, an authorized already-`Cancelled` retry is idempotent, Tenant Admin alone receives no management scope and no public physical-delete path exists. Persistence includes the previously authorized status so concurrent changes yield a conflict instead of a stale overwrite.
 
 See `docs/AUTHORIZATION.md` for the complete role, permission and workflow matrix.
 
 ## Session architecture
 
-The browser receives a 256-bit opaque `cm_session` cookie. Only SHA-256 of that token is persisted. Session resolution requires a matching non-revoked and non-expired row, active User, current User `security_version`, and session-available Tenant lifecycle state.
+The browser receives a 256-bit opaque `cm_session` cookie. PostgreSQL stores SHA-256 over the source-controlled namespace `customer-session:saas-3.6-role-policy-v1:<raw-token>`, never the raw token. Session resolution requires the current namespace hash, a matching non-revoked and non-expired row, active User, current User `security_version`, and session-available Tenant lifecycle state.
 
 Cookie policy is `HttpOnly`, `SameSite=Lax`, `Path=/api`, no broad `Domain`, and `Secure` for HTTPS. Pilot/Production require HTTPS and therefore always use `Secure`.
 
 Cookie-authenticated unsafe operations require an HMAC-derived synchronizer token supplied as `X-CSRF-Token`. Pilot/Production require the HMAC secret from deployment secret management.
 
-Role/permission changes increment `users.security_version`. Existing sessions immediately fail resolution when their stored `principal_version` becomes stale. A server-authorized rotation can create a replacement session with the newly approved snapshot and revoke the previous session atomically.
+Per-User role/permission changes increment `users.security_version`; matching sessions immediately fail when their stored `principal_version` becomes stale. A global authorization-map change increments the source-controlled Customer epoch and ships with a one-way revocation migration. Migration 034 revokes every still-active pre-cutover Customer session; its down migration removes bookkeeping only and never clears `revoked_at`. This prevents an old binary from resurrecting legacy unnamespaced cookies after rollback. A server-authorized rotation can create a replacement session with the newly approved snapshot and revoke the previous session atomically.
 
 Session issue, revoke and rotation construct server-controlled security events. The PostgreSQL session repository commits success evidence in the same transaction as the session mutation.
 
@@ -249,7 +250,7 @@ See `docs/AUDIT.md` for the normative event/integrity contract.
 
 Schema ownership lives in `migrations/`. Migrations are paired up/down files, numerically versioned, checksum protected and serialized by a PostgreSQL advisory lock.
 
-The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 33.
+The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 34.
 
 - Migration 001 establishes Tenant-owned product structures.
 - Migration 002 adds User security-version state and server-side sessions.
@@ -270,7 +271,7 @@ The application never auto-migrates at startup. Deployment automation runs migra
 - Migration 017 binds each numbered pending calendar-create attempt to its provider connection/resource and idempotency key before external write.
 - Migration 018 adds nullable authoritative Site IANA time zones without inventing values for legacy Sites.
 - Migration 019 adds confirmed-booking change persistence and one-open-proposal enforcement.
-- Migration 020 adds five independent Tenant Admin settings revision counters and fail-closed rollback after first use, without adding a generic settings datastore.
+- Migration 020 adds five independent Tenant settings revision counters and fail-closed rollback after first use, without assigning every aggregate to one role or adding a generic settings datastore.
 - Migration 021 adds bounded Site/Room details and immutable Locations revision history without rewriting legacy Site time zones.
 - Migration 022 adds bounded Organization settings and immutable Organization revision history, provisioning a neutral initial snapshot for existing and future Tenants.
 - Migration 023 adds the bounded service/equipment/catering Catalogue model and immutable Catalogue revision history while retaining existing service identifiers.
@@ -288,6 +289,7 @@ The application never auto-migrates at startup. Deployment automation runs migra
   recovery contexts, grant/alert state and the canonical transactional operations foundation.
 - Migration 032 adds bounded readiness, Microsoft fleet-health and diagnostic projections.
 - Migration 033 adds metering, quota and runtime-deployment inventories and their immutable history.
+- Migration 034 irreversibly revokes all still-active pre-authorization-epoch Customer sessions. Its down migration cannot restore them, so old binaries cannot resolve superseded legacy cookies after rollback.
 
 Every migration that removes security/business evidence includes a fail-closed rollback guard.
 
@@ -321,7 +323,7 @@ listening. Its HTTP reset path performs the same bounded refresh after reset com
 returning success. Projection failure remains visible and is not represented as a rolled-back
 authoritative reset.
 
-The canonical schema remains migrations `001..033`; the Demo-only overlay is independently tracked
+The canonical schema remains migrations `001..034`; the Demo-only overlay is independently tracked
 as `demo-migrations/001`. Neither application process auto-migrates or auto-seeds. See
 `docs/SHARED-DEMO-RUNTIME.md` for provisioning and operations.
 
@@ -394,9 +396,10 @@ See `docs/BOOKING-INTEGRATION.md` and `docs/MICROSOFT365-CONNECTION.md`.
 - `GET /api/v1/audit` requires Tenant Admin plus `tenant:audit:read` and verifies Tenant audit integrity.
 - `GET /api/v1/tenant/users` and `PUT /api/v1/tenant/users/{userId}/roles` expose Tenant-scoped role administration.
 - `GET /api/v1/integrations/microsoft365` reads minimized Microsoft 365 connection state.
-- `GET/PUT /api/v1/tenant/settings/locations` reads or updates the versioned Locations/Rooms aggregate.
-- `GET /api/v1/tenant/settings/locations/history` and its revision route expose bounded immutable history.
-- `POST /api/v1/tenant/settings/locations/rollback` creates a new revision from a historical snapshot.
+- `GET/PUT /api/v1/tenant/settings/locations` reads or updates the versioned Locations/Rooms aggregate. Reads accept either owning capability; persisted technical/Room-business/mixed diffs require the corresponding Tenant Admin, Conference Manager or dual-role authority.
+- `GET /api/v1/tenant/settings/locations/history` and its revision route expose bounded immutable history to either Locations-owning capability.
+- `POST /api/v1/tenant/settings/locations/rollback` creates a new revision from a historical snapshot and authorizes the resulting persisted diff.
+- `GET/PUT /api/v1/tenant/settings/catalogue` is Conference Manager-owned through `tenant:catalogue:manage`; Tenant Admin alone is denied.
 - `POST /api/v1/integrations/microsoft365/connect` starts actor-bound admin consent.
 - `GET /api/v1/integrations/microsoft365/callback` validates and consumes the fixed callback contract.
 - `POST /api/v1/integrations/microsoft365/verify` revalidates the base connection.

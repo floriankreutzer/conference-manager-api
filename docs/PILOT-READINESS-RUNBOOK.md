@@ -359,7 +359,7 @@ Before Pilot acceptance, execute the provider-specific procedure required by iss
 5. measure and record RPO and RTO;
 6. destroy temporary recovery material according to policy.
 
-A provider statement that backups exist is not restore evidence.
+A provider statement that backups exist is not restore evidence. Any recovery point predating migration 034 is non-traffic-ready. Keep Customer traffic blocked, apply through schema 34, verify the one-way Customer-session revocation, deploy a single current-epoch fleet and prove a captured legacy cookie is rejected before accepting recovery. Evidence references the result only and never retains the cookie.
 
 ### Application and migration rollback
 
@@ -374,6 +374,8 @@ Before deployment:
 7. prefer reviewed forward recovery when a migration correctly prohibits destructive rollback.
 
 Never delete audit, role, binding, entitlement, lifecycle, session, or integration evidence merely to make a down migration pass.
+
+Migration 034 down is bookkeeping-only and must never clear `sessions.revoked_at`. A backend rollback across that boundary requires blocked Customer traffic, complete fleet drain, migration-runner rollback to schema 33, a compatible old fleet and fresh authentication. Re-forwarding must block traffic and reapply migration 034 before the current fleet serves requests, revoking every rollback-window session. Prefer a forward fix whenever the former authorization semantics are unacceptable.
 
 ### Escalation
 
@@ -399,7 +401,7 @@ For each organization, record protected evidence for:
 
 1. invitation and explicit Tenant claiming;
 2. validated `tid` and `oid` behavior without storing raw claims in the evidence document;
-3. state, nonce, PKCE, callback replay, claim replay, session rotation, CSRF, logout, and expiry;
+3. state, nonce, PKCE, callback replay, claim replay, session rotation, CSRF, logout, expiry, migration-034 epoch cutover/rollback, and pre-034 PITR rejection;
 4. Tenant Admin bootstrap and Employee default authorization;
 5. customer administrator consent;
 6. Places discovery and mapped-room isolation;

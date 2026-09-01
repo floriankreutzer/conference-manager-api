@@ -135,7 +135,9 @@ Neither initiator nor decider can submit prices, policy/allocation results, targ
 
 Role administration persists only elevated role rows. Production/JIT and Demo identity resolution prepend the Employee baseline and derive permissions from the canonical policy.
 
-Every real role change increments `users.security_version` in the same PostgreSQL transaction as the role mutation and success audit event. Sessions snapshot that version. A stale session therefore fails server resolution immediately after a role/security change; browser state cannot keep prior authority alive.
+Every stored per-User role change increments that User's `users.security_version` in the same PostgreSQL transaction as the role mutation and success audit event. Sessions snapshot that version. A stale session therefore fails server resolution immediately after a per-User role/security change; browser state cannot keep prior authority alive.
+
+A global source-code change to the meaning of an existing role/permission snapshot uses the separate non-secret Customer authorization epoch embedded in the session-token hash. Migration 034 permanently revokes every still-active pre-epoch Customer session; its down migration never clears `revoked_at`, and current-epoch hashes cannot be resolved by an old unnamespaced binary. Forward rollout, rollback and pre-034 PITR therefore require blocked Customer traffic, one epoch-consistent fleet and fresh authentication as defined by `docs/IDENTITY-SESSION.md` and `docs/PRODUCTION-SECURE-CONFIGURATION.md`.
 
 Request and settings writes use optimistic revisions and Tenant-scoped persistence locks where required. Authorization is revalidated against authoritative persisted state before committing. A stale concurrent mutation fails closed rather than overwriting newer authority/state.
 
@@ -151,7 +153,7 @@ Public response contracts deliberately minimize internal Tenant/provider identit
 
 ## Audit boundary
 
-Audit actor/Tenant/time/outcome values are server-generated. Tenant-scoped successful, failed and denied privileged operations create correlated evidence where a valid authenticated context exists. Audit writes required by a state mutation commit atomically with that mutation.
+Audit actor/Tenant/time/outcome values are server-generated. Tenant-scoped successful, failed and denied privileged operations create correlated evidence where a valid authenticated context exists. Booking-change read/propose/decision denials record only the target Request ID and a fixed operation in the caller Tenant; change IDs, foreign Tenant/owner facts and object-existence details are excluded. Principal/Tenant-context mismatches are not forced into a Tenant chain. Audit writes required by a state mutation commit atomically with that mutation.
 
 See `docs/AUDIT.md` for taxonomy, minimization, append-only persistence and integrity-chain rules.
 
@@ -162,12 +164,12 @@ Changes to this policy require, as applicable:
 - full Employee/Conference Manager/Tenant Admin/dual-role matrix tests;
 - unknown-role/permission negative tests;
 - Employee owner/non-owner and cancellation tests;
-- Conference Manager same-Tenant/cross-Tenant Request tests;
+- Conference Manager same-Tenant/cross-Tenant Request tests, including foreign-owner cancellation and booking-change denial evidence;
 - Tenant Admin separation tests;
 - Room-business versus technical Location field-ownership tests, including mixed dual-role writes;
 - Catalogue ownership tests that deny Employee, Tenant Admin-only and cross-Tenant mutation;
 - Tenant audit-read permission and cross-Tenant isolation tests;
-- every privileged workflow transition, including self-approval semantics;
+- every privileged workflow transition, including same-manager propose/approve persistence and independent audit attribution;
 - malformed/manipulated ID and exact-body tests;
 - CSRF tests for state changes;
 - stale/concurrent workflow-state and configuration tests;

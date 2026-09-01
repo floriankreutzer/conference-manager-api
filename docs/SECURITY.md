@@ -45,14 +45,15 @@ The browser and all provider responses are untrusted. Client-controlled Tenant I
 - Microsoft protocol output is validated for signature, issuer, audience, time and organizational-account policy before it becomes a provider-neutral external identity.
 - External identity is resolved through a server-side Tenant claim or active Tenant binding and JIT User mapping before session issuance.
 - Email domains, display names, browser Tenant values, raw Entra roles and group claims are not Conference Manager authorization authority.
-- The browser session credential is a server-generated 256-bit opaque token. Only its SHA-256 hash is stored in PostgreSQL.
+- The browser session credential is a server-generated 256-bit opaque token. PostgreSQL stores only SHA-256 over the current source-controlled Customer namespace `customer-session:saas-3.6-role-policy-v1:<raw-token>`.
 - `cm_session` is `HttpOnly`, `SameSite=Lax`, `Path=/api`, has bounded `Max-Age`, sets no broad `Domain` and is `Secure` for HTTPS.
 - Session resolution fails closed for malformed or missing cookies, unknown hashes, expiry, revocation, inactive Users, stale `security_version` and unavailable Tenant lifecycle state.
 - Session issuance compares the approved role/permission snapshot's exact `security_version` under the same database locks and transaction as insertion; a concurrent role change cannot install a stale privileged session.
 - Logout and session rotation require server authority and commit their audit evidence atomically with the session mutation.
-- Role changes increment User `security_version`, invalidating all stale session authorization snapshots immediately.
+- Stored per-User role changes increment that User's `security_version`, invalidating their stale session authorization snapshots immediately. A global source-code role-policy change instead advances the Customer authorization epoch and requires a one-way global revocation migration; the two controls are complementary.
 - Provider access, refresh and ID tokens are not application sessions and never enter LocalStorage or sessionStorage.
 - The transient OIDC transaction stores only hashed state and nonce and is additionally bound to the initiating browser through the `cm_oidc_tx` HttpOnly cookie.
+- Migration 034 revokes every still-active pre-epoch Customer session and cannot un-revoke it on down/rollback. New-epoch hashes are unresolvable by an old binary; forward, rollback and PITR therefore require a traffic-blocked whole-fleet cutover and fresh authentication.
 
 ### CSRF
 
@@ -70,12 +71,14 @@ See `docs/IDENTITY-SESSION.md` and `docs/ENTRA-AUTHENTICATION.md`.
 - Recognized Tenant roles are `employee`, `conference_manager` and `tenant_admin`; `platform_admin` is not a Tenant role.
 - Any unknown role or permission invalidates the Principal rather than being ignored.
 - A capability requires both the corresponding internal permission and a Tenant role allowed to use it.
-- Conference Manager Request authority and Tenant Admin configuration authority remain separate.
+- Conference Manager Request authority, Conference Manager Room/Catalogue business ownership and Tenant Admin technical/administrative authority remain separate.
 - Request lookup uses internal Tenant ID plus Request ID; Employee access also requires server-side owner equality.
 - Missing, cross-Tenant and same-Tenant non-owned Employee Requests are concealed as `404 NOT_FOUND`.
 - Tenant role administration is Tenant-scoped, prevents removal of the final Tenant Admin and invalidates stale sessions through `security_version`.
 - Client-controlled Tenant, owner, role, permission and workflow-state fields are rejected as authority.
 - State-changing operations require authorization and CSRF.
+- An owning Employee may cancel an eligible own Request. A Conference Manager with `request:manage` may cancel another User's same-Tenant Request from `Submitted`, `In Review`, `Confirmed` or `Change Requested`; `Rejected` is ineligible, `Cancelled` retry is idempotent, cross-Tenant access stays concealed, Tenant Admin alone has no management scope and no physical Request delete exists.
+- Booking-change read/propose/decision denials record minimized `authorization.denied` evidence in a valid caller Tenant: target Request ID plus fixed operation only. Employee non-owner, Tenant Admin other-user, Conference Manager cross-Tenant and mismatched change-ID probes are direct negative regressions; no probed change ID or foreign Tenant/owner fact is recorded.
 - Optimistic predicates and advisory locks prevent stale or concurrent writes from silently overriding newer state.
 
 See `docs/AUTHORIZATION.md`.
@@ -205,7 +208,7 @@ See `docs/MICROSOFT365-CONNECTION.md`.
   provider-neutral inputs and produces only deterministic success, conflict or degradation
   outcomes.
 - A reset-only database role, separate from the migration owner and both runtime roles, verifies an immutable Demo sentinel, current database/role,
-  exact canonical schema `001..033`, exact table inventory and the source fixture checksum before
+  exact canonical schema `001..034`, exact table inventory and the source fixture checksum before
   destructive work.
 - Normal Demo requests hold a shared advisory lock; reset holds the corresponding exclusive lock.
   Truncate, deterministic seed and semantic checksum readback commit in one serializable
@@ -236,6 +239,16 @@ The Dependency Policy gate enforces manifest and lock consistency, exact direct 
 
 GitHub-native security feature availability depends on repository/account entitlements. Repository-local required gates remain mandatory regardless of native feature availability.
 
+## SaaS 3.6 authorization hardening regression matrix
+
+| Finding / contract | Fail-closed invariant | Executable evidence |
+| --- | --- | --- |
+| H-005 Customer session rollback resurrection | The source-controlled hash epoch blocks forward lookup, migration 034 permanently revokes legacy rows, down never clears revocation, and re-forward revokes rollback-window sessions | `tests-db/session-security-epoch-migration.test.js`, `scripts/check-architecture.mjs`, migration 034 up/down |
+| H-017 booking-change denial evidence / IDOR | Employee non-owner, Tenant Admin other-user, Conference Manager cross-Tenant and wrong change-ID probes cannot mutate or disclose authority; valid caller-Tenant denials carry only Request ID and fixed operation | `tests/authorization.test.js`, `tests/booking-change.test.js` |
+| Issues #164/#165 foreign-Request cancellation | Conference Manager role plus `request:manage` may cancel only eligible same-Tenant Requests; owner Employee access remains; cross-Tenant, Tenant Admin-only, invalid state, CSRF bypass and physical delete remain denied | `tests/authorization.test.js`, `tests/request-service.test.js`, `tests/api.test.js`, `tests-db/postgres-persistence.test.js` |
+| Same-manager confirmed change | One Conference Manager may propose and approve the same change, with equal server-derived initiator/decider IDs and separate audit actor attribution | `tests/booking-change.test.js`, `tests-db/request-composition-v2-persistence.test.js` |
+| Normative role/session baseline | API, settings, architecture, persistence, composition, identity/session, security, deployment and audit documents state the same current ownership and epoch contracts | architecture/documentation review plus the repository static/document gates |
+
 ## Important limitations and external evidence
 
 - Repository tests do not prove a real Entra app registration, customer administrator consent, Graph call, credential rotation, HTTPS edge or Exchange Online Application RBAC policy.
@@ -249,7 +262,7 @@ GitHub-native security feature availability depends on repository/account entitl
 ## OWASP and CWE mapping
 
 - Broken Access Control, BOLA and IDOR (CWE-639, CWE-862): Principal-derived Tenant context, Tenant-scoped repositories, object ownership, deny-by-default roles and cross-Tenant negative tests.
-- Authentication and session weaknesses (CWE-287, CWE-384): validated OIDC, browser-bound one-time transactions, opaque hash-only sessions, expiry, revocation and security-version invalidation.
+- Authentication and session weaknesses (CWE-287, CWE-384): validated OIDC, browser-bound one-time transactions, opaque current-epoch hash-only sessions, expiry, one-way global cutover revocation and per-User security-version invalidation.
 - CSRF (CWE-352): unsafe cookie-authenticated requests require session-bound HMAC synchronizer tokens.
 - Injection (CWE-89): fixed SQL, parameter binding, positive schemas and PostgreSQL integration tests.
 - XSS (CWE-79): the API emits JSON and a default-deny CSP; frontend rendering remains separately governed.

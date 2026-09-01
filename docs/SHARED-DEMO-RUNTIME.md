@@ -107,7 +107,7 @@ Reset is destructive by design and is allowed only in the isolated Demo database
 - the immutable Demo sentinel and sentinel key;
 - the current database name and expected reset role;
 - distinct recorded customer, Platform and reset roles;
-- the complete canonical migration sequence `1..33`;
+- the complete canonical migration sequence `1..34`;
 - the exact expected table inventory;
 - the source fixture's calculated domain-separated semantic checksum.
 
@@ -171,7 +171,7 @@ Provisioning order is mandatory:
 
 1. create a dedicated empty PostgreSQL database whose name matches `conference_manager_demo_*`;
 2. create the four distinct purpose-specific Demo roles and store their credentials in protected deployment configuration;
-3. apply canonical migrations `001..033` with the reviewed database migration identity;
+3. apply canonical migrations `001..034` with the reviewed database migration identity;
 4. remove normal `DATABASE_URL`, `PUBLIC_ORIGIN`, session/CSRF, `PLATFORM_*` and real-provider variables from the Demo command environment;
 5. supply the complete `DEMO_*` configuration and run `npm run demo:db:migrate`;
 6. run `npm run demo:db:reset -- --confirm-seed-version=saas-3.5-shared-demo-v1` to install and verify the initial deterministic seed;
@@ -229,7 +229,7 @@ Do not place any of these values in source, documentation examples, browser conf
 For each deployed Demo candidate, record:
 
 - backend and frontend commit/artifact identifiers;
-- canonical schema version `33` and Demo overlay version `3`;
+- canonical schema version `34` and Demo overlay version `3`;
 - seed version and semantic checksum returned by reset;
 - customer and Platform origin identities without credentials;
 - the browser/integration test run covering cross-process shared state;

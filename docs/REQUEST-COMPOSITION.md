@@ -323,11 +323,12 @@ Migration 027:
   `booking_change_requests`.
 
 Deployment must run `npm run db:migrate` before application rollout and verify
-exact schema readiness at version 33. The application does not auto-migrate.
+exact schema readiness at version 34. The application does not auto-migrate.
 Operators should expect all pre-migration Catalogue editors to reload because
-the migration advances that aggregate revision. Tenant Admins should configure
-intentional Room prices after rollout; the zero seed preserves deterministic
-compatibility and does not assert a customer price decision.
+the migration advances that aggregate revision. Conference Managers with
+`tenant:catalogue:manage` should configure intentional Room prices after rollout;
+Tenant Admin alone is denied. The zero seed preserves deterministic compatibility
+and does not assert a customer price decision.
 
 Migration 027 down takes exclusive locks and fails closed after any v2 Request,
 non-migration Request history, changed Room price, later Catalogue mutation or
@@ -346,6 +347,8 @@ Changes to this boundary require, as applicable:
 - same-Tenant success plus cross-Tenant, inactive, inapplicable and stale
   revision/version denial tests;
 - owner/manager/Tenant Admin separation and history BOLA/IDOR tests;
+- same-manager propose/approve persistence evidence with equal initiator/decider IDs and separately attributed audit operations;
+- direct Employee non-owner, Tenant Admin other-user and Conference Manager cross-Tenant booking-change denial/audit tests;
 - create, resubmit, workflow and confirmed-change version/history tests;
 - audit-failure rollback and concurrent configuration/request mutation tests;
 - migration 027 up/down/reapply, legacy backfill, constraints, readiness and

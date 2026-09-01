@@ -151,7 +151,7 @@ The workflow performs, in order:
 
 1. fail-closed verification that all four database URL secrets exist;
 2. locked dependency installation;
-3. canonical PostgreSQL migrations through the migration role;
+3. canonical PostgreSQL migrations `001..034` through the migration role;
 4. Demo overlay migrations and least-privilege grants;
 5. deterministic reset/reseed with the fixed seed version and semantic checksum.
 
@@ -274,9 +274,11 @@ A cold start may delay the first page load. It must never cause fallback to brow
 
 ## Rollback and recovery
 
-A bad browser/API release is rolled back by redeploying the previously approved repository/frontend refs. Database schema changes remain governed by the canonical and Demo migration mechanisms.
+A frontend-only rollback may redeploy an approved compatible frontend ref while the current API/schema remain in place. A backend rollback across migration 034 is not a simple prior-ref redeploy.
 
-For Demo data corruption or an invalid seed state, prefer the supported deterministic reset/reseed operation. If sentinel/schema integrity cannot be established, recreate the isolated Demo database and rerun the controlled initialization workflow rather than applying ad hoc repair SQL.
+Before crossing that boundary, quiesce both Demo origins because they share canonical schema readiness. Use only the protected migration owner to change canonical migration bookkeeping; migration 034 down must leave Customer revocations intact. The target backend, fixture and canonical schema must be one reviewed compatible set, and all Customer and Platform sessions must be re-established. On re-forward, quiesce again, reapply migration 034 before traffic, deploy the current pair and verify old Customer cookies fail.
+
+For Demo data corruption or an invalid seed state, prefer the supported deterministic reset/reseed operation. If sentinel/schema integrity cannot be established, recreate the isolated Demo database and rerun the controlled initialization workflow. If the main-only initialization workflow cannot initialize the reviewed target contract, stop and forward-fix. Do not apply ad hoc repair SQL or grant a runtime role broader privileges.
 
 ## Secrets inventory
 
