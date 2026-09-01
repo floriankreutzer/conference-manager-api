@@ -1,10 +1,22 @@
-import { tenantAuthorizationSnapshot } from '../../authorization/policy.js';
+import {
+  TENANT_ROLE,
+  tenantAuthorizationSnapshot,
+} from '../../authorization/policy.js';
 import { hasSessionCookie } from '../../identity/session-cookie.js';
 import { DEMO_FIXTURE } from '../fixture.js';
 
 const PERSONA_PATTERN = /^[a-z][a-z0-9_]{1,31}$/;
 const TENANT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const ALLOWED_PERSONAS = new Set(DEMO_FIXTURE.customerPersonas.map(({ persona }) => persona));
+const DUAL_ROLE_PERSONA = 'dual_role';
+const ALLOWED_PERSONAS = new Set([
+  ...DEMO_FIXTURE.customerPersonas.map(({ persona }) => persona),
+  DUAL_ROLE_PERSONA,
+]);
+const DUAL_ROLE_ROLES = Object.freeze([
+  TENANT_ROLE.EMPLOYEE,
+  TENANT_ROLE.CONFERENCE_MANAGER,
+  TENANT_ROLE.TENANT_ADMIN,
+]);
 
 function sameValues(left, right) {
   return Array.isArray(left)
@@ -23,6 +35,19 @@ function trustedIdentity(selection) {
     permissions: authorization.permissions,
     securityVersion: selection.securityVersion,
   });
+}
+
+function dualRoleSelection(selection) {
+  return Object.freeze({
+    ...selection,
+    persona: DUAL_ROLE_PERSONA,
+    roles: DUAL_ROLE_ROLES,
+  });
+}
+
+function hasDualRole(principal) {
+  return principal?.roles?.includes(TENANT_ROLE.CONFERENCE_MANAGER)
+    && principal.roles.includes(TENANT_ROLE.TENANT_ADMIN);
 }
 
 function selectionMatchesPrincipal(selection, principal) {
@@ -74,12 +99,19 @@ export function createDemoCustomerPersonaService({
   async function requireSelection(tenantId, persona) {
     validateTenantId(tenantId);
     validatePersona(persona);
-    const selection = await personaRepository.findCustomer({ tenantId, persona });
+    const lookupPersona = persona === DUAL_ROLE_PERSONA ? TENANT_ROLE.TENANT_ADMIN : persona;
+    const selection = await personaRepository.findCustomer({ tenantId, persona: lookupPersona });
     if (!selection) throw new TypeError('DEMO_CUSTOMER_CONTEXT_NOT_AVAILABLE');
-    return selection;
+    return persona === DUAL_ROLE_PERSONA ? dualRoleSelection(selection) : selection;
   }
 
   async function defaultSelection() {
+    if (defaultPersona === DUAL_ROLE_PERSONA) {
+      if (defaultTenantId !== null) return requireSelection(defaultTenantId, DUAL_ROLE_PERSONA);
+      const selection = await personaRepository.findDefaultCustomer({ persona: TENANT_ROLE.TENANT_ADMIN });
+      if (!selection) throw new TypeError('DEMO_CUSTOMER_CONTEXT_NOT_AVAILABLE');
+      return dualRoleSelection(selection);
+    }
     const selection = defaultTenantId === null
       ? await personaRepository.findDefaultCustomer({ persona: defaultPersona })
       : await personaRepository.findCustomer({ tenantId: defaultTenantId, persona: defaultPersona });
@@ -105,10 +137,13 @@ export function createDemoCustomerPersonaService({
         }
         return issue(await defaultSelection(), correlationId);
       }
-      const selection = await personaRepository.findCustomerForPrincipal({
+      const storedSelection = await personaRepository.findCustomerForPrincipal({
         tenantId: principal.tenantId,
         userId: principal.userId,
       });
+      const selection = storedSelection && hasDualRole(principal)
+        ? dualRoleSelection(storedSelection)
+        : storedSelection;
       if (!selection || !selectionMatchesPrincipal(selection, principal)) {
         throw new TypeError('DEMO_CUSTOMER_SESSION_AUTHORITY_INVALID');
       }
