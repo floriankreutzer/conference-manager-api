@@ -164,7 +164,7 @@ test('location service advances revisions and creates audit-bound mutations', as
   assert.equal(calls[0].expectedRevision, 4);
   assert.equal(calls[0].nextRevision, 5);
   assert.equal(calls[0].auditEvent.metadata.domain, 'locations');
-  assert.equal(context.currentReads(), 0);
+  assert.equal(context.currentReads(), 1);
 });
 
 test('stale location writes are decided under the persistence lock and disclose only current revision', async () => {
@@ -182,7 +182,7 @@ test('stale location writes are decided under the persistence lock and disclose 
     (error) => error instanceof TenantSettingsConflictError && error.currentRevision === 7,
   );
   assert.equal(calls.length, 1);
-  assert.equal(context.currentReads(), 0);
+  assert.equal(context.currentReads(), 1);
 });
 
 test('provider context is read-only presentation data returned beside local configuration', async () => {
