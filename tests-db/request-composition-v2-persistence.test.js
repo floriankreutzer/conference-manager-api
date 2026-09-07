@@ -1,12 +1,19 @@
 import { clearSaas3TestState } from './support/saas3-test-state.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createBookingChangeService } from '../src/application/booking-change-service.js';
+import { createAuditService } from '../src/audit/audit-service.js';
 import {
   AUDIT_ACTION,
   AUDIT_OUTCOME,
   AUDIT_RETENTION_CLASS,
   normalizeAuditEvent,
 } from '../src/audit/event.js';
+import {
+  TENANT_ROLE,
+  createAuthorizationPolicy,
+  tenantAuthorizationSnapshot,
+} from '../src/authorization/policy.js';
 import { loadDatabaseConfig } from '../src/config.js';
 import {
   RequestCompositionInputError,
@@ -46,6 +53,7 @@ const SUPERSEDED_CHANGE_ID = '87808080-8080-4080-8080-808080808080';
 const APPROVAL_RACE_CHANGE_ID = '88808080-8080-4080-8080-808080808080';
 const CHANGE_WINDOW_CHANGE_ID = '89808080-8080-4080-8080-808080808080';
 const RECOVERY_CHANGE_ID = '90808080-8080-4080-8080-808080808080';
+const MANAGER_SELF_APPROVAL_CHANGE_ID = '91808080-8080-4080-8080-808080808080';
 const SITE_A = 'request-site-a';
 const ROOM_A = 'request-room-a';
 const ROOM_B = 'request-room-b';
@@ -533,6 +541,8 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
   await seed(pool);
 
   const auditRepository = createPostgresAuditRepository(pool, { hmacSecret: AUDIT_KEY });
+  const authorizationPolicy = createAuthorizationPolicy();
+  const auditService = createAuditService({ repository: auditRepository, authorizationPolicy });
   const requests = repository(pool, auditRepository);
   const created = await requests.createVersionedForTenant({
     tenantId: TENANT_A,
@@ -1289,6 +1299,95 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     status: 'applied',
     decided_by_user_id: USER_A,
   });
+
+  const managerSelfApprovalDraft = draft({
+    title: 'Manager self-approval service progression',
+    startsAt: '2026-09-06T12:00:00.000Z',
+    endsAt: '2026-09-06T13:00:00.000Z',
+  });
+  await createConfirmedRequest({
+    requests,
+    requestId: 'manager-self-approval-service',
+    requestDraft: managerSelfApprovalDraft,
+    createdAt: CREATED_AT,
+    confirmedAt: new Date('2026-08-27T09:34:00.000Z'),
+  });
+  const managerPrincipal = Object.freeze({
+    tenantId: TENANT_A,
+    userId: USER_A,
+    ...tenantAuthorizationSnapshot([
+      TENANT_ROLE.EMPLOYEE,
+      TENANT_ROLE.CONFERENCE_MANAGER,
+    ]),
+  });
+  const managerBookingChanges = createBookingChangeService({
+    repository: bookingChanges,
+    requestRepository: requests,
+    authorizationPolicy,
+    auditService,
+    bookingServiceFactory: {
+      async forRequest() {
+        throw new Error('UNEXPECTED_MANAGER_SELF_APPROVAL_CALENDAR_LOOKUP');
+      },
+      async moveCalendarEvent() {
+        throw new Error('UNEXPECTED_MANAGER_SELF_APPROVAL_CALENDAR_MOVE');
+      },
+      async rollbackCalendarMove() {
+        throw new Error('UNEXPECTED_MANAGER_SELF_APPROVAL_CALENDAR_ROLLBACK');
+      },
+    },
+    clock: (() => {
+      let value = Date.parse('2026-08-27T09:34:00.000Z');
+      return () => {
+        value += 1_000;
+        return value;
+      };
+    })(),
+    idFactory: () => MANAGER_SELF_APPROVAL_CHANGE_ID,
+  });
+  const managerProposal = await managerBookingChanges.propose({
+    principal: managerPrincipal,
+    tenantContext: { tenantId: TENANT_A, status: 'active' },
+    correlationId: CORRELATION_B,
+    requestId: 'manager-self-approval-service',
+    schemaVersion: 2,
+    expectedVersion: 2,
+    proposed: {
+      ...managerSelfApprovalDraft,
+      specialRequirements: 'Manager-owned approval path',
+    },
+  });
+  assert.equal(managerProposal.change.status, 'pending');
+  const managerApproval = await managerBookingChanges.approve({
+    principal: managerPrincipal,
+    tenantContext: { tenantId: TENANT_A, status: 'active' },
+    correlationId: CORRELATION_B,
+    requestId: 'manager-self-approval-service',
+    changeId: MANAGER_SELF_APPROVAL_CHANGE_ID,
+  });
+  assert.equal(managerApproval.change.status, 'applied');
+  assert.equal(managerApproval.requestRef.version, 3);
+  const managerApprovalRow = await pool.query(
+    `SELECT initiator_user_id, decided_by_user_id
+     FROM booking_change_requests
+     WHERE tenant_id = $1 AND id = $2`,
+    [TENANT_A, MANAGER_SELF_APPROVAL_CHANGE_ID],
+  );
+  assert.deepEqual(managerApprovalRow.rows[0], {
+    initiator_user_id: USER_A,
+    decided_by_user_id: USER_A,
+  });
+  assert.deepEqual(
+    (await auditRepository.listByTenantId(TENANT_A, { limit: 100 }))
+      .filter((entry) => entry.targetId === 'manager-self-approval-service'
+        && entry.action === AUDIT_ACTION.REQUEST_BOOKING_CHANGE)
+      .map((entry) => [entry.metadata.operation, entry.actorUserId]),
+    [
+      ['approve_applied', USER_A],
+      ['approve_begin', USER_A],
+      ['propose', USER_A],
+    ],
+  );
 
   const approvalAtomicDraft = draft({
     title: 'Approval atomicity change',

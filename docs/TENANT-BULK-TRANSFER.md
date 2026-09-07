@@ -2,8 +2,12 @@
 
 Tenant bulk transfer extends the existing Locations, Catalogue and Cost Allocation aggregates. It
 does not create a generic settings service, cross-aggregate mutation or alternate source of truth.
-The authenticated Tenant Admin requires `tenant:configure`; Tenant and actor scope always come from
-the server session and unsafe requests use the existing CSRF guard.
+Authorization follows the owning aggregate instead of granting a generic bulk-transfer role:
+Catalogue operations require Conference Manager plus `tenant:catalogue:manage`; Cost Allocation
+remains Tenant Admin plus `tenant:configure`; Locations can be read by either owning role, while an
+apply is re-authorized against the actual technical and/or Room-business fields changed and therefore
+requires `tenant:configure`, `tenant:rooms:business:manage`, or both. Tenant and actor scope always
+come from the server session and unsafe requests use the existing CSRF guard.
 
 ## JSON contract
 
@@ -44,7 +48,9 @@ validation creates no receipt, revision or audit event.
 `apply` requires that receipt and the same document. A stale aggregate revision returns the common
 settings conflict. A successful apply advances exactly one aggregate revision and produces the
 normal settings audit event. Replaying an applied receipt returns its recorded response without a
-second mutation or audit event.
+second mutation or audit event. The owning application service re-applies its normal authorization
+rules before persistence, so validation receipts never bypass a later role or field-level permission
+check.
 
 ## Persistence and rollback
 

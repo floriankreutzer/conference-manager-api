@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createRequestService } from '../src/application/request-service.js';
 import { createAuditService } from '../src/audit/audit-service.js';
 import {
   AUDIT_ACTION,
@@ -7,7 +8,12 @@ import {
   AUDIT_RETENTION_CLASS,
   normalizeAuditEvent,
 } from '../src/audit/event.js';
-import { createAuthorizationPolicy } from '../src/authorization/policy.js';
+import {
+  PERMISSION,
+  REQUEST_TRANSITION,
+  TENANT_ROLE,
+  createAuthorizationPolicy,
+} from '../src/authorization/policy.js';
 import { loadDatabaseConfig } from '../src/config.js';
 import { REQUEST_STATUS } from '../src/domain/request-workflow.js';
 import { createSessionService, SessionServiceError } from '../src/identity/session-service.js';
@@ -31,6 +37,7 @@ const TENANT_A = '22222222-2222-4222-8222-222222222222';
 const TENANT_B = '33333333-3333-4333-8333-333333333333';
 const USER_A = '11111111-1111-4111-8111-111111111111';
 const USER_B = '44444444-4444-4444-8444-444444444444';
+const USER_C = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const SESSION_A = '55555555-5555-4555-8555-555555555555';
 const SESSION_B = '66666666-6666-4666-8666-666666666666';
 const SESSION_C = '77777777-7777-4777-8777-777777777777';
@@ -180,6 +187,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 31, name: 'platform_operations_core' },
       { version: 32, name: 'platform_operations_projections' },
       { version: 33, name: 'platform_metering_runtime' },
+      { version: 34, name: 'customer_session_epoch_revocation' },
     ]);
   });
 
@@ -364,6 +372,70 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
     assert.equal(changed.status, REQUEST_STATUS.IN_REVIEW);
     assert.equal((await requests.findByTenantIdAndId(TENANT_B, 'shared-request')).status, REQUEST_STATUS.SUBMITTED);
     assert.equal((await auditRepository.listByTenantId(TENANT_A))[0].targetId, 'shared-request');
+  });
+
+  await t.test('Conference Manager cancels another User-owned eligible Request only inside the persisted Tenant', async () => {
+    await pool.query(
+      'INSERT INTO users (tenant_id, id, display_name) VALUES ($1, $2, $3)',
+      [TENANT_A, USER_C, 'User manager-cancel-owner'],
+    );
+    await seedRequest(pool, {
+      tenantId: TENANT_A,
+      requestId: 'manager-cancel-request',
+      requesterUserId: USER_C,
+    });
+    await seedRequest(pool, {
+      tenantId: TENANT_B,
+      requestId: 'manager-cancel-request',
+      requesterUserId: USER_B,
+    });
+
+    const requestService = createRequestService({
+      repository: requestRepository(),
+      authorizationPolicy,
+      auditService,
+      finalRoomConfirmationService: {
+        async confirm() {
+          throw new Error('FINAL_CONFIRMATION_NOT_EXPECTED');
+        },
+      },
+      clock: () => Date.parse('2026-08-24T10:00:00.000Z'),
+    });
+    const manager = {
+      userId: USER_A,
+      tenantId: TENANT_A,
+      roles: [TENANT_ROLE.EMPLOYEE, TENANT_ROLE.CONFERENCE_MANAGER],
+      permissions: [
+        PERMISSION.REQUEST_READ,
+        PERMISSION.REQUEST_CANCEL,
+        PERMISSION.REQUEST_MANAGE,
+      ],
+    };
+    const cancelled = await requestService.transitionRequest({
+      principal: manager,
+      tenantContext: { tenantId: TENANT_A },
+      requestId: 'manager-cancel-request',
+      transition: REQUEST_TRANSITION.CANCEL,
+      correlationId: CORRELATION_A,
+    });
+
+    assert.equal(cancelled.status, REQUEST_STATUS.CANCELLED);
+    assert.equal(
+      (await requestRepository().findByTenantIdAndId(TENANT_B, 'manager-cancel-request')).status,
+      REQUEST_STATUS.SUBMITTED,
+    );
+    const event = (await auditRepository.listByTenantId(TENANT_A, { limit: 100 }))
+      .find((entry) => (
+        entry.targetId === 'manager-cancel-request'
+        && entry.action === AUDIT_ACTION.REQUEST_TRANSITION
+      ));
+    assert.equal(event.actorUserId, USER_A);
+    assert.deepEqual(event.previousState, { status: REQUEST_STATUS.SUBMITTED });
+    assert.deepEqual(event.newState, { status: REQUEST_STATUS.CANCELLED });
+    assert.deepEqual(event.metadata, {
+      reasonProvided: false,
+      transition: REQUEST_TRANSITION.CANCEL,
+    });
   });
 
   await t.test('request mutation rolls back when its required audit append fails', async () => {

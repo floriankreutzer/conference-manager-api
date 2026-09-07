@@ -2,77 +2,101 @@
 
 ## Scope and authority
 
-This document describes the bounded SaaS 2 Locations/Rooms owner introduced for issue `conference-manager#82`. Root `AGENTS.md`, `docs/CODING-STANDARDS.md`, `docs/ARCHITECTURE.md`, `docs/TENANT-SETTINGS-CONTRACTS.md`, `docs/AUTHORIZATION.md`, `docs/AUDIT.md`, `docs/PERSISTENCE.md` and `docs/SECURITY.md` remain authoritative.
+This document describes the bounded Locations/Rooms aggregate and the SaaS 3.6 field-level ownership split. Root `AGENTS.md`, `docs/CODING-STANDARDS.md`, `docs/ARCHITECTURE.md`, `docs/TENANT-SETTINGS-CONTRACTS.md`, `docs/AUTHORIZATION.md`, `docs/AUDIT.md`, `docs/PERSISTENCE.md` and `docs/SECURITY.md` remain authoritative.
 
 The bounded owner is split across:
 
 - domain validation: `src/domain/tenant-locations.js`;
-- application service: `src/application/tenant-location-administration-service.js`;
+- application authorization/classification: `src/application/tenant-location-administration-service.js`;
 - PostgreSQL persistence: `src/persistence/postgres/tenant-location-repository.js`;
 - HTTP transport: `src/http/settings/locations.js`;
 - schema migration: `migrations/021_tenant_location_self_service.*.sql`.
 
-No generic Tenant settings service, repository, route or persistence document is introduced.
+No generic Tenant settings service or browser-owned authorization decision is introduced.
 
 ## API contract
 
 `GET /api/v1/tenant/settings/locations` returns the current bounded configuration with `schemaVersion`, `revision`, `configuration` and presentation-safe `providerContext`.
 
-`PUT /api/v1/tenant/settings/locations` accepts exactly `schemaVersion`, `expectedRevision` and `configuration`. The Tenant and actor are always derived from the authenticated server session. Unsafe requests require the existing CSRF guard.
+`PUT /api/v1/tenant/settings/locations` accepts exactly `schemaVersion`, `expectedRevision` and `configuration`. Tenant and actor are always derived from the authenticated server session. Mutating requests require the existing CSRF guard.
 
-Every route requires Tenant Admin plus `tenant:configure`. Server-side authorization denials are recorded through the existing bounded audit service before the request fails.
+Read/history access is available only to recognized authorized principals that require the aggregate for their role. Mutation authorization is field-level and server-classified from a diff against the locked persisted current snapshot; the client does not select the authorization class.
 
-`GET /api/v1/tenant/settings/locations/history` returns bounded revision metadata. `GET /api/v1/tenant/settings/locations/history/{revision}` returns an immutable local-configuration snapshot. `POST /api/v1/tenant/settings/locations/rollback` creates a new revision from an existing snapshot; it never rewinds the revision counter.
+`GET /api/v1/tenant/settings/locations/history` returns bounded revision metadata. `GET /api/v1/tenant/settings/locations/history/{revision}` returns an immutable local-configuration snapshot. A stale write returns `409 TENANT_SETTINGS_REVISION_CONFLICT` with only the current safe numeric revision. No stale mutation, revision increment or success audit event commits.
 
-A stale write returns the shared `409 TENANT_SETTINGS_REVISION_CONFLICT` response with only the current safe numeric revision. No stale mutation, revision increment or success audit event is committed.
+## SaaS 3.6 ownership boundary
 
-## Ownership boundaries
+Conference Manager owns Room business fields:
 
-Tenant-managed Site fields are stable ID, display name, active state, authoritative IANA time zone and bounded postal address metadata.
+- local display `name`;
+- approved `capacity`;
+- `active` business availability;
+- `floor`;
+- bounded `equipment` and `accessibility` tags;
+- applicable `serviceIds`;
+- applicable `cateringPackageIds`;
+- local `floorplanAssetId` and `mediaAssetIds`.
 
-Tenant-managed Room fields are stable ID, Site assignment, local display name, approved capacity, active state, floor, bounded equipment/accessibility tags, applicable Service/Catering IDs and local asset references.
+Those changes require `conference_manager` plus `tenant:rooms:business:manage`.
 
-Microsoft-owned technical identifiers remain outside the mutable contract. The read-only provider view exposes only the local Room ID plus provider kind, mapping status, provider display name/capacity and `lastSeenAt`. External room IDs, resource addresses, Graph URLs, provider Tenant references, tokens and connection secrets are not exposed by the Locations settings endpoint.
+Tenant Admin owns technical Location shape:
 
-In the Microsoft-first pilot, Rooms cannot be manually created through the Locations contract. New Rooms continue to originate from the existing Microsoft discovery/import boundary. This prevents local data from masquerading as a provider-backed Room. A future non-Microsoft/manual-room capability requires an explicit product policy and its own acceptance evidence.
+- Site records, including stable ID, display name, active state, authoritative IANA time zone and bounded postal address metadata;
+- Room stable identity;
+- Room-to-Site technical assignment (`siteId`);
+- provider connection/discovery/import/resync and provider Room identity/resource mapping through the dedicated integration services.
+
+Those Location-shape changes require `tenant_admin` plus `tenant:configure`. Provider mapping operations additionally remain behind their dedicated Tenant Admin integration permissions/services.
+
+A mutation containing both technical and Room-business changes requires both permission classes. In practice this means a dual-role Principal. Tenant Admin does not gain Room-business authority from `tenant:configure`, and Conference Manager cannot change Sites, Room stable identity or provider mapping.
+
+The service supplies a synchronous, side-effect-free field authorizer to the owning repository. After locking and matching the expected revision, the repository invokes it with the exact persisted current aggregate and proposed mutation that will be validated and applied. Classification therefore cannot be weakened by omitting browser fields, submitting a stale UI role label or claiming that a technical change is a business change.
+
+## Provider boundary
+
+Microsoft/provider-owned technical identifiers remain outside the mutable business contract. The read-only provider view exposes only the local Room ID plus provider kind, mapping status, provider display name/capacity and `lastSeenAt`. External Room IDs, resource addresses, Graph URLs, provider Tenant references, tokens and connection secrets are not exposed by the Locations settings endpoint.
+
+In the Microsoft-first path, Rooms cannot be manually created through the Locations business contract. New provider-backed Rooms originate from the Microsoft discovery/import boundary. A future non-provider/manual-Room capability requires explicit product policy and acceptance evidence.
+
+Room business metadata may be changed by Conference Manager without mutating provider identity. Provider import/resync must preserve locally authoritative Room business fields unless an explicitly governed ownership rule says otherwise.
 
 ## Time-zone migration rule
 
-Migration 021 does not update `sites.time_zone`. Existing `NULL` values remain `NULL`; no UTC, browser-local or inferred default is fabricated. Reads can therefore expose legacy Sites with an unknown time zone, but a Site must have an explicit valid IANA time zone before the complete versioned configuration can be written.
+Migration 021 does not fabricate `sites.time_zone`. Existing `NULL` values remain unknown. A Site must have an explicit valid IANA time zone before the complete versioned configuration can be written.
 
-This preserves the existing booking invariant: a Room whose Site time zone is unknown is not considered safely bookable.
+This preserves the booking invariant: a Room whose Site time zone is unknown is not considered safely bookable.
 
 ## Concurrency, history and audit
 
-The aggregate uses only `tenants.locations_revision`. Provider discovery/resync does not advance that revision because provider observations are not Tenant settings. Microsoft room import does advance it once whenever an import creates one or more local Rooms. A successful local mutation or local-room import locks the Tenant revision, validates current server-side references, snapshots the prior local state, applies the local mutation, advances the revision, snapshots the actual resulting state and appends server-generated audit evidence in one PostgreSQL transaction.
+The aggregate uses `tenants.locations_revision`. Provider discovery/resync does not advance that revision merely for provider observation. Import advances it when canonical local Room identities are created. Broad aggregate authorization occurs before persistence so unauthorized and cross-Tenant callers cannot learn a revision. For a mutation or rollback, the repository then locks the Tenant revision and rejects a mismatch before field-diff authorization. A matching request is classified synchronously against the same locked current configuration, after which reference validation, the local mutation, revision advancement, immutable snapshots and server-generated success audit evidence commit in one PostgreSQL transaction.
 
-`tenant_location_revisions` is immutable. Update and delete triggers reject mutation of historical snapshots. History contains local configuration only; provider observations are deliberately excluded so a Microsoft resync cannot rewrite or reinterpret a Tenant settings revision.
+`tenant_location_revisions` is immutable. History contains local configuration only; provider observations are excluded so resync cannot rewrite Tenant-settings history. An already-applied bulk receipt returns its stored response before revision comparison or field authorization; a pending receipt follows the same locked revision and authorization path as a normal mutation.
 
-Rollback preserves local identities created after the selected historical revision by deactivating those newer Sites/Rooms. Reference checks still apply. The new rollback revision snapshots the actual post-apply state, including those retained inactive identities, rather than claiming that the older snapshot was restored byte-for-byte.
+The persistence-layer write remains the final concurrency authority. A stale optimistic revision or conflicting authoritative change fails closed without field-denial or success audit evidence. If field authorization denies a matching revision, the business transaction rolls back first and the application service then records exactly one denial event outside that aborted transaction.
 
-Rollback also revalidates the complete current writable contract. A legacy history snapshot containing an unknown Site time zone remains readable evidence, but it cannot be reapplied until an administrator submits an explicit valid IANA time zone through a normal Locations update.
+Historical snapshots can contain both technical and Room-business fields. They are evidence, not an authorization bypass. Reapplying a mixed snapshot requires the same field-level authorization classification as a normal mutation; a single elevated role cannot use history/rollback to gain the other role's field ownership.
 
 ## Reference protection
 
-Physical deletion is not part of the public contract. Existing Sites and Rooms must remain present and are deactivated instead. Room creation is blocked in this Microsoft-first path.
+Physical deletion is not part of the public contract. Existing Sites and Rooms are retained/deactivated according to domain rules. Room creation remains blocked in the Microsoft-first Locations path.
 
-Deactivation is rejected when the affected canonical Room identity is referenced by a non-terminal current/future Request, by a non-cancelled provider booking reference or as the target of an applying confirmed-booking change. Booking-change approval and Locations mutation share the Tenant location-authority lock; whichever starts second must revalidate after the first commits. Service and Catering applicability IDs are revalidated inside the Tenant-scoped transaction. Browser claims about references are never authoritative.
+Deactivation is rejected when the canonical Room identity is referenced by a non-terminal current/future Request, a non-cancelled provider booking reference or an applying confirmed-booking change. Booking-change approval and Location mutation share the Tenant location-authority lock; whichever starts second revalidates after the first commits. Service and Catering applicability IDs are revalidated inside the Tenant-scoped transaction. Browser claims about references are never authoritative.
 
 A Site cannot be inactive while one of its Rooms remains active.
 
 ## Rollout and compatibility
 
-The legacy `/api/v1/application/configuration` Site-only endpoint remains temporarily for coordinated client reads. Its `PUT` method is disabled with `405 METHOD_NOT_ALLOWED`; all supported Tenant Admin writes use the versioned Locations endpoint and cannot bypass optimistic concurrency.
+The legacy `/api/v1/application/configuration` Site-only endpoint remains only for coordinated client reads. Its `PUT` method is disabled with `405 METHOD_NOT_ALLOWED`; all supported writes use the versioned Locations endpoint and cannot bypass optimistic concurrency or SaaS 3.6 authorization classification.
 
-Migration 021 may be rolled back only while `tenant_location_revisions` is empty, every Tenant still has `locations_revision = 1`, and no Site/Room detail value would be discarded. After a versioned mutation, rollback fails closed and requires a reviewed forward fix or compatible application rollback.
+Migration rollback is fail-closed after versioned/domain use and requires reviewed forward remediation rather than silent loss of authorization/history evidence.
 
 ## Required acceptance evidence
 
-Before issue #82 is complete:
-
-- unit tests cover exact schemas, missing/invalid time zones, provider-field rejection, manual-room rejection and stale revisions;
-- PostgreSQL integration tests cover tenant isolation, migration up/down, concurrent writers, audit rollback and referenced deactivation;
-- frontend Production and Shared Demo server-backed journeys exercise the same
-  `schemaVersion`/revision/conflict behavior;
-- Employee room search, final availability, Manager planning and history continue to use the canonical Room IDs;
-- Microsoft discovery/import/resync is externally exercised against the configured Entra development/pilot environment; that evidence is tracked with `external-acceptance-evidence`.
+- exact schema and malformed/provider-field rejection tests;
+- explicit Employee, Conference Manager, Tenant Admin and dual-role field-ownership tests;
+- mixed mutation requiring both elevated capability sets;
+- cross-Tenant concealment/denial;
+- PostgreSQL tenant isolation, migration, concurrent writer and audit-atomic tests;
+- frontend ownership-projection tests showing Conference Manager preserves Sites/`siteId` and Tenant Admin preserves Room business fields;
+- shared-Demo browser evidence on the same server-backed API contract;
+- provider discovery/import/resync evidence remains separate external acceptance and never substitutes for local authorization tests.

@@ -49,6 +49,8 @@ Session events identify the internal User as target and use only role/permission
 
 Microsoft 365 lifecycle events contain only bounded operation, status and reason codes. Authenticated malformed, denied, expired, replayed, and binding-mismatch consent callbacks are persisted with stable redacted reason codes, including when no authoritative connection mutation succeeds. They exclude internal or provider Tenant IDs, provider User IDs, raw consent state, credentials, access tokens, provider response bodies and provider error descriptions.
 
+Booking-change read, propose and decision denials use `authorization.denied` only when a valid authenticated Principal and matching Tenant context exist. Evidence targets the caller-supplied Request ID and contains only the fixed operation `booking_change_read`, `booking_change_propose` or `booking_change_decision`. It never contains the booking-change ID, a foreign Tenant/owner identity or an object-existence result. A Principal/context mismatch is not forced into a Tenant audit chain.
+
 ## Append-only and tamper evidence
 
 Migration 004 makes `audit_events` append-only through a database trigger that rejects `UPDATE` and `DELETE`.
@@ -83,7 +85,9 @@ leave an unaudited Request version. Validation/conflict paths do not append fals
 
 For Microsoft 365, the atomic boundary covers consent-state persistence, connection-state/version changes, active provider-binding revalidation, callback rejection evidence and local disconnect. External Microsoft consent or Graph calls cannot participate in the PostgreSQL transaction and are never described as transactionally atomic with local state.
 
-Failures that produce no authoritative mutation are appended as separate failure or denial events when a valid Tenant and actor context exists. Events for identities that cannot be mapped to a valid internal Tenant belong to the platform/security telemetry boundary rather than being forced into another Tenant's audit trail.
+Failures that produce no authoritative mutation are appended as separate failure or denial events when a valid Tenant and actor context exists. For Locations field authorization, the locked business transaction rolls back before the application service appends exactly one denial event; a stale revision is a concurrency conflict and creates neither false denial nor success evidence. Events for identities that cannot be mapped to a valid internal Tenant belong to the platform/security telemetry boundary rather than being forced into another Tenant's audit trail.
+
+Migration 034 is a deployment-wide Customer authorization-epoch cutover, not an authenticated User logout. Its bulk one-way update must not fabricate one `session.revoked` event per row with a false actor. Protected deployment evidence instead retains the migration name/version/checksum, release SHA, bounded aggregate active-session counts and old-cookie/fresh-login results without session, User or Tenant identifiers.
 
 Anonymous or otherwise unmapped authentication failures therefore are not assigned to a Tenant audit chain. The identity-provider adapter may emit `authentication.failed` only after it has a trusted internal Tenant and actor mapping, or it may route unmapped security telemetry to the separate platform security domain.
 
@@ -139,4 +143,6 @@ Changes to the audit contract require, as applicable:
 - exact database action-constraint migration and rollback tests;
 - concurrency tests for audit-atomic lifecycle changes;
 - public-response, log and metric redaction tests;
-- rollback guards for durable audit evidence.
+- rollback guards for durable audit evidence;
+- minimized booking-change denial evidence for Employee non-owner, Tenant Admin other-user, Conference Manager cross-Tenant and scoped change-ID probes;
+- migration-034 deployment evidence proving global revocation without fabricated per-session audit actors.

@@ -15,7 +15,7 @@ const ROLES = Object.freeze({
 
 test('Demo migration stream is versioned independently from Production', async () => {
   const [production, demo] = await Promise.all([loadMigrations(), loadDemoMigrations()]);
-  assert.equal(production.at(-1).version, 33);
+  assert.equal(production.at(-1).version, 34);
   assert.equal(demo.length, 3);
   assert.equal(demo[0].version, 1);
   assert.equal(demo[0].name, 'demo_runtime_foundation');
@@ -60,7 +60,7 @@ test('Demo migration runner reads Production readiness but writes only its own l
     async query(query, values) {
       queries.push({ query, values });
       if (query?.name === 'demo-migration-production-schema') {
-        return { rows: [{ versions: Array.from({ length: 33 }, (_, index) => index + 1) }] };
+        return { rows: [{ versions: Array.from({ length: 34 }, (_, index) => index + 1) }] };
       }
       if (typeof query === 'string' && query.includes('SELECT version, name, checksum')) return { rows: [] };
       return { rows: [], rowCount: 0 };
@@ -82,7 +82,7 @@ test('Demo migration runner rejects a gapped Production migration ledger', async
     async query(query) {
       queries.push(query);
       if (query?.name === 'demo-migration-production-schema') {
-        return { rows: [{ versions: [1, ...Array.from({ length: 31 }, (_, index) => index + 3), 33] }] };
+        return { rows: [{ versions: [1, ...Array.from({ length: 32 }, (_, index) => index + 3), 34] }] };
       }
       return { rows: [] };
     },

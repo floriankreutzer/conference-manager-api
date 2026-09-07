@@ -67,8 +67,27 @@ function principal(tenantId = TENANT_A) {
   return {
     userId: ADMIN_ID,
     tenantId,
+    roles: ['conference_manager'],
+    permissions: [
+      'request:read',
+      'request:manage',
+      'tenant:rooms:business:manage',
+      'tenant:catalogue:manage',
+    ],
+  };
+}
+
+function tenantAdmin(tenantId = TENANT_A) {
+  return {
+    userId: ADMIN_ID,
+    tenantId,
     roles: ['tenant_admin'],
-    permissions: ['tenant:configure'],
+    permissions: [
+      'tenant:configure',
+      'tenant:users:manage',
+      'tenant:integrations:manage',
+      'tenant:audit:read',
+    ],
   };
 }
 
@@ -206,7 +225,7 @@ test('immutable Request snapshot uses authoritative identity, description and pr
   assert.equal(snapshot.services[0].name, 'Video support');
 });
 
-test('Tenant Admin update is revisioned and stale writes do not replace current state', async () => {
+test('Conference Manager update is revisioned and stale writes do not replace current state', async () => {
   const setup = fixture();
   const tenantContext = { tenantId: TENANT_A, status: 'active' };
   const proposed = catalogue({ services: [common('video-support', 'Video support changed')] });
@@ -276,7 +295,7 @@ test('archive protection and cross-Tenant request scope fail closed', async () =
   );
 });
 
-test('authorization denies non-admin and mismatched Tenant contexts before persistence', async () => {
+test('authorization denies Employee, Tenant Admin and mismatched Tenant contexts before persistence', async () => {
   const setup = fixture();
   const employee = {
     userId: ADMIN_ID,
@@ -287,6 +306,16 @@ test('authorization denies non-admin and mismatched Tenant contexts before persi
   await assert.rejects(
     setup.service.current({
       principal: employee,
+      tenantContext: { tenantId: TENANT_A },
+      correlationId: CORRELATION_ID,
+    }),
+    AuthorizationDeniedError,
+  );
+  assert.equal(setup.audit.events.at(-1).action, 'authorization.denied');
+
+  await assert.rejects(
+    setup.service.current({
+      principal: tenantAdmin(),
       tenantContext: { tenantId: TENANT_A },
       correlationId: CORRELATION_ID,
     }),

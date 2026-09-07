@@ -109,7 +109,7 @@ The claim token is single-use and actor/provider-bound. The server clears the cl
 
 ### `GET /api/v1/session`
 
-Requires a valid `cm_session` HttpOnly cookie. Session resolution checks token hash, expiry, revocation, active User, current User `security_version`, Tenant lifecycle and recognized role/permission values.
+Requires a valid `cm_session` HttpOnly cookie. Session resolution checks the current source-controlled Customer authorization-epoch token hash, expiry, revocation, active User, current User `security_version`, Tenant lifecycle and recognized role/permission values. Migration 034 permanently revokes all pre-epoch Customer sessions; removing its migration bookkeeping never restores those rows. The global epoch invalidates every pre-change authorization snapshot, while `security_version` remains the per-User invalidation control.
 
 A successful response contains only presentation-safe context:
 
@@ -143,7 +143,8 @@ See `docs/IDENTITY-SESSION.md`.
 The production browser uses one same-origin, server-authoritative application contract. Legacy
 profile, Site-information, availability, notification and configuration envelopes remain schema
 version 1. Request drafting, list, detail, transition, history, booking-change and reporting
-contracts are schema version 2. The browser positively validates the documented endpoint-specific
+contracts are schema version 2; the auxiliary current-Room context is an explicit schema-version-1
+read projection. The browser positively validates the documented endpoint-specific
 shape and never falls back to Demo storage.
 
 The current routes are:
@@ -161,7 +162,7 @@ The current routes are:
 
 All routes derive Tenant and User authority from the resolved Principal. Mutations require CSRF and exact positive-schema bodies. Public representations omit internal Tenant ownership, requester identity, provider identities/references, credentials, audit-chain material and other authority-shaped infrastructure fields.
 
-Employee Request lists are restricted to server-side ownership. Conference Managers with the separate Request management permission receive the Tenant-wide Request list. Tenant configuration requires Tenant Admin permission; Tenant Admin alone does not inherit Conference Manager Request access.
+Employee Request lists are restricted to server-side ownership. Conference Managers with the separate Request management permission receive the Tenant-wide Request list. Configuration ownership is role- and field-specific: Tenant Admin plus `tenant:configure` owns Organization, Booking Policies, Cost Allocation, Sites and technical Room assignment; Conference Manager plus `tenant:rooms:business:manage` owns Room business fields, and Conference Manager plus `tenant:catalogue:manage` owns Catalogue and Room prices. A mixed Locations mutation requires both capabilities and therefore a dual-role Principal. Neither elevated role inherits the other.
 
 `catalog.sites[]`, `siteInfo.sites[]` and `configuration.sites[]` expose the same minimized Site shape: `id`, `name`, `active` and `timeZone`. `timeZone` is the server-authoritative IANA time-zone identifier for that physical Site, for example `Europe/Berlin`. Existing Sites migrated without an established value expose `timeZone: null`; the server and browser must not replace that unknown state with browser-local time or UTC.
 
@@ -175,6 +176,8 @@ section's cursor until `complete` is true. A stale generation returns HTTP 409; 
 all partial data and restarts from Sites. Each page is produced from a coherent repeatable-read
 snapshot, contains at most ten entries and is additionally response-byte bounded. Supported
 sections are `sites`, `rooms`, `services`, `cateringPackages`, `cateringItems` and `costCenters`.
+Only entries from the active drafting catalogue are returned: inactive Sites and Rooms are never
+selection options, even when an existing Request still references their retained identities.
 Across those pages the exact Request-drafting facts are:
 
 - `configurationRevisions` with positive `organization`, `locations`, `catalogue`,
@@ -209,7 +212,7 @@ ownership scope, revision watermark, ordering key and a 30-minute expiry. A cons
 snapshot only when `page.complete` is true and `page.nextCursor` is null. Every page is also bounded
 by the configured response-byte cap.
 
-`PUT /api/v1/application/configuration` is disabled and returns HTTP 405 `METHOD_NOT_ALLOWED` after the normal authentication/CSRF boundary. Tenant Admin writes use the bounded versioned Locations contract below, so the legacy route cannot bypass optimistic concurrency.
+`PUT /api/v1/application/configuration` is disabled and returns HTTP 405 `METHOD_NOT_ALLOWED` after the normal authentication/CSRF boundary. All Site, Room and Room-business writes use the bounded versioned Locations contract below, so the legacy route cannot bypass field ownership or optimistic concurrency.
 
 A Request or room-availability check for an inactive/missing room or Site is concealed as unavailable. A room whose active Site has no valid authoritative time zone is not bookable and returns HTTP 409 `SITE_TIME_ZONE_REQUIRED` before local Request mutation or provider access.
 
@@ -316,9 +319,9 @@ returns the stable HTTP 503 code `ROOM_AVAILABILITY_UNAVAILABLE`; it never produ
 availability. The check is advisory: the create/resubmission write and authoritative Conference
 Manager confirmation still repeat uncached validation and the applicable local room-lock operation.
 
-## Tenant Locations and Rooms administration
+## Tenant Locations and Rooms contract
 
-All routes require Tenant Admin plus `tenant:configure`. Tenant authority comes only from the authenticated Principal. `PUT` and rollback require the session-bound CSRF token.
+Tenant authority comes only from the authenticated Principal. Current-state, history, revision, template, export and validation reads require either Conference Manager plus `tenant:rooms:business:manage` or Tenant Admin plus `tenant:configure`. `PUT`, bulk apply and rollback require the session-bound CSRF token and are authorized from the actual persisted-state diff: technical Site or Room-to-Site changes require Tenant Admin plus `tenant:configure`; Room business-field changes require Conference Manager plus `tenant:rooms:business:manage`; a mixed diff requires both capabilities and therefore a dual-role Principal. The browser cannot select a weaker mutation class.
 
 - `GET /api/v1/tenant/settings/locations` returns `{ "locations": { "schemaVersion": 1, "revision", "configuration", "providerContext" } }`.
 - `PUT /api/v1/tenant/settings/locations` accepts exactly `schemaVersion`, `expectedRevision` and `configuration` and returns the advanced aggregate.
@@ -336,7 +339,7 @@ Bulk JSON template, stable export, validation-receipt and apply routes are docum
 `docs/TENANT-BULK-TRANSFER.md`. They remain below the owning Locations, Catalogue or Cost Allocation
 route family and never accept a browser-selected Tenant.
 
-Organization, Catalogue, Booking Policies and Cost Allocation are separate bounded owners. Their administration reads and writes require Tenant Admin plus `tenant:configure`; writes additionally require valid session-bound CSRF. No route accepts Tenant or actor authority from the browser.
+Organization, Catalogue, Booking Policies and Cost Allocation are separate bounded owners. Organization, Booking Policies and Cost Allocation reads/writes require Tenant Admin plus `tenant:configure`. Catalogue reads/writes require Conference Manager plus `tenant:catalogue:manage`; Tenant Admin alone is denied. Writes additionally require valid session-bound CSRF. No route accepts Tenant or actor authority from the browser.
 
 - `GET/PUT /api/v1/tenant/settings/organization` and `GET /api/v1/tenant/settings/organization/history` expose the independently versioned Organization aggregate.
 - `GET/PUT /api/v1/tenant/settings/catalogue` and `GET /api/v1/tenant/settings/catalogue/history` expose the independently versioned service, equipment and catering aggregate.
@@ -514,6 +517,54 @@ the immutable `details`, `pricing`, `configurationRevisions`, `policy` and `allo
 captured by its authoritative write. A migrated legacy v1 Request returns each of those five fields
 explicitly as `null`; the server does not infer missing historical business facts.
 
+### `GET /api/v1/requests/{requestId}/room-context`
+
+Returns a request-scoped current presentation for the Room already referenced by the Request. It
+uses exactly the same active-Tenant, permission and object authorization as Request detail: the
+owning Employee and a Conference Manager with `request:read` may read within the authenticated
+Tenant; Tenant Admin does not inherit Conference Manager scope. Missing, cross-Tenant and
+same-Tenant non-owned Employee probes are concealed consistently. The repository first loads and
+authorizes the Request by Principal Tenant, then reads only its server-loaded `roomId`; no client
+Room or Tenant selector is accepted.
+
+The exact response is:
+
+```json
+{
+  "schemaVersion": 1,
+  "requestRef": {
+    "id": "REQ-42",
+    "schemaVersion": 2,
+    "version": 7,
+    "status": "Confirmed"
+  },
+  "currentRoomContext": {
+    "locationsRevision": 12,
+    "room": {
+      "id": "room-a",
+      "siteId": "site-a",
+      "name": "Room A",
+      "capacity": 20,
+      "active": false
+    },
+    "site": {
+      "id": "site-a",
+      "name": "Berlin",
+      "active": false,
+      "timeZone": "Europe/Berlin"
+    }
+  },
+  "requestId": "server-correlation-uuid"
+}
+```
+
+`currentRoomContext` is `null` when the Request has no Room. This projection deliberately reads
+retained inactive Room/Site identities and current presentation facts, including the Site's current
+nullable time zone. It is not a historical snapshot, does not reconstruct the booking-time time
+zone, and exposes no price, provider identity or `selectable` authority. Only the active application
+catalog defines selectable targets, and every booking-change write revalidates current Room/Site
+authority. Clients use `requestRef.version` to bind follow-on work and reload if it no longer matches.
+
 ### `GET /api/v1/requests/{requestId}/history`
 
 Returns byte-bounded pages of at most ten newest-first immutable Request revisions after the same active-Tenant,
@@ -551,7 +602,9 @@ Examples:
 
 Accepted transitions are `start_review`, `confirm`, `reject`, `request_change` and `cancel`. The browser never supplies target status. Tenant, owner, role, permission and status authority fields are rejected.
 
-Successful transition and `request.transition` evidence commit atomically. Invalid current state or concurrent change returns HTTP 409 `REQUEST_STATE_CONFLICT`.
+For `cancel`, the owning Employee with `request:cancel` and a Conference Manager with `request:manage` may move `Submitted`, `In Review`, `Confirmed` or `Change Requested` to `Cancelled`; the manager may act on another User's Request only inside the same Tenant. `Rejected` is ineligible and returns HTTP 409. An authorized retry of an already `Cancelled` Request is an idempotent reconciliation read and creates no duplicate transition event. Cancellation is logical only: no public Request delete route exists. A pending booking-change proposal is superseded in the cancellation transaction; an applying proposal causes a state conflict. Tenant Admin alone receives no Tenant-wide cancellation capability.
+
+Successful transition and `request.transition` evidence commit atomically with the server-derived actor, previous/new status and transition. Invalid current state or concurrent change returns HTTP 409 `REQUEST_STATE_CONFLICT`.
 Success uses the same exact schema-version-2 detail envelope as the single-Request read.
 
 ### `GET/POST /api/v1/requests/{requestId}/booking-change`
@@ -575,7 +628,10 @@ The Requester/Organizer may mutate only their own confirmed Request. A Conferenc
 initiate a proposal for any confirmed Request in the Tenant. Exactly one `pending` or `applying`
 proposal is permitted. The server locks the current confirmed Request, checks `expectedVersion`,
 reevaluates the complete draft against current Tenant configuration and persists an immutable
-next-version snapshot. A genuinely participant-count-only proposal applies immediately and
+next-version snapshot. `expectedVersion` must be the version of the exact Request snapshot from
+which that complete draft was composed. A client must not reload only a newer version token while
+retaining fields from an older open editor; on HTTP 409 it reloads and deliberately recomposes or
+merges the draft. A genuinely participant-count-only proposal applies immediately and
 atomically when current capacity, policy, Catalogue and allocation authority permit it; catering
 participant count may track that participant change. Any change to room, schedule, service,
 package/item, title, requirements or allocation, and any configuration-revision-only refresh,
@@ -584,7 +640,7 @@ decision.
 
 ### `POST /api/v1/requests/{requestId}/booking-change/{changeId}/decision`
 
-The exact body is `{ "decision": "approve" }` or `{ "decision": "reject", "reason": "..." }`. Only a Conference Manager with `request:manage` may decide, including a self-initiated proposal. The proposal cannot be edited through this route.
+The exact body is `{ "decision": "approve" }` or `{ "decision": "reject", "reason": "..." }`. Only a Conference Manager with `request:manage` may decide, including a self-initiated proposal. The same manager may therefore propose and approve; `initiatorUserId`, `decidedByUserId` and proposal/decision audit actors remain independently server-derived and may intentionally be equal. The proposal cannot be edited through this route. Denied read/propose/decision probes append minimized `authorization.denied` evidence in the caller Tenant when an authenticated context exists: only the Request target ID and fixed operation are recorded. A mismatched or unavailable change ID under an otherwise authorized Request returns the existing conflict contract and records the same minimized decision denial without exposing or persisting the probed change ID.
 
 Approval rechecks current Request version, room/site state, capacity, local overlap and live provider availability. A conflict returns the common result family with `status: "blocked"`, the unchanged pending `change`, current `requestRef` and up to five server-derived alternative room IDs. Successful application installs the persisted immutable v2 proposal snapshot, advances the Request version and records `booking_changed` history. Provider exhaustion returns HTTP 503 and leaves the original booking active with the proposal pending for a later retry. Room moves use a durable monotonic attempt and explicit move-pending, target-active, restore-pending and reconciliation-required phases; timeout ambiguity never permits cleanup of both the original and replacement event.
 

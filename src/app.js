@@ -53,6 +53,7 @@ const ROUTES = Object.freeze({
 });
 const REQUEST_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/;
 const REQUEST_HISTORY_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/history$/;
+const REQUEST_ROOM_CONTEXT_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/room-context$/;
 const REQUEST_TRANSITION_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/transitions$/;
 const BOOKING_CHANGE_PATH = /^\/api\/v1\/requests\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/booking-change$/;
 const BOOKING_CHANGE_DECISION_PATH = new RegExp(
@@ -211,6 +212,7 @@ function routeKey(path, routeRegistry = TENANT_ROUTE_REGISTRY) {
   if (microsoft365Route) return microsoft365Route;
   if (REQUEST_TRANSITION_PATH.test(path)) return 'request_transition';
   if (REQUEST_HISTORY_PATH.test(path)) return 'request_history';
+  if (REQUEST_ROOM_CONTEXT_PATH.test(path)) return 'request_room_context';
   if (BOOKING_CHANGE_DECISION_PATH.test(path)) return 'booking_change_decision';
   if (BOOKING_CHANGE_PATH.test(path)) return 'booking_change';
   if (REQUEST_PATH.test(path)) return 'request';
@@ -696,10 +698,12 @@ export function createApp({
         return;
       }
       const requestHistoryMatch = path.match(REQUEST_HISTORY_PATH);
+      const requestRoomContextMatch = path.match(REQUEST_ROOM_CONTEXT_PATH);
       const requestMatch = path.match(REQUEST_PATH);
-      if (transitionMatch || requestHistoryMatch || requestMatch) {
+      if (transitionMatch || requestHistoryMatch || requestRoomContextMatch || requestMatch) {
         const isTransition = Boolean(transitionMatch);
         const isHistory = Boolean(requestHistoryMatch);
+        const isRoomContext = Boolean(requestRoomContextMatch);
         const historyQuery = isHistory ? requestHistoryQuery(parsedUrl) : null;
         if (!isHistory) assertNoQuery(parsedUrl);
         const expectedMethod = isTransition ? 'POST' : 'GET';
@@ -708,7 +712,12 @@ export function createApp({
         authorizationPolicy.assertRecognizedPrincipal(principal);
         const tenantContext = await tenantGuard.requireActive(principal);
         if (!requestService) throw new ApiError(503, 'REQUEST_SERVICE_UNAVAILABLE');
-        const requestIdValue = (transitionMatch || requestHistoryMatch || requestMatch)[1];
+        const requestIdValue = (
+          transitionMatch
+          || requestHistoryMatch
+          || requestRoomContextMatch
+          || requestMatch
+        )[1];
 
         if (isHistory) {
           statusCode = 200;
@@ -718,6 +727,17 @@ export function createApp({
             requestId: requestIdValue,
             correlationId: requestId,
             query: historyQuery,
+          }), config.maxResponseBytes);
+          return;
+        }
+
+        if (isRoomContext) {
+          statusCode = 200;
+          sendJson(response, statusCode, await requestService.getRequestRoomContext({
+            principal,
+            tenantContext,
+            requestId: requestIdValue,
+            correlationId: requestId,
           }), config.maxResponseBytes);
           return;
         }

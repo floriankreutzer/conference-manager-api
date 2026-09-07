@@ -204,7 +204,11 @@ export function createBookingChangeService({
       throw new TypeError('BOOKING_CHANGE_AUTHORIZATION_REQUIRED');
     }
   }
-  if (typeof auditService?.createEvent !== 'function' || typeof auditService?.record !== 'function') {
+  if (
+    typeof auditService?.createEvent !== 'function'
+    || typeof auditService?.record !== 'function'
+    || typeof auditService?.recordAuthorizationDenied !== 'function'
+  ) {
     throw new TypeError('AUDIT_SERVICE_REQUIRED');
   }
   for (const method of ['forRequest', 'moveCalendarEvent', 'rollbackCalendarMove']) {
@@ -218,6 +222,50 @@ export function createBookingChangeService({
     const request = await requestRepository.findByTenantIdAndId(tenantContext.tenantId, requestId);
     if (!request) throw new AuthorizationDeniedError('RESOURCE_NOT_AVAILABLE', { conceal: true });
     return request;
+  }
+
+  async function recordDenied({
+    principal,
+    tenantContext,
+    correlationId,
+    requestId,
+    operation,
+  }) {
+    if (principal?.tenantId !== tenantContext?.tenantId) return;
+    await auditService.recordAuthorizationDenied({
+      principal,
+      tenantContext,
+      correlationId,
+      targetType: 'request',
+      targetId: requestId,
+      metadata: { operation },
+    });
+  }
+
+  async function authorizedRequest({
+    principal,
+    tenantContext,
+    correlationId,
+    requestId,
+    operation,
+    authorize,
+  }) {
+    try {
+      const request = await requestFor(tenantContext, requestId);
+      authorizationPolicy[authorize](principal, tenantContext, request);
+      return request;
+    } catch (error) {
+      if (error instanceof AuthorizationDeniedError) {
+        await recordDenied({
+          principal,
+          tenantContext,
+          correlationId,
+          requestId,
+          operation,
+        });
+      }
+      throw error;
+    }
   }
 
   function audit({ principal, tenantContext, correlationId, requestId, operation, outcome, changedAt }) {
@@ -274,8 +322,14 @@ export function createBookingChangeService({
 
     async findOpen({ principal, tenantContext, correlationId, requestId }) {
       if (!isInternalUuid(correlationId)) throw new AuthorizationInputError('CORRELATION_ID_INVALID');
-      const request = await requestFor(tenantContext, requestId);
-      authorizationPolicy.authorizeRequestRead(principal, tenantContext, request);
+      const request = await authorizedRequest({
+        principal,
+        tenantContext,
+        correlationId,
+        requestId,
+        operation: 'booking_change_read',
+        authorize: 'authorizeRequestRead',
+      });
       return publicChangeResult(
         await repository.findOpen(tenantContext.tenantId, requestId),
         request,
@@ -292,8 +346,14 @@ export function createBookingChangeService({
       proposed,
     }) {
       if (!isInternalUuid(correlationId)) throw new AuthorizationInputError('CORRELATION_ID_INVALID');
-      const request = await requestFor(tenantContext, requestId);
-      authorizationPolicy.authorizeBookingChangePropose(principal, tenantContext, request);
+      const request = await authorizedRequest({
+        principal,
+        tenantContext,
+        correlationId,
+        requestId,
+        operation: 'booking_change_propose',
+        authorize: 'authorizeBookingChangePropose',
+      });
       if (schemaVersion !== REQUEST_COMPOSITION_SCHEMA_VERSION) {
         throw new AuthorizationInputError('REQUEST_SCHEMA_VERSION_UNSUPPORTED');
       }
@@ -338,8 +398,14 @@ export function createBookingChangeService({
       if (!isInternalUuid(correlationId) || !isInternalUuid(changeId)) {
         throw new AuthorizationInputError('BOOKING_CHANGE_ID_INVALID');
       }
-      const request = await requestFor(tenantContext, requestId);
-      authorizationPolicy.authorizeBookingChangeDecision(principal, tenantContext, request);
+      const request = await authorizedRequest({
+        principal,
+        tenantContext,
+        correlationId,
+        requestId,
+        operation: 'booking_change_decision',
+        authorize: 'authorizeBookingChangeDecision',
+      });
       const startedAt = now(clock);
       const begun = await repository.beginApproval({
         tenantId: tenantContext.tenantId,
@@ -372,6 +438,13 @@ export function createBookingChangeService({
         throw new BookingChangeDependencyError('BOOKING_CHANGE_RECONCILIATION_REQUIRED');
       }
       if (!['applying', 'finishing', 'restoring'].includes(begun.status)) {
+        await recordDenied({
+          principal,
+          tenantContext,
+          correlationId,
+          requestId,
+          operation: 'booking_change_decision',
+        });
         throw new BookingChangeConflictError();
       }
       const proposedRequest = begun.change.requestSchemaVersion === 2
@@ -881,8 +954,14 @@ export function createBookingChangeService({
       if (!isInternalUuid(correlationId) || !isInternalUuid(changeId)) {
         throw new AuthorizationInputError('BOOKING_CHANGE_ID_INVALID');
       }
-      const request = await requestFor(tenantContext, requestId);
-      authorizationPolicy.authorizeBookingChangeDecision(principal, tenantContext, request);
+      const request = await authorizedRequest({
+        principal,
+        tenantContext,
+        correlationId,
+        requestId,
+        operation: 'booking_change_decision',
+        authorize: 'authorizeBookingChangeDecision',
+      });
       const changedAt = now(clock);
       const rejected = await repository.reject({
         tenantId: tenantContext.tenantId,
@@ -896,7 +975,16 @@ export function createBookingChangeService({
           operation: 'reject', outcome: AUDIT_OUTCOME.SUCCESS, changedAt,
         }),
       });
-      if (!rejected) throw new BookingChangeConflictError();
+      if (!rejected) {
+        await recordDenied({
+          principal,
+          tenantContext,
+          correlationId,
+          requestId,
+          operation: 'booking_change_decision',
+        });
+        throw new BookingChangeConflictError();
+      }
       return publicChangeResult(rejected, request);
     },
   });

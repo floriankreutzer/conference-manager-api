@@ -8,8 +8,9 @@ individual catering items, applicability and authoritative prices. It does not i
 provider or external ordering API.
 
 The Principal-derived Tenant is the only ownership authority. Administration requires a recognized
-Tenant Admin with `tenant:configure`; writes require session-bound CSRF. The server never accepts a
-Tenant, actor, audit outcome or calculated total from the browser.
+Conference Manager with `tenant:catalogue:manage`; a Tenant Admin without the Conference Manager
+role is denied. Writes require session-bound CSRF. The server never accepts a Tenant, actor, audit
+outcome or calculated total from the browser.
 
 ## HTTP contract
 
@@ -59,15 +60,15 @@ and `variants`. Variants have exact `id`, `name`, nullable `description`, `price
 IDs are stable Tenant-local identifiers. Existing master entities and package variants cannot be
 omitted from an update. They are retained and set `active: false`; this preserves references and
 historical interpretation. Active packages cannot reference missing or inactive items. Destructive
-Tenant Admin deletion is not exposed.
+Conference Manager deletion is not exposed.
 
 Each Room-price entry has the exact shape
 `{ "roomId": "room-berlin-1", "price": { "amountMinor": 10000, "currency": "EUR" } }`.
 Room IDs are resolved through the Principal-derived Tenant inside the mutation transaction. A
 missing or cross-Tenant Room is rejected. The current response always includes Room prices in stable
-Room-ID order so an administrator can preserve the complete bounded aggregate. Once established, a
-Room-price entry cannot be omitted from a replacement mutation; the Tenant Admin may replace its
-bounded money value while immutable Request and Catalogue history retain earlier facts.
+Room-ID order so a Conference Manager can preserve the complete bounded aggregate. Once established,
+a Room-price entry cannot be omitted from a replacement mutation; the Conference Manager may replace
+its bounded money value while immutable Request and Catalogue history retain earlier facts.
 
 ## Prices and immutable Request snapshots
 
@@ -107,5 +108,5 @@ revision advance or introduction of new catalogue data.
 
 The central composition root injects the PostgreSQL repository and audit service, registers
 `tenantCatalogueRouteModule`, and includes both route keys in the logging/metrics registries.
-Global schema readiness is version 33 and the central architecture/API/persistence documents include
+Global schema readiness is version 34 and the central architecture/API/persistence documents include
 this bounded owner and its Request composition integration.

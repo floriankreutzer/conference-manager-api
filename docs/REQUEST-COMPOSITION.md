@@ -158,6 +158,26 @@ write field. A legacy proposal remains explicit as
 infer a historical v2 composition from legacy schedule columns and returns
 `proposedRequest: null`.
 
+## Current Room presentation versus drafting authority
+
+A public v2 Request's immutable `pricing.room` records only the selected Room ID, Site ID, name and
+price captured by the authoritative write. It does not claim the current Room capacity or active
+state, the current Site name/active state, or the current Site time zone. Legacy v1 Requests contain
+no composed Room snapshot.
+
+`GET /api/v1/requests/{requestId}/room-context` is the separate object-authorized current
+presentation. After authorizing the Request, the server uses its persisted `roomId` to read the
+same-Tenant Room and Site without an active filter. This lets a client render a retained inactive
+current Room, but does not make it selectable or bookable. The projection contains no price,
+provider mapping or historical time-zone claim. The active application catalogue remains the only
+drafting-selection feed, and Request creation, resubmission and booking-change evaluation continue
+to require a current active Room and Site.
+
+The `requestRef.version` and booking-change `expectedVersion` bind mutations to the full Request
+snapshot used to compose the draft. Fetching a newer version solely to replace the token while
+submitting an older full draft is not a merge and can overwrite intervening fields; clients retain
+the displayed version and reload/recompose on the resulting conflict.
+
 ## Draft validation
 
 The `request` object is a closed positive schema with exactly the fields shown
@@ -323,11 +343,12 @@ Migration 027:
   `booking_change_requests`.
 
 Deployment must run `npm run db:migrate` before application rollout and verify
-exact schema readiness at version 33. The application does not auto-migrate.
+exact schema readiness at version 34. The application does not auto-migrate.
 Operators should expect all pre-migration Catalogue editors to reload because
-the migration advances that aggregate revision. Tenant Admins should configure
-intentional Room prices after rollout; the zero seed preserves deterministic
-compatibility and does not assert a customer price decision.
+the migration advances that aggregate revision. Conference Managers with
+`tenant:catalogue:manage` should configure intentional Room prices after rollout;
+Tenant Admin alone is denied. The zero seed preserves deterministic compatibility
+and does not assert a customer price decision.
 
 Migration 027 down takes exclusive locks and fails closed after any v2 Request,
 non-migration Request history, changed Room price, later Catalogue mutation or
@@ -345,7 +366,10 @@ Changes to this boundary require, as applicable:
 - Booking Policy and Cost Allocation positive/negative snapshot tests;
 - same-Tenant success plus cross-Tenant, inactive, inapplicable and stale
   revision/version denial tests;
-- owner/manager/Tenant Admin separation and history BOLA/IDOR tests;
+- owner/manager/Tenant Admin separation and history/Room-context BOLA/IDOR tests;
+- active-only drafting catalogue plus retained inactive current-Room presentation tests;
+- same-manager propose/approve persistence evidence with equal initiator/decider IDs and separately attributed audit operations;
+- direct Employee non-owner, Tenant Admin other-user and Conference Manager cross-Tenant booking-change denial/audit tests;
 - create, resubmit, workflow and confirmed-change version/history tests;
 - audit-failure rollback and concurrent configuration/request mutation tests;
 - migration 027 up/down/reapply, legacy backfill, constraints, readiness and

@@ -24,8 +24,8 @@ Microsoft Entra / external identity provider
 
 Browser request
   -> opaque cm_session cookie
-     -> SHA-256 token lookup in PostgreSQL
-        -> expiry/revocation/user security_version/Tenant lifecycle checks
+     -> current Customer authorization-epoch SHA-256 lookup in PostgreSQL
+        -> expiry/revocation/User security_version/Tenant lifecycle checks
            -> provider-neutral internal Principal
               -> Tenant context
                  -> deny-by-default authorization/business layer
@@ -60,7 +60,7 @@ PostgreSQL stores:
 
 - internal session UUID;
 - internal Tenant/User ownership;
-- SHA-256 hash of the opaque token;
+- SHA-256 hash of `customer-session:<source-controlled-authorization-epoch>:<opaque-token>`;
 - normalized provider identity reference;
 - server-approved role/permission snapshot;
 - User `security_version` snapshot;
@@ -68,9 +68,9 @@ PostgreSQL stores:
 
 The raw session token is never persisted, logged, returned in JSON, exposed to browser JavaScript or copied into audit records.
 
-Session lookup hashes the presented cookie token and requires all of the following:
+Session lookup hashes the presented cookie token only in the current source-controlled Customer authorization epoch and requires all of the following:
 
-- matching hash;
+- matching current-epoch hash;
 - session not revoked;
 - session not expired;
 - User still active;
@@ -155,15 +155,33 @@ See `docs/AUDIT.md` for the common event validation and HMAC-chain contract.
 
 Each User has a monotonically increasing `security_version`. Each issued session snapshots that value as `principal_version`.
 
-The approved roles, permissions, and `security_version` form one authorization snapshot. Session issuance compares the snapshot version under the same PostgreSQL transaction and row locks used for insertion. A concurrent role change cannot therefore install a new session carrying permissions from the old version; the caller must resolve identity again.
+The approved roles, permissions, and `security_version` form one authorization snapshot. Session issuance compares the snapshot version under the same PostgreSQL transaction and row locks used for insertion. A concurrent per-User role change cannot therefore install a new session carrying permissions from the old version; the caller must resolve identity again.
 
-When an authorized role/permission mapping changes, the responsible server-side operation increments the User `security_version`. Every previously issued session immediately fails resolution because its snapshot no longer matches.
+When an authorized stored role assignment changes, the responsible server-side operation increments that User's `security_version`. Every previously issued session for that User immediately fails resolution because its snapshot no longer matches. Global source-code changes to role-to-permission meaning use the separate Customer authorization epoch below; they are not represented by pretending every `users.security_version` row changed.
 
 An authorized pre-activation Entra identity unbind applies this invalidation to every User in the Tenant and also sets `revoked_at` on every active Tenant session in the same transaction as the binding/audit change. It additionally disconnects Microsoft 365 and clears pending consent state. The unbind is rejected while any nonterminal booking-provider reference still needs the old provider authority for reconciliation.
 
 If the user should remain signed in, an authorized identity/session orchestration path may rotate the known current session using the newly approved role/permission snapshot. The new session receives the new `security_version`; the old session remains unusable.
 
 Issue #51 defines the deny-by-default role/permission and object/workflow policy in `docs/AUTHORIZATION.md`. Operations that later mutate User role/permission assignments must use Tenant Admin authorization, increment `security_version` and emit the corresponding server-generated audit event; the browser cannot rotate privileges by submitting new role values.
+
+## Global Customer authorization epoch
+
+The Customer session hash namespace contains the non-secret, source-controlled epoch `saas-3.6-role-policy-v1`. It is application policy, not a runtime option: the browser, Tenant configuration, environment variables and secret stores cannot select or move it backward. A reviewed global role/permission semantic change must advance this value and ship a matching one-way revocation migration.
+
+Migration 034 sets `revoked_at` on every still-active Customer session. Its down migration intentionally performs no session mutation. Removing schema-version bookkeeping therefore cannot clear the cutover revocations, and an old binary cannot resolve a new epoch hash. These two properties jointly prevent a pre-cutover legacy cookie from regaining a superseded permission snapshot after binary rollback.
+
+The required forward sequence is:
+
+1. block new Customer traffic and drain the complete old-epoch customer fleet;
+2. apply migration 034 and retain protected migration checksum plus pre/post active-session-count evidence;
+3. deploy the complete new-epoch fleet with no mixed customer instances;
+4. resume traffic only after readiness is schema 34 and a captured old cookie fails;
+5. require fresh sign-in and verify the new Principal reflects current role policy.
+
+Emergency rollback remains a global reauthentication event. Block Customer traffic, drain the new fleet, run the migration-034 down bookkeeping step, deploy the schema-33-compatible old binary and then resume only for fresh sign-in. Every pre-cutover row stays revoked and every new-epoch row is unresolvable by the old hash. Before forwarding again, block traffic, reapply migration 034 to revoke every rollback-window session, deploy the new fleet and repeat the old-cookie negative check. A database restore or PITR target older than migration 034 must receive no Customer traffic until migration 034 has been reapplied.
+
+Migration 034 is a deployment-wide security cutover without an authenticated per-session actor. It must not fabricate `session.revoked` events in Tenant audit chains. The protected deployment record, migration ledger/checksum, release SHA, active-session counts and old-cookie/fresh-login checks are the audit trail for this global operation.
 
 ## Public session endpoint
 
@@ -205,7 +223,7 @@ See `docs/ENTRA-AUTHENTICATION.md` for registration, configuration, protocol val
 
 ## Operational considerations
 
-Expired/revoked session cleanup is an operational maintenance concern and may be implemented with bounded server-side cleanup once production job scheduling/observability is defined. Removing expired rows is not required for correctness because lookup always enforces expiration and revocation.
+Expired/revoked session cleanup is an operational maintenance concern and may be implemented with bounded server-side cleanup once production job scheduling/observability is defined. Removing expired or revoked rows is not required for correctness because lookup always enforces expiration and revocation; cleanup must never rewrite a legacy hash or clear revocation as a rollback mechanism.
 
 Expired OIDC authentication transactions are rejected by the atomic consume query and are opportunistically deleted before new authentication transactions are created. Their lifetime is bounded independently from application sessions.
 

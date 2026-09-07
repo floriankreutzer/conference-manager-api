@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { AUDIT_ACTION } from '../src/audit/event.js';
 import { normalizeTrustedIdentity } from '../src/identity/principal.js';
@@ -149,6 +150,26 @@ test('session service stores only token hashes and emits minimized issuance audi
   const wrongCsrf = `${issued.csrfToken[0] === 'A' ? 'B' : 'A'}${issued.csrfToken.slice(1)}`;
   assert.equal(await context.service.verifyCsrf({ headers: { 'x-csrf-token': wrongCsrf } }, resolved), false);
   assert.equal(await context.service.resolvePrincipal({ headers: { cookie: `cm_session=${TOKEN_ONE.slice(0, -1)}!` } }), null);
+});
+
+test('customer session security epoch invalidates pre-policy token hashes', async () => {
+  const repository = fakeRepository();
+  const context = sessionService(repository, {
+    clock: () => Date.parse('2026-09-01T08:00:00.000Z'),
+    tokenFactory: () => TOKEN_ONE,
+    idFactory: () => SESSION_ONE,
+  });
+
+  const issued = await context.service.issue(identity());
+  const stored = [...repository.sessions.values()][0];
+  repository.sessions.clear();
+  const legacyHash = createHash('sha256').update(TOKEN_ONE, 'ascii').digest('hex');
+  repository.sessions.set(legacyHash, stored);
+
+  assert.equal(
+    await context.service.resolvePrincipal({ headers: { cookie: cookiePair(issued.setCookie) } }),
+    null,
+  );
 });
 
 test('session rotation and revocation carry audit events while credentials remain fail-closed', async () => {

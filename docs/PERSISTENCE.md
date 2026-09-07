@@ -33,7 +33,7 @@ Migration 002 establishes secure-session persistence:
 - `users.security_version` for stale-privilege invalidation;
 - server-side `sessions` rows;
 - internal Tenant/User foreign-key ownership;
-- unique SHA-256 session token hash;
+- unique Customer authorization-epoch SHA-256 session token hash (`customer-session:<source-controlled-epoch>:<raw-token>`);
 - normalized provider identity reference;
 - approved role/permission snapshot;
 - session principal-version snapshot;
@@ -96,7 +96,7 @@ Migration 018 adds nullable `sites.time_zone`. Existing Sites remain explicitly 
 
 Migration 019 adds confirmed-booking change persistence and enforces one open proposal per confirmed Request.
 
-Migration 020 adds independent optimistic revision counters for the Organization, Locations, Catalogue, Booking Policies and Cost Allocation Tenant Admin aggregates. It does not create a generic settings table/document, and rollback fails closed after any aggregate revision advances beyond its initial value.
+Migration 020 adds independent optimistic revision counters for the Organization, Locations, Catalogue, Booking Policies and Cost Allocation Tenant aggregates. Aggregate ownership remains role- and field-specific; this migration does not assign them all to Tenant Admin or create a generic settings table/document. Rollback fails closed after any aggregate revision advances beyond its initial value.
 
 Migration 021 adds bounded JSON details columns for Sites and Rooms plus immutable `tenant_location_revisions`. It leaves existing Site time zones and local/provider identifiers unchanged.
 
@@ -145,11 +145,13 @@ Microsoft fleet health, discovery observations and support diagnostics.
 Migration 033 establishes append-only metering, period/revision projections, operational quotas,
 quota receipts and the deployment-to-Tenant runtime inventory.
 
+Migration 034 performs the Customer authorization-epoch cutover by setting `revoked_at` on every still-active session. The mutation is intentionally one-way: the down migration removes only version bookkeeping and never restores or rewrites a session. Current code uses a source-controlled, domain-separated token-hash namespace, so a new session cannot be looked up by an old unnamespaced binary and a legacy cookie cannot be resurrected by binary rollback.
+
 The all-role Tenant presentation contract reuses the current Organization row and
 `organization_revision`. Its managed-brand policy maps one fixed reference to a code-shipped preset
 and therefore introduces no upload metadata, asset table, external object reference or migration.
 
-Runtime schema readiness advances to exactly version 33. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
+Runtime schema readiness advances to exactly version 34. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
 
 No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
 
@@ -228,6 +230,16 @@ event execute in one PostgreSQL transaction. Failure of history or audit persist
 Request mutation from committing. History reads use only internal Tenant ID plus Request ID and are
 bounded newest-first.
 
+The auxiliary current-Room projection remains on the Request repository boundary. The service
+first resolves and object-authorizes the Request by internal Tenant ID plus Request ID. Only then
+does `findRoomContextByTenantIdAndRoomId` join `tenants`, `rooms` and `sites` through
+Tenant-composite keys using the server-loaded Request `room_id`. That read intentionally has no
+Room/Site active filter so a retained inactive current identity remains presentationally available;
+it returns the current Locations revision, Room name/capacity/activity and Site
+name/activity/nullable time zone. It is not a write or selection query and requires no migration:
+the existing Tenant-composite Request-to-Room and Room-to-Site foreign keys plus delete restriction
+preserve the identity.
+
 Confirmed-booking proposal creation applies the same full v2 authority evaluation under the locked
 confirmed Request and expected version. It persists the proposed draft/immutable next-version
 snapshot rather than reevaluating historical business facts from a later Catalogue or policy. A
@@ -280,7 +292,7 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 33.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 34.
 
 ## Shared Demo persistence
 
@@ -292,7 +304,7 @@ reset/seed capability and migration ownership. All four URLs must resolve to the
 distinct.
 
 The canonical `migrations/` stream remains the source of the business schema and must contain the
-exact applied sequence `001..033`. The independent `demo-migrations/` stream has its own
+exact applied sequence `001..034`. The independent `demo-migrations/` stream has its own
 `demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `001`
 installs the immutable database sentinel, provider/persona reference tables, minimized views and
 role grants. It reads but never writes the canonical `schema_migrations` ledger.
@@ -327,7 +339,7 @@ JIT provisioning locks the complete external identity tuple and then locks and r
 
 Microsoft 365 consent start likewise locks and revalidates the active provider-Tenant binding before changing the connection and inserting the one-time consent row. Provider rebinding is rejected while any booking reference is not terminal `cancelled`. Callback consume locks the consent row and connection, revalidates actor, expiry, callback Tenant and the active provider binding, deletes the one-time row, and appends redacted rejection evidence within one transaction. After external verification, finalization revalidates both the exact active binding and the consumed `provider_reference` in the connection-update predicate, so an unbind or rebind during Graph I/O cannot commit verified state. A same-provider reconnect preserves a healthy verified connection until successful replacement; an allowed provider rebind resets verification and invalidates stale room mappings and capability-health snapshots atomically.
 
-Locations/Rooms updates lock `tenants.locations_revision`, validate the current Tenant-owned set, preserve referenced identities (including the target of an applying confirmed-booking change), apply the local state, advance the revision, store the actual post-apply snapshot and append audit evidence in one transaction. Confirmed-booking approval takes a shared lock on the same Tenant row before validating and applying its target, so approval cannot race a location deactivation. Microsoft room import uses the same lock and snapshots and advances the aggregate once when it creates local Rooms. Provider-only synchronization does not mutate local configuration or advance the Locations revision.
+Locations/Rooms updates lock `tenants.locations_revision` and reject stale revisions before invoking the application-supplied, synchronous field authorizer against the exact locked current/proposed transition. Authorized writes then validate the current Tenant-owned set, preserve referenced identities (including the target of an applying confirmed-booking change), apply the local state, advance the revision, store the actual post-apply snapshot and append success evidence in one transaction. A field denial aborts that transaction before the service appends separate denial evidence. Applied bulk receipts replay before revision or field authorization. Confirmed-booking approval takes a shared lock on the same Tenant row before validating and applying its target, so approval cannot race a location deactivation. Microsoft room import uses the same lock and snapshots and advances the aggregate once when it creates local Rooms. Provider-only synchronization does not mutate local configuration or advance the Locations revision.
 
 Pre-activation identity unbind locks the Tenant, Microsoft 365 Integration and exact active binding. It returns a conflict if any booking reference is not `cancelled`; otherwise binding removal, User security-version increments, active-session revocation, consent-transaction deletion, Microsoft 365 disconnect/verification reset and `tenant.identity.unbound` evidence commit together.
 
@@ -408,11 +420,13 @@ revision once to add Room prices; pre-migration Catalogue clients must reload. O
 has been used, production rollback requires a reviewed forward fix, compatible application rollback
 or restore/PITR decision rather than deletion of immutable history or bypass of the guard.
 
+Migration 034 down deliberately leaves every cutover revocation in place. An emergency binary rollback must drain Customer traffic before removing schema bookkeeping; all pre-cutover cookies remain revoked and sessions issued by the new epoch are unresolvable by old token hashing. Reapplying migration 034 after a rollback window revokes any sessions the old binary issued. A restore or PITR target older than migration 034 must not receive Customer traffic until migration 034 has been reapplied. Operators must never clear `revoked_at`, reuse an epoch or rewrite hashes to make a rollback appear successful.
+
 ## Testing evidence required
 
 Database changes require PostgreSQL integration coverage for applicable migration/version/checksum behavior, tenant-scoped repositories, composite FK isolation, invalid constraints, duplicate/concurrent writes, transaction rollback, schema readiness and cross-Tenant persistence.
 
-Session persistence additionally requires real PostgreSQL tests for raw-token non-persistence, session resolution, cross-Tenant issuance rejection, expiry, revocation, stale privilege invalidation, role-change/issuance races, rotation and migration rollback/reapply.
+Session persistence additionally requires real PostgreSQL tests for raw-token non-persistence, current-epoch session resolution, cross-Tenant issuance rejection, expiry, revocation, stale privilege invalidation, role-change/issuance races, rotation and migration rollback/reapply. The migration test must prove that a legacy unnamespaced row resolves before migration 034, remains revoked after down/rollback, and cannot resolve a current-epoch token; re-forward must revoke any rollback-window session.
 
 JIT persistence additionally requires real PostgreSQL tests for an active binding removed between lookup and transaction, absent optional display names, concurrent first login, and audit-atomic provisioning.
 
@@ -420,7 +434,7 @@ Microsoft 365 connection persistence additionally requires real PostgreSQL tests
 
 OIDC transaction persistence additionally requires real PostgreSQL tests for schema version 7, plaintext non-persistence, valid one-time consume, expiry rejection, replay rejection, provider scoping, concurrent consume behavior and rollback/reapply.
 
-Request authorization persistence additionally requires real PostgreSQL tests for same-ID Tenant isolation, cross-Tenant absence, workflow constraints, invalid status/reason combinations and stale/concurrent transition protection.
+Request authorization persistence additionally requires real PostgreSQL tests for same-ID Tenant isolation, cross-Tenant absence, owner/Conference Manager cancellation attribution, workflow constraints, invalid status/reason combinations and stale/concurrent transition protection. Confirmed-change persistence must also prove a single Conference Manager can propose and approve with equal initiator/decider IDs and separately attributed proposal/decision audit events.
 
 Audit persistence additionally requires real PostgreSQL tests for:
 
@@ -438,7 +452,7 @@ Entitlement persistence additionally requires real PostgreSQL tests for schema v
 
 Booking-provider persistence additionally requires real PostgreSQL tests for Tenant-composite Request/Integration ownership, same-provider-value cross-Tenant independence, pre-write pending connection/resource binding, attempt/state/reference constraints, same-attempt idempotent finalization, compensated-attempt key rotation, remap/disconnect-safe cleanup, create/final-commit authority loss, overlap lookup, audit-atomic mutations and fail-closed populated migration/rollback.
 
-Site-time-zone persistence additionally requires real PostgreSQL tests for nullable legacy migration, Tenant-scoped catalogue reads, room-to-Site booking context, audit-atomic correction through the versioned Locations owner, invalid bounded database shapes, exact schema readiness and fail-closed populated rollback.
+Site-time-zone persistence additionally requires real PostgreSQL tests for nullable legacy migration, Tenant-scoped active-only catalogue reads, request-authorized retained inactive current-Room context, room-to-Site booking context, audit-atomic correction through the versioned Locations owner, invalid bounded database shapes, exact schema readiness and fail-closed populated rollback.
 
 Migration 019 adds `booking_change_requests`, its Tenant-scoped foreign keys, bounded proposal fields, decision metadata and the partial unique index that enforces exactly one open proposal per confirmed Request. Participant-only application and approved proposal application update the Request, append `request.booking_change` audit evidence and create the Requester notification in one transaction. Room moves additionally swap the persisted active provider reference in that same apply transaction.
 

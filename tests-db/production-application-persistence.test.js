@@ -307,8 +307,61 @@ test('production application persistence is tenant-scoped and request create is 
   assert.equal(inactiveAudit.rows[0].count, 0);
 
   await pool.query(
+    'UPDATE rooms SET active = FALSE WHERE tenant_id = $1 AND id = $2',
+    [TENANT_A, ROOM_A],
+  );
+  const inactiveSitesPage = await applicationRepository.loadCatalogPage({
+    tenantId: TENANT_A,
+    section: 'sites',
+    limit: 11,
+  });
+  const inactiveRoomsPage = await applicationRepository.loadCatalogPage({
+    tenantId: TENANT_A,
+    section: 'rooms',
+    limit: 11,
+  });
+  assert.equal(inactiveSitesPage.status, 'ready');
+  assert.deepEqual(inactiveSitesPage.entries, []);
+  assert.equal(inactiveRoomsPage.status, 'ready');
+  assert.deepEqual(inactiveRoomsPage.entries, []);
+  assert.deepEqual(
+    await requestRepository.findRoomContextByTenantIdAndRoomId(TENANT_A, ROOM_A),
+    {
+      locationsRevision: 1,
+      room: {
+        id: ROOM_A,
+        siteId: SITE_A,
+        name: `Room ${ROOM_A}`,
+        capacity: 10,
+        active: false,
+      },
+      site: {
+        id: SITE_A,
+        name: `Site ${SITE_A}`,
+        active: false,
+        timeZone: 'Europe/Berlin',
+      },
+    },
+  );
+  assert.equal(
+    await requestRepository.findRoomContextByTenantIdAndRoomId(TENANT_B, ROOM_A),
+    null,
+  );
+  const tenantBRoomsPage = await applicationRepository.loadCatalogPage({
+    tenantId: TENANT_B,
+    section: 'rooms',
+    limit: 11,
+  });
+  assert.equal(tenantBRoomsPage.status, 'ready');
+  assert.deepEqual(tenantBRoomsPage.entries.map((room) => room.id), [ROOM_B]);
+
+  await pool.query(
     'UPDATE sites SET active = TRUE, time_zone = $3 WHERE tenant_id = $1 AND id = $2',
     [TENANT_A, SITE_A, 'Mars/Olympus'],
+  );
+  await pool.query(
+    'UPDATE rooms SET active = TRUE WHERE tenant_id = $1 AND id = $2',
+    [TENANT_A, ROOM_A],
   );
   await assert.rejects(
     requestRepository.createVersionedForTenant({

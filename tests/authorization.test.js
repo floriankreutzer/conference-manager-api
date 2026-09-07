@@ -125,6 +125,58 @@ test('role and permission must both authorize the capability', () => {
   );
 });
 
+test('booking-change policy separates owner, manager, Tenant Admin and Tenant scope', () => {
+  const policy = createAuthorizationPolicy();
+  const employee = principal({
+    userId: USER_B,
+    permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_CANCEL],
+  });
+  const tenantAdmin = principal({
+    userId: USER_B,
+    roles: [TENANT_ROLE.EMPLOYEE, TENANT_ROLE.TENANT_ADMIN],
+    permissions: [
+      PERMISSION.REQUEST_READ,
+      PERMISSION.REQUEST_CANCEL,
+      PERMISSION.TENANT_CONFIGURE,
+    ],
+  });
+  const manager = principal({
+    roles: [TENANT_ROLE.CONFERENCE_MANAGER],
+    permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_MANAGE],
+  });
+  const confirmed = request({ status: REQUEST_STATUS.CONFIRMED });
+
+  assert.throws(
+    () => policy.authorizeBookingChangePropose(employee, context(), confirmed),
+    isConcealed,
+  );
+  assert.throws(
+    () => policy.authorizeBookingChangePropose(tenantAdmin, context(), confirmed),
+    isConcealed,
+  );
+  assert.equal(
+    policy.authorizeBookingChangePropose(manager, context(), confirmed),
+    true,
+  );
+  assert.equal(
+    policy.authorizeBookingChangeDecision(manager, context(), confirmed),
+    true,
+  );
+
+  const crossTenant = request({
+    tenantId: TENANT_B,
+    status: REQUEST_STATUS.CONFIRMED,
+  });
+  assert.throws(
+    () => policy.authorizeBookingChangePropose(manager, context(), crossTenant),
+    isConcealed,
+  );
+  assert.throws(
+    () => policy.authorizeBookingChangeDecision(manager, context(), crossTenant),
+    isConcealed,
+  );
+});
+
 test('conference-manager workflow transitions are explicit and state-aware', () => {
   const policy = createAuthorizationPolicy();
   const manager = principal({
@@ -209,6 +261,110 @@ test('workflow transitions reject missing reasons, injected reasons, invalid sta
   assert.throws(
     () => policy.authorizeRequestTransition(manager, context(), request(), 'set_status'),
     AuthorizationInputError,
+  );
+});
+
+test('conference manager cancellation covers eligible same-Tenant Requests without Employee ownership', () => {
+  const policy = createAuthorizationPolicy();
+  const manager = principal({
+    roles: [TENANT_ROLE.EMPLOYEE, TENANT_ROLE.CONFERENCE_MANAGER],
+    permissions: [
+      PERMISSION.REQUEST_READ,
+      PERMISSION.REQUEST_CANCEL,
+      PERMISSION.REQUEST_MANAGE,
+    ],
+  });
+  for (const status of [
+    REQUEST_STATUS.SUBMITTED,
+    REQUEST_STATUS.IN_REVIEW,
+    REQUEST_STATUS.CONFIRMED,
+    REQUEST_STATUS.CHANGE_REQUESTED,
+  ]) {
+    const decision = policy.authorizeRequestTransition(
+      manager,
+      context(),
+      request({ requesterUserId: USER_B, status }),
+      REQUEST_TRANSITION.CANCEL,
+    );
+    assert.deepEqual(decision, {
+      transition: REQUEST_TRANSITION.CANCEL,
+      expectedStatus: status,
+      nextStatus: REQUEST_STATUS.CANCELLED,
+      reason: null,
+    });
+  }
+
+  assert.throws(
+    () => policy.authorizeRequestTransition(
+      manager,
+      context(),
+      request({ tenantId: TENANT_B, requesterUserId: USER_B }),
+      REQUEST_TRANSITION.CANCEL,
+    ),
+    isConcealed,
+  );
+  const managerWithoutPermission = principal({
+    roles: [TENANT_ROLE.EMPLOYEE, TENANT_ROLE.CONFERENCE_MANAGER],
+    permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_CANCEL],
+  });
+  assert.throws(
+    () => policy.authorizeRequestTransition(
+      managerWithoutPermission,
+      context(),
+      request({ requesterUserId: USER_B }),
+      REQUEST_TRANSITION.CANCEL,
+    ),
+    isConcealed,
+  );
+  assert.throws(
+    () => policy.authorizeRequestTransition(
+      manager,
+      context(),
+      request({ requesterUserId: USER_B, status: REQUEST_STATUS.REJECTED }),
+      REQUEST_TRANSITION.CANCEL,
+    ),
+    RequestStateConflictError,
+  );
+  assert.throws(
+    () => policy.authorizeRequestTransition(
+      manager,
+      context(),
+      request({ requesterUserId: USER_B }),
+      REQUEST_TRANSITION.CANCEL,
+      'client reason',
+    ),
+    AuthorizationInputError,
+  );
+});
+
+test('Tenant Admin cannot inherit tenant-wide cancellation from an injected manager permission', () => {
+  const policy = createAuthorizationPolicy();
+  const tenantAdmin = principal({
+    roles: [TENANT_ROLE.EMPLOYEE, TENANT_ROLE.TENANT_ADMIN],
+    permissions: [
+      PERMISSION.REQUEST_READ,
+      PERMISSION.REQUEST_CANCEL,
+      PERMISSION.REQUEST_MANAGE,
+      PERMISSION.TENANT_CONFIGURE,
+    ],
+  });
+  assert.throws(
+    () => policy.authorizeRequestTransition(
+      tenantAdmin,
+      context(),
+      request({ requesterUserId: USER_B }),
+      REQUEST_TRANSITION.CANCEL,
+    ),
+    isConcealed,
+  );
+  assert.equal(
+    policy.authorizeRequestTransition(
+      tenantAdmin,
+      context(),
+      request(),
+      REQUEST_TRANSITION.CANCEL,
+    ).nextStatus,
+    REQUEST_STATUS.CANCELLED,
   );
 });
 

@@ -1,10 +1,21 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
   DemoRuntimeGateError,
   withDemoRuntimeSharedGate,
 } from '../src/persistence/postgres/demo-runtime-gate.js';
+
+test('shared Demo runtime gate delegates transaction lifecycle to the canonical helper', async () => {
+  const source = await readFile(new URL('../src/persistence/postgres/demo-runtime-gate.js', import.meta.url), 'utf8');
+  assert.match(source, /import \{ withPostgresTransaction \} from '\.\/transaction\.js';/);
+  assert.match(source, /return withPostgresTransaction\(pool,/);
+  assert.doesNotMatch(source, /client\.query\(['"]BEGIN/);
+  assert.doesNotMatch(source, /client\.query\(['"]COMMIT/);
+  assert.doesNotMatch(source, /client\.query\(['"]ROLLBACK/);
+  assert.doesNotMatch(source, /client\.release\(/);
+});
 
 test('shared Demo runtime gate uses a transaction-scoped advisory lock', async () => {
   const queries = [];

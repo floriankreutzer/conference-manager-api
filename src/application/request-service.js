@@ -272,6 +272,63 @@ export function createRequestService({
       return request;
     },
 
+    async getRequestRoomContext({
+      principal,
+      tenantContext,
+      requestId,
+      correlationId,
+    }) {
+      if (typeof repository.findRoomContextByTenantIdAndRoomId !== 'function') {
+        throw new TypeError('REQUEST_ROOM_CONTEXT_REPOSITORY_REQUIRED');
+      }
+      const request = await loadRequest(tenantContext, requestId);
+      if (!request) {
+        await recordDenied({
+          principal,
+          tenantContext,
+          requestId,
+          correlationId,
+          operation: 'room_context',
+        });
+        throw concealedNotFound();
+      }
+      try {
+        authorizationPolicy.authorizeRequestRead(principal, tenantContext, request);
+      } catch (error) {
+        if (error instanceof AuthorizationDeniedError) {
+          await recordDenied({
+            principal,
+            tenantContext,
+            requestId,
+            correlationId,
+            operation: 'room_context',
+          });
+        }
+        throw error;
+      }
+
+      const currentRoomContext = request.roomId === null
+        ? null
+        : await repository.findRoomContextByTenantIdAndRoomId(
+          tenantContext.tenantId,
+          request.roomId,
+        );
+      if (request.roomId !== null && currentRoomContext === null) {
+        throw new TypeError('REQUEST_ROOM_CONTEXT_INVALID');
+      }
+      return Object.freeze({
+        schemaVersion: 1,
+        requestRef: Object.freeze({
+          id: request.id,
+          schemaVersion: request.schemaVersion,
+          version: request.version,
+          status: request.status,
+        }),
+        currentRoomContext,
+        requestId: correlationId,
+      });
+    },
+
     async getRequestHistory({
       principal,
       tenantContext,
