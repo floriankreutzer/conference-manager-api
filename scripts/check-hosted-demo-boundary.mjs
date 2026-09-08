@@ -99,6 +99,7 @@ for (const required of [
   "pathname.startsWith('/src/')",
   "connect-src 'self'",
   "frame-ancestors 'none'",
+  "'Cross-Origin-Embedder-Policy', 'require-corp'",
   "['GET', 'HEAD']",
   "file?.kind === 'invalid'",
 ]) {

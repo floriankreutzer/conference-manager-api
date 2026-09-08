@@ -74,6 +74,19 @@ function rawRequest(origin, requestPath, { method = 'GET' } = {}) {
   });
 }
 
+function assertStrictStaticHeaders(headers) {
+  assert.equal(headers['cache-control'], 'no-cache');
+  assert.equal(headers['cross-origin-embedder-policy'], 'require-corp');
+  assert.equal(headers['cross-origin-opener-policy'], 'same-origin');
+  assert.equal(headers['cross-origin-resource-policy'], 'same-origin');
+  assert.equal(headers['permissions-policy'], 'camera=(), microphone=(), geolocation=()');
+  assert.equal(headers['referrer-policy'], 'no-referrer');
+  assert.equal(headers['strict-transport-security'], 'max-age=31536000; includeSubDomains');
+  assert.equal(headers['x-content-type-options'], 'nosniff');
+  assert.equal(headers['x-frame-options'], 'DENY');
+  assert.doesNotMatch(headers['content-security-policy'], /unsafe-inline/);
+}
+
 test('Customer hosted Demo serves browser assets from the same origin with strict headers', async (t) => {
   const root = await fixtureRoot();
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -86,11 +99,12 @@ test('Customer hosted Demo serves browser assets from the same origin with stric
   assert.equal(page.headers['content-type'], 'text/html; charset=utf-8');
   assert.match(page.headers['content-security-policy'], /connect-src 'self'/);
   assert.match(page.headers['content-security-policy'], /frame-ancestors 'none'/);
-  assert.equal(page.headers['x-content-type-options'], 'nosniff');
+  assertStrictStaticHeaders(page.headers);
 
   const script = await rawRequest(origin, '/src/app.js');
   assert.equal(script.status, 200);
   assert.equal(script.headers['content-type'], 'text/javascript; charset=utf-8');
+  assertStrictStaticHeaders(script.headers);
   assert.match(script.body, /ready = true/);
 });
 
@@ -103,6 +117,7 @@ test('Platform hosted Demo serves its own entrypoint while sharing only approved
   const page = await rawRequest(origin, '/');
   assert.equal(page.status, 200);
   assert.match(page.body, /platform/);
+  assertStrictStaticHeaders(page.headers);
 
   const legacyPath = await rawRequest(origin, '/platform-admin-demo/index.html');
   assert.equal(legacyPath.status, 200);
@@ -112,6 +127,7 @@ test('Platform hosted Demo serves its own entrypoint while sharing only approved
   assert.equal(asset.status, 200);
   assert.equal(asset.body, '');
   assert.equal(asset.headers['content-type'], 'text/css; charset=utf-8');
+  assertStrictStaticHeaders(asset.headers);
 });
 
 test('hosted Demo static serving rejects traversal, symlink escape, unknown content and unsafe methods', async (t) => {
@@ -126,6 +142,7 @@ test('hosted Demo static serving rejects traversal, symlink escape, unknown cont
 
   const traversal = await rawRequest(origin, '/assets/%252e%252e/src/app.js');
   assert.equal(traversal.status, 400);
+  assertStrictStaticHeaders(traversal.headers);
 
   const encodedSeparator = await rawRequest(origin, '/assets%2fapp.css');
   assert.equal(encodedSeparator.status, 400);
