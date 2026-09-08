@@ -194,6 +194,9 @@ See `docs/MICROSOFT365-CONNECTION.md`.
   the Tenant-audit key grants no session, CSRF or authorization authority.
 - Both processes use one isolated PostgreSQL database so Demo state is server-authoritative and
   shared; browser storage is never Demo identity, authorization, Tenant or business authority.
+- Both same-origin browser surfaces emit `Cross-Origin-Embedder-Policy: require-corp` together with
+  the existing same-origin opener/resource policies and a CSP that permits no cross-origin network
+  dependency.
 - Demo configuration rejects Pilot/Production mode, real Entra/Microsoft configuration,
   conflicting normal database/origin/session/Platform configuration, administrative or aliased
   database roles, mismatched database targets, aliased secrets and non-verifying database TLS in a
