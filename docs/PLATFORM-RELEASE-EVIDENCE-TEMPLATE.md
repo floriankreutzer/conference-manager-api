@@ -44,7 +44,7 @@ Repository evidence never substitutes for deployed evidence. Demo evidence never
 | Platform API artifact | `<digest-reference>` | `PENDING` |
 | Customer Demo API artifact | `<digest-reference>` | `PENDING` |
 | Platform Demo API artifact | `<digest-reference>` | `PENDING` |
-| Shared Demo PostgreSQL/schema/seed | `<service-schema-34-overlay-1-seed-checksum-reference>` | `PENDING` |
+| Shared Demo PostgreSQL/schema/seed | `<service-schema-34-overlay-3-seed-checksum-reference>` | `PENDING` |
 | Deployment/IaC revision | `<immutable-reference>` | `PENDING` |
 | PostgreSQL engine/schema | `<protected-service-and-version-reference>` | `PENDING` |
 | Operator identity policy | `<registration-and-policy-reference>` | `PENDING` |
@@ -118,7 +118,7 @@ Review checklist:
 - [ ] Required Chromium and WebKit/iPhone projects ran.
 - [ ] Keyboard, focus, label, confirmation, announcement, zoom/reflow and overflow checks are recorded.
 - [ ] Demo uses one isolated PostgreSQL state through distinct migration/customer/Platform/reset roles.
-- [ ] Demo reset/reseed verifies schema `34`, overlay `1`, sentinel, table inventory and semantic checksum and is external-call free.
+- [ ] Demo reset/reseed verifies schema `34`, overlay `3`, sentinel, table inventory and semantic checksum and is external-call free.
 
 ## Identity, session, origin, and CSRF evidence
 
@@ -232,7 +232,7 @@ Penetration-test record:
 | Evidence ID | Scenario | Result | Protected reference |
 | --- | --- | --- | --- |
 | DEMO-01 | Exact customer/Platform frontend and API Demo builds, origins and visible environment identity | `PENDING` | `<reference>` |
-| DEMO-02 | Reset/reseed verifies canonical schema `34`, Demo overlay `1` and returns the pinned seed version/checksum | `PENDING` | `<reference>` |
+| DEMO-02 | Reset/reseed verifies canonical schema `34`, Demo overlay `3` and returns the pinned seed version/checksum | `PENDING` | `<reference>` |
 | DEMO-03 | All delivered roles/capabilities and denied paths | `PENDING` | `<reference>` |
 | DEMO-04 | Full invitation-to-recovery critical journey | `PENDING` | `<reference>` |
 | DEMO-05 | Degraded/stale/concurrent/replay/audit failure simulations | `PENDING` | `<reference>` |
