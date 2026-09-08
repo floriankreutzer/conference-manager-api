@@ -86,6 +86,9 @@ test('Customer hosted Demo serves browser assets from the same origin with stric
   assert.equal(page.headers['content-type'], 'text/html; charset=utf-8');
   assert.match(page.headers['content-security-policy'], /connect-src 'self'/);
   assert.match(page.headers['content-security-policy'], /frame-ancestors 'none'/);
+  assert.equal(page.headers['cross-origin-opener-policy'], 'same-origin');
+  assert.equal(page.headers['cross-origin-embedder-policy'], 'require-corp');
+  assert.equal(page.headers['cross-origin-resource-policy'], 'same-origin');
   assert.equal(page.headers['x-content-type-options'], 'nosniff');
 
   const script = await rawRequest(origin, '/src/app.js');
@@ -103,6 +106,9 @@ test('Platform hosted Demo serves its own entrypoint while sharing only approved
   const page = await rawRequest(origin, '/');
   assert.equal(page.status, 200);
   assert.match(page.body, /platform/);
+  assert.equal(page.headers['cross-origin-opener-policy'], 'same-origin');
+  assert.equal(page.headers['cross-origin-embedder-policy'], 'require-corp');
+  assert.equal(page.headers['cross-origin-resource-policy'], 'same-origin');
 
   const legacyPath = await rawRequest(origin, '/platform-admin-demo/index.html');
   assert.equal(legacyPath.status, 200);

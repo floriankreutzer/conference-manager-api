@@ -96,6 +96,7 @@ function applyStaticHeaders(response, { surface, contentType, contentLength }) {
   response.setHeader('Cache-Control', 'no-cache');
   response.setHeader('Content-Security-Policy', CONTENT_SECURITY_POLICIES[surface]);
   response.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  response.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
   response.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   response.setHeader('Referrer-Policy', 'no-referrer');
