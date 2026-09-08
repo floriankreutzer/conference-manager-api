@@ -305,7 +305,7 @@ distinct.
 
 The canonical `migrations/` stream remains the source of the business schema and must contain the
 exact applied sequence `001..034`. The independent `demo-migrations/` stream has its own
-`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `001`
+`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `003`
 installs the immutable database sentinel, provider/persona reference tables, minimized views and
 role grants. It reads but never writes the canonical `schema_migrations` ledger.
 

@@ -78,7 +78,7 @@ The checked-in `.env.example` is a development template. Pilot/Production config
 ## Run the Shared Demo Runtime
 
 The Shared Demo uses a dedicated database named `conference_manager_demo_*`, canonical schema
-version `34`, Demo overlay version `1`, four distinct database roles and only `DEMO_*`
+version `34`, Demo overlay version `3`, four distinct database roles and only `DEMO_*`
 configuration. After provisioning and applying canonical migrations, run:
 
 ```bash
