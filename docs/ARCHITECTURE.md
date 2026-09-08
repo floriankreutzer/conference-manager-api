@@ -324,7 +324,7 @@ returning success. Projection failure remains visible and is not represented as 
 authoritative reset.
 
 The canonical schema remains migrations `001..034`; the Demo-only overlay is independently tracked
-as `demo-migrations/001`. Neither application process auto-migrates or auto-seeds. See
+as `demo-migrations/001..003`. Neither application process auto-migrates or auto-seeds. See
 `docs/SHARED-DEMO-RUNTIME.md` for provisioning and operations.
 
 ## Request composition architecture
