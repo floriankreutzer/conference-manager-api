@@ -176,12 +176,16 @@ function requestServiceFor(initialRecord) {
             name: 'Current Room A',
             capacity: 12,
             active: false,
+            accessibility: Object.freeze(['Step-free access']),
           }),
           site: Object.freeze({
             id: 'site-a',
             name: 'Current Site A',
             active: false,
             timeZone: 'Europe/Berlin',
+            address: Object.freeze({
+              line1: 'Main Street 1', line2: null, postalCode: '10115', city: 'Berlin', countryCode: 'DE',
+            }),
           }),
         });
       },
@@ -635,7 +639,7 @@ test('request room-context route returns exact current presentation without maki
     assert.deepEqual(Object.keys(result.body).sort(), [
       'currentRoomContext', 'requestId', 'requestRef', 'schemaVersion',
     ]);
-    assert.equal(result.body.schemaVersion, 1);
+    assert.equal(result.body.schemaVersion, 2);
     assert.deepEqual(result.body.requestRef, {
       id: 'REQ-1',
       schemaVersion: 2,
@@ -650,12 +654,16 @@ test('request room-context route returns exact current presentation without maki
         name: 'Current Room A',
         capacity: 12,
         active: false,
+        accessibility: ['Step-free access'],
       },
       site: {
         id: 'site-a',
         name: 'Current Site A',
         active: false,
         timeZone: 'Europe/Berlin',
+        address: {
+          line1: 'Main Street 1', line2: null, postalCode: '10115', city: 'Berlin', countryCode: 'DE',
+        },
       },
     });
     assert.match(result.body.requestId, /^[0-9a-f-]{36}$/i);
