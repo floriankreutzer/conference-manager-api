@@ -41,6 +41,35 @@ function audit(requestId, action = AUDIT_ACTION.REQUEST_CREATED, operation = 're
   });
 }
 
+function catalogueSnapshot() {
+  const equipment = (id, name, description, amountMinor, currency, order, siteIds = [], roomIds = [], active = true) => ({
+    id,
+    name,
+    description,
+    price: { amountMinor, currency },
+    active,
+    order,
+    siteIds,
+    roomIds,
+  });
+  return {
+    services: [],
+    equipment: [
+      equipment('display', 'Original display', 'Immutable description', 2500, 'EUR', 1, ['site-a'], ['room-a']),
+      equipment('inactive', 'Retired equipment', null, 500, 'EUR', 2, [], [], false),
+      equipment('wrong-site', 'Site B only', null, 500, 'EUR', 3, ['site-b']),
+      equipment('wrong-room', 'Room B only', null, 500, 'EUR', 4, [], ['room-b']),
+      equipment('usd', 'USD equipment', null, 500, 'USD', 5),
+    ],
+    cateringPackages: [],
+    cateringItems: [],
+    roomPrices: [
+      { roomId: 'room-a', price: { amountMinor: 1000, currency: 'EUR' } },
+      { roomId: 'room-b', price: { amountMinor: 1000, currency: 'EUR' } },
+    ],
+  };
+}
+
 async function seed(pool) {
   await pool.query("INSERT INTO tenants(id,display_name,status) VALUES($1,'Equipment A','active'),($2,'Equipment B','active')",
     [TENANT, FOREIGN_TENANT]);
@@ -63,6 +92,18 @@ async function seed(pool) {
     VALUES($1,'wrong-site','site-b'),($1,'display','site-a')`, [TENANT]);
   await pool.query(`INSERT INTO equipment_room_applicability(tenant_id,equipment_id,room_id)
     VALUES($1,'wrong-room','room-b'),($1,'display','room-a')`, [TENANT]);
+  await pool.query({
+    text: `
+      INSERT INTO tenant_catalogue_revisions (
+        tenant_id, revision, snapshot, effective_at, actor_user_id, correlation_id
+      ) VALUES ($1, 2, $2::jsonb, $3, NULL, NULL)
+    `,
+    values: [TENANT, JSON.stringify(catalogueSnapshot()), CREATED_AT],
+  });
+  await pool.query(
+    'UPDATE tenants SET catalog_revision = 2, updated_at = $2 WHERE id = $1',
+    [TENANT, CREATED_AT],
+  );
 }
 
 test('Request v3 equipment persists, changes, rolls back and preserves exact v2 compatibility', async (t) => {
