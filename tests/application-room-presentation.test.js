@@ -5,19 +5,18 @@ import { publicApplicationRoom } from '../src/domain/application-room-presentati
 function row(details = {}) {
   return {
     id: 'room-a',
-    site_id: 'site-a',
+    siteId: 'site-a',
     name: 'Room A',
     capacity: 12,
     active: true,
-    price_minor: '2500',
-    currency: 'EUR',
+    price: { amountMinor: 2500, currency: 'EUR' },
     details,
   };
 }
 
 test('application Room projection exposes only bounded managed presentation fields', () => {
   assert.deepEqual(publicApplicationRoom(row({
-    equipment: ['Display', 'Whiteboard'],
+    equipment: ['Display', 'HDMI <-> USB-C adapter'],
     floorplanAssetId: 'floorplan-room-a',
     mediaAssetIds: ['room-a-front', 'room-a-accessible-entry'],
     serviceIds: ['internal-service'],
@@ -28,7 +27,7 @@ test('application Room projection exposes only bounded managed presentation fiel
     capacity: 12,
     active: true,
     price: { amountMinor: 2500, currency: 'EUR' },
-    equipment: ['Display', 'Whiteboard'],
+    equipment: ['Display', 'HDMI <-> USB-C adapter'],
     floorplanAssetId: 'floorplan-room-a',
     mediaAssetIds: ['room-a-front', 'room-a-accessible-entry'],
   });
@@ -36,7 +35,7 @@ test('application Room projection exposes only bounded managed presentation fiel
 
 test('application Room projection fails presentation metadata to deterministic empty fallbacks', () => {
   assert.deepEqual(publicApplicationRoom(row({
-    equipment: ['<script>'],
+    equipment: ['unsafe\u0000label'],
     floorplanAssetId: 'https://attacker.invalid/room.png',
     mediaAssetIds: ['safe', '../private'],
   })), {
