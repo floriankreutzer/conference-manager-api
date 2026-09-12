@@ -359,12 +359,14 @@ test('production application persistence is tenant-scoped and request create is 
         name: `Room ${ROOM_A}`,
         capacity: 10,
         active: false,
+        accessibility: [],
       },
       site: {
         id: SITE_A,
         name: `Site ${SITE_A}`,
         active: false,
         timeZone: 'Europe/Berlin',
+        address: null,
       },
     },
   );
