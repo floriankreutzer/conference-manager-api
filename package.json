@@ -48,7 +48,7 @@
     "audit": "npm audit --audit-level=high"
   },
   "dependencies": {
-    "@azure/msal-node": "5.6.0",
+    "@azure/msal-node": "6.0.0",
     "pg": "8.23.0"
   },
   "devDependencies": {
