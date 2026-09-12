@@ -183,7 +183,7 @@ Across those pages the exact Request-drafting facts are:
 - `configurationRevisions` with positive `organization`, `locations`, `catalogue`,
   `bookingPolicies` and `costAllocation` values;
 - `sites[]` with `id`, `name`, `active` and nullable `timeZone`;
-- `rooms[]` with `id`, `siteId`, `name`, `capacity`, `active` and nullable `price`;
+- `rooms[]` with `id`, `siteId`, `name`, `capacity`, `active`, nullable `price`, bounded\n  `equipment[]`, nullable managed `floorplanAssetId` and bounded managed `mediaAssetIds[]`; arbitrary\n  URLs, filesystem paths, provider identifiers and malformed stored presentation metadata are never\n  projected (invalid presentation fields deterministically become empty/null);
 - `services[]` and `cateringItems[]` with `id`, `name`, nullable `description`, `active`,
   `order`, integer-minor `price`, `siteIds` and `roomIds`;
 - `cateringPackages[]` with the same applicability fields plus `itemIds` and `variants[]`;
