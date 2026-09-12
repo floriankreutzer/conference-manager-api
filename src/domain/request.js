@@ -1,8 +1,8 @@
 import { isInternalUuid } from './identifiers.js';
 import {
-  REQUEST_COMPOSITION_SCHEMA_VERSION,
   REQUEST_MAX_PARTICIPANTS,
-  normalizePersistedRequestV2Snapshot,
+  isSupportedRequestCompositionSchemaVersion,
+  normalizePersistedRequestCompositionSnapshot,
 } from './request-composition.js';
 import { REQUEST_STATUS, isRequestStatus } from './request-workflow.js';
 
@@ -63,7 +63,10 @@ export function normalizeRequest(value) {
   if (!isRequestStatus(value.status)) throw new TypeError('REQUEST_RECORD_INVALID');
   const schemaVersion = value.schemaVersion ?? 1;
   const version = value.version ?? 1;
-  if (![1, REQUEST_COMPOSITION_SCHEMA_VERSION].includes(schemaVersion) || !positiveVersion(version)) {
+  if (
+    (schemaVersion !== 1 && !isSupportedRequestCompositionSchemaVersion(schemaVersion))
+    || !positiveVersion(version)
+  ) {
     throw new TypeError('REQUEST_RECORD_INVALID');
   }
   if (
@@ -82,16 +85,17 @@ export function normalizeRequest(value) {
   if (Date.parse(value.updatedAt) < Date.parse(value.createdAt)) throw new TypeError('REQUEST_RECORD_INVALID');
 
   let snapshot = null;
-  if (schemaVersion === REQUEST_COMPOSITION_SCHEMA_VERSION) {
+  if (isSupportedRequestCompositionSchemaVersion(schemaVersion)) {
     try {
-      snapshot = normalizePersistedRequestV2Snapshot(value.snapshot, version);
+      snapshot = normalizePersistedRequestCompositionSnapshot(value.snapshot, version);
     } catch {
       throw new TypeError('REQUEST_RECORD_INVALID');
     }
     const totalParticipants = value.internalParticipants + value.externalParticipants;
     const rules = snapshot.policy.rules;
     if (
-      snapshot.pricing.room.id !== value.roomId
+      snapshot.schemaVersion !== schemaVersion
+      || snapshot.pricing.room.id !== value.roomId
       || totalParticipants < 1
       || totalParticipants > REQUEST_MAX_PARTICIPANTS
       || Date.parse(value.endsAt) - Date.parse(value.startsAt) > 24 * 60 * 60 * 1_000
@@ -193,7 +197,7 @@ export function normalizePublicRequest(value, { tenantId, requesterUserId } = {}
     || actual.some((key, index) => key !== expected[index])
   ) throw new TypeError('REQUEST_PUBLIC_RECORD_INVALID');
   let snapshot = null;
-  if (value.schemaVersion === REQUEST_COMPOSITION_SCHEMA_VERSION) {
+  if (isSupportedRequestCompositionSchemaVersion(value.schemaVersion)) {
     const capturedAt = value.allocations?.snapshottedAt;
     snapshot = {
       schemaVersion: value.schemaVersion,

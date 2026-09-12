@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { normalizeTenantCatalogue } from '../domain/tenant-catalogue.js';
 
 import {
   TENANT_ROLE,
@@ -186,7 +187,17 @@ const fixture = {
             priceMinor: 12500,
           }],
         }],
-        catalogue: { services: ['room', 'catering'], currency: 'EUR' },
+        catalogue: {
+          services: ['room', 'catering'],
+          currency: 'EUR',
+          equipment: [{
+            id: 'mobile-display', name: 'Northwind mobile display',
+            description: 'Portable presentation display', active: true, order: 1,
+            price: { amountMinor: 2500, currency: 'EUR' },
+            siteIds: ['11000000-0000-4000-8000-000000000001'],
+            roomIds: ['northwind-berlin-room-1'],
+          }],
+        },
       },
       requests: [{
         id: '12000000-0000-4000-8000-000000000001',
@@ -232,7 +243,21 @@ const fixture = {
             priceMinor: 9500,
           }],
         }],
-        catalogue: { services: ['room'], currency: 'EUR' },
+        catalogue: {
+          services: ['room'],
+          currency: 'EUR',
+          equipment: [{
+            id: 'mobile-display', name: 'Contoso mobile display',
+            description: null, active: true, order: 1,
+            price: { amountMinor: 1800, currency: 'EUR' },
+            siteIds: ['21000000-0000-4000-8000-000000000002'],
+            roomIds: ['contoso-paris-room-1'],
+          }, {
+            id: 'contoso-projector', name: 'Contoso projector',
+            description: null, active: true, order: 2,
+            price: { amountMinor: 3200, currency: 'EUR' }, siteIds: [], roomIds: [],
+          }],
+        },
       },
       requests: [{
         id: '22000000-0000-4000-8000-000000000002',
@@ -345,7 +370,7 @@ const fixture = {
       id: '32000000-0000-4000-8000-000000000001',
       environment: 'test',
       deploymentReference: 'shared-demo-eu-v1',
-      schemaVersion: 34,
+      schemaVersion: 35,
       requiredDependenciesState: 'ready',
       optionalDependenciesState: 'degraded',
     },
@@ -415,6 +440,17 @@ function validateTenant(value) {
     value.settings.locations.flatMap(({ rooms }) => rooms.map(({ id }) => id)),
     'DEMO_FIXTURE_SETTINGS_INVALID',
   );
+  exactKeys(value.settings.catalogue, ['services', 'equipment', 'currency'], 'DEMO_FIXTURE_SETTINGS_INVALID');
+  const equipment = normalizeTenantCatalogue({
+    services: [], equipment: value.settings.catalogue.equipment,
+    cateringPackages: [], cateringItems: [], roomPrices: [],
+  }).equipment;
+  for (const entry of equipment) {
+    if (
+      entry.siteIds.some((id) => !value.settings.locations.some((site) => site.id === id))
+      || entry.roomIds.some((id) => !value.settings.locations.some((site) => site.rooms.some((room) => room.id === id)))
+    ) fail('DEMO_FIXTURE_SETTINGS_INVALID');
+  }
   if (!Array.isArray(value.requests) || value.requests.length < 1 || value.requests.length > 20) {
     fail('DEMO_FIXTURE_REQUEST_INVALID');
   }

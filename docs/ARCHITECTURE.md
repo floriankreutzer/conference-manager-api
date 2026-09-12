@@ -159,7 +159,7 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
   semantic checksum; `src/persistence/postgres/demo-reset-repository.js` owns the sentinel-verified,
   exclusively locked, transactional reset/readback contract.
 - `scripts/demo-db-migrations.mjs` owns the independent checksum-protected Demo overlay migration
-  ledger after verifying the exact canonical schema `001..034`.
+  ledger after verifying the exact canonical schema `001..035`.
 - `scripts/platform-break-glass-grant.mjs` and `scripts/platform-recovery-fallback.mjs` are the only local privileged mutation wrappers. They accept credentials only through fixed descriptors and require live Platform sessions plus a dual-control, exact Tenant/permission-bound, one-use grant. The retired process-local Tenant-operator runtime and package entry point are prohibited.
 - `scripts/check-architecture.mjs` prevents architecture, migration and composition drift.
 - `scripts/check-security-baseline.mjs` prevents drift between the documented Pilot/Production security baseline and executable controls.
@@ -250,7 +250,7 @@ See `docs/AUDIT.md` for the normative event/integrity contract.
 
 Schema ownership lives in `migrations/`. Migrations are paired up/down files, numerically versioned, checksum protected and serialized by a PostgreSQL advisory lock.
 
-The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 34.
+The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 35.
 
 - Migration 001 establishes Tenant-owned product structures.
 - Migration 002 adds User security-version state and server-side sessions.
@@ -323,7 +323,7 @@ listening. Its HTTP reset path performs the same bounded refresh after reset com
 returning success. Projection failure remains visible and is not represented as a rolled-back
 authoritative reset.
 
-The canonical schema remains migrations `001..034`; the Demo-only overlay is independently tracked
+The canonical schema remains migrations `001..035`; the Demo-only overlay is independently tracked
 as `demo-migrations/001..003`. Neither application process auto-migrates or auto-seeds. See
 `docs/SHARED-DEMO-RUNTIME.md` for provisioning and operations.
 
@@ -435,3 +435,18 @@ The foundation rate limiter is local, in-memory and bounded. It is not a multi-i
 - The #114 backend create/list/transition and room-availability contracts are implemented. Production hosting/IaC, cross-repository frontend acceptance and production-like secure E2E evidence remain external gates across #113-#115; they do not own the missing post-confirmation update workflow.
 - Platform Admin/developer operator Principal and audit APIs remain a separate authorization domain.
 - External audit anchoring/WORM retention and selected-platform backup/restore evidence remain operational/governance decisions before stronger completeness or recovery claims are made.
+
+## Equipment composition rollout
+
+Migration 035 adds exact Request composition v3 Equipment constraints to the existing Request,
+revision and booking-change JSON snapshots. Existing v1/v2 data is not rewritten. Create,
+resubmit, transition, history and confirmed-change paths support the accepted nested version,
+while the outer response envelopes remain unchanged. Equipment is resolved using existing
+Tenant-composite Catalogue tables, charged once and included in allocation.
+
+The `saas-3.6-shared-demo-v2` reset fixture contains distinct priced Northwind/Contoso Equipment
+and verifies those identity, price and applicability facts during semantic readback. The Demo
+overlay remains 003 because no tables or runtime privileges change. Apply canonical migrations
+first, reset/reseed Demo, deploy both API processes at one compatible SHA, verify Catalogue pages
+and then pin/deploy the updated frontend. Down 035 refuses once any v3 snapshot/proposal/history
+exists; use a compatible binary or a forward fix. Production never activates Demo authority.

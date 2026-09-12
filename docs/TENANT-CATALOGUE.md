@@ -80,9 +80,12 @@ negative and excessive values are rejected. Each price carries an explicit suppo
 stable IDs plus a trusted Tenant/Site/room scope, reloads the authoritative current catalogue, and
 returns immutable copies of selected identities, names, descriptions and price/currency with the
 catalogue revision and server capture time. It rejects inactive, absent, cross-Tenant or inapplicable
-entries. Request composition v2 persists that snapshot together with the authoritative Room price
+entries. Request composition v2/v3 persists that snapshot together with the authoritative Room price
 so later Catalogue changes cannot rewrite historical business meaning. Equipment remains outside
-the v2 Request selection schema.
+the v2 Request selection schema; exact v3 selects it through required `equipmentIds`.
+The Employee paged `section=equipment` projection uses the same bounded fields and context as
+services. One selected Equipment entry is charged once and included in total/allocation by the
+Request owner; Catalogue administration and its Conference Manager permission remain unchanged.
 
 ## Persistence, concurrency and audit
 
@@ -108,5 +111,5 @@ revision advance or introduction of new catalogue data.
 
 The central composition root injects the PostgreSQL repository and audit service, registers
 `tenantCatalogueRouteModule`, and includes both route keys in the logging/metrics registries.
-Global schema readiness is version 34 and the central architecture/API/persistence documents include
+Global schema readiness is version 35 and the central architecture/API/persistence documents include
 this bounded owner and its Request composition integration.

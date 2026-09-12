@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 34;/.test(pool)) {
-  throw new Error('Production application contract requires the integrated SaaS 3.6 schema version 34.');
+if (!/export const CURRENT_SCHEMA_VERSION = 35;/.test(pool)) {
+  throw new Error('Production application contract requires the integrated equipment schema version 35.');
 }
 
 const auditEvent = await readFile('src/audit/event.js', 'utf8');
@@ -38,6 +38,11 @@ for (const required of [
   'SiteTimeZoneRequiredError',
 ]) {
   if (!service.includes(required)) throw new Error(`Production application service is missing ${required}.`);
+}
+
+const catalogPage = await readFile('src/application/catalog-page.js', 'utf8');
+if (!catalogPage.includes("  'equipment',")) {
+  throw new Error('Production application catalogue must expose the bounded equipment section.');
 }
 
 const availabilityService = await readFile('src/application/room-availability-service.js', 'utf8');
@@ -86,7 +91,7 @@ for (const required of [
   'validateExactObject',
   'REQUEST_RESUBMISSION_PATH',
   'requestReportQuery',
-  'schemaVersion: (value) => value === 2',
+  'schemaVersion: isSupportedRequestCompositionSchemaVersion',
 ]) {
   if (!routes.includes(required)) throw new Error(`Production application HTTP contract is missing ${required}.`);
 }
@@ -137,6 +142,35 @@ for (const required of [
   'costCenters',
 ]) {
   if (!repository.includes(required)) throw new Error(`Production application persistence is missing ${required}.`);
+}
+const equipmentPageMatch = repository.match(
+  /name: 'application-catalogue-page-equipment',[\s\S]*?text: `([\s\S]*?)`,\n\s+values: \[tenantId, afterId, limit\],/,
+);
+if (!equipmentPageMatch) {
+  throw new Error('Production application persistence is missing the parameterized equipment page query.');
+}
+for (const required of [
+  'FROM equipment equipment_entry',
+  'FROM equipment_site_applicability site_relation',
+  'site_relation.tenant_id = $1',
+  'site_relation.tenant_id = equipment_entry.tenant_id',
+  'site_relation.equipment_id = equipment_entry.id',
+  'FROM equipment_room_applicability room_relation',
+  'room_relation.tenant_id = $1',
+  'room_relation.tenant_id = equipment_entry.tenant_id',
+  'room_relation.equipment_id = equipment_entry.id',
+  'WHERE equipment_entry.tenant_id = $1',
+  'equipment_entry.active = TRUE',
+  '($2::varchar IS NULL OR equipment_entry.id > $2)',
+  'ORDER BY equipment_entry.id',
+  'LIMIT $3',
+]) {
+  if (!equipmentPageMatch[1].includes(required)) {
+    throw new Error(`Production equipment catalogue persistence is missing ${required}.`);
+  }
+}
+if (!repository.includes("['services', 'equipment', 'cateringItems'].includes(section)")) {
+  throw new Error('Production equipment catalogue must use the exact applicability projection.');
 }
 if (repository.includes('updateSites')) {
   throw new Error('Legacy application persistence must not expose a Site write path.');
@@ -249,5 +283,6 @@ await readFile('tests/room-availability-composition.test.js', 'utf8');
 await readFile('tests/request-composition.test.js', 'utf8');
 await readFile('tests/request-service.test.js', 'utf8');
 await readFile('tests-db/production-application-persistence.test.js', 'utf8');
+await readFile('tests-db/application-equipment-catalogue-paging.test.js', 'utf8');
 
 console.log('Production application contract check passed.');

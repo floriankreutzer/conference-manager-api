@@ -25,7 +25,7 @@ services:
       - key: DEMO_RUNTIME
         value: shared-postgres-v1
       - key: DEMO_SEED_VERSION
-        value: saas-3.5-shared-demo-v1
+        value: saas-3.6-shared-demo-v2
       - key: DEMO_DATABASE_SSL
         value: verify-full
       - key: DEMO_RATE_LIMIT_MAX
@@ -67,7 +67,7 @@ services:
       - key: DEMO_RUNTIME
         value: shared-postgres-v1
       - key: DEMO_SEED_VERSION
-        value: saas-3.5-shared-demo-v1
+        value: saas-3.6-shared-demo-v2
       - key: DEMO_DATABASE_SSL
         value: verify-full
       - key: DEMO_RATE_LIMIT_MAX

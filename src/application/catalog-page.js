@@ -15,6 +15,7 @@ export const APPLICATION_CATALOG_SECTIONS = Object.freeze([
   'sites',
   'rooms',
   'services',
+  'equipment',
   'cateringPackages',
   'cateringItems',
   'costCenters',

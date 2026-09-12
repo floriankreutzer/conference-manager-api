@@ -6,9 +6,9 @@ import {
 } from '../../domain/request.js';
 import {
   RequestCompositionUnavailableError,
-  createRequestV2Snapshot,
-  normalizeRequestV2Draft,
-  priceRequestComposition,
+  createRequestCompositionSnapshot,
+  normalizeRequestCompositionDraft,
+  priceRequestCompositionForSchemaVersion,
 } from '../../domain/request-composition.js';
 import {
   BOOKING_POLICY_OPERATION,
@@ -326,9 +326,30 @@ async function selectedCatalogueWithClient(client, {
     values: [tenantId, selectedItemIds],
   });
 
+  const equipmentResult = await client.query({
+    name: 'request-v3-authority-equipment',
+    text: `
+      SELECT entry.id, entry.name, entry.description, entry.price_minor,
+        entry.currency, entry.active, entry.sort_order,
+        ARRAY(
+          SELECT relation.site_id FROM equipment_site_applicability relation
+          WHERE relation.tenant_id = entry.tenant_id AND relation.equipment_id = entry.id
+          ORDER BY relation.site_id
+        ) AS site_ids,
+        ARRAY(
+          SELECT relation.room_id FROM equipment_room_applicability relation
+          WHERE relation.tenant_id = entry.tenant_id AND relation.equipment_id = entry.id
+          ORDER BY relation.room_id
+        ) AS room_ids
+      FROM equipment entry
+      WHERE entry.tenant_id = $1 AND entry.id = ANY($2::varchar[])
+      FOR SHARE OF entry
+    `,
+    values: [tenantId, draft.equipmentIds ?? []],
+  });
   const catalogue = normalizeTenantCatalogue({
     services: servicesResult.rows.map(frozenApplicability),
-    equipment: [],
+    equipment: equipmentResult.rows.map(frozenApplicability),
     cateringPackages: packageRow ? [{
       ...frozenApplicability(packageRow),
       itemIds: Object.freeze([...includedItemIds].sort()),
@@ -346,7 +367,7 @@ async function selectedCatalogueWithClient(client, {
   });
   const selection = {
     serviceIds: draft.serviceIds,
-    equipmentIds: [],
+    equipmentIds: draft.equipmentIds ?? [],
     cateringItemIds: directItemIds,
     catering: draft.catering.packageSelection === null ? [] : [{
       packageId: draft.catering.packageSelection.packageId,
@@ -375,12 +396,13 @@ export async function resolveCurrentRequestCompositionWithClient(client, {
   tenantId,
   actorUserId,
   draft: draftValue,
+  schemaVersion = 2,
   operation,
   capturedAt,
   requestVersion,
   changeWindowStartsAt,
 }) {
-  const draft = normalizeRequestV2Draft(draftValue);
+  const draft = normalizeRequestCompositionDraft(draftValue, schemaVersion);
   const tenantResult = await client.query({
     name: 'request-v2-authority-tenant-lock',
     text: `
@@ -523,12 +545,13 @@ export async function resolveCurrentRequestCompositionWithClient(client, {
   });
 
   const pricingInput = {
+    schemaVersion,
     draft,
     room,
     catalogueSnapshot,
     defaultCurrency: tenant.default_currency,
   };
-  const pricing = priceRequestComposition(pricingInput);
+  const pricing = priceRequestCompositionForSchemaVersion(pricingInput);
   const allocation = createTenantCostAllocationSnapshot(allocationConfiguration, {
     entries: draft.allocations,
     totalMinor: pricing.totalMinor,
@@ -540,7 +563,8 @@ export async function resolveCurrentRequestCompositionWithClient(client, {
     snapshottedAt: capturedAt,
     ...allocation,
   });
-  const snapshot = createRequestV2Snapshot({
+  const snapshot = createRequestCompositionSnapshot({
+    schemaVersion,
     draft,
     requestVersion,
     capturedAt,
@@ -941,6 +965,7 @@ export function createPostgresRequestRepository(
       tenantId,
       requestId,
       requesterUserId,
+      schemaVersion = 2,
       requestDraft,
       createdAt,
       auditEvent,
@@ -950,6 +975,7 @@ export function createPostgresRequestRepository(
         const authority = await resolveCurrentRequestCompositionWithClient(client, {
           tenantId,
           actorUserId: requesterUserId,
+          schemaVersion,
           draft: requestDraft,
           operation: BOOKING_POLICY_OPERATION.CREATE,
           capturedAt,
@@ -979,7 +1005,7 @@ export function createPostgresRequestRepository(
             )
             VALUES (
               $1, $2, $3, $4, 'Submitted', $5, $6, $7, $8,
-              2, 1, $9::jsonb, $10, $10, $10
+              $11, 1, $9::jsonb, $10, $10, $10
             )
             RETURNING ${REQUEST_COLUMNS}
           `,
@@ -994,6 +1020,7 @@ export function createPostgresRequestRepository(
             draft.externalParticipants,
             JSON.stringify(snapshot),
             createdAt,
+            schemaVersion,
           ],
         });
         const request = mapRequestRow(result.rows[0]);
@@ -1008,6 +1035,7 @@ export function createPostgresRequestRepository(
       tenantId,
       requestId,
       requesterUserId,
+      schemaVersion = 2,
       expectedVersion,
       requestDraft,
       changedAt,
@@ -1038,6 +1066,7 @@ export function createPostgresRequestRepository(
         const authority = await resolveCurrentRequestCompositionWithClient(client, {
           tenantId,
           actorUserId: requesterUserId,
+          schemaVersion,
           draft: requestDraft,
           operation: BOOKING_POLICY_OPERATION.RESUBMIT,
           capturedAt: changedAt.toISOString(),
@@ -1054,7 +1083,7 @@ export function createPostgresRequestRepository(
                 ends_at = $6,
                 internal_participants = $7,
                 external_participants = $8,
-                schema_version = 2,
+                schema_version = $13,
                 request_version = $9,
                 request_snapshot = $10::jsonb,
                 status = 'Submitted',
@@ -1081,6 +1110,7 @@ export function createPostgresRequestRepository(
             JSON.stringify(snapshot),
             changedAt,
             expectedVersion,
+            schemaVersion,
           ],
         });
         const request = mapRequestRow(updated.rows[0]);
@@ -1161,7 +1191,7 @@ export function createPostgresRequestRepository(
               updated_at = $6,
               request_version = request_version + 1,
               request_snapshot = CASE
-                WHEN schema_version = 2 THEN jsonb_set(
+                WHEN schema_version IN (2, 3) THEN jsonb_set(
                   request_snapshot,
                   '{requestVersion}',
                   to_jsonb(request_version + 1)
@@ -1244,7 +1274,7 @@ export function createPostgresRequestRepository(
                 updated_at = $4,
                 request_version = request_version + 1,
                 request_snapshot = CASE
-                  WHEN schema_version = 2 THEN jsonb_set(
+                  WHEN schema_version IN (2, 3) THEN jsonb_set(
                     request_snapshot,
                     '{requestVersion}',
                     to_jsonb(request_version + 1)

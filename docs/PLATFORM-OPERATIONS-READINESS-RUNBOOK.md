@@ -293,7 +293,7 @@ Procedure:
 
 1. verify the isolated database name, distinct migration/customer/Platform/reset roles, separate HTTPS origins, and absence of Production/real-provider configuration;
 2. apply the canonical `001..034` migrations, then run `npm run demo:db:migrate` for Demo overlay `001..003`;
-3. run `npm run demo:db:reset -- --confirm-seed-version=saas-3.5-shared-demo-v1` before process start and record the returned source-defined seed version and semantic checksum;
+3. run `npm run demo:db:reset -- --confirm-seed-version=saas-3.6-shared-demo-v2` before process start and record the returned source-defined seed version and semantic checksum;
 4. start `npm run start:demo:customer` and `npm run start:demo:platform` as independent processes against the same verified database;
 5. establish separate customer and Platform sessions without authenticating to the Production identity provider; verify cookie/session namespaces do not cross;
 6. demonstrate each representative customer and Platform role and its denied operations, including CSRF, permission and out-of-scope Tenant denials;

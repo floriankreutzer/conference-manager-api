@@ -35,7 +35,7 @@ function validSentinel(overrides = {}) {
     reset_role: 'demo_reset',
     current_database: 'conference_manager_demo_test',
     current_role: 'demo_reset',
-    production_schema_versions: Array.from({ length: 34 }, (_, index) => index + 1),
+    production_schema_versions: Array.from({ length: 35 }, (_, index) => index + 1),
     ...overrides,
   };
 }
@@ -174,7 +174,7 @@ test('reset is atomic, transaction-gated, reseeds deterministic state and return
     auditEventFor: ({ outcome }) => ({ outcome }),
   });
   assert.deepEqual(result, {
-    seedVersion: 'saas-3.5-shared-demo-v1',
+    seedVersion: 'saas-3.6-shared-demo-v2',
     checksum: DEMO_FIXTURE_CHECKSUM,
   });
   assert.equal(seeded, 1);
@@ -216,8 +216,8 @@ test('transaction-scoped Demo reset gate serializes concurrent resets', async ()
   ]);
   assert.equal(maximumActiveSeeds, 1);
   assert.deepEqual(results.map(({ seedVersion }) => seedVersion), [
-    'saas-3.5-shared-demo-v1',
-    'saas-3.5-shared-demo-v1',
+    'saas-3.6-shared-demo-v2',
+    'saas-3.6-shared-demo-v2',
   ]);
   assert.equal(results.every(({ checksum }) => checksum === DEMO_FIXTURE_CHECKSUM), true);
 });
@@ -334,7 +334,7 @@ test('reset service pins the source fixture checksum and validates repository ou
   );
   const result = await service.reset();
   assert.deepEqual(result, {
-    seedVersion: 'saas-3.5-shared-demo-v1',
+    seedVersion: 'saas-3.6-shared-demo-v2',
     checksum: DEMO_FIXTURE_CHECKSUM,
   });
   assert.equal(calls.length, 1);

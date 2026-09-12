@@ -12,8 +12,8 @@ import {
 import { PERMISSION } from '../authorization/policy.js';
 import { isInternalUuid } from '../domain/identifiers.js';
 import {
-  REQUEST_COMPOSITION_SCHEMA_VERSION,
-  normalizeRequestV2Draft,
+  isSupportedRequestCompositionSchemaVersion,
+  normalizeRequestCompositionDraft,
 } from '../domain/request-composition.js';
 import { isSupportedCurrencyCode } from '../domain/money.js';
 import { isRequestId, toPublicRequest } from '../domain/request.js';
@@ -365,10 +365,10 @@ export function createProductionApplicationService({
     }) {
       requireCorrelationId(correlationId);
       authorizationPolicy.authorizeRequestCreate(principal, tenantContext);
-      if (schemaVersion !== REQUEST_COMPOSITION_SCHEMA_VERSION) {
+      if (!isSupportedRequestCompositionSchemaVersion(schemaVersion)) {
         throw new AuthorizationInputError('REQUEST_SCHEMA_VERSION_UNSUPPORTED');
       }
-      const draft = normalizeRequestV2Draft(requestDraft);
+      const draft = normalizeRequestCompositionDraft(requestDraft, schemaVersion);
       const requestId = idFactory();
       if (!isInternalUuid(requestId)) throw new TypeError('REQUEST_ID_FACTORY_INVALID');
       const createdAt = clockDate(clock);
@@ -380,7 +380,7 @@ export function createProductionApplicationService({
         targetType: 'request',
         targetId: requestId,
         previousState: null,
-        newState: { status: 'Submitted', schemaVersion: 2, requestVersion: 1 },
+        newState: { status: 'Submitted', schemaVersion, requestVersion: 1 },
         outcome: AUDIT_OUTCOME.SUCCESS,
         metadata: { operation: 'request_create' },
         retentionClass: AUDIT_RETENTION_CLASS.BUSINESS,
@@ -390,6 +390,7 @@ export function createProductionApplicationService({
         tenantId: tenantContext.tenantId,
         requestId,
         requesterUserId: principal.userId,
+        schemaVersion,
         requestDraft: draft,
         createdAt,
         auditEvent,
@@ -413,7 +414,7 @@ export function createProductionApplicationService({
       requireCorrelationId(correlationId);
       authorizationPolicy.authorizeRequestCreate(principal, tenantContext);
       if (!isRequestId(requestId)) throw new AuthorizationInputError('REQUEST_ID_INVALID');
-      if (schemaVersion !== REQUEST_COMPOSITION_SCHEMA_VERSION) {
+      if (!isSupportedRequestCompositionSchemaVersion(schemaVersion)) {
         throw new AuthorizationInputError('REQUEST_SCHEMA_VERSION_UNSUPPORTED');
       }
       if (
@@ -423,7 +424,7 @@ export function createProductionApplicationService({
       ) {
         throw new AuthorizationInputError('REQUEST_VERSION_INVALID');
       }
-      const draft = normalizeRequestV2Draft(requestDraft);
+      const draft = normalizeRequestCompositionDraft(requestDraft, schemaVersion);
       const changedAt = clockDate(clock);
       const auditEvent = auditService.createEvent({
         principal,
@@ -433,7 +434,7 @@ export function createProductionApplicationService({
         targetType: 'request',
         targetId: requestId,
         previousState: { status: 'Change Requested', requestVersion: expectedVersion },
-        newState: { status: 'Submitted', schemaVersion: 2, requestVersion: expectedVersion + 1 },
+        newState: { status: 'Submitted', schemaVersion, requestVersion: expectedVersion + 1 },
         outcome: AUDIT_OUTCOME.SUCCESS,
         metadata: { operation: 'request_resubmit', transition: 'resubmit' },
         retentionClass: AUDIT_RETENTION_CLASS.BUSINESS,
@@ -443,6 +444,7 @@ export function createProductionApplicationService({
         tenantId: tenantContext.tenantId,
         requestId,
         requesterUserId: principal.userId,
+        schemaVersion,
         expectedVersion,
         requestDraft: draft,
         changedAt,

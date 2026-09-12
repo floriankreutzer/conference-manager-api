@@ -147,6 +147,13 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
         currency: tenant.settings.catalogue.currency,
       }))
     )),
+    'demo-fixture-read-equipment': DEMO_FIXTURE.tenants.flatMap((tenant) => (
+      tenant.settings.catalogue.equipment.map((entry) => ({
+        tenant_id: tenant.id, id: entry.id, name: entry.name, description: entry.description,
+        active: entry.active, sort_order: entry.order, price_minor: entry.price.amountMinor,
+        currency: entry.price.currency, site_ids: entry.siteIds, room_ids: entry.roomIds,
+      }))
+    )),
     'demo-fixture-read-requests': DEMO_FIXTURE.tenants.flatMap((tenant) => tenant.requests.map((request) => ({
       tenant_id: tenant.id,
       id: request.id,

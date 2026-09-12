@@ -541,8 +541,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 34;/.test(pool)) {
-  throw new Error('Runtime schema readiness must require the session-epoch revocation migration version 34.');
+if (!/export const CURRENT_SCHEMA_VERSION = 35;/.test(pool)) {
+  throw new Error('Runtime schema readiness must require the Request composition v3 migration version 35.');
 }
 const sessionEpochMigration = await readFile(
   'migrations/034_customer_session_epoch_revocation.up.sql',

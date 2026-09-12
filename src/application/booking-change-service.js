@@ -9,8 +9,8 @@ import {
 } from '../domain/booking-change.js';
 import { isInternalUuid } from '../domain/identifiers.js';
 import {
-  REQUEST_COMPOSITION_SCHEMA_VERSION,
-  normalizeRequestV2Draft,
+  isSupportedRequestCompositionSchemaVersion,
+  normalizeRequestCompositionDraft,
 } from '../domain/request-composition.js';
 import { isRequestId, normalizeRequest, toPublicRequest } from '../domain/request.js';
 import { RESERVATION_PHASE } from '../integrations/calendar-contract.js';
@@ -63,7 +63,7 @@ function publicChange(changeValue, requestValue) {
     ) {
       throw new TypeError('BOOKING_CHANGE_PROJECTION_INVALID');
     }
-    if (change.requestSchemaVersion === REQUEST_COMPOSITION_SCHEMA_VERSION) {
+    if (isSupportedRequestCompositionSchemaVersion(change.requestSchemaVersion)) {
       const isBaseRequest = request.version === change.baseRequestVersion
         && request.updatedAt === change.baseRequestUpdatedAt;
       const isAppliedProposal = change.status === BOOKING_CHANGE_STATUS.APPLIED
@@ -73,7 +73,7 @@ function publicChange(changeValue, requestValue) {
       }
       proposedRequest = toPublicRequest({
         ...request,
-        schemaVersion: REQUEST_COMPOSITION_SCHEMA_VERSION,
+        schemaVersion: change.requestSchemaVersion,
         version: change.baseRequestVersion + 1,
         roomId: change.requestDraft.roomId,
         startsAt: change.requestDraft.startsAt,
@@ -125,8 +125,8 @@ function sameJson(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function isEmptyV2Proposal(request, draft) {
-  if (request.schemaVersion !== REQUEST_COMPOSITION_SCHEMA_VERSION || !request.snapshot) return false;
+function isEmptyCompositionProposal(request, draft, schemaVersion) {
+  if (request.schemaVersion !== schemaVersion || !request.snapshot) return false;
   const details = request.snapshot.details;
   const allocations = request.snapshot.allocations.entries.map((entry) => ({
     costCenterId: entry.costCenterId,
@@ -142,6 +142,7 @@ function isEmptyV2Proposal(request, draft) {
     && details.specialRequirements === draft.specialRequirements
     && details.catering.participantCount === draft.catering.participantCount
     && sameJson(details.serviceIds, draft.serviceIds)
+    && (schemaVersion !== 3 || sameJson(details.equipmentIds, draft.equipmentIds))
     && sameJson(details.catering.packageSelection, draft.catering.packageSelection)
     && sameJson(details.catering.itemQuantities, draft.catering.itemQuantities)
     && sameJson(allocations, draft.allocations)
@@ -354,7 +355,7 @@ export function createBookingChangeService({
         operation: 'booking_change_propose',
         authorize: 'authorizeBookingChangePropose',
       });
-      if (schemaVersion !== REQUEST_COMPOSITION_SCHEMA_VERSION) {
+      if (!isSupportedRequestCompositionSchemaVersion(schemaVersion)) {
         throw new AuthorizationInputError('REQUEST_SCHEMA_VERSION_UNSUPPORTED');
       }
       if (
@@ -364,9 +365,9 @@ export function createBookingChangeService({
       ) {
         throw new AuthorizationInputError('REQUEST_VERSION_INVALID');
       }
-      const normalized = normalizeRequestV2Draft(proposed);
+      const normalized = normalizeRequestCompositionDraft(proposed, schemaVersion);
       if (request.version !== expectedVersion) throw new BookingChangeConflictError();
-      if (isEmptyV2Proposal(request, normalized)) {
+      if (isEmptyCompositionProposal(request, normalized, schemaVersion)) {
         throw new AuthorizationInputError('BOOKING_CHANGE_EMPTY');
       }
       const changeId = idFactory();
@@ -377,6 +378,7 @@ export function createBookingChangeService({
         requestId,
         changeId,
         initiatorUserId: principal.userId,
+        schemaVersion,
         expectedVersion,
         proposal: normalized,
         changedAt,
@@ -447,7 +449,7 @@ export function createBookingChangeService({
         });
         throw new BookingChangeConflictError();
       }
-      const proposedRequest = begun.change.requestSchemaVersion === 2
+      const proposedRequest = isSupportedRequestCompositionSchemaVersion(begun.change.requestSchemaVersion)
         ? normalizeRequest({
           ...begun.request,
           roomId: begun.change.requestDraft.roomId,
@@ -455,7 +457,7 @@ export function createBookingChangeService({
           endsAt: begun.change.requestDraft.endsAt,
           internalParticipants: begun.change.requestDraft.internalParticipants,
           externalParticipants: begun.change.requestDraft.externalParticipants,
-          schemaVersion: 2,
+          schemaVersion: begun.change.requestSchemaVersion,
           version: begun.change.baseRequestVersion + 1,
           snapshot: begun.change.proposedRequestSnapshot,
         })

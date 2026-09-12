@@ -2,6 +2,7 @@ import { ApiError, asApiError } from './api-error.js';
 import { AuthorizationDeniedError } from './authorization/errors.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { assertProductionConfig } from './config.js';
+import { isSupportedRequestCompositionSchemaVersion } from './domain/request-composition.js';
 import { toPublicRequest } from './domain/request.js';
 import {
   applicationRouteKey,
@@ -74,7 +75,7 @@ const TRANSITION_BODY_SCHEMA = Object.freeze({
 });
 const BOOKING_CHANGE_BODY_SCHEMA = Object.freeze({
   required: Object.freeze({
-    schemaVersion: (value) => value === 2,
+    schemaVersion: isSupportedRequestCompositionSchemaVersion,
     expectedVersion: (value) => Number.isSafeInteger(value)
       && value >= 1
       && value < Number.MAX_SAFE_INTEGER,

@@ -1077,16 +1077,16 @@ test('booking-change response keeps one full projection below the configured res
   });
 });
 
-test('Request v2 create and resubmission routes require exact versioned CSRF contracts', async () => {
+test('Request v2/v3 create and resubmission routes require exact versioned CSRF contracts', async () => {
   const calls = [];
   const applicationService = {
     async createRequest(values) {
       calls.push(['create', values]);
-      return { schemaVersion: 2, version: 1, id: 'REQ-V2', status: 'Submitted' };
+      return { schemaVersion: values.schemaVersion, version: 1, id: 'REQ-V2', status: 'Submitted' };
     },
     async resubmitRequest(values) {
       calls.push(['resubmit', values]);
-      return { schemaVersion: 2, version: values.expectedVersion + 1, id: values.requestId, status: 'Submitted' };
+      return { schemaVersion: values.schemaVersion, version: values.expectedVersion + 1, id: values.requestId, status: 'Submitted' };
     },
   };
   const draft = {
@@ -1158,8 +1158,20 @@ test('Request v2 create and resubmission routes require exact versioned CSRF con
     assert.equal(resubmitted.body.request.version, 5);
     assert.equal(resubmitted.body.schemaVersion, 2);
     assert.deepEqual(Object.keys(resubmitted.body).sort(), ['request', 'requestId', 'schemaVersion']);
+    for (const path of ['/api/v1/application/requests', '/api/v1/application/requests/REQ-V2/resubmissions']) {
+      const response = await request({ port, path, method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+        body: JSON.stringify({ schemaVersion: 3, request: { ...draft, equipmentIds: ['display'] },
+          ...(path.endsWith('resubmissions') ? { expectedVersion: 5 } : {}) }),
+      });
+      assert.equal(response.statusCode, path.endsWith('resubmissions') ? 200 : 201);
+      assert.equal(response.body.schemaVersion, 2);
+      assert.equal(response.body.request.schemaVersion, 3);
+    }
   });
-  assert.deepEqual(calls.map(([operation]) => operation), ['create', 'resubmit']);
+  assert.deepEqual(calls.map(([operation]) => operation), ['create', 'resubmit', 'create', 'resubmit']);
+  assert.deepEqual(calls[2][1].requestDraft.equipmentIds, ['display']);
+  assert.equal(calls[3][1].schemaVersion, 3);
   assert.deepEqual(calls[0][1].requestDraft, draft);
   assert.equal(calls[1][1].expectedVersion, 4);
 });
@@ -1228,6 +1240,14 @@ test('paged catalog and Manager report routes expose exact schema-v2 query contr
     assert.equal(catalog.body.section, 'sites');
     assert.equal(catalog.body.catalog, undefined);
 
+    const equipmentCatalog = await request({
+      port,
+      path: '/api/v1/application/catalog?section=equipment&limit=10&context=catalog-context',
+    });
+    assert.equal(equipmentCatalog.statusCode, 200);
+    assert.equal(equipmentCatalog.body.schemaVersion, 2);
+    assert.equal(equipmentCatalog.body.section, 'equipment');
+
     const list = await request({
       port,
       path: '/api/v1/application/requests?limit=10',
@@ -1268,12 +1288,15 @@ test('paged catalog and Manager report routes expose exact schema-v2 query contr
     });
     assert.equal(wrongMethod.statusCode, 405);
   });
-  assert.deepEqual(calls.map(([name]) => name), ['catalog', 'list', 'report']);
+  assert.deepEqual(calls.map(([name]) => name), ['catalog', 'catalog', 'list', 'report']);
   assert.deepEqual(calls[0][1].query, {
     section: 'sites', limit: '10', cursor: undefined, context: undefined,
   });
-  assert.deepEqual(calls[1][1].query, { limit: '10', cursor: undefined });
-  assert.equal(calls[2][1].query.limit, '10');
+  assert.deepEqual(calls[1][1].query, {
+    section: 'equipment', limit: '10', cursor: undefined, context: 'catalog-context',
+  });
+  assert.deepEqual(calls[2][1].query, { limit: '10', cursor: undefined });
+  assert.equal(calls[3][1].query.limit, '10');
 });
 
 test('logs contain only bounded metadata and do not copy authorization or cookie headers', async () => {

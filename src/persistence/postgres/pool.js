@@ -14,7 +14,8 @@ const { Pool } = pg;
 // Schema 28 adds bounded bulk-transfer receipts. Schemas 29-33 establish the
 // independent Platform security, operations, metering and runtime stores.
 // Schema 34 irreversibly revokes pre-authorization-epoch Customer sessions.
-export const CURRENT_SCHEMA_VERSION = 34;
+// Schema 35 admits Request composition v3 equipment selection evidence.
+export const CURRENT_SCHEMA_VERSION = 35;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

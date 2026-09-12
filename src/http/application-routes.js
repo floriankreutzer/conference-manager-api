@@ -1,5 +1,6 @@
 import { ApiError } from '../api-error.js';
 import { isInternalUuid } from '../domain/identifiers.js';
+import { isSupportedRequestCompositionSchemaVersion } from '../domain/request-composition.js';
 import { readJsonObjectBody, validateExactObject } from '../security.js';
 
 export const APPLICATION_ROUTES = Object.freeze({
@@ -28,14 +29,14 @@ const PROFILE_BODY_SCHEMA = Object.freeze({
 });
 const REQUEST_BODY_SCHEMA = Object.freeze({
   required: Object.freeze({
-    schemaVersion: (value) => value === 2,
+    schemaVersion: isSupportedRequestCompositionSchemaVersion,
     request: (value) => value && typeof value === 'object' && !Array.isArray(value),
   }),
   optional: Object.freeze({}),
 });
 const REQUEST_RESUBMISSION_BODY_SCHEMA = Object.freeze({
   required: Object.freeze({
-    schemaVersion: (value) => value === 2,
+    schemaVersion: isSupportedRequestCompositionSchemaVersion,
     expectedVersion: (value) => Number.isSafeInteger(value)
       && value >= 1
       && value < Number.MAX_SAFE_INTEGER,

@@ -80,7 +80,7 @@ Provision four purpose-specific login roles with unique credentials:
 | Reset/seed | Verified destructive reset and deterministic seed over the fixed Demo table inventory | Normal browser request handling, schema ownership, use against a non-Demo database |
 | Migration owner | Canonical and Demo migration DDL/ledger ownership for this isolated database | Normal browser request handling or reset execution |
 
-The deployed database first receives the canonical Production schema migrations `001` through `034`. The Demo overlay is a separate checksum-protected migration stream under `demo-migrations/`; its current schema version is `003`. The overlay adds only the Demo sentinel, deterministic provider/persona references, immutable-sentinel protection, views and least-privilege role grants. Migration `002` grants both runtime roles read-only access to the Demo migration ledger solely for Demo-overlay readiness verification. Migration `003` grants those same runtime roles read-only access to the canonical `schema_migrations` ledger solely because the existing normal PostgreSQL schema-readiness check verifies the canonical version there. Neither migration grants ledger write, schema ownership, migration, reset or broader application authority, and the runtime does not auto-migrate at startup.
+The deployed database first receives the canonical Production schema migrations `001` through `035`. The Demo overlay is a separate checksum-protected migration stream under `demo-migrations/`; its current schema version is `003`. The overlay adds only the Demo sentinel, deterministic provider/persona references, immutable-sentinel protection, views and least-privilege role grants. Migration `002` grants both runtime roles read-only access to the Demo migration ledger solely for Demo-overlay readiness verification. Migration `003` grants those same runtime roles read-only access to the canonical `schema_migrations` ledger solely because the existing normal PostgreSQL schema-readiness check verifies the canonical version there. Neither migration grants ledger write, schema ownership, migration, reset or broader application authority, and the runtime does not auto-migrate at startup.
 
 Before either HTTP listener starts, its runtime verifies the connected database and role against the
 immutable sentinel, the exact Demo overlay ledger `1..3`, and its complete persona seed. Platform
@@ -99,7 +99,7 @@ The Demo migration runner refuses a missing, gapped or non-exact canonical migra
 The seed descriptor contains:
 
 - runtime schema version `1`;
-- seed version `saas-3.5-shared-demo-v1`;
+- seed version `saas-3.6-shared-demo-v2`;
 - a domain-separated SHA-256 semantic checksum over canonicalized fixture meaning.
 
 Reset is destructive by design and is allowed only in the isolated Demo database. Before truncation, the reset repository verifies all of the following:
@@ -107,7 +107,7 @@ Reset is destructive by design and is allowed only in the isolated Demo database
 - the immutable Demo sentinel and sentinel key;
 - the current database name and expected reset role;
 - distinct recorded customer, Platform and reset roles;
-- the complete canonical migration sequence `1..34`;
+- the complete canonical migration sequence `1..35`;
 - the exact expected table inventory;
 - the source fixture's calculated domain-separated semantic checksum.
 
@@ -171,10 +171,10 @@ Provisioning order is mandatory:
 
 1. create a dedicated empty PostgreSQL database whose name matches `conference_manager_demo_*`;
 2. create the four distinct purpose-specific Demo roles and store their credentials in protected deployment configuration;
-3. apply canonical migrations `001..034` with the reviewed database migration identity;
+3. apply canonical migrations `001..035` with the reviewed database migration identity;
 4. remove normal `DATABASE_URL`, `PUBLIC_ORIGIN`, session/CSRF, `PLATFORM_*` and real-provider variables from the Demo command environment;
 5. supply the complete `DEMO_*` configuration and run `npm run demo:db:migrate`;
-6. run `npm run demo:db:reset -- --confirm-seed-version=saas-3.5-shared-demo-v1` to install and verify the initial deterministic seed;
+6. run `npm run demo:db:reset -- --confirm-seed-version=saas-3.6-shared-demo-v2` to install and verify the initial deterministic seed;
 7. start `npm run start:demo:customer` and `npm run start:demo:platform` as separate processes;
 8. route the customer and Platform HTTPS origins only to their matching process;
 9. verify both readiness endpoints, both session endpoints, a customer persona/Tenant switch, a denied Platform operation, a shared-state journey and one deterministic provider-degradation journey;
@@ -190,12 +190,12 @@ The commands are intentionally separate:
 
 ```bash
 npm run demo:db:migrate
-npm run demo:db:reset -- --confirm-seed-version=saas-3.5-shared-demo-v1
+npm run demo:db:reset -- --confirm-seed-version=saas-3.6-shared-demo-v2
 npm run start:demo:customer
 npm run start:demo:platform
 ```
 
-`npm run demo:db:reset -- --confirm-seed-version=saas-3.5-shared-demo-v1` is the only supported
+`npm run demo:db:reset -- --confirm-seed-version=saas-3.6-shared-demo-v2` is the only supported
 initial seed and reseed operation. `npm run demo:db:rollback` rolls back only the latest Demo
 overlay migration and is not a routine populated-environment recovery mechanism. The foundation
 down migration fails closed while Demo persona/provider state is in use. Prefer replacement of the
@@ -207,7 +207,7 @@ isolated Demo database over destructive manual cleanup.
 | --- | --- |
 | `NODE_ENV` | `demo` for deployment; `test` only for isolated tests |
 | `DEMO_RUNTIME` | Exact `shared-postgres-v1` |
-| `DEMO_SEED_VERSION` | Exact `saas-3.5-shared-demo-v1` |
+| `DEMO_SEED_VERSION` | Exact `saas-3.6-shared-demo-v2` |
 | `DEMO_CUSTOMER_ORIGIN` | Exact dedicated HTTPS origin |
 | `DEMO_PLATFORM_ORIGIN` | Different exact dedicated HTTPS origin |
 | `DEMO_CUSTOMER_DATABASE_URL` | Customer role; isolated shared Demo target |
@@ -247,3 +247,18 @@ Demo evidence proves only the deterministic simulated runtime behavior exercised
 ## Retired trusted CLI
 
 The former process-local Tenant-operator CLI, invitation-artifact helper and trusted source-marker authorization model are retired and must not be reintroduced for Demo convenience. Normal Platform operations use authenticated Platform HTTP. The separately governed, dual-control, grant-bound Production recovery fallback remains an exceptional operational control and is not Demo identity or reset authority.
+
+## Equipment composition rollout
+
+Migration 035 adds exact Request composition v3 Equipment constraints to the existing Request,
+revision and booking-change JSON snapshots. Existing v1/v2 data is not rewritten. Create,
+resubmit, transition, history and confirmed-change paths support the accepted nested version,
+while the outer response envelopes remain unchanged. Equipment is resolved using existing
+Tenant-composite Catalogue tables, charged once and included in allocation.
+
+The `saas-3.6-shared-demo-v2` reset fixture contains distinct priced Northwind/Contoso Equipment
+and verifies those identity, price and applicability facts during semantic readback. The Demo
+overlay remains 003 because no tables or runtime privileges change. Apply canonical migrations
+first, reset/reseed Demo, deploy both API processes at one compatible SHA, verify Catalogue pages
+and then pin/deploy the updated frontend. Down 035 refuses once any v3 snapshot/proposal/history
+exists; use a compatible binary or a forward fix. Production never activates Demo authority.

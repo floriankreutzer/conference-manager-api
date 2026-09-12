@@ -140,7 +140,7 @@ jobs:
         run: |
           DATABASE_URL="$DEMO_MIGRATION_DATABASE_URL" DATABASE_SSL=disable npm run db:migrate
           npm run demo:db:migrate
-          npm run demo:db:reset -- --confirm-seed-version=saas-3.5-shared-demo-v1
+          npm run demo:db:reset -- --confirm-seed-version=saas-3.6-shared-demo-v2
       - name: Start separate Customer and Platform Demo APIs
         working-directory: api
         run: |

@@ -151,7 +151,7 @@ The all-role Tenant presentation contract reuses the current Organization row an
 `organization_revision`. Its managed-brand policy maps one fixed reference to a code-shipped preset
 and therefore introduces no upload metadata, asset table, external object reference or migration.
 
-Runtime schema readiness advances to exactly version 34. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
+Runtime schema readiness advances to exactly version 35. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
 
 No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
 
@@ -292,7 +292,7 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 34.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 35.
 
 ## Shared Demo persistence
 
@@ -304,7 +304,7 @@ reset/seed capability and migration ownership. All four URLs must resolve to the
 distinct.
 
 The canonical `migrations/` stream remains the source of the business schema and must contain the
-exact applied sequence `001..034`. The independent `demo-migrations/` stream has its own
+exact applied sequence `001..035`. The independent `demo-migrations/` stream has its own
 `demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `003`
 installs the immutable database sentinel, provider/persona reference tables, minimized views and
 role grants. It reads but never writes the canonical `schema_migrations` ledger.
@@ -475,3 +475,18 @@ snapshot/history/audit rollback atomicity, schema readiness and fail-closed popu
 The DB suites share migration state and are therefore executed serially with `--test-concurrency=1` to prevent test-runner races from weakening the migration/integrity evidence.
 
 CI runs database tests against an isolated PostgreSQL 18 service after the normal quality/security gate.
+
+## Equipment composition rollout
+
+Migration 035 adds exact Request composition v3 Equipment constraints to the existing Request,
+revision and booking-change JSON snapshots. Existing v1/v2 data is not rewritten. Create,
+resubmit, transition, history and confirmed-change paths support the accepted nested version,
+while the outer response envelopes remain unchanged. Equipment is resolved using existing
+Tenant-composite Catalogue tables, charged once and included in allocation.
+
+The `saas-3.6-shared-demo-v2` reset fixture contains distinct priced Northwind/Contoso Equipment
+and verifies those identity, price and applicability facts during semantic readback. The Demo
+overlay remains 003 because no tables or runtime privileges change. Apply canonical migrations
+first, reset/reseed Demo, deploy both API processes at one compatible SHA, verify Catalogue pages
+and then pin/deploy the updated frontend. Down 035 refuses once any v3 snapshot/proposal/history
+exists; use a compatible binary or a forward fix. Production never activates Demo authority.

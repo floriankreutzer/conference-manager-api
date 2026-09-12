@@ -278,3 +278,15 @@ GitHub-native security feature availability depends on repository/account entitl
 - Resource exhaustion (CWE-400): bounded HTTP, database, provider, audit and pagination resources.
 
 Automated checks are evidence only for exercised controls. They are not a penetration test or a complete OWASP, regulatory or infrastructure compliance statement.
+
+## Equipment composition v3
+
+Equipment selection uses existing active Principal/Tenant, Request ownership, Manager-decision,
+session, CSRF and optimistic-version controls; there is no role or authorization-epoch change.
+At most 200 unique IDs are positively validated. Catalogue resolution, applicability, single
+currency, safe totals, Request snapshots, revisions and audit commit in the owning transaction.
+Tenant-colliding IDs resolve locally; missing, foreign, inactive and inapplicable selections use
+the existing concealed configuration error. Prices/quantities supplied by a client are rejected.
+Equipment identities, names and prices are not added to logs, metric labels or flat audit metadata.
+Migration 035 refuses destructive rollback after first v3 evidence. No new outbound integration
+or dependency is introduced. Real PostgreSQL18 integration remains a required CI gate.

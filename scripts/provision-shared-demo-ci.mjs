@@ -52,7 +52,7 @@ const secrets = Object.freeze({
 const variables = {
   NODE_ENV: 'test',
   DEMO_RUNTIME: 'shared-postgres-v1',
-  DEMO_SEED_VERSION: 'saas-3.5-shared-demo-v1',
+  DEMO_SEED_VERSION: 'saas-3.6-shared-demo-v2',
   DEMO_CUSTOMER_ORIGIN: 'https://customer.demo.test:4443',
   DEMO_PLATFORM_ORIGIN: 'https://platform.demo.test:4443',
   DEMO_DATABASE_SSL: 'disable',

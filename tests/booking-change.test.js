@@ -11,8 +11,8 @@ import { AuthorizationDeniedError } from '../src/authorization/errors.js';
 import { createAuthorizationPolicy, tenantAuthorizationSnapshot } from '../src/authorization/policy.js';
 import { normalizeBookingChange } from '../src/domain/booking-change.js';
 import {
-  createRequestV2Snapshot,
-  priceRequestComposition,
+  createRequestCompositionSnapshot,
+  priceRequestCompositionForSchemaVersion,
 } from '../src/domain/request-composition.js';
 import { normalizeRequest, toPublicRequest } from '../src/domain/request.js';
 
@@ -50,7 +50,7 @@ function proposed(overrides = {}) {
   };
 }
 
-function v2Snapshot(input, requestVersion) {
+function v2Snapshot(input, requestVersion, schemaVersion = 2) {
   const capturedAt = '2026-08-26T10:00:00.000Z';
   const room = {
     id: input.roomId,
@@ -65,14 +65,18 @@ function v2Snapshot(input, requestVersion) {
     siteId: 'site-1',
     roomId: input.roomId,
     services: [],
-    equipment: [],
+    equipment: (input.equipmentIds ?? []).map((id) => ({
+      id, name: `Equipment ${id}`, description: null, price: { amountMinor: 2500, currency: 'EUR' },
+    })),
     cateringItems: [],
     catering: [],
   };
-  const pricing = priceRequestComposition({
+  const pricing = priceRequestCompositionForSchemaVersion({
+    schemaVersion,
     draft: input, room, catalogueSnapshot, defaultCurrency: 'EUR',
   });
-  return createRequestV2Snapshot({
+  return createRequestCompositionSnapshot({
+    schemaVersion,
     draft: input,
     requestVersion,
     capturedAt,
@@ -1270,4 +1274,47 @@ test('unknown target-create outcome stays applying so retry retains the same mov
   assert.deepEqual(attempts, [1, 1]);
   assert.equal(calls.some(([name]) => name === 'pending'), false);
   assert.equal(calls.some(([name]) => name === 'rollback'), false);
+});
+
+
+test('v3 booking changes reject empty and hybrid proposals and expose immutable Equipment', async () => {
+  const baseDraft = proposed({
+    startsAt: '2026-09-01T08:00:00.000Z', endsAt: '2026-09-01T09:00:00.000Z',
+    internalParticipants: 2, equipmentIds: ['display'],
+  });
+  const current = request({ schemaVersion: 3, version: 1, snapshot: v2Snapshot(baseDraft, 1, 3) });
+  let persisted = null;
+  const { instance, calls } = service({ current, repository: {
+    async propose(values) {
+      calls.push(['propose-v3', values]);
+      persisted = change({
+        requestSchemaVersion: values.schemaVersion, requestDraft: values.proposal, baseRequestVersion: 1,
+        proposedRequestSnapshot: v2Snapshot(values.proposal, 2, values.schemaVersion),
+        roomId: values.proposal.roomId, startsAt: values.proposal.startsAt, endsAt: values.proposal.endsAt,
+        internalParticipants: values.proposal.internalParticipants,
+        externalParticipants: values.proposal.externalParticipants,
+      });
+      return { status: 'pending', change: persisted, request: current };
+    },
+    async findOpen() { return persisted; },
+  } });
+  const context = {
+    principal: principal(REQUESTER_ID, ['employee']), tenantContext: { tenantId: TENANT_ID, status: 'active' },
+    correlationId: CORRELATION_ID, requestId: 'CR-68', expectedVersion: 1,
+  };
+  await assert.rejects(instance.propose({ ...context, schemaVersion: 3, proposed: baseDraft }),
+    { code: 'BOOKING_CHANGE_EMPTY' });
+  await assert.rejects(instance.propose({ ...context, schemaVersion: 2, proposed: baseDraft }));
+  const { equipmentIds, ...v2Draft } = baseDraft;
+  assert.equal(equipmentIds.length, 1);
+  await assert.rejects(instance.propose({ ...context, schemaVersion: 3, proposed: v2Draft }));
+  assert.equal(calls.length, 0);
+  const result = await instance.propose({ ...context, schemaVersion: 3,
+    proposed: { ...baseDraft, equipmentIds: ['projector'] } });
+  assert.equal(calls[0][1].schemaVersion, 3);
+  assert.equal(result.change.requestSchemaVersion, 3);
+  assert.deepEqual(result.change.proposedRequest.details.equipmentIds, ['projector']);
+  assert.equal(result.change.proposedRequest.pricing.equipment[0].equipment.name, 'Equipment projector');
+  assert.deepEqual(current.snapshot.details.equipmentIds, ['display']);
+  assert.deepEqual((await instance.findOpen(context)).change, result.change);
 });
