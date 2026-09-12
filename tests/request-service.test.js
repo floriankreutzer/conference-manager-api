@@ -281,7 +281,10 @@ test('request room context exposes an inactive current Room only after Request o
 });
 
 test('request room context preserves Manager scope and denies unauthorized probes before Locations lookup', async () => {
-  const managerRepository = fakeRepository(requestRecord({ requesterUserId: USER_B }));
+  const managerRepository = fakeRepository(requestRecord({
+    requesterUserId: USER_B,
+    status: REQUEST_STATUS.CONFIRMED,
+  }));
   const managerContext = service(managerRepository);
   const manager = principal({
     roles: [TENANT_ROLE.CONFERENCE_MANAGER],
