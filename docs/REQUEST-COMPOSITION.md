@@ -165,11 +165,14 @@ price captured by the authoritative write. It does not claim the current Room ca
 state, the current Site name/active state, or the current Site time zone. Legacy v1 Requests contain
 no composed Room snapshot.
 
-`GET /api/v1/requests/{requestId}/room-context` is the separate object-authorized current
-presentation. After authorizing the Request, the server uses its persisted `roomId` to read the
-same-Tenant Room and Site without an active filter. This lets a client render a retained inactive
-current Room, but does not make it selectable or bookable. The projection contains no price,
-provider mapping or historical time-zone claim. The active application catalogue remains the only drafting-selection feed. Its Room entry
+`GET /api/v1/requests/{requestId}/room-context` is the separate object-authorized,
+schema-version-2 current presentation for a confirmed Request. After authorization and confirmation
+checks, the server uses the persisted `roomId` to read the same-Tenant Room and Site without an
+active filter. This lets a client render a retained inactive current Room with bounded accessibility
+labels and the current Site postal address, but does not make it selectable or bookable. Malformed
+persistent guest-presentation fields degrade to empty/null values. The projection contains no price,
+provider mapping, Wi-Fi credential, arbitrary URL, internal configuration or historical time-zone
+claim. The active application catalogue remains the only drafting-selection feed. Its Room entry
 additionally projects only bounded equipment display labels and managed floorplan/media asset
 identifiers. Those identifiers are code/application references, never arbitrary URLs, filesystem
 paths, provider IDs or upload authority; malformed persisted presentation metadata degrades to
