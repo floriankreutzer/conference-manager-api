@@ -344,11 +344,15 @@ entries, evaluates current policy, calculates pricing and allocation, and persis
 snapshot, append-only Request history and server audit evidence before commit. Stale or unavailable
 authority never falls back to a browser-calculated result.
 
-The application drafting catalogue remains active-only. A separate schema-version-1
-`GET /api/v1/requests/{requestId}/room-context` read projection first applies the ordinary Request
-object authorization and then uses only the server-loaded Room ID to present a retained inactive
-current Room/Site. That small current presentation is not a historical snapshot, catalogue entry or
-write authority; the five-owner composition transaction remains the sole mutation authority.
+The application drafting catalogue remains active-only. A separate schema-version-2
+`GET /api/v1/requests/{requestId}/room-context` read projection first requires a confirmed Request,
+applies the ordinary Request object authorization and then uses only the server-loaded Room ID to
+present a retained inactive current Room/Site. The guest-safe projection contains only bounded current
+Room accessibility labels and the current Site postal address in addition to the existing Room/Site
+presentation; malformed persistent presentation data fails closed. It excludes provider identifiers,
+Wi-Fi credentials, arbitrary URLs and internal configuration. This current presentation is not a
+historical snapshot, catalogue entry or write authority; the five-owner composition transaction
+remains the sole mutation authority.
 
 Every workflow mutation advances `request_version`; status-only changes retain the selected
 composition facts while recording a new complete public history revision. Resubmission and an
