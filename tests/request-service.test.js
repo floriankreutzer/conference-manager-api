@@ -64,12 +64,20 @@ function roomContextRecord() {
       name: 'Current Room A',
       capacity: 12,
       active: false,
+      accessibility: Object.freeze(['Step-free access']),
     }),
     site: Object.freeze({
       id: 'site-a',
       name: 'Current Site A',
       active: false,
       timeZone: 'Europe/Berlin',
+      address: Object.freeze({
+        line1: 'Main Street 1',
+        line2: null,
+        postalCode: '10115',
+        city: 'Berlin',
+        countryCode: 'DE',
+      }),
     }),
   });
 }
@@ -258,7 +266,7 @@ test('request room context exposes an inactive current Room only after Request o
   });
 
   assert.deepEqual(result, {
-    schemaVersion: 1,
+    schemaVersion: 2,
     requestRef: {
       id: 'REQ-1',
       schemaVersion: 1,
@@ -320,8 +328,21 @@ test('request room context preserves Manager scope and denies unauthorized probe
   }
 });
 
+test('request room context conceals non-confirmed Requests before Locations lookup', async () => {
+  const repository = fakeRepository(requestRecord({ status: REQUEST_STATUS.SUBMITTED }));
+  const context = service(repository);
+  await assert.rejects(context.requestService.getRequestRoomContext({
+    principal: principal(),
+    tenantContext: { tenantId: TENANT_A },
+    requestId: 'REQ-1',
+    correlationId: CORRELATION_ID,
+  }), AuthorizationDeniedError);
+  assert.equal(repository.roomContextLoads, 0);
+  assert.deepEqual(context.audit.events[0].metadata, { operation: 'room_context' });
+});
+
 test('request room context returns null for a room-less legacy Request without consulting Locations', async () => {
-  const repository = fakeRepository(requestRecord({ roomId: null }), null);
+  const repository = fakeRepository(requestRecord({ roomId: null, status: REQUEST_STATUS.CONFIRMED }), null);
   const context = service(repository);
   const result = await context.requestService.getRequestRoomContext({
     principal: principal(),
