@@ -11,6 +11,20 @@ function publicSite(row) {
   });
 }
 
+function publicRoom(row) {
+  return publicApplicationRoom({
+    id: row.id,
+    siteId: row.site_id,
+    name: row.name,
+    capacity: Number(row.capacity),
+    active: row.active,
+    price: row.price_minor === null
+      ? null
+      : Object.freeze({ amountMinor: Number(row.price_minor), currency: row.currency }),
+    details: row.details,
+  });
+}
+
 function publicApplicability(row) {
   return Object.freeze({
     id: row.id,
@@ -370,7 +384,7 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
             costAllocation: Number(revision.cost_allocation_revision),
           }),
           sites: Object.freeze(sites.rows.map(publicSite)),
-          rooms: Object.freeze(rooms.rows.map(publicApplicationRoom)),
+          rooms: Object.freeze(rooms.rows.map(publicRoom)),
           services: Object.freeze(services.rows.map(publicApplicability)),
           cateringPackages: Object.freeze(packages.rows.map((row) => (
             publicPackage(row, variantsByPackage)
@@ -576,7 +590,7 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
 
         let entries;
         if (section === 'sites') entries = rows.rows.map(publicSite);
-        else if (section === 'rooms') entries = rows.rows.map(publicApplicationRoom);
+        else if (section === 'rooms') entries = rows.rows.map(publicRoom);
         else if (section === 'services' || section === 'cateringItems') {
           entries = rows.rows.map(publicApplicability);
         } else if (section === 'costCenters') entries = rows.rows.map(publicCostCenter);
