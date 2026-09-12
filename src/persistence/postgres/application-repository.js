@@ -1,3 +1,4 @@
+import { publicApplicationRoom } from '../../domain/application-room-presentation.js';
 import { selectEffectiveTenantBookingPolicy } from '../../domain/tenant-booking-policies.js';
 import { withPostgresTransaction } from './transaction.js';
 
@@ -7,19 +8,6 @@ function publicSite(row) {
     name: row.name,
     active: row.active,
     timeZone: row.time_zone ?? null,
-  });
-}
-
-function publicRoom(row) {
-  return Object.freeze({
-    id: row.id,
-    siteId: row.site_id,
-    name: row.name,
-    capacity: row.capacity,
-    active: row.active,
-    price: row.price_minor === null
-      ? null
-      : Object.freeze({ amountMinor: Number(row.price_minor), currency: row.currency }),
   });
 }
 
@@ -241,7 +229,7 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
         const rooms = await client.query({
           name: 'application-rooms-list',
           text: `
-            SELECT room.id, room.site_id, room.name, room.capacity, room.active,
+            SELECT room.id, room.site_id, room.name, room.capacity, room.active, room.details,
               price.price_minor, price.currency
             FROM rooms room
             LEFT JOIN tenant_room_prices price
@@ -382,7 +370,7 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
             costAllocation: Number(revision.cost_allocation_revision),
           }),
           sites: Object.freeze(sites.rows.map(publicSite)),
-          rooms: Object.freeze(rooms.rows.map(publicRoom)),
+          rooms: Object.freeze(rooms.rows.map(publicApplicationRoom)),
           services: Object.freeze(services.rows.map(publicApplicability)),
           cateringPackages: Object.freeze(packages.rows.map((row) => (
             publicPackage(row, variantsByPackage)
@@ -439,7 +427,7 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
           rows = await client.query({
             name: 'application-catalogue-page-rooms',
             text: `
-              SELECT room.id, room.site_id, room.name, room.capacity, room.active,
+              SELECT room.id, room.site_id, room.name, room.capacity, room.active, room.details,
                 price.price_minor, price.currency
               FROM rooms room
               JOIN sites site
@@ -588,7 +576,7 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
 
         let entries;
         if (section === 'sites') entries = rows.rows.map(publicSite);
-        else if (section === 'rooms') entries = rows.rows.map(publicRoom);
+        else if (section === 'rooms') entries = rows.rows.map(publicApplicationRoom);
         else if (section === 'services' || section === 'cateringItems') {
           entries = rows.rows.map(publicApplicability);
         } else if (section === 'costCenters') entries = rows.rows.map(publicCostCenter);
