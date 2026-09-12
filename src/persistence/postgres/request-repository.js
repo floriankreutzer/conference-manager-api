@@ -24,6 +24,7 @@ import {
   snapshotTenantCatalogueSelection,
 } from '../../domain/tenant-catalogue.js';
 import { isIanaTimeZone } from '../../domain/site-time-zone.js';
+import { publicGuestRoomFields } from '../../domain/request-room-guest-presentation.js';
 import { withPostgresTransaction } from './transaction.js';
 
 const REQUEST_COLUMNS = `
@@ -69,6 +70,10 @@ function mapRequestRow(row) {
 
 function mapCurrentRoomContextRow(row) {
   if (!row) return null;
+  const guest = publicGuestRoomFields({
+    roomDetails: row.room_details,
+    siteDetails: row.site_details,
+  });
   const locationsRevision = Number(row.locations_revision);
   const capacity = Number(row.room_capacity);
   if (
@@ -97,12 +102,14 @@ function mapCurrentRoomContextRow(row) {
       name: row.room_name,
       capacity,
       active: row.room_active,
+      accessibility: guest.accessibility,
     }),
     site: Object.freeze({
       id: row.site_id,
       name: row.site_name,
       active: row.site_active,
       timeZone: row.site_time_zone,
+      address: guest.address,
     }),
   });
 }
@@ -652,10 +659,12 @@ export function createPostgresRequestRepository(
             room.name AS room_name,
             room.capacity AS room_capacity,
             room.active AS room_active,
+            room.details AS room_details,
             site.id AS site_id,
             site.name AS site_name,
             site.active AS site_active,
-            site.time_zone AS site_time_zone
+            site.time_zone AS site_time_zone,
+            site.details AS site_details
           FROM tenants tenant
           JOIN rooms room
             ON room.tenant_id = tenant.id
