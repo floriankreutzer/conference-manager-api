@@ -177,6 +177,15 @@ test('production application persistence is tenant-scoped and request create is 
   assert.equal(catalogA.rooms[0].floorplanAssetId, 'floorplan-room-a');
   assert.deepEqual(catalogA.rooms[0].mediaAssetIds, ['room-a-front']);
   assert.equal(JSON.stringify(catalogA.rooms[0]).includes('serviceIds'), false);
+  const activeRoomPage = await applicationRepository.loadCatalogPage({
+    tenantId: TENANT_A,
+    section: 'rooms',
+    limit: 11,
+  });
+  assert.equal(activeRoomPage.status, 'ready');
+  assert.deepEqual(activeRoomPage.entries[0].equipment, ['Display', 'Whiteboard']);
+  assert.equal(activeRoomPage.entries[0].floorplanAssetId, 'floorplan-room-a');
+  assert.deepEqual(activeRoomPage.entries[0].mediaAssetIds, ['room-a-front']);
   assert.deepEqual(catalogA.costAllocation, {
     allocationRequired: false,
     costCenters: [{
