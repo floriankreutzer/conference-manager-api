@@ -27,7 +27,7 @@ function safeEquipment(value) {
       || entry.length < 1
       || entry.length > TEXT_MAX
       || entry !== entry.trim()
-      || /[\u0000-\u001f\u007f<>]/.test(entry)
+      || /[\u0000-\u001f\u007f]/.test(entry)
       || normalized.includes(entry)
     ) return Object.freeze([]);
     normalized.push(entry);
@@ -52,13 +52,11 @@ export function publicApplicationRoom(row) {
   const details = storedDetails(row?.details);
   return Object.freeze({
     id: row.id,
-    siteId: row.site_id,
+    siteId: row.siteId,
     name: row.name,
-    capacity: Number(row.capacity),
+    capacity: row.capacity,
     active: row.active,
-    price: row.price_minor === null
-      ? null
-      : Object.freeze({ amountMinor: Number(row.price_minor), currency: row.currency }),
+    price: row.price === null ? null : Object.freeze({ ...row.price }),
     equipment: details ? safeEquipment(details.equipment ?? []) : Object.freeze([]),
     floorplanAssetId: details ? safeAssetId(details.floorplanAssetId) : null,
     mediaAssetIds: details ? safeMediaAssetIds(details.mediaAssetIds ?? []) : Object.freeze([]),
