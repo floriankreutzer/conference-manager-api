@@ -695,7 +695,10 @@ test('request room-context route returns exact current presentation without maki
   await withServer({
     ...baseOptions,
     resolvePrincipal: async () => manager,
-    requestService: requestServiceFor(requestRecord({ requesterUserId: OTHER_USER_ID })),
+    requestService: requestServiceFor(requestRecord({
+      requesterUserId: OTHER_USER_ID,
+      status: REQUEST_STATUS.CONFIRMED,
+    })),
   }, async ({ port }) => {
     const result = await request({ port, path: '/api/v1/requests/REQ-1/room-context' });
     assert.equal(result.statusCode, 200);
