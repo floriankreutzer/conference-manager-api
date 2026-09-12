@@ -307,6 +307,17 @@ export function createRequestService({
         throw error;
       }
 
+      if (request.status !== REQUEST_STATUS.CONFIRMED) {
+        await recordDenied({
+          principal,
+          tenantContext,
+          requestId,
+          correlationId,
+          operation: 'room_context',
+        });
+        throw concealedNotFound();
+      }
+
       const currentRoomContext = request.roomId === null
         ? null
         : await repository.findRoomContextByTenantIdAndRoomId(
@@ -317,7 +328,7 @@ export function createRequestService({
         throw new TypeError('REQUEST_ROOM_CONTEXT_INVALID');
       }
       return Object.freeze({
-        schemaVersion: 1,
+        schemaVersion: 2,
         requestRef: Object.freeze({
           id: request.id,
           schemaVersion: request.schemaVersion,
