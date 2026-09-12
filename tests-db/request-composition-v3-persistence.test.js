@@ -49,8 +49,8 @@ async function seed(pool) {
     VALUES($1,'site-a','Site A','Europe/Berlin'),($1,'site-b','Site B','Europe/Berlin')`, [TENANT]);
   await pool.query(`INSERT INTO rooms(tenant_id,id,site_id,name,capacity)
     VALUES($1,'room-a','site-a','Room A',20),($1,'room-b','site-b','Room B',20)`, [TENANT]);
-  await pool.query(`INSERT INTO tenant_room_prices(tenant_id,room_id,price_minor,currency)
-    VALUES($1,'room-a',1000,'EUR'),($1,'room-b',1000,'EUR')`, [TENANT]);
+  await pool.query(`INSERT INTO tenant_room_prices(tenant_id,room_id,price_minor,currency,created_at,updated_at)
+    VALUES($1,'room-a',1000,'EUR',$2,$2),($1,'room-b',1000,'EUR',$2,$2)`, [TENANT, CREATED_AT]);
   await pool.query(`INSERT INTO equipment(tenant_id,id,name,description,active,price_minor,currency,sort_order) VALUES
     ($1,'display','Original display','Immutable description',true,2500,'EUR',1),
     ($1,'inactive','Retired equipment',NULL,false,500,'EUR',2),
