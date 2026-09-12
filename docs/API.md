@@ -519,19 +519,19 @@ explicitly as `null`; the server does not infer missing historical business fact
 
 ### `GET /api/v1/requests/{requestId}/room-context`
 
-Returns a request-scoped current presentation for the Room already referenced by the Request. It
-uses exactly the same active-Tenant, permission and object authorization as Request detail: the
-owning Employee and a Conference Manager with `request:read` may read within the authenticated
-Tenant; Tenant Admin does not inherit Conference Manager scope. Missing, cross-Tenant and
-same-Tenant non-owned Employee probes are concealed consistently. The repository first loads and
-authorizes the Request by Principal Tenant, then reads only its server-loaded `roomId`; no client
-Room or Tenant selector is accepted.
+Returns a request-scoped guest-safe current presentation for the Room already referenced by a
+**confirmed** Request. It uses the same active-Tenant, permission and object authorization as
+Request detail: the owning Employee and a Conference Manager with `request:read` may read within
+the authenticated Tenant; Tenant Admin does not inherit Conference Manager scope. Draft,
+non-confirmed, missing, cross-Tenant and same-Tenant non-owned Employee probes are concealed.
+The repository authorizes the Request first and then reads only its server-loaded `roomId`; no
+client Room or Tenant selector is accepted.
 
-The exact response is:
+The exact schema-version-2 response is:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "requestRef": {
     "id": "REQ-42",
     "schemaVersion": 2,
@@ -545,25 +545,39 @@ The exact response is:
       "siteId": "site-a",
       "name": "Room A",
       "capacity": 20,
-      "active": false
+      "active": false,
+      "accessibility": ["Step-free access"]
     },
     "site": {
       "id": "site-a",
       "name": "Berlin",
       "active": false,
-      "timeZone": "Europe/Berlin"
+      "timeZone": "Europe/Berlin",
+      "address": {
+        "line1": "Main Street 1",
+        "line2": null,
+        "postalCode": "10115",
+        "city": "Berlin",
+        "countryCode": "DE"
+      }
     }
   },
   "requestId": "server-correlation-uuid"
 }
 ```
 
-`currentRoomContext` is `null` when the Request has no Room. This projection deliberately reads
-retained inactive Room/Site identities and current presentation facts, including the Site's current
-nullable time zone. It is not a historical snapshot, does not reconstruct the booking-time time
-zone, and exposes no price, provider identity or `selectable` authority. Only the active application
-catalog defines selectable targets, and every booking-change write revalidates current Room/Site
-authority. Clients use `requestRef.version` to bind follow-on work and reload if it no longer matches.
+`currentRoomContext` is `null` when a confirmed legacy Request has no Room. The projection reads
+retained inactive Room/Site identities and current presentation facts. Address and accessibility
+are normalized from the bounded Tenant Locations aggregate; malformed persisted values fail closed
+to `null` and `[]`. Wi-Fi passwords, credentials, private network details, provider identifiers,
+integration metadata, arbitrary URLs/HTML and internal notes are never projected. The endpoint
+contains no public route/map reference or Wi-Fi text until a separately governed guest-safe
+configuration field exists; it never repurposes technical provider or secret fields.
+
+This is a current presentation, not a historical snapshot or selection authority. Only the active
+application catalogue defines selectable targets, and every booking-change write revalidates
+current Room/Site authority. Clients bind follow-on work to `requestRef.version` and reload if it
+no longer matches.
 
 ### `GET /api/v1/requests/{requestId}/history`
 
