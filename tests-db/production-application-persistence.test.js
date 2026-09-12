@@ -156,11 +156,27 @@ test('production application persistence is tenant-scoped and request create is 
   await clean(pool);
   await seedTenant(pool, TENANT_A, USER_A, SITE_A, ROOM_A);
   await seedTenant(pool, TENANT_B, USER_B, SITE_B, ROOM_B);
+  await pool.query(
+    'UPDATE rooms SET details = $3::jsonb WHERE tenant_id = $1 AND id = $2',
+    [
+      TENANT_A,
+      ROOM_A,
+      JSON.stringify({
+        equipment: ['Display', 'Whiteboard'],
+        floorplanAssetId: 'floorplan-room-a',
+        mediaAssetIds: ['room-a-front'],
+      }),
+    ],
+  );
 
   const catalogA = await applicationRepository.loadCatalog(TENANT_A);
   assert.deepEqual(catalogA.sites.map((site) => site.id), [SITE_A]);
   assert.equal(catalogA.sites[0].timeZone, null);
   assert.deepEqual(catalogA.rooms.map((room) => room.id), [ROOM_A]);
+  assert.deepEqual(catalogA.rooms[0].equipment, ['Display', 'Whiteboard']);
+  assert.equal(catalogA.rooms[0].floorplanAssetId, 'floorplan-room-a');
+  assert.deepEqual(catalogA.rooms[0].mediaAssetIds, ['room-a-front']);
+  assert.equal(JSON.stringify(catalogA.rooms[0]).includes('serviceIds'), false);
   assert.deepEqual(catalogA.costAllocation, {
     allocationRequired: false,
     costCenters: [{
