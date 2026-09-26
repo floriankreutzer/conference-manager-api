@@ -64,8 +64,14 @@ ALTER TABLE booking_change_requests
   ADD COLUMN initiator_display_name VARCHAR(160), ADD COLUMN initiator_role_at_action VARCHAR(32),
   ADD COLUMN decider_display_name VARCHAR(160), ADD COLUMN decider_role_at_action VARCHAR(32);
 
+-- Backfill only the added attribution column. The existing deferred Request
+-- revision trigger compares legacy snapshots serialized to milliseconds with
+-- timestamps stored at microsecond precision; it must not treat this
+-- metadata-only backfill as a business Request revision.
+ALTER TABLE requests DISABLE TRIGGER requests_current_revision_integrity;
 UPDATE requests request SET requester_display_name = request_actor_display_name(
   request.tenant_id, request.requester_user_id);
+ALTER TABLE requests ENABLE TRIGGER requests_current_revision_integrity;
 -- The migration may capture the stored name, but cannot infer historical roles.
 ALTER TABLE request_revisions DISABLE TRIGGER request_revisions_append_only;
 UPDATE request_revisions revision SET actor_display_name = request_actor_display_name(
