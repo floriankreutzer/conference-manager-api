@@ -190,6 +190,8 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 34, name: 'customer_session_epoch_revocation' },
       { version: 35, name: 'request_composition_v3_equipment_selection' },
       { version: 36, name: 'request_attribution' },
+      { version: 37, name: 'site_guest_information' },
+      { version: 38, name: 'request_attribution_function_privileges' },
     ]);
   });
 
@@ -264,8 +266,13 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
           [TENANT_B, TENANT_A, 'cross-room-request'],
         );
       }),
-      (error) => error.code === '23503',
+      (error) => error.code === '23514' && error.message === 'REQUEST_ATTRIBUTION_IMMUTABLE',
     );
+    const retained = await pool.query(
+      'SELECT tenant_id FROM requests WHERE tenant_id = $1 AND id = $2',
+      [TENANT_A, 'cross-room-request'],
+    );
+    assert.equal(retained.rows[0]?.tenant_id, TENANT_A);
 
     await assert.rejects(
       pool.query(
