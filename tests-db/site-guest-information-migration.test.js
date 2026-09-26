@@ -5,6 +5,7 @@ import { normalizeSiteGuestInformation } from '../src/domain/site-guest-informat
 import { createPostgresPool } from '../src/persistence/postgres/pool.js';
 import { migrateUp, rollbackToVersion } from '../scripts/db-migrations.mjs';
 import { clearSaas3TestState } from './support/saas3-test-state.js';
+import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_ID = '37373737-3737-4373-8373-373737373737';
 const ADMIN_ID = '38383838-3838-4383-8383-383838383838';
@@ -41,6 +42,7 @@ async function deleteHistory(pool) {
 
 async function clean(pool) {
   await deleteHistory(pool);
+  await removeSaas2TenantAdministrationFixtures(pool, [TENANT_ID]);
   await pool.query('DELETE FROM sites WHERE tenant_id = $1', [TENANT_ID]);
   await pool.query('DELETE FROM users WHERE tenant_id = $1', [TENANT_ID]);
   await clearSaas3TestState(pool);
