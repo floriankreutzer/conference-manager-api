@@ -784,7 +784,6 @@ test('migration 027 backfills explicit legacy history and enforces v2 integrity'
   await pool.query(
     `UPDATE booking_change_requests
      SET status = 'applying', decided_by_user_id = $3,
-         decider_role_at_action = 'conference_manager',
          move_attempt_number = 1, recovery_phase = 'move_pending', updated_at = $4
      WHERE tenant_id = $1 AND id = $2`,
     [TENANT_ID, CHANGE_ID, DECIDER_ID, '2026-08-27T08:01:00.000Z'],
