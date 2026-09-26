@@ -5,9 +5,14 @@ import {
 } from '../audit/event.js';
 import {
   AuthorizationDeniedError,
+  AuthorizationInputError,
   RequestStateConflictError,
 } from '../authorization/errors.js';
-import { isRequestId } from '../domain/request.js';
+import {
+  isImmediateRequestVersionSuccessor,
+  isRequestId,
+  isRequestVersion,
+} from '../domain/request.js';
 import { isInternalUuid } from '../domain/identifiers.js';
 import { REQUEST_STATUS, REQUEST_TRANSITION } from '../domain/request-workflow.js';
 import { CAPABILITY } from '../entitlements/capabilities.js';
@@ -15,6 +20,7 @@ import { EntitlementDeniedError } from '../entitlements/errors.js';
 import {
   RESERVATION_PHASE,
   isProviderConnectionReference,
+  isProviderReference,
   isProviderResourceReference,
 } from '../integrations/calendar-contract.js';
 
@@ -23,6 +29,42 @@ function concealedNotFound() {
 }
 
 const PROVIDER_PATTERN = /^[a-z][a-z0-9_-]{1,63}$/;
+
+function normalizePreConfirmationCleanup(value) {
+  if (
+    !value
+    || typeof value !== 'object'
+    || Array.isArray(value)
+    || typeof value.disposition !== 'string'
+    || value.disposition.length < 1
+    || value.disposition.length > 64
+  ) {
+    throw new TypeError('FINAL_ROOM_CALENDAR_CLEANUP_RESULT_INVALID');
+  }
+  if (value.state === 'cancelled' && value.reference === null) return null;
+  const reference = value.reference;
+  if (
+    value.state !== 'compensated'
+    || !reference
+    || typeof reference !== 'object'
+    || Array.isArray(reference)
+    || !isInternalUuid(reference.integrationId)
+    || !isProviderReference(reference.providerReference)
+    || !isProviderConnectionReference(reference.providerConnectionReference)
+    || !isProviderResourceReference(reference.providerResourceReference)
+  ) {
+    throw new TypeError('FINAL_ROOM_CALENDAR_CLEANUP_RESULT_INVALID');
+  }
+  return Object.freeze({
+    disposition: value.disposition,
+    reference: Object.freeze({
+      integrationId: reference.integrationId,
+      providerReference: reference.providerReference,
+      providerConnectionReference: reference.providerConnectionReference,
+      providerResourceReference: reference.providerResourceReference,
+    }),
+  });
+}
 
 export class FinalRoomAvailabilityError extends Error {
   constructor(code = 'FINAL_ROOM_AVAILABILITY_UNAVAILABLE', options = {}) {
@@ -50,7 +92,7 @@ export function createFinalRoomConfirmationService({
   }
   if (
     !authorizationPolicy
-    || typeof authorizationPolicy.authorizeRequestRead !== 'function'
+    || typeof authorizationPolicy.authorizeRequestReconciliation !== 'function'
     || typeof authorizationPolicy.authorizeRequestTransition !== 'function'
   ) {
     throw new TypeError('FINAL_CONFIRMATION_AUTHORIZATION_REQUIRED');
@@ -127,9 +169,17 @@ export function createFinalRoomConfirmationService({
     }
   }
 
+  function isCommittedConfirmation(request, expectedVersion) {
+    return request?.status === REQUEST_STATUS.CONFIRMED
+      && isImmediateRequestVersionSuccessor(request.version, expectedVersion);
+  }
+
   return Object.freeze({
-    async confirm({ principal, tenantContext, requestId, correlationId }) {
+    async confirm({ principal, tenantContext, requestId, expectedVersion, correlationId }) {
       if (!isRequestId(requestId)) throw new TypeError('REQUEST_ID_INVALID');
+      if (!isRequestVersion(expectedVersion)) {
+        throw new AuthorizationInputError('REQUEST_VERSION_PRECONDITION_INVALID');
+      }
       const request = await repository.findByTenantIdAndId(tenantContext.tenantId, requestId);
       if (!request) {
         await recordDenied({ principal, tenantContext, requestId, correlationId });
@@ -138,12 +188,29 @@ export function createFinalRoomConfirmationService({
 
       if (request.status === REQUEST_STATUS.CONFIRMED) {
         try {
-          authorizationPolicy.authorizeRequestRead(principal, tenantContext, request);
+          authorizationPolicy.authorizeRequestReconciliation(
+            principal,
+            tenantContext,
+            request,
+            REQUEST_TRANSITION.CONFIRM,
+            undefined,
+          );
         } catch (error) {
           if (error instanceof AuthorizationDeniedError) {
             await recordDenied({ principal, tenantContext, requestId, correlationId });
           }
           throw error;
+        }
+        if (request.version !== expectedVersion) {
+          await recordFailure({
+            principal,
+            tenantContext,
+            requestId,
+            correlationId,
+            request,
+            reasonCode: 'state_conflict',
+          });
+          throw new RequestStateConflictError();
         }
         return request;
       }
@@ -157,9 +224,19 @@ export function createFinalRoomConfirmationService({
           REQUEST_TRANSITION.CONFIRM,
           undefined,
         );
+        if (request.version !== expectedVersion) throw new RequestStateConflictError();
       } catch (error) {
         if (error instanceof AuthorizationDeniedError) {
           await recordDenied({ principal, tenantContext, requestId, correlationId });
+        } else if (error instanceof RequestStateConflictError) {
+          await recordFailure({
+            principal,
+            tenantContext,
+            requestId,
+            correlationId,
+            request,
+            reasonCode: 'state_conflict',
+          });
         }
         throw error;
       }
@@ -268,6 +345,7 @@ export function createFinalRoomConfirmationService({
 
       let bookingService = null;
       let calendarCreated = false;
+      let calendarCleanup = null;
       const context = bookingContext(principal, tenantContext, request, correlationId);
       if (!calendarWriteEnabled && bookingServiceFactory) {
         try {
@@ -279,10 +357,15 @@ export function createFinalRoomConfirmationService({
           }
           if (await bookingServiceFactory.requiresCancellation(request)) {
             const cleanupService = await bookingServiceFactory.forCancellation(request);
-            if (!cleanupService || typeof cleanupService.cancelCalendarEvent !== 'function') {
+            if (
+              !cleanupService
+              || typeof cleanupService.cancelCalendarEventBeforeConfirmation !== 'function'
+            ) {
               throw new TypeError('FINAL_ROOM_CALENDAR_CLEANUP_SERVICE_INVALID');
             }
-            await cleanupService.cancelCalendarEvent(context);
+            calendarCleanup = normalizePreConfirmationCleanup(
+              await cleanupService.cancelCalendarEventBeforeConfirmation(context),
+            );
           }
         } catch (error) {
           await recordFailure({
@@ -334,6 +417,26 @@ export function createFinalRoomConfirmationService({
         metadata: { reasonProvided: false, transition: decision.transition },
         retentionClass: AUDIT_RETENTION_CLASS.BUSINESS,
       });
+      const calendarCleanupAuditEvent = calendarCleanup === null
+        ? null
+        : auditService.createEvent({
+          principal,
+          tenantContext,
+          correlationId,
+          action: AUDIT_ACTION.CALENDAR_OPERATION,
+          targetType: 'request',
+          targetId: requestId,
+          previousState: { calendarState: 'compensated' },
+          newState: { calendarState: 'cancelled' },
+          outcome: AUDIT_OUTCOME.SUCCESS,
+          occurredAt: changedAt.toISOString(),
+          metadata: {
+            disposition: calendarCleanup.disposition,
+            operation: 'cancel',
+            phase: RESERVATION_PHASE.FINAL,
+          },
+          retentionClass: AUDIT_RETENTION_CLASS.BUSINESS,
+        });
 
       let result;
       try {
@@ -341,28 +444,16 @@ export function createFinalRoomConfirmationService({
           tenantId: tenantContext.tenantId,
           requestId,
           expectedStatus: decision.expectedStatus,
+          expectedVersion,
           calendarAuthority,
+          calendarCleanup: calendarCleanup === null ? null : Object.freeze({
+            reference: calendarCleanup.reference,
+            auditEvent: calendarCleanupAuditEvent,
+          }),
           changedAt,
           auditEvent,
         });
       } catch (error) {
-        let authoritative;
-        try {
-          authoritative = await repository.findByTenantIdAndId(tenantContext.tenantId, requestId);
-        } catch (reconciliationError) {
-          await recordFailure({
-            principal,
-            tenantContext,
-            requestId,
-            correlationId,
-            request,
-            reasonCode: 'confirmation_reconciliation_unavailable',
-          });
-          throw new FinalRoomAvailabilityError('FINAL_ROOM_CONFIRMATION_RECONCILIATION_REQUIRED', {
-            cause: new AggregateError([error, reconciliationError], 'FINAL_ROOM_CONFIRMATION_OUTCOME_UNKNOWN'),
-          });
-        }
-        if (authoritative?.status === REQUEST_STATUS.CONFIRMED) return authoritative;
         await recordFailure({
           principal,
           tenantContext,
@@ -375,8 +466,21 @@ export function createFinalRoomConfirmationService({
           cause: error,
         });
       }
-      if (result.status === 'confirmed') return result.request;
-      if (result.request?.status === REQUEST_STATUS.CONFIRMED) return result.request;
+      if (result.status === 'confirmed' && isCommittedConfirmation(result.request, expectedVersion)) {
+        return result.request;
+      }
+      if (result.request?.status === REQUEST_STATUS.CONFIRMED) {
+        const conflict = new RequestStateConflictError();
+        await recordFailure({
+          principal,
+          tenantContext,
+          requestId,
+          correlationId,
+          request,
+          reasonCode: 'concurrent_state_change',
+        });
+        throw conflict;
+      }
 
       if (result.status === 'provider_authority_conflict') {
         const authorityError = new FinalRoomAvailabilityError('FINAL_ROOM_PROVIDER_AUTHORITY_LOST');

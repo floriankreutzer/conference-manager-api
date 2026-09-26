@@ -279,8 +279,8 @@ async function insertV2Request(pool, {
       text: `
         INSERT INTO request_revisions (
           tenant_id, request_id, request_version, schema_version, operation,
-          record, captured_at, actor_user_id, correlation_id
-        ) VALUES ($1, $2, 1, 2, 'created', $3::jsonb, $4, $5, $6)
+          record, captured_at, actor_user_id, correlation_id, actor_role_at_action
+        ) VALUES ($1, $2, 1, 2, 'created', $3::jsonb, $4, $5, $6, 'employee')
         RETURNING revision_sequence
       `,
       values: [
@@ -349,10 +349,10 @@ async function insertV2Change(pool, {
         tenant_id, id, request_id, initiator_user_id, status, room_id, starts_at, ends_at,
         internal_participants, external_participants, base_request_updated_at,
         request_schema_version, base_request_version, request_draft,
-        proposed_request_snapshot, created_at, updated_at
+        proposed_request_snapshot, created_at, updated_at, initiator_role_at_action
       ) VALUES (
         $1, $2, $3, $4, 'pending', $5, $6, $7, $8, $9, $10,
-        2, 1, $11::jsonb, $12::jsonb, $10, $10
+        2, 1, $11::jsonb, $12::jsonb, $10, $10, 'employee'
       )
     `,
     values: [
@@ -784,6 +784,7 @@ test('migration 027 backfills explicit legacy history and enforces v2 integrity'
   await pool.query(
     `UPDATE booking_change_requests
      SET status = 'applying', decided_by_user_id = $3,
+         decider_role_at_action = 'conference_manager',
          move_attempt_number = 1, recovery_phase = 'move_pending', updated_at = $4
      WHERE tenant_id = $1 AND id = $2`,
     [TENANT_ID, CHANGE_ID, DECIDER_ID, '2026-08-27T08:01:00.000Z'],

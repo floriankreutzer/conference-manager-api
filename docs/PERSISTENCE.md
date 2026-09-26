@@ -147,11 +147,19 @@ quota receipts and the deployment-to-Tenant runtime inventory.
 
 Migration 034 performs the Customer authorization-epoch cutover by setting `revoked_at` on every still-active session. The mutation is intentionally one-way: the down migration removes only version bookkeeping and never restores or rewrites a session. Current code uses a source-controlled, domain-separated token-hash namespace, so a new session cannot be looked up by an old unnamespaced binary and a legacy cookie cannot be resurrected by binary rollback.
 
+Migration 035 adds exact Request composition v3 Equipment constraints without rewriting v1/v2 Request, revision or proposal evidence.
+
+Migration 036 adds immutable minimized requester/action attribution snapshots and preserves legacy rows with explicit nullable role attribution.
+
+Migration 037 adds nullable Site Guest Information plus immutable Locations-revision guest maps while preserving the exact legacy Locations and Room-context contracts.
+
+Migration 038 revokes public execution from the privileged Request-attribution marker and its three trigger functions. The bounded trigger functions run as the migration owner with a fixed `pg_catalog` search path and schema-qualified application references; ordinary restricted-role Request writes still fire them, while direct calls are denied.
+
 The all-role Tenant presentation contract reuses the current Organization row and
 `organization_revision`. Its managed-brand policy maps one fixed reference to a code-shipped preset
 and therefore introduces no upload metadata, asset table, external object reference or migration.
 
-Runtime schema readiness advances to exactly version 34. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
+Runtime schema readiness advances to exactly version 38. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
 
 No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
 
@@ -219,9 +227,12 @@ Resubmission additionally locks the Request and requires:
 tenant_id + request id + requester user id + Change Requested + expected request version
 ```
 
-A workflow transition continues to require the previously authorized status. Every successful
-workflow or composition mutation increments `request_version`; a stale status, Request version or
-configuration revision returns `409 REQUEST_STATE_CONFLICT` rather than overwriting newer state.
+A workflow transition requires the previously authorized status and the exact Request version from
+the strong HTTP `If-Match` precondition. Both values are checked after the Request row is locked and
+again in the conditional `UPDATE`, preventing same-status ABA changes from accepting a stale
+command. Every successful workflow or composition mutation increments `request_version`; a stale
+status, Request version or configuration revision returns `409 REQUEST_STATE_CONFLICT` rather than
+overwriting newer state.
 Client-supplied target status/owner/Tenant and calculated snapshot fields do not reach the repository
 contract.
 
@@ -292,11 +303,11 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 34.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 38.
 
 ## Shared Demo persistence
 
-The SaaS 3.5 Shared Demo Runtime uses one isolated PostgreSQL database for both the customer and
+The SaaS 3.6 Shared Demo Runtime uses one isolated PostgreSQL database for both the customer and
 Platform process. It is deliberately not an in-memory/browser state authority. Four distinct
 database principals separate normal customer access, normal Platform access, destructive
 reset/seed capability and migration ownership. All four URLs must resolve to the same
@@ -304,10 +315,12 @@ reset/seed capability and migration ownership. All four URLs must resolve to the
 distinct.
 
 The canonical `migrations/` stream remains the source of the business schema and must contain the
-exact applied sequence `001..034`. The independent `demo-migrations/` stream has its own
-`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `003`
+exact applied sequence `001..038`. The independent `demo-migrations/` stream has its own
+`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `004`
 installs the immutable database sentinel, provider/persona reference tables, minimized views and
-role grants. It reads but never writes the canonical `schema_migrations` ledger.
+role grants. Overlay 004 grants only `INSERT` and `TRUNCATE` on the canonical attribution
+migration-state singleton to the reset role; customer and Platform roles receive no access. The
+overlay reads but never writes the canonical `schema_migrations` ledger.
 
 Reset uses the reset-only role and first verifies the sentinel key, current database and role,
 recorded distinct principals, complete canonical migration sequence and exact expected table
@@ -358,11 +371,11 @@ one lookahead row and exposes an explicit completion flag/cursor instead of sile
 
 Entitlement changes are serialized per Tenant/capability, update the allowlisted entitlement row and append `tenant.entitlement.changed` in the same transaction. A failed audit append rolls the entitlement change back; setting an already-effective value is idempotent and creates no false change event.
 
-Booking-provider reference creation is serialized per Tenant/Request/Integration. Before provider create, a `pending` row audit-atomically binds attempt number, exact provider connection identity, create-time resource and deterministic key without a placeholder event reference. Reserve/retry and normal finalization lock and require that exact Integration/provider reference, `connected` status and, for Microsoft 365, exact active Entra binding. Finalization stores the real reference as `active`; if authority disappeared after external create, it instead stores the event as `compensating` so the caller can delete and complete `compensated`. An identical repeat does not append duplicate success evidence and a conflicting pair fails closed. Update, compensation and cancel local mutations append the required `calendar.operation` success event in the same PostgreSQL transaction.
+Booking-provider reference creation is serialized per Tenant/Request/Integration. Before provider create, a `pending` row audit-atomically binds attempt number, exact provider connection identity, create-time resource and deterministic key without a placeholder event reference. Reserve/retry and normal finalization lock and require that exact Integration/provider reference, `connected` status and, for Microsoft 365, exact active Entra binding. Finalization stores the real reference as `active`; if authority disappeared after external create, it instead stores the event as `compensating` so the caller can delete and complete `compensated`. An identical repeat does not append duplicate success evidence and a conflicting pair fails closed. Starting compensation additionally share-locks and requires the exact eligible Request version before changing `active` to `compensating`; version/status drift retains the event without provider deletion. Update, compensation and cancel local mutations append the required `calendar.operation` success event in the same PostgreSQL transaction.
 
 The external calendar system is not part of that database transaction. A provider success followed by local finalization failure returns failure and is recovered with the persisted resource/idempotency scope; the provider contract must return the same existing external event instead of creating a duplicate. Pending cancellation performs that same reconciliation before delete and may do so after local disconnect, provided the persisted Integration/provider identity and active binding still match. A retry after completed compensation increments the attempt and rotates the key instead of reusing the deleted event's transaction ID.
 
-Final Request confirmation passes a bounded provider-authority descriptor into its owning transaction. Before the room lock/update, persistence locks and requires the exact connected Integration/provider reference plus exact active identity binding; loss produces `provider_authority_conflict` without changing the Request. If the caller created an event, it compensates that event rather than committing under stale authority.
+Final Request confirmation passes a bounded provider-authority descriptor into its owning transaction. Before the room lock/update, persistence locks and requires the exact connected Integration/provider reference plus exact active identity binding. A write-enabled commit also share-locks the exact `active` booking reference for the same connection/resource. A write-disabled commit locks all non-cancelled references and accepts exactly none or the one exact `compensated` reference returned by fenced pre-confirm cleanup; multiple or mismatched rows fail closed. After the room-conflict check and successful Request update, that reference changes to `cancelled` with Calendar audit evidence in the same transaction. Conflict or audit failure rolls back terminalization, retaining `compensated` for retry. The Request-lock/booking-reference-lock order and the version-bound `active`-to-`compensating` transition ensure either confirmation retains the shared event or cleanup owns it before deletion; the two outcomes cannot commit concurrently.
 
 Failure/denial events for operations that did not commit an authoritative mutation are separate audit appends because there is no successful business transaction to join.
 
@@ -434,7 +447,7 @@ Microsoft 365 connection persistence additionally requires real PostgreSQL tests
 
 OIDC transaction persistence additionally requires real PostgreSQL tests for schema version 7, plaintext non-persistence, valid one-time consume, expiry rejection, replay rejection, provider scoping, concurrent consume behavior and rollback/reapply.
 
-Request authorization persistence additionally requires real PostgreSQL tests for same-ID Tenant isolation, cross-Tenant absence, owner/Conference Manager cancellation attribution, workflow constraints, invalid status/reason combinations and stale/concurrent transition protection. Confirmed-change persistence must also prove a single Conference Manager can propose and approve with equal initiator/decider IDs and separately attributed proposal/decision audit events.
+Request authorization persistence additionally requires real PostgreSQL tests for same-ID Tenant isolation, cross-Tenant absence, owner/Conference Manager cancellation attribution, workflow constraints, invalid status/reason combinations, same-status version drift, ABA generations and status-plus-version concurrent transition protection for ordinary and final-confirmation paths. Confirmed-change persistence must also prove a single Conference Manager can propose and approve with equal initiator/decider IDs and separately attributed proposal/decision audit events.
 
 Audit persistence additionally requires real PostgreSQL tests for:
 
@@ -450,7 +463,7 @@ Audit persistence additionally requires real PostgreSQL tests for:
 
 Entitlement persistence additionally requires real PostgreSQL tests for schema version 5, absent-is-disabled behavior, cross-Tenant independence, database capability allowlisting, rollout/entitlement intersection, audit-atomic changes and fail-closed populated rollback.
 
-Booking-provider persistence additionally requires real PostgreSQL tests for Tenant-composite Request/Integration ownership, same-provider-value cross-Tenant independence, pre-write pending connection/resource binding, attempt/state/reference constraints, same-attempt idempotent finalization, compensated-attempt key rotation, remap/disconnect-safe cleanup, create/final-commit authority loss, overlap lookup, audit-atomic mutations and fail-closed populated migration/rollback.
+Booking-provider persistence additionally requires real PostgreSQL tests for Tenant-composite Request/Integration ownership, same-provider-value cross-Tenant independence, pre-write pending connection/resource binding, attempt/state/reference constraints, same-attempt idempotent finalization, compensated-attempt key rotation, remap/disconnect-safe cleanup, exact-version cleanup ownership, active-reference final-confirm fencing in both lock orders, exact single-reference compensated terminalization, room-conflict retention, cleanup-audit rollback, create/final-commit authority loss, overlap lookup, audit-atomic mutations and fail-closed populated migration/rollback.
 
 Site-time-zone persistence additionally requires real PostgreSQL tests for nullable legacy migration, Tenant-scoped active-only catalogue reads, request-authorized retained inactive current-Room context, room-to-Site booking context, audit-atomic correction through the versioned Locations owner, invalid bounded database shapes, exact schema readiness and fail-closed populated rollback.
 
@@ -475,3 +488,30 @@ snapshot/history/audit rollback atomicity, schema readiness and fail-closed popu
 The DB suites share migration state and are therefore executed serially with `--test-concurrency=1` to prevent test-runner races from weakening the migration/integrity evidence.
 
 CI runs database tests against an isolated PostgreSQL 18 service after the normal quality/security gate.
+
+## Equipment composition rollout
+
+Migration 035 adds exact Request composition v3 Equipment constraints to the existing Request,
+revision and booking-change JSON snapshots. Existing v1/v2 data is not rewritten. Create,
+resubmit, transition, history and confirmed-change paths support the accepted nested version,
+while the outer response envelopes remain unchanged. Equipment is resolved using existing
+Tenant-composite Catalogue tables, charged once and included in allocation.
+
+The `saas-3.6-shared-demo-v5` reset fixture contains distinct priced Northwind/Contoso Equipment
+and verifies those identity, price and applicability facts during semantic readback. Demo overlay
+004 supplies only the reset privilege required by canonical attribution migration 036. Apply
+canonical migrations first, apply Demo overlays 001 through 004, reset/reseed Demo, deploy both API
+processes at one compatible SHA, verify Catalogue pages and then pin/deploy the updated frontend.
+Down 035 refuses once any v3 snapshot/proposal/history exists; use a compatible binary or a forward
+fix. Production never activates Demo authority.
+
+## SaaS 3.6 persisted Request attribution
+
+The exact v3 Request response envelopes, relational snapshots, honest legacy-null
+semantics, unchanged audit-chain payload, and mandatory staged writer cutover are
+defined in [Request Attribution](REQUEST-ATTRIBUTION.md). Existing Tenant, role,
+object ownership and session/CSRF boundaries remain required for these reads and writes.
+
+## Guest Information persistence (migration 037)
+
+Nullable Site `guest_information` is separate from legacy `details`. Immutable Location revision maps preserve guest history without changing legacy configuration JSON. V1 writes and rollbacks preserve current values; only explicit v2 mutations replace or clear them. Migration down takes exclusive locks and refuses whenever current or historical guest data exists. See `docs/SITE-GUEST-INFORMATION.md` for rollout and verification.

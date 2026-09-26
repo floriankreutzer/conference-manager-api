@@ -112,7 +112,7 @@ Migration rollback locks the owning tables and refuses once any Organization rev
 
 The central composition root injects one code-shipped managed-brand policy into both the Tenant
 Admin Organization service and the minimized presentation service. It registers their bounded route
-modules and logging/metrics route keys. Global schema readiness is version 34. Request composition
+modules and logging/metrics route keys. Global schema readiness is version 38. Request composition
 uses the current Organization revision and default currency as transactionally revalidated
 authority; the shared preset/projection itself still adds no persistence or migration. Uploads,
 customer media and arbitrary managed references remain outside this boundary.

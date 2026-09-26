@@ -118,11 +118,23 @@ test('malformed provider identity fails closed before binding lookup', async () 
     external({ userReference: '' }),
     external({ displayName: 42 }),
     external({ displayName: ' name with outer whitespace ' }),
+    external({ displayName: 'Manager\u202eresU' }),
+    external({ displayName: 'Zero\u200bWidth' }),
+    external({ displayName: 'Isolate\u2066Admin\u2069' }),
   ];
   for (const identity of invalid) {
     const resolved = await service().resolve(identity, { correlationId: CORRELATION_ID });
     assert.deepEqual(resolved, { status: 'authentication_denied' });
   }
+});
+
+test('legitimate provider Unicode names are normalized to NFC before persistence', async () => {
+  const capture = { provision: [] };
+  const resolved = await service({ capture }).resolve(external({ displayName: 'Jose\u0301 山田' }), {
+    correlationId: CORRELATION_ID,
+  });
+  assert.equal(resolved.status, 'authenticated');
+  assert.equal(capture.provision[0].displayName, 'José 山田');
 });
 
 test('missing optional provider display name uses only the server fallback for provisioning', async () => {

@@ -1,11 +1,11 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { ConfidentialClientApplication } from '@azure/msal-node';
+import { normalizeAttributionSourceDisplayName } from '../domain/request-attribution.js';
 import { EntraAuthenticationError } from './entra-errors.js';
 
 const ENTRA_PROVIDER = 'microsoft_entra';
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const OIDC_SCOPES = Object.freeze(['openid', 'profile']);
-const MAX_DISPLAY_NAME_LENGTH = 160;
 
 function sha256Hex(value) {
   return createHash('sha256').update(value, 'utf8').digest('hex');
@@ -25,9 +25,11 @@ function requireGuid(value, code) {
 
 function normalizeDisplayName(value) {
   if (typeof value !== 'string') return null;
-  const normalized = value.trim();
-  if (!normalized || normalized.length > MAX_DISPLAY_NAME_LENGTH || /[\u0000-\u001f\u007f]/.test(normalized)) return null;
-  return normalized;
+  try {
+    return normalizeAttributionSourceDisplayName(value);
+  } catch {
+    return null;
+  }
 }
 
 function validateAuthorizationUrl(value, authority) {

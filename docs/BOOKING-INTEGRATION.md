@@ -165,11 +165,30 @@ If cancellation encounters a `pending` create with unknown provider outcome, it 
 
 Cancellation resolves its provider from the persisted Integration, provider-Tenant reference and create-time resource rather than the current room mapping. Local `disconnected`/`degraded` status, cleared permission indicators or a removed room mapping therefore do not by themselves make a known event unreachable. Cleanup still requires the same current Integration/provider-Tenant identity and exact active Entra binding; a different or absent binding fails closed before provider access. Identity unbind is correspondingly blocked while any reference is not terminal `cancelled`.
 
-Parallel final confirmations share the deterministic provider event. After every explicit local conflict, the losing call uses the Request returned by the locked transaction; a confirmed winner is returned idempotently and its event is never compensated. A thrown local commit outcome is not assumed to have rolled back: the service reloads the authoritative Request, returns a confirmed result if visible, and otherwise retains the event while returning an explicit reconciliation error. This avoids both cross-Tenant head-of-line locking and deletion while another commit may still be in flight.
+Parallel final confirmations share the deterministic provider event. After an explicit local conflict,
+the losing call uses the Request returned by the locked transaction to detect a confirmed winner,
+retains that winner's event without compensation and returns a state conflict. It cannot claim the
+winner as its own success without a persisted client operation ID. A thrown local commit outcome is
+not assumed to have rolled back: the service performs no decision-free Request reread, retains the
+event and returns an explicit reconciliation error. The caller may reload and perform a fully
+authorized exact-current-version reconciliation read. This avoids both cross-Tenant head-of-line
+locking and deletion while another commit may still be in flight.
+
+The persistence fence also covers a losing room-conflict transaction that returns before a queued
+confirmation of the same Request commits. A write-enabled final-confirm transaction locks the Request
+and then requires and share-locks the exact `active` provider-reference row for the current Integration,
+provider connection and create-time resource. Starting compensation takes a share lock on the exact
+eligible Request version while the existing per-reference advisory lock is held, and only then changes
+`active` to `compensating`. If confirmation wins the Request lock, compensation observes the advanced
+version/`Confirmed` state and retains the event. If compensation wins, confirmation observes a
+non-active reference and cannot commit. The persisted state, not a caller correlation ID, owns the
+external event because idempotent parallel retries deliberately share one attempt and event.
 
 Compensation first moves `active` to `compensating` audit-atomically, then deletes externally, then moves `compensating` to `compensated` with the completion audit. Create is forbidden while `compensating`; cancellation/compensation completion is idempotent so an unknown local finalize response can converge after a repeated provider delete. A later authorized confirmation retry may start a new attempt only from a fully `compensated` row. Provider rebinding is blocked while any reference is not terminal `cancelled`, preventing an old event from becoming unreachable under a new Tenant token.
 
-Final Request confirmation carries the server-derived provider-authority descriptor into the same PostgreSQL transaction as the Request update. Under row locks it requires the exact Integration provider/reference, `connected` status and exact active identity binding before changing the Request to `Confirmed`. Authority loss after free/busy or event create yields `provider_authority_conflict`; a created event is compensated and stale provider authority cannot commit the business transition.
+When a final-confirm attempt observed Calendar Write as disabled but finds an older event reference, it uses a distinct pre-confirm cleanup operation. An `active` reference first passes the same exact Request-version/status fence and becomes `compensating` before provider delete; a pending create is reconciled idempotently, while unresolved pending and unknown delete/completion outcomes remain explicit reconciliation failures and cannot proceed to confirmation. Successful delete completes `compensated`. The final-confirm transaction then accepts exactly zero non-cancelled references or exactly that one persisted `compensated` reference under a row lock. Only after the room-conflict check and successful Request update does the same transaction move it to terminal `cancelled` and append the Calendar audit. A conflict rolls the Request back while leaving `compensated` retryable. Normal explicit Request cancellation remains a separate post-transition cleanup path, keeps its provider-delete-before-terminal-reference-mutation ordering and is not subject to the pre-confirm eligible-state fence.
+
+Final Request confirmation carries the server-derived provider-authority descriptor into the same PostgreSQL transaction as the Request update. Under row locks it requires the exact Integration provider/reference, `connected` status and exact active identity binding before changing the Request to `Confirmed`. Write-enabled confirmation additionally requires the exact active provider-reference row; write-disabled confirmation requires either no nonterminal reference or the exact fenced `compensated` cleanup reference that it terminalizes atomically. Authority or reference loss after free/busy or event create yields `provider_authority_conflict`; a safely owned created event is compensated and stale provider authority cannot commit the business transition.
 
 ## Provider failure taxonomy
 

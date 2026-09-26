@@ -66,6 +66,8 @@ function request(overrides = {}) {
     tenantId: TENANT_ID,
     id: 'request-a',
     requesterUserId: USER_ID,
+    requesterAttribution: { displayName: 'Persisted requester' },
+    version: 1,
     roomId: 'room-a',
     status: REQUEST_STATUS.IN_REVIEW,
     statusReason: null,
@@ -530,6 +532,7 @@ test('final confirmation creates calendar before local commit and compensates a 
     },
     authorizationPolicy: {
       authorizeRequestRead() { return true; },
+      authorizeRequestReconciliation() { return true; },
       authorizeRequestTransition() {
         return {
           transition: 'confirm',
@@ -585,6 +588,7 @@ test('final confirmation creates calendar before local commit and compensates a 
       principal,
       tenantContext,
       requestId: loaded.id,
+      expectedVersion: loaded.version,
       correlationId: CORRELATION_ID,
     }),
     RequestStateConflictError,
@@ -602,6 +606,7 @@ test('failed compensation after an explicit local conflict surfaces a dedicated 
     },
     authorizationPolicy: {
       authorizeRequestRead() { return true; },
+      authorizeRequestReconciliation() { return true; },
       authorizeRequestTransition() {
         return {
           transition: 'confirm',
@@ -651,6 +656,7 @@ test('failed compensation after an explicit local conflict surfaces a dedicated 
       principal,
       tenantContext,
       requestId: loaded.id,
+      expectedVersion: loaded.version,
       correlationId: CORRELATION_ID,
     }),
     (error) => error instanceof FinalRoomAvailabilityError
@@ -661,7 +667,7 @@ test('failed compensation after an explicit local conflict surfaces a dedicated 
 test('final confirmation remains available when calendar write is disabled', async () => {
   const calls = [];
   const loaded = request();
-  const confirmed = request({ status: REQUEST_STATUS.CONFIRMED });
+  const confirmed = request({ status: REQUEST_STATUS.CONFIRMED, version: 2 });
   const service = createFinalRoomConfirmationService({
     repository: {
       async withFinalConfirmationLock(_input, work) { return work(); },
@@ -673,6 +679,7 @@ test('final confirmation remains available when calendar write is disabled', asy
     },
     authorizationPolicy: {
       authorizeRequestRead() { return true; },
+      authorizeRequestReconciliation() { return true; },
       authorizeRequestTransition() {
         return {
           transition: 'confirm',
@@ -723,6 +730,7 @@ test('final confirmation remains available when calendar write is disabled', asy
     principal,
     tenantContext,
     requestId: loaded.id,
+    expectedVersion: loaded.version,
     correlationId: CORRELATION_ID,
   }), confirmed);
   assert.deepEqual(calls, [
@@ -777,6 +785,7 @@ test('cancellation without a persisted calendar reference avoids provider initia
     tenantContext,
     requestId: current.id,
     transition: 'cancel',
+    expectedVersion: current.version,
     correlationId: CORRELATION_ID,
   });
 
@@ -829,6 +838,7 @@ test('cancellation rechecks for a reference created concurrently with the local 
     tenantContext,
     requestId: current.id,
     transition: 'cancel',
+    expectedVersion: current.version,
     correlationId: CORRELATION_ID,
   })).status, REQUEST_STATUS.CANCELLED);
   assert.equal(checks, 2);
@@ -885,6 +895,7 @@ test('calendar cancellation factory failures expose explicit retryable reconcili
     roles: ['employee'],
     permissions: ['request:read', 'request:cancel'],
   };
+  const expectedVersion = current.version;
 
   let reconciliationError;
   try {
@@ -893,6 +904,7 @@ test('calendar cancellation factory failures expose explicit retryable reconcili
       tenantContext,
       requestId: current.id,
       transition: 'cancel',
+      expectedVersion,
       correlationId: CORRELATION_ID,
     });
   } catch (error) {
@@ -916,6 +928,7 @@ test('calendar cancellation factory failures expose explicit retryable reconcili
     tenantContext,
     requestId: current.id,
     transition: 'cancel',
+    expectedVersion,
     correlationId: CORRELATION_ID,
   })).status, REQUEST_STATUS.CANCELLED);
   assert.equal(providerCancels, 1);
@@ -961,6 +974,7 @@ test('calendar reference lookup failures are observable and remain retryable bef
       tenantContext,
       requestId: loaded.id,
       transition: 'cancel',
+      expectedVersion: loaded.version,
       correlationId: CORRELATION_ID,
     }),
     (error) => error instanceof RequestCancellationReconciliationError,
@@ -1015,6 +1029,7 @@ test('reject and request-change transitions clean retained calendar references a
       requestId: current.id,
       transition,
       reason: 'not approved',
+      expectedVersion: current.version,
       correlationId: CORRELATION_ID,
     };
     await assert.rejects(
@@ -1069,12 +1084,14 @@ test('request cancellation retry skips provider initialization after the referen
     roles: ['employee'],
     permissions: ['request:read', 'request:cancel'],
   };
+  const expectedVersion = current.version;
 
   await service.transitionRequest({
     principal: employeePrincipal,
     tenantContext,
     requestId: current.id,
     transition: 'cancel',
+    expectedVersion,
     correlationId: CORRELATION_ID,
   });
   await service.transitionRequest({
@@ -1082,6 +1099,7 @@ test('request cancellation retry skips provider initialization after the referen
     tenantContext,
     requestId: current.id,
     transition: 'cancel',
+    expectedVersion,
     correlationId: CORRELATION_ID,
   });
   assert.equal(cancels, 1);

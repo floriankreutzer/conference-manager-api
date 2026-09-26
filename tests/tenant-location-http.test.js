@@ -4,7 +4,10 @@ import test from 'node:test';
 import { createTenantLocationAdministrationService } from '../src/application/tenant-location-administration-service.js';
 import { createAuthorizationPolicy, PERMISSION, TENANT_ROLE } from '../src/authorization/policy.js';
 import { loadConfig } from '../src/config.js';
-import { tenantLocationRollbackConfiguration } from '../src/domain/tenant-locations.js';
+import {
+  tenantLocationRollbackConfiguration,
+  tenantLocationsV1Projection,
+} from '../src/domain/tenant-locations.js';
 import { createLogger } from '../src/logger.js';
 import { createHttpServer } from '../src/server.js';
 import { TENANT_STATUS } from '../src/tenancy/tenant.js';
@@ -44,6 +47,38 @@ function configuration(siteId, roomId) {
   };
 }
 
+function guestInformation(changes = {}) {
+  return {
+    address: null,
+    publicTransport: null,
+    arrival: null,
+    parking: null,
+    reception: null,
+    building: null,
+    visitorNotes: null,
+    accessibility: null,
+    wifiPolicy: 'not_available',
+    wifiNetworkName: null,
+    contact: null,
+    routeUrl: null,
+    ...changes,
+  };
+}
+
+function guestProjection(value, guestBySite) {
+  return {
+    sites: value.sites.map((site) => ({
+      ...site,
+      guestInformation: guestBySite.get(site.id) ?? null,
+    })),
+    rooms: value.rooms,
+  };
+}
+
+function guestSnapshot(value) {
+  return new Map(value.sites.map((site) => [site.id, site.guestInformation]));
+}
+
 function principal({ tenantId = TENANT_A, userId = ADMIN_A, admin = true } = {}) {
   return {
     userId,
@@ -76,12 +111,15 @@ function createMemoryRepository() {
   const initialAt = '2026-08-27T08:00:00.000Z';
   const state = (tenantId, siteId, roomId, actorUserId) => {
     const initial = configuration(siteId, roomId);
+    const initialGuests = new Map([[siteId, null]]);
     return {
       revision: 1,
       configuration: initial,
+      guestBySite: initialGuests,
       history: new Map([[1, {
         revision: 1,
         configuration: initial,
+        guestBySite: initialGuests,
         changedAt: initialAt,
         actorUserId,
       }]]),
@@ -93,47 +131,68 @@ function createMemoryRepository() {
     [TENANT_B, state(TENANT_B, 'site-b', 'room-b', ADMIN_B)],
   ]);
   const calls = [];
-  const resultFor = (state) => ({
+  const resultFor = (state, schemaVersion = 1) => ({
     revision: state.revision,
-    configuration: state.configuration,
+    configuration: schemaVersion === 2
+      ? guestProjection(state.configuration, state.guestBySite)
+      : state.configuration,
     providerContext: [],
   });
   return {
     calls,
-    async current(tenantId) {
-      calls.push({ operation: 'current', tenantId });
-      return resultFor(states.get(tenantId));
+    async current(tenantId, { schemaVersion = 1 } = {}) {
+      calls.push({ operation: 'current', tenantId, schemaVersion });
+      return resultFor(states.get(tenantId), schemaVersion);
     },
     async update(args) {
-      calls.push({ operation: 'update', tenantId: args.tenantId });
+      calls.push({ operation: 'update', tenantId: args.tenantId, schemaVersion: args.schemaVersion });
       const state = states.get(args.tenantId);
       if (args.expectedRevision !== state.revision) {
         return { status: 'conflict', currentRevision: state.revision };
       }
-      args.assertAuthorizedTransition(state.configuration, args.configuration);
+      const current = args.schemaVersion === 2
+        ? guestProjection(state.configuration, state.guestBySite)
+        : state.configuration;
+      args.assertAuthorizedTransition(current, args.configuration);
       state.revision = args.nextRevision;
-      state.configuration = args.configuration;
+      if (args.schemaVersion === 2) {
+        state.guestBySite = guestSnapshot(args.configuration);
+        state.configuration = tenantLocationsV1Projection(args.configuration);
+      } else {
+        state.configuration = args.configuration;
+        state.guestBySite = new Map(state.configuration.sites.map((site) => [
+          site.id,
+          state.guestBySite.get(site.id) ?? null,
+        ]));
+      }
       state.history.set(state.revision, {
         revision: state.revision,
         configuration: state.configuration,
+        guestBySite: new Map(state.guestBySite),
         changedAt: args.changedAt.toISOString(),
         actorUserId: args.actorUserId,
       });
-      return resultFor(state);
+      return resultFor(state, args.schemaVersion);
     },
     async history(tenantId, limit) {
       calls.push({ operation: 'history', tenantId, limit });
       return [...states.get(tenantId).history.values()]
         .sort((left, right) => right.revision - left.revision)
         .slice(0, limit)
-        .map(({ configuration: ignored, ...metadata }) => metadata);
+        .map(({ revision, changedAt, actorUserId }) => ({ revision, changedAt, actorUserId }));
     },
-    async revision(tenantId, revision) {
-      calls.push({ operation: 'revision', tenantId, revision });
-      return states.get(tenantId).history.get(revision) ?? null;
+    async revision(tenantId, revision, { schemaVersion = 1 } = {}) {
+      calls.push({ operation: 'revision', tenantId, revision, schemaVersion });
+      const snapshot = states.get(tenantId).history.get(revision);
+      return snapshot ? {
+        ...snapshot,
+        configuration: schemaVersion === 2
+          ? guestProjection(snapshot.configuration, snapshot.guestBySite)
+          : snapshot.configuration,
+      } : null;
     },
     async rollback(args) {
-      calls.push({ operation: 'rollback', tenantId: args.tenantId });
+      calls.push({ operation: 'rollback', tenantId: args.tenantId, schemaVersion: args.schemaVersion });
       const state = states.get(args.tenantId);
       if (args.expectedRevision !== state.revision) {
         return { status: 'conflict', currentRevision: state.revision };
@@ -148,16 +207,24 @@ function createMemoryRepository() {
         state.configuration,
         source.configuration,
       );
-      args.assertAuthorizedTransition(state.configuration, proposed);
+      const current = args.schemaVersion === 2
+        ? guestProjection(state.configuration, state.guestBySite)
+        : state.configuration;
+      const authorizedProposed = args.schemaVersion === 2
+        ? guestProjection(proposed, source.guestBySite)
+        : proposed;
+      args.assertAuthorizedTransition(current, authorizedProposed);
       state.revision = args.nextRevision;
       state.configuration = proposed;
+      if (args.schemaVersion === 2) state.guestBySite = guestSnapshot(authorizedProposed);
       state.history.set(state.revision, {
         revision: state.revision,
         configuration: state.configuration,
+        guestBySite: new Map(state.guestBySite),
         changedAt: args.changedAt.toISOString(),
         actorUserId: args.actorUserId,
       });
-      return resultFor(state);
+      return resultFor(state, args.schemaVersion);
     },
   };
 }
@@ -189,6 +256,7 @@ function request({ port, path = LOCATIONS_PATH, method = 'GET', actor = 'admin-a
 async function withServer(run) {
   const repository = createMemoryRepository();
   const denials = [];
+  const logs = [];
   const service = createTenantLocationAdministrationService({
     repository,
     authorizationPolicy: createAuthorizationPolicy(),
@@ -211,7 +279,7 @@ async function withServer(run) {
   let legacyWrites = 0;
   const server = createHttpServer({
     config,
-    logger: createLogger({ write() {} }),
+    logger: createLogger({ write(line) { logs.push(line); } }),
     tenantLocationAdministrationService: service,
     productionApplicationService: {
       async getConfiguration() { return {}; },
@@ -225,7 +293,7 @@ async function withServer(run) {
   const port = server.address().port;
   config.publicOrigin = `http://localhost:${port}`;
   try {
-    await run({ port, repository, denials, legacyWrites: () => legacyWrites });
+    await run({ port, repository, denials, logs, legacyWrites: () => legacyWrites });
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
@@ -260,6 +328,185 @@ test('Locations HTTP derives and preserves independent Tenant scope from the Pri
     const selector = await request({ port, path: `${LOCATIONS_PATH}?tenantId=${TENANT_B}` });
     assert.equal(selector.statusCode, 400);
     assert.equal(selector.body.error.code, 'VALIDATION_FAILED');
+  });
+});
+
+test('Locations v2 is explicitly negotiated while every v1 HTTP projection remains exact', async () => {
+  await withServer(async ({ port, repository }) => {
+    const legacy = await request({ port });
+    assert.equal(legacy.statusCode, 200);
+    assert.equal(legacy.body.locations.schemaVersion, 1);
+    assert.equal(Object.hasOwn(legacy.body.locations.configuration.sites[0], 'guestInformation'), false);
+
+    const versioned = await request({ port, path: `${LOCATIONS_PATH}?schemaVersion=2` });
+    assert.equal(versioned.statusCode, 200);
+    assert.equal(versioned.body.locations.schemaVersion, 2);
+    assert.equal(versioned.body.locations.configuration.sites[0].guestInformation, null);
+    const historical = await request({ port, path: `${LOCATIONS_PATH}/history/1?schemaVersion=2` });
+    assert.equal(historical.statusCode, 200);
+    assert.equal(historical.body.revision.configuration.sites[0].guestInformation, null);
+
+    for (const query of [
+      'schemaVersion=1',
+      'schemaVersion=3',
+      'schemaVersion=2&schemaVersion=2',
+      `schemaVersion=2&tenantId=${TENANT_B}`,
+    ]) {
+      const result = await request({ port, path: `${LOCATIONS_PATH}?${query}` });
+      assert.equal(result.statusCode, 400);
+      assert.equal(result.body.error.code, 'VALIDATION_FAILED');
+    }
+
+    const configured = {
+      ...configuration('site-a', 'room-a'),
+      sites: [{
+        ...configuration('site-a', 'room-a').sites[0],
+        guestInformation: guestInformation({ arrival: 'Register at reception.' }),
+      }],
+    };
+    const updated = await request({
+      port,
+      method: 'PUT',
+      csrf: CSRF_TOKEN,
+      body: { schemaVersion: 2, expectedRevision: 1, configuration: configured },
+    });
+    assert.equal(updated.statusCode, 200);
+    assert.equal(updated.body.locations.schemaVersion, 2);
+    assert.equal(updated.body.locations.configuration.sites[0].guestInformation.arrival,
+      'Register at reception.');
+
+    const preservedLegacy = await request({ port });
+    assert.equal(Object.hasOwn(preservedLegacy.body.locations.configuration.sites[0], 'guestInformation'), false);
+    const restored = await request({
+      port,
+      path: `${LOCATIONS_PATH}/rollback`,
+      method: 'POST',
+      csrf: CSRF_TOKEN,
+      body: { schemaVersion: 2, expectedRevision: 2, sourceRevision: 1 },
+    });
+    assert.equal(restored.statusCode, 200);
+    assert.equal(restored.body.locations.schemaVersion, 2);
+    assert.equal(restored.body.locations.configuration.sites[0].guestInformation, null);
+    assert.deepEqual(repository.calls.filter(({ operation }) => operation === 'current')
+      .map(({ schemaVersion }) => schemaVersion), [1, 2, 1]);
+  });
+});
+
+test('Locations v2 rejects credential disclosures before persistence and never logs their values', async () => {
+  await withServer(async ({ port, repository, logs }) => {
+    const disclosures = [
+      'Door code 1234',
+      'Doo\u0433 code 1234',
+      'Door c\u0585de 1234',
+      'D-o-o-\u0433 code 1234',
+      'D.o.o.\u0433 c\u0585de 1234',
+      'Doorcode1234',
+      'Doorcode2',
+      'Doorcode\u0662',
+      'Door code1234',
+      'PasswortSommer2026',
+      'WiFipasswordSommer2026',
+      'P\u0251ssword: Sommer2026',
+      '\u1d18\u026a\u0274 1234',
+      'passwordsecret',
+      'doorcodeblue',
+      'Doo \u0433 code 1234',
+      '\u0440\u0430\u0455\u0455\u051d\u043e\u0433\u0501',
+      'PASSWORDSecret',
+      '1Password: Secret',
+      'Door@code 1234',
+      'API@key abc123',
+      'Door@c0de 1234',
+      'Door$c0de 1234',
+      'API@k3y abc123',
+      'API$k3y abc123',
+      'GuestPassword1234',
+      'MainDoorcode1234',
+      'OfficeDoor code 1234',
+      ['Secret', 'PIN1234'].join(''),
+      '\u13e2\u13aa\u13da\u13da\u13b3\u13be\u13a1\u13a0 Sommer2026',
+      '\u13e2\u13c6\u13c1 1234',
+      '\u13e2.\u13c6.\u13c1 1234',
+      'Passwort lautet Sommer2026',
+      'Wi-Fi password Sommer2026',
+      'Wi-Fi code 1234',
+      'WLAN code 1234',
+      'Guest WiFi code alpha',
+      'API key abc123',
+      'Voucher: ABCD-1234',
+      'Pass\u051dord Sommer2026',
+      'Passcode 1234',
+      'Wi-Fi passcode 1234',
+      'Auth token abc',
+      'One-time code 1234',
+      'WiFi secret abc',
+      'Access key abc',
+      'P-a-s-s-w-o-r-d S0mmer2026',
+      'Pаsswоrd Sommer2026',
+    ];
+    for (const disclosure of disclosures) {
+      const proposed = configuration('site-a', 'room-a');
+      proposed.sites[0].guestInformation = guestInformation({ arrival: disclosure });
+      const result = await request({
+        port,
+        method: 'PUT',
+        csrf: CSRF_TOKEN,
+        body: { schemaVersion: 2, expectedRevision: 1, configuration: proposed },
+      });
+      assert.equal(result.statusCode, 400);
+      assert.equal(result.body.error.code, 'VALIDATION_FAILED');
+      assert.equal(logs.some((line) => line.includes(disclosure)), false);
+    }
+    for (const [field, disclosure] of [
+      ['floor', 'Door code 1234'],
+      ['floor', 'Doo\u0433 code 1234'],
+      ['accessibility', ['Door c\u0585de 1234']],
+      ['floor', 'D-o-o-\u0433 code 1234'],
+      ['accessibility', ['D.o.o.\u0433 c\u0585de 1234']],
+      ['floor', 'Doorcode1234'],
+      ['accessibility', ['PasswortSommer2026']],
+      ['floor', 'GuestPassword1234'],
+      ['accessibility', ['MainDoorcode1234']],
+      ['floor', ['Secret', 'PIN1234'].join('')],
+      ['accessibility', ['\u13e2\u13aa\u13da\u13da\u13b3\u13be\u13a1\u13a0 Sommer2026']],
+      ['floor', 'Door@c0de 1234'],
+      ['accessibility', ['API$k3y abc123']],
+      ['floor', '\u13e2\u13c6\u13c1 1234'],
+      ['floor', 'https://internal.example.test/floor'],
+      ['floor', 'North\u202e2'],
+      ['accessibility', ['Password sunshine']],
+      ['accessibility', ['Wi-Fi code 1234']],
+    ]) {
+      const proposed = configuration('site-a', 'room-a');
+      proposed.rooms[0] = { ...proposed.rooms[0], [field]: disclosure };
+      const result = await request({
+        port,
+        method: 'PUT',
+        csrf: CSRF_TOKEN,
+        body: { schemaVersion: 2, expectedRevision: 1, configuration: proposed },
+      });
+      assert.equal(result.statusCode, 400);
+      assert.equal(result.body.error.code, 'VALIDATION_FAILED');
+      const sensitiveValue = Array.isArray(disclosure) ? disclosure[0] : disclosure;
+      assert.equal(logs.some((line) => line.includes(sensitiveValue)), false);
+    }
+    assert.equal(repository.calls.length, 0);
+
+    const valid = configuration('site-a', 'room-a');
+    valid.sites[0].guestInformation = guestInformation({
+      arrival: 'Enter through Door 4 beside the north entrance.',
+      wifiPolicy: 'open',
+      wifiNetworkName: 'Conference Guest Wi-Fi',
+    });
+    const accepted = await request({
+      port,
+      method: 'PUT',
+      csrf: CSRF_TOKEN,
+      body: { schemaVersion: 2, expectedRevision: 1, configuration: valid },
+    });
+    assert.equal(accepted.statusCode, 200);
+    assert.equal(accepted.body.locations.configuration.sites[0].guestInformation.wifiNetworkName,
+      'Conference Guest Wi-Fi');
   });
 });
 

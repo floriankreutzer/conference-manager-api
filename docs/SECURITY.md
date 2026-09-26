@@ -77,7 +77,7 @@ See `docs/IDENTITY-SESSION.md` and `docs/ENTRA-AUTHENTICATION.md`.
 - Tenant role administration is Tenant-scoped, prevents removal of the final Tenant Admin and invalidates stale sessions through `security_version`.
 - Client-controlled Tenant, owner, role, permission and workflow-state fields are rejected as authority.
 - State-changing operations require authorization and CSRF.
-- An owning Employee may cancel an eligible own Request. A Conference Manager with `request:manage` may cancel another User's same-Tenant Request from `Submitted`, `In Review`, `Confirmed` or `Change Requested`; `Rejected` is ineligible, `Cancelled` retry is idempotent, cross-Tenant access stays concealed, Tenant Admin alone has no management scope and no physical Request delete exists.
+- An owning Employee may cancel an eligible own Request. A Conference Manager with `request:manage` may cancel another User's same-Tenant Request from `Submitted`, `In Review`, `Confirmed` or `Change Requested`; `Rejected` is ineligible, an exact-current-version `Cancelled` retry is idempotent, cross-Tenant access stays concealed, Tenant Admin alone has no management scope and no physical Request delete exists. Confirmation reconciliation retains Conference Manager `request:manage`; an immediately preceding version is not accepted as success without a persisted operation ID.
 - Booking-change read/propose/decision denials record minimized `authorization.denied` evidence in a valid caller Tenant: target Request ID plus fixed operation only. Employee non-owner, Tenant Admin other-user, Conference Manager cross-Tenant and mismatched change-ID probes are direct negative regressions; no probed change ID or foreign Tenant/owner fact is recorded.
 - Optimistic predicates and advisory locks prevent stale or concurrent writes from silently overriding newer state.
 
@@ -85,7 +85,7 @@ See `docs/AUTHORIZATION.md`.
 
 ## Request composition controls (#126)
 
-- Request create, resubmit and confirmed-change proposal accept only the closed schema-v2 contract;
+- Request create, resubmit and confirmed-change proposal accept only the closed schema-v2/v3 contracts;
   unknown versions, authority-shaped fields and partial composition patches fail closed.
 - Tenant and requester identity come only from the authenticated Principal. Room, Site, Catalogue,
   cost-center and Request ownership lookups are parameterized by the same internal Tenant ID.
@@ -108,9 +108,11 @@ See `docs/AUTHORIZATION.md`.
   operational logs, metric labels or flattened audit metadata.
 - Employee resubmission and history access enforce server-side Request ownership. Missing,
   cross-Tenant and same-Tenant non-owned Employee identifiers are concealed consistently.
-- Expected Request versions and configuration revisions prevent stale writes. Success Request,
-  history and audit mutations commit atomically; failed validation, conflict or audit persistence
-  cannot leave a partial authoritative Request.
+- Expected Request versions and configuration revisions prevent stale writes. Workflow transitions
+  require one strong `If-Match` version, reject a stale generation before provider/Calendar work,
+  and recheck status plus version under the PostgreSQL lock and conditional mutation. Success
+  Request, history and audit mutations commit atomically; failed validation, conflict or audit
+  persistence cannot leave a partial authoritative Request.
 - Legacy v1 records expose unavailable composition facts as explicit `null`; missing historical
   prices or policy decisions are never reconstructed. A valid owner resubmission is the deliberate
   v1-to-v2 upgrade path.
@@ -155,8 +157,8 @@ See `docs/ENTITLEMENTS.md`.
 - Local room-conflict checks are Tenant-scoped.
 - Calendar create uses a deterministic server-derived SHA-256 idempotency key per attempt; the browser cannot supply it. A compensated retry increments the attempt and rotates the key.
 - A pending attempt keeps its create-time resource through remapping or local disconnect. Cancellation uses that persisted binding and still requires the exact current Integration/provider-Tenant identity and active Entra binding.
-- Create reservation/finalization and final Request confirmation revalidate the exact connected Integration plus active Entra binding under the same database locks as their local commit. Authority loss after provider create is explicitly compensated.
-- Booking-reference states are `pending`, `active`, `compensating`, `compensated` and terminal `cancelled`; identity/provider rebinding is blocked while any reference is nonterminal.
+- Create reservation/finalization and final Request confirmation revalidate the exact connected Integration plus active Entra binding under the same database locks as their local commit. Write-enabled confirmation also locks the exact active booking reference; authority loss after provider create is explicitly compensated.
+- Booking-reference states are `pending`, `active`, `compensating`, `compensated` and terminal `cancelled`; compensation and write-disabled pre-confirm cleanup bind `active` ownership to the exact eligible Request version before provider deletion. The successful write-disabled confirmation accepts only its single exact `compensated` reference and terminalizes it with Calendar audit evidence in the Request transaction after conflict checks. Identity/provider rebinding remains blocked while any reference is nonterminal.
 - Provider responses are positively validated and mapped to stable retryable or non-retryable classifications.
 - Raw provider errors, payloads, credentials and references are excluded from Tenant audit metadata.
 - Provider write retries must remain bounded and idempotency-aware.
@@ -211,7 +213,7 @@ See `docs/MICROSOFT365-CONNECTION.md`.
   provider-neutral inputs and produces only deterministic success, conflict or degradation
   outcomes.
 - A reset-only database role, separate from the migration owner and both runtime roles, verifies an immutable Demo sentinel, current database/role,
-  exact canonical schema `001..034`, exact table inventory and the source fixture checksum before
+  exact canonical schema `001..038`, exact table inventory and the source fixture checksum before
   destructive work.
 - Normal Demo requests hold a shared advisory lock; reset holds the corresponding exclusive lock.
   Truncate, deterministic seed and semantic checksum readback commit in one serializable
@@ -278,3 +280,26 @@ GitHub-native security feature availability depends on repository/account entitl
 - Resource exhaustion (CWE-400): bounded HTTP, database, provider, audit and pagination resources.
 
 Automated checks are evidence only for exercised controls. They are not a penetration test or a complete OWASP, regulatory or infrastructure compliance statement.
+
+## Equipment composition v3
+
+Equipment selection uses existing active Principal/Tenant, Request ownership, Manager-decision,
+session, CSRF and optimistic-version controls; there is no role or authorization-epoch change.
+At most 200 unique IDs are positively validated. Catalogue resolution, applicability, single
+currency, safe totals, Request snapshots, revisions and audit commit in the owning transaction.
+Tenant-colliding IDs resolve locally; missing, foreign, inactive and inapplicable selections use
+the existing concealed configuration error. Prices/quantities supplied by a client are rejected.
+Equipment identities, names and prices are not added to logs, metric labels or flat audit metadata.
+Migration 035 refuses destructive rollback after first v3 evidence. No new outbound integration
+or dependency is introduced. Real PostgreSQL18 integration remains a required CI gate.
+
+## SaaS 3.6 persisted Request attribution
+
+The exact v3 Request response envelopes, relational snapshots, honest legacy-null
+semantics, unchanged audit-chain payload, and mandatory staged writer cutover are
+defined in [Request Attribution](REQUEST-ATTRIBUTION.md). Existing Tenant, role,
+object ownership and session/CSRF boundaries remain required for these reads and writes.
+
+## Site Guest Information projection
+
+The Locations v2 exact schema rejects credential/authority fields, Unicode control/format/surrogate characters and line/paragraph separators, plus normalized English/German credential-label disclosures. The label-candidate screen covers common separators, bounded cross-script lookalikes, Latin-script fuzzy label characters, leetspeak, numeric prefixes/suffixes, CamelCase and glued letter suffixes on specific compact labels; it retains the completed public word `passwordless` and does not impose a blanket mixed-script ban on navigation. The same control, embedded-URI and credential predicate protects newly public Room floor/accessibility values at write time and again at the Guest projection boundary, including malformed legacy rows and revision rollback. Public multilingual wayfinding, conventional Floor labels and non-credential network names remain valid. The bounded label screen does not infer arbitrary unlabeled values, so credentials remain prohibited regardless of whether a label is present. The fixed public route policy never fetches or previews destinations. Request authorization precedes guest lookup, and final Tenant/Request/version/Confirmed predicates close state races. The server binds normal room-context to exact schema v1 and the explicit `projection=guest` path to exact schema v2; it accepts no client-selected response version. Accepted or rejected guest values stay out of logs, metrics and audit payloads. V1 compatibility never grants implicit guest access. See `docs/SITE-GUEST-INFORMATION.md`.

@@ -1,3 +1,7 @@
+import {
+  hasUnsafeGuestRoomText,
+  normalizeSiteGuestInformation,
+} from './site-guest-information.js';
 import { isIanaTimeZone } from './site-time-zone.js';
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -42,14 +46,22 @@ function nullableText(value, code, maximum = TEXT_MAX) {
   return boundedText(value, code, maximum);
 }
 
+function publicPresentationText(value, code, maximum = TEXT_MAX) {
+  if (typeof value !== 'string' || hasUnsafeGuestRoomText(value)) inputError(code);
+  const normalized = boundedText(value, code, maximum);
+  return normalized;
+}
+
 function safeId(value, code) {
   if (typeof value !== 'string' || !SAFE_ID.test(value)) inputError(code);
   return value;
 }
 
-function stringList(value, { code, limit = 50, maximum = 80 } = {}) {
+function stringList(value, {
+  code, limit = 50, maximum = 80, normalize = boundedText,
+} = {}) {
   if (!Array.isArray(value) || value.length > limit) inputError(code);
-  const result = value.map((entry) => boundedText(entry, code, maximum));
+  const result = value.map((entry) => normalize(entry, code, maximum));
   if (new Set(result).size !== result.length) inputError(code);
   return Object.freeze(result);
 }
@@ -111,9 +123,11 @@ function normalizeRoom(value, roomIds) {
     name: boundedText(room.name, 'TENANT_ROOM_NAME_INVALID'),
     capacity: room.capacity,
     active: room.active,
-    floor: room.floor === null ? null : nullableText(room.floor, 'TENANT_ROOM_FLOOR_INVALID', 80),
+    floor: room.floor === null ? null : publicPresentationText(room.floor, 'TENANT_ROOM_FLOOR_INVALID', 80),
     equipment: stringList(room.equipment, { code: 'TENANT_ROOM_EQUIPMENT_INVALID' }),
-    accessibility: stringList(room.accessibility, { code: 'TENANT_ROOM_ACCESSIBILITY_INVALID', limit: 20 }),
+    accessibility: stringList(room.accessibility, {
+      code: 'TENANT_ROOM_ACCESSIBILITY_INVALID', limit: 20, normalize: publicPresentationText,
+    }),
     serviceIds: idList(room.serviceIds, 'TENANT_ROOM_SERVICE_INVALID'),
     cateringPackageIds: idList(room.cateringPackageIds, 'TENANT_ROOM_CATERING_INVALID'),
     floorplanAssetId,
@@ -199,4 +213,31 @@ export function tenantLocationRollbackConfiguration(currentValue, sourceValue) {
       .map((room) => Object.freeze({ ...room, active: false })),
   ].sort((left, right) => left.id.localeCompare(right.id));
   return normalizeTenantLocations({ sites, rooms });
+}
+
+// V2 adds Site-owned guest configuration without changing the exact v1 aggregate.
+export function normalizeTenantLocationsV2(value, { stored = false } = {}) {
+  const root = exactObject(value, ['sites', 'rooms']);
+  if (!Array.isArray(root.sites) || root.sites.length > SITE_LIMIT) inputError('TENANT_SITES_INVALID');
+  const guests = new Map();
+  const sites = root.sites.map((candidate) => {
+    const site = exactObject(candidate, ['id', 'name', 'active', 'timeZone', 'address', 'guestInformation']);
+    guests.set(site.id, normalizeSiteGuestInformation(site.guestInformation));
+    const { guestInformation: omitted, ...legacy } = site;
+    return legacy;
+  });
+  const normalized = normalize({ sites, rooms: root.rooms }, { allowUnknownTimeZones: stored });
+  return Object.freeze({
+    sites: Object.freeze(normalized.sites.map((site) => Object.freeze({
+      ...site, guestInformation: guests.get(site.id),
+    }))),
+    rooms: normalized.rooms,
+  });
+}
+
+export function tenantLocationsV1Projection(value) {
+  return normalizeStoredTenantLocations({
+    sites: value.sites.map(({ guestInformation, ...site }) => site),
+    rooms: value.rooms,
+  });
 }

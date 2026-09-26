@@ -441,7 +441,9 @@ async function createConfirmedRequest({
     tenantId: TENANT_A,
     requestId,
     actorUserId: USER_A,
+    actorRoleAtAction: 'conference_manager',
     expectedStatus: 'Submitted',
+    expectedVersion: 1,
     nextStatus: 'Confirmed',
     reason: null,
     changedAt: confirmedAt,
@@ -591,7 +593,9 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     tenantId: TENANT_A,
     requestId: 'priced-request',
     actorUserId: USER_A,
+    actorRoleAtAction: 'conference_manager',
     expectedStatus: 'Submitted',
+    expectedVersion: 1,
     nextStatus: 'Change Requested',
     reason: 'Please adjust the request',
     changedAt: changeRequestedAt,
@@ -822,7 +826,9 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
         tenantId: TENANT_A,
         requestId: 'report-f',
         actorUserId: USER_A,
+        actorRoleAtAction: 'conference_manager',
         expectedStatus: 'Submitted',
+        expectedVersion: 1,
         nextStatus: 'Change Requested',
         reason: 'Move after report snapshot',
         changedAt: reportChangeRequestedAt,
@@ -1074,6 +1080,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     requestId: 'direct-booking-change',
     changeId: DIRECT_CHANGE_ID,
     initiatorUserId: USER_A,
+    initiatorRoleAtAction: 'employee',
     expectedVersion: 2,
     proposal: directProposal,
     changedAt: directChangedAt,
@@ -1136,6 +1143,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     requestId: 'catering-count-booking-change',
     changeId: CATERING_ONLY_CHANGE_ID,
     initiatorUserId: USER_A,
+    initiatorRoleAtAction: 'employee',
     expectedVersion: 2,
     proposal: {
       ...cateringOnlyDraft,
@@ -1183,6 +1191,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
       requestId: 'direct-booking-atomic',
       changeId: DIRECT_ATOMIC_CHANGE_ID,
       initiatorUserId: USER_A,
+      initiatorRoleAtAction: 'employee',
       expectedVersion: 2,
       proposal: {
         ...directAtomicDraft,
@@ -1233,6 +1242,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     requestId: 'approval-booking-change',
     changeId: APPROVAL_CHANGE_ID,
     initiatorUserId: USER_A,
+    initiatorRoleAtAction: 'employee',
     expectedVersion: 2,
     proposal: { ...approvalDraft, specialRequirements: 'Board layout' },
     changedAt: approvalProposedAt,
@@ -1358,6 +1368,10 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     },
   });
   assert.equal(managerProposal.change.status, 'pending');
+  assert.deepEqual(managerProposal.change.initiatorAttribution, {
+    displayName: 'Requester A', roleAtAction: 'conference_manager',
+  });
+  assert.equal(managerProposal.change.deciderAttribution, null);
   const managerApproval = await managerBookingChanges.approve({
     principal: managerPrincipal,
     tenantContext: { tenantId: TENANT_A, status: 'active' },
@@ -1367,15 +1381,26 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
   });
   assert.equal(managerApproval.change.status, 'applied');
   assert.equal(managerApproval.requestRef.version, 3);
+  assert.deepEqual(managerApproval.change.initiatorAttribution, {
+    displayName: 'Requester A', roleAtAction: 'conference_manager',
+  });
+  assert.deepEqual(managerApproval.change.deciderAttribution, {
+    displayName: 'Requester A', roleAtAction: 'conference_manager',
+  });
   const managerApprovalRow = await pool.query(
-    `SELECT initiator_user_id, decided_by_user_id
+    `SELECT initiator_user_id, initiator_display_name, initiator_role_at_action,
+            decided_by_user_id, decider_display_name, decider_role_at_action
      FROM booking_change_requests
      WHERE tenant_id = $1 AND id = $2`,
     [TENANT_A, MANAGER_SELF_APPROVAL_CHANGE_ID],
   );
   assert.deepEqual(managerApprovalRow.rows[0], {
     initiator_user_id: USER_A,
+    initiator_display_name: 'Requester A',
+    initiator_role_at_action: 'conference_manager',
     decided_by_user_id: USER_A,
+    decider_display_name: 'Requester A',
+    decider_role_at_action: 'conference_manager',
   });
   assert.deepEqual(
     (await auditRepository.listByTenantId(TENANT_A, { limit: 100 }))
@@ -1407,6 +1432,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     requestId: 'approval-booking-atomic',
     changeId: APPROVAL_ATOMIC_CHANGE_ID,
     initiatorUserId: USER_A,
+    initiatorRoleAtAction: 'employee',
     expectedVersion: 2,
     proposal: { ...approvalAtomicDraft, specialRequirements: 'Atomic layout' },
     changedAt: approvalAtomicProposedAt,
@@ -1493,6 +1519,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     requestId: 'superseded-booking-change',
     changeId: SUPERSEDED_CHANGE_ID,
     initiatorUserId: USER_A,
+    initiatorRoleAtAction: 'employee',
     expectedVersion: 2,
     proposal: { ...supersededDraft, specialRequirements: 'Will be superseded' },
     changedAt: supersededProposedAt,
@@ -1503,11 +1530,34 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     }),
   })).status, 'pending');
   const supersededAt = new Date('2026-08-27T09:46:00.000Z');
-  const cancelled = await requests.transitionByTenantIdAndId({
+  const transitionLockOrder = [];
+  const orderedTransitionPool = instrumentPool(pool, {
+    afterQuery(name) {
+      if (name === 'request-transition-supersede-booking-change') {
+        transitionLockOrder.push('booking-change-superseded');
+      }
+      if (name === 'request-revision-watermark-lock') {
+        transitionLockOrder.push('revision-locked');
+      }
+    },
+  });
+  const orderedTransitionRequests = repository(orderedTransitionPool, {
+    async appendWithClient(client, event) {
+      transitionLockOrder.push(
+        event.action === AUDIT_ACTION.REQUEST_BOOKING_CHANGE
+          ? 'booking-change-audited'
+          : 'request-audited',
+      );
+      return auditRepository.appendWithClient(client, event);
+    },
+  });
+  const cancelled = await orderedTransitionRequests.transitionByTenantIdAndId({
     tenantId: TENANT_A,
     requestId: 'superseded-booking-change',
     actorUserId: USER_A,
+    actorRoleAtAction: 'employee',
     expectedStatus: 'Confirmed',
+    expectedVersion: 2,
     nextStatus: 'Cancelled',
     reason: null,
     changedAt: supersededAt,
@@ -1525,7 +1575,20 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
   });
   assert.equal(cancelled.status, 'Cancelled');
   assert.equal(cancelled.version, 3);
-  assert.equal(await bookingChanges.findOpen(TENANT_A, 'superseded-booking-change'), null);
+  assert.deepEqual(transitionLockOrder, [
+    'booking-change-superseded',
+    'revision-locked',
+    'booking-change-audited',
+    'request-audited',
+  ]);
+  const latestSuperseded = await bookingChanges.findOpen(TENANT_A, 'superseded-booking-change');
+  assert.equal(latestSuperseded.status, 'superseded');
+  assert.deepEqual(latestSuperseded.initiatorAttribution, {
+    displayName: 'Requester A', roleAtAction: 'employee',
+  });
+  assert.deepEqual(latestSuperseded.deciderAttribution, {
+    displayName: 'Requester A', roleAtAction: 'employee',
+  });
   const supersededRow = await pool.query(
     `SELECT status, decided_by_user_id, rejection_reason
      FROM booking_change_requests
@@ -1572,6 +1635,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     requestId: 'approval-cancel-race',
     changeId: APPROVAL_RACE_CHANGE_ID,
     initiatorUserId: USER_A,
+    initiatorRoleAtAction: 'employee',
     expectedVersion: 2,
     proposal: { ...approvalRaceDraft, specialRequirements: 'Race layout' },
     changedAt: approvalRaceProposedAt,
@@ -1626,7 +1690,9 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     tenantId: TENANT_A,
     requestId: 'approval-cancel-race',
     actorUserId: USER_A,
+    actorRoleAtAction: 'employee',
     expectedStatus: 'Confirmed',
+    expectedVersion: 2,
     nextStatus: 'Cancelled',
     reason: null,
     changedAt: approvalRaceCancelledAt,
@@ -1687,6 +1753,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
     requestId: 'calendar-move-recovery',
     changeId: RECOVERY_CHANGE_ID,
     initiatorUserId: USER_A,
+    initiatorRoleAtAction: 'employee',
     expectedVersion: 2,
     proposal: { ...recoveryDraft, roomId: ROOM_B },
     changedAt: recoveryProposedAt,
@@ -1876,6 +1943,7 @@ test('Request v2 persistence is tenant-scoped, versioned, priced and audit-atomi
       requestId: 'booking-change-window',
       changeId: CHANGE_WINDOW_CHANGE_ID,
       initiatorUserId: USER_A,
+      initiatorRoleAtAction: 'employee',
       expectedVersion: 2,
       proposal: {
         ...changeWindowDraft,

@@ -1,3 +1,4 @@
+import { publicApplicationRoom } from '../../domain/application-room-presentation.js';
 import { selectEffectiveTenantBookingPolicy } from '../../domain/tenant-booking-policies.js';
 import { withPostgresTransaction } from './transaction.js';
 
@@ -11,15 +12,16 @@ function publicSite(row) {
 }
 
 function publicRoom(row) {
-  return Object.freeze({
+  return publicApplicationRoom({
     id: row.id,
     siteId: row.site_id,
     name: row.name,
-    capacity: row.capacity,
+    capacity: Number(row.capacity),
     active: row.active,
     price: row.price_minor === null
       ? null
       : Object.freeze({ amountMinor: Number(row.price_minor), currency: row.currency }),
+    details: row.details,
   });
 }
 
@@ -91,6 +93,7 @@ const CATALOG_PAGE_SECTIONS = new Set([
   'sites',
   'rooms',
   'services',
+  'equipment',
   'cateringPackages',
   'cateringItems',
   'costCenters',
@@ -241,7 +244,7 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
         const rooms = await client.query({
           name: 'application-rooms-list',
           text: `
-            SELECT room.id, room.site_id, room.name, room.capacity, room.active,
+            SELECT room.id, room.site_id, room.name, room.capacity, room.active, room.details,
               price.price_minor, price.currency
             FROM rooms room
             LEFT JOIN tenant_room_prices price
@@ -439,7 +442,7 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
           rows = await client.query({
             name: 'application-catalogue-page-rooms',
             text: `
-              SELECT room.id, room.site_id, room.name, room.capacity, room.active,
+              SELECT room.id, room.site_id, room.name, room.capacity, room.active, room.details,
                 price.price_minor, price.currency
               FROM rooms room
               JOIN sites site
@@ -482,6 +485,39 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
                 AND service.active = TRUE
                 AND ($2::varchar IS NULL OR service.id > $2)
               ORDER BY service.id
+              LIMIT $3
+            `,
+            values: [tenantId, afterId, limit],
+          });
+        } else if (section === 'equipment') {
+          rows = await client.query({
+            name: 'application-catalogue-page-equipment',
+            text: `
+              SELECT equipment_entry.id, equipment_entry.name,
+                equipment_entry.description, equipment_entry.active,
+                equipment_entry.sort_order, equipment_entry.price_minor,
+                equipment_entry.currency,
+                ARRAY(
+                  SELECT site_relation.site_id
+                  FROM equipment_site_applicability site_relation
+                  WHERE site_relation.tenant_id = $1
+                    AND site_relation.tenant_id = equipment_entry.tenant_id
+                    AND site_relation.equipment_id = equipment_entry.id
+                  ORDER BY site_relation.site_id
+                ) AS site_ids,
+                ARRAY(
+                  SELECT room_relation.room_id
+                  FROM equipment_room_applicability room_relation
+                  WHERE room_relation.tenant_id = $1
+                    AND room_relation.tenant_id = equipment_entry.tenant_id
+                    AND room_relation.equipment_id = equipment_entry.id
+                  ORDER BY room_relation.room_id
+                ) AS room_ids
+              FROM equipment equipment_entry
+              WHERE equipment_entry.tenant_id = $1
+                AND equipment_entry.active = TRUE
+                AND ($2::varchar IS NULL OR equipment_entry.id > $2)
+              ORDER BY equipment_entry.id
               LIMIT $3
             `,
             values: [tenantId, afterId, limit],
@@ -589,7 +625,7 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
         let entries;
         if (section === 'sites') entries = rows.rows.map(publicSite);
         else if (section === 'rooms') entries = rows.rows.map(publicRoom);
-        else if (section === 'services' || section === 'cateringItems') {
+        else if (['services', 'equipment', 'cateringItems'].includes(section)) {
           entries = rows.rows.map(publicApplicability);
         } else if (section === 'costCenters') entries = rows.rows.map(publicCostCenter);
         else {

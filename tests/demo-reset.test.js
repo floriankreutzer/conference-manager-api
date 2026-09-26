@@ -35,7 +35,7 @@ function validSentinel(overrides = {}) {
     reset_role: 'demo_reset',
     current_database: 'conference_manager_demo_test',
     current_role: 'demo_reset',
-    production_schema_versions: Array.from({ length: 34 }, (_, index) => index + 1),
+    production_schema_versions: Array.from({ length: 38 }, (_, index) => index + 1),
     ...overrides,
   };
 }
@@ -174,16 +174,32 @@ test('reset is atomic, transaction-gated, reseeds deterministic state and return
     auditEventFor: ({ outcome }) => ({ outcome }),
   });
   assert.deepEqual(result, {
-    seedVersion: 'saas-3.5-shared-demo-v1',
+    seedVersion: 'saas-3.6-shared-demo-v5',
     checksum: DEMO_FIXTURE_CHECKSUM,
   });
   assert.equal(seeded, 1);
   assert.equal(Object.isFrozen(result), true);
   const names = pool.queries.map(({ name }) => name).filter(Boolean);
   assert.ok(names.indexOf('demo-reset-sentinel') < names.indexOf('demo-reset-truncate'));
-  assert.ok(names.indexOf('demo-reset-truncate') < names.indexOf('demo-reset-insert-provider-simulation'));
+  assert.ok(
+    names.indexOf('demo-reset-truncate')
+      < names.indexOf('demo-reset-attribution-migration-state'),
+  );
+  assert.ok(
+    names.indexOf('demo-reset-attribution-migration-state')
+      < names.indexOf('demo-reset-insert-provider-simulation'),
+  );
   const truncate = pool.queries.find(({ name }) => name === 'demo-reset-truncate').text;
   assert.doesNotMatch(truncate, /RESTART\s+IDENTITY/i);
+  assert.match(truncate, /public\.request_attribution_migration_state/);
+  assert.equal(DEMO_RESET_TABLES.includes('request_attribution_migration_state'), true);
+  const attributionState = pool.queries.find(
+    ({ name }) => name === 'demo-reset-attribution-migration-state',
+  );
+  assert.equal(
+    attributionState.text,
+    'INSERT INTO request_attribution_migration_state (singleton) VALUES (true)',
+  );
   const authorityQuery = pool.queries.find(
     ({ name }) => name === 'demo-reset-authority-revalidation',
   ).text;
@@ -216,8 +232,8 @@ test('transaction-scoped Demo reset gate serializes concurrent resets', async ()
   ]);
   assert.equal(maximumActiveSeeds, 1);
   assert.deepEqual(results.map(({ seedVersion }) => seedVersion), [
-    'saas-3.5-shared-demo-v1',
-    'saas-3.5-shared-demo-v1',
+    'saas-3.6-shared-demo-v5',
+    'saas-3.6-shared-demo-v5',
   ]);
   assert.equal(results.every(({ checksum }) => checksum === DEMO_FIXTURE_CHECKSUM), true);
 });
@@ -334,7 +350,7 @@ test('reset service pins the source fixture checksum and validates repository ou
   );
   const result = await service.reset();
   assert.deepEqual(result, {
-    seedVersion: 'saas-3.5-shared-demo-v1',
+    seedVersion: 'saas-3.6-shared-demo-v5',
     checksum: DEMO_FIXTURE_CHECKSUM,
   });
   assert.equal(calls.length, 1);

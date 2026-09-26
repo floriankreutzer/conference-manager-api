@@ -1,3 +1,5 @@
+import { publicGuestRoomFields } from '../../domain/request-room-guest-presentation.js';
+import { publicSiteGuestInformation } from '../../domain/site-guest-information.js';
 import {
   isRequestId,
   normalizePublicRequest,
@@ -6,9 +8,9 @@ import {
 } from '../../domain/request.js';
 import {
   RequestCompositionUnavailableError,
-  createRequestV2Snapshot,
-  normalizeRequestV2Draft,
-  priceRequestComposition,
+  createRequestCompositionSnapshot,
+  normalizeRequestCompositionDraft,
+  priceRequestCompositionForSchemaVersion,
 } from '../../domain/request-composition.js';
 import {
   BOOKING_POLICY_OPERATION,
@@ -24,12 +26,14 @@ import {
   snapshotTenantCatalogueSelection,
 } from '../../domain/tenant-catalogue.js';
 import { isIanaTimeZone } from '../../domain/site-time-zone.js';
+import { normalizeActionAttribution } from '../../domain/request-attribution.js';
 import { withPostgresTransaction } from './transaction.js';
 
 const REQUEST_COLUMNS = `
   tenant_id,
   id,
   requester_user_id,
+  requester_display_name,
   room_id,
   status,
   status_reason,
@@ -51,6 +55,7 @@ function mapRequestRow(row) {
     tenantId: row.tenant_id,
     id: row.id,
     requesterUserId: row.requester_user_id,
+    requesterAttribution: { displayName: row.requester_display_name },
     roomId: row.room_id,
     status: row.status,
     statusReason: row.status_reason,
@@ -65,6 +70,13 @@ function mapRequestRow(row) {
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   });
+}
+
+function publicRevisionRequest(row, tenantId) {
+  return normalizePublicRequest({
+    ...row.record,
+    requesterAttribution: { displayName: row.requester_display_name },
+  }, { tenantId, requesterUserId: row.requester_user_id });
 }
 
 function mapCurrentRoomContextRow(row) {
@@ -326,9 +338,30 @@ async function selectedCatalogueWithClient(client, {
     values: [tenantId, selectedItemIds],
   });
 
+  const equipmentResult = await client.query({
+    name: 'request-v3-authority-equipment',
+    text: `
+      SELECT entry.id, entry.name, entry.description, entry.price_minor,
+        entry.currency, entry.active, entry.sort_order,
+        ARRAY(
+          SELECT relation.site_id FROM equipment_site_applicability relation
+          WHERE relation.tenant_id = entry.tenant_id AND relation.equipment_id = entry.id
+          ORDER BY relation.site_id
+        ) AS site_ids,
+        ARRAY(
+          SELECT relation.room_id FROM equipment_room_applicability relation
+          WHERE relation.tenant_id = entry.tenant_id AND relation.equipment_id = entry.id
+          ORDER BY relation.room_id
+        ) AS room_ids
+      FROM equipment entry
+      WHERE entry.tenant_id = $1 AND entry.id = ANY($2::varchar[])
+      FOR SHARE OF entry
+    `,
+    values: [tenantId, draft.equipmentIds ?? []],
+  });
   const catalogue = normalizeTenantCatalogue({
     services: servicesResult.rows.map(frozenApplicability),
-    equipment: [],
+    equipment: equipmentResult.rows.map(frozenApplicability),
     cateringPackages: packageRow ? [{
       ...frozenApplicability(packageRow),
       itemIds: Object.freeze([...includedItemIds].sort()),
@@ -346,7 +379,7 @@ async function selectedCatalogueWithClient(client, {
   });
   const selection = {
     serviceIds: draft.serviceIds,
-    equipmentIds: [],
+    equipmentIds: draft.equipmentIds ?? [],
     cateringItemIds: directItemIds,
     catering: draft.catering.packageSelection === null ? [] : [{
       packageId: draft.catering.packageSelection.packageId,
@@ -375,12 +408,13 @@ export async function resolveCurrentRequestCompositionWithClient(client, {
   tenantId,
   actorUserId,
   draft: draftValue,
+  schemaVersion = 2,
   operation,
   capturedAt,
   requestVersion,
   changeWindowStartsAt,
 }) {
-  const draft = normalizeRequestV2Draft(draftValue);
+  const draft = normalizeRequestCompositionDraft(draftValue, schemaVersion);
   const tenantResult = await client.query({
     name: 'request-v2-authority-tenant-lock',
     text: `
@@ -523,12 +557,13 @@ export async function resolveCurrentRequestCompositionWithClient(client, {
   });
 
   const pricingInput = {
+    schemaVersion,
     draft,
     room,
     catalogueSnapshot,
     defaultCurrency: tenant.default_currency,
   };
-  const pricing = priceRequestComposition(pricingInput);
+  const pricing = priceRequestCompositionForSchemaVersion(pricingInput);
   const allocation = createTenantCostAllocationSnapshot(allocationConfiguration, {
     entries: draft.allocations,
     totalMinor: pricing.totalMinor,
@@ -540,7 +575,8 @@ export async function resolveCurrentRequestCompositionWithClient(client, {
     snapshottedAt: capturedAt,
     ...allocation,
   });
-  const snapshot = createRequestV2Snapshot({
+  const snapshot = createRequestCompositionSnapshot({
+    schemaVersion,
     draft,
     requestVersion,
     capturedAt,
@@ -554,13 +590,16 @@ export async function resolveCurrentRequestCompositionWithClient(client, {
   return Object.freeze({ status: 'ready', draft, snapshot });
 }
 
-export async function appendRequestRevisionWithClient(client, request, operation, auditEvent) {
+export async function appendRequestRevisionWithClient(
+  client, request, operation, auditEvent, actorRoleAtAction,
+) {
   await client.query({
     name: 'request-revision-watermark-lock',
     text: 'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
     values: [`request-revision-watermark:${request.tenantId}`],
   });
-  const record = toPublicRequest(request);
+  const { requesterAttribution, ...record } = toPublicRequest(request);
+  if (!requesterAttribution) throw new TypeError('REQUEST_ATTRIBUTION_INVALID');
   const inserted = await client.query({
     name: 'request-revision-append',
     text: `
@@ -573,9 +612,10 @@ export async function appendRequestRevisionWithClient(client, request, operation
         record,
         captured_at,
         actor_user_id,
-        correlation_id
+        correlation_id,
+        actor_role_at_action
       )
-      VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)
       RETURNING revision_sequence
     `,
     values: [
@@ -588,6 +628,7 @@ export async function appendRequestRevisionWithClient(client, request, operation
       new Date(request.updatedAt),
       auditEvent.actorUserId,
       auditEvent.correlationId,
+      actorRoleAtAction,
     ],
   });
   const revisionSequence = Number(inserted.rows[0]?.revision_sequence);
@@ -621,7 +662,11 @@ export function createPostgresRequestRepository(
   if (!auditRepository || typeof auditRepository.appendWithClient !== 'function') {
     throw new TypeError('AUDIT_REPOSITORY_REQUIRED');
   }
-  if (!calendarAuthorityGuard || typeof calendarAuthorityGuard.lockCurrent !== 'function') {
+  if (
+    !calendarAuthorityGuard
+    || typeof calendarAuthorityGuard.lockCurrent !== 'function'
+    || typeof calendarAuthorityGuard.completePreConfirmationCleanup !== 'function'
+  ) {
     throw new TypeError('CALENDAR_AUTHORITY_GUARD_REQUIRED');
   }
 
@@ -671,6 +716,36 @@ export function createPostgresRequestRepository(
       return mapCurrentRoomContextRow(result.rows[0]);
     },
 
+    async findGuestContextByTenantIdAndRequest(tenantId, requestId, expectedVersion) {
+      const result = await pool.query({
+        name: 'request-guest-context-by-tenant-request-version',
+        text: `
+          SELECT tenant.locations_revision,
+            room.id AS room_id, room.site_id AS room_site_id,
+            room.name AS room_name, room.capacity AS room_capacity,
+            room.active AS room_active, room.details AS room_details,
+            site.id AS site_id, site.name AS site_name, site.active AS site_active,
+            site.time_zone AS site_time_zone, site.guest_information
+          FROM requests request
+          JOIN tenants tenant ON tenant.id = request.tenant_id
+          JOIN rooms room ON room.tenant_id = request.tenant_id AND room.id = request.room_id
+          JOIN sites site ON site.tenant_id = room.tenant_id AND site.id = room.site_id
+          WHERE request.tenant_id = $1 AND request.id = $2
+            AND request.request_version = $3 AND request.status = 'Confirmed'
+          LIMIT 1
+        `,
+        values: [tenantId, requestId, expectedVersion],
+      });
+      const row = result.rows[0];
+      if (!row) return null;
+      const context = mapCurrentRoomContextRow(row);
+      return Object.freeze({
+        ...context,
+        room: Object.freeze({ ...context.room, ...publicGuestRoomFields(row.room_details) }),
+        guestPresentation: publicSiteGuestInformation(row.guest_information),
+      });
+    },
+
     async listByTenantId(tenantId, { requesterUserId = null, limit = 500 } = {}) {
       const result = await pool.query({
         name: 'request-list-by-tenant',
@@ -716,7 +791,7 @@ export function createPostgresRequestRepository(
           name: 'application-request-list-page-by-tenant',
           text: `
             WITH current_records AS (
-              SELECT revision.record, request.requester_user_id,
+              SELECT revision.record, request.requester_user_id, request.requester_display_name,
                 request.starts_at, request.id
               FROM requests request
               JOIN request_revisions revision
@@ -734,7 +809,7 @@ export function createPostgresRequestRepository(
             ),
             historical_records AS (
               SELECT DISTINCT ON (request.id)
-                revision.record, request.requester_user_id,
+                revision.record, request.requester_user_id, request.requester_display_name,
                 (revision.record ->> 'startsAt')::timestamptz AS starts_at,
                 request.id
               FROM requests request
@@ -756,7 +831,7 @@ export function createPostgresRequestRepository(
                  OR starts_at < $4
                  OR (starts_at = $4 AND id > $5)
             )
-            SELECT record, requester_user_id
+            SELECT record, requester_user_id, requester_display_name
             FROM candidates
             ORDER BY starts_at DESC, id
             LIMIT $6
@@ -773,10 +848,7 @@ export function createPostgresRequestRepository(
         return Object.freeze({
           status: 'ready',
           snapshot: selectedSnapshot,
-          requests: Object.freeze(result.rows.map((row) => normalizePublicRequest(row.record, {
-            tenantId,
-            requesterUserId: row.requester_user_id,
-          }))),
+          requests: Object.freeze(result.rows.map((row) => publicRevisionRequest(row, tenantId))),
         });
       }, { isolationLevel: 'READ COMMITTED', readOnly: true });
     },
@@ -817,7 +889,7 @@ export function createPostgresRequestRepository(
           name: 'request-report-page-by-tenant',
           text: `
             WITH current_records AS (
-              SELECT revision.record, request.requester_user_id,
+              SELECT revision.record, request.requester_user_id, request.requester_display_name,
                 request.starts_at, request.id
               FROM requests request
               JOIN request_revisions revision
@@ -836,7 +908,7 @@ export function createPostgresRequestRepository(
             ),
             historical_records AS (
               SELECT DISTINCT ON (request.id)
-                revision.record, request.requester_user_id,
+                revision.record, request.requester_user_id, request.requester_display_name,
                 (revision.record ->> 'startsAt')::timestamptz AS starts_at,
                 request.id
               FROM requests request
@@ -861,7 +933,7 @@ export function createPostgresRequestRepository(
                   OR (starts_at = $5 AND id > $6)
                 )
             )
-            SELECT record, requester_user_id
+            SELECT record, requester_user_id, requester_display_name
             FROM candidates
             ORDER BY starts_at, id
             LIMIT $7
@@ -879,10 +951,7 @@ export function createPostgresRequestRepository(
         return Object.freeze({
           status: 'ready',
           snapshot: selectedSnapshot,
-          requests: Object.freeze(result.rows.map((row) => normalizePublicRequest(row.record, {
-            tenantId,
-            requesterUserId: row.requester_user_id,
-          }))),
+          requests: Object.freeze(result.rows.map((row) => publicRevisionRequest(row, tenantId))),
         });
       }, { isolationLevel: 'READ COMMITTED', readOnly: true });
     },
@@ -913,7 +982,8 @@ export function createPostgresRequestRepository(
         name: 'request-history-page-by-tenant-and-id',
         text: `
           SELECT revision.request_version, revision.schema_version, revision.operation,
-            revision.record, revision.captured_at, request.requester_user_id
+            revision.record, revision.captured_at, revision.actor_display_name, revision.actor_role_at_action,
+            request.requester_user_id, request.requester_display_name
           FROM request_revisions revision
           JOIN requests request
             ON request.tenant_id = revision.tenant_id AND request.id = revision.request_id
@@ -929,11 +999,11 @@ export function createPostgresRequestRepository(
         version: Number(row.request_version),
         schemaVersion: Number(row.schema_version),
         operation: row.operation,
-        capturedAt: row.captured_at.toISOString(),
-        request: normalizePublicRequest(row.record, {
-          tenantId,
-          requesterUserId: row.requester_user_id,
+        actorAttribution: row.actor_display_name === null ? null : normalizeActionAttribution({
+          displayName: row.actor_display_name, roleAtAction: row.actor_role_at_action,
         }),
+        capturedAt: row.captured_at.toISOString(),
+        request: publicRevisionRequest(row, tenantId),
       })));
     },
 
@@ -941,6 +1011,7 @@ export function createPostgresRequestRepository(
       tenantId,
       requestId,
       requesterUserId,
+      schemaVersion = 2,
       requestDraft,
       createdAt,
       auditEvent,
@@ -950,6 +1021,7 @@ export function createPostgresRequestRepository(
         const authority = await resolveCurrentRequestCompositionWithClient(client, {
           tenantId,
           actorUserId: requesterUserId,
+          schemaVersion,
           draft: requestDraft,
           operation: BOOKING_POLICY_OPERATION.CREATE,
           capturedAt,
@@ -979,7 +1051,7 @@ export function createPostgresRequestRepository(
             )
             VALUES (
               $1, $2, $3, $4, 'Submitted', $5, $6, $7, $8,
-              2, 1, $9::jsonb, $10, $10, $10
+              $11, 1, $9::jsonb, $10, $10, $10
             )
             RETURNING ${REQUEST_COLUMNS}
           `,
@@ -994,11 +1066,12 @@ export function createPostgresRequestRepository(
             draft.externalParticipants,
             JSON.stringify(snapshot),
             createdAt,
+            schemaVersion,
           ],
         });
         const request = mapRequestRow(result.rows[0]);
         if (!request) throw new Error('REQUEST_CREATE_FAILED');
-        await appendRequestRevisionWithClient(client, request, 'created', auditEvent);
+        await appendRequestRevisionWithClient(client, request, 'created', auditEvent, 'employee');
         await appendAudit(client, auditRepository, auditEvent);
         return Object.freeze({ status: 'created', request });
       });
@@ -1008,6 +1081,7 @@ export function createPostgresRequestRepository(
       tenantId,
       requestId,
       requesterUserId,
+      schemaVersion = 2,
       expectedVersion,
       requestDraft,
       changedAt,
@@ -1038,6 +1112,7 @@ export function createPostgresRequestRepository(
         const authority = await resolveCurrentRequestCompositionWithClient(client, {
           tenantId,
           actorUserId: requesterUserId,
+          schemaVersion,
           draft: requestDraft,
           operation: BOOKING_POLICY_OPERATION.RESUBMIT,
           capturedAt: changedAt.toISOString(),
@@ -1054,7 +1129,7 @@ export function createPostgresRequestRepository(
                 ends_at = $6,
                 internal_participants = $7,
                 external_participants = $8,
-                schema_version = 2,
+                schema_version = $13,
                 request_version = $9,
                 request_snapshot = $10::jsonb,
                 status = 'Submitted',
@@ -1081,11 +1156,12 @@ export function createPostgresRequestRepository(
             JSON.stringify(snapshot),
             changedAt,
             expectedVersion,
+            schemaVersion,
           ],
         });
         const request = mapRequestRow(updated.rows[0]);
         if (!request) return Object.freeze({ status: 'state_conflict' });
-        await appendRequestRevisionWithClient(client, request, 'resubmitted', auditEvent);
+        await appendRequestRevisionWithClient(client, request, 'resubmitted', auditEvent, 'employee');
         await appendAudit(client, auditRepository, auditEvent);
         return Object.freeze({ status: 'resubmitted', request });
       });
@@ -1095,7 +1171,9 @@ export function createPostgresRequestRepository(
       tenantId,
       requestId,
       actorUserId,
+      actorRoleAtAction,
       expectedStatus,
+      expectedVersion,
       nextStatus,
       reason,
       changedAt,
@@ -1115,7 +1193,11 @@ export function createPostgresRequestRepository(
           values: [tenantId, requestId],
         });
         const current = mapRequestRow(locked.rows[0]);
-        if (!current || current.status !== expectedStatus) return null;
+        if (
+          !current
+          || current.status !== expectedStatus
+          || current.version !== expectedVersion
+        ) return null;
         const openChange = await client.query({
           name: 'request-transition-lock-open-booking-change',
           text: `
@@ -1129,6 +1211,7 @@ export function createPostgresRequestRepository(
           `,
           values: [tenantId, requestId],
         });
+        let appendBookingChangeAudit = false;
         if (openChange.rows[0]?.status === 'applying') return null;
         if (openChange.rows[0]?.status === 'pending') {
           if (current.status !== 'Confirmed' || nextStatus === 'Confirmed') return null;
@@ -1138,30 +1221,31 @@ export function createPostgresRequestRepository(
               UPDATE booking_change_requests
               SET status = 'superseded',
                   decided_by_user_id = $4,
+                  decider_role_at_action = $6,
                   updated_at = $5
               WHERE tenant_id = $1
                 AND request_id = $2
                 AND id = $3
                 AND status = 'pending'
             `,
-            values: [tenantId, requestId, openChange.rows[0].id, actorUserId, changedAt],
+            values: [tenantId, requestId, openChange.rows[0].id, actorUserId, changedAt, actorRoleAtAction],
           });
           if (superseded.rowCount !== 1 || !bookingChangeAuditEvent) {
             throw new Error('BOOKING_CHANGE_SUPERSEDE_FAILED');
           }
-          await appendAudit(client, auditRepository, bookingChangeAuditEvent);
+          appendBookingChangeAudit = true;
         }
         const result = await client.query({
           name: 'request-transition-by-tenant-and-id',
           text: `
             UPDATE requests
-            SET status = $4,
-              status_reason = $5,
-              status_changed_at = $6,
-              updated_at = $6,
+            SET status = $5,
+              status_reason = $6,
+              status_changed_at = $7,
+              updated_at = $7,
               request_version = request_version + 1,
               request_snapshot = CASE
-                WHEN schema_version = 2 THEN jsonb_set(
+                WHEN schema_version IN (2, 3) THEN jsonb_set(
                   request_snapshot,
                   '{requestVersion}',
                   to_jsonb(request_version + 1)
@@ -1171,13 +1255,25 @@ export function createPostgresRequestRepository(
             WHERE tenant_id = $1
               AND id = $2
               AND status = $3
+              AND request_version = $4
             RETURNING ${REQUEST_COLUMNS}
           `,
-          values: [tenantId, requestId, expectedStatus, nextStatus, reason, changedAt],
+          values: [
+            tenantId,
+            requestId,
+            expectedStatus,
+            expectedVersion,
+            nextStatus,
+            reason,
+            changedAt,
+          ],
         });
         const request = mapRequestRow(result.rows[0]);
         if (!request) return null;
-        await appendRequestRevisionWithClient(client, request, 'transitioned', auditEvent);
+        await appendRequestRevisionWithClient(client, request, 'transitioned', auditEvent, actorRoleAtAction);
+        if (appendBookingChangeAudit) {
+          await appendAudit(client, auditRepository, bookingChangeAuditEvent);
+        }
         await appendAudit(client, auditRepository, auditEvent);
         return request;
       });
@@ -1187,7 +1283,9 @@ export function createPostgresRequestRepository(
       tenantId,
       requestId,
       expectedStatus,
+      expectedVersion,
       calendarAuthority,
+      calendarCleanup = null,
       changedAt,
       auditEvent,
     }) {
@@ -1203,13 +1301,23 @@ export function createPostgresRequestRepository(
           values: [tenantId, requestId],
         });
         const current = mapRequestRow(locked.rows[0]);
-        if (!current || current.status !== expectedStatus || !current.roomId) {
+        if (
+          !current
+          || current.status !== expectedStatus
+          || current.version !== expectedVersion
+          || !current.roomId
+        ) {
           return Object.freeze({ status: 'state_conflict', request: current });
         }
 
         if (!await calendarAuthorityGuard.lockCurrent(
           client,
-          { tenantId, requestId, authority: calendarAuthority },
+          {
+            tenantId,
+            requestId,
+            authority: calendarAuthority,
+            cleanupReference: calendarCleanup?.reference ?? null,
+          },
         )) {
           return Object.freeze({ status: 'provider_authority_conflict', request: current });
         }
@@ -1240,11 +1348,11 @@ export function createPostgresRequestRepository(
             UPDATE requests
             SET status = 'Confirmed',
                 status_reason = NULL,
-                status_changed_at = $4,
-                updated_at = $4,
+                status_changed_at = $5,
+                updated_at = $5,
                 request_version = request_version + 1,
                 request_snapshot = CASE
-                  WHEN schema_version = 2 THEN jsonb_set(
+                  WHEN schema_version IN (2, 3) THEN jsonb_set(
                     request_snapshot,
                     '{requestVersion}',
                     to_jsonb(request_version + 1)
@@ -1254,13 +1362,26 @@ export function createPostgresRequestRepository(
             WHERE tenant_id = $1
               AND id = $2
               AND status = $3
+              AND request_version = $4
             RETURNING ${REQUEST_COLUMNS}
           `,
-          values: [tenantId, requestId, expectedStatus, changedAt],
+          values: [tenantId, requestId, expectedStatus, expectedVersion, changedAt],
         });
         const confirmed = mapRequestRow(result.rows[0]);
         if (!confirmed) return Object.freeze({ status: 'state_conflict', request: current });
-        await appendRequestRevisionWithClient(client, confirmed, 'transitioned', auditEvent);
+        if (calendarCleanup !== null) {
+          const completed = await calendarAuthorityGuard.completePreConfirmationCleanup(client, {
+            tenantId,
+            requestId,
+            reference: calendarCleanup.reference,
+            changedAt,
+          });
+          if (!completed) throw new Error('CALENDAR_CLEANUP_FINALIZE_FAILED');
+        }
+        await appendRequestRevisionWithClient(client, confirmed, 'transitioned', auditEvent, 'conference_manager');
+        if (calendarCleanup !== null) {
+          await appendAudit(client, auditRepository, calendarCleanup.auditEvent);
+        }
         await appendAudit(client, auditRepository, auditEvent);
         return Object.freeze({ status: 'confirmed', request: confirmed });
       });

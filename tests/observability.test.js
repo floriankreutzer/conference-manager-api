@@ -58,6 +58,7 @@ function bookingRequest() {
     tenantId: TENANT_ID,
     id: 'request-1',
     requesterUserId: USER_ID,
+    requesterAttribution: { displayName: 'Persisted requester' },
     roomId: 'room-1',
     status: 'Submitted',
     statusReason: null,

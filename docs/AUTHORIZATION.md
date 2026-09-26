@@ -125,7 +125,21 @@ Client input selects only a supported transition name. It never supplies the nex
 | `request_change` | Submitted, In Review | Change Requested | Conference Manager / `request:manage` | Required |
 | `cancel` | Submitted, In Review, Confirmed, Change Requested | Cancelled | Owning Employee / `request:cancel`, or Conference Manager / `request:manage` inside the same Tenant | Forbidden |
 
-Unsupported transitions fail validation. Valid transitions from an ineligible current state return `409 REQUEST_STATE_CONFLICT`. An authorized retry against an already `Cancelled` Request is an idempotent cancellation-reconciliation read: it returns the unchanged Request, performs any still-required Calendar cleanup and writes no duplicate successful transition evidence. Cancellation is a logical workflow transition only; the public Request API exposes no physical delete operation. A pending booking-change proposal is superseded audit-atomically when its Request is cancelled, while an applying proposal makes cancellation fail with a state conflict.
+Unsupported transitions fail validation. Every transition is bound to the exact visible Request
+version by a required strong `If-Match` precondition. Valid transitions from an ineligible current
+state, stale version or same-status ABA generation return `409 REQUEST_STATE_CONFLICT` before
+provider/Calendar work. An authorized retry against an already `Cancelled`, `Rejected`, `Change
+Requested` or `Confirmed` Request is an idempotent reconciliation read only when `If-Match` names
+the exact current terminal version and, where applicable, the exact persisted normalized reason.
+Confirmation reconciliation retains the full Conference Manager / `request:manage` command
+authority; Request read authority alone is insufficient. Without a persisted client operation ID,
+the immediately preceding version cannot prove which actor's command won and therefore fails
+closed. An accepted exact-version read returns the unchanged Request, performs any still-required
+Calendar cleanup and writes no duplicate successful transition evidence. Older generations fail
+closed. Cancellation is a logical
+workflow transition only; the public Request API exposes no physical delete operation. A pending
+booking-change proposal is superseded audit-atomically when its Request is cancelled, while an
+applying proposal makes cancellation fail with a state conflict.
 
 Confirmed-booking proposals are a separate aggregate. The Requester/Organizer may propose changes only for their own confirmed Request; a Conference Manager with `request:manage` may propose for any confirmed Request in the active Tenant. Only a Conference Manager may approve or reject a pending proposal. Self-approval is allowed and the initiator/decider identities remain server-derived and auditable. No decision endpoint permits proposal editing.
 
@@ -175,3 +189,14 @@ Changes to this policy require, as applicable:
 - stale/concurrent workflow-state and configuration tests;
 - PostgreSQL Tenant-scoping/constraint/audit-atomic tests;
 - Demo persona parity tests proving the derived dual-role union without introducing a new persisted role.
+
+## SaaS 3.6 persisted Request attribution
+
+The exact v3 Request response envelopes, relational snapshots, honest legacy-null
+semantics, unchanged audit-chain payload, and mandatory staged writer cutover are
+defined in [Request Attribution](REQUEST-ATTRIBUTION.md). Existing Tenant, role,
+object ownership and session/CSRF boundaries remain required for these reads and writes.
+
+## Site Guest Information
+
+Locations v2 Guest Information is Site-owned and classified under `tenant:configure` against the locked current aggregate. It grants no Request-read authority. The explicit guest projection requires existing own-Employee or same-Tenant Conference Manager Request authorization followed by Confirmed state; final SQL rebinds Request version/state. Tenant Admin-only, non-owner and cross-Tenant probes stay concealed. See `docs/SITE-GUEST-INFORMATION.md`.

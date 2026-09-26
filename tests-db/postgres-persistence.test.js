@@ -188,6 +188,8 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 32, name: 'platform_operations_projections' },
       { version: 33, name: 'platform_metering_runtime' },
       { version: 34, name: 'customer_session_epoch_revocation' },
+      { version: 35, name: 'request_composition_v3_equipment_selection' },
+      { version: 36, name: 'request_attribution' },
     ]);
   });
 
@@ -363,7 +365,10 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
     const changed = await requests.transitionByTenantIdAndId({
       tenantId: TENANT_A,
       requestId: 'shared-request',
+      actorUserId: USER_A,
+      actorRoleAtAction: 'conference_manager',
       expectedStatus: REQUEST_STATUS.SUBMITTED,
+      expectedVersion: 1,
       nextStatus: REQUEST_STATUS.IN_REVIEW,
       reason: null,
       changedAt: new Date('2026-08-24T10:00:00.000Z'),
@@ -415,6 +420,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       principal: manager,
       tenantContext: { tenantId: TENANT_A },
       requestId: 'manager-cancel-request',
+      expectedVersion: 1,
       transition: REQUEST_TRANSITION.CANCEL,
       correlationId: CORRELATION_A,
     });
@@ -453,7 +459,10 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       requests.transitionByTenantIdAndId({
         tenantId: TENANT_A,
         requestId: 'audit-rollback-request',
+        actorUserId: USER_A,
+        actorRoleAtAction: 'conference_manager',
         expectedStatus: REQUEST_STATUS.SUBMITTED,
+        expectedVersion: 1,
         nextStatus: REQUEST_STATUS.CONFIRMED,
         reason: null,
         changedAt: new Date('2026-08-24T10:01:00.000Z'),
@@ -474,7 +483,10 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
     const transition = (nextStatus, correlationId) => requests.transitionByTenantIdAndId({
       tenantId: TENANT_A,
       requestId: 'race-request',
+      actorUserId: USER_A,
+      actorRoleAtAction: 'conference_manager',
       expectedStatus: REQUEST_STATUS.SUBMITTED,
+      expectedVersion: 1,
       nextStatus,
       reason: null,
       changedAt: new Date('2026-08-24T10:05:00.000Z'),
@@ -494,6 +506,50 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
     const auditRows = (await auditRepository.listByTenantId(TENANT_A, { limit: 100 }))
       .filter((entry) => entry.targetId === 'race-request');
     assert.equal(auditRows.length, 1);
+  });
+
+  await t.test('request transitions reject a same-status stale version without audit or revision effects', async () => {
+    const requestId = 'same-status-version-race';
+    await seedRequest(pool, { tenantId: TENANT_A, requestId, requesterUserId: USER_A });
+    await pool.query(
+      `UPDATE requests
+       SET request_version = 2
+       WHERE tenant_id = $1 AND id = $2`,
+      [TENANT_A, requestId],
+    );
+    const requests = requestRepository();
+
+    const stale = await requests.transitionByTenantIdAndId({
+      tenantId: TENANT_A,
+      requestId,
+      actorUserId: USER_A,
+      actorRoleAtAction: 'conference_manager',
+      expectedStatus: REQUEST_STATUS.SUBMITTED,
+      expectedVersion: 1,
+      nextStatus: REQUEST_STATUS.IN_REVIEW,
+      reason: null,
+      changedAt: new Date('2026-08-24T10:06:00.000Z'),
+      auditEvent: requestAuditEvent({ requestId }),
+    });
+    assert.equal(stale, null);
+
+    const persisted = await pool.query(
+      `SELECT status, request_version::integer AS request_version,
+         (SELECT count(*)::integer
+          FROM request_revisions
+          WHERE tenant_id = $1 AND request_id = $2) AS revision_count
+       FROM requests
+       WHERE tenant_id = $1 AND id = $2`,
+      [TENANT_A, requestId],
+    );
+    assert.deepEqual(persisted.rows[0], {
+      status: REQUEST_STATUS.SUBMITTED,
+      request_version: 2,
+      revision_count: 0,
+    });
+    const auditRows = (await auditRepository.listByTenantId(TENANT_A, { limit: 100 }))
+      .filter((entry) => entry.targetId === requestId);
+    assert.equal(auditRows.length, 0);
   });
 
   await t.test('workflow reason constraints reject client-style status/reason combinations', async () => {

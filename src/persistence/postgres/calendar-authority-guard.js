@@ -2,6 +2,7 @@ import { isInternalUuid } from '../../domain/identifiers.js';
 import { isRequestId } from '../../domain/request.js';
 import {
   isProviderConnectionReference,
+  isProviderReference,
   isProviderResourceReference,
 } from '../../integrations/calendar-contract.js';
 
@@ -12,9 +13,24 @@ function isProviderName(value) {
   return typeof value === 'string' && PROVIDER_PATTERN.test(value);
 }
 
+function isCleanupReference(value) {
+  return value !== null
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && isInternalUuid(value.integrationId)
+    && isProviderReference(value.providerReference)
+    && isProviderConnectionReference(value.providerConnectionReference)
+    && isProviderResourceReference(value.providerResourceReference);
+}
+
 export function createPostgresMicrosoft365CalendarAuthorityGuard() {
   return Object.freeze({
-    async lockCurrent(client, { tenantId, requestId, authority } = {}) {
+    async lockCurrent(client, {
+      tenantId,
+      requestId,
+      authority,
+      cleanupReference = null,
+    } = {}) {
       if (
         !client
         || typeof client.query !== 'function'
@@ -28,9 +44,11 @@ export function createPostgresMicrosoft365CalendarAuthorityGuard() {
         || !ROOM_ID_PATTERN.test(authority.roomId)
         || !isProviderResourceReference(authority?.providerResourceReference)
         || typeof authority?.calendarWriteEnabled !== 'boolean'
+        || (cleanupReference !== null && !isCleanupReference(cleanupReference))
       ) {
         return false;
       }
+      if (authority.calendarWriteEnabled && cleanupReference !== null) return false;
       const result = await client.query({
         name: 'calendar-authority-lock-current',
         text: `
@@ -52,16 +70,6 @@ export function createPostgresMicrosoft365CalendarAuthorityGuard() {
             AND i.provider = $4
             AND i.provider_reference = $3
             AND i.status = 'connected'
-            AND (
-              $8::boolean
-              OR NOT EXISTS (
-                SELECT 1
-                FROM booking_provider_references booking
-                WHERE booking.tenant_id = $1
-                  AND booking.request_id = $9
-                  AND booking.state <> 'cancelled'
-              )
-            )
           FOR SHARE OF i, b, m
         `,
         values: [
@@ -72,8 +80,97 @@ export function createPostgresMicrosoft365CalendarAuthorityGuard() {
           authority.identityProvider,
           authority.roomId,
           authority.providerResourceReference,
-          authority.calendarWriteEnabled,
+        ],
+      });
+      if (result.rowCount !== 1) return false;
+      if (!authority.calendarWriteEnabled) {
+        const references = await client.query({
+          name: 'calendar-authority-lock-write-disabled-booking-references',
+          text: `
+            SELECT integration_id, provider_reference,
+              provider_connection_reference, provider_resource_reference, state
+            FROM booking_provider_references
+            WHERE tenant_id = $1
+              AND request_id = $2
+              AND state <> 'cancelled'
+            ORDER BY integration_id
+            FOR UPDATE
+          `,
+          values: [tenantId, requestId],
+        });
+        if (cleanupReference === null) return references.rowCount === 0;
+        if (references.rowCount !== 1) return false;
+        const [reference] = references.rows;
+        return reference.state === 'compensated'
+          && reference.integration_id === cleanupReference.integrationId
+          && reference.provider_reference === cleanupReference.providerReference
+          && reference.provider_connection_reference
+            === cleanupReference.providerConnectionReference
+          && reference.provider_resource_reference === cleanupReference.providerResourceReference;
+      }
+      const reference = await client.query({
+        name: 'calendar-authority-lock-active-booking-reference',
+        text: `
+          SELECT 1
+          FROM booking_provider_references
+          WHERE tenant_id = $1
+            AND request_id = $2
+            AND integration_id = $3
+            AND provider_connection_reference = $4
+            AND provider_resource_reference = $5
+            AND state = 'active'
+          FOR SHARE
+        `,
+        values: [
+          tenantId,
           requestId,
+          authority.integrationId,
+          authority.providerConnectionReference,
+          authority.providerResourceReference,
+        ],
+      });
+      return reference.rowCount === 1;
+    },
+
+    async completePreConfirmationCleanup(client, {
+      tenantId,
+      requestId,
+      reference,
+      changedAt,
+    } = {}) {
+      if (
+        !client
+        || typeof client.query !== 'function'
+        || !isInternalUuid(tenantId)
+        || !isRequestId(requestId)
+        || !isCleanupReference(reference)
+        || !(changedAt instanceof Date)
+        || !Number.isFinite(changedAt.getTime())
+      ) {
+        return false;
+      }
+      const result = await client.query({
+        name: 'calendar-authority-complete-pre-confirmation-cleanup',
+        text: `
+          UPDATE booking_provider_references
+          SET state = 'cancelled',
+            updated_at = $7
+          WHERE tenant_id = $1
+            AND request_id = $2
+            AND integration_id = $3
+            AND provider_reference = $4
+            AND provider_connection_reference = $5
+            AND provider_resource_reference = $6
+            AND state = 'compensated'
+        `,
+        values: [
+          tenantId,
+          requestId,
+          reference.integrationId,
+          reference.providerReference,
+          reference.providerConnectionReference,
+          reference.providerResourceReference,
+          changedAt,
         ],
       });
       return result.rowCount === 1;

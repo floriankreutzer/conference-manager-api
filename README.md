@@ -23,7 +23,7 @@ The SaaS 0 foundation through issue #57 now provides:
 - explicit separation of Platform Admin from the Tenant role model;
 - Employee Request ownership checks and concealed BOLA/IDOR failures;
 - Tenant-scoped Conference Manager Request access;
-- server-authorized Request workflow transitions with optimistic status concurrency;
+- server-authorized Request workflow transitions with strong `If-Match` version and status concurrency;
 - PostgreSQL workflow status/reason constraints;
 - server-generated tenant audit/security events with explicit retention classes;
 - append-only PostgreSQL audit persistence plus per-Tenant HMAC-SHA-256 integrity chains;
@@ -100,7 +100,7 @@ reset, validation and rollback contract is in `docs/SHARED-DEMO-RUNTIME.md`.
 - `GET /api/v1/session` — resolves the server-side session/Tenant context and returns minimized presentation context plus a runtime CSRF token.
 - `DELETE /api/v1/session` — CSRF-protected server-side logout/revocation and cookie clearing.
 - `GET /api/v1/requests/{requestId}` — active-Tenant and object-authorized Request read.
-- `POST /api/v1/requests/{requestId}/transitions` — CSRF-protected, server-authorized Request workflow transition.
+- `POST /api/v1/requests/{requestId}/transitions` — CSRF-protected, server-authorized Request workflow transition requiring a strong `If-Match` Request-version tag.
 - `GET/POST /api/v1/requests/{requestId}/booking-change` — read or create the single open confirmed-booking proposal.
 - `POST /api/v1/requests/{requestId}/booking-change/{changeId}/decision` — Conference Manager approve/reject decision with live revalidation.
 - `GET /api/v1/audit` — Tenant Admin audit read after Tenant authorization and integrity-chain verification.

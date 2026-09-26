@@ -146,3 +146,10 @@ Changes to the audit contract require, as applicable:
 - rollback guards for durable audit evidence;
 - minimized booking-change denial evidence for Employee non-owner, Tenant Admin other-user, Conference Manager cross-Tenant and scoped change-ID probes;
 - migration-034 deployment evidence proving global revocation without fabricated per-session audit actors.
+
+## SaaS 3.6 persisted Request attribution
+
+The exact v3 Request response envelopes, relational snapshots, honest legacy-null
+semantics, unchanged audit-chain payload, and mandatory staged writer cutover are
+defined in [Request Attribution](REQUEST-ATTRIBUTION.md). Existing Tenant, role,
+object ownership and session/CSRF boundaries remain required for these reads and writes.

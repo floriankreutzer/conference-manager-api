@@ -176,7 +176,7 @@ The required forward sequence is:
 1. block new Customer traffic and drain the complete old-epoch customer fleet;
 2. apply migration 034 and retain protected migration checksum plus pre/post active-session-count evidence;
 3. deploy the complete new-epoch fleet with no mixed customer instances;
-4. resume traffic only after readiness is schema 34 and a captured old cookie fails;
+4. resume traffic only after readiness is schema 38 and a captured old cookie fails;
 5. require fresh sign-in and verify the new Principal reflects current role policy.
 
 Emergency rollback remains a global reauthentication event. Block Customer traffic, drain the new fleet, run the migration-034 down bookkeeping step, deploy the schema-33-compatible old binary and then resume only for fresh sign-in. Every pre-cutover row stays revoked and every new-epoch row is unresolvable by the old hash. Before forwarding again, block traffic, reapply migration 034 to revoke every rollback-window session, deploy the new fleet and repeat the old-cookie negative check. A database restore or PITR target older than migration 034 must receive no Customer traffic until migration 034 has been reapplied.

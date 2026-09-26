@@ -84,6 +84,8 @@ Attempt:
 - unknown/forged roles or permissions from browser state/requests;
 - role confusion between Employee, Conference Manager and Tenant Admin;
 - workflow transitions from ineligible states;
+- missing, malformed, weak, wildcard, multi-value and stale workflow `If-Match` tags;
+- same-status Request-version drift and ABA cycles before a stale transition is submitted;
 - target-status or requester/owner manipulation;
 - entitlement bypass through frontend feature flags or client request fields;
 - platform/operator actions using Tenant Admin authority.

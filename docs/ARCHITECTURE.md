@@ -30,7 +30,7 @@ The service uses Node.js 22 native HTTP and ECMAScript modules. The implemented 
   network-free simulated Microsoft 365 adapter;
 - production observability, threat-model and secure-configuration gates.
 
-Runtime dependencies are limited to exact-pinned `pg` and `@azure/msal-node`. Provider-specific Microsoft handling uses bounded native HTTP plus a bounded MSAL transport isolated inside identity/integration adapters; Microsoft SDK types do not enter application or domain contracts.
+Runtime dependencies are limited to exact-pinned `pg`, `@azure/msal-node`, and `sharp`. The image decoder is restricted to the managed Room media adapter, where bounded PNG/JPEG/WebP input is decoded and re-encoded without source metadata before storage. Provider-specific Microsoft handling uses bounded native HTTP plus a bounded MSAL transport isolated inside identity/integration adapters; Microsoft SDK types do not enter application or domain contracts.
 
 ```text
 Browser (untrusted)
@@ -159,7 +159,7 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
   semantic checksum; `src/persistence/postgres/demo-reset-repository.js` owns the sentinel-verified,
   exclusively locked, transactional reset/readback contract.
 - `scripts/demo-db-migrations.mjs` owns the independent checksum-protected Demo overlay migration
-  ledger after verifying the exact canonical schema `001..034`.
+  ledger after verifying the exact canonical schema `001..038`.
 - `scripts/platform-break-glass-grant.mjs` and `scripts/platform-recovery-fallback.mjs` are the only local privileged mutation wrappers. They accept credentials only through fixed descriptors and require live Platform sessions plus a dual-control, exact Tenant/permission-bound, one-use grant. The retired process-local Tenant-operator runtime and package entry point are prohibited.
 - `scripts/check-architecture.mjs` prevents architecture, migration and composition drift.
 - `scripts/check-security-baseline.mjs` prevents drift between the documented Pilot/Production security baseline and executable controls.
@@ -214,7 +214,7 @@ Request repositories always receive the server-resolved internal Tenant ID. Empl
 
 Conference Manager Request scope is the authenticated internal Tenant. Tenant Admin capabilities remain separate from Conference Manager Request operations. Tenant audit access requires `tenant:audit:read`; Tenant role administration requires `tenant:users:manage`; Microsoft 365 connection administration requires `tenant:integrations:manage`.
 
-Request workflow transitions are server-defined. The browser selects only a transition identifier; the policy determines eligible current state, target state, role/permission requirement and reason rule. An owning Employee may cancel an eligible own Request; a Conference Manager with `request:manage` may cancel any eligible same-Tenant Request, including another User's, from `Submitted`, `In Review`, `Confirmed` or `Change Requested`. `Rejected` is ineligible, an authorized already-`Cancelled` retry is idempotent, Tenant Admin alone receives no management scope and no public physical-delete path exists. Persistence includes the previously authorized status so concurrent changes yield a conflict instead of a stale overwrite.
+Request workflow transitions are server-defined. The browser selects only a transition identifier and binds the command to the visible Request version with one strong `If-Match` tag; the policy determines eligible current state, target state, role/permission requirement and reason rule. An owning Employee may cancel an eligible own Request; a Conference Manager with `request:manage` may cancel any eligible same-Tenant Request, including another User's, from `Submitted`, `In Review`, `Confirmed` or `Change Requested`. `Rejected` is ineligible, an already-target read is idempotent only at the exact current version under the original command authority, Tenant Admin alone receives no management scope and no public physical-delete path exists. An immediately preceding version cannot prove which operation or actor produced the terminal state and fails closed. The application rejects stale versions before integration work. Persistence includes both the previously authorized status and exact Request version in its lock check and mutation predicate so same-status ABA and concurrent changes yield a conflict instead of a stale overwrite.
 
 See `docs/AUTHORIZATION.md` for the complete role, permission and workflow matrix.
 
@@ -250,7 +250,7 @@ See `docs/AUDIT.md` for the normative event/integrity contract.
 
 Schema ownership lives in `migrations/`. Migrations are paired up/down files, numerically versioned, checksum protected and serialized by a PostgreSQL advisory lock.
 
-The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 34.
+The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 38.
 
 - Migration 001 establishes Tenant-owned product structures.
 - Migration 002 adds User security-version state and server-side sessions.
@@ -290,6 +290,10 @@ The application never auto-migrates at startup. Deployment automation runs migra
 - Migration 032 adds bounded readiness, Microsoft fleet-health and diagnostic projections.
 - Migration 033 adds metering, quota and runtime-deployment inventories and their immutable history.
 - Migration 034 irreversibly revokes all still-active pre-authorization-epoch Customer sessions. Its down migration cannot restore them, so old binaries cannot resolve superseded legacy cookies after rollback.
+- Migration 035 adds exact Request composition v3 Equipment constraints without rewriting v1/v2 evidence.
+- Migration 036 persists minimized requester and action attribution snapshots while retaining honest nullable legacy attribution.
+- Migration 037 adds nullable Site Guest Information and immutable Locations-revision guest maps without changing exact v1 contracts.
+- Migration 038 removes public execution of the Request-attribution marker and confines its migration-owner authority to schema-qualified SECURITY DEFINER triggers.
 
 Every migration that removes security/business evidence includes a fail-closed rollback guard.
 
@@ -323,8 +327,8 @@ listening. Its HTTP reset path performs the same bounded refresh after reset com
 returning success. Projection failure remains visible and is not represented as a rolled-back
 authoritative reset.
 
-The canonical schema remains migrations `001..034`; the Demo-only overlay is independently tracked
-as `demo-migrations/001..003`. Neither application process auto-migrates or auto-seeds. See
+The canonical schema remains migrations `001..038`; the Demo-only overlay is independently tracked
+as `demo-migrations/001..004`. Neither application process auto-migrates or auto-seeds. See
 `docs/SHARED-DEMO-RUNTIME.md` for provisioning and operations.
 
 ## Request composition architecture
@@ -374,7 +378,7 @@ See `docs/MICROSOFT365-CONNECTION.md` for the normative contract.
 
 Availability and provisional/final reservation validation first apply the Tenant-scoped local overlap rule. Provider-specific room/resource mapping remains inside provider adapters. Calendar create uses a deterministic server-derived SHA-256 idempotency key per numbered attempt so recovery of a pending external success can reuse the same provider event, while a retry after completed compensation receives a new key.
 
-Migration 017 extends the migration-006 reference so the attempt number, exact provider connection identity, create-time resource and deterministic key are audit-atomically persisted as `pending` before provider access. The real provider event reference is nullable only in that state and is finalized as `active` after Graph returns. Reserve/finalize and the final Request commit lock and revalidate the exact connected Integration and active Entra binding. Authority loss after create moves the reference through `compensating` to `compensated` and deletes the event; a later confirmation starts the next numbered attempt with a new key/current mapping. Pending reconciliation and cancellation keep using the persisted resource even after remapping or local disconnect. External provider work cannot participate in the PostgreSQL transaction; recovery uses persisted binding, idempotency and explicit compensation rather than claiming distributed atomicity.
+Migration 017 extends the migration-006 reference so the attempt number, exact provider connection identity, create-time resource and deterministic key are audit-atomically persisted as `pending` before provider access. The real provider event reference is nullable only in that state and is finalized as `active` after Graph returns. Reserve/finalize and the final Request commit lock and revalidate the exact connected Integration and active Entra binding. A write-enabled final commit also share-locks the exact active provider reference. Compensation and write-disabled pre-confirm cleanup require the exact eligible Request version under a Request share lock before changing `active` to `compensating`; therefore a parallel confirmation either commits while retaining the event or loses to already-owned cleanup. After external delete, write-disabled final confirmation locks the single exact `compensated` reference and changes it to terminal `cancelled` with Calendar audit evidence in the successful Request transaction after its room-conflict check. A conflict retains `compensated` for retry. Authority loss after create likewise moves the reference through `compensating` to `compensated`; a later confirmation starts the next numbered attempt with a new key/current mapping. Pending reconciliation and cancellation keep using the persisted resource even after remapping or local disconnect. External provider work cannot participate in the PostgreSQL transaction; recovery uses persisted binding, idempotency and explicit compensation rather than claiming distributed atomicity.
 
 Migration 018 stores `sites.time_zone` as nullable for pre-existing Sites. Catalog/Site-info/Configuration expose it as `timeZone`; Configuration writes require a valid IANA identifier. Request creation and room availability require the selected active room's active Site to have a valid value and share the exact canonical UTC interval contract with a 24-hour maximum. Request v2 additionally caps total participants at 500 and resolves Room price, service/catering applicability, policy and allocation only from current Tenant-scoped server state. Neither the backend nor browser may substitute browser-local time or UTC for an unknown Site zone or submit a price/policy fallback.
 
@@ -394,7 +398,7 @@ See `docs/BOOKING-INTEGRATION.md` and `docs/MICROSOFT365-CONNECTION.md`.
   append-only Request revisions.
 - `GET /api/v1/requests/{requestId}/room-context` applies that object scope before returning the
   current minimized Room/Site presentation for the Request's server-loaded Room ID.
-- `POST /api/v1/requests/{requestId}/transitions` additionally requires CSRF and executes only a server-defined authorized transition.
+- `POST /api/v1/requests/{requestId}/transitions` additionally requires CSRF and a strong `If-Match` Request-version precondition, then executes only a server-defined authorized transition.
 - `POST /api/v1/application/requests` creates only complete schema-v2 Requests from current
   server-authoritative Tenant configuration.
 - `POST /api/v1/application/requests/{requestId}/resubmissions` performs owner-only,
@@ -435,3 +439,24 @@ The foundation rate limiter is local, in-memory and bounded. It is not a multi-i
 - The #114 backend create/list/transition and room-availability contracts are implemented. Production hosting/IaC, cross-repository frontend acceptance and production-like secure E2E evidence remain external gates across #113-#115; they do not own the missing post-confirmation update workflow.
 - Platform Admin/developer operator Principal and audit APIs remain a separate authorization domain.
 - External audit anchoring/WORM retention and selected-platform backup/restore evidence remain operational/governance decisions before stronger completeness or recovery claims are made.
+
+## Equipment composition rollout
+
+Migration 035 adds exact Request composition v3 Equipment constraints to the existing Request,
+revision and booking-change JSON snapshots. Existing v1/v2 data is not rewritten. Create,
+resubmit, transition, history and confirmed-change paths support the accepted nested version,
+while the outer response envelopes remain unchanged. Equipment is resolved using existing
+Tenant-composite Catalogue tables, charged once and included in allocation.
+
+The `saas-3.6-shared-demo-v5` reset fixture contains distinct priced Northwind/Contoso Equipment
+and verifies those identity, price and applicability facts during semantic readback. Demo overlay
+004 grants only the reset role's `INSERT` and `TRUNCATE` access to the canonical attribution
+migration-state table; customer and Platform roles receive no access. Apply canonical migrations
+first, apply Demo overlays 001 through 004, reset/reseed Demo, deploy both API processes at one
+compatible SHA, verify Catalogue pages and then pin/deploy the updated frontend. Down 035 refuses
+once any v3 snapshot/proposal/history exists; use a compatible binary or a forward fix. Production
+never activates Demo authority.
+
+## Site Guest Information boundary
+
+`site-guest-information.js` is a provider-neutral exact-schema public-presentation validator with a fixed public map-origin allowlist and no imports or network transport. Locations v2 owns its Site configuration; the existing Request service authorizes before a final Tenant/Request/version/status-bound repository projection. Separate Site/revision columns preserve v1 writers and immutable history. See `docs/SITE-GUEST-INFORMATION.md`.

@@ -4,7 +4,7 @@ import { isRequestId } from '../domain/request.js';
 import { decodeOpaqueCursor, encodeOpaqueCursor } from './opaque-cursor.js';
 
 const INTEGER = /^[1-9][0-9]?$/;
-const CURSOR_PURPOSE = 'request-history-v2';
+const CURSOR_PURPOSE = 'request-history-v3';
 const CURSOR_TTL_MILLISECONDS = 30 * 60 * 1_000;
 
 export const REQUEST_HISTORY_DEFAULT_LIMIT = 10;
@@ -58,7 +58,7 @@ function decodeCursor(value, { requestId, tenantId, cursorSecret, evaluatedAt })
     'version', 'tenantId', 'requestId', 'asOfVersion', 'beforeVersion', 'expiresAt',
   ]);
   if (
-    cursor.version !== 2
+    cursor.version !== 3
     || cursor.tenantId !== tenantId
     || cursor.requestId !== requestId
     || !positiveVersion(cursor.asOfVersion)
@@ -107,7 +107,7 @@ export function createRequestHistoryCursor({
   ) invalid('REQUEST_HISTORY_CURSOR_INVALID');
   const issuedAt = utcInstant(evaluatedAt);
   return encodeOpaqueCursor({
-    version: 2,
+    version: 3,
     tenantId,
     requestId,
     asOfVersion,

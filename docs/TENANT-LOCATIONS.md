@@ -100,3 +100,7 @@ Migration rollback is fail-closed after versioned/domain use and requires review
 - frontend ownership-projection tests showing Conference Manager preserves Sites/`siteId` and Tenant Admin preserves Room business fields;
 - shared-Demo browser evidence on the same server-backed API contract;
 - provider discovery/import/resync evidence remains separate external acceptance and never substitutes for local authorization tests.
+
+## Explicit version 2 Guest Information
+
+Locations v2 adds nullable Site-owned `guestInformation`; v1 reads omit it and v1 writes, rollbacks and bulk operations preserve it. Guest changes use the same locked revision, Site-field authorization, immutable history and audit transaction. See `docs/SITE-GUEST-INFORMATION.md` for exact configuration, negotiation and migration 037.

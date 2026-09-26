@@ -11,8 +11,8 @@ import { AuthorizationDeniedError } from '../src/authorization/errors.js';
 import { createAuthorizationPolicy, tenantAuthorizationSnapshot } from '../src/authorization/policy.js';
 import { normalizeBookingChange } from '../src/domain/booking-change.js';
 import {
-  createRequestV2Snapshot,
-  priceRequestComposition,
+  createRequestCompositionSnapshot,
+  priceRequestCompositionForSchemaVersion,
 } from '../src/domain/request-composition.js';
 import { normalizeRequest, toPublicRequest } from '../src/domain/request.js';
 
@@ -50,7 +50,7 @@ function proposed(overrides = {}) {
   };
 }
 
-function v2Snapshot(input, requestVersion) {
+function v2Snapshot(input, requestVersion, schemaVersion = 2) {
   const capturedAt = '2026-08-26T10:00:00.000Z';
   const room = {
     id: input.roomId,
@@ -65,14 +65,18 @@ function v2Snapshot(input, requestVersion) {
     siteId: 'site-1',
     roomId: input.roomId,
     services: [],
-    equipment: [],
+    equipment: (input.equipmentIds ?? []).map((id) => ({
+      id, name: `Equipment ${id}`, description: null, price: { amountMinor: 2500, currency: 'EUR' },
+    })),
     cateringItems: [],
     catering: [],
   };
-  const pricing = priceRequestComposition({
+  const pricing = priceRequestCompositionForSchemaVersion({
+    schemaVersion,
     draft: input, room, catalogueSnapshot, defaultCurrency: 'EUR',
   });
-  return createRequestV2Snapshot({
+  return createRequestCompositionSnapshot({
+    schemaVersion,
     draft: input,
     requestVersion,
     capturedAt,
@@ -115,6 +119,7 @@ function request(overrides = {}) {
     tenantId: TENANT_ID,
     id: 'CR-68',
     requesterUserId: REQUESTER_ID,
+    requesterAttribution: { displayName: 'Persisted requester' },
     roomId: 'room-1',
     status: 'Confirmed',
     statusReason: null,
@@ -135,6 +140,9 @@ function change(overrides = {}) {
     id: CHANGE_ID,
     requestId: 'CR-68',
     initiatorUserId: REQUESTER_ID,
+    initiatorAttribution: { displayName: 'Persisted initiator', roleAtAction: 'employee' },
+    deciderAttribution: overrides.decidedByUserId
+      ? { displayName: 'Persisted manager', roleAtAction: 'conference_manager' } : null,
     status: 'pending',
     roomId: 'room-1',
     startsAt: '2026-09-01T10:00:00.000Z',
@@ -203,6 +211,7 @@ function service({
       return change({
         status: 'applying',
         decidedByUserId: MANAGER_ID,
+    deciderAttribution: { displayName: 'Persisted manager', roleAtAction: 'conference_manager' },
         moveAttemptNumber: values.moveAttemptNumber,
         recoveryPhase: 'target_active',
         calendarReplacement: values.calendarReplacement,
@@ -213,6 +222,7 @@ function service({
       return change({
         status: 'applying',
         decidedByUserId: MANAGER_ID,
+    deciderAttribution: { displayName: 'Persisted manager', roleAtAction: 'conference_manager' },
         moveAttemptNumber: values.moveAttemptNumber,
         recoveryPhase: 'restore_pending',
         calendarReplacement: values.calendarReplacement ?? movedCalendarResult().replacement,
@@ -227,6 +237,7 @@ function service({
       return change({
         status: 'applying',
         decidedByUserId: MANAGER_ID,
+    deciderAttribution: { displayName: 'Persisted manager', roleAtAction: 'conference_manager' },
         moveAttemptNumber: values.moveAttemptNumber,
         recoveryPhase: 'reconciliation_required',
         calendarReplacement: values.calendarReplacement,
@@ -325,6 +336,7 @@ test('v2 booking-change responses expose the authoritative next-version Request 
     ...pending,
     status: 'rejected',
     decidedByUserId: MANAGER_ID,
+    deciderAttribution: { displayName: 'Persisted manager', roleAtAction: 'conference_manager' },
     rejectionReason: 'Room layout cannot be supported.',
   });
   const { instance } = service({
@@ -383,6 +395,126 @@ test('v2 booking-change responses expose the authoritative next-version Request 
     rejectionReason: 'Room layout cannot be supported.',
   });
   assert.deepEqual(rejectedResult.change.proposedRequest, expected);
+});
+
+test('latest rejected attribution remains visible without blocking a later Employee or Manager proposal', async () => {
+  const { current, nextDraft, pending } = v2PendingChange({
+    specialRequirements: 'Persisted terminal proposal',
+  });
+  const rejected = normalizeBookingChange({
+    ...pending,
+    status: 'rejected',
+    decidedByUserId: MANAGER_ID,
+    deciderAttribution: { displayName: 'Persisted manager', roleAtAction: 'conference_manager' },
+    rejectionReason: 'Use a different layout.',
+    updatedAt: '2026-08-26T10:00:01.000Z',
+  });
+  for (const [actor, expectedRole] of [
+    [principal(REQUESTER_ID, ['employee']), 'employee'],
+    [principal(MANAGER_ID, ['employee', 'conference_manager']), 'conference_manager'],
+  ]) {
+    const proposals = [];
+    const { instance } = service({
+      current,
+      repository: {
+        async findOpen() { return rejected; },
+        async propose(values) {
+          proposals.push(values);
+          return {
+            status: 'pending',
+            change: normalizeBookingChange({
+              ...pending,
+              initiatorUserId: actor.userId,
+              initiatorAttribution: {
+                displayName: 'Persisted next initiator',
+                roleAtAction: values.initiatorRoleAtAction,
+              },
+            }),
+            request: current,
+          };
+        },
+      },
+    });
+    const visible = await instance.findOpen({
+      principal: actor,
+      tenantContext: { tenantId: TENANT_ID, status: 'active' },
+      correlationId: CORRELATION_ID,
+      requestId: 'CR-68',
+    });
+    assert.equal(visible.change.status, 'rejected');
+    assert.deepEqual(visible.change.deciderAttribution, {
+      displayName: 'Persisted manager', roleAtAction: 'conference_manager',
+    });
+    const created = await instance.propose({
+      principal: actor,
+      tenantContext: { tenantId: TENANT_ID, status: 'active' },
+      correlationId: CORRELATION_ID,
+      requestId: 'CR-68',
+      schemaVersion: 2,
+      expectedVersion: 1,
+      proposed: nextDraft,
+    });
+    assert.equal(created.change.status, 'pending');
+    assert.equal(proposals.length, 1);
+    assert.equal(proposals[0].initiatorRoleAtAction, expectedRole);
+  }
+});
+
+test('a cancellation exposes its latest superseded proposal with separate persisted attribution', async () => {
+  const baseDraft = proposed({
+    startsAt: '2026-09-01T08:00:00.000Z',
+    endsAt: '2026-09-01T09:00:00.000Z',
+    internalParticipants: 2,
+  });
+  const nextDraft = proposed({ ...baseDraft, roomId: 'room-2' });
+  const pending = change({
+    requestSchemaVersion: 2,
+    baseRequestVersion: 1,
+    requestDraft: nextDraft,
+    proposedRequestSnapshot: v2Snapshot(nextDraft, 2),
+    roomId: nextDraft.roomId,
+    startsAt: nextDraft.startsAt,
+    endsAt: nextDraft.endsAt,
+    internalParticipants: nextDraft.internalParticipants,
+    externalParticipants: nextDraft.externalParticipants,
+  });
+  const supersededAt = '2026-08-26T10:00:02.000Z';
+  const superseded = normalizeBookingChange({
+    ...pending,
+    status: 'superseded',
+    decidedByUserId: MANAGER_ID,
+    deciderAttribution: { displayName: 'Persisted manager', roleAtAction: 'conference_manager' },
+    updatedAt: supersededAt,
+  });
+  const cancelled = request({
+    schemaVersion: 2,
+    version: 2,
+    status: 'Cancelled',
+    statusChangedAt: supersededAt,
+    updatedAt: supersededAt,
+    snapshot: v2Snapshot(baseDraft, 2),
+  });
+  const { instance } = service({
+    current: cancelled,
+    repository: { async findOpen() { return superseded; } },
+  });
+  const visible = await instance.findOpen({
+    principal: principal(REQUESTER_ID, ['employee']),
+    tenantContext: { tenantId: TENANT_ID, status: 'active' },
+    correlationId: CORRELATION_ID,
+    requestId: 'CR-68',
+  });
+  assert.equal(visible.change.status, 'superseded');
+  assert.deepEqual(visible.change.initiatorAttribution, {
+    displayName: 'Persisted initiator', roleAtAction: 'employee',
+  });
+  assert.deepEqual(visible.change.deciderAttribution, {
+    displayName: 'Persisted manager', roleAtAction: 'conference_manager',
+  });
+  assert.deepEqual(visible.requestRef, {
+    id: 'CR-68', schemaVersion: 2, version: 2, status: 'Cancelled',
+  });
+  assert.equal(visible.change.proposedRequest.status, 'Cancelled');
 });
 
 test('legacy booking-change responses expose no fabricated proposed Request', async () => {
@@ -750,6 +882,7 @@ test('v2 composition-only approval applies its immutable snapshot without a cale
             ...pending,
             status: 'applying',
             decidedByUserId: MANAGER_ID,
+    deciderAttribution: { displayName: 'Persisted manager', roleAtAction: 'conference_manager' },
           }),
           request: current,
         };
@@ -776,6 +909,7 @@ test('approval resumes a persisted applying proposal with its stable attempt ide
     ...pending,
     status: 'applying',
     decidedByUserId: MANAGER_ID,
+    deciderAttribution: { displayName: 'Persisted manager', roleAtAction: 'conference_manager' },
     moveAttemptNumber: 1,
     recoveryPhase: 'move_pending',
   });
@@ -861,6 +995,7 @@ test('unknown finish response rereads committed state and never rolls back an ap
     ...pending,
     status: 'applying',
     decidedByUserId: MANAGER_ID,
+    deciderAttribution: { displayName: 'Persisted manager', roleAtAction: 'conference_manager' },
     moveAttemptNumber: 1,
     recoveryPhase: 'move_pending',
   });
@@ -1087,6 +1222,7 @@ test('room move validates and audits its replacement before atomic application',
             ...pending,
             status: 'applying',
             decidedByUserId: MANAGER_ID,
+    deciderAttribution: { displayName: 'Persisted manager', roleAtAction: 'conference_manager' },
           }),
           request: current,
         };
@@ -1123,6 +1259,7 @@ test('room-move target-state failure enters durable reconciliation without guess
             ...pending,
             status: 'applying',
             decidedByUserId: MANAGER_ID,
+    deciderAttribution: { displayName: 'Persisted manager', roleAtAction: 'conference_manager' },
           }),
           request: current,
         };
@@ -1167,6 +1304,7 @@ test('malformed room-move success cannot apply without a validated provider-refe
             ...pending,
             status: 'applying',
             decidedByUserId: MANAGER_ID,
+    deciderAttribution: { displayName: 'Persisted manager', roleAtAction: 'conference_manager' },
           }),
           request: current,
         };
@@ -1207,6 +1345,7 @@ test('a thrown room-move call performs no outer rollback when the factory owns c
             ...pending,
             status: 'applying',
             decidedByUserId: MANAGER_ID,
+    deciderAttribution: { displayName: 'Persisted manager', roleAtAction: 'conference_manager' },
           }),
           request: current,
         };
@@ -1236,6 +1375,7 @@ test('unknown target-create outcome stays applying so retry retains the same mov
     ...pending,
     status: 'applying',
     decidedByUserId: MANAGER_ID,
+    deciderAttribution: { displayName: 'Persisted manager', roleAtAction: 'conference_manager' },
     moveAttemptNumber: 1,
     recoveryPhase: 'move_pending',
   });
@@ -1270,4 +1410,47 @@ test('unknown target-create outcome stays applying so retry retains the same mov
   assert.deepEqual(attempts, [1, 1]);
   assert.equal(calls.some(([name]) => name === 'pending'), false);
   assert.equal(calls.some(([name]) => name === 'rollback'), false);
+});
+
+
+test('v3 booking changes reject empty and hybrid proposals and expose immutable Equipment', async () => {
+  const baseDraft = proposed({
+    startsAt: '2026-09-01T08:00:00.000Z', endsAt: '2026-09-01T09:00:00.000Z',
+    internalParticipants: 2, equipmentIds: ['display'],
+  });
+  const current = request({ schemaVersion: 3, version: 1, snapshot: v2Snapshot(baseDraft, 1, 3) });
+  let persisted = null;
+  const { instance, calls } = service({ current, repository: {
+    async propose(values) {
+      calls.push(['propose-v3', values]);
+      persisted = change({
+        requestSchemaVersion: values.schemaVersion, requestDraft: values.proposal, baseRequestVersion: 1,
+        proposedRequestSnapshot: v2Snapshot(values.proposal, 2, values.schemaVersion),
+        roomId: values.proposal.roomId, startsAt: values.proposal.startsAt, endsAt: values.proposal.endsAt,
+        internalParticipants: values.proposal.internalParticipants,
+        externalParticipants: values.proposal.externalParticipants,
+      });
+      return { status: 'pending', change: persisted, request: current };
+    },
+    async findOpen() { return persisted; },
+  } });
+  const context = {
+    principal: principal(REQUESTER_ID, ['employee']), tenantContext: { tenantId: TENANT_ID, status: 'active' },
+    correlationId: CORRELATION_ID, requestId: 'CR-68', expectedVersion: 1,
+  };
+  await assert.rejects(instance.propose({ ...context, schemaVersion: 3, proposed: baseDraft }),
+    { code: 'BOOKING_CHANGE_EMPTY' });
+  await assert.rejects(instance.propose({ ...context, schemaVersion: 2, proposed: baseDraft }));
+  const { equipmentIds, ...v2Draft } = baseDraft;
+  assert.equal(equipmentIds.length, 1);
+  await assert.rejects(instance.propose({ ...context, schemaVersion: 3, proposed: v2Draft }));
+  assert.equal(calls.length, 0);
+  const result = await instance.propose({ ...context, schemaVersion: 3,
+    proposed: { ...baseDraft, equipmentIds: ['projector'] } });
+  assert.equal(calls[0][1].schemaVersion, 3);
+  assert.equal(result.change.requestSchemaVersion, 3);
+  assert.deepEqual(result.change.proposedRequest.details.equipmentIds, ['projector']);
+  assert.equal(result.change.proposedRequest.pricing.equipment[0].equipment.name, 'Equipment projector');
+  assert.deepEqual(current.snapshot.details.equipmentIds, ['display']);
+  assert.deepEqual((await instance.findOpen(context)).change, result.change);
 });

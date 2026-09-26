@@ -6,6 +6,7 @@ import {
 } from '../src/application/production-application-service.js';
 import {
   AuthorizationDeniedError,
+  AuthorizationInputError,
   RequestStateConflictError,
 } from '../src/authorization/errors.js';
 import {
@@ -116,6 +117,7 @@ function storedRequest(id, startsAt, overrides = {}) {
     tenantId: TENANT_A,
     id,
     requesterUserId: USER_A,
+    requesterAttribution: { displayName: 'Persisted requester' },
     schemaVersion: 2,
     version: 1,
     roomId: draft.roomId,
@@ -165,9 +167,36 @@ function tenantAdmin(overrides = {}) {
   });
 }
 
+function catalogPageResult(entries = [], overrides = {}) {
+  return {
+    status: 'ready',
+    configurationRevisions: revisions(),
+    defaultCurrency: 'EUR',
+    entries,
+    bookingPolicy: {
+      policyVersionId: 'platform-default-v1',
+      effectiveFrom: '1970-01-01T00:00:00.000Z',
+      evaluatedAt: AT,
+      rules: {
+        minimumLeadTimeMinutes: 0,
+        maximumAdvanceMinutes: 527_040,
+        cancellationWindowMinutes: 0,
+        changeWindowMinutes: 0,
+        maximumParticipants: 100_000,
+        allowedSiteIds: [],
+        allowedRoomIds: [],
+        allowedServiceIds: [],
+      },
+    },
+    allocationRequired: false,
+    ...overrides,
+  };
+}
+
 function harness({
   bookingContext = { roomActive: true, siteActive: true, timeZone: 'Europe/Berlin' },
   roomAvailabilityService = null,
+  catalogPageLoader = null,
 } = {}) {
   const calls = [];
   const repository = {
@@ -181,28 +210,7 @@ function harness({
     },
     async loadCatalogPage(args) {
       calls.push(['loadCatalogPage', args]);
-      return {
-        status: 'ready',
-        configurationRevisions: revisions(),
-        defaultCurrency: 'EUR',
-        entries: [],
-        bookingPolicy: {
-          policyVersionId: 'platform-default-v1',
-          effectiveFrom: '1970-01-01T00:00:00.000Z',
-          evaluatedAt: AT,
-          rules: {
-            minimumLeadTimeMinutes: 0,
-            maximumAdvanceMinutes: 527_040,
-            cancellationWindowMinutes: 0,
-            changeWindowMinutes: 0,
-            maximumParticipants: 100_000,
-            allowedSiteIds: [],
-            allowedRoomIds: [],
-            allowedServiceIds: [],
-          },
-        },
-        allocationRequired: false,
-      };
+      return catalogPageLoader ? catalogPageLoader(args) : catalogPageResult();
     },
     async loadSites(tenantId) {
       calls.push(['loadSites', tenantId]);
@@ -247,6 +255,7 @@ function harness({
         tenantId: args.tenantId,
         id: args.requestId,
         requesterUserId: args.requesterUserId,
+        requesterAttribution: { displayName: 'Persisted requester' },
         schemaVersion: 2,
         version: 1,
         roomId: draft.roomId,
@@ -280,6 +289,37 @@ function harness({
   });
   return { service, calls, requestRepository };
 }
+
+test('profile updates normalize legitimate Unicode and reject format-control attribution sources', async () => {
+  const { service, calls } = harness();
+  const context = {
+    principal: employee(),
+    tenantContext: { tenantId: TENANT_A },
+    correlationId: CORRELATION_ID,
+  };
+  for (const displayName of [
+    'Manager\u202eresU',
+    'Zero\u200bWidth',
+    'Isolate\u2066Admin\u2069',
+    'Word\ufeffJoin',
+    'Boundary control\ufeff',
+  ]) {
+    await assert.rejects(
+      service.updateProfile({ ...context, profile: { displayName } }),
+      (error) => error instanceof AuthorizationInputError
+        && error.code === 'PROFILE_DISPLAY_NAME_INVALID',
+    );
+  }
+  assert.equal(calls.length, 0);
+
+  const updated = await service.updateProfile({
+    ...context,
+    profile: { displayName: ' Jose\u0301 山田 ' },
+  });
+  assert.deepEqual(updated, { displayName: 'José 山田' });
+  assert.equal(calls[0][0], 'updateProfile');
+  assert.equal(calls[0][1].displayName, 'José 山田');
+});
 
 test('request list scope is employee-owned and manager tenant-wide', async () => {
   const { service, calls } = harness();
@@ -441,6 +481,88 @@ test('request drafting catalog pages bind current cost allocation, policy and fr
   }]]);
 });
 
+test('equipment catalog pages preserve the v2 envelope, exact projection and stale-generation failure', async () => {
+  const equipment = [{
+    id: 'display-a',
+    name: 'Presentation display',
+    description: 'Large mobile display',
+    active: true,
+    order: 20,
+    price: { amountMinor: 1250, currency: 'EUR' },
+    siteIds: ['site-a'],
+    roomIds: ['room-a'],
+  }, {
+    id: 'projector-b',
+    name: 'Projector',
+    description: null,
+    active: true,
+    order: 10,
+    price: { amountMinor: 2500, currency: 'EUR' },
+    siteIds: [],
+    roomIds: [],
+  }];
+  let stale = false;
+  const { service, calls } = harness({
+    catalogPageLoader(args) {
+      if (stale) return { status: 'stale' };
+      if (args.section !== 'equipment') return catalogPageResult();
+      return catalogPageResult(args.afterId === null ? equipment : equipment.slice(1));
+    },
+  });
+  const bootstrap = await service.getCatalog({
+    principal: employee(),
+    tenantContext: { tenantId: TENANT_A },
+    correlationId: CORRELATION_ID,
+    query: { section: 'sites', limit: undefined, cursor: undefined, context: undefined },
+  });
+  const first = await service.getCatalog({
+    principal: employee(),
+    tenantContext: { tenantId: TENANT_A },
+    correlationId: CORRELATION_ID,
+    query: { section: 'equipment', limit: '1', cursor: undefined, context: bootstrap.context },
+  });
+  assert.equal(first.schemaVersion, 2);
+  assert.equal(first.section, 'equipment');
+  assert.deepEqual(first.entries, [equipment[0]]);
+  assert.equal(first.page.complete, false);
+  assert.equal(typeof first.page.nextCursor, 'string');
+  assert.deepEqual(calls.at(-1), ['loadCatalogPage', {
+    tenantId: TENANT_A,
+    section: 'equipment',
+    afterId: null,
+    limit: 2,
+    expectedRevisions: revisions(),
+    expectedPolicyVersionId: 'platform-default-v1',
+  }]);
+
+  const second = await service.getCatalog({
+    principal: employee(),
+    tenantContext: { tenantId: TENANT_A },
+    correlationId: CORRELATION_ID,
+    query: {
+      section: 'equipment', limit: '1', cursor: first.page.nextCursor, context: undefined,
+    },
+  });
+  assert.deepEqual(second.entries, [equipment[1]]);
+  assert.deepEqual(second.page, { limit: 1, complete: true, nextCursor: null });
+  assert.deepEqual(calls.at(-1)[1], {
+    tenantId: TENANT_A,
+    section: 'equipment',
+    afterId: 'display-a',
+    limit: 2,
+    expectedRevisions: revisions(),
+    expectedPolicyVersionId: 'platform-default-v1',
+  });
+
+  stale = true;
+  await assert.rejects(service.getCatalog({
+    principal: employee(),
+    tenantContext: { tenantId: TENANT_A },
+    correlationId: CORRELATION_ID,
+    query: { section: 'equipment', limit: '1', cursor: undefined, context: bootstrap.context },
+  }), RequestStateConflictError);
+});
+
 test('request creation rejects authority-shaped fields and derives identity/status server-side', async () => {
   const { service, calls } = harness();
   await assert.rejects(
@@ -543,6 +665,7 @@ test('owner resubmission delegates the complete v2 draft and maps stale state to
       tenantId: args.tenantId,
       id: args.requestId,
       requesterUserId: args.requesterUserId,
+      requesterAttribution: { displayName: 'Persisted requester' },
       schemaVersion: 2,
       version: args.expectedVersion + 1,
       roomId: args.requestDraft.roomId,

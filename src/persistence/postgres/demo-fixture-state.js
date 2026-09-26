@@ -180,10 +180,10 @@ async function seedTenantBusinessState(client, fixture) {
       await client.query({
         name: 'demo-fixture-insert-site',
         text: `
-          INSERT INTO sites (tenant_id, id, name, active, time_zone, details, created_at, updated_at)
-          VALUES ($1, $2, $3, true, 'Etc/UTC', '{}'::jsonb, $4, $4)
+          INSERT INTO sites (tenant_id, id, name, active, time_zone, details, created_at, updated_at, guest_information)
+          VALUES ($1, $2, $3, true, 'Etc/UTC', '{}'::jsonb, $4, $4, $5::jsonb)
         `,
-        values: [tenant.id, location.id, location.name, fixture.fixedClock],
+        values: [tenant.id, location.id, location.name, fixture.fixedClock, JSON.stringify(location.guestInformation)],
       });
       for (const room of location.rooms) {
         await client.query({
@@ -233,6 +233,32 @@ async function seedTenantBusinessState(client, fixture) {
         `,
         values: [tenant.id, service, displayName(service), tenant.settings.catalogue.currency, fixture.fixedClock],
       });
+    }
+    for (const equipment of tenant.settings.catalogue.equipment) {
+      await client.query({
+        name: 'demo-fixture-insert-equipment',
+        text: `
+          INSERT INTO equipment (
+            tenant_id, id, name, description, active, sort_order, price_minor, currency, created_at, updated_at
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)
+        `,
+        values: [tenant.id, equipment.id, equipment.name, equipment.description, equipment.active,
+          equipment.order, equipment.price.amountMinor, equipment.price.currency, fixture.fixedClock],
+      });
+      for (const siteId of equipment.siteIds) {
+        await client.query({
+          name: 'demo-fixture-insert-equipment-site',
+          text: 'INSERT INTO equipment_site_applicability (tenant_id,equipment_id,site_id) VALUES ($1,$2,$3)',
+          values: [tenant.id, equipment.id, siteId],
+        });
+      }
+      for (const roomId of equipment.roomIds) {
+        await client.query({
+          name: 'demo-fixture-insert-equipment-room',
+          text: 'INSERT INTO equipment_room_applicability (tenant_id,equipment_id,room_id) VALUES ($1,$2,$3)',
+          values: [tenant.id, equipment.id, roomId],
+        });
+      }
     }
     for (const request of tenant.requests) {
       await client.query({
@@ -523,7 +549,7 @@ export async function readDemoSemanticState({ client } = {}) {
     ORDER BY tenant.id
   `);
   const locations = await readRows(client, 'demo-fixture-read-sites', `
-    SELECT tenant_id, id, name FROM sites ORDER BY tenant_id, id
+    SELECT tenant_id, id, name, guest_information FROM sites ORDER BY tenant_id, id
   `);
   const rooms = await readRows(client, 'demo-fixture-read-rooms', `
     SELECT room.tenant_id, room.site_id, room.id, room.name, room.capacity,
@@ -535,6 +561,17 @@ export async function readDemoSemanticState({ client } = {}) {
   `);
   const services = await readRows(client, 'demo-fixture-read-services', `
     SELECT tenant_id, id, currency FROM services ORDER BY tenant_id, id
+  `);
+  const equipment = await readRows(client, 'demo-fixture-read-equipment', `
+    SELECT entry.tenant_id, entry.id, entry.name, entry.description, entry.active,
+      entry.sort_order, entry.price_minor, entry.currency,
+      ARRAY(SELECT site_id FROM equipment_site_applicability relation
+        WHERE relation.tenant_id = entry.tenant_id AND relation.equipment_id = entry.id
+        ORDER BY site_id) AS site_ids,
+      ARRAY(SELECT room_id FROM equipment_room_applicability relation
+        WHERE relation.tenant_id = entry.tenant_id AND relation.equipment_id = entry.id
+        ORDER BY room_id) AS room_ids
+    FROM equipment entry ORDER BY entry.tenant_id, entry.id
   `);
   const requests = await readRows(client, 'demo-fixture-read-requests', `
     SELECT tenant_id, id, requester_user_id, room_id, status, starts_at, ends_at,
@@ -633,6 +670,7 @@ export async function readDemoSemanticState({ client } = {}) {
         .map((location) => ({
           id: location.id,
           name: location.name,
+          guestInformation: location.guest_information,
           rooms: rooms
             .filter(({ tenant_id: tenantId, site_id: siteId }) => (
               tenantId === tenant.id && siteId === location.id
@@ -649,6 +687,12 @@ export async function readDemoSemanticState({ client } = {}) {
           .filter(({ tenant_id: tenantId }) => tenantId === tenant.id)
           .map(({ id }) => id),
         currency: tenant.default_currency,
+        equipment: equipment.filter((entry) => entry.tenant_id === tenant.id).map((entry) => ({
+          id: entry.id, name: entry.name, description: entry.description, active: entry.active,
+          order: safeInteger(entry.sort_order),
+          price: { amountMinor: safeInteger(entry.price_minor), currency: entry.currency },
+          siteIds: entry.site_ids, roomIds: entry.room_ids,
+        })),
       },
     },
     requests: requests

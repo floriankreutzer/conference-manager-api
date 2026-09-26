@@ -15,8 +15,8 @@ const ROLES = Object.freeze({
 
 test('Demo migration stream is versioned independently from Production', async () => {
   const [production, demo] = await Promise.all([loadMigrations(), loadDemoMigrations()]);
-  assert.equal(production.at(-1).version, 34);
-  assert.equal(demo.length, 3);
+  assert.equal(production.at(-1).version, 38);
+  assert.equal(demo.length, 4);
   assert.equal(demo[0].version, 1);
   assert.equal(demo[0].name, 'demo_runtime_foundation');
   assert.match(demo[0].checksum, /^[0-9a-f]{64}$/);
@@ -52,6 +52,14 @@ test('Demo migration stream is versioned independently from Production', async (
   assert.equal(demo[2].name, 'runtime_schema_readiness_grants');
   assert.match(demo[2].up, /GRANT SELECT ON schema_migrations TO %I, %I/);
   assert.match(demo[2].down, /REVOKE SELECT ON schema_migrations FROM %I, %I/);
+  assert.equal(demo[3].version, 4);
+  assert.equal(demo[3].name, 'request_attribution_reset_grants');
+  assert.match(demo[3].up,
+    /GRANT INSERT, TRUNCATE ON TABLE public\.request_attribution_migration_state TO %I/);
+  assert.match(demo[3].down,
+    /REVOKE INSERT, TRUNCATE ON TABLE public\.request_attribution_migration_state FROM %I/);
+  assert.doesNotMatch(demo[3].up, /GRANT (?:SELECT|UPDATE|DELETE|REFERENCES|TRIGGER)/);
+  assert.doesNotMatch(demo[3].up, /customer_role|platform_role/);
 });
 
 test('Demo migration runner reads Production readiness but writes only its own ledger', async () => {
@@ -60,7 +68,7 @@ test('Demo migration runner reads Production readiness but writes only its own l
     async query(query, values) {
       queries.push({ query, values });
       if (query?.name === 'demo-migration-production-schema') {
-        return { rows: [{ versions: Array.from({ length: 34 }, (_, index) => index + 1) }] };
+        return { rows: [{ versions: Array.from({ length: 38 }, (_, index) => index + 1) }] };
       }
       if (typeof query === 'string' && query.includes('SELECT version, name, checksum')) return { rows: [] };
       return { rows: [], rowCount: 0 };

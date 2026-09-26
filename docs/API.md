@@ -142,10 +142,11 @@ See `docs/IDENTITY-SESSION.md`.
 
 The production browser uses one same-origin, server-authoritative application contract. Legacy
 profile, Site-information, availability, notification and configuration envelopes remain schema
-version 1. Request drafting, list, detail, transition, history, booking-change and reporting
-contracts are schema version 2; the auxiliary current-Room context is an explicit schema-version-1
-read projection. The browser positively validates the documented endpoint-specific
-shape and never falls back to Demo storage.
+version 1, and the drafting Catalogue remains schema version 2. Request list/create/resubmit,
+detail, transition, history, booking-change and reporting response envelopes are schema version 3;
+their nested Request composition version remains independently 1, 2 or 3. The auxiliary
+current-Room context is an explicit schema-version-1 read projection. The browser positively
+validates the documented endpoint-specific shape and never falls back to Demo storage.
 
 The current routes are:
 
@@ -160,7 +161,7 @@ The current routes are:
 - `PATCH /api/v1/application/notifications/{notificationId}`;
 - `GET /api/v1/application/configuration`.
 
-All routes derive Tenant and User authority from the resolved Principal. Mutations require CSRF and exact positive-schema bodies. Public representations omit internal Tenant ownership, requester identity, provider identities/references, credentials, audit-chain material and other authority-shaped infrastructure fields.
+All routes derive Tenant and User authority from the resolved Principal. Mutations require CSRF and exact positive-schema bodies. Public Request representations expose only the immutable `requesterAttribution.displayName`; action history exposes only immutable display-name and role-at-action snapshots. Attribution display names are trimmed NFC Unicode and reject Cc/Cf/Cs controls and surrogates, bidirectional overrides/isolates, line separators and zero-width controls before persistence or projection. They omit internal Tenant/User IDs, email, provider identities/references, credentials, current roles/activity, audit-chain material and other authority-shaped infrastructure fields.
 
 Employee Request lists are restricted to server-side ownership. Conference Managers with the separate Request management permission receive the Tenant-wide Request list. Configuration ownership is role- and field-specific: Tenant Admin plus `tenant:configure` owns Organization, Booking Policies, Cost Allocation, Sites and technical Room assignment; Conference Manager plus `tenant:rooms:business:manage` owns Room business fields, and Conference Manager plus `tenant:catalogue:manage` owns Catalogue and Room prices. A mixed Locations mutation requires both capabilities and therefore a dual-role Principal. Neither elevated role inherits the other.
 
@@ -175,7 +176,7 @@ The client supplies that context for the first page of every other section and f
 section's cursor until `complete` is true. A stale generation returns HTTP 409; the client discards
 all partial data and restarts from Sites. Each page is produced from a coherent repeatable-read
 snapshot, contains at most ten entries and is additionally response-byte bounded. Supported
-sections are `sites`, `rooms`, `services`, `cateringPackages`, `cateringItems` and `costCenters`.
+sections are `sites`, `rooms`, `services`, `equipment`, `cateringPackages`, `cateringItems` and `costCenters`.
 Only entries from the active drafting catalogue are returned: inactive Sites and Rooms are never
 selection options, even when an existing Request still references their retained identities.
 Across those pages the exact Request-drafting facts are:
@@ -183,8 +184,11 @@ Across those pages the exact Request-drafting facts are:
 - `configurationRevisions` with positive `organization`, `locations`, `catalogue`,
   `bookingPolicies` and `costAllocation` values;
 - `sites[]` with `id`, `name`, `active` and nullable `timeZone`;
-- `rooms[]` with `id`, `siteId`, `name`, `capacity`, `active` and nullable `price`;
-- `services[]` and `cateringItems[]` with `id`, `name`, nullable `description`, `active`,
+- `rooms[]` with `id`, `siteId`, `name`, `capacity`, `active`, nullable `price`, bounded
+  `equipment[]`, nullable managed `floorplanAssetId` and bounded managed `mediaAssetIds[]`; arbitrary
+  URLs, filesystem paths, provider identifiers and malformed stored presentation metadata are never
+  projected (invalid presentation fields deterministically become empty/null);
+- `services[]`, `equipment[]` and `cateringItems[]` with `id`, `name`, nullable `description`, `active`,
   `order`, integer-minor `price`, `siteIds` and `roomIds`;
 - `cateringPackages[]` with the same applicability fields plus `itemIds` and `variants[]`;
 - each variant with `id`, `name`, nullable `description`, `active`, `order` and integer-minor
@@ -196,7 +200,7 @@ Across those pages the exact Request-drafting facts are:
 
 Money is `{ "amountMinor": <non-negative-integer>, "currency": "CHF|EUR|GBP|USD" }`. A
 Room `price: null` is an explicit unavailable Request-price state; the client must not invent zero or
-another default. The revisions are freshness tokens to echo in a complete Request v2 draft, never
+another default. The revisions are freshness tokens to echo in a complete Request v2/v3 draft, never
 authorization or pricing authority.
 Cost Center identifiers are selectable references, not allocation authority: the server rechecks
 their current Tenant ownership and active state when it prices the Request.
@@ -205,7 +209,8 @@ participant maximum remains 500 even when that policy advertises a higher compat
 the server reselects and enforces current policy in the Request write transaction.
 
 `GET /api/v1/application/requests?limit=1..10&cursor=<opaque>` returns top-level
-`{ schemaVersion: 2, asOf, requests, page }`. Employees receive only their server-owned Requests;
+`{ schemaVersion: 3, asOf, requests, page }`. Every Request includes its persisted
+`requesterAttribution: { displayName }`. Employees receive only their server-owned Requests;
 Conference Managers receive the active Tenant scope; Tenant Admin does not inherit that access.
 Rows are ordered by ascending `startsAt` and Request ID. The HMAC-protected cursor binds Tenant,
 ownership scope, revision watermark, ordering key and a 30-minute expiry. A consumer has a complete
@@ -216,10 +221,11 @@ by the configured response-byte cap.
 
 A Request or room-availability check for an inactive/missing room or Site is concealed as unavailable. A room whose active Site has no valid authoritative time zone is not bookable and returns HTTP 409 `SITE_TIME_ZONE_REQUIRED` before local Request mutation or provider access.
 
-`POST /api/v1/application/requests` accepts only the Request composition v2 envelope
+`POST /api/v1/application/requests` accepts the exact Request composition v2 or v3 envelope
 `{ "schemaVersion": 2, "request": <complete-v2-draft> }`. The nested draft includes title,
 Room, canonical UTC schedule, participant counts, services, catering, requirements, cost allocation
-and all five observed Tenant configuration revisions. It contains no Tenant/requester/status, price,
+and all five observed Tenant configuration revisions. Exact v3 additionally requires `equipmentIds`
+(up to 200 unique IDs); exact v2 rejects Equipment. It contains no Tenant/requester/status, attribution, price,
 total, policy result or calculated allocation authority. The server reloads and snapshots current
 Tenant configuration in the write transaction. Both timestamps must equal their ECMAScript
 `toISOString()` representation, the end must be later than the start, the interval must not exceed
@@ -228,10 +234,14 @@ Requests fail with HTTP 400 `VALIDATION_FAILED` before persistence.
 
 `POST /api/v1/application/requests/{requestId}/resubmissions` accepts only
 `{ "schemaVersion": 2, "expectedVersion", "request": <complete-v2-draft> }`. It requires the
-owning Employee and a `Change Requested` Request. Success reevaluates current configuration,
-advances the Request version and returns the complete public v2 Request. Stale Request or
+owning Employee and a `Change Requested` Request. V3 uses `schemaVersion: 3` and adds the required
+`equipmentIds` array to the complete draft. Success reevaluates current configuration,
+advances the Request version and returns the complete public version-specific Request. Stale Request or
 configuration versions return `409 REQUEST_STATE_CONFLICT`; current composition authority that is
 unavailable returns `409 REQUEST_CONFIGURATION_UNAVAILABLE`.
+
+Successful create and resubmit responses use outer `schemaVersion: 3`; the nested Request keeps the
+accepted composition `schemaVersion` and its persisted `requesterAttribution`.
 
 The authoritative draft, price formula, snapshot and legacy response contracts are defined in
 `docs/REQUEST-COMPOSITION.md`.
@@ -250,7 +260,7 @@ non-canonical instants, changed-range cursor reuse and malformed cursors fail va
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "asOf": "2026-08-27T12:00:00.000Z",
   "range": {
     "field": "startsAt",
@@ -259,7 +269,12 @@ non-canonical instants, changed-range cursor reuse and malformed cursors fail va
     "timeZone": "UTC"
   },
   "requests": [
-    { "schemaVersion": 2, "version": 3, "id": "request-id" }
+    {
+      "schemaVersion": 2,
+      "version": 3,
+      "id": "request-id",
+      "requesterAttribution": { "displayName": "José 山田" }
+    }
   ],
   "page": {
     "limit": 10,
@@ -507,12 +522,13 @@ Employee access requires `request:read` and server-side ownership. Conference Ma
 
 Repository lookup uses internal Tenant ID plus Request ID. Missing, cross-Tenant and same-Tenant non-owned Employee Requests are returned as `404 NOT_FOUND`.
 
-The public response omits internal Tenant ownership and requester User ID.
+The public response omits internal Tenant ownership and requester User ID while exposing the
+immutable `requesterAttribution: { "displayName": "..." }` snapshot.
 
 The exact successful detail envelope is
-`{ "schemaVersion": 2, "request": <complete-public-request>, "requestId": <correlation-id> }`.
+`{ "schemaVersion": 3, "request": <complete-public-request>, "requestId": <correlation-id> }`.
 
-The public representation includes positive `schemaVersion` and `version`. A v2 Request returns
+The public representation includes positive `schemaVersion` and `version`. A v2/v3 Request returns
 the immutable `details`, `pricing`, `configurationRevisions`, `policy` and `allocations` facts
 captured by its authoritative write. A migrated legacy v1 Request returns each of those five fields
 explicitly as `null`; the server does not infer missing historical business facts.
@@ -573,17 +589,23 @@ cross-Tenant and same-Tenant non-owned Employee Requests are concealed as `404 N
 
 Optional query fields are `limit=1..10` and the HMAC-protected opaque `cursor`; unknown, duplicate,
 expired, cross-Tenant, cross-Request or forged cursor input fails closed. The response is
-`{ "schemaVersion": 2, "requestId": <server-correlation-id>, "asOfVersion", "history": [...], "page": { "limit", "complete", "nextCursor" } }`. Every history
-entry contains `version`, `schemaVersion`, `operation`, `capturedAt` and the complete public
+`{ "schemaVersion": 3, "requestId": <server-correlation-id>, "asOfVersion", "history": [...], "page": { "limit", "complete", "nextCursor" } }`. Every history
+entry contains `version`, `schemaVersion`, `operation`, `actorAttribution`, `capturedAt` and the complete public
 `request` at that version. The correlation `requestId` in the envelope is not the domain Request ID;
 the domain ID is the route parameter and is present in each historical Request. Supported operation
-facts are `migrated_legacy`, `created`, `resubmitted`, `transitioned` and `booking_changed`. The
-first page freezes `asOfVersion`; the consumer has complete history only when `page.complete` is
+facts are `migrated_legacy`, `created`, `resubmitted`, `transitioned` and `booking_changed`.
+`actorAttribution` is `{ displayName, roleAtAction }` for captured actions and `null` for genuinely
+unknown legacy actors. The first page freezes `asOfVersion`; the consumer has complete history only when `page.complete` is
 true and `page.nextCursor` is null.
 
 ### `POST /api/v1/requests/{requestId}/transitions`
 
-Requires active session, recognized authorization, active Tenant, valid CSRF and an exact positive-schema body.
+Requires active session, recognized authorization, active Tenant, valid CSRF, an exact
+positive-schema body and a single strong `If-Match` Request-version precondition. A client that
+acts on Request version 3 sends `If-Match: "3"`. Weak tags, wildcard tags, tag lists, zero,
+non-canonical decimal values and unsafe integers are rejected. A missing precondition returns
+HTTP 428 `REQUEST_VERSION_PRECONDITION_REQUIRED`; a malformed precondition returns HTTP 400
+`REQUEST_VERSION_PRECONDITION_INVALID`.
 
 Examples:
 
@@ -602,23 +624,40 @@ Examples:
 
 Accepted transitions are `start_review`, `confirm`, `reject`, `request_change` and `cancel`. The browser never supplies target status. Tenant, owner, role, permission and status authority fields are rejected.
 
-For `cancel`, the owning Employee with `request:cancel` and a Conference Manager with `request:manage` may move `Submitted`, `In Review`, `Confirmed` or `Change Requested` to `Cancelled`; the manager may act on another User's Request only inside the same Tenant. `Rejected` is ineligible and returns HTTP 409. An authorized retry of an already `Cancelled` Request is an idempotent reconciliation read and creates no duplicate transition event. Cancellation is logical only: no public Request delete route exists. A pending booking-change proposal is superseded in the cancellation transaction; an applying proposal causes a state conflict. Tenant Admin alone receives no Tenant-wide cancellation capability.
+For `cancel`, the owning Employee with `request:cancel` and a Conference Manager with `request:manage` may move `Submitted`, `In Review`, `Confirmed` or `Change Requested` to `Cancelled`; the manager may act on another User's Request only inside the same Tenant. `Rejected` is ineligible and returns HTTP 409. An authorized retry of an already `Cancelled` Request is an idempotent reconciliation read and creates no duplicate transition event only when `If-Match` names that exact current terminal version and the transition/reason still match the persisted result. An immediately preceding or older version cannot be bound to this command without a persisted operation ID and fails with a state conflict. The same bounded reconciliation rule applies to already `Rejected`, `Change Requested` and `Confirmed` outcomes; confirmation still requires Conference Manager `request:manage`, not only Request read authority. Cancellation is logical only: no public Request delete route exists. A pending booking-change proposal is superseded in the cancellation transaction; an applying proposal causes a state conflict. Tenant Admin alone receives no Tenant-wide cancellation capability.
 
-Successful transition and `request.transition` evidence commit atomically with the server-derived actor, previous/new status and transition. Invalid current state or concurrent change returns HTTP 409 `REQUEST_STATE_CONFLICT`.
-Success uses the same exact schema-version-2 detail envelope as the single-Request read.
+The server rejects an `If-Match` version that differs from the loaded Request before Calendar or
+provider work. Persistence locks the Request and compares both the previously authorized status
+and exact Request version again. Successful transition and `request.transition` evidence commit
+atomically with the server-derived actor, previous/new status and transition. Invalid current
+state, stale version or concurrent change returns HTTP 409 `REQUEST_STATE_CONFLICT`.
+Success uses the same exact schema-version-3 detail envelope as the single-Request read.
+
+For a coordinated deployment, release the frontend that always emits the strong header before
+enabling this required backend contract; the preceding backend ignores the additional request
+header. Deploying the required backend while an old frontend still serves traffic would make every
+workflow transition fail with HTTP 428. Roll back the backend before any frontend rollback across
+this boundary, or keep the compatible header-emitting frontend in service.
 
 ### `GET/POST /api/v1/requests/{requestId}/booking-change`
 
-`GET` returns the single open proposal or `null`. `POST` requires CSRF and the exact body
+`GET` returns the single `pending`/`applying` proposal when one exists; otherwise it returns the
+latest Request-version-applicable terminal `applied`, `rejected` or cancellation-`superseded`
+change, or `null` when no such change exists. A visible terminal change does not count as open and
+does not prevent a later proposal while the Request remains `Confirmed`. `POST` requires CSRF and the exact body
 `{ "schemaVersion": 2, "expectedVersion": <current-request-version>, "request": <complete-v2-draft> }`.
+Alternatively, `schemaVersion: 3` accepts the complete v3 draft with required `equipmentIds`.
 Schedule-only and partial composition patches are rejected. Tenant, owner, status, price, calculated
-total, policy/allocation result, decision and provider fields are not accepted as authority.
+total, policy/allocation result, decision, provider and attribution fields are not accepted as authority.
 
 All booking-change GET, propose and decision responses use the outer envelope
-`{ "schemaVersion": 2, "result": { "change", "requestRef", ... } }`.
+`{ "schemaVersion": 3, "result": { "change", "requestRef", ... } }`.
 `requestRef` contains only the current Request `id`, `schemaVersion`, `version` and `status`.
-No-open GET returns `change: null` with that reference. A v2 proposal exposes
-`requestSchemaVersion: 2`, `baseRequestVersion` and its complete normalized proposed `request`
+No-current-change GET returns `change: null` with that reference. Every change exposes immutable
+`initiatorAttribution: { displayName, roleAtAction }` and nullable
+`deciderAttribution: { displayName, roleAtAction } | null`; pending, immediate application and a
+proposal returned to pending have a null decider. A v2/v3 proposal exposes
+`requestSchemaVersion: 2` or `3`, `baseRequestVersion` and its complete normalized proposed `request`
 draft plus the full server-authoritative `proposedRequest` public projection; the server-retained
 authority snapshot is not accepted back from the browser. A migrated
 legacy proposal is explicit: `requestSchemaVersion` is 1 and its unavailable composed `request` is
@@ -633,18 +672,18 @@ which that complete draft was composed. A client must not reload only a newer ve
 retaining fields from an older open editor; on HTTP 409 it reloads and deliberately recomposes or
 merges the draft. A genuinely participant-count-only proposal applies immediately and
 atomically when current capacity, policy, Catalogue and allocation authority permit it; catering
-participant count may track that participant change. Any change to room, schedule, service,
+participant count may track that participant change. Any change to composition schema, Equipment, room, schedule, service,
 package/item, title, requirements or allocation, and any configuration-revision-only refresh,
 leaves the original Request/calendar event unchanged and remains pending Conference Manager
 decision.
 
 ### `POST /api/v1/requests/{requestId}/booking-change/{changeId}/decision`
 
-The exact body is `{ "decision": "approve" }` or `{ "decision": "reject", "reason": "..." }`. Only a Conference Manager with `request:manage` may decide, including a self-initiated proposal. The same manager may therefore propose and approve; `initiatorUserId`, `decidedByUserId` and proposal/decision audit actors remain independently server-derived and may intentionally be equal. The proposal cannot be edited through this route. Denied read/propose/decision probes append minimized `authorization.denied` evidence in the caller Tenant when an authenticated context exists: only the Request target ID and fixed operation are recorded. A mismatched or unavailable change ID under an otherwise authorized Request returns the existing conflict contract and records the same minimized decision denial without exposing or persisting the probed change ID.
+The exact body is `{ "decision": "approve" }` or `{ "decision": "reject", "reason": "..." }`. Only a Conference Manager with `request:manage` may decide, including a self-initiated proposal. The same manager may therefore propose and approve; internal initiator/decider IDs and proposal/decision audit actors remain independently server-derived and may intentionally be equal, while the response retains two separate equal attribution objects. The proposal cannot be edited through this route. Denied read/propose/decision probes append minimized `authorization.denied` evidence in the caller Tenant when an authenticated context exists: only the Request target ID and fixed operation are recorded. A mismatched or unavailable change ID under an otherwise authorized Request returns the existing conflict contract and records the same minimized decision denial without exposing or persisting the probed change ID.
 
-Approval rechecks current Request version, room/site state, capacity, local overlap and live provider availability. A conflict returns the common result family with `status: "blocked"`, the unchanged pending `change`, current `requestRef` and up to five server-derived alternative room IDs. Successful application installs the persisted immutable v2 proposal snapshot, advances the Request version and records `booking_changed` history. Provider exhaustion returns HTTP 503 and leaves the original booking active with the proposal pending for a later retry. Room moves use a durable monotonic attempt and explicit move-pending, target-active, restore-pending and reconciliation-required phases; timeout ambiguity never permits cleanup of both the original and replacement event.
+Approval rechecks current Request version, room/site state, capacity, local overlap and live provider availability. A conflict returns the common result family with `status: "blocked"`, the unchanged pending `change`, current `requestRef` and up to five server-derived alternative room IDs. Successful application installs the persisted immutable v2/v3 proposal snapshot, advances the Request version and records `booking_changed` history. Provider exhaustion returns HTTP 503 and leaves the original booking active with the proposal pending for a later retry. Room moves use a durable monotonic attempt and explicit move-pending, target-active, restore-pending and reconciliation-required phases; timeout ambiguity never permits cleanup of both the original and replacement event.
 
-See `docs/AUTHORIZATION.md` and `docs/REQUEST-COMPOSITION.md`.
+See `docs/AUTHORIZATION.md`, `docs/REQUEST-COMPOSITION.md` and `docs/REQUEST-ATTRIBUTION.md`.
 
 ## Shared Demo control routes
 
@@ -690,3 +729,23 @@ contexts fail closed and customer/Platform session namespaces never cross. See
 - Metrics use fixed low-cardinality labels; Tenant, User, Request and provider identifiers are prohibited dimensions.
 
 See `docs/AUDIT.md`, `docs/AUTHORIZATION.md`, `docs/ENTRA-AUTHENTICATION.md`, `docs/IDENTITY-SESSION.md`, `docs/MICROSOFT365-CONNECTION.md`, `docs/OBSERVABILITY.md`, `docs/TENANCY.md` and `docs/SECURITY.md`.
+
+## Selectable Equipment and Request v3
+
+The exact additive Equipment draft, Catalogue projection, immutable pricing lines and migration
+contract are defined in `docs/REQUEST-COMPOSITION.md`. Equipment adds no quantity or stock model,
+role, permission or client price authority. All v1/v2 reads and existing v2 proposals retain their
+meaning; malformed mixed versions fail closed. Equipment writes preserve the same session, CSRF,
+ownership, Tenant, optimistic-version and transactional audit controls as existing composition.
+
+## SaaS 3.6 persisted Request attribution
+
+The exact v3 Request response envelopes, relational snapshots, honest legacy-null
+semantics, unchanged audit-chain payload, and mandatory staged writer cutover are
+defined in [Request Attribution](REQUEST-ATTRIBUTION.md). Existing Tenant, role,
+object ownership and session/CSRF boundaries remain required for these reads and writes.
+
+## Versioned Site Guest Information (SaaS 3.6)
+
+Locations read/history explicitly select `?schemaVersion=2`; v2 update/rollback bodies manage each Site's nullable `guestInformation`. Existing v1 reads/writes/rollbacks preserve their exact contract.
+Confirmed Request consumers explicitly request `room-context?projection=guest`; normal room-context stays schema v1. See `docs/SITE-GUEST-INFORMATION.md` for exact fields, bounds, ownership, query rejection and conflict behavior.

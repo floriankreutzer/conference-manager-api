@@ -191,7 +191,10 @@ try {
   }), 400, 'VALIDATION_FAILED');
 
   const transitionPath = '/api/v1/requests/REQ-1/transitions';
-  const validHeaders = { 'Content-Type': 'application/json; charset=utf-8' };
+  const validHeaders = {
+    'Content-Type': 'application/json; charset=utf-8',
+    'If-Match': '"1"',
+  };
   assertError(await request(port, {
     method: 'POST',
     path: transitionPath,

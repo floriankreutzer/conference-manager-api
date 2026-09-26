@@ -104,3 +104,10 @@ For offboarding review:
 
 Live Entra validation remains external acceptance evidence. Repository tests prove local fail-closed behavior
 but do not self-approve customer identity-provider acceptance.
+
+## SaaS 3.6 persisted Request attribution
+
+The exact v3 Request response envelopes, relational snapshots, honest legacy-null
+semantics, unchanged audit-chain payload, and mandatory staged writer cutover are
+defined in [Request Attribution](REQUEST-ATTRIBUTION.md). Existing Tenant, role,
+object ownership and session/CSRF boundaries remain required for these reads and writes.

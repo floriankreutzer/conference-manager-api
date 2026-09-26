@@ -359,7 +359,7 @@ Before Pilot acceptance, execute the provider-specific procedure required by iss
 5. measure and record RPO and RTO;
 6. destroy temporary recovery material according to policy.
 
-A provider statement that backups exist is not restore evidence. Any recovery point predating migration 034 is non-traffic-ready. Keep Customer traffic blocked, apply through schema 34, verify the one-way Customer-session revocation, deploy a single current-epoch fleet and prove a captured legacy cookie is rejected before accepting recovery. Evidence references the result only and never retains the cookie.
+A provider statement that backups exist is not restore evidence. Any recovery point predating migration 034 is non-traffic-ready. Keep Customer traffic blocked, apply through schema 38, verify the one-way Customer-session revocation, deploy a single current-epoch fleet and prove a captured legacy cookie is rejected before accepting recovery. Evidence references the result only and never retains the cookie.
 
 ### Application and migration rollback
 

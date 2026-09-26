@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import test from 'node:test';
+import { createProductionApplicationService } from '../src/application/production-application-service.js';
 import { createRequestService } from '../src/application/request-service.js';
 import {
   CODE_SHIPPED_MANAGED_BRAND_REFERENCE,
@@ -13,6 +14,9 @@ import {
   AUDIT_RETENTION_CLASS,
 } from '../src/audit/event.js';
 import { createTenantAuditQueryService } from '../src/audit/tenant-audit-query-service.js';
+import {
+  RequestStateConflictError,
+} from '../src/authorization/errors.js';
 import {
   PERMISSION,
   REQUEST_STATUS,
@@ -32,6 +36,7 @@ const TENANT_ID = '22222222-2222-4222-8222-222222222222';
 const OTHER_TENANT_ID = '33333333-3333-4333-8333-333333333333';
 const SESSION_ID = '55555555-5555-4555-8555-555555555555';
 const CSRF_TOKEN = 'CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC';
+const REQUEST_VERSION_IF_MATCH = '"1"';
 
 function request({ port, path, method = 'GET', headers = {}, body }) {
   return new Promise((resolve, reject) => {
@@ -114,6 +119,7 @@ function requestRecord(overrides = {}) {
     tenantId: TENANT_ID,
     id: 'REQ-1',
     requesterUserId: USER_ID,
+    requesterAttribution: { displayName: 'Persisted requester' },
     schemaVersion: 1,
     version: 1,
     roomId: 'room-a',
@@ -130,7 +136,7 @@ function requestRecord(overrides = {}) {
   };
 }
 
-function requestServiceFor(initialRecord) {
+function requestServiceFor(initialRecord, guestPresentation = null) {
   let record = initialRecord;
   const authorizationPolicy = createAuthorizationPolicy();
   const audit = createAuditHarness({ authorizationPolicy });
@@ -138,7 +144,18 @@ function requestServiceFor(initialRecord) {
     authorizationPolicy,
     auditService: audit.service,
     finalRoomConfirmationService: {
-      async confirm({ principal: actor, tenantContext }) {
+      async confirm({ principal: actor, tenantContext, expectedVersion }) {
+        if (record.status === REQUEST_STATUS.CONFIRMED) {
+          authorizationPolicy.authorizeRequestReconciliation(
+            actor,
+            tenantContext,
+            record,
+            REQUEST_TRANSITION.CONFIRM,
+            undefined,
+          );
+          if (record.version !== expectedVersion) throw new RequestStateConflictError();
+          return record;
+        }
         const decision = authorizationPolicy.authorizeRequestTransition(
           actor,
           tenantContext,
@@ -148,6 +165,7 @@ function requestServiceFor(initialRecord) {
         );
         record = {
           ...record,
+          version: expectedVersion + 1,
           status: decision.nextStatus,
           statusReason: decision.reason,
           statusChangedAt: '2026-08-24T09:00:00.000Z',
@@ -185,17 +203,26 @@ function requestServiceFor(initialRecord) {
           }),
         });
       },
+      async findGuestContextByTenantIdAndRequest(tenantId, requestId, expectedVersion) {
+        if (!record || record.tenantId !== tenantId || record.id !== requestId
+          || record.version !== expectedVersion || record.status !== REQUEST_STATUS.CONFIRMED) return null;
+        const context = await this.findRoomContextByTenantIdAndRoomId(tenantId, record.roomId);
+        return { ...context, room: { ...context.room, floor: null, accessibility: [],
+          floorplanAssetId: null, mediaAssetIds: [] }, guestPresentation };
+      },
       async listHistoryPageByTenantIdAndId(tenantId, requestId, { limit }) {
         if (!record || record.tenantId !== tenantId || record.id !== requestId) return [];
         return [{
           version: 1,
           schemaVersion: 1,
           operation: 'migrated_legacy',
+          actorAttribution: null,
           capturedAt: record.updatedAt,
           request: {
             schemaVersion: 1,
             version: 1,
             id: record.id,
+            requesterAttribution: record.requesterAttribution,
             details: null,
             pricing: null,
             configurationRevisions: null,
@@ -208,15 +235,23 @@ function requestServiceFor(initialRecord) {
         tenantId,
         requestId,
         expectedStatus,
+        expectedVersion,
         nextStatus,
         reason,
         changedAt,
       }) {
-        if (!record || record.tenantId !== tenantId || record.id !== requestId || record.status !== expectedStatus) {
+        if (
+          !record
+          || record.tenantId !== tenantId
+          || record.id !== requestId
+          || record.status !== expectedStatus
+          || record.version !== expectedVersion
+        ) {
           return null;
         }
         record = {
           ...record,
+          version: expectedVersion + 1,
           status: nextStatus,
           statusReason: reason,
           statusChangedAt: changedAt.toISOString(),
@@ -597,14 +632,22 @@ test('employee request endpoint returns own object and conceals another employee
     assert.equal(injectedScope.statusCode, 400);
     const own = await request({ port, path: '/api/v1/requests/REQ-1' });
     assert.equal(own.statusCode, 200);
+    assert.equal(own.body.schemaVersion, 3);
     assert.equal(own.body.request.id, 'REQ-1');
     assert.equal(own.body.request.status, REQUEST_STATUS.SUBMITTED);
+    assert.deepEqual(own.body.request.requesterAttribution, {
+      displayName: 'Persisted requester',
+    });
     assert.equal(own.body.request.tenantId, undefined);
     assert.equal(own.body.request.requesterUserId, undefined);
     const history = await request({ port, path: '/api/v1/requests/REQ-1/history' });
     assert.equal(history.statusCode, 200);
-    assert.equal(history.body.schemaVersion, 2);
+    assert.equal(history.body.schemaVersion, 3);
     assert.equal(history.body.history[0].operation, 'migrated_legacy');
+    assert.equal(history.body.history[0].actorAttribution, null);
+    assert.deepEqual(history.body.history[0].request.requesterAttribution, {
+      displayName: 'Persisted requester',
+    });
     assert.equal(history.body.history[0].request.details, null);
   });
 
@@ -615,6 +658,72 @@ test('employee request endpoint returns own object and conceals another employee
     const foreign = await request({ port, path: '/api/v1/requests/REQ-1' });
     assert.equal(foreign.statusCode, 404);
     assert.equal(foreign.body.error.code, 'NOT_FOUND');
+  });
+});
+
+test('profile HTTP rejects Unicode format controls before they can become attribution evidence', async () => {
+  const updates = [];
+  const authorizationPolicy = createAuthorizationPolicy();
+  const productionApplicationService = createProductionApplicationService({
+    repository: {
+      async findProfile() { return { displayName: 'Existing User' }; },
+      async updateProfile(values) {
+        updates.push(values);
+        return { displayName: values.displayName };
+      },
+      async loadCatalogPage() {},
+      async loadSites() { return []; },
+      async findRoomBookingContext() {},
+      async listNotifications() { return []; },
+      async markNotificationRead() {},
+    },
+    requestRepository: {
+      async listPageByTenantId() {},
+      async listReportPageByTenantId() {},
+      async createVersionedForTenant() {},
+      async resubmitVersionedForTenant() {},
+    },
+    authorizationPolicy,
+    auditService: { createEvent(values) { return values; } },
+  });
+  await withServer({
+    config: testConfig(),
+    resolvePrincipal: async () => principal(),
+    verifyCsrf: async (incoming) => incoming.headers['x-csrf-token'] === CSRF_TOKEN,
+    loadTenant: async () => tenant(),
+    productionApplicationService,
+  }, async ({ port }) => {
+    for (const displayName of [
+      'Manager\u202eresU',
+      'Zero\u200bWidth',
+      'Isolate\u2066Admin\u2069',
+      'Word\ufeffJoin',
+      'Boundary control\ufeff',
+      'High\ud800Surrogate',
+      'Low\udfffSurrogate',
+    ]) {
+      const invalid = await request({
+        port,
+        path: '/api/v1/application/profile',
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+        body: JSON.stringify({ displayName }),
+      });
+      assert.equal(invalid.statusCode, 400);
+      assert.equal(invalid.body.error.code, 'VALIDATION_FAILED');
+    }
+    assert.equal(updates.length, 0);
+
+    const legitimate = await request({
+      port,
+      path: '/api/v1/application/profile',
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+      body: JSON.stringify({ displayName: ' Jose\u0301 山田 ' }),
+    });
+    assert.equal(legitimate.statusCode, 200);
+    assert.equal(legitimate.body.profile.displayName, 'José 山田');
+    assert.equal(updates[0].displayName, 'José 山田');
   });
 });
 
@@ -751,7 +860,10 @@ test('request transitions require CSRF and reject client-controlled status or ow
       port,
       path: '/api/v1/requests/REQ-1/transitions',
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': REQUEST_VERSION_IF_MATCH,
+      },
       body,
     });
     assert.equal(missingCsrf.statusCode, 403);
@@ -764,11 +876,13 @@ test('request transitions require CSRF and reject client-controlled status or ow
       headers: {
         'Content-Type': 'application/json',
         'X-CSRF-Token': CSRF_TOKEN,
+        'If-Match': REQUEST_VERSION_IF_MATCH,
       },
       body: JSON.stringify({
         transition: REQUEST_TRANSITION.CANCEL,
         status: REQUEST_STATUS.CONFIRMED,
         requesterUserId: OTHER_USER_ID,
+        requesterAttribution: { displayName: 'Persisted requester' },
       }),
     });
     assert.equal(manipulated.statusCode, 400);
@@ -781,11 +895,87 @@ test('request transitions require CSRF and reject client-controlled status or ow
       headers: {
         'Content-Type': 'application/json',
         'X-CSRF-Token': CSRF_TOKEN,
+        'If-Match': REQUEST_VERSION_IF_MATCH,
       },
       body,
     });
     assert.equal(cancelled.statusCode, 200);
     assert.equal(cancelled.body.request.status, REQUEST_STATUS.CANCELLED);
+  });
+});
+
+test('request transitions require one strong positive safe If-Match version and keep the body exact', async () => {
+  const calls = [];
+  const employee = principal({
+    permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_CANCEL],
+  });
+  const requestService = {
+    async transitionRequest(values) {
+      calls.push(values);
+      return requestRecord({
+        version: values.expectedVersion + 1,
+        status: REQUEST_STATUS.CANCELLED,
+        statusReason: null,
+      });
+    },
+  };
+
+  await withServer({
+    config: testConfig(),
+    resolvePrincipal: async () => employee,
+    verifyCsrf: async () => true,
+    loadTenant: async () => tenant(),
+    requestService,
+  }, async ({ port }) => {
+    const postTransition = (ifMatch, body = {
+      transition: REQUEST_TRANSITION.CANCEL,
+    }) => request({
+      port,
+      path: '/api/v1/requests/REQ-1/transitions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': CSRF_TOKEN,
+        ...(ifMatch === undefined ? {} : { 'If-Match': ifMatch }),
+      },
+      body: JSON.stringify(body),
+    });
+
+    const missing = await postTransition(undefined);
+    assert.equal(missing.statusCode, 428);
+    assert.equal(missing.body.error.code, 'REQUEST_VERSION_PRECONDITION_REQUIRED');
+
+    for (const [label, ifMatch] of [
+      ['weak', 'W/"7"'],
+      ['wildcard', '*'],
+      ['list', '"7", "8"'],
+      ['zero', '"0"'],
+      ['leading zero', '"07"'],
+      ['MAX_SAFE_INTEGER', `"${Number.MAX_SAFE_INTEGER}"`],
+      ['overflow', '"9007199254740992"'],
+    ]) {
+      const invalid = await postTransition(ifMatch);
+      assert.equal(invalid.statusCode, 400, label);
+      assert.equal(invalid.body.error.code, 'REQUEST_VERSION_PRECONDITION_INVALID', label);
+    }
+    assert.equal(calls.length, 0);
+
+    const bodyVersion = await postTransition('"7"', {
+      transition: REQUEST_TRANSITION.CANCEL,
+      expectedVersion: 7,
+    });
+    assert.equal(bodyVersion.statusCode, 400);
+    assert.equal(bodyVersion.body.error.code, 'VALIDATION_FAILED');
+    assert.equal(calls.length, 0);
+
+    const valid = await postTransition('"7"');
+    assert.equal(valid.statusCode, 200);
+    assert.equal(valid.body.request.status, REQUEST_STATUS.CANCELLED);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].expectedVersion, 7);
+    assert.equal(typeof calls[0].expectedVersion, 'number');
+    assert.equal(calls[0].transition, REQUEST_TRANSITION.CANCEL);
+    assert.equal(calls[0].reason, undefined);
   });
 });
 
@@ -819,7 +1009,10 @@ test('manager cancellation of another User-owned Request preserves CSRF, state, 
       port,
       path: '/api/v1/requests/REQ-1/transitions',
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': REQUEST_VERSION_IF_MATCH,
+      },
       body: JSON.stringify({ transition: REQUEST_TRANSITION.CANCEL }),
     });
     assert.equal(missingCsrf.statusCode, 403);
@@ -832,6 +1025,7 @@ test('manager cancellation of another User-owned Request preserves CSRF, state, 
       headers: {
         'Content-Type': 'application/json',
         'X-CSRF-Token': CSRF_TOKEN,
+        'If-Match': REQUEST_VERSION_IF_MATCH,
       },
       body: JSON.stringify({ transition: REQUEST_TRANSITION.CANCEL }),
     });
@@ -846,6 +1040,7 @@ test('manager cancellation of another User-owned Request preserves CSRF, state, 
     loadTenant: async () => tenant(),
     requestService: requestServiceFor(requestRecord({
       requesterUserId: OTHER_USER_ID,
+      requesterAttribution: { displayName: 'Persisted requester' },
       status: REQUEST_STATUS.REJECTED,
     })),
   }, async ({ port }) => {
@@ -856,6 +1051,7 @@ test('manager cancellation of another User-owned Request preserves CSRF, state, 
       headers: {
         'Content-Type': 'application/json',
         'X-CSRF-Token': CSRF_TOKEN,
+        'If-Match': REQUEST_VERSION_IF_MATCH,
       },
       body: JSON.stringify({ transition: REQUEST_TRANSITION.CANCEL }),
     });
@@ -885,6 +1081,7 @@ test('manager cancellation of another User-owned Request preserves CSRF, state, 
       headers: {
         'Content-Type': 'application/json',
         'X-CSRF-Token': CSRF_TOKEN,
+        'If-Match': REQUEST_VERSION_IF_MATCH,
       },
       body: JSON.stringify({ transition: REQUEST_TRANSITION.CANCEL }),
     });
@@ -909,11 +1106,30 @@ test('manager transition is authorized server-side while employee cannot invoke 
       port,
       path: '/api/v1/requests/REQ-1/transitions',
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': CSRF_TOKEN,
+        'If-Match': REQUEST_VERSION_IF_MATCH,
+      },
       body: JSON.stringify({ transition: REQUEST_TRANSITION.CONFIRM }),
     });
     assert.equal(confirmed.statusCode, 200);
     assert.equal(confirmed.body.request.status, REQUEST_STATUS.CONFIRMED);
+
+    const retried = await request({
+      port,
+      path: '/api/v1/requests/REQ-1/transitions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': CSRF_TOKEN,
+        'If-Match': '"2"',
+      },
+      body: JSON.stringify({ transition: REQUEST_TRANSITION.CONFIRM }),
+    });
+    assert.equal(retried.statusCode, 200);
+    assert.equal(retried.body.request.version, 2);
+    assert.equal(retried.body.request.status, REQUEST_STATUS.CONFIRMED);
   });
 
   await withServer({ ...common, resolvePrincipal: async () => principal() }, async ({ port }) => {
@@ -921,7 +1137,11 @@ test('manager transition is authorized server-side while employee cannot invoke 
       port,
       path: '/api/v1/requests/REQ-1/transitions',
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': CSRF_TOKEN,
+        'If-Match': '"2"',
+      },
       body: JSON.stringify({ transition: REQUEST_TRANSITION.CONFIRM }),
     });
     assert.equal(denied.statusCode, 403);
@@ -944,6 +1164,10 @@ test('confirmed booking proposal and decision routes require CSRF and reject aut
       calls.push(['propose', values]);
       return { change: {
         id: '66666666-6666-4666-8666-666666666666',
+        initiatorAttribution: {
+          displayName: 'Persisted manager', roleAtAction: 'conference_manager',
+        },
+        deciderAttribution: null,
         status: 'pending',
         roomId: values.proposed.roomId,
         startsAt: values.proposed.startsAt,
@@ -961,7 +1185,13 @@ test('confirmed booking proposal and decision routes require CSRF and reject aut
     },
     async approve(values) {
       calls.push(['approve', values]);
-      return { status: 'blocked', alternatives: ['room-b'], change: { status: 'pending' }, requestRef };
+      return { status: 'blocked', alternatives: ['room-b'], change: {
+        status: 'pending',
+        initiatorAttribution: {
+          displayName: 'Persisted manager', roleAtAction: 'conference_manager',
+        },
+        deciderAttribution: null,
+      }, requestRef };
     },
     async reject() { throw new Error('UNEXPECTED'); },
   };
@@ -1014,8 +1244,12 @@ test('confirmed booking proposal and decision routes require CSRF and reject aut
       body: JSON.stringify(proposal),
     });
     assert.equal(accepted.statusCode, 201);
-    assert.equal(accepted.body.schemaVersion, 2);
+    assert.equal(accepted.body.schemaVersion, 3);
     assert.equal(accepted.body.result.change.status, 'pending');
+    assert.deepEqual(accepted.body.result.change.initiatorAttribution, {
+      displayName: 'Persisted manager', roleAtAction: 'conference_manager',
+    });
+    assert.equal(accepted.body.result.change.deciderAttribution, null);
     assert.deepEqual(Object.keys(accepted.body.result).sort(), ['change', 'requestRef']);
     assert.equal(Object.hasOwn(accepted.body.result, 'request'), false);
     const decision = await request({
@@ -1026,6 +1260,8 @@ test('confirmed booking proposal and decision routes require CSRF and reject aut
       body: JSON.stringify({ decision: 'approve' }),
     });
     assert.equal(decision.statusCode, 200);
+    assert.equal(decision.body.schemaVersion, 3);
+    assert.equal(decision.body.result.change.deciderAttribution, null);
     assert.deepEqual(Object.keys(decision.body.result).sort(), [
       'alternatives', 'change', 'requestRef', 'status',
     ]);
@@ -1045,9 +1281,9 @@ test('booking-change response keeps one full projection below the configured res
   };
   const result = { change, requestRef };
   const config = testConfig();
-  assert.ok(Buffer.byteLength(JSON.stringify({ schemaVersion: 2, result })) < config.maxResponseBytes);
+  assert.ok(Buffer.byteLength(JSON.stringify({ schemaVersion: 3, result })) < config.maxResponseBytes);
   assert.ok(Buffer.byteLength(JSON.stringify({
-    schemaVersion: 2,
+    schemaVersion: 3,
     result: { ...result, request: change.proposedRequest },
   })) > config.maxResponseBytes);
   await withServer({
@@ -1077,16 +1313,23 @@ test('booking-change response keeps one full projection below the configured res
   });
 });
 
-test('Request v2 create and resubmission routes require exact versioned CSRF contracts', async () => {
+test('Request v2/v3 create and resubmission routes require exact versioned CSRF contracts', async () => {
   const calls = [];
   const applicationService = {
     async createRequest(values) {
       calls.push(['create', values]);
-      return { schemaVersion: 2, version: 1, id: 'REQ-V2', status: 'Submitted' };
+      return {
+        schemaVersion: values.schemaVersion, version: 1, id: 'REQ-V2', status: 'Submitted',
+        requesterAttribution: { displayName: 'Persisted requester' },
+      };
     },
     async resubmitRequest(values) {
       calls.push(['resubmit', values]);
-      return { schemaVersion: 2, version: values.expectedVersion + 1, id: values.requestId, status: 'Submitted' };
+      return {
+        schemaVersion: values.schemaVersion, version: values.expectedVersion + 1,
+        id: values.requestId, status: 'Submitted',
+        requesterAttribution: { displayName: 'Persisted requester' },
+      };
     },
   };
   const draft = {
@@ -1143,7 +1386,10 @@ test('Request v2 create and resubmission routes require exact versioned CSRF con
     });
     assert.equal(created.statusCode, 201);
     assert.equal(created.body.request.schemaVersion, 2);
-    assert.equal(created.body.schemaVersion, 2);
+    assert.equal(created.body.schemaVersion, 3);
+    assert.deepEqual(created.body.request.requesterAttribution, {
+      displayName: 'Persisted requester',
+    });
     assert.equal(created.body.requestId, created.body.requestId.toLowerCase());
     assert.deepEqual(Object.keys(created.body).sort(), ['request', 'requestId', 'schemaVersion']);
 
@@ -1156,21 +1402,36 @@ test('Request v2 create and resubmission routes require exact versioned CSRF con
     });
     assert.equal(resubmitted.statusCode, 200);
     assert.equal(resubmitted.body.request.version, 5);
-    assert.equal(resubmitted.body.schemaVersion, 2);
+    assert.equal(resubmitted.body.schemaVersion, 3);
+    assert.deepEqual(resubmitted.body.request.requesterAttribution, {
+      displayName: 'Persisted requester',
+    });
     assert.deepEqual(Object.keys(resubmitted.body).sort(), ['request', 'requestId', 'schemaVersion']);
+    for (const path of ['/api/v1/application/requests', '/api/v1/application/requests/REQ-V2/resubmissions']) {
+      const response = await request({ port, path, method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+        body: JSON.stringify({ schemaVersion: 3, request: { ...draft, equipmentIds: ['display'] },
+          ...(path.endsWith('resubmissions') ? { expectedVersion: 5 } : {}) }),
+      });
+      assert.equal(response.statusCode, path.endsWith('resubmissions') ? 200 : 201);
+      assert.equal(response.body.schemaVersion, 3);
+      assert.equal(response.body.request.schemaVersion, 3);
+    }
   });
-  assert.deepEqual(calls.map(([operation]) => operation), ['create', 'resubmit']);
+  assert.deepEqual(calls.map(([operation]) => operation), ['create', 'resubmit', 'create', 'resubmit']);
+  assert.deepEqual(calls[2][1].requestDraft.equipmentIds, ['display']);
+  assert.equal(calls[3][1].schemaVersion, 3);
   assert.deepEqual(calls[0][1].requestDraft, draft);
   assert.equal(calls[1][1].expectedVersion, 4);
 });
 
-test('paged catalog and Manager report routes expose exact schema-v2 query contracts', async () => {
+test('paged catalog and Manager request feeds expose their exact versioned query contracts', async () => {
   const calls = [];
   const applicationService = {
     async listRequests(values) {
       calls.push(['list', values]);
       return {
-        schemaVersion: 2,
+        schemaVersion: 3,
         asOf: '2026-08-27T12:00:00.000Z',
         requests: [],
         page: { limit: 10, complete: true, nextCursor: null },
@@ -1195,7 +1456,7 @@ test('paged catalog and Manager report routes expose exact schema-v2 query contr
     async getRequestReport(values) {
       calls.push(['report', values]);
       return {
-        schemaVersion: 2,
+        schemaVersion: 3,
         asOf: '2026-08-27T12:00:00.000Z',
         range: {
           field: 'startsAt',
@@ -1228,12 +1489,20 @@ test('paged catalog and Manager report routes expose exact schema-v2 query contr
     assert.equal(catalog.body.section, 'sites');
     assert.equal(catalog.body.catalog, undefined);
 
+    const equipmentCatalog = await request({
+      port,
+      path: '/api/v1/application/catalog?section=equipment&limit=10&context=catalog-context',
+    });
+    assert.equal(equipmentCatalog.statusCode, 200);
+    assert.equal(equipmentCatalog.body.schemaVersion, 2);
+    assert.equal(equipmentCatalog.body.section, 'equipment');
+
     const list = await request({
       port,
       path: '/api/v1/application/requests?limit=10',
     });
     assert.equal(list.statusCode, 200);
-    assert.equal(list.body.schemaVersion, 2);
+    assert.equal(list.body.schemaVersion, 3);
     assert.deepEqual(list.body.requests, []);
     assert.equal(list.body.page.complete, true);
 
@@ -1242,7 +1511,7 @@ test('paged catalog and Manager report routes expose exact schema-v2 query contr
       path: '/api/v1/application/reports/requests?from=2026-01-01T00%3A00%3A00.000Z&to=2027-01-01T00%3A00%3A00.000Z&limit=10',
     });
     assert.equal(report.statusCode, 200);
-    assert.equal(report.body.schemaVersion, 2);
+    assert.equal(report.body.schemaVersion, 3);
     assert.equal(report.body.range.timeZone, 'UTC');
     assert.equal(report.body.report, undefined);
 
@@ -1268,12 +1537,15 @@ test('paged catalog and Manager report routes expose exact schema-v2 query contr
     });
     assert.equal(wrongMethod.statusCode, 405);
   });
-  assert.deepEqual(calls.map(([name]) => name), ['catalog', 'list', 'report']);
+  assert.deepEqual(calls.map(([name]) => name), ['catalog', 'catalog', 'list', 'report']);
   assert.deepEqual(calls[0][1].query, {
     section: 'sites', limit: '10', cursor: undefined, context: undefined,
   });
-  assert.deepEqual(calls[1][1].query, { limit: '10', cursor: undefined });
-  assert.equal(calls[2][1].query.limit, '10');
+  assert.deepEqual(calls[1][1].query, {
+    section: 'equipment', limit: '10', cursor: undefined, context: 'catalog-context',
+  });
+  assert.deepEqual(calls[2][1].query, { limit: '10', cursor: undefined });
+  assert.equal(calls[3][1].query.limit, '10');
 });
 
 test('logs contain only bounded metadata and do not copy authorization or cookie headers', async () => {
@@ -1292,4 +1564,53 @@ test('logs contain only bounded metadata and do not copy authorization or cookie
     assert.doesNotMatch(output, /AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/);
     assert.match(output, /request_completed/);
   });
+});
+
+
+test('guest Room context is explicitly negotiated with exact queries, body rejection and safe logs', async () => {
+  const guestPresentation = {
+    address: null,
+    publicTransport: null,
+    arrival: 'Sensitive visitor arrival marker',
+    parking: null,
+    reception: null,
+    building: null,
+    visitorNotes: null,
+    accessibility: null,
+    wifiPolicy: 'credentials_on_arrival',
+    wifiNetworkName: 'Sensitive guest network marker',
+    contact: null,
+    routeUrl: null,
+  };
+  const options = { config: testConfig(), resolvePrincipal: async () => principal(),
+    loadTenant: async () => tenant(),
+    requestService: requestServiceFor(
+      requestRecord({ status: REQUEST_STATUS.CONFIRMED }),
+      guestPresentation,
+    ),
+  };
+  await withServer(options, async ({ port, logs }) => {
+    const path = '/api/v1/requests/REQ-1/room-context';
+    const result = await request({ port, path: `${path}?projection=guest` });
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.body.schemaVersion, 2);
+    assert.deepEqual(result.body.currentRoomContext.guestPresentation, guestPresentation);
+    assert.equal(result.body.currentRoomContext.room.active, false);
+    const legacy = await request({ port, path });
+    assert.equal(legacy.body.schemaVersion, 1);
+    for (const query of ['projection=secret', 'projection=guest&projection=guest',
+      'projection=guest&tenantId=x', 'schemaVersion=2', 'projection=']) {
+      assert.equal((await request({ port, path: `${path}?${query}` })).statusCode, 400);
+    }
+    assert.equal((await request({ port, path: `${path}?projection=guest`,
+      headers: { 'Content-Length': '2' }, body: '{}' })).statusCode, 400);
+    assert.equal(logs.some((line) => line.includes('guestPresentation') || line.includes('projection=')
+      || line.includes(guestPresentation.arrival) || line.includes(guestPresentation.wifiNetworkName)), false);
+  });
+  await withServer({ ...options, config: testConfig(), requestService: requestServiceFor(requestRecord()) },
+    async ({ port }) => {
+      const result = await request({ port, path: '/api/v1/requests/REQ-1/room-context?projection=guest' });
+      assert.equal(result.statusCode, 409);
+      assert.equal(result.body.error.code, 'REQUEST_STATE_CONFLICT');
+    });
 });

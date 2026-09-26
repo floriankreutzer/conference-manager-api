@@ -1,8 +1,14 @@
+import {
+  loadSiteGuestInformationWithClient,
+  withSiteGuestInformation,
+  applySiteGuestInformationWithClient,
+} from './tenant-location-guest-information.js';
 import { isInternalUuid } from '../../domain/identifiers.js';
 import {
   TenantLocationInputError,
   assertTenantLocationTransition,
   normalizeStoredTenantLocations,
+  tenantLocationsV1Projection,
   tenantLocationRollbackConfiguration,
 } from '../../domain/tenant-locations.js';
 import { withPostgresTransaction } from './transaction.js';
@@ -153,9 +159,12 @@ export async function lockTenantLocationRevisionWithClient(client, tenantId) {
   return loadTenantLocationRevisionWithClient(client, tenantId, { lock: true });
 }
 
-async function currentWithClient(client, tenantId, knownRevision = null) {
+async function currentWithClient(client, tenantId, knownRevision = null, schemaVersion = 1) {
   const revision = knownRevision ?? await loadTenantLocationRevisionWithClient(client, tenantId);
-  const configuration = await loadTenantLocationConfigurationWithClient(client, tenantId);
+  const legacy = await loadTenantLocationConfigurationWithClient(client, tenantId);
+  const configuration = schemaVersion === 2
+    ? withSiteGuestInformation(legacy, await loadSiteGuestInformationWithClient(client, tenantId))
+    : legacy;
   const providerContext = await loadProviderContextWithClient(client, tenantId);
   return Object.freeze({ revision, configuration, providerContext });
 }
@@ -169,14 +178,16 @@ export async function ensureTenantLocationSnapshotWithClient(client, {
 }) {
   const safeRevision = requireRevision(revision);
   const normalized = normalizePersistedConfiguration(configuration);
+  const guests = await loadSiteGuestInformationWithClient(client, tenantId);
   const existing = await client.query({
     name: 'tenant-locations-history-match',
     text: `
-      SELECT configuration = $3::jsonb AS matches
+      SELECT configuration = $3::jsonb
+        AND COALESCE(guest_information, '{}'::jsonb) = $4::jsonb AS matches
       FROM tenant_location_revisions
       WHERE tenant_id = $1 AND revision = $2
     `,
-    values: [tenantId, safeRevision, JSON.stringify(normalized)],
+    values: [tenantId, safeRevision, JSON.stringify(normalized), JSON.stringify(guests)],
   });
   if (existing.rows[0]) {
     if (existing.rows[0].matches !== true) throw new Error('TENANT_LOCATION_SNAPSHOT_DIVERGED');
@@ -186,11 +197,11 @@ export async function ensureTenantLocationSnapshotWithClient(client, {
     name: 'tenant-locations-history-insert',
     text: `
       INSERT INTO tenant_location_revisions (
-        tenant_id, revision, configuration, changed_at, actor_user_id
+        tenant_id, revision, configuration, changed_at, actor_user_id, guest_information
       )
-      VALUES ($1, $2, $3::jsonb, $4, $5)
+      VALUES ($1, $2, $3::jsonb, $4, $5, $6::jsonb)
     `,
-    values: [tenantId, safeRevision, JSON.stringify(normalized), changedAt, actorUserId],
+    values: [tenantId, safeRevision, JSON.stringify(normalized), changedAt, actorUserId, JSON.stringify(guests)],
   });
   return true;
 }
@@ -405,7 +416,7 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
 
   async function mutate({
     tenantId, expectedRevision, nextRevision, configuration, changedAt, actorUserId, auditEvent,
-    assertAuthorizedTransition, bulkReceipt = null, bulkResponseFor = null,
+    assertAuthorizedTransition, bulkReceipt = null, bulkResponseFor = null, schemaVersion = 1,
   }) {
     requireUuid(tenantId, 'TENANT_ID_INVALID');
     requireUuid(actorUserId, 'ACTOR_USER_ID_INVALID');
@@ -428,8 +439,12 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
       const currentRevision = await lockTenantLocationRevisionWithClient(client, tenantId);
       if (currentRevision !== expectedRevision) return Object.freeze({ status: 'conflict', currentRevision });
       const currentConfiguration = await loadTenantLocationConfigurationWithClient(client, tenantId);
-      authorizeTransition(currentConfiguration, configuration);
-      const proposed = requireTransition(currentConfiguration, configuration);
+      const authorizedCurrent = schemaVersion === 2
+        ? withSiteGuestInformation(currentConfiguration, await loadSiteGuestInformationWithClient(client, tenantId))
+        : currentConfiguration;
+      authorizeTransition(authorizedCurrent, configuration);
+      const proposed = requireTransition(currentConfiguration, schemaVersion === 2
+        ? tenantLocationsV1Projection(configuration) : configuration);
       const referenceError = await validateReferences(client, tenantId, currentConfiguration, proposed, changedAt);
       if (referenceError) throw repositoryInputError(referenceError);
       await ensureTenantLocationSnapshotWithClient(client, {
@@ -440,6 +455,7 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
         actorUserId,
       });
       await applyConfiguration(client, tenantId, proposed, changedAt);
+      if (schemaVersion === 2) await applySiteGuestInformationWithClient(client, tenantId, configuration);
       await advanceTenantLocationRevisionWithClient(client, {
         tenantId,
         currentRevision,
@@ -455,7 +471,7 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
         actorUserId,
       });
       await appendAudit(client, auditRepository, auditEvent);
-      const current = await currentWithClient(client, tenantId, nextRevision);
+      const current = await currentWithClient(client, tenantId, nextRevision, schemaVersion);
       if (bulkReceipt) {
         const bulkResponse = bulkResponseFor(current);
         await finalizeTenantBulkTransferReceipt(client, {
@@ -468,10 +484,10 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
   }
 
   return Object.freeze({
-    async current(tenantId) {
+    async current(tenantId, { schemaVersion = 1 } = {}) {
       requireUuid(tenantId, 'TENANT_ID_INVALID');
       return withPostgresTransaction(pool, async (client) => {
-        return currentWithClient(client, tenantId);
+        return currentWithClient(client, tenantId, null, schemaVersion);
       }, { isolationLevel: 'REPEATABLE READ', readOnly: true });
     },
     async update(args) {
@@ -496,13 +512,13 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
         actorUserId: requireUuid(row.actor_user_id, 'TENANT_LOCATION_HISTORY_ACTOR_INVALID'),
       })));
     },
-    async revision(tenantId, revision) {
+    async revision(tenantId, revision, { schemaVersion = 1 } = {}) {
       requireUuid(tenantId, 'TENANT_ID_INVALID');
       const requestedRevision = requireRevision(revision);
       const result = await pool.query({
         name: 'tenant-locations-history-get',
         text: `
-          SELECT revision, configuration, changed_at, actor_user_id
+          SELECT revision, configuration, guest_information, changed_at, actor_user_id
           FROM tenant_location_revisions
           WHERE tenant_id = $1 AND revision = $2
         `,
@@ -511,7 +527,9 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
       const row = result.rows[0];
       return row ? Object.freeze({
         revision: requireRevision(row.revision),
-        configuration: normalizePersistedConfiguration(row.configuration),
+        configuration: schemaVersion === 2
+          ? withSiteGuestInformation(normalizePersistedConfiguration(row.configuration), row.guest_information)
+          : normalizePersistedConfiguration(row.configuration),
         changedAt: row.changed_at.toISOString(),
         actorUserId: requireUuid(row.actor_user_id, 'TENANT_LOCATION_HISTORY_ACTOR_INVALID'),
       }) : null;
@@ -525,6 +543,7 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
       actorUserId,
       auditEvent,
       assertAuthorizedTransition,
+      schemaVersion = 1,
     }) {
       requireUuid(tenantId, 'TENANT_ID_INVALID');
       requireUuid(actorUserId, 'ACTOR_USER_ID_INVALID');
@@ -535,7 +554,7 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
         const sourceResult = await client.query({
           name: 'tenant-locations-history-source-lock',
           text: `
-            SELECT configuration
+            SELECT configuration, guest_information
             FROM tenant_location_revisions
             WHERE tenant_id = $1 AND revision = $2
             FOR SHARE
@@ -546,7 +565,12 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
         const source = normalizePersistedConfiguration(sourceResult.rows[0].configuration);
         const current = await loadTenantLocationConfigurationWithClient(client, tenantId);
         const proposed = requireRollbackConfiguration(current, source);
-        authorizeTransition(current, proposed);
+        const guestConfiguration = schemaVersion === 2
+          ? withSiteGuestInformation(proposed, sourceResult.rows[0].guest_information)
+          : null;
+        authorizeTransition(schemaVersion === 2
+          ? withSiteGuestInformation(current, await loadSiteGuestInformationWithClient(client, tenantId))
+          : current, guestConfiguration ?? proposed);
         const referenceError = await validateReferences(client, tenantId, current, proposed, changedAt);
         if (referenceError) throw repositoryInputError(referenceError);
         await ensureTenantLocationSnapshotWithClient(client, {
@@ -557,6 +581,7 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
           actorUserId,
         });
         await applyConfiguration(client, tenantId, proposed, changedAt);
+        if (guestConfiguration) await applySiteGuestInformationWithClient(client, tenantId, guestConfiguration);
         await advanceTenantLocationRevisionWithClient(client, {
           tenantId,
           currentRevision,
@@ -572,7 +597,7 @@ export function createPostgresTenantLocationRepository(pool, { auditRepository }
           actorUserId,
         });
         await appendAudit(client, auditRepository, auditEvent);
-        return currentWithClient(client, tenantId, nextRevision);
+        return currentWithClient(client, tenantId, nextRevision, schemaVersion);
       });
     },
   });

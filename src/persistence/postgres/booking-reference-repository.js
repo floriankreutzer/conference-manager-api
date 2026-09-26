@@ -573,6 +573,7 @@ export function createPostgresBookingReferenceRepository(pool, { auditRepository
       requestId,
       integrationId,
       providerReference,
+      expectedRequestVersion,
       changedAt,
       auditEvent,
     }) {
@@ -585,6 +586,23 @@ export function createPostgresBookingReferenceRepository(pool, { auditRepository
         ) {
           return existing;
         }
+        if (existing?.state !== 'active' || existing.providerReference !== providerReference) {
+          throw new BookingReferenceConflictError();
+        }
+        const owner = await client.query({
+          name: 'booking-reference-lock-compensatable-request',
+          text: `
+            SELECT 1
+            FROM requests
+            WHERE tenant_id = $1
+              AND id = $2
+              AND request_version = $3
+              AND status IN ('Submitted', 'In Review')
+            FOR SHARE
+          `,
+          values: [tenantId, requestId, expectedRequestVersion],
+        });
+        if (owner.rowCount !== 1) return null;
         const result = await client.query({
           name: 'booking-reference-begin-compensating',
           text: `

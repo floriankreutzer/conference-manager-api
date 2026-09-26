@@ -72,6 +72,41 @@ test('drafting catalog context binds every section first page to the bootstrap g
   });
 });
 
+test('equipment catalog pages require the bootstrap context and retain section-bound cursors', () => {
+  const context = createApplicationCatalogContext({
+    revisions: REVISIONS,
+    policyVersionId: 'policy-v2',
+  });
+  assert.deepEqual(normalizeApplicationCatalogQuery({
+    section: 'equipment', limit: '2', cursor: undefined, context,
+  }), {
+    section: 'equipment',
+    limit: 2,
+    afterId: null,
+    expectedRevisions: REVISIONS,
+    expectedPolicyVersionId: 'policy-v2',
+  });
+
+  const cursor = createApplicationCatalogCursor({
+    section: 'equipment',
+    revisions: REVISIONS,
+    policyVersionId: 'policy-v2',
+    afterId: 'projector-b',
+  });
+  assert.deepEqual(normalizeApplicationCatalogQuery({
+    section: 'equipment', limit: '2', cursor, context: undefined,
+  }), {
+    section: 'equipment',
+    limit: 2,
+    afterId: 'projector-b',
+    expectedRevisions: REVISIONS,
+    expectedPolicyVersionId: 'policy-v2',
+  });
+  assert.throws(() => normalizeApplicationCatalogQuery({
+    section: 'services', limit: '2', cursor, context: undefined,
+  }), AuthorizationInputError);
+});
+
 test('drafting catalog query rejects unknown sections, fields, limits and foreign cursors', () => {
   const cursor = createApplicationCatalogCursor({
     section: 'services',
@@ -80,7 +115,7 @@ test('drafting catalog query rejects unknown sections, fields, limits and foreig
     afterId: 'service-b',
   });
   for (const value of [
-    { section: 'equipment', limit: undefined, cursor: undefined, context: undefined },
+    { section: 'unknown', limit: undefined, cursor: undefined, context: undefined },
     { ...query(), tenantId: 'foreign' },
     query({ limit: '0' }),
     query({ limit: '11' }),

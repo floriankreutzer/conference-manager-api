@@ -139,6 +139,6 @@ then required.
 
 The central composition root registers the route module, service and PostgreSQL
 repository, so the administration API and Request integration are reachable
-under schema version 34. Policy administration remains a separate bounded
+under schema version 38. Policy administration remains a separate bounded
 owner; Request composition consumes only its public evaluation/snapshot
 contract.

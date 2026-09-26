@@ -6,7 +6,7 @@ import { decodeOpaqueCursor, encodeOpaqueCursor } from './opaque-cursor.js';
 const UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const INTEGER = /^[1-9][0-9]?$/;
 const MAX_RANGE_MILLISECONDS = 366 * 24 * 60 * 60 * 1_000;
-const CURSOR_PURPOSE = 'request-report-v2';
+const CURSOR_PURPOSE = 'request-report-v3';
 const CURSOR_TTL_MILLISECONDS = 30 * 60 * 1_000;
 
 export const REQUEST_REPORT_DEFAULT_LIMIT = 10;

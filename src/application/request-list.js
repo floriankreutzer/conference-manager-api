@@ -5,7 +5,7 @@ import { decodeOpaqueCursor, encodeOpaqueCursor } from './opaque-cursor.js';
 
 const INTEGER = /^[1-9][0-9]?$/;
 const UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-const CURSOR_PURPOSE = 'application-request-list-v2';
+const CURSOR_PURPOSE = 'application-request-list-v3';
 const CURSOR_TTL_MILLISECONDS = 30 * 60 * 1_000;
 
 export const APPLICATION_REQUEST_LIST_DEFAULT_LIMIT = 10;
@@ -69,7 +69,7 @@ function decodeCursor(value, tenantId, requesterUserId, cursorSecret, evaluatedA
     'APPLICATION_REQUEST_LIST_CURSOR_INVALID',
   );
   if (
-    cursor.version !== 2
+    cursor.version !== 3
     || cursor.tenantId !== tenantId
     || !validScope(cursor.requesterUserId)
     || cursor.requesterUserId !== requesterUserId
@@ -123,7 +123,7 @@ export function createApplicationRequestListCursor({
   ) invalid('APPLICATION_REQUEST_LIST_CURSOR_INVALID');
   const asOf = utcInstant(snapshot.asOf);
   return encodeOpaqueCursor({
-    version: 2,
+    version: 3,
     tenantId,
     requesterUserId,
     revisionWatermark: snapshot.revisionWatermark,
