@@ -29,6 +29,8 @@ test('decodes accepted formats into a bounded metadata-free WebP image', async (
 
 test('rejects forged type, malformed bytes, oversized input, excessive pixels, and multiple frames', async () => {
   const png = await sharp(pixel).png().toBuffer();
+  const jpeg = await sharp(pixel).jpeg().toBuffer();
+  const webp = await sharp(pixel).webp().toBuffer();
   // Two-frame WebP test fixture, generated from 2x3 red and blue frames.
   const animated = Buffer.from([
     'UklGRsAAAABXRUJQVlA4WAoAAAACAAAAAQAAAgAAQU5JTQYAAAD/////AABBTk1GSAAAAAAAAAAAAAEAAAIAAGQAAAJWUDggMAAAANABAJ0B',
@@ -40,6 +42,9 @@ test('rejects forged type, malformed bytes, oversized input, excessive pixels, a
     { bytes: png, contentType: 'image/svg+xml' },
     { bytes: Buffer.from('not an image'), contentType: 'image/png' },
     { bytes: Buffer.alloc(ROOM_IMAGE_INPUT_MAX_BYTES + 1), contentType: 'image/png' },
+    { bytes: Buffer.concat([png, Buffer.from('<script>')]), contentType: 'image/png' },
+    { bytes: Buffer.concat([jpeg, Buffer.from('<script>')]), contentType: 'image/jpeg' },
+    { bytes: Buffer.concat([webp, Buffer.from('<script>')]), contentType: 'image/webp' },
     { bytes: animated, contentType: 'image/webp' },
     {
       bytes: await sharp({ create: { width: 2_001, height: 2_000, channels: 3, background: '#000000' } })

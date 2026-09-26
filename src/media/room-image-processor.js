@@ -16,11 +16,27 @@ function invalid() {
   throw new RoomImageInputError();
 }
 
+function hasExactContainerBoundary(bytes, contentType) {
+  if (contentType === 'image/png') {
+    return bytes.length >= 20
+      && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+      && bytes.subarray(-12, -4).equals(Buffer.from([0, 0, 0, 0, 73, 69, 78, 68]));
+  }
+  if (contentType === 'image/jpeg') {
+    return bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8
+      && bytes.at(-2) === 0xff && bytes.at(-1) === 0xd9;
+  }
+  return bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF'
+    && bytes.toString('ascii', 8, 12) === 'WEBP'
+    && bytes.readUInt32LE(4) + 8 === bytes.length;
+}
+
 // Only decoded raster pixels cross this boundary; encoded source bytes and metadata
 // must never reach persistence or a browser response.
 export async function processRoomImage({ bytes, contentType } = {}) {
   if (!Buffer.isBuffer(bytes) || bytes.length === 0 || bytes.length > ROOM_IMAGE_INPUT_MAX_BYTES
-    || !Object.values(CONTENT_TYPES).includes(contentType)) invalid();
+    || !Object.values(CONTENT_TYPES).includes(contentType)
+    || !hasExactContainerBoundary(bytes, contentType)) invalid();
 
   try {
     const decoder = sharp(bytes, {
