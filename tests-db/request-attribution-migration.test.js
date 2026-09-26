@@ -12,7 +12,6 @@ const TENANT_A = '91919191-9191-4191-8191-919191919191';
 const TENANT_B = '92929292-9292-4292-8292-929292929292';
 const REQUESTER = '93939393-9393-4393-8393-939393939393';
 const MANAGER = '94949494-9494-4494-8494-949494949494';
-const MISSING_LEGACY_ACTOR = 'a2a2a2a2-a2a2-42a2-82a2-a2a2a2a2a2a2';
 const LEGACY_INITIATOR = 'a3a3a3a3-a3a3-43a3-83a3-a3a3a3a3a3a3';
 const LEGACY_DECIDER = 'a4a4a4a4-a4a4-44a4-84a4-a4a4a4a4a4a4';
 const CORRELATION = '95959595-9595-4595-8595-959595959595';
@@ -167,7 +166,7 @@ async function seedSchema35(pool) {
   });
   await insertRequestTransaction(pool, {
     requestId: 'missing-legacy-actor',
-    actorUserId: MISSING_LEGACY_ACTOR,
+    actorUserId: null,
   });
   await pool.query({
     text: `
