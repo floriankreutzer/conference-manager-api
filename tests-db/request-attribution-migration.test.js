@@ -107,9 +107,10 @@ async function insertRequestWithRevision(client, {
     `,
     values: actorRoleAtAction === undefined
       ? [TENANT_A, requestId, JSON.stringify(publicLegacyRequest(requestId, 1, 'Confirmed', updatedAt)),
-        updatedAt, actorUserId, CORRELATION]
+        updatedAt, actorUserId, actorUserId === null ? null : CORRELATION]
       : [TENANT_A, requestId, JSON.stringify(publicLegacyRequest(requestId, 1, 'Confirmed', updatedAt)),
-        updatedAt, actorUserId, CORRELATION, actorRoleAtAction, suppliedActorName],
+        updatedAt, actorUserId, actorUserId === null ? null : CORRELATION,
+        actorRoleAtAction, suppliedActorName],
   });
   await client.query(
     'UPDATE requests SET current_revision_sequence = $3 WHERE tenant_id = $1 AND id = $2',
