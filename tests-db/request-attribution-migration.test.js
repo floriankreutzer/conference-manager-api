@@ -87,7 +87,7 @@ async function insertRequestWithRevision(client, {
         internal_participants, external_participants, status_changed_at, created_at,
         updated_at, schema_version, request_version, request_snapshot${requesterColumns}
       ) VALUES (
-        $1, $2, $3, $4, 'Confirmed', $5, $6, 2, 0, $7, $7,
+        $1, $2, $3, $4, 'Confirmed', $5, $6, 2, 0, $8, $7,
         $8, $9, 1, $10::jsonb${requesterValue}
       )
     `,
