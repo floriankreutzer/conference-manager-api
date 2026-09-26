@@ -62,7 +62,8 @@ async function insertRequest(pool, id, schemaVersion) {
     await client.query(`INSERT INTO requests(tenant_id,id,requester_user_id,room_id,status,starts_at,ends_at,
       internal_participants,external_participants,schema_version,request_version,request_snapshot,status_changed_at,created_at,updated_at)
       VALUES($1,$2,$3,'room','Confirmed',$4,$5,2,0,$6,1,$7::jsonb,$8,$8,$8)`,
-    [TENANT, id, USER, record.startsAt, record.endsAt, schemaVersion, JSON.stringify(composed), AT]);
+    [TENANT, id, USER, record.startsAt, record.endsAt, schemaVersion,
+      composed === null ? null : JSON.stringify(composed), AT]);
     const revision = await client.query(`INSERT INTO request_revisions(tenant_id,request_id,request_version,schema_version,
       operation,record,captured_at,actor_user_id,correlation_id) VALUES($1,$2,1,$3,'created',$4::jsonb,$5,$6,$7)
       RETURNING revision_sequence`, [TENANT, id, schemaVersion, JSON.stringify(record), AT, USER, randomUUID()]);
