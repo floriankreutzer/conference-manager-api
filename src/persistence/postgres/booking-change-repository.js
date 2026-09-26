@@ -241,7 +241,8 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
                   AND booking_change_requests.updated_at = current_request.updated_at)
               )
           )
-          ORDER BY (status IN ('pending', 'applying')) DESC, updated_at DESC, created_at DESC, id
+          ORDER BY (status IN ('pending', 'applying')) DESC,
+                   base_request_version DESC, updated_at DESC, created_at DESC, id
           LIMIT 1
         `,
         values: [tenantId, requestId],
