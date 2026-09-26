@@ -349,10 +349,10 @@ async function insertV2Change(pool, {
         tenant_id, id, request_id, initiator_user_id, status, room_id, starts_at, ends_at,
         internal_participants, external_participants, base_request_updated_at,
         request_schema_version, base_request_version, request_draft,
-        proposed_request_snapshot, created_at, updated_at, initiator_role_at_action
+        proposed_request_snapshot, created_at, updated_at
       ) VALUES (
         $1, $2, $3, $4, 'pending', $5, $6, $7, $8, $9, $10,
-        2, 1, $11::jsonb, $12::jsonb, $10, $10, 'employee'
+        2, 1, $11::jsonb, $12::jsonb, $10, $10
       )
     `,
     values: [
