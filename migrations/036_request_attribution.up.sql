@@ -75,6 +75,11 @@ UPDATE booking_change_requests change SET
   initiator_display_name = request_actor_display_name(change.tenant_id, change.initiator_user_id),
   decider_display_name = request_actor_display_name(change.tenant_id, change.decided_by_user_id);
 
+-- PostgreSQL 18 refuses to ALTER populated tables while deferred FK checks from
+-- this backfill remain queued. Evaluate them now, before adding the final
+-- constraints. A failed check aborts this migration's transaction atomically.
+SET CONSTRAINTS ALL IMMEDIATE;
+
 ALTER TABLE requests ALTER COLUMN requester_display_name SET NOT NULL,
   ADD CONSTRAINT requests_requester_display_valid CHECK (request_attribution_name_valid(requester_display_name));
 ALTER TABLE request_revisions ADD CONSTRAINT request_revisions_actor_display_valid CHECK (
