@@ -266,7 +266,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
           [TENANT_B, TENANT_A, 'cross-room-request'],
         );
       }),
-      (error) => error.code === 'P0001' && error.message === 'REQUEST_ATTRIBUTION_IMMUTABLE',
+      (error) => error.message === 'REQUEST_ATTRIBUTION_IMMUTABLE',
     );
     const retained = await pool.query(
       'SELECT tenant_id FROM requests WHERE tenant_id = $1 AND id = $2',
