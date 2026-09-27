@@ -14,11 +14,12 @@ export function moduleImports(source) {
   const text = String(source || '');
   const [imports] = parse(text);
   return Object.freeze(imports
-    .filter((entry) => entry.d !== -2 && typeof entry.n === 'string')
+    .filter((entry) => ['static', 'dynamic'].includes(entry.type)
+      && typeof entry.specifier === 'string')
     .map((entry) => Object.freeze({
-      dynamic: entry.d !== -1,
-      specifier: entry.n.split(/[?#]/)[0],
-      statement: entry.d === -1 ? text.slice(entry.ss, entry.se) : null,
+      dynamic: entry.type === 'dynamic',
+      specifier: entry.specifier.split(/[?#]/)[0],
+      statement: entry.type === 'static' ? text.slice(entry.importStart, entry.importEnd) : null,
     })));
 }
 
