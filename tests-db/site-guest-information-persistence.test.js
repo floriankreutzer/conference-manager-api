@@ -12,6 +12,7 @@ const USER = '37333333-3333-4333-8333-333333333333';
 const guest = Object.freeze({ address: null, publicTransport: null, arrival: 'Northwind visitor reception',
   parking: null, reception: null, building: null, visitorNotes: null, accessibility: null,
   wifiPolicy: 'not_available', wifiNetworkName: null, contact: null, routeUrl: null });
+const publicGuest = Object.freeze({ ...guest, arrival: null });
 
 test('Guest Information persists atomically with Locations and survives legacy writes and rollbacks', async (t) => {
   const database = loadDatabaseConfig(process.env, 'test');
@@ -188,7 +189,7 @@ test('Guest Information persists atomically with Locations and survives legacy w
       async completePreConfirmationCleanup() { throw new Error('UNEXPECTED_CALENDAR_CLEANUP'); },
     },
   });
-  assert.deepEqual((await requests.findGuestContextByTenantIdAndRequest(TENANT_A, 'same-request', 1)).guestPresentation, guest);
+  assert.deepEqual((await requests.findGuestContextByTenantIdAndRequest(TENANT_A, 'same-request', 1)).guestPresentation, publicGuest);
 
   const unsafeCurrentGuest = { ...guest, arrival: 'P\u0251ssword: Sommer2026' };
   await pool.query('UPDATE sites SET guest_information=$2::jsonb WHERE tenant_id=$1 AND id=\'same-site\'',
@@ -233,7 +234,7 @@ test('Guest Information persists atomically with Locations and survives legacy w
   await pool.query("UPDATE rooms SET details='{}'::jsonb WHERE tenant_id=$1 AND id='same-room'", [TENANT_A]);
   assert.equal((await repository.current(TENANT_A, { schemaVersion: 2 })).revision, 6);
   assert.equal((await repository.current(TENANT_B, { schemaVersion: 2 })).revision, 1);
-  assert.deepEqual((await requests.findGuestContextByTenantIdAndRequest(TENANT_A, 'same-request', 1)).guestPresentation, guest);
+  assert.deepEqual((await requests.findGuestContextByTenantIdAndRequest(TENANT_A, 'same-request', 1)).guestPresentation, publicGuest);
   assert.equal((await requests.findGuestContextByTenantIdAndRequest(TENANT_B, 'same-request', 1)).guestPresentation, null);
   assert.equal(await requests.findGuestContextByTenantIdAndRequest(TENANT_A, 'missing', 1), null);
   assert.equal(await requests.findGuestContextByTenantIdAndRequest(TENANT_A, 'same-request', 2), null);
