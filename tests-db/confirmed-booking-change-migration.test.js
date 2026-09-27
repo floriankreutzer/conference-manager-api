@@ -53,8 +53,9 @@ test('confirmed booking change migration enforces one open proposal and fail-clo
   ]);
   const insert = `INSERT INTO booking_change_requests (
       tenant_id,id,request_id,initiator_user_id,status,room_id,starts_at,ends_at,
-      internal_participants,external_participants,base_request_updated_at,created_at,updated_at
-    ) VALUES ($1,$2,'CR-68',$3,'pending','room-1',$4,$5,3,0,$6,$6,$6)`;
+      internal_participants,external_participants,base_request_updated_at,created_at,updated_at,
+      initiator_role_at_action
+    ) VALUES ($1,$2,'CR-68',$3,'pending','room-1',$4,$5,3,0,$6,$6,$6,'employee')`;
   await pool.query(insert, [TENANT_ID, '34343434-3434-4343-8343-343434343434', USER_ID,
     '2026-09-01T10:00:00.000Z', '2026-09-01T11:00:00.000Z', '2026-08-26T10:00:00.000Z']);
   await assert.rejects(

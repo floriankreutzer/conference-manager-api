@@ -140,7 +140,7 @@ Forward rollout across migration 034 is a global reauthentication event:
 1. block new Customer traffic and drain every old-epoch customer instance;
 2. apply migration 034 and retain its ledger/checksum plus protected pre/post active-session counts;
 3. deploy the whole new-epoch customer fleet; mixed old/new customer instances are prohibited;
-4. require schema-34 readiness before resuming traffic;
+4. require schema-38 readiness before resuming traffic;
 5. prove a captured pre-cutover cookie returns unauthenticated and a fresh sign-in returns only current roles/permissions.
 
 Emergency binary rollback must also block Customer traffic and drain the fleet. Run the migration-034 down bookkeeping step, whose SQL deliberately never clears `revoked_at`, then deploy the schema-33-compatible old binary. Pre-cutover legacy rows remain revoked, and new-epoch rows are unresolvable by the old token hash; users must sign in again after traffic resumes. Before a later forward deploy, block traffic and reapply migration 034 so every rollback-window session is revoked.
@@ -155,7 +155,7 @@ Migration 034 has no authenticated per-session actor and must not fabricate Tena
 - Pilot/Production use `DATABASE_SSL=verify-full` with a certificate/hostname-valid endpoint.
 - SQL application values remain parameterized.
 - Deployment automation applies migrations before application rollout; startup does not auto-migrate.
-- Readiness requires connectivity and exact repository-defined schema version 34.
+- Readiness requires connectivity and exact repository-defined schema version 38.
 - Tenant ownership and referential integrity are reinforced at database level.
 - Advisory locks and optimistic versions protect concurrent security/business transitions.
 - Migration rollback guards prevent silent removal of security/business evidence.

@@ -29,6 +29,7 @@ function operationContext() {
       tenantId: TENANT_ID,
       id: 'request-security',
       requesterUserId: USER_ID,
+      requesterAttribution: { displayName: 'Persisted requester' },
       roomId: 'room-1',
       status: 'Submitted',
       statusReason: null,

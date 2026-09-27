@@ -11,6 +11,13 @@ export { loadMigrations, migrateUp };
 async function prepareSaas3Rollback(pool) {
   await clearSaas3TestState(pool);
   const result = await pool.query('SELECT COALESCE(MAX(version), 0)::integer AS version FROM schema_migrations');
+  if (result.rows[0].version >= 36) {
+    // Older migration suites isolate their own down contract from later attribution writes.
+    // The migration-036 suite imports the production runner and verifies the real guard.
+    await pool.query(
+      'UPDATE request_attribution_migration_state SET post_cutover_evidence = FALSE',
+    );
+  }
   if (result.rows[0].version < 31) return;
   await pool.query('ALTER TABLE tenants DISABLE TRIGGER tenants_platform_revisions');
   await pool.query('ALTER TABLE tenant_onboarding_invitations DISABLE TRIGGER tenant_onboarding_invitations_revision_guard');

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm_seed_version:
-        description: Type saas-3.5-shared-demo-v1 to migrate and reset the hosted Demo database
+        description: Type saas-3.6-shared-demo-v5 to migrate and reset the hosted Demo database
         required: true
         type: string
 
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   initialize:
-    if: ${{ github.ref == 'refs/heads/main' && inputs.confirm_seed_version == 'saas-3.5-shared-demo-v1' }}
+    if: ${{ github.ref == 'refs/heads/main' && inputs.confirm_seed_version == 'saas-3.6-shared-demo-v5' }}
     environment:
       name: hosted-demo-initialize
     runs-on: ubuntu-latest
@@ -25,7 +25,7 @@ jobs:
     env:
       NODE_ENV: test
       DEMO_RUNTIME: shared-postgres-v1
-      DEMO_SEED_VERSION: saas-3.5-shared-demo-v1
+      DEMO_SEED_VERSION: saas-3.6-shared-demo-v5
       DEMO_CUSTOMER_ORIGIN: https://conference-manager-demo.onrender.com
       DEMO_PLATFORM_ORIGIN: https://conference-manager-ops-demo.onrender.com
       DEMO_DATABASE_SSL: verify-full

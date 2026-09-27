@@ -79,14 +79,16 @@ The final confirmation flow is:
 2. require `microsoft.calendar` for live final free/busy validation;
 3. perform uncached provider final validation;
 4. require `microsoft.calendar.write` and create the external event idempotently;
-5. execute the Tenant/room-locked authoritative local confirmation, revalidating the exact connected Integration and active Entra binding inside that same PostgreSQL transaction;
-6. on a local conflict/error, reload the authoritative Request; a confirmed winner or committed unknown outcome returns without deleting its event;
-7. only after an explicit local conflict proves the Request unconfirmed, persist `compensating`, cancel externally and persist `compensated`; a thrown/unknown commit outcome retains the event for reconciliation;
+5. execute the Tenant/room-locked authoritative local confirmation, revalidating the exact connected Integration, active Entra binding and exact `active` booking reference inside that same PostgreSQL transaction;
+6. after an explicit local conflict, require the original eligible Request version under a share lock before changing `active` to `compensating`; if a parallel confirmation already advanced the Request, retain the event and return the conflict;
+7. on a thrown/unknown local commit outcome, perform no decision-free Request reread or compensation, retain the event and return the explicit reconciliation error;
 8. if compensation also fails, surface a dedicated synchronization failure rather than claiming success.
 
 PostgreSQL and Microsoft Graph do not share a distributed transaction. The implementation therefore uses explicit idempotency and compensation rather than claiming impossible atomicity across systems.
 
 Successful compensation records `compensating` before Graph delete and `compensated`, not terminal `cancelled`, after delete. Create cannot reactivate an in-flight `compensating` row. Idempotent compensation completion must converge first; a later confirmation retry then starts the next numbered attempt with a new transaction ID. If final-commit authority revalidation fails, any event created by that call is compensated and the Request remains unconfirmed.
+
+If Calendar Write is disabled for a final-confirm attempt while an older event remains, a distinct pre-confirm cleanup uses the original Request version/status fence before changing `active` to `compensating`. It reconciles `pending`, resumes `compensating`, and never repeats provider delete for `compensated`; any unknown provider outcome returns reconciliation failure. The final-confirm transaction locks the single exact `compensated` reference and, only after its room-conflict check, atomically changes it to `cancelled`, appends Calendar audit evidence and confirms the Request. A conflict leaves `compensated` available for a later write-enabled attempt. Ordinary authorized cancellation after the Request transition continues to use the normal cancellation path.
 
 ## Update
 

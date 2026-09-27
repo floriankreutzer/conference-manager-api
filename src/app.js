@@ -2,11 +2,13 @@ import { ApiError, asApiError } from './api-error.js';
 import { AuthorizationDeniedError } from './authorization/errors.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { assertProductionConfig } from './config.js';
+import { isSupportedRequestCompositionSchemaVersion } from './domain/request-composition.js';
 import { toPublicRequest } from './domain/request.js';
 import {
   applicationRouteKey,
   createApplicationHttpHandler,
 } from './http/application-routes.js';
+import { readRequestTransitionExpectedVersion } from './http/request-transition-precondition.js';
 import {
   createMicrosoft365HttpHandler,
   microsoft365RouteKey,
@@ -18,6 +20,7 @@ import { tenantCapabilityViewRouteModule } from './http/settings/tenant-capabili
 import { tenantCatalogueRouteModule } from './http/settings/catalogue.js';
 import { tenantCostAllocationRoutes } from './http/settings/cost-allocation.js';
 import { tenantLocationRoutes } from './http/settings/locations.js';
+import { roomMediaRoutes } from './http/room-media.js';
 import { tenantOrganizationRouteModule } from './http/settings/organization.js';
 import { tenantPresentationRouteModule } from './http/settings/tenant-presentation-routes.js';
 import { tenantUserLifecycleRouteModule } from './http/settings/tenant-user-lifecycle-routes.js';
@@ -74,7 +77,7 @@ const TRANSITION_BODY_SCHEMA = Object.freeze({
 });
 const BOOKING_CHANGE_BODY_SCHEMA = Object.freeze({
   required: Object.freeze({
-    schemaVersion: (value) => value === 2,
+    schemaVersion: isSupportedRequestCompositionSchemaVersion,
     expectedVersion: (value) => Number.isSafeInteger(value)
       && value >= 1
       && value < Number.MAX_SAFE_INTEGER,
@@ -127,6 +130,7 @@ export const CUSTOMER_OPERATIONAL_ROUTE_MODULES = Object.freeze([
   tenantCapabilityViewRouteModule,
   tenantOrganizationRouteModule,
   tenantLocationRoutes,
+  roomMediaRoutes,
   tenantCatalogueRouteModule,
   tenantBookingPolicyRoutes,
   tenantCostAllocationRoutes,
@@ -254,6 +258,7 @@ export function createApp({
   tenantCatalogueService,
   tenantCostAllocationService,
   tenantLocationAdministrationService,
+  roomMediaService,
   tenantOrganizationService,
   tenantPresentationService,
   tenantUserAdministrationService,
@@ -297,6 +302,7 @@ export function createApp({
     tenantCatalogueService,
     tenantCostAllocationService,
     tenantLocationAdministrationService,
+    roomMediaService,
     tenantOrganizationService,
     tenantPresentationService,
     tenantUserLifecycleService,
@@ -666,7 +672,7 @@ export function createApp({
             });
           statusCode = 200;
           sendJson(response, statusCode, {
-            schemaVersion: 2,
+            schemaVersion: 3,
             result,
           }, config.maxResponseBytes);
           return;
@@ -692,7 +698,7 @@ export function createApp({
           })();
         statusCode = request.method === 'POST' ? 201 : 200;
         sendJson(response, statusCode, {
-          schemaVersion: 2,
+          schemaVersion: 3,
           result,
         }, config.maxResponseBytes);
         return;
@@ -705,7 +711,13 @@ export function createApp({
         const isHistory = Boolean(requestHistoryMatch);
         const isRoomContext = Boolean(requestRoomContextMatch);
         const historyQuery = isHistory ? requestHistoryQuery(parsedUrl) : null;
-        if (!isHistory) assertNoQuery(parsedUrl);
+        let roomProjection = null;
+        if (isRoomContext && parsedUrl.search !== '') {
+          if (parsedUrl.searchParams.size !== 1 || parsedUrl.searchParams.get('projection') !== 'guest') {
+            throw new ApiError(400, 'VALIDATION_FAILED');
+          }
+          roomProjection = 'guest';
+        } else if (!isHistory) assertNoQuery(parsedUrl);
         const expectedMethod = isTransition ? 'POST' : 'GET';
         if (request.method !== expectedMethod) throw new ApiError(405, 'METHOD_NOT_ALLOWED');
         const principal = await principalGuard.require(request, { csrf: isTransition });
@@ -732,12 +744,16 @@ export function createApp({
         }
 
         if (isRoomContext) {
+          for await (const chunk of request) {
+            if (chunk.length > 0) throw new ApiError(400, 'REQUEST_BODY_NOT_ALLOWED');
+          }
           statusCode = 200;
           sendJson(response, statusCode, await requestService.getRequestRoomContext({
             principal,
             tenantContext,
             requestId: requestIdValue,
             correlationId: requestId,
+            projection: roomProjection,
           }), config.maxResponseBytes);
           return;
         }
@@ -748,6 +764,7 @@ export function createApp({
             tenantContext,
             requestId: requestIdValue,
             correlationId: requestId,
+            expectedVersion: readRequestTransitionExpectedVersion(request.headers),
             ...validateExactObject(
               await readJsonObjectBody(request, { maxBytes: config.maxBodyBytes }),
               TRANSITION_BODY_SCHEMA,
@@ -761,7 +778,7 @@ export function createApp({
           });
         statusCode = 200;
         sendJson(response, statusCode, {
-          schemaVersion: 2,
+          schemaVersion: 3,
           request: toPublicRequest(record),
           requestId,
         }, config.maxResponseBytes);

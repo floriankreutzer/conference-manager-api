@@ -13,7 +13,7 @@ import {
   seedDemoBusinessState,
 } from './demo-fixture-state.js';
 
-const PRODUCTION_SCHEMA_VERSION = 34;
+const PRODUCTION_SCHEMA_VERSION = 39;
 const CHECKSUM_PATTERN = /^[0-9a-f]{64}$/;
 const DATABASE_NAME_PATTERN = /^conference_manager_demo_[a-z0-9_]{1,48}$/;
 const DATABASE_ROLE_PATTERN = /^[a-z][a-z0-9_]{2,62}$/;
@@ -86,9 +86,11 @@ export const DEMO_RESET_TABLES = Object.freeze([
   'tenant_cost_centers',
   'tenant_cost_allocation_revisions',
   'request_v2_migration_state',
+  'request_attribution_migration_state',
   'tenant_room_prices',
   'request_revisions',
   'tenant_bulk_transfer_receipts',
+  'tenant_room_media_assets',
   'platform_operators',
   'platform_operator_tenant_scopes',
   'platform_sessions',
@@ -365,6 +367,10 @@ export function createPostgresDemoResetRepository({
           }
           phase = DEMO_RESET_FAILURE_REASON.TRUNCATE;
           await client.query({ name: 'demo-reset-truncate', text: TRUNCATE_SQL });
+          await client.query({
+            name: 'demo-reset-attribution-migration-state',
+            text: 'INSERT INTO request_attribution_migration_state (singleton) VALUES (true)',
+          });
           phase = DEMO_RESET_FAILURE_REASON.AUDIT_CHAIN;
           await client.query({
             name: 'demo-reset-audit-chain-state',

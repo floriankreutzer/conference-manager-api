@@ -1,4 +1,5 @@
 import { isInternalUuid } from '../../domain/identifiers.js';
+import { normalizeAttributionDisplayName } from '../../domain/request-attribution.js';
 import { withPostgresTransaction } from './transaction.js';
 
 const PROVIDER_PATTERN = /^[a-z][a-z0-9_-]{1,63}$/;
@@ -20,15 +21,12 @@ function assertReference(value, code) {
 }
 
 function assertDisplayName(value) {
-  if (
-    typeof value !== 'string'
-    || value.length < 1
-    || value.length > 160
-    || value.trim() !== value
-    || /[\u0000-\u001f\u007f]/.test(value)
-  ) {
-    throw new TypeError('JIT_DISPLAY_NAME_INVALID');
+  try {
+    if (normalizeAttributionDisplayName(value) === value) return;
+  } catch {
+    // Normalize every provider name before it reaches this persistence boundary.
   }
+  throw new TypeError('JIT_DISPLAY_NAME_INVALID');
 }
 
 function assertOptionalDisplayName(value) {

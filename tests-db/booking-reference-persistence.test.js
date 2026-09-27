@@ -245,11 +245,26 @@ test('PostgreSQL booking references are tenant-scoped, idempotent, and audit-ato
   });
 
   await t.test('compensated references rotate their attempt and idempotency key before reactivation', async () => {
+    const staleOwner = await repository.beginCompensatingProviderReference({
+      tenantId: TENANT_A,
+      requestId: 'request-1',
+      integrationId: INTEGRATION_A,
+      providerReference: 'opaque-event-1',
+      expectedRequestVersion: 2,
+      changedAt: new Date('2026-08-24T10:01:29.000Z'),
+      auditEvent: auditEvent(auditService, TENANT_A, USER_A, CORRELATION_A, 'cancelled'),
+    });
+    assert.equal(staleOwner, null);
+    assert.equal(
+      (await repository.findProviderReferenceByRequest(TENANT_A, 'request-1', INTEGRATION_A)).state,
+      'active',
+    );
     const compensating = await repository.beginCompensatingProviderReference({
       tenantId: TENANT_A,
       requestId: 'request-1',
       integrationId: INTEGRATION_A,
       providerReference: 'opaque-event-1',
+      expectedRequestVersion: 1,
       changedAt: new Date('2026-08-24T10:01:30.000Z'),
       auditEvent: auditEvent(auditService, TENANT_A, USER_A, CORRELATION_A, 'cancelled'),
     });

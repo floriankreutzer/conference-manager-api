@@ -9,6 +9,7 @@ import {
   tenantAuthorizationSnapshot,
 } from '../authorization/policy.js';
 import { isInternalUuid } from '../domain/identifiers.js';
+import { normalizeAttributionDisplayName } from '../domain/request-attribution.js';
 import { normalizeTrustedIdentity } from './principal.js';
 
 const PROVIDER_PATTERN = /^[a-z][a-z0-9_-]{1,63}$/;
@@ -17,16 +18,11 @@ const JIT_FALLBACK_DISPLAY_NAME = 'Provisioned user';
 
 function normalizedDisplayName(value) {
   if (value === null || value === undefined) return null;
-  if (
-    typeof value !== 'string'
-    || value.length < 1
-    || value.length > 160
-    || value.trim() !== value
-    || /[\u0000-\u001f\u007f]/.test(value)
-  ) {
+  try {
+    return normalizeAttributionDisplayName(value);
+  } catch {
     return undefined;
   }
-  return value;
 }
 
 function normalizedExternalIdentity(value) {

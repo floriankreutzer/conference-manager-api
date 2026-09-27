@@ -50,8 +50,8 @@ if (/repository|SELECT|UPDATE|INSERT INTO|DELETE FROM/i.test(revision)) {
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 34;/.test(pool)) {
-  throw new Error('Runtime schema readiness must require the session-epoch revocation migration version 34.');
+if (!/export const CURRENT_SCHEMA_VERSION = 39;/.test(pool)) {
+  throw new Error('Runtime schema readiness must include Site Guest Information and attribution privilege migration version 39.');
 }
 
 const migration = await readFile('migrations/020_tenant_settings_revisions.up.sql', 'utf8');

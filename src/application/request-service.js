@@ -1,3 +1,4 @@
+import { requestActorRoleAtAction } from '../authorization/policy.js';
 import {
   AUDIT_ACTION,
   AUDIT_OUTCOME,
@@ -9,7 +10,10 @@ import {
   RequestStateConflictError,
 } from '../authorization/errors.js';
 import { BOOKING_OPERATION } from '../authorization/policy.js';
-import { isRequestId } from '../domain/request.js';
+import {
+  isRequestId,
+  isRequestVersion,
+} from '../domain/request.js';
 import { REQUEST_STATUS, REQUEST_TRANSITION } from '../domain/request-workflow.js';
 import { RESERVATION_PHASE } from '../integrations/calendar-contract.js';
 import { fitPublicPage } from './public-page.js';
@@ -277,7 +281,11 @@ export function createRequestService({
       tenantContext,
       requestId,
       correlationId,
+      projection = null,
     }) {
+      if (projection !== null && projection !== 'guest') {
+        throw new AuthorizationInputError('REQUEST_ROOM_CONTEXT_PROJECTION_INVALID');
+      }
       if (typeof repository.findRoomContextByTenantIdAndRoomId !== 'function') {
         throw new TypeError('REQUEST_ROOM_CONTEXT_REPOSITORY_REQUIRED');
       }
@@ -305,6 +313,26 @@ export function createRequestService({
           });
         }
         throw error;
+      }
+
+      if (projection === 'guest') {
+        if (request.status !== REQUEST_STATUS.CONFIRMED) throw new RequestStateConflictError();
+        if (typeof repository.findGuestContextByTenantIdAndRequest !== 'function') {
+          throw new TypeError('REQUEST_GUEST_CONTEXT_REPOSITORY_REQUIRED');
+        }
+        const currentRoomContext = await repository.findGuestContextByTenantIdAndRequest(
+          tenantContext.tenantId, request.id, request.version,
+        );
+        if (currentRoomContext === null) throw new RequestStateConflictError();
+        return Object.freeze({
+          schemaVersion: 2,
+          requestRef: Object.freeze({
+            id: request.id, schemaVersion: request.schemaVersion,
+            version: request.version, status: request.status,
+          }),
+          currentRoomContext,
+          requestId: correlationId,
+        });
       }
 
       const currentRoomContext = request.roomId === null
@@ -406,7 +434,7 @@ export function createRequestService({
           evaluatedAt,
         }, { cursorSecret }),
         resultFor: (entries, publicPage) => Object.freeze({
-          schemaVersion: 2,
+          schemaVersion: 3,
           asOfVersion,
           history: entries,
           page: publicPage,
@@ -422,9 +450,13 @@ export function createRequestService({
       requestId,
       transition,
       reason,
+      expectedVersion,
       correlationId,
     }) {
       assertRequestId(requestId);
+      if (!isRequestVersion(expectedVersion)) {
+        throw new AuthorizationInputError('REQUEST_VERSION_PRECONDITION_INVALID');
+      }
       if (transition === REQUEST_TRANSITION.CONFIRM) {
         if (reason !== undefined && reason !== null) {
           throw new AuthorizationInputError('TRANSITION_REASON_FORBIDDEN');
@@ -433,6 +465,7 @@ export function createRequestService({
           principal,
           tenantContext,
           requestId,
+          expectedVersion,
           correlationId,
         });
       }
@@ -452,12 +485,18 @@ export function createRequestService({
       const releaseStatus = releaseStatusFor(transition);
       if (releaseStatus !== null && request.status === releaseStatus) {
         try {
-          authorizationPolicy.authorizeRequestReconciliation(
+          const reconciliation = authorizationPolicy.authorizeRequestReconciliation(
             principal,
             tenantContext,
             request,
             transition,
+            reason,
           );
+          if (
+            reconciliation.nextStatus !== releaseStatus
+            || reconciliation.reason !== request.statusReason
+            || request.version !== expectedVersion
+          ) throw new RequestStateConflictError();
         } catch (error) {
           if (error instanceof AuthorizationDeniedError) {
             await recordDenied({
@@ -466,6 +505,26 @@ export function createRequestService({
               requestId,
               correlationId,
               operation: 'transition',
+            });
+          } else if (error instanceof AuthorizationInputError) {
+            await recordTransitionFailure({
+              principal,
+              tenantContext,
+              requestId,
+              correlationId,
+              request,
+              transition,
+              reasonCode: 'validation_failed',
+            });
+          } else if (error instanceof RequestStateConflictError) {
+            await recordTransitionFailure({
+              principal,
+              tenantContext,
+              requestId,
+              correlationId,
+              request,
+              transition,
+              reasonCode: 'state_conflict',
             });
           }
           throw error;
@@ -489,6 +548,7 @@ export function createRequestService({
           transition,
           reason,
         );
+        if (request.version !== expectedVersion) throw new RequestStateConflictError();
       } catch (error) {
         if (error instanceof AuthorizationDeniedError) {
           await recordDenied({
@@ -575,7 +635,9 @@ export function createRequestService({
         tenantId: tenantContext.tenantId,
         requestId,
         actorUserId: principal.userId,
+        actorRoleAtAction: requestActorRoleAtAction(principal),
         expectedStatus: decision.expectedStatus,
+        expectedVersion,
         nextStatus: decision.nextStatus,
         reason: decision.reason,
         changedAt,

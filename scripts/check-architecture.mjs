@@ -15,8 +15,9 @@ async function sourceFiles(directory) {
 const packageJson = JSON.parse(await readFile('package.json', 'utf8'));
 const runtimeDependencies = packageJson.dependencies || {};
 const approvedRuntimeDependencies = {
-  '@azure/msal-node': '6.0.0',
+  '@azure/msal-node': '6.0.1',
   pg: '8.23.0',
+  sharp: '0.35.4',
 };
 const runtimeEnvironmentAuthority = new Set([
   'src/config.js',
@@ -26,7 +27,7 @@ const runtimeEnvironmentAuthority = new Set([
   'src/demo/platform-main.js',
 ]);
 if (JSON.stringify(runtimeDependencies) !== JSON.stringify(approvedRuntimeDependencies)) {
-  throw new Error('Runtime dependencies must remain exactly the reviewed PostgreSQL and Microsoft identity adapters.');
+  throw new Error('Runtime dependencies must remain exactly the reviewed PostgreSQL, Microsoft identity, and image processing adapters.');
 }
 
 const files = await sourceFiles('src');
@@ -41,7 +42,14 @@ for (const file of files) {
   if (/from ['"](?:node:)?(?:fs|child_process|vm)['"]/.test(content)) {
     throw new Error(`${file} imports a privileged runtime module outside the approved foundation.`);
   }
-  if (/https?:\/\//.test(content) && file !== 'src/config.js') {
+  if (file === 'src/domain/site-guest-information.js') {
+    // Guest routes are validated public presentation values, never outbound destinations.
+    if (/\bfetch\s*\(|from\s+['"]|\bimport\s*\(/.test(content)) {
+      throw new Error('Guest information validation must remain independent and contain no network transport.');
+    }
+  }
+  if (/https?:\/\//.test(content)
+    && !['src/config.js', 'src/domain/site-guest-information.js'].includes(file)) {
     throw new Error(`${file} contains a hard-coded outbound URL; provider destinations require an approved integration boundary.`);
   }
   if (/x-tenant-id|x-tenant-context/i.test(content)) {
@@ -52,6 +60,9 @@ for (const file of files) {
   }
   if (/from ['"]pg['"]/.test(content) && !file.startsWith('src/persistence/postgres/')) {
     throw new Error(`${file} imports the database driver outside the PostgreSQL infrastructure adapter boundary.`);
+  }
+  if (/from ['"]sharp['"]/.test(content) && file !== 'src/media/room-image-processor.js') {
+    throw new Error(`${file} imports the image decoder outside the reviewed media adapter boundary.`);
   }
   if (/\b(?:SELECT|INSERT INTO|UPDATE|DELETE FROM)\b/.test(content) && !file.startsWith('src/persistence/postgres/')) {
     throw new Error(`${file} contains SQL outside the PostgreSQL infrastructure adapter boundary.`);
@@ -232,8 +243,11 @@ if (!requestService.includes('authorizationPolicy.authorizeRequestRead')) {
 if (!requestService.includes('authorizationPolicy.authorizeRequestTransition')) {
   throw new Error('Request workflow changes must pass through the central authorization policy.');
 }
-if (!requestService.includes('expectedStatus: decision.expectedStatus')) {
-  throw new Error('Authorized workflow writes must preserve optimistic status concurrency.');
+if (
+  !requestService.includes('expectedStatus: decision.expectedStatus')
+  || !requestService.includes('expectedVersion,')
+) {
+  throw new Error('Authorized workflow writes must preserve optimistic status and version concurrency.');
 }
 if (!requestService.includes('auditService.createEvent') || !requestService.includes('auditEvent,')) {
   throw new Error('Request transitions must carry a server-generated audit event into persistence.');
@@ -541,8 +555,45 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 34;/.test(pool)) {
-  throw new Error('Runtime schema readiness must require the session-epoch revocation migration version 34.');
+if (!/export const CURRENT_SCHEMA_VERSION = 39;/.test(pool)) {
+  throw new Error('Runtime schema readiness must include Site Guest Information and attribution privilege migration version 39.');
+}
+const attributionPrivilegeMigration = await readFile(
+  'migrations/038_request_attribution_function_privileges.up.sql',
+  'utf8',
+);
+for (const required of [
+  'REVOKE ALL PRIVILEGES ON FUNCTION public.mark_request_attribution_used() FROM PUBLIC',
+  'SECURITY DEFINER',
+  'SET search_path = pg_catalog',
+  'public.request_actor_display_name',
+  'public.mark_request_attribution_used',
+  'REVOKE ALL PRIVILEGES ON FUNCTION public.preserve_requester_attribution() FROM PUBLIC',
+  'REVOKE ALL PRIVILEGES ON FUNCTION public.capture_request_revision_attribution() FROM PUBLIC',
+  'REVOKE ALL PRIVILEGES ON FUNCTION public.preserve_booking_change_attribution() FROM PUBLIC',
+]) {
+  if (!attributionPrivilegeMigration.includes(required)) {
+    throw new Error(`Request attribution privilege migration is missing ${required}.`);
+  }
+}
+if (/GRANT\s+EXECUTE[\s\S]{0,200}\bTO\s+PUBLIC/i.test(attributionPrivilegeMigration)) {
+  throw new Error('Request attribution privilege migration must not grant direct marker execution.');
+}
+const attributionPrivilegeRollback = await readFile(
+  'migrations/038_request_attribution_function_privileges.down.sql',
+  'utf8',
+);
+for (const required of [
+  'SECURITY INVOKER',
+  'RESET search_path',
+  'GRANT EXECUTE ON FUNCTION public.mark_request_attribution_used() TO PUBLIC',
+  'GRANT EXECUTE ON FUNCTION public.preserve_requester_attribution() TO PUBLIC',
+  'GRANT EXECUTE ON FUNCTION public.capture_request_revision_attribution() TO PUBLIC',
+  'GRANT EXECUTE ON FUNCTION public.preserve_booking_change_attribution() TO PUBLIC',
+]) {
+  if (!attributionPrivilegeRollback.includes(required)) {
+    throw new Error(`Request attribution privilege rollback is missing ${required}.`);
+  }
 }
 const sessionEpochMigration = await readFile(
   'migrations/034_customer_session_epoch_revocation.up.sql',

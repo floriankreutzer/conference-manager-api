@@ -1,4 +1,4 @@
-# Request Composition v2
+# Request Composition v2 and v3
 
 ## Authority and scope
 
@@ -7,17 +7,73 @@ Root `AGENTS.md`, `docs/CODING-STANDARDS.md`, `docs/ARCHITECTURE.md`,
 `docs/SECURITY.md` remain authoritative. This document defines the Request
 composition boundary introduced by SaaS 2 issue #126 and migration 027.
 
-Request composition v2 is the single current Request model. It connects the
+Request composition has two exact additive write versions, v2 and v3. It connects the
 existing Organization, Locations, Catalogue, Booking Policies and Cost
 Allocation owners without creating a generic settings service or a second
-Request implementation. Equipment selection is deliberately outside this
-schema. Request workflow statuses and transition identifiers remain unchanged.
+Request implementation. Equipment is outside exact v2; v3 adds a required `equipmentIds` selection. Request workflow statuses and transition identifiers remain unchanged.
 
 The browser is a drafting client only. It may submit stable Tenant-local
 resource IDs, quantities, allocation percentages and the configuration
 revisions it observed. It never supplies authoritative Tenant, requester,
 workflow state, price, calculated total, policy result, allocation amount,
 snapshot time, audit actor/outcome or Request version result.
+
+## Additive Equipment contract (v3)
+
+Create, owner resubmission and confirmed-booking proposal accept `schemaVersion: 2` or
+`schemaVersion: 3`. Exact v3 is the complete v2 draft above plus required `equipmentIds`:
+zero to 200 unique Tenant-local identifiers, normalized in stable code-point order. V2 rejects
+this field, unknown versions and hybrid snapshots fail closed. A v2 record upgrades only through
+an explicit v3 resubmission or proposal; there is no history backfill.
+
+The paged Catalogue exposes `section=equipment` with the existing context, cursor, limit and
+freshness rules. Each active entry is exactly `{ id, name, description, active, order, price,
+siteIds, roomIds }`. Empty Site/Room applicability arrays mean all resources inside the Tenant.
+Availability means active and applicable; this contract introduces no stock or time inventory.
+Catalogue facts are guidance until the mutation transaction resolves the selected Equipment by
+Tenant-composite keys, locks current rows and compares all five configuration revisions.
+Missing, inactive, foreign or inapplicable Equipment is concealed by
+`REQUEST_CONFIGURATION_UNAVAILABLE`; stale revisions retain the existing conflict contract.
+
+The immutable v3 snapshot adds `details.equipmentIds`, `pricing.equipment` and
+`pricing.breakdown.equipmentMinor`. Each Equipment price line is exactly:
+
+```json
+{
+  "equipment": {
+    "id": "mobile-display",
+    "name": "Mobile display",
+    "description": null,
+    "price": { "amountMinor": 2500, "currency": "EUR" }
+  },
+  "lineTotalMinor": 2500
+}
+```
+
+Selected Equipment is charged once per Request. No client quantity, price or total is accepted.
+The Equipment subtotal participates in the authoritative total, the single-currency invariant
+(including zero-price charge lines), safe-integer checks and Cost Allocation. Later Catalogue
+changes do not alter existing Request or revision names, descriptions or prices.
+
+List, detail, reporting, history and `proposedRequest` return the persisted version-specific
+representation. Attribution-bearing Request and booking-change responses use outer version 3; nested
+`requestSchemaVersion` and `requestRef.schemaVersion` identify v1/v2/v3. Existing pending v2
+proposals remain executable. Participant-only immediate application requires the same composition
+schema, identical Equipment and every other non-participant field; Equipment or schema changes
+require the existing Manager decision. Workflow transitions advance snapshot Request versions
+inside either composed schema.
+
+Migration 035 extends existing Request/revision/proposal constraints without replacing tables or
+rewriting v1/v2 rows. Exact Equipment shapes, identity correspondence, bounds, one-charge pricing
+and currency consistency are reinforced by immutable database validation. Down takes exclusive
+locks and refuses before mutation when any v3 Request, revision or proposal exists, including
+empty v3 selections. Use a compatible binary or forward fix after first v3 use.
+
+Demo seed `saas-3.6-shared-demo-v5` includes priced, applicable Northwind Equipment and a distinct
+Contoso projection with a colliding Tenant-local ID and a foreign-only ID. Migrate and reset the
+isolated Demo database, deploy both API processes at one compatible SHA, verify readiness and
+Equipment pages, then pin/deploy the updated frontend. Existing exact v2 clients remain supported
+by the API during rollout. This feature introduces no permissions or authorization epoch.
 
 ## Versioned write contracts
 
@@ -62,17 +118,17 @@ snapshot time, audit actor/outcome or Request version result.
 }
 ```
 
-The existing production-application response envelope remains version 1. A
-successful create returns HTTP 201 with
-`{ "schemaVersion": 1, "request": <public Request> }`; the nested Request is
-schema version 2 and Request version 1.
+The production-application create response envelope is version 3. A successful create returns
+HTTP 201 with `{ "schemaVersion": 3, "request": <public Request> }`; the nested Request
+has the accepted composition schema version (2 or 3), Request version 1 and persisted
+`requesterAttribution`.
 
 Employees obtain selectable facts and all five freshness tokens from
 `GET /api/v1/application/catalog`. That endpoint reads the current drafting
 catalogue, the non-authoritative effective `bookingPolicy` snapshot, and
 `costAllocation` drafting facts (`allocationRequired` plus active cost centers)
-under one repeatable-read snapshot. Its outer application envelope is schema
-version 1; this does not change the nested Request schema version.
+under one repeatable-read snapshot. Its outer paged application envelope is schema version 2; this does not change the nested
+Request schema version.
 
 ### Resubmit after a change request
 
@@ -141,14 +197,17 @@ Cancellation of a confirmed Request conflicts while approval is applying. A
 pending proposal is instead changed atomically to terminal `superseded` when
 the confirmed Request is cancelled, with server-authored audit evidence.
 
-Unknown schema versions, unknown fields and partial v2 Request bodies fail
+Unknown schema versions, unknown fields and partial v2/v3 Request bodies fail
 closed. No route silently interprets them as legacy v1.
 
 Booking-change GET, propose and decision responses use
-`{ "schemaVersion": 2, "result": { "change": ..., "requestRef": ... } }` for
+`{ "schemaVersion": 3, "result": { "change": ..., "requestRef": ... } }` for
 successful reads and mutations. `requestRef` contains only `id`,
 `schemaVersion`, `version` and `status`; clients reload Request detail when
-needed. A current proposal exposes
+needed. GET returns an open `pending`/`applying` change first, otherwise the latest applicable
+terminal `applied`, `rejected` or cancellation-`superseded` change. Terminal visibility does not
+consume the open-proposal slot. Every change includes persisted `initiatorAttribution` and nullable
+`deciderAttribution`. A current proposal exposes
 `requestSchemaVersion: 2`, its base Request version and the complete normalized
 proposed `request` draft. Its read-only `proposedRequest` is the sole complete
 public Request-shaped next-version projection and is built from the persisted
@@ -169,9 +228,12 @@ no composed Room snapshot.
 presentation. After authorizing the Request, the server uses its persisted `roomId` to read the
 same-Tenant Room and Site without an active filter. This lets a client render a retained inactive
 current Room, but does not make it selectable or bookable. The projection contains no price,
-provider mapping or historical time-zone claim. The active application catalogue remains the only
-drafting-selection feed, and Request creation, resubmission and booking-change evaluation continue
-to require a current active Room and Site.
+provider mapping or historical time-zone claim. The active application catalogue remains the only drafting-selection feed. Its Room entry
+additionally projects only bounded equipment display labels and managed floorplan/media asset
+identifiers. Those identifiers are code/application references, never arbitrary URLs, filesystem
+paths, provider IDs or upload authority; malformed persisted presentation metadata degrades to
+empty/null fields. Request creation, resubmission and booking-change evaluation continue to require
+a current active Room and Site.
 
 The `requestRef.version` and booking-change `expectedVersion` bind mutations to the full Request
 snapshot used to compose the draft. Fetching a newer version solely to replace the token while
@@ -264,8 +326,9 @@ mutations advance the Request version and history while retaining the
 composition facts selected for that version. Resubmission and an applied
 confirmed change create a newly evaluated composition snapshot.
 
-The public Request omits internal Tenant ID and requester User ID. Its common
-fields are `schemaVersion`, `version`, `id`, `roomId`, `status`, nullable
+The public Request omits internal Tenant ID and requester User ID while exposing its immutable
+`requesterAttribution: { displayName }`. Its common fields are `schemaVersion`, `version`, `id`,
+`requesterAttribution`, `roomId`, `status`, nullable
 `statusReason`, canonical schedule, participant counts, `statusChangedAt`,
 `createdAt` and `updatedAt`. A v2 record additionally returns `details`,
 `pricing`, `configurationRevisions`, `policy` and `allocations` from its
@@ -343,7 +406,7 @@ Migration 027:
   `booking_change_requests`.
 
 Deployment must run `npm run db:migrate` before application rollout and verify
-exact schema readiness at version 34. The application does not auto-migrate.
+exact schema readiness at version 38. The application does not auto-migrate.
 Operators should expect all pre-migration Catalogue editors to reload because
 the migration advances that aggregate revision. Conference Managers with
 `tenant:catalogue:manage` should configure intentional Room prices after rollout;
@@ -376,3 +439,14 @@ Changes to this boundary require, as applicable:
   fail-closed populated rollback tests;
 - the full repository quality, dependency, static, secret, DAST and PostgreSQL
   integration gates.
+
+## SaaS 3.6 persisted Request attribution
+
+The exact v3 Request response envelopes, relational snapshots, honest legacy-null
+semantics, unchanged audit-chain payload, and mandatory staged writer cutover are
+defined in [Request Attribution](REQUEST-ATTRIBUTION.md). Existing Tenant, role,
+object ownership and session/CSRF boundaries remain required for these reads and writes.
+
+## Guest Information is current presentation
+
+The optional `room-context?projection=guest` schema-v2 response is a separate confirmed-Request read. It contains approved current Room/Site guest presentation, never an immutable booking fact or drafting authority. The normal schema-v1 room-context contract remains unchanged. See `docs/SITE-GUEST-INFORMATION.md`.

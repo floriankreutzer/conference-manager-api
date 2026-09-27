@@ -1,9 +1,10 @@
 import { isInternalUuid } from './identifiers.js';
+import { normalizeActionAttribution } from './request-attribution.js';
 import {
-  REQUEST_COMPOSITION_SCHEMA_VERSION,
-  assertRequestV2DraftSnapshotConsistency,
-  normalizePersistedRequestV2Snapshot,
-  normalizeRequestV2Draft,
+  assertRequestDraftSnapshotConsistency,
+  isSupportedRequestCompositionSchemaVersion,
+  normalizePersistedRequestCompositionSnapshot,
+  normalizeRequestCompositionDraft,
 } from './request-composition.js';
 import { isRequestId } from './request.js';
 
@@ -104,7 +105,8 @@ export function normalizeBookingChange(value) {
   const requestSchemaVersion = value.requestSchemaVersion ?? 1;
   const baseRequestVersion = value.baseRequestVersion ?? 1;
   if (
-    ![1, REQUEST_COMPOSITION_SCHEMA_VERSION].includes(requestSchemaVersion)
+    (requestSchemaVersion !== 1
+      && !isSupportedRequestCompositionSchemaVersion(requestSchemaVersion))
     || !Number.isSafeInteger(baseRequestVersion)
     || baseRequestVersion < 1
   ) throw new TypeError('BOOKING_CHANGE_INVALID');
@@ -141,14 +143,18 @@ export function normalizeBookingChange(value) {
   ) throw new TypeError('BOOKING_CHANGE_INVALID');
   let requestDraft = null;
   let proposedRequestSnapshot = null;
-  if (requestSchemaVersion === REQUEST_COMPOSITION_SCHEMA_VERSION) {
+  if (isSupportedRequestCompositionSchemaVersion(requestSchemaVersion)) {
     try {
-      requestDraft = normalizeRequestV2Draft(value.requestDraft);
-      proposedRequestSnapshot = normalizePersistedRequestV2Snapshot(
+      requestDraft = normalizeRequestCompositionDraft(value.requestDraft, requestSchemaVersion);
+      proposedRequestSnapshot = normalizePersistedRequestCompositionSnapshot(
         value.proposedRequestSnapshot,
         baseRequestVersion + 1,
       );
-      assertRequestV2DraftSnapshotConsistency(requestDraft, proposedRequestSnapshot);
+      assertRequestDraftSnapshotConsistency(
+        requestDraft,
+        proposedRequestSnapshot,
+        requestSchemaVersion,
+      );
       if (
         value.roomId !== requestDraft.roomId
         || value.startsAt !== requestDraft.startsAt
@@ -165,8 +171,17 @@ export function normalizeBookingChange(value) {
   ) {
     throw new TypeError('BOOKING_CHANGE_INVALID');
   }
+  if (value.decidedByUserId === null && value.deciderAttribution !== null) {
+    throw new TypeError('BOOKING_CHANGE_ATTRIBUTION_INVALID');
+  }
   return Object.freeze({
     ...value,
+    initiatorAttribution: normalizeActionAttribution(
+      value.initiatorAttribution,
+    ),
+    deciderAttribution: value.decidedByUserId === null
+      ? null
+      : normalizeActionAttribution(value.deciderAttribution),
     requestSchemaVersion,
     baseRequestVersion,
     moveAttemptNumber,

@@ -1,8 +1,11 @@
 import { isInternalUuid } from './identifiers.js';
 import {
-  REQUEST_COMPOSITION_SCHEMA_VERSION,
+  normalizeRequesterAttribution,
+} from './request-attribution.js';
+import {
   REQUEST_MAX_PARTICIPANTS,
-  normalizePersistedRequestV2Snapshot,
+  isSupportedRequestCompositionSchemaVersion,
+  normalizePersistedRequestCompositionSnapshot,
 } from './request-composition.js';
 import { REQUEST_STATUS, isRequestStatus } from './request-workflow.js';
 
@@ -23,8 +26,14 @@ function isParticipantCount(value) {
   return Number.isSafeInteger(value) && value >= 0;
 }
 
-function positiveVersion(value) {
+export function isRequestVersion(value) {
   return Number.isSafeInteger(value) && value >= 1 && value < Number.MAX_SAFE_INTEGER;
+}
+
+export function isImmediateRequestVersionSuccessor(currentVersion, expectedVersion) {
+  return isRequestVersion(currentVersion)
+    && isRequestVersion(expectedVersion)
+    && currentVersion === expectedVersion + 1;
 }
 
 function normalizeReason(status, value) {
@@ -63,7 +72,10 @@ export function normalizeRequest(value) {
   if (!isRequestStatus(value.status)) throw new TypeError('REQUEST_RECORD_INVALID');
   const schemaVersion = value.schemaVersion ?? 1;
   const version = value.version ?? 1;
-  if (![1, REQUEST_COMPOSITION_SCHEMA_VERSION].includes(schemaVersion) || !positiveVersion(version)) {
+  if (
+    (schemaVersion !== 1 && !isSupportedRequestCompositionSchemaVersion(schemaVersion))
+    || !isRequestVersion(version)
+  ) {
     throw new TypeError('REQUEST_RECORD_INVALID');
   }
   if (
@@ -82,16 +94,17 @@ export function normalizeRequest(value) {
   if (Date.parse(value.updatedAt) < Date.parse(value.createdAt)) throw new TypeError('REQUEST_RECORD_INVALID');
 
   let snapshot = null;
-  if (schemaVersion === REQUEST_COMPOSITION_SCHEMA_VERSION) {
+  if (isSupportedRequestCompositionSchemaVersion(schemaVersion)) {
     try {
-      snapshot = normalizePersistedRequestV2Snapshot(value.snapshot, version);
+      snapshot = normalizePersistedRequestCompositionSnapshot(value.snapshot, version);
     } catch {
       throw new TypeError('REQUEST_RECORD_INVALID');
     }
     const totalParticipants = value.internalParticipants + value.externalParticipants;
     const rules = snapshot.policy.rules;
     if (
-      snapshot.pricing.room.id !== value.roomId
+      snapshot.schemaVersion !== schemaVersion
+      || snapshot.pricing.room.id !== value.roomId
       || totalParticipants < 1
       || totalParticipants > REQUEST_MAX_PARTICIPANTS
       || Date.parse(value.endsAt) - Date.parse(value.startsAt) > 24 * 60 * 60 * 1_000
@@ -109,6 +122,9 @@ export function normalizeRequest(value) {
     tenantId: value.tenantId,
     id: value.id,
     requesterUserId: value.requesterUserId,
+    requesterAttribution: normalizeRequesterAttribution(
+      value.requesterAttribution,
+    ),
     schemaVersion,
     version,
     roomId: value.roomId,
@@ -131,6 +147,7 @@ export function toPublicRequest(value) {
     schemaVersion: request.schemaVersion,
     version: request.version,
     id: request.id,
+    requesterAttribution: request.requesterAttribution,
     roomId: request.roomId,
     status: request.status,
     statusReason: request.statusReason,
@@ -170,6 +187,7 @@ export function normalizePublicRequest(value, { tenantId, requesterUserId } = {}
     'schemaVersion',
     'version',
     'id',
+    'requesterAttribution',
     'roomId',
     'status',
     'statusReason',
@@ -193,7 +211,7 @@ export function normalizePublicRequest(value, { tenantId, requesterUserId } = {}
     || actual.some((key, index) => key !== expected[index])
   ) throw new TypeError('REQUEST_PUBLIC_RECORD_INVALID');
   let snapshot = null;
-  if (value.schemaVersion === REQUEST_COMPOSITION_SCHEMA_VERSION) {
+  if (isSupportedRequestCompositionSchemaVersion(value.schemaVersion)) {
     const capturedAt = value.allocations?.snapshottedAt;
     snapshot = {
       schemaVersion: value.schemaVersion,
@@ -219,6 +237,7 @@ export function normalizePublicRequest(value, { tenantId, requesterUserId } = {}
     return toPublicRequest(normalizeRequest({
       tenantId,
       requesterUserId,
+      requesterAttribution: normalizeRequesterAttribution(value.requesterAttribution),
       id: value.id,
       schemaVersion: value.schemaVersion,
       version: value.version,

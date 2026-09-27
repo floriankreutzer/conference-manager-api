@@ -165,6 +165,7 @@ function requestRecord(overrides = {}) {
     tenantId: TENANT_ID,
     id: 'REQ-126',
     requesterUserId: USER_ID,
+    requesterAttribution: { displayName: 'Persisted requester' },
     schemaVersion: 2,
     version: 1,
     roomId: 'room-a',
@@ -217,6 +218,10 @@ test('Request v2 draft schema is exact, canonical and bounded to 500 participant
 
   const invalidDrafts = [
     { ...draft(), equipmentIds: ['equipment-a'] },
+    { ...draft(), requesterAttribution: { displayName: 'Browser requester' } },
+    { ...draft(), actorAttribution: { displayName: 'Browser actor', roleAtAction: 'employee' } },
+    { ...draft(), initiatorAttribution: { displayName: 'Browser initiator', roleAtAction: 'employee' } },
+    { ...draft(), deciderAttribution: null },
     draft({ internalParticipants: 500, externalParticipants: 1 }),
     draft({ internalParticipants: 0, externalParticipants: 0 }),
     draft({ endsAt: '2026-09-02T10:00:00.001Z' }),
@@ -494,12 +499,14 @@ test('Request records expose v2 facts and explicit legacy unavailability', () =>
   assert.deepEqual(normalizePublicRequest(publicRequest, {
     tenantId: TENANT_ID,
     requesterUserId: USER_ID,
+    requesterAttribution: { displayName: 'Persisted requester' },
   }), publicRequest);
   const corrupted = clone(publicRequest);
   corrupted.pricing.totalMinor += 1;
   assert.throws(() => normalizePublicRequest(corrupted, {
     tenantId: TENANT_ID,
     requesterUserId: USER_ID,
+    requesterAttribution: { displayName: 'Persisted requester' },
   }), /REQUEST_PUBLIC_RECORD_INVALID/);
 
   const legacy = toPublicRequest({

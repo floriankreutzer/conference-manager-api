@@ -16,7 +16,10 @@ function repository(queries) {
   };
   return createPostgresRequestRepository(pool, {
     auditRepository: { async appendWithClient() { throw new Error('UNUSED'); } },
-    calendarAuthorityGuard: { async lockCurrent() { throw new Error('UNUSED'); } },
+    calendarAuthorityGuard: {
+      async lockCurrent() { throw new Error('UNUSED'); },
+      async completePreConfirmationCleanup() { throw new Error('UNUSED'); },
+    },
   });
 }
 

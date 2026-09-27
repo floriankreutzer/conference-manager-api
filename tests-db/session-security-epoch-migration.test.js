@@ -16,7 +16,7 @@ import {
   isPostgresSchemaReady,
 } from '../src/persistence/postgres/pool.js';
 import { createPostgresSessionRepository } from '../src/persistence/postgres/session-repository.js';
-import { migrateUp, rollbackLatest } from './support/db-migrations.js';
+import { migrateUp, rollbackToVersion } from './support/db-migrations.js';
 import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_ID = '92929292-9292-4292-8292-929292929292';
@@ -67,8 +67,8 @@ test('migration 034 prevents legacy Customer-session resurrection across rollbac
 
   await migrateUp(pool);
   await clean(pool);
-  assert.equal(CURRENT_SCHEMA_VERSION, 34);
-  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(CURRENT_SCHEMA_VERSION, 39);
+  assert.equal(await rollbackToVersion(pool, 34), true);
   assert.equal(await isPostgresSchemaReady(pool, 33), true);
 
   await pool.query(
@@ -121,7 +121,7 @@ test('migration 034 prevents legacy Customer-session resurrection across rollbac
   );
   assert.equal(migration.rows[0].name, 'customer_session_epoch_revocation');
 
-  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackToVersion(pool, 34), true);
   assert.equal(await isPostgresSchemaReady(pool, 33), true);
   const afterRollback = await pool.query(
     'SELECT revoked_at FROM sessions WHERE id = $1',
@@ -163,7 +163,7 @@ test('migration 034 prevents legacy Customer-session resurrection across rollbac
   );
   assert.notEqual(epochRow.rows[0].token_hash, tokenHash(EPOCH_TOKEN));
 
-  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackToVersion(pool, 34), true);
   assert.equal(await isPostgresSchemaReady(pool, 33), true);
   assert.equal(
     await sessionRepository.resolveByTokenHash(tokenHash(EPOCH_TOKEN), NOW),

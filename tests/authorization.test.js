@@ -220,6 +220,33 @@ test('conference-manager workflow transitions are explicit and state-aware', () 
   assert.equal(change.nextStatus, REQUEST_STATUS.CHANGE_REQUESTED);
 });
 
+test('confirmed reconciliation retains full confirm command authority', () => {
+  const policy = createAuthorizationPolicy();
+  const confirmed = request({ status: REQUEST_STATUS.CONFIRMED });
+  const manager = principal({
+    roles: [TENANT_ROLE.CONFERENCE_MANAGER],
+    permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_MANAGE],
+  });
+  const employee = principal({ permissions: [PERMISSION.REQUEST_READ] });
+
+  const reconciliation = policy.authorizeRequestReconciliation(
+    manager,
+    context(),
+    confirmed,
+    REQUEST_TRANSITION.CONFIRM,
+  );
+  assert.equal(reconciliation.nextStatus, REQUEST_STATUS.CONFIRMED);
+  assert.throws(
+    () => policy.authorizeRequestReconciliation(
+      employee,
+      context(),
+      confirmed,
+      REQUEST_TRANSITION.CONFIRM,
+    ),
+    AuthorizationDeniedError,
+  );
+});
+
 test('workflow transitions reject missing reasons, injected reasons, invalid states, and wrong roles', () => {
   const policy = createAuthorizationPolicy();
   const manager = principal({

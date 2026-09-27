@@ -279,8 +279,8 @@ async function insertV2Request(pool, {
       text: `
         INSERT INTO request_revisions (
           tenant_id, request_id, request_version, schema_version, operation,
-          record, captured_at, actor_user_id, correlation_id
-        ) VALUES ($1, $2, 1, 2, 'created', $3::jsonb, $4, $5, $6)
+          record, captured_at, actor_user_id, correlation_id, actor_role_at_action
+        ) VALUES ($1, $2, 1, 2, 'created', $3::jsonb, $4, $5, $6, 'employee')
         RETURNING revision_sequence
       `,
       values: [

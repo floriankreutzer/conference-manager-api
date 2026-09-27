@@ -660,9 +660,9 @@ test('Tenant Locations persistence is revisioned, atomic, isolated and provider-
       INSERT INTO booking_change_requests (
         tenant_id, id, request_id, initiator_user_id, status, room_id, starts_at, ends_at,
         internal_participants, external_participants, base_request_updated_at,
-        decided_by_user_id, rejection_reason, created_at, updated_at
+        decided_by_user_id, rejection_reason, created_at, updated_at, initiator_role_at_action
       )
-      VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7, 4, 0, $8, NULL, NULL, $8, $8)
+      VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7, 4, 0, $8, NULL, NULL, $8, $8, 'conference_manager')
     `,
     values: [
       TENANT_A,
@@ -685,7 +685,8 @@ test('Tenant Locations persistence is revisioned, atomic, isolated and provider-
   await pool.query({
     text: `
       UPDATE booking_change_requests
-      SET status = 'applying', decided_by_user_id = $4, updated_at = $5
+      SET status = 'applying', decided_by_user_id = $4,
+          decider_role_at_action = 'conference_manager', updated_at = $5
       WHERE tenant_id = $1 AND request_id = $2 AND id = $3
     `,
     values: [TENANT_A, BOOKING_CHANGE_REQUEST, BOOKING_CHANGE_ID, ADMIN_A, AT_7],
@@ -703,7 +704,8 @@ test('Tenant Locations persistence is revisioned, atomic, isolated and provider-
   await pool.query({
     text: `
       UPDATE booking_change_requests
-      SET status = 'pending', decided_by_user_id = NULL, updated_at = $4
+      SET status = 'pending', decided_by_user_id = NULL,
+          decider_role_at_action = NULL, updated_at = $4
       WHERE tenant_id = $1 AND request_id = $2 AND id = $3
     `,
     values: [TENANT_A, BOOKING_CHANGE_REQUEST, BOOKING_CHANGE_ID, AT_7],

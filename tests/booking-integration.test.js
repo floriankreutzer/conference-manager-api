@@ -27,6 +27,7 @@ function request(overrides = {}) {
     tenantId: TENANT_ID,
     id: 'request-1',
     requesterUserId: USER_ID,
+    requesterAttribution: { displayName: 'Persisted requester' },
     roomId: 'room-1',
     status: 'Submitted',
     statusReason: null,
@@ -62,13 +63,21 @@ function context(overrides = {}) {
   };
 }
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((complete) => { resolve = complete; });
+  return Object.freeze({ promise, resolve });
+}
+
 function createRepository({
   conflict = false,
   failFirstCreate = false,
   authorityLostOnFirstCreate = false,
+  compensationOwnerCurrent = () => true,
 } = {}) {
   let reference = null;
   let createAttempts = 0;
+  const compensationBegins = [];
   return {
     async hasConflictingRequest() {
       return conflict;
@@ -84,6 +93,7 @@ function createRepository({
         return { reference, created: false };
       }
       reference = {
+        integrationId: INTEGRATION_ID,
         providerReference: null,
         providerConnectionReference: values.providerConnectionReference,
         providerResourceReference: values.providerResourceReference,
@@ -156,10 +166,12 @@ function createRepository({
       reference = { ...reference, state: 'cancelled' };
       return reference;
     },
-    async beginCompensatingProviderReference() {
+    async beginCompensatingProviderReference(values) {
       if (!reference || !['active', 'compensating'].includes(reference.state)) {
         throw new Error('REFERENCE_NOT_ACTIVE');
       }
+      compensationBegins.push(values);
+      if (reference.state === 'active' && !await compensationOwnerCurrent(values)) return null;
       reference = { ...reference, state: 'compensating' };
       return reference;
     },
@@ -172,6 +184,9 @@ function createRepository({
     },
     get reference() {
       return reference;
+    },
+    get compensationBegins() {
+      return compensationBegins;
     },
   };
 }
@@ -565,6 +580,7 @@ test('update and cancel use the persisted opaque reference and repeated cancel i
     state: 'cancelled',
   });
   assert.equal(cancelledResourceReference, PROVIDER_RESOURCE_REFERENCE);
+  assert.equal(repository.compensationBegins.length, 0);
 });
 
 test('cleanup of an existing reference remains authorized after calendar-write entitlement is disabled', async () => {
@@ -589,6 +605,181 @@ test('cleanup of an existing reference remains authorized after calendar-write e
     state: 'cancelled',
   });
   assert.equal(providerState.cancelCalls, 1);
+});
+
+test('pre-confirm cleanup retains an active event when its held Request owner becomes stale', async () => {
+  const ownerCheckStarted = deferred();
+  const releaseOwnerCheck = deferred();
+  let ownerCurrent = true;
+  const repository = createRepository({
+    async compensationOwnerCurrent() {
+      ownerCheckStarted.resolve();
+      await releaseOwnerCheck.promise;
+      return ownerCurrent;
+    },
+  });
+  const providerState = createProvider();
+  const service = createService({ repository, provider: providerState.provider });
+  await service.createCalendarEvent(context());
+
+  const cleanup = service.cancelCalendarEventBeforeConfirmation(
+    context({ phase: RESERVATION_PHASE.FINAL }),
+  );
+  await ownerCheckStarted.promise;
+  ownerCurrent = false;
+  releaseOwnerCheck.resolve();
+
+  await assert.rejects(
+    cleanup,
+    (error) => error instanceof BookingIntegrationError
+      && error.code === 'BOOKING_REFERENCE_RECONCILIATION_REQUIRED',
+  );
+  assert.equal(repository.reference.state, 'active');
+  assert.equal(providerState.cancelCalls, 0);
+  assert.deepEqual(repository.compensationBegins.map((entry) => entry.expectedRequestVersion), [1]);
+});
+
+test('pre-confirm cleanup durably owns the reference before external delete', async () => {
+  const deleteStarted = deferred();
+  const releaseDelete = deferred();
+  let deletes = 0;
+  const repository = createRepository();
+  const providerState = createProvider({
+    async cancelCalendarEvent(input) {
+      deletes += 1;
+      deleteStarted.resolve();
+      await releaseDelete.promise;
+      return { providerReference: input.providerReference, disposition: 'cancelled' };
+    },
+  });
+  const service = createService({ repository, provider: providerState.provider });
+  await service.createCalendarEvent(context());
+
+  const cleanup = service.cancelCalendarEventBeforeConfirmation(
+    context({ phase: RESERVATION_PHASE.FINAL }),
+  );
+  await deleteStarted.promise;
+  assert.equal(repository.reference.state, 'compensating');
+  releaseDelete.resolve();
+
+  const cleaned = await cleanup;
+  assert.equal(cleaned.state, 'compensated');
+  assert.deepEqual(cleaned.reference, {
+    integrationId: INTEGRATION_ID,
+    providerReference: repository.reference.providerReference,
+    providerConnectionReference: PROVIDER_CONNECTION_REFERENCE,
+    providerResourceReference: PROVIDER_RESOURCE_REFERENCE,
+  });
+  assert.equal(repository.reference.state, 'compensated');
+  assert.equal(deletes, 1);
+});
+
+test('pre-confirm cleanup reconciles pending create and resumes unknown delete outcomes', async () => {
+  const repository = createRepository();
+  let creates = 0;
+  let deletes = 0;
+  const providerState = createProvider({
+    async createCalendarEvent(input) {
+      creates += 1;
+      if (creates === 1) {
+        throw new CalendarProviderError(PROVIDER_ERROR_KIND.TIMEOUT, { operation: 'create' });
+      }
+      return {
+        providerReference: 'provider-event-reconciled',
+        providerResourceReference: input.providerResourceReference,
+        disposition: 'existing',
+      };
+    },
+    async cancelCalendarEvent(input) {
+      deletes += 1;
+      if (deletes === 1) {
+        throw new CalendarProviderError(PROVIDER_ERROR_KIND.TIMEOUT, { operation: 'cancel' });
+      }
+      return { providerReference: input.providerReference, disposition: 'already_cancelled' };
+    },
+  });
+  const service = createService({ repository, provider: providerState.provider });
+  await assert.rejects(
+    service.createCalendarEvent(context()),
+    (error) => error instanceof BookingIntegrationError
+      && error.code === 'CALENDAR_PROVIDER_TIMEOUT',
+  );
+  assert.equal(repository.reference.state, 'pending');
+
+  await assert.rejects(
+    service.cancelCalendarEventBeforeConfirmation(context({ phase: RESERVATION_PHASE.FINAL })),
+    (error) => error instanceof BookingIntegrationError
+      && error.code === 'CALENDAR_PROVIDER_TIMEOUT',
+  );
+  assert.equal(repository.reference.state, 'compensating');
+  assert.equal(creates, 2);
+  assert.equal(deletes, 1);
+
+  const cleaned = await service.cancelCalendarEventBeforeConfirmation(
+    context({ phase: RESERVATION_PHASE.FINAL }),
+  );
+  assert.equal(cleaned.state, 'compensated');
+  assert.equal(cleaned.disposition, 'already_cancelled');
+  assert.equal(repository.reference.state, 'compensated');
+  assert.equal(deletes, 2);
+
+  const repeated = await service.cancelCalendarEventBeforeConfirmation(
+    context({ phase: RESERVATION_PHASE.FINAL }),
+  );
+  assert.equal(repeated.state, 'compensated');
+  assert.equal(repeated.disposition, 'already_cancelled');
+  assert.equal(deletes, 2);
+});
+
+test('pre-confirm cleanup converges an unknown local completion without another provider delete', async () => {
+  const repository = createRepository();
+  const originalComplete = repository.completeCompensatingProviderReference;
+  let loseResponse = true;
+  repository.completeCompensatingProviderReference = async (...args) => {
+    const result = await originalComplete(...args);
+    if (loseResponse) {
+      loseResponse = false;
+      throw new Error('PRE_CONFIRM_CLEANUP_FINALIZE_RESPONSE_LOST');
+    }
+    return result;
+  };
+  const providerState = createProvider();
+  const service = createService({ repository, provider: providerState.provider });
+  await service.createCalendarEvent(context());
+
+  await assert.rejects(
+    service.cancelCalendarEventBeforeConfirmation(context({ phase: RESERVATION_PHASE.FINAL })),
+    /PRE_CONFIRM_CLEANUP_FINALIZE_RESPONSE_LOST/,
+  );
+  assert.equal(repository.reference.state, 'compensated');
+  assert.equal(providerState.cancelCalls, 1);
+  const repeated = await service.cancelCalendarEventBeforeConfirmation(
+    context({ phase: RESERVATION_PHASE.FINAL }),
+  );
+  assert.equal(repeated.state, 'compensated');
+  assert.equal(repeated.disposition, 'already_cancelled');
+  assert.equal(providerState.cancelCalls, 1);
+});
+
+test('pre-confirm cleanup treats absent and terminal-cancelled references as local no-ops', async () => {
+  const repository = createRepository();
+  const providerState = createProvider();
+  const service = createService({ repository, provider: providerState.provider });
+  assert.deepEqual(await service.cancelCalendarEventBeforeConfirmation(context()), {
+    disposition: 'not_present',
+    state: 'cancelled',
+    reference: null,
+  });
+
+  await service.createCalendarEvent(context());
+  await service.cancelCalendarEvent(context());
+  assert.deepEqual(await service.cancelCalendarEventBeforeConfirmation(context()), {
+    disposition: 'already_cancelled',
+    state: 'cancelled',
+    reference: null,
+  });
+  assert.equal(providerState.cancelCalls, 1);
+  assert.equal(repository.compensationBegins.length, 0);
 });
 
 test('unknown local cancellation finalize is idempotent after a repeated provider delete', async () => {
@@ -659,6 +850,27 @@ test('compensation is an idempotent no-op when a concurrent abandonment already 
     state: 'cancelled',
   });
   assert.equal(providerState.cancelCalls, 1);
+});
+
+test('compensation retains the active event after the expected Request version loses ownership', async () => {
+  const observedVersions = [];
+  const repository = createRepository({
+    compensationOwnerCurrent(values) {
+      observedVersions.push(values.expectedRequestVersion);
+      return false;
+    },
+  });
+  const providerState = createProvider();
+  const service = createService({ repository, provider: providerState.provider });
+  await service.createCalendarEvent(context());
+
+  assert.deepEqual(await service.compensateCalendarEvent(context()), {
+    disposition: 'retained',
+    state: 'active',
+  });
+  assert.deepEqual(observedVersions, [1]);
+  assert.equal(repository.reference.state, 'active');
+  assert.equal(providerState.cancelCalls, 0);
 });
 
 test('compensated retry rebinds the current resource with a monotone attempt and new idempotency key', async () => {

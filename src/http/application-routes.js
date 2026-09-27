@@ -1,5 +1,6 @@
 import { ApiError } from '../api-error.js';
 import { isInternalUuid } from '../domain/identifiers.js';
+import { isSupportedRequestCompositionSchemaVersion } from '../domain/request-composition.js';
 import { readJsonObjectBody, validateExactObject } from '../security.js';
 
 export const APPLICATION_ROUTES = Object.freeze({
@@ -22,20 +23,24 @@ const REQUEST_RESUBMISSION_PATH = new RegExp(
 );
 const PROFILE_BODY_SCHEMA = Object.freeze({
   required: Object.freeze({
-    displayName: (value) => typeof value === 'string' && value.length >= 1 && value.length <= 160,
+    displayName: (value) => {
+      if (typeof value !== 'string') return false;
+      const length = Array.from(value.trim().normalize('NFC')).length;
+      return length >= 1 && length <= 160;
+    },
   }),
   optional: Object.freeze({}),
 });
 const REQUEST_BODY_SCHEMA = Object.freeze({
   required: Object.freeze({
-    schemaVersion: (value) => value === 2,
+    schemaVersion: isSupportedRequestCompositionSchemaVersion,
     request: (value) => value && typeof value === 'object' && !Array.isArray(value),
   }),
   optional: Object.freeze({}),
 });
 const REQUEST_RESUBMISSION_BODY_SCHEMA = Object.freeze({
   required: Object.freeze({
-    schemaVersion: (value) => value === 2,
+    schemaVersion: isSupportedRequestCompositionSchemaVersion,
     expectedVersion: (value) => Number.isSafeInteger(value)
       && value >= 1
       && value < Number.MAX_SAFE_INTEGER,
@@ -257,7 +262,7 @@ export function createApplicationHttpHandler({
           REQUEST_BODY_SCHEMA,
         );
         sendJson(response, 201, {
-          schemaVersion: 2,
+          schemaVersion: 3,
           request: await service.createRequest({
             ...common,
             schemaVersion: body.schemaVersion,
@@ -287,7 +292,7 @@ export function createApplicationHttpHandler({
         REQUEST_RESUBMISSION_BODY_SCHEMA,
       );
       sendJson(response, 200, {
-        schemaVersion: 2,
+        schemaVersion: 3,
         request: await service.resubmitRequest({
           ...common,
           requestId: resubmissionMatch[1],

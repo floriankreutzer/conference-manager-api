@@ -144,14 +144,14 @@ After the hosted-deployment change has been reviewed and merged to `main`, open 
 Enter the exact confirmation value:
 
 ```text
-saas-3.5-shared-demo-v1
+saas-3.6-shared-demo-v5
 ```
 
 The workflow performs, in order:
 
 1. fail-closed verification that all four database URL secrets exist;
 2. locked dependency installation;
-3. canonical PostgreSQL migrations `001..034` through the migration role;
+3. canonical PostgreSQL migrations `001..038` through the migration role;
 4. Demo overlay migrations and least-privilege grants;
 5. deterministic reset/reseed with the fixed seed version and semantic checksum.
 
@@ -307,3 +307,27 @@ Never record values. The expected names are:
 - shared generated `DEMO_TENANT_AUDIT_HMAC_SECRET`
 
 The migration credential must never be added to Render. Customer credentials must never be added to the Platform service and Platform/reset credentials must never be added to the Customer service.
+
+## Equipment composition rollout
+
+Migration 035 adds exact Request composition v3 Equipment constraints to the existing Request,
+revision and booking-change JSON snapshots. Existing v1/v2 data is not rewritten. Create,
+resubmit, transition, history and confirmed-change paths support the accepted nested version,
+while the outer response envelopes remain unchanged. Equipment is resolved using existing
+Tenant-composite Catalogue tables, charged once and included in allocation.
+
+The `saas-3.6-shared-demo-v5` reset fixture contains distinct priced Northwind/Contoso Equipment
+and verifies those identity, price and applicability facts during semantic readback. Demo overlay
+004 adds only the reset role's `INSERT` and `TRUNCATE` privileges on the canonical attribution
+migration-state table introduced by migration 036; customer and Platform roles receive no access.
+Apply canonical migrations first, apply Demo overlays 001 through 004, reset/reseed Demo, deploy
+both API processes at one compatible SHA, verify Catalogue pages and then pin/deploy the updated
+frontend. Down 035 refuses once any v3 snapshot/proposal/history exists; use a compatible binary or
+a forward fix. Production never activates Demo authority.
+
+## SaaS 3.6 persisted Request attribution
+
+The exact v3 Request response envelopes, relational snapshots, honest legacy-null
+semantics, unchanged audit-chain payload, and mandatory staged writer cutover are
+defined in [Request Attribution](REQUEST-ATTRIBUTION.md). Existing Tenant, role,
+object ownership and session/CSRF boundaries remain required for these reads and writes.

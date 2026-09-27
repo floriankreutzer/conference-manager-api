@@ -38,6 +38,13 @@ const BULK_APPLY_SCHEMA = Object.freeze({
   optional: Object.freeze({}),
 });
 
+function locationReadVersion(parsedUrl) {
+  assertNoUnexpectedQuery(parsedUrl, new Set(['schemaVersion']));
+  const version = parsedUrl.searchParams.get('schemaVersion');
+  if (version !== null && version !== '2') throw new ApiError(400, 'VALIDATION_FAILED');
+  return version === '2' ? 2 : 1;
+}
+
 function sendJson(response, statusCode, payload, maxResponseBytes) {
   const body = JSON.stringify(payload);
   if (Buffer.byteLength(body) > maxResponseBytes) throw new ApiError(500, 'RESPONSE_TOO_LARGE');
@@ -120,13 +127,14 @@ export function createTenantLocationHttpHandler({ service, principalGuard, tenan
     }
 
     if (path === TENANT_LOCATION_ROUTES.current) {
-      assertNoUnexpectedQuery(parsedUrl);
       if (request.method === 'GET') {
+        const schemaVersion = locationReadVersion(parsedUrl);
         await assertEmptyBody(request);
-        sendJson(response, 200, { locations: await service.getCurrent(common) }, maxResponseBytes);
+        sendJson(response, 200, { locations: await service.getCurrent({ ...common, schemaVersion }) }, maxResponseBytes);
         return 200;
       }
       if (request.method === 'PUT') {
+        assertNoUnexpectedQuery(parsedUrl);
         const body = validateExactObject(
           await readJsonObjectBody(request, { maxBytes: maxBodyBytes }),
           UPDATE_SCHEMA,
@@ -161,11 +169,11 @@ export function createTenantLocationHttpHandler({ service, principalGuard, tenan
 
     const match = path.match(REVISION_PATH);
     if (match) {
-      assertNoUnexpectedQuery(parsedUrl);
+      const schemaVersion = locationReadVersion(parsedUrl);
       if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
       await assertEmptyBody(request);
       const revision = Number(match[1]);
-      const snapshot = await service.getRevision({ ...common, revision });
+      const snapshot = await service.getRevision({ ...common, revision, schemaVersion });
       if (!snapshot) throw new ApiError(404, 'NOT_FOUND');
       sendJson(response, 200, { revision: snapshot }, maxResponseBytes);
       return 200;

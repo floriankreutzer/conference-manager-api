@@ -4,6 +4,7 @@ import {
   normalizeBookingChangeCalendarReplacement,
 } from '../../domain/booking-change.js';
 import { isInternalUuid } from '../../domain/identifiers.js';
+import { isSupportedRequestCompositionSchemaVersion } from '../../domain/request-composition.js';
 import { normalizeRequest } from '../../domain/request.js';
 import { BOOKING_POLICY_OPERATION } from '../../domain/tenant-booking-policies.js';
 import {
@@ -27,11 +28,12 @@ const CHANGE_COLUMNS = `
   internal_participants, external_participants, base_request_updated_at,
   request_schema_version, base_request_version, request_draft, proposed_request_snapshot,
   move_attempt_number, recovery_phase, calendar_replacement,
-  decided_by_user_id, rejection_reason, created_at, updated_at
+  decided_by_user_id, rejection_reason, created_at, updated_at,
+  initiator_display_name, initiator_role_at_action, decider_display_name, decider_role_at_action
 `;
 
 const REQUEST_COLUMNS = `
-  tenant_id, id, requester_user_id, room_id, status, status_reason, starts_at, ends_at,
+  tenant_id, id, requester_user_id, requester_display_name, room_id, status, status_reason, starts_at, ends_at,
   internal_participants, external_participants, schema_version, request_version, request_snapshot,
   status_changed_at, created_at, updated_at
 `;
@@ -43,6 +45,10 @@ function changeRow(row) {
     id: row.id,
     requestId: row.request_id,
     initiatorUserId: row.initiator_user_id,
+    initiatorAttribution: { displayName: row.initiator_display_name, roleAtAction: row.initiator_role_at_action },
+    deciderAttribution: row.decided_by_user_id === null ? null : {
+      displayName: row.decider_display_name, roleAtAction: row.decider_role_at_action,
+    },
     status: row.status,
     roomId: row.room_id,
     startsAt: row.starts_at.toISOString(),
@@ -70,6 +76,7 @@ function requestRow(row) {
     tenantId: row.tenant_id,
     id: row.id,
     requesterUserId: row.requester_user_id,
+    requesterAttribution: { displayName: row.requester_display_name },
     roomId: row.room_id,
     status: row.status,
     statusReason: row.status_reason,
@@ -122,8 +129,8 @@ function sameJson(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function participantOnlyV2(request, draft) {
-  if (request.schemaVersion !== 2 || !request.snapshot) return false;
+function participantOnlyComposition(request, draft, schemaVersion) {
+  if (request.schemaVersion !== schemaVersion || !request.snapshot) return false;
   const details = request.snapshot.details;
   const allocations = request.snapshot.allocations.entries.map((entry) => ({
     costCenterId: entry.costCenterId,
@@ -139,6 +146,7 @@ function participantOnlyV2(request, draft) {
     && draft.dietaryRequirements === details.dietaryRequirements
     && draft.specialRequirements === details.specialRequirements
     && sameJson(draft.serviceIds, details.serviceIds)
+    && (schemaVersion !== 3 || sameJson(draft.equipmentIds, details.equipmentIds))
     && sameJson(draft.catering.packageSelection, details.catering.packageSelection)
     && sameJson(draft.catering.itemQuantities, details.catering.itemQuantities)
     && sameJson(draft.allocations, allocations)
@@ -156,7 +164,7 @@ function appliedRequestMatchesChange(request, change) {
     || request.externalParticipants !== change.externalParticipants
   ) return false;
   if (change.requestSchemaVersion === 1) return request.schemaVersion === 1;
-  return request.schemaVersion === 2
+  return request.schemaVersion === change.requestSchemaVersion
     && sameJson(request.snapshot, change.proposedRequestSnapshot);
 }
 
@@ -216,7 +224,25 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
         name: 'booking-change-find-open',
         text: `
           SELECT ${CHANGE_COLUMNS} FROM booking_change_requests
-          WHERE tenant_id = $1 AND request_id = $2 AND status IN ('pending', 'applying')
+          WHERE tenant_id = $1 AND request_id = $2 AND EXISTS (
+            SELECT 1 FROM requests current_request
+            WHERE current_request.tenant_id = $1 AND current_request.id = $2
+              AND (
+                (current_request.status = 'Confirmed' AND (
+                  booking_change_requests.status IN ('pending', 'applying')
+                  OR (booking_change_requests.status = 'applied'
+                    AND booking_change_requests.base_request_version + 1 = current_request.request_version)
+                  OR (booking_change_requests.status = 'rejected'
+                    AND booking_change_requests.base_request_version = current_request.request_version)
+                ))
+                OR (current_request.status = 'Cancelled'
+                  AND booking_change_requests.status = 'superseded'
+                  AND booking_change_requests.base_request_version + 1 = current_request.request_version
+                  AND booking_change_requests.updated_at = current_request.updated_at)
+              )
+          )
+          ORDER BY (status IN ('pending', 'applying')) DESC,
+                   base_request_version DESC, updated_at DESC, created_at DESC, id
           LIMIT 1
         `,
         values: [tenantId, requestId],
@@ -229,6 +255,8 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
       requestId,
       changeId,
       initiatorUserId,
+      schemaVersion = 2,
+      initiatorRoleAtAction,
       expectedVersion,
       proposal,
       changedAt,
@@ -249,6 +277,7 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
           const authority = await resolveCurrentRequestCompositionWithClient(client, {
             tenantId,
             actorUserId: initiatorUserId,
+            schemaVersion,
             draft: proposal,
             operation: BOOKING_POLICY_OPERATION.CHANGE,
             capturedAt: changedAt.toISOString(),
@@ -257,7 +286,7 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
           });
           if (authority.status !== 'ready') return authority;
           const { draft, snapshot } = authority;
-          const participantOnly = participantOnlyV2(request, draft);
+          const participantOnly = participantOnlyComposition(request, draft, schemaVersion);
           const status = participantOnly ? 'applied' : 'pending';
           const inserted = await client.query({
             name: 'booking-change-insert',
@@ -267,10 +296,10 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
                 internal_participants, external_participants, base_request_updated_at,
                 request_schema_version, base_request_version, request_draft,
                 proposed_request_snapshot,
-                decided_by_user_id, rejection_reason, created_at, updated_at
+                decided_by_user_id, rejection_reason, created_at, updated_at, initiator_role_at_action
               ) VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
-                2,$12,$13::jsonb,$14::jsonb,NULL,NULL,$15,$15
+                $16,$12,$13::jsonb,$14::jsonb,NULL,NULL,$15,$15,$17
               )
               RETURNING ${CHANGE_COLUMNS}
             `,
@@ -279,6 +308,7 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
               new Date(draft.startsAt), new Date(draft.endsAt), draft.internalParticipants,
               draft.externalParticipants, new Date(request.updatedAt), request.version,
               JSON.stringify(draft), JSON.stringify(snapshot), changedAt,
+              schemaVersion, initiatorRoleAtAction,
             ],
           });
           let updatedRequest = request;
@@ -289,7 +319,7 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
                 UPDATE requests
                 SET internal_participants = $3,
                     external_participants = $4,
-                    schema_version = 2,
+                    schema_version = $9,
                     request_version = $5,
                     request_snapshot = $6::jsonb,
                     updated_at = $7
@@ -308,6 +338,7 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
                 JSON.stringify(snapshot),
                 changedAt,
                 request.version,
+                schemaVersion,
               ],
             });
             updatedRequest = requestRow(updated.rows[0]);
@@ -317,6 +348,7 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
               updatedRequest,
               'booking_changed',
               auditEvent,
+              initiatorRoleAtAction,
             );
             await client.query({
               name: 'booking-change-notify-requester-direct',
@@ -421,7 +453,7 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
         const applying = await client.query({
           name: 'booking-change-begin-approval',
           text: `UPDATE booking_change_requests
-            SET status='applying', decided_by_user_id=$4, updated_at=$5,
+            SET status='applying', decided_by_user_id=$4, decider_role_at_action='conference_manager', updated_at=$5,
                 move_attempt_number = move_attempt_number + CASE WHEN $6 THEN 1 ELSE 0 END,
                 recovery_phase = CASE WHEN $6 THEN 'move_pending' ELSE 'none' END,
                 calendar_replacement = NULL
@@ -786,7 +818,7 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
           values: [tenantId, change.roomId, requestId, change.startsAt, change.endsAt],
         });
         if (overlap.rowCount > 0) return Object.freeze({ status: 'blocked' });
-        const updated = change.requestSchemaVersion === 2
+        const updated = isSupportedRequestCompositionSchemaVersion(change.requestSchemaVersion)
           ? await client.query({
             name: 'booking-change-apply-v2-request',
             text: `
@@ -796,7 +828,7 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
                   ends_at = $6,
                   internal_participants = $7,
                   external_participants = $8,
-                  schema_version = 2,
+                  schema_version = $12,
                   request_version = $9,
                   request_snapshot = $10::jsonb,
                   updated_at = $11
@@ -818,6 +850,7 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
               change.baseRequestVersion + 1,
               JSON.stringify(change.proposedRequestSnapshot),
               changedAt,
+              change.requestSchemaVersion,
             ],
           })
           : await client.query({
@@ -850,6 +883,7 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
           nextRequest,
           'booking_changed',
           auditEvent,
+          'conference_manager',
         );
         if (replacement) {
           const swapped = await client.query({
@@ -910,7 +944,7 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
       return withPostgresTransaction(pool, async (client) => {
         const result = await client.query({
           name: 'booking-change-reject',
-          text: `UPDATE booking_change_requests SET status='rejected', decided_by_user_id=$4,
+          text: `UPDATE booking_change_requests SET status='rejected', decided_by_user_id=$4, decider_role_at_action='conference_manager',
               rejection_reason=$5, updated_at=$6
             WHERE tenant_id=$1 AND request_id=$2 AND id=$3 AND status='pending' RETURNING ${CHANGE_COLUMNS}`,
           values: [tenantId, requestId, changeId, deciderUserId, reason, changedAt],

@@ -1,3 +1,4 @@
+import { SiteGuestInformationInputError } from '../domain/site-guest-information.js';
 import {
   AUDIT_ACTION,
   AUDIT_OUTCOME,
@@ -12,6 +13,7 @@ import { isInternalUuid } from '../domain/identifiers.js';
 import {
   TenantLocationInputError,
   normalizeTenantLocations,
+  normalizeTenantLocationsV2,
 } from '../domain/tenant-locations.js';
 import {
   nextTenantSettingsRevision,
@@ -31,6 +33,7 @@ const SAFE_REPOSITORY_INPUT_CODES = new Set([
   'TENANT_LOCATION_REFERENCED_BOOKING_CHANGE',
   'TENANT_LOCATION_SERVICE_REFERENCE_INVALID',
   'TENANT_LOCATION_CATERING_REFERENCE_INVALID',
+  'TENANT_ROOM_MEDIA_REFERENCE_INVALID',
   'TENANT_LOCATION_REVISION_NOT_FOUND',
   'TENANT_ROOM_PROVIDER_IMPORT_REQUIRED',
   'TENANT_ROOM_ARCHIVE_REQUIRED',
@@ -193,9 +196,9 @@ function auditEvent(auditService, {
   });
 }
 
-function response(result) {
+function response(result, schemaVersion = TENANT_SETTINGS_SCHEMA_VERSION) {
   return Object.freeze({
-    schemaVersion: TENANT_SETTINGS_SCHEMA_VERSION,
+    schemaVersion,
     revision: result.revision,
     configuration: result.configuration,
     providerContext: result.providerContext,
@@ -222,11 +225,17 @@ async function authorizedRepositoryMutation(auditService, authorizationInput, op
   }
 }
 
-function normalizeInput(configuration) {
+function requireLocationSchemaVersion(value) {
+  return value === 2 ? value : requireTenantSettingsSchemaVersion(value);
+}
+
+function normalizeInput(configuration, schemaVersion) {
   try {
-    return normalizeTenantLocations(configuration);
+    return schemaVersion === 2 ? normalizeTenantLocationsV2(configuration) : normalizeTenantLocations(configuration);
   } catch (error) {
-    if (error instanceof TenantLocationInputError) throw new TenantSettingsInputError(error.code);
+    if (error instanceof TenantLocationInputError || error instanceof SiteGuestInformationInputError) {
+      throw new TenantSettingsInputError(error.code);
+    }
     throw error;
   }
 }
@@ -246,12 +255,13 @@ export function createTenantLocationAdministrationService({
 
   let service;
   service = Object.freeze({
-    async getCurrent({ principal, tenantContext, correlationId }) {
+    async getCurrent({ principal, tenantContext, correlationId, schemaVersion = 1 }) {
+      requireLocationSchemaVersion(schemaVersion);
       requireCorrelationId(correlationId);
       await authorizeAny(authorizationPolicy, auditService, {
         principal, tenantContext, correlationId, operation: 'read',
       });
-      return response(await repository.current(tenantContext.tenantId));
+      return response(await repository.current(tenantContext.tenantId, { schemaVersion }), schemaVersion);
     },
 
     async update({
@@ -259,9 +269,9 @@ export function createTenantLocationAdministrationService({
       bulkReceipt = null,
     }) {
       requireCorrelationId(correlationId);
-      requireTenantSettingsSchemaVersion(schemaVersion);
+      requireLocationSchemaVersion(schemaVersion);
       const expected = requireTenantSettingsRevision(expectedRevision);
-      const normalized = normalizeInput(configuration);
+      const normalized = normalizeInput(configuration, schemaVersion);
       const authorizationInput = {
         principal, tenantContext, correlationId, operation: 'update',
       };
@@ -272,6 +282,7 @@ export function createTenantLocationAdministrationService({
         auditService,
         authorizationInput,
         () => repository.update({
+          schemaVersion,
           tenantId: tenantContext.tenantId,
           expectedRevision: expected,
           nextRevision,
@@ -301,7 +312,7 @@ export function createTenantLocationAdministrationService({
       );
       if (result?.status === 'conflict') throw new TenantSettingsConflictError(result.currentRevision);
       if (result?.status === 'bulk_replay' || result?.status === 'bulk_applied') return result.response;
-      return response(result);
+      return response(result, schemaVersion);
     },
 
     async bulkTemplate({ principal, tenantContext, correlationId, type }) {
@@ -361,17 +372,18 @@ export function createTenantLocationAdministrationService({
       return repository.history(tenantContext.tenantId, limit);
     },
 
-    async getRevision({ principal, tenantContext, correlationId, revision }) {
+    async getRevision({ principal, tenantContext, correlationId, revision, schemaVersion = 1 }) {
+      requireLocationSchemaVersion(schemaVersion);
       requireCorrelationId(correlationId);
       await authorizeAny(authorizationPolicy, auditService, {
         principal, tenantContext, correlationId, operation: 'history_read',
       });
-      return repository.revision(tenantContext.tenantId, requireTenantSettingsRevision(revision));
+      return repository.revision(tenantContext.tenantId, requireTenantSettingsRevision(revision), { schemaVersion });
     },
 
     async rollback({ principal, tenantContext, correlationId, schemaVersion, expectedRevision, sourceRevision }) {
       requireCorrelationId(correlationId);
-      requireTenantSettingsSchemaVersion(schemaVersion);
+      requireLocationSchemaVersion(schemaVersion);
       const expected = requireTenantSettingsRevision(expectedRevision);
       const source = requireTenantSettingsRevision(sourceRevision);
       const authorizationInput = {
@@ -384,6 +396,7 @@ export function createTenantLocationAdministrationService({
         auditService,
         authorizationInput,
         () => repository.rollback({
+          schemaVersion,
           tenantId: tenantContext.tenantId,
           expectedRevision: expected,
           nextRevision,
@@ -411,7 +424,7 @@ export function createTenantLocationAdministrationService({
         }),
       );
       if (result?.status === 'conflict') throw new TenantSettingsConflictError(result.currentRevision);
-      return response(result);
+      return response(result, schemaVersion);
     },
   });
   return service;

@@ -80,8 +80,10 @@ function fakeRepository(initial = requestRecord(), currentRoomContext = roomCont
   let openBookingChangeStatus = null;
   let roomContextLoads = 0;
   const committedAuditEvents = [];
+  const transitionCalls = [];
   return {
     committedAuditEvents,
+    transitionCalls,
     setConflict(value) {
       forceConflict = value;
     },
@@ -107,6 +109,12 @@ function fakeRepository(initial = requestRecord(), currentRoomContext = roomCont
       ) return null;
       return currentRoomContext;
     },
+    async findGuestContextByTenantIdAndRequest(tenantId, requestId, expectedVersion) {
+      roomContextLoads += 1;
+      if (forceConflict || !current || current.tenantId !== tenantId || current.id !== requestId
+        || current.version !== expectedVersion || current.status !== REQUEST_STATUS.CONFIRMED) return null;
+      return Object.freeze({ ...currentRoomContext, guestPresentation: null });
+    },
     async listHistoryPageByTenantIdAndId(tenantId, requestId, { limit }) {
       if (!current || current.tenantId !== tenantId || current.id !== requestId) return [];
       return [{
@@ -121,14 +129,28 @@ function fakeRepository(initial = requestRecord(), currentRoomContext = roomCont
       tenantId,
       requestId,
       expectedStatus,
+      expectedVersion,
       nextStatus,
       reason,
       changedAt,
       auditEvent,
       bookingChangeAuditEvent,
     }) {
+      transitionCalls.push({
+        tenantId,
+        requestId,
+        expectedStatus,
+        expectedVersion,
+        nextStatus,
+        reason,
+      });
       if (forceConflict || !current) return null;
-      if (current.tenantId !== tenantId || current.id !== requestId || current.status !== expectedStatus) return null;
+      if (
+        current.tenantId !== tenantId
+        || current.id !== requestId
+        || current.status !== expectedStatus
+        || current.version !== expectedVersion
+      ) return null;
       if (openBookingChangeStatus === 'applying') return null;
       if (openBookingChangeStatus === 'pending') {
         openBookingChangeStatus = 'superseded';
@@ -148,7 +170,10 @@ function fakeRepository(initial = requestRecord(), currentRoomContext = roomCont
   };
 }
 
-function service(repository, clock = () => Date.parse('2026-08-24T09:00:00.000Z')) {
+function service(repository, {
+  bookingServiceFactory = null,
+  clock = () => Date.parse('2026-08-24T09:00:00.000Z'),
+} = {}) {
   const authorizationPolicy = createAuthorizationPolicy();
   const audit = createAuditHarness({ authorizationPolicy, clock });
   return Object.freeze({
@@ -162,6 +187,7 @@ function service(repository, clock = () => Date.parse('2026-08-24T09:00:00.000Z'
           throw new Error('FINAL_CONFIRMATION_NOT_EXPECTED');
         },
       },
+      bookingServiceFactory,
       clock,
     }),
   });
@@ -189,6 +215,7 @@ test('confirmed Request cancellation atomically supersedes a pending booking cha
     tenantContext: { tenantId: TENANT_A },
     requestId: 'REQ-1',
     transition: REQUEST_TRANSITION.CANCEL,
+    expectedVersion: 1,
     correlationId: CORRELATION_ID,
   });
   assert.equal(updated.status, REQUEST_STATUS.CANCELLED);
@@ -213,6 +240,7 @@ test('confirmed Request cancellation conflicts while booking-change approval is 
     tenantContext: { tenantId: TENANT_A },
     requestId: 'REQ-1',
     transition: REQUEST_TRANSITION.CANCEL,
+    expectedVersion: 1,
     correlationId: CORRELATION_ID,
   }), RequestStateConflictError);
   assert.equal(repository.openBookingChangeStatus, 'applying');
@@ -390,6 +418,7 @@ test('authorized transitions carry only the server policy decision into the atom
     tenantContext: { tenantId: TENANT_A },
     requestId: 'REQ-1',
     transition: REQUEST_TRANSITION.CANCEL,
+    expectedVersion: 1,
     correlationId: CORRELATION_ID,
   });
   assert.equal(updated.status, REQUEST_STATUS.CANCELLED);
@@ -400,7 +429,48 @@ test('authorized transitions carry only the server policy decision into the atom
   assert.deepEqual(repository.committedAuditEvents[0].newState, { status: REQUEST_STATUS.CANCELLED });
   assert.equal(repository.committedAuditEvents[0].action, AUDIT_ACTION.REQUEST_TRANSITION);
   assert.equal(repository.committedAuditEvents[0].correlationId, CORRELATION_ID);
+  assert.equal(repository.transitionCalls.length, 1);
+  assert.equal(repository.transitionCalls[0].expectedVersion, 1);
   assert.equal(context.audit.events.length, 0);
+});
+
+test('same-status ABA rejects a stale expected version before repository or calendar side effects', async () => {
+  const repository = fakeRepository(requestRecord({ version: 3, status: REQUEST_STATUS.SUBMITTED }));
+  let referenceChecks = 0;
+  let cancellationFactories = 0;
+  const context = service(repository, {
+    bookingServiceFactory: {
+      async requiresCancellation() {
+        referenceChecks += 1;
+        return true;
+      },
+      async forCancellation() {
+        cancellationFactories += 1;
+        return {
+          async cancelCalendarEvent() {
+            throw new Error('CALENDAR_CANCELLATION_NOT_EXPECTED');
+          },
+        };
+      },
+    },
+  });
+
+  await assert.rejects(context.requestService.transitionRequest({
+    principal: principal(),
+    tenantContext: { tenantId: TENANT_A },
+    requestId: 'REQ-1',
+    transition: REQUEST_TRANSITION.CANCEL,
+    expectedVersion: 1,
+    correlationId: CORRELATION_ID,
+  }), RequestStateConflictError);
+
+  assert.equal(repository.transitionCalls.length, 0);
+  assert.equal(repository.committedAuditEvents.length, 0);
+  assert.equal(referenceChecks, 0);
+  assert.equal(cancellationFactories, 0);
+  assert.equal(context.audit.events.length, 1);
+  assert.equal(context.audit.events[0].action, AUDIT_ACTION.REQUEST_TRANSITION_FAILED);
+  assert.equal(context.audit.events[0].metadata.reasonCode, 'state_conflict');
 });
 
 test('manager cancellation of another User-owned Request keeps the server actor and audit mutation atomic', async () => {
@@ -419,6 +489,7 @@ test('manager cancellation of another User-owned Request keeps the server actor 
     tenantContext: { tenantId: TENANT_A },
     requestId: 'REQ-1',
     transition: REQUEST_TRANSITION.CANCEL,
+    expectedVersion: 1,
     correlationId: CORRELATION_ID,
   });
 
@@ -457,12 +528,168 @@ test('manager repeat cancellation reconciles an already-cancelled foreign Reques
     tenantContext: { tenantId: TENANT_A },
     requestId: 'REQ-1',
     transition: REQUEST_TRANSITION.CANCEL,
+    expectedVersion: 1,
     correlationId: CORRELATION_ID,
   });
 
   assert.equal(unchanged.status, REQUEST_STATUS.CANCELLED);
   assert.equal(repository.committedAuditEvents.length, 0);
   assert.equal(context.audit.events.length, 0);
+});
+
+test('already-target release reconciliation accepts only the exact current intent', async () => {
+  const manager = principal({
+    roles: [TENANT_ROLE.CONFERENCE_MANAGER],
+    permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_MANAGE],
+  });
+  const scenarios = [
+    {
+      transition: REQUEST_TRANSITION.CANCEL,
+      status: REQUEST_STATUS.CANCELLED,
+      statusReason: null,
+      caller: principal(),
+      reason: undefined,
+    },
+    {
+      transition: REQUEST_TRANSITION.REJECT,
+      status: REQUEST_STATUS.REJECTED,
+      statusReason: 'Insufficient detail',
+      caller: manager,
+      reason: '  Insufficient detail  ',
+    },
+    {
+      transition: REQUEST_TRANSITION.REQUEST_CHANGE,
+      status: REQUEST_STATUS.CHANGE_REQUESTED,
+      statusReason: 'Adjust the attendee count',
+      caller: manager,
+      reason: '  Adjust the attendee count  ',
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const repository = fakeRepository(requestRecord({
+      version: 5,
+      status: scenario.status,
+      statusReason: scenario.statusReason,
+    }));
+    const context = service(repository);
+    const unchanged = await context.requestService.transitionRequest({
+      principal: scenario.caller,
+      tenantContext: { tenantId: TENANT_A },
+      requestId: 'REQ-1',
+      transition: scenario.transition,
+      reason: scenario.reason,
+      expectedVersion: 5,
+      correlationId: CORRELATION_ID,
+    });
+
+    assert.equal(unchanged.version, 5);
+    assert.equal(unchanged.status, scenario.status);
+    assert.equal(repository.transitionCalls.length, 0);
+    assert.equal(repository.committedAuditEvents.length, 0);
+    assert.equal(context.audit.events.length, 0);
+  }
+});
+
+test('already-target release reconciliation rejects predecessor, stale, future, and mismatched intent', async () => {
+  const manager = principal({
+    roles: [TENANT_ROLE.CONFERENCE_MANAGER],
+    permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_MANAGE],
+  });
+  const attempts = [
+    {
+      record: requestRecord({ version: 5, status: REQUEST_STATUS.CANCELLED }),
+      caller: principal(),
+      transition: REQUEST_TRANSITION.CANCEL,
+      expectedVersion: 4,
+    },
+    {
+      record: requestRecord({
+        version: 5,
+        status: REQUEST_STATUS.REJECTED,
+        statusReason: 'Insufficient detail',
+      }),
+      caller: manager,
+      transition: REQUEST_TRANSITION.REJECT,
+      reason: 'Insufficient detail',
+      expectedVersion: 4,
+    },
+    {
+      record: requestRecord({
+        version: 5,
+        status: REQUEST_STATUS.CHANGE_REQUESTED,
+        statusReason: 'Adjust the attendee count',
+      }),
+      caller: manager,
+      transition: REQUEST_TRANSITION.REQUEST_CHANGE,
+      reason: 'Adjust the attendee count',
+      expectedVersion: 4,
+    },
+    {
+      record: requestRecord({ version: 5, status: REQUEST_STATUS.CANCELLED }),
+      caller: principal(),
+      transition: REQUEST_TRANSITION.CANCEL,
+      expectedVersion: 3,
+    },
+    {
+      record: requestRecord({ version: 5, status: REQUEST_STATUS.CANCELLED }),
+      caller: principal(),
+      transition: REQUEST_TRANSITION.CANCEL,
+      expectedVersion: 6,
+    },
+    {
+      record: requestRecord({
+        version: 5,
+        status: REQUEST_STATUS.REJECTED,
+        statusReason: 'Insufficient detail',
+      }),
+      caller: manager,
+      transition: REQUEST_TRANSITION.REJECT,
+      reason: 'Different reason',
+      expectedVersion: 4,
+    },
+    {
+      record: requestRecord({
+        version: 5,
+        status: REQUEST_STATUS.CHANGE_REQUESTED,
+        statusReason: 'Adjust the attendee count',
+      }),
+      caller: manager,
+      transition: REQUEST_TRANSITION.REQUEST_CHANGE,
+      reason: 'Different reason',
+      expectedVersion: 5,
+    },
+    {
+      record: requestRecord({
+        version: 5,
+        status: REQUEST_STATUS.REJECTED,
+        statusReason: 'Insufficient detail',
+      }),
+      caller: manager,
+      transition: REQUEST_TRANSITION.REQUEST_CHANGE,
+      reason: 'Insufficient detail',
+      expectedVersion: 5,
+    },
+  ];
+
+  for (const attempt of attempts) {
+    const repository = fakeRepository(attempt.record);
+    const context = service(repository);
+    await assert.rejects(context.requestService.transitionRequest({
+      principal: attempt.caller,
+      tenantContext: { tenantId: TENANT_A },
+      requestId: 'REQ-1',
+      transition: attempt.transition,
+      reason: attempt.reason,
+      expectedVersion: attempt.expectedVersion,
+      correlationId: CORRELATION_ID,
+    }), RequestStateConflictError);
+    assert.equal(repository.transitionCalls.length, 0);
+    assert.equal(repository.committedAuditEvents.length, 0);
+    assert.equal(context.audit.events.length, 1);
+    assert.equal(context.audit.events[0].action, AUDIT_ACTION.REQUEST_TRANSITION_FAILED);
+    assert.equal(context.audit.events[0].metadata.reasonCode, 'state_conflict');
+  }
 });
 
 test('stale authorized transition fails without overwrite and records a correlated failure', async () => {
@@ -479,13 +706,73 @@ test('stale authorized transition fails without overwrite and records a correlat
       tenantContext: { tenantId: TENANT_A },
       requestId: 'REQ-1',
       transition: REQUEST_TRANSITION.START_REVIEW,
+      expectedVersion: 1,
       correlationId: CORRELATION_ID,
     }),
     RequestStateConflictError,
   );
   assert.equal(repository.committedAuditEvents.length, 0);
+  assert.equal(repository.transitionCalls.length, 1);
+  assert.equal(repository.transitionCalls[0].expectedVersion, 1);
   assert.equal(context.audit.events.length, 1);
   assert.equal(context.audit.events[0].action, AUDIT_ACTION.REQUEST_TRANSITION_FAILED);
   assert.equal(context.audit.events[0].metadata.reasonCode, 'concurrent_state_change');
   assert.equal(context.audit.events[0].correlationId, CORRELATION_ID);
+});
+
+
+test('guest projection preserves v1 and binds final read to the authorized confirmed Request version', async () => {
+  const record = requestRecord({ status: REQUEST_STATUS.CONFIRMED, version: 4 });
+  const repository = fakeRepository(record);
+  const context = service(repository);
+  const input = { principal: principal(), tenantContext: { tenantId: TENANT_A },
+    requestId: record.id, correlationId: CORRELATION_ID };
+  await assert.rejects(
+    context.requestService.getRequestRoomContext({ ...input, projection: 'v2' }),
+    (error) => error instanceof AuthorizationInputError
+      && error.message === 'REQUEST_ROOM_CONTEXT_PROJECTION_INVALID',
+  );
+  assert.equal(repository.roomContextLoads, 0);
+  const legacy = await context.requestService.getRequestRoomContext(input);
+  assert.equal(legacy.schemaVersion, 1);
+  assert.deepEqual(Object.keys(legacy).sort(), ['currentRoomContext', 'requestId', 'requestRef', 'schemaVersion']);
+  assert.equal(Object.hasOwn(legacy.currentRoomContext, 'guestPresentation'), false);
+  const guest = await context.requestService.getRequestRoomContext({ ...input, projection: 'guest' });
+  assert.equal(guest.schemaVersion, 2);
+  assert.deepEqual(Object.keys(guest).sort(), ['currentRoomContext', 'requestId', 'requestRef', 'schemaVersion']);
+  assert.deepEqual(Object.keys(guest.currentRoomContext).sort(),
+    ['guestPresentation', 'locationsRevision', 'room', 'site']);
+  assert.equal(guest.requestRef.version, 4);
+  assert.equal(guest.currentRoomContext.guestPresentation, null);
+  assert.equal(guest.currentRoomContext.room.active, false);
+  repository.setConflict(true);
+  await assert.rejects(context.requestService.getRequestRoomContext({ ...input, projection: 'guest' }),
+    RequestStateConflictError);
+});
+
+test('guest projection denies nonconfirmed and unauthorized Requests before guest configuration lookup', async () => {
+  const input = { principal: principal(), tenantContext: { tenantId: TENANT_A },
+    requestId: 'REQ-1', correlationId: CORRELATION_ID, projection: 'guest' };
+  const pending = fakeRepository();
+  await assert.rejects(service(pending).requestService.getRequestRoomContext(input), RequestStateConflictError);
+  assert.equal(pending.roomContextLoads, 0);
+  for (const record of [requestRecord({ requesterUserId: USER_B, status: REQUEST_STATUS.CONFIRMED }),
+    requestRecord({ tenantId: TENANT_B, status: REQUEST_STATUS.CONFIRMED }), null]) {
+    const repository = fakeRepository(record);
+    await assert.rejects(service(repository).requestService.getRequestRoomContext(input),
+      (error) => error instanceof AuthorizationDeniedError && error.conceal === true);
+    assert.equal(repository.roomContextLoads, 0);
+  }
+  const foreign = requestRecord({ requesterUserId: USER_B, status: REQUEST_STATUS.CONFIRMED });
+  const adminRepository = fakeRepository(foreign);
+  await assert.rejects(service(adminRepository).requestService.getRequestRoomContext({ ...input,
+    principal: principal({ roles: [TENANT_ROLE.TENANT_ADMIN], permissions: [PERMISSION.TENANT_CONFIGURE] }),
+  }), AuthorizationDeniedError);
+  assert.equal(adminRepository.roomContextLoads, 0);
+  const manager = service(fakeRepository(foreign));
+  const result = await manager.requestService.getRequestRoomContext({ ...input,
+    principal: principal({ roles: [TENANT_ROLE.CONFERENCE_MANAGER],
+      permissions: [PERMISSION.REQUEST_READ, PERMISSION.REQUEST_MANAGE] }),
+  });
+  assert.equal(result.schemaVersion, 2);
 });

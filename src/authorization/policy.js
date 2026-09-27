@@ -159,10 +159,15 @@ function managerTransition(principal, request, transition, reason) {
   });
 }
 
+export function requestActorRoleAtAction(principal) {
+  return principal.roles.includes(TENANT_ROLE.CONFERENCE_MANAGER)
+    && principal.permissions.includes(PERMISSION.REQUEST_MANAGE)
+    ? TENANT_ROLE.CONFERENCE_MANAGER : TENANT_ROLE.EMPLOYEE;
+}
+
 function requireRequestCancellationAuthority(principal, request) {
   if (
-    principal.roles.includes(TENANT_ROLE.CONFERENCE_MANAGER)
-    && principal.permissions.includes(PERMISSION.REQUEST_MANAGE)
+    requestActorRoleAtAction(principal) === TENANT_ROLE.CONFERENCE_MANAGER
   ) {
     requirePermission(principal, PERMISSION.REQUEST_MANAGE, [TENANT_ROLE.CONFERENCE_MANAGER]);
     return;
@@ -214,14 +219,36 @@ function authorizeBookingOperation(principal, tenantContext, request, operation)
   return true;
 }
 
-function authorizeRequestReconciliation(principal, tenantContext, request, transition) {
+function authorizeRequestReconciliation(principal, tenantContext, request, transition, reason) {
   assertTenantBinding(principal, tenantContext, request?.tenantId);
+  if (transition === REQUEST_TRANSITION.CONFIRM) {
+    requirePermission(principal, PERMISSION.REQUEST_MANAGE, [TENANT_ROLE.CONFERENCE_MANAGER]);
+    if (request.status !== REQUEST_STATUS.CONFIRMED) throw new RequestStateConflictError();
+    return Object.freeze({
+      transition,
+      nextStatus: REQUEST_STATUS.CONFIRMED,
+      reason: normalizeReason(reason, 'forbidden'),
+    });
+  }
   if (transition === REQUEST_TRANSITION.CANCEL) {
-    return authorizeBookingOperation(principal, tenantContext, request, BOOKING_OPERATION.CANCEL);
+    authorizeBookingOperation(principal, tenantContext, request, BOOKING_OPERATION.CANCEL);
+    if (request.status !== REQUEST_STATUS.CANCELLED) throw new RequestStateConflictError();
+    return Object.freeze({
+      transition,
+      nextStatus: REQUEST_STATUS.CANCELLED,
+      reason: normalizeReason(reason, 'forbidden'),
+    });
   }
   if (transition === REQUEST_TRANSITION.REJECT || transition === REQUEST_TRANSITION.REQUEST_CHANGE) {
     requirePermission(principal, PERMISSION.REQUEST_MANAGE, [TENANT_ROLE.CONFERENCE_MANAGER]);
-    return true;
+    const nextStatus = transition === REQUEST_TRANSITION.REJECT
+      ? REQUEST_STATUS.REJECTED : REQUEST_STATUS.CHANGE_REQUESTED;
+    if (request.status !== nextStatus) throw new RequestStateConflictError();
+    return Object.freeze({
+      transition,
+      nextStatus,
+      reason: normalizeReason(reason, 'required'),
+    });
   }
   throw new AuthorizationInputError('REQUEST_RECONCILIATION_TRANSITION_INVALID');
 }
@@ -321,8 +348,7 @@ export function createAuthorizationPolicy() {
       if (!request || request.status !== REQUEST_STATUS.CONFIRMED) {
         throw new RequestStateConflictError();
       }
-      const manager = principal.roles.includes(TENANT_ROLE.CONFERENCE_MANAGER)
-        && principal.permissions.includes(PERMISSION.REQUEST_MANAGE);
+      const manager = requestActorRoleAtAction(principal) === TENANT_ROLE.CONFERENCE_MANAGER;
       if (manager) {
         requirePermission(principal, PERMISSION.REQUEST_MANAGE, [TENANT_ROLE.CONFERENCE_MANAGER]);
         return true;

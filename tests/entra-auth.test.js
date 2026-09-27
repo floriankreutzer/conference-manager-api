@@ -187,6 +187,29 @@ test('optional Entra display names beyond the local profile bound never block a 
     assert.equal(identity.userReference, USER_ID);
     assert.equal(identity.displayName, null);
   }
+
+  for (const name of [
+    'Manager\u202eresU',
+    'Zero\u200bWidth',
+    'Isolate\u2066Admin\u2069',
+    'Word\ufeffJoin',
+    'Boundary control\ufeff',
+  ]) {
+    const identity = await entraClient(providerApplication({ name })).redeemAuthorizationCode({
+      code: 'unsafe-format-name',
+      codeVerifier: 'V'.repeat(43),
+      expectedNonceHash: hash(NONCE),
+    });
+    assert.equal(identity.displayName, null);
+  }
+
+  const unicode = await entraClient(providerApplication({ name: 'Jose\u0301 山田' }))
+    .redeemAuthorizationCode({
+      code: 'unicode-name',
+      codeVerifier: 'V'.repeat(43),
+      expectedNonceHash: hash(NONCE),
+    });
+  assert.equal(unicode.displayName, 'José 山田');
 });
 
 test('two Entra organizations resolve to distinct provider-neutral tenant references', async () => {

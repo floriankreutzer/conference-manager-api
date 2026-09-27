@@ -9,7 +9,7 @@ import { PERMISSION } from '../src/authorization/policy.js';
 import {
   TenantLocationInputError,
   assertTenantLocationTransition,
-  normalizeTenantLocations,
+  normalizeTenantLocations, normalizeStoredTenantLocations, normalizeTenantLocationsV2,
   tenantLocationRollbackConfiguration,
 } from '../src/domain/tenant-locations.js';
 
@@ -176,6 +176,24 @@ test('legacy missing time zones are never fabricated into a writable location sn
     (error) => error instanceof TenantLocationInputError
       && error.code === 'TENANT_SITE_TIME_ZONE_INVALID',
   );
+});
+
+test('legacy Room wayfinding remains readable but new writes cannot publish unsafe guest text', () => {
+  const old = locationConfiguration({
+    rooms: [{ ...locationConfiguration().rooms[0], floor: 'Door code 1234',
+      accessibility: ['https://internal.example.test/entry'] }],
+  });
+  const stored = normalizeStoredTenantLocations(old);
+  assert.equal(stored.rooms[0].floor, 'Door code 1234');
+  assert.deepEqual(stored.rooms[0].accessibility, ['https://internal.example.test/entry']);
+  assert.equal(normalizeTenantLocationsV2({
+    sites: old.sites.map((site) => ({ ...site, guestInformation: null })), rooms: old.rooms,
+  }, { stored: true }).rooms[0].floor, 'Door code 1234');
+  assert.throws(() => normalizeTenantLocations(old),
+    (error) => error instanceof TenantLocationInputError && error.code === 'TENANT_ROOM_FLOOR_INVALID');
+  assert.throws(() => normalizeTenantLocationsV2({
+    sites: old.sites.map((site) => ({ ...site, guestInformation: null })), rooms: old.rooms,
+  }), (error) => error instanceof TenantLocationInputError && error.code === 'TENANT_ROOM_FLOOR_INVALID');
 });
 
 test('manual rooms cannot be created through the Microsoft-first location contract', () => {
@@ -469,4 +487,126 @@ test('location asset references are opaque identifiers and never browser-control
     (error) => error instanceof TenantLocationInputError
       && error.code === 'TENANT_ROOM_FLOORPLAN_INVALID',
   );
+});
+
+test('Guest Room presentation rejects credential, URI and unsafe Unicode text at ingestion', () => {
+  for (const disclosure of [
+    'Door code 1234',
+    'Doo\u0433 code 1234',
+    'Door c\u0585de 1234',
+    'D-o-o-\u0433 code 1234',
+    'D.o.o.\u0433 c\u0585de 1234',
+    'Doorcode1234',
+    'Doorcode2',
+    'Doorcode\u0662',
+    'Door code1234',
+    'PasswortSommer2026',
+    'WiFipasswordSommer2026',
+    'P\u0251ssword: Sommer2026',
+    '\u1d18\u026a\u0274 1234',
+    'passwordsecret',
+    'doorcodeblue',
+    'Doo \u0433 code 1234',
+    '\u0440\u0430\u0455\u0455\u051d\u043e\u0433\u0501',
+    'Door@code 1234',
+    'Door$code 1234',
+    'API@key abc123',
+    'Door@c0de 1234',
+    'Door$c0de 1234',
+    'API@k3y abc123',
+    'API$k3y abc123',
+    'GuestPassword1234',
+    'guestpassword1234',
+    'MyPasswortSommer2026',
+    'MainDoorcode1234',
+    'OfficeDoor code 1234',
+    'GuestWiFipasswordSommer2026',
+    ['Secret', 'PIN1234'].join(''),
+    '\u13e2\u13aa\u13da\u13da\u13b3\u13be\u13a1\u13a0 Sommer2026',
+    '\u13e2\u13c6\u13c1 1234',
+    '\u13e2.\u13c6.\u13c1 1234',
+    'Password sunshine',
+    'https://internal.example.test/floor',
+    'North\u202e2',
+    '\tLevel 2',
+    'Step-free\ud800access',
+  ]) {
+    for (const [field, value, code] of [
+      ['floor', disclosure, 'TENANT_ROOM_FLOOR_INVALID'],
+      ['accessibility', [disclosure], 'TENANT_ROOM_ACCESSIBILITY_INVALID'],
+    ]) {
+      const configuration = locationConfiguration();
+      configuration.rooms[0] = { ...configuration.rooms[0], [field]: value };
+      assert.throws(
+        () => normalizeTenantLocations(configuration),
+        (error) => error instanceof TenantLocationInputError && error.code === code,
+      );
+    }
+  }
+  const safe = locationConfiguration();
+  safe.rooms[0] = {
+    ...safe.rooms[0],
+    floor: '1. OG',
+    accessibility: ['Lift', 'Step-free entrance', 'Use Door 4 beside the north entrance.', 'Access ramp'],
+  };
+  const room = normalizeTenantLocations(safe).rooms[0];
+  assert.equal(room.floor, '1. OG');
+  assert.deepEqual(room.accessibility,
+    ['Lift', 'Step-free entrance', 'Use Door 4 beside the north entrance.', 'Access ramp']);
+  for (const floor of ['B[1]', 'Level -1', 'Étage 2']) {
+    safe.rooms[0] = { ...safe.rooms[0], floor };
+    assert.equal(normalizeTenantLocations(safe).rooms[0].floor, floor);
+  }
+  for (const floor of ['Door入口案内', 'Gate入口案内', 'Access入口案内',
+    'Entrance入口案内', 'WiFi接続案内', 'WLAN接続案内', 'API利用案内', 'ᎣᏏᏲ ᎠᏰᎵ',
+    'Meet at Door @ reception.', 'Parking costs $5 at reception.']) {
+    safe.rooms[0] = { ...safe.rooms[0], floor };
+    assert.equal(normalizeTenantLocations(safe).rooms[0].floor, floor);
+  }
+});
+
+
+test('Locations v2 adds nullable exact Site guest configuration while v1 remains closed', async () => {
+  const legacy = locationConfiguration();
+  const configured = { ...legacy, sites: legacy.sites.map((site) => ({ ...site, guestInformation: null })) };
+  const context = runtime({ configuration: configured });
+  const result = await context.service.update({ principal, tenantContext, correlationId: CORRELATION_ID,
+    schemaVersion: 2, expectedRevision: 4, configuration: configured });
+  assert.equal(result.schemaVersion, 2);
+  assert.equal(result.configuration.sites[0].guestInformation, null);
+  assert.equal(context.calls[0].schemaVersion, 2);
+  await assert.rejects(context.service.update({ principal, tenantContext, correlationId: CORRELATION_ID,
+    schemaVersion: 1, expectedRevision: 4, configuration: configured }),
+  (error) => error.code === 'TENANT_LOCATIONS_INVALID');
+  await assert.rejects(context.service.update({ principal, tenantContext, correlationId: CORRELATION_ID,
+    schemaVersion: 2, expectedRevision: 4, configuration: legacy }),
+  (error) => error.code === 'TENANT_LOCATIONS_INVALID');
+  await assert.rejects(context.service.update({ principal, tenantContext, correlationId: CORRELATION_ID,
+    schemaVersion: 2, expectedRevision: 4,
+    configuration: { ...configured, sites: [{ ...configured.sites[0], guestInformation: { password: 'invalid' } }] },
+  }), (error) => error.code === 'TENANT_SITE_GUEST_INFORMATION_INVALID');
+});
+
+test('Site guest information changes require Tenant Admin field authority and contain no values in audit', async () => {
+  const legacy = locationConfiguration();
+  const current = { ...legacy, sites: legacy.sites.map((site) => ({ ...site, guestInformation: null })) };
+  const guest = { address: null, publicTransport: null, arrival: 'Ask at reception', parking: null,
+    reception: null, building: null, visitorNotes: null, accessibility: null,
+    wifiPolicy: 'not_available', wifiNetworkName: null, contact: null, routeUrl: null };
+  const proposed = { ...current, sites: [{ ...current.sites[0], guestInformation: guest }] };
+  const manager = runtime({ configuration: current, deniedPermissions: [PERMISSION.TENANT_CONFIGURE] });
+  await assert.rejects(manager.service.update({ principal, tenantContext, correlationId: CORRELATION_ID,
+    schemaVersion: 2, expectedRevision: 4, configuration: proposed }), AuthorizationDeniedError);
+  assert.equal(manager.commits(), 0);
+  assert.equal(manager.authorizationDenials.length, 1);
+  const admin = runtime({ configuration: current, deniedPermissions: [PERMISSION.TENANT_ROOMS_BUSINESS_MANAGE] });
+  const saved = await admin.service.update({ principal, tenantContext, correlationId: CORRELATION_ID,
+    schemaVersion: 2, expectedRevision: 4, configuration: proposed });
+  assert.equal(saved.configuration.sites[0].guestInformation.arrival, guest.arrival);
+  assert.equal(admin.commits(), 1);
+  assert.equal(JSON.stringify(admin.committedAuditEvents).includes(guest.arrival), false);
+  const stale = runtime({ configuration: current, lockedRevision: 5 });
+  await assert.rejects(stale.service.update({ principal, tenantContext, correlationId: CORRELATION_ID,
+    schemaVersion: 2, expectedRevision: 4, configuration: proposed }), TenantSettingsConflictError);
+  assert.equal(stale.commits(), 0);
 });
