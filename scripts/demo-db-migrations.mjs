@@ -1,7 +1,7 @@
 import { loadMigrations } from './db-migrations.mjs';
 
 const DEMO_MIGRATION_LOCK = 739_141_932_119;
-const PRODUCTION_SCHEMA_VERSION = 39;
+const PRODUCTION_SCHEMA_VERSION = 40;
 const ROLE_PATTERN = /^[a-z][a-z0-9_]{2,62}$/;
 const PRODUCTION_SCHEMA_VERSIONS = Object.freeze(Array.from(
   { length: PRODUCTION_SCHEMA_VERSION },

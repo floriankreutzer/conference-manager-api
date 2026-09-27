@@ -3,7 +3,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM sites WHERE guest_public_values IS NOT NULL)
     OR EXISTS (SELECT 1 FROM rooms WHERE guest_public_values IS NOT NULL)
     OR EXISTS (SELECT 1 FROM tenant_location_revisions
-      WHERE guest_public_values <> '{}'::jsonb) THEN
+      WHERE guest_public_values <> '{"sites":{},"rooms":{}}'::jsonb) THEN
     RAISE EXCEPTION 'STRUCTURED_GUEST_VALUES_REQUIRE_REVIEW';
   END IF;
 END;

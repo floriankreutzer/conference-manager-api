@@ -712,11 +712,19 @@ export function createApp({
         const isRoomContext = Boolean(requestRoomContextMatch);
         const historyQuery = isHistory ? requestHistoryQuery(parsedUrl) : null;
         let roomProjection = null;
+        let roomProjectionVersion = 2;
         if (isRoomContext && parsedUrl.search !== '') {
-          if (parsedUrl.searchParams.size !== 1 || parsedUrl.searchParams.get('projection') !== 'guest') {
+          if (parsedUrl.searchParams.get('projection') !== 'guest'
+            || ![1, 2].includes(parsedUrl.searchParams.size)
+            || [...parsedUrl.searchParams.keys()].some((key) => !['projection', 'schemaVersion'].includes(key))
+            || parsedUrl.searchParams.getAll('projection').length !== 1
+            || (parsedUrl.searchParams.has('schemaVersion')
+              && (parsedUrl.searchParams.getAll('schemaVersion').length !== 1
+                || parsedUrl.searchParams.get('schemaVersion') !== '3'))) {
             throw new ApiError(400, 'VALIDATION_FAILED');
           }
           roomProjection = 'guest';
+          if (parsedUrl.searchParams.has('schemaVersion')) roomProjectionVersion = 3;
         } else if (!isHistory) assertNoQuery(parsedUrl);
         const expectedMethod = isTransition ? 'POST' : 'GET';
         if (request.method !== expectedMethod) throw new ApiError(405, 'METHOD_NOT_ALLOWED');
@@ -754,6 +762,7 @@ export function createApp({
             requestId: requestIdValue,
             correlationId: requestId,
             projection: roomProjection,
+            projectionSchemaVersion: roomProjectionVersion,
           }), config.maxResponseBytes);
           return;
         }

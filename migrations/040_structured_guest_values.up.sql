@@ -9,7 +9,7 @@ ALTER TABLE rooms
     CHECK (guest_public_values IS NULL OR jsonb_typeof(guest_public_values) = 'object');
 
 ALTER TABLE tenant_location_revisions
-  ADD COLUMN guest_public_values JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN guest_public_values JSONB NOT NULL DEFAULT '{"sites":{},"rooms":{}}'::jsonb,
   ADD CONSTRAINT tenant_location_revisions_guest_public_values_object
     CHECK (jsonb_typeof(guest_public_values) = 'object');
 

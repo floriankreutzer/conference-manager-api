@@ -1,6 +1,10 @@
 import { publicGuestRoomFields } from '../../domain/request-room-guest-presentation.js';
 import { publicSiteGuestInformation } from '../../domain/site-guest-information.js';
 import {
+  normalizePublicRoomGuestValues,
+  normalizePublicSiteGuestValues,
+} from '../../domain/public-guest-values.js';
+import {
   isRequestId,
   normalizePublicRequest,
   normalizeRequest,
@@ -716,7 +720,7 @@ export function createPostgresRequestRepository(
       return mapCurrentRoomContextRow(result.rows[0]);
     },
 
-    async findGuestContextByTenantIdAndRequest(tenantId, requestId, expectedVersion) {
+    async findGuestContextByTenantIdAndRequest(tenantId, requestId, expectedVersion, schemaVersion = 2) {
       const result = await pool.query({
         name: 'request-guest-context-by-tenant-request-version',
         text: `
@@ -725,7 +729,9 @@ export function createPostgresRequestRepository(
             room.name AS room_name, room.capacity AS room_capacity,
             room.active AS room_active, room.details AS room_details,
             site.id AS site_id, site.name AS site_name, site.active AS site_active,
-            site.time_zone AS site_time_zone, site.guest_information
+            site.time_zone AS site_time_zone, site.guest_information,
+            site.guest_public_values AS site_guest_public_values,
+            room.guest_public_values AS room_guest_public_values
           FROM requests request
           JOIN tenants tenant ON tenant.id = request.tenant_id
           JOIN rooms room ON room.tenant_id = request.tenant_id AND room.id = request.room_id
@@ -741,8 +747,14 @@ export function createPostgresRequestRepository(
       const context = mapCurrentRoomContextRow(row);
       return Object.freeze({
         ...context,
-        room: Object.freeze({ ...context.room, ...publicGuestRoomFields(row.room_details) }),
+        room: Object.freeze({
+          ...context.room, ...publicGuestRoomFields(row.room_details),
+          ...(schemaVersion === 3
+            ? { guestPublicValues: normalizePublicRoomGuestValues(row.room_guest_public_values) } : {}),
+        }),
         guestPresentation: publicSiteGuestInformation(row.guest_information),
+        ...(schemaVersion === 3
+          ? { guestPublicValues: normalizePublicSiteGuestValues(row.site_guest_public_values) } : {}),
       });
     },
 

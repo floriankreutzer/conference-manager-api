@@ -14,7 +14,7 @@ test('guest Room fields project only bounded current presentation and managed as
   assert.equal(Object.isFrozen(result.accessibility), true);
 });
 
-test('guest Room fields fail closed for malformed or authority-shaped stored presentation', () => {
+test('guest Room fields withhold arbitrary legacy prose and fail closed for malformed media', () => {
   const disclosures = [
     'Door code 1234', 'Password sunshine', 'https://internal.example.test/floor',
     'Doo\u0433 code 1234', 'Door c\u0585de 1234', 'D-o-o-\u0433 code 1234',
@@ -32,11 +32,13 @@ test('guest Room fields fail closed for malformed or authority-shaped stored pre
     '\u13e2\u13c6\u13c1 1234', '\u13e2.\u13c6.\u13c1 1234',
     'North\u202e1234', 'Step-free\ud800access',
   ];
+  for (const value of disclosures) {
+    assert.deepEqual(publicGuestRoomFields({ floor: value, accessibility: [value] }), {
+      floor: null, accessibility: [], floorplanAssetId: null, mediaAssetIds: [],
+    });
+  }
   for (const details of [null, [], { token: 'secret' }, { providerId: 'provider' },
-    { floor: '<script>' }, { floor: 'x'.repeat(81) },
-    ...disclosures.flatMap((value) => [{ floor: value }, { accessibility: [value] }]),
-    { accessibility: ['Lift', 'Lift'] }, { accessibility: ['API key abc123'] },
-    { accessibility: ['Line\nBreak'] }, { mediaAssetIds: ['../image'] },
+    { mediaAssetIds: ['../image'] },
     { floorplanAssetId: 'https://images.example.invalid/map' }, { mediaAssetIds: Array(21).fill('asset') }]) {
     assert.throws(() => publicGuestRoomFields(details), /REQUEST_ROOM_GUEST_PRESENTATION_INVALID/);
   }
