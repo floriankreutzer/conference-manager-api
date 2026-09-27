@@ -1,4 +1,5 @@
 import { SiteGuestInformationInputError } from '../domain/site-guest-information.js';
+import { PublicGuestValuesInputError } from '../domain/public-guest-values.js';
 import {
   AUDIT_ACTION,
   AUDIT_OUTCOME,
@@ -14,6 +15,7 @@ import {
   TenantLocationInputError,
   normalizeTenantLocations,
   normalizeTenantLocationsV2,
+  normalizeTenantLocationsV3,
 } from '../domain/tenant-locations.js';
 import {
   nextTenantSettingsRevision,
@@ -144,6 +146,7 @@ function businessShape(value) {
     cateringPackageIds: room.cateringPackageIds,
     floorplanAssetId: room.floorplanAssetId,
     mediaAssetIds: room.mediaAssetIds,
+    guestPublicValues: room.guestPublicValues,
   })));
 }
 
@@ -226,14 +229,16 @@ async function authorizedRepositoryMutation(auditService, authorizationInput, op
 }
 
 function requireLocationSchemaVersion(value) {
-  return value === 2 ? value : requireTenantSettingsSchemaVersion(value);
+  return value === 2 || value === 3 ? value : requireTenantSettingsSchemaVersion(value);
 }
 
 function normalizeInput(configuration, schemaVersion) {
   try {
+    if (schemaVersion === 3) return normalizeTenantLocationsV3(configuration);
     return schemaVersion === 2 ? normalizeTenantLocationsV2(configuration) : normalizeTenantLocations(configuration);
   } catch (error) {
-    if (error instanceof TenantLocationInputError || error instanceof SiteGuestInformationInputError) {
+    if (error instanceof TenantLocationInputError || error instanceof SiteGuestInformationInputError
+      || error instanceof PublicGuestValuesInputError) {
       throw new TenantSettingsInputError(error.code);
     }
     throw error;

@@ -41,8 +41,8 @@ const BULK_APPLY_SCHEMA = Object.freeze({
 function locationReadVersion(parsedUrl) {
   assertNoUnexpectedQuery(parsedUrl, new Set(['schemaVersion']));
   const version = parsedUrl.searchParams.get('schemaVersion');
-  if (version !== null && version !== '2') throw new ApiError(400, 'VALIDATION_FAILED');
-  return version === '2' ? 2 : 1;
+  if (version !== null && version !== '2' && version !== '3') throw new ApiError(400, 'VALIDATION_FAILED');
+  return version === null ? 1 : Number(version);
 }
 
 function sendJson(response, statusCode, payload, maxResponseBytes) {

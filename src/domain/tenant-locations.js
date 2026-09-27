@@ -3,6 +3,10 @@ import {
   normalizeSiteGuestInformation,
 } from './site-guest-information.js';
 import { isIanaTimeZone } from './site-time-zone.js';
+import {
+  normalizePublicRoomGuestValues,
+  normalizePublicSiteGuestValues,
+} from './public-guest-values.js';
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const ASSET_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -238,7 +242,38 @@ export function normalizeTenantLocationsV2(value, { stored = false } = {}) {
 
 export function tenantLocationsV1Projection(value) {
   return normalizeStoredTenantLocations({
-    sites: value.sites.map(({ guestInformation, ...site }) => site),
-    rooms: value.rooms,
+    sites: value.sites.map(({ guestInformation, guestPublicValues, ...site }) => site),
+    rooms: value.rooms.map(({ guestPublicValues, ...room }) => room),
+  });
+}
+
+// V3 is additive: v1/v2 clients continue to read and write only their own fields.
+// Legacy free text remains private; no string is transformed into a public value.
+export function normalizeTenantLocationsV3(value, { stored = false } = {}) {
+  const root = exactObject(value, ['sites', 'rooms']);
+  if (!Array.isArray(root.sites) || !Array.isArray(root.rooms)) inputError('TENANT_LOCATIONS_INVALID');
+  const sites = root.sites.map((candidate) => {
+    const site = exactObject(candidate, [
+      'id', 'name', 'active', 'timeZone', 'address', 'guestInformation', 'guestPublicValues',
+    ]);
+    const { guestPublicValues, ...legacy } = site;
+    return legacy;
+  });
+  const rooms = root.rooms.map((candidate) => {
+    const room = exactObject(candidate, [
+      'id', 'siteId', 'name', 'capacity', 'active', 'floor', 'equipment', 'accessibility',
+      'serviceIds', 'cateringPackageIds', 'floorplanAssetId', 'mediaAssetIds', 'guestPublicValues',
+    ]);
+    const { guestPublicValues, ...legacy } = room;
+    return legacy;
+  });
+  const normalized = normalizeTenantLocationsV2({ sites, rooms }, { stored });
+  return Object.freeze({
+    sites: Object.freeze(normalized.sites.map((site, index) => Object.freeze({
+      ...site, guestPublicValues: normalizePublicSiteGuestValues(root.sites[index].guestPublicValues),
+    }))),
+    rooms: Object.freeze(normalized.rooms.map((room, index) => Object.freeze({
+      ...room, guestPublicValues: normalizePublicRoomGuestValues(root.rooms[index].guestPublicValues),
+    }))),
   });
 }

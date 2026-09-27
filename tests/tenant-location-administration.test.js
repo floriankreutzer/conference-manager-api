@@ -610,3 +610,40 @@ test('Site guest information changes require Tenant Admin field authority and co
     schemaVersion: 2, expectedRevision: 4, configuration: proposed }), TenantSettingsConflictError);
   assert.equal(stale.commits(), 0);
 });
+
+test('Locations v3 enforces Site and Room structured value ownership independently', async () => {
+  const legacy = locationConfiguration();
+  const current = {
+    sites: legacy.sites.map((site) => ({ ...site, guestInformation: null, guestPublicValues: null })),
+    rooms: legacy.rooms.map((room) => ({ ...room, guestPublicValues: null })),
+  };
+  const siteValue = { publicTransport: 'available', parking: 'not_available',
+    arrival: 'reception', accessibilityFeatures: ['step_free_entry'] };
+  const roomValue = { floorNumber: 2, accessibilityFeatures: ['lift'] };
+  const siteOnly = { ...current,
+    sites: [{ ...current.sites[0], guestPublicValues: siteValue }] };
+  const roomOnly = { ...current,
+    rooms: [{ ...current.rooms[0], guestPublicValues: roomValue }] };
+  const manager = runtime({ configuration: current, deniedPermissions: [PERMISSION.TENANT_CONFIGURE] });
+  await assert.rejects(manager.service.update({ principal, tenantContext, correlationId: CORRELATION_ID,
+    schemaVersion: 3, expectedRevision: 4, configuration: siteOnly }), AuthorizationDeniedError);
+  assert.equal(manager.commits(), 0);
+  const roomResult = await manager.service.update({ principal, tenantContext, correlationId: CORRELATION_ID,
+    schemaVersion: 3, expectedRevision: 4, configuration: roomOnly });
+  assert.deepEqual(roomResult.configuration.rooms[0].guestPublicValues, roomValue);
+  const admin = runtime({ configuration: current,
+    deniedPermissions: [PERMISSION.TENANT_ROOMS_BUSINESS_MANAGE] });
+  await assert.rejects(admin.service.update({ principal, tenantContext, correlationId: CORRELATION_ID,
+    schemaVersion: 3, expectedRevision: 4, configuration: roomOnly }), AuthorizationDeniedError);
+  assert.equal(admin.commits(), 0);
+  const siteResult = await admin.service.update({ principal, tenantContext, correlationId: CORRELATION_ID,
+    schemaVersion: 3, expectedRevision: 4, configuration: siteOnly });
+  assert.deepEqual(siteResult.configuration.sites[0].guestPublicValues, siteValue);
+  const invalid = { ...current,
+    sites: [{ ...current.sites[0], guestPublicValues: { ...siteValue, arrival: 'door code 1234' } }] };
+  await assert.rejects(admin.service.update({ principal, tenantContext, correlationId: CORRELATION_ID,
+    schemaVersion: 3, expectedRevision: 4, configuration: invalid }),
+  (error) => error.code === 'PUBLIC_GUEST_VALUES_INVALID');
+  assert.equal(admin.commits(), 1);
+  assert.equal(JSON.stringify(admin.committedAuditEvents).includes('step_free_entry'), false);
+});

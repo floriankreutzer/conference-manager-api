@@ -66,7 +66,7 @@ test('migration 021 follows the runner contract, locks rollback and fails closed
   await migrateUp(pool);
   await clean(pool);
   assert.equal(await rollbackToVersion(pool, 22), true);
-  assert.equal(CURRENT_SCHEMA_VERSION, 39);
+  assert.equal(CURRENT_SCHEMA_VERSION, 40);
   assert.equal(await isPostgresSchemaReady(pool, 21), true);
   const applied = await pool.query(
     'SELECT version, name, char_length(checksum)::int AS checksum_length FROM schema_migrations ORDER BY version DESC LIMIT 1',
