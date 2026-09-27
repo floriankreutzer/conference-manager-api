@@ -9,7 +9,7 @@ import { PERMISSION } from '../src/authorization/policy.js';
 import {
   TenantLocationInputError,
   assertTenantLocationTransition,
-  normalizeTenantLocations,
+  normalizeTenantLocations, normalizeStoredTenantLocations, normalizeTenantLocationsV2,
   tenantLocationRollbackConfiguration,
 } from '../src/domain/tenant-locations.js';
 
@@ -176,6 +176,24 @@ test('legacy missing time zones are never fabricated into a writable location sn
     (error) => error instanceof TenantLocationInputError
       && error.code === 'TENANT_SITE_TIME_ZONE_INVALID',
   );
+});
+
+test('legacy Room wayfinding remains readable but new writes cannot publish unsafe guest text', () => {
+  const old = locationConfiguration({
+    rooms: [{ ...locationConfiguration().rooms[0], floor: 'Door code 1234',
+      accessibility: ['https://internal.example.test/entry'] }],
+  });
+  const stored = normalizeStoredTenantLocations(old);
+  assert.equal(stored.rooms[0].floor, 'Door code 1234');
+  assert.deepEqual(stored.rooms[0].accessibility, ['https://internal.example.test/entry']);
+  assert.equal(normalizeTenantLocationsV2({
+    sites: old.sites.map((site) => ({ ...site, guestInformation: null })), rooms: old.rooms,
+  }, { stored: true }).rooms[0].floor, 'Door code 1234');
+  assert.throws(() => normalizeTenantLocations(old),
+    (error) => error instanceof TenantLocationInputError && error.code === 'TENANT_ROOM_FLOOR_INVALID');
+  assert.throws(() => normalizeTenantLocationsV2({
+    sites: old.sites.map((site) => ({ ...site, guestInformation: null })), rooms: old.rooms,
+  }), (error) => error instanceof TenantLocationInputError && error.code === 'TENANT_ROOM_FLOOR_INVALID');
 });
 
 test('manual rooms cannot be created through the Microsoft-first location contract', () => {
