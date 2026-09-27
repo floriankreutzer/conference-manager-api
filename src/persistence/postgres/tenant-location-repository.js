@@ -249,6 +249,28 @@ function roomDetails(room) {
 
 async function validateReferences(client, tenantId, current, proposed, changedAt) {
   const proposedRooms = new Map(proposed.rooms.map((room) => [room.id, room]));
+  const currentRooms = new Map(current.rooms.map((room) => [room.id, room]));
+  const newlyAttached = proposed.rooms.flatMap((room) => {
+    const prior = currentRooms.get(room.id);
+    const previous = new Set([prior?.floorplanAssetId, ...(prior?.mediaAssetIds ?? [])]);
+    return [room.floorplanAssetId, ...room.mediaAssetIds]
+      .filter((id) => id !== null && !previous.has(id))
+      .map((id) => ({ id, roomId: room.id }));
+  });
+  if (newlyAttached.length > 0) {
+    const assets = await client.query({
+      name: 'tenant-locations-managed-media-references',
+      text: `SELECT id::text AS id, room_id
+        FROM tenant_room_media_assets
+        WHERE tenant_id = $1 AND id::text = ANY($2::text[])
+        FOR SHARE`,
+      values: [tenantId, newlyAttached.map(({ id }) => id)],
+    });
+    const roomsByAsset = new Map(assets.rows.map((asset) => [asset.id, asset.room_id]));
+    if (newlyAttached.some(({ id, roomId }) => roomsByAsset.get(id) !== roomId)) {
+      return 'TENANT_ROOM_MEDIA_REFERENCE_INVALID';
+    }
+  }
   const proposedSites = new Map(proposed.sites.map((site) => [site.id, site]));
   const deactivatedRooms = current.rooms
     .filter((room) => room.active && proposedRooms.get(room.id)?.active === false)

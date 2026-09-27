@@ -32,6 +32,7 @@ import { createPostgresTenantRepository } from './tenant-repository.js';
 import { createPostgresTenantUserAdminRepository } from './tenant-user-admin-repository.js';
 import { createPostgresTenantUserLifecycleRepository } from './tenant-user-lifecycle-repository.js';
 import { createPostgresTenantBulkTransferRepository } from './tenant-bulk-transfer-repository.js';
+import { createPostgresRoomMediaRepository } from './room-media-repository.js';
 
 export function createPostgresPersistence(config) {
   const pool = createPostgresPool(config);
@@ -64,6 +65,7 @@ export function createPostgresPersistence(config) {
     auditRepository,
   });
   const tenantLocationRepository = createPostgresTenantLocationRepository(pool, { auditRepository });
+  const roomMediaRepository = createPostgresRoomMediaRepository(pool, { auditRepository });
   const tenantOrganizationRepository = createPostgresTenantOrganizationRepository(pool, {
     auditRepository,
   });
@@ -94,6 +96,7 @@ export function createPostgresPersistence(config) {
     tenantCatalogueRepository,
     tenantCostAllocationRepository,
     tenantLocationRepository,
+    roomMediaRepository,
     tenantOrganizationRepository,
     tenantOnboardingRepository,
     tenantRepository,

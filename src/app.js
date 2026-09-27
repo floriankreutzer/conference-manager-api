@@ -20,6 +20,7 @@ import { tenantCapabilityViewRouteModule } from './http/settings/tenant-capabili
 import { tenantCatalogueRouteModule } from './http/settings/catalogue.js';
 import { tenantCostAllocationRoutes } from './http/settings/cost-allocation.js';
 import { tenantLocationRoutes } from './http/settings/locations.js';
+import { roomMediaRoutes } from './http/room-media.js';
 import { tenantOrganizationRouteModule } from './http/settings/organization.js';
 import { tenantPresentationRouteModule } from './http/settings/tenant-presentation-routes.js';
 import { tenantUserLifecycleRouteModule } from './http/settings/tenant-user-lifecycle-routes.js';
@@ -129,6 +130,7 @@ export const CUSTOMER_OPERATIONAL_ROUTE_MODULES = Object.freeze([
   tenantCapabilityViewRouteModule,
   tenantOrganizationRouteModule,
   tenantLocationRoutes,
+  roomMediaRoutes,
   tenantCatalogueRouteModule,
   tenantBookingPolicyRoutes,
   tenantCostAllocationRoutes,
@@ -256,6 +258,7 @@ export function createApp({
   tenantCatalogueService,
   tenantCostAllocationService,
   tenantLocationAdministrationService,
+  roomMediaService,
   tenantOrganizationService,
   tenantPresentationService,
   tenantUserAdministrationService,
@@ -299,6 +302,7 @@ export function createApp({
     tenantCatalogueService,
     tenantCostAllocationService,
     tenantLocationAdministrationService,
+    roomMediaService,
     tenantOrganizationService,
     tenantPresentationService,
     tenantUserLifecycleService,

@@ -80,7 +80,7 @@ Provision four purpose-specific login roles with unique credentials:
 | Reset/seed | Verified destructive reset and deterministic seed over the fixed Demo table inventory | Normal browser request handling, schema ownership, use against a non-Demo database |
 | Migration owner | Canonical and Demo migration DDL/ledger ownership for this isolated database | Normal browser request handling or reset execution |
 
-The deployed database first receives the canonical Production schema migrations `001` through `038`. The Demo overlay is a separate checksum-protected migration stream under `demo-migrations/`; its current schema version is `004`. The overlay adds only the Demo sentinel, deterministic provider/persona references, immutable-sentinel protection, views and least-privilege role grants. Migration `002` grants both runtime roles read-only access to the Demo migration ledger solely for Demo-overlay readiness verification. Migration `003` grants those same runtime roles read-only access to the canonical `schema_migrations` ledger solely because the existing normal PostgreSQL schema-readiness check verifies the canonical version there. Migration `004` grants only `INSERT` and `TRUNCATE` on the canonical `request_attribution_migration_state` table to the reset role so reset can reinitialize that singleton after truncation; customer and Platform runtime roles receive no access. No overlay grants ledger write, schema ownership, migration or broader application authority, and the runtime does not auto-migrate at startup.
+The deployed database first receives the canonical Production schema migrations `001` through `039`. The Demo overlay is a separate checksum-protected migration stream under `demo-migrations/`; its current schema version is `005`. The overlay adds only the Demo sentinel, deterministic provider/persona references, immutable-sentinel protection, views and least-privilege role grants. Migration `002` grants both runtime roles read-only access to the Demo migration ledger solely for Demo-overlay readiness verification. Migration `003` grants those same runtime roles read-only access to the canonical `schema_migrations` ledger solely because the existing normal PostgreSQL schema-readiness check verifies the canonical version there. Migration `004` grants only `INSERT` and `TRUNCATE` on the canonical `request_attribution_migration_state` table to the reset role so reset can reinitialize that singleton after truncation; customer and Platform runtime roles receive no access. No overlay grants ledger write, schema ownership, migration or broader application authority, and the runtime does not auto-migrate at startup.
 
 Before either HTTP listener starts, its runtime verifies the connected database and role against the
 immutable sentinel, the exact Demo overlay ledger `1..4`, and its complete persona seed. Platform
@@ -234,7 +234,7 @@ uppercase names and non-empty single-line values.
 For each deployed Demo candidate, record:
 
 - backend and frontend commit/artifact identifiers;
-- canonical schema version `38` and Demo overlay version `4`;
+- canonical schema version `39` and Demo overlay version `5`;
 - seed version and semantic checksum returned by reset;
 - customer and Platform origin identities without credentials;
 - the browser/integration test run covering cross-process shared state;

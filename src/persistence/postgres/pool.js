@@ -18,7 +18,8 @@ const { Pool } = pg;
 // Schema 36 persists minimized Request requester/action attribution snapshots.
 // Schema 37 adds versioned Site Guest Information to Locations history.
 // Schema 38 confines Request-attribution SECURITY DEFINER execution to its trigger path.
-export const CURRENT_SCHEMA_VERSION = 38;
+// Schema 39 stores reencoded, private Room imagery with Tenant and Room ownership.
+export const CURRENT_SCHEMA_VERSION = 39;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

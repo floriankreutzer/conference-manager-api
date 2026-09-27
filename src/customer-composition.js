@@ -19,6 +19,7 @@ import { createTenantCapabilityViewService } from './application/tenant-capabili
 import { createTenantCatalogueService } from './application/tenant-catalogue-service.js';
 import { createTenantCostAllocationService } from './application/tenant-cost-allocation-service.js';
 import { createTenantLocationAdministrationService } from './application/tenant-location-administration-service.js';
+import { createRoomMediaService } from './application/room-media-service.js';
 import { createCodeShippedManagedBrandPolicy } from './application/managed-brand-preset-policy.js';
 import { createTenantOrganizationService } from './application/tenant-organization-service.js';
 import { createTenantPresentationService } from './application/tenant-presentation-service.js';
@@ -190,6 +191,13 @@ const tenantLocationAdministrationService = persistence && auditService
   ? createTenantLocationAdministrationService({
     repository: persistence.tenantLocationRepository,
     bulkTransferRepository: persistence.tenantBulkTransferRepository,
+    authorizationPolicy,
+    auditService,
+  })
+  : null;
+const roomMediaService = persistence && auditService
+  ? createRoomMediaService({
+    repository: persistence.roomMediaRepository,
     authorizationPolicy,
     auditService,
   })
@@ -376,6 +384,7 @@ const server = httpServerFactory({
   tenantCatalogueService,
   tenantCostAllocationService,
   tenantLocationAdministrationService,
+  roomMediaService,
   tenantOrganizationService,
   tenantPresentationService,
   tenantUserAdministrationService,

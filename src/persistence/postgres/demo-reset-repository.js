@@ -13,7 +13,7 @@ import {
   seedDemoBusinessState,
 } from './demo-fixture-state.js';
 
-const PRODUCTION_SCHEMA_VERSION = 38;
+const PRODUCTION_SCHEMA_VERSION = 39;
 const CHECKSUM_PATTERN = /^[0-9a-f]{64}$/;
 const DATABASE_NAME_PATTERN = /^conference_manager_demo_[a-z0-9_]{1,48}$/;
 const DATABASE_ROLE_PATTERN = /^[a-z][a-z0-9_]{2,62}$/;
@@ -90,6 +90,7 @@ export const DEMO_RESET_TABLES = Object.freeze([
   'tenant_room_prices',
   'request_revisions',
   'tenant_bulk_transfer_receipts',
+  'tenant_room_media_assets',
   'platform_operators',
   'platform_operator_tenant_scopes',
   'platform_sessions',

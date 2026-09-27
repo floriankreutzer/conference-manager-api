@@ -283,7 +283,7 @@ Procedure:
 | --- | --- |
 | Environment | Dedicated customer and `platform-admin-demo/index.html` origins, both visibly and persistently identified as Demo |
 | Role/assurance | Documented simulated Platform roles; simulated MFA/step-up clearly labelled |
-| Preconditions | Exact customer/API/Platform Demo builds; canonical schema `38`; Demo overlay `4`; deterministic seed version/checksum; no Production/customer credentials or external provider configuration |
+| Preconditions | Exact customer/API/Platform Demo builds; canonical schema `39`; Demo overlay `5`; deterministic seed version/checksum; no Production/customer credentials or external provider configuration |
 | Target confirmation | Demo Tenant labels and fixture IDs only; verify Demo banner before every mutation |
 | Expected evidence | Build IDs, schema versions, reset seed/checksum, scenario list, shared-state/browser run IDs and reset result |
 | Failure behavior | Config, sentinel, role, schema, inventory, lock or checksum mismatch fails closed; Demo never calls Production/Microsoft, sends a real invitation or selects Production fallback |

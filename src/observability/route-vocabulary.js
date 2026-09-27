@@ -21,6 +21,7 @@ export const TELEMETRY_ROUTE_KEYS = Object.freeze([
   'application_notification',
   'application_configuration',
   'tenant_settings_locations',
+  'tenant_room_media',
   'tenant_settings_locations_history',
   'tenant_settings_locations_revision',
   'tenant_settings_locations_rollback',
