@@ -220,10 +220,11 @@ test('Guest Information persists atomically with Locations and survives legacy w
   ]) {
     await pool.query('UPDATE rooms SET details=$2::jsonb WHERE tenant_id=$1 AND id=\'same-room\'',
       [TENANT_A, JSON.stringify(details)]);
-    await assert.rejects(
-      repository.current(TENANT_A, { schemaVersion: 2 }),
-      /TENANT_LOCATION_PERSISTED_STATE_INVALID/,
-    );
+    const retained = await repository.current(TENANT_A, { schemaVersion: 2 });
+    assert.equal(retained.revision, 6);
+    const legacyRoom = retained.configuration.rooms.find((room) => room.id === 'same-room');
+    assert.equal(legacyRoom.floor, details.floor ?? null);
+    assert.deepEqual(legacyRoom.accessibility, details.accessibility ?? []);
     await assert.rejects(
       requests.findGuestContextByTenantIdAndRequest(TENANT_A, 'same-request', 1),
       /REQUEST_ROOM_GUEST_PRESENTATION_INVALID/,
