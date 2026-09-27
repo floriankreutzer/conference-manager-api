@@ -101,7 +101,7 @@ function normalizeAddress(value) {
   });
 }
 
-function normalizeRoom(value, roomIds) {
+function normalizeRoom(value, roomIds, { stored = false } = {}) {
   const room = exactObject(value, [
     'id', 'siteId', 'name', 'capacity', 'active', 'floor', 'equipment', 'accessibility',
     'serviceIds', 'cateringPackageIds', 'floorplanAssetId', 'mediaAssetIds',
@@ -123,10 +123,11 @@ function normalizeRoom(value, roomIds) {
     name: boundedText(room.name, 'TENANT_ROOM_NAME_INVALID'),
     capacity: room.capacity,
     active: room.active,
-    floor: room.floor === null ? null : publicPresentationText(room.floor, 'TENANT_ROOM_FLOOR_INVALID', 80),
+    floor: room.floor === null ? null : (stored ? boundedText : publicPresentationText)(room.floor, 'TENANT_ROOM_FLOOR_INVALID', 80),
     equipment: stringList(room.equipment, { code: 'TENANT_ROOM_EQUIPMENT_INVALID' }),
     accessibility: stringList(room.accessibility, {
-      code: 'TENANT_ROOM_ACCESSIBILITY_INVALID', limit: 20, normalize: publicPresentationText,
+      code: 'TENANT_ROOM_ACCESSIBILITY_INVALID', limit: 20,
+      normalize: stored ? boundedText : publicPresentationText,
     }),
     serviceIds: idList(room.serviceIds, 'TENANT_ROOM_SERVICE_INVALID'),
     cateringPackageIds: idList(room.cateringPackageIds, 'TENANT_ROOM_CATERING_INVALID'),
@@ -135,7 +136,7 @@ function normalizeRoom(value, roomIds) {
   });
 }
 
-function normalize(value, { allowUnknownTimeZones }) {
+function normalize(value, { allowUnknownTimeZones, stored = false }) {
   const root = exactObject(value, ['sites', 'rooms']);
   if (!Array.isArray(root.sites) || root.sites.length > SITE_LIMIT) inputError('TENANT_SITES_INVALID');
   if (!Array.isArray(root.rooms) || root.rooms.length > ROOM_LIMIT) inputError('TENANT_ROOMS_INVALID');
@@ -157,7 +158,7 @@ function normalize(value, { allowUnknownTimeZones }) {
     });
   });
   const roomIds = new Set();
-  const rooms = root.rooms.map((candidate) => normalizeRoom(candidate, roomIds));
+  const rooms = root.rooms.map((candidate) => normalizeRoom(candidate, roomIds, { stored }));
   const siteById = new Map(sites.map((site) => [site.id, site]));
   for (const room of rooms) {
     const site = siteById.get(room.siteId);
@@ -178,7 +179,7 @@ export function normalizeTenantLocations(value) {
 }
 
 export function normalizeStoredTenantLocations(value) {
-  return normalize(value, { allowUnknownTimeZones: true });
+  return normalize(value, { allowUnknownTimeZones: true, stored: true });
 }
 
 export function assertTenantLocationTransition(currentValue, proposedValue) {
@@ -226,7 +227,7 @@ export function normalizeTenantLocationsV2(value, { stored = false } = {}) {
     const { guestInformation: omitted, ...legacy } = site;
     return legacy;
   });
-  const normalized = normalize({ sites, rooms: root.rooms }, { allowUnknownTimeZones: stored });
+  const normalized = normalize({ sites, rooms: root.rooms }, { allowUnknownTimeZones: stored, stored });
   return Object.freeze({
     sites: Object.freeze(normalized.sites.map((site) => Object.freeze({
       ...site, guestInformation: guests.get(site.id),
