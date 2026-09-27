@@ -113,7 +113,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
 
   await migrateUp(pool);
   await createRoles(pool);
-  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 4);
+  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 5);
 
   await t.test('fresh install records 001..004 and permits the real reset sequence', async () => {
     await migrateDemoUp(pool, { roles: ROLES });
@@ -122,6 +122,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
       { version: 2, name: 'runtime_readiness_grants', checksum_length: 64 },
       { version: 3, name: 'runtime_schema_readiness_grants', checksum_length: 64 },
       { version: 4, name: 'request_attribution_reset_grants', checksum_length: 64 },
+      { version: 5, name: 'room_media_role_grants', checksum_length: 64 },
     ]);
     assert.deepEqual(await privileges(pool, ROLES.reset), {
       insert_allowed: true,
@@ -148,6 +149,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
 
   await t.test('upgrade from 001..003 is denied before 004 and restored by the checksum runner', async () => {
     assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true);
+    assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true);
     assert.deepEqual((await overlayVersions(pool)).map(({ version }) => version), [1, 2, 3]);
     assert.deepEqual(await privileges(pool, ROLES.reset), {
       insert_allowed: false,
@@ -163,7 +165,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
       (error) => error.code === '42501',
     );
     await migrateDemoUp(pool, { roles: ROLES });
-    assert.deepEqual((await overlayVersions(pool)).map(({ version }) => version), [1, 2, 3, 4]);
+    assert.deepEqual((await overlayVersions(pool)).map(({ version }) => version), [1, 2, 3, 4, 5]);
     await resetAttributionStateAsRole(pool, ROLES.reset);
   });
 });
