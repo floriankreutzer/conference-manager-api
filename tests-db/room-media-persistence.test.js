@@ -62,6 +62,19 @@ test('Room bytes are Tenant-owned, attachment-bound, active-scoped and rollback 
   await pool.query("UPDATE rooms SET active = false WHERE tenant_id = $1 AND id = 'room'", [TENANT_A]);
   assert.equal(await repository.findAttached({ ...ref, includeInactive: false }), null);
   assert.ok(await repository.findAttached({ ...ref, includeInactive: true }));
+  const orphan = await repository.create(upload);
+  await pool.query(`UPDATE tenant_room_media_assets SET created_at = clock_timestamp() - INTERVAL '31 days'
+    WHERE tenant_id = $1 AND id = ANY($2::uuid[])`,
+  [TENANT_A, [created.assetId, orphan.assetId]]);
+  await pool.query(`INSERT INTO tenant_location_revisions (
+    tenant_id, revision, configuration, changed_at, actor_user_id
+  ) VALUES ($1, 1, $2::jsonb, clock_timestamp(), $3)`, [TENANT_A,
+    JSON.stringify({ rooms: [{ id: 'room', mediaAssetIds: [created.assetId] }] }), USER_A]);
+  await pool.query(`UPDATE rooms SET details = '{}'::jsonb WHERE tenant_id = $1 AND id = 'room'`, [TENANT_A]);
+  assert.deepEqual(await repository.pruneExpiredUnreferenced({ tenantId: TENANT_A, asOf: new Date() }),
+    { deleted: 1, bytes: bytes.length });
+  assert.equal((await pool.query(`SELECT count(*)::integer AS count FROM tenant_room_media_assets
+    WHERE tenant_id = $1`, [TENANT_A])).rows[0].count, 1);
   await assert.rejects(rollbackLatest(pool), /TENANT_ROOM_MEDIA_REQUIRE_REVIEW/);
   assert.equal((await pool.query('SELECT count(*)::integer AS count FROM tenant_room_media_assets')).rows[0].count, 1);
 });
