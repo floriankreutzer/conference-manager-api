@@ -119,6 +119,7 @@ async function waitingAccessExclusiveLock(pool, relation) {
 }
 
 async function assertConcurrentWritePreventsRollback(pool, relation, write) {
+  await rollbackToVersion(pool, 38);
   const writer = await pool.connect();
   let pendingRollback;
   let waited;
