@@ -33,7 +33,7 @@ test('guest Room fields withhold arbitrary legacy prose and fail closed for malf
     'North\u202e1234', 'Step-free\ud800access',
   ];
   for (const value of disclosures) {
-    assert.deepEqual(publicGuestRoomFields({ floor: value, accessibility: [value] }), {
+    assert.deepEqual(publicGuestRoomFields({ floor: value, accessibility: [value] }, { legacyValidation: false }), {
       floor: null, accessibility: [], floorplanAssetId: null, mediaAssetIds: [],
     });
   }
@@ -62,8 +62,16 @@ test('guest Room projection withholds legacy floor and accessibility prose inclu
     'Meet at Door @ reception.', 'Parking costs $5 at reception.']) {
     assert.equal(publicGuestRoomFields({ floor }).floor, null);
   }
-  assert.equal(publicGuestRoomFields({ floor: 'At the entrance, enter 7421.' }).floor, null);
+  assert.equal(publicGuestRoomFields({ floor: 'At the entrance, enter 7421.' }, { legacyValidation: false }).floor, null);
   assert.deepEqual(publicGuestRoomFields({
     accessibility: ['Use Door 4 beside the north entrance.', 'Access ramp'],
-  }).accessibility, []);
+  }, { legacyValidation: false }).accessibility, []);
+});
+
+// v2 preserves its previous validation semantics for legacy clients.
+test('v2 rejects unsafe historic prose, while v3 never reflects it', () => {
+  assert.throws(() => publicGuestRoomFields({ floor: 'Door code 1234' }),
+    /REQUEST_ROOM_GUEST_PRESENTATION_INVALID/);
+  assert.equal(publicGuestRoomFields({ floor: 'Door code 1234' },
+    { legacyValidation: false }).floor, null);
 });

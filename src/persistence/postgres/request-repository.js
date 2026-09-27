@@ -748,7 +748,7 @@ export function createPostgresRequestRepository(
       return Object.freeze({
         ...context,
         room: Object.freeze({
-          ...context.room, ...publicGuestRoomFields(row.room_details),
+          ...context.room, ...publicGuestRoomFields(row.room_details, { legacyValidation: schemaVersion === 2 }),
           ...(schemaVersion === 3
             ? { guestPublicValues: normalizePublicRoomGuestValues(row.room_guest_public_values) } : {}),
         }),
