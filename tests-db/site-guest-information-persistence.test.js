@@ -143,8 +143,10 @@ test('Guest Information persists atomically with Locations and survives legacy w
     await pool.query(`ALTER TABLE tenant_location_revisions
       ENABLE TRIGGER tenant_location_revisions_immutable_update`);
   }
-  await assert.rejects(repository.revision(TENANT_A, 1), /TENANT_LOCATION_PERSISTED_STATE_INVALID/);
-  await assert.rejects(rollback(2, 1, 2), /TENANT_LOCATION_PERSISTED_STATE_INVALID/);
+  const legacyRoomRevision = await repository.revision(TENANT_A, 1);
+  assert.deepEqual(legacyRoomRevision.configuration.rooms[0].accessibility,
+    ['D.o.o.\u0433 c\u0585de 1234']);
+  await assert.rejects(rollback(2, 1, 2), /TENANT_ROOM_ACCESSIBILITY_INVALID/);
   assert.equal((await repository.current(TENANT_A, { schemaVersion: 2 })).revision, 2);
   await pool.query(`ALTER TABLE tenant_location_revisions
     DISABLE TRIGGER tenant_location_revisions_immutable_update`);
