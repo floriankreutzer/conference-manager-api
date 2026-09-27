@@ -24,6 +24,10 @@ Read/history access is available only to recognized authorized principals that r
 
 `GET /api/v1/tenant/settings/locations/history` returns bounded revision metadata. `GET /api/v1/tenant/settings/locations/history/{revision}` returns an immutable local-configuration snapshot. A stale write returns `409 TENANT_SETTINGS_REVISION_CONFLICT` with only the current safe numeric revision. No stale mutation, revision increment or success audit event commits.
 
+## Legacy Room text during Guest rollout
+
+Stored v1/v2 Locations reads and history retain previously accepted bounded Room `floor` and `accessibility` values, even when a value fails the newer public Guest text screen. The public Guest projection validates separately and fails closed for unsafe stored text. New Locations writes still require the strict public-safe Room text shape; an authorized Manager must correct affected legacy values before submitting a new aggregate revision. The Site Guest prose policy in ADR-012 remains a separate release blocker until structured values replace it.
+
 ## SaaS 3.6 ownership boundary
 
 Conference Manager owns Room business fields:
