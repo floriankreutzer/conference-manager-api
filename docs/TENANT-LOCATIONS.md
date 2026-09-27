@@ -28,6 +28,13 @@ Read/history access is available only to recognized authorized principals that r
 
 Stored v1/v2 Locations reads and history retain previously accepted bounded Room `floor` and `accessibility` values, even when a value fails the newer public Guest text screen. The public Guest projection validates separately and fails closed for unsafe stored text. New Locations writes still require the strict public-safe Room text shape; an authorized Manager must correct affected legacy values before submitting a new aggregate revision. The Site Guest prose policy in ADR-012 remains a separate release blocker until structured values replace it.
 
+Until the structured H-035 contract is implemented, the confirmed-Request Guest projection
+withholds all Site Guest-v2 free-text fields and the Wi-Fi network name, plus Room `floor`
+and `accessibility` prose. It retains the nullable v2 response shape and approved fixed
+Wi-Fi policy for existing readers. Authorized Locations v2 reads and history still expose
+stored values to their owners for correction; public reads do not. Site address, route,
+contact and Site/Room names remain separately governed public inputs under ADR-012.
+
 ## SaaS 3.6 ownership boundary
 
 Conference Manager owns Room business fields:
