@@ -409,7 +409,11 @@ test('Persisted Guest projection fails closed without returning partial unsafe d
   }
   assert.deepEqual(publicSiteGuestInformation(information()), information());
   const input = information({ arrival: 'Use reception.' });
-  assert.deepEqual(publicSiteGuestInformation(input), input);
+  assert.deepEqual(publicSiteGuestInformation(input), information());
+  assert.equal(input.arrival, 'Use reception.');
+  const unlabeledCode = information({ arrival: 'At the entrance, enter 7421.' });
+  assert.equal(publicSiteGuestInformation(unlabeledCode).arrival, null);
+  assert.equal(unlabeledCode.arrival, 'At the entrance, enter 7421.');
   assert.notEqual(publicSiteGuestInformation(input), input);
   assert.deepEqual(publicSiteGuestInformation(information({ wifiPolicy: 'not_available' })),
     information({ wifiPolicy: 'not_available' }));
