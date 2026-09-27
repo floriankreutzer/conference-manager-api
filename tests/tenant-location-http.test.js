@@ -348,7 +348,7 @@ test('Locations v2 is explicitly negotiated while every v1 HTTP projection remai
 
     for (const query of [
       'schemaVersion=1',
-      'schemaVersion=3',
+      'schemaVersion=4',
       'schemaVersion=2&schemaVersion=2',
       `schemaVersion=2&tenantId=${TENANT_B}`,
     ]) {

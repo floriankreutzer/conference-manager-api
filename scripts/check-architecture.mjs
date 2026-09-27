@@ -555,8 +555,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 39;/.test(pool)) {
-  throw new Error('Runtime schema readiness must include Site Guest Information and attribution privilege migration version 39.');
+if (!/export const CURRENT_SCHEMA_VERSION = 40;/.test(pool)) {
+  throw new Error('Runtime schema readiness must include Site Guest Information and attribution privilege migration version 40.');
 }
 const attributionPrivilegeMigration = await readFile(
   'migrations/038_request_attribution_function_privileges.up.sql',

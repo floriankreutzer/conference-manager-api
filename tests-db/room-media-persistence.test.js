@@ -75,6 +75,7 @@ test('Room bytes are Tenant-owned, attachment-bound, active-scoped and rollback 
     { deleted: 1, bytes: bytes.length });
   assert.equal((await pool.query(`SELECT count(*)::integer AS count FROM tenant_room_media_assets
     WHERE tenant_id = $1`, [TENANT_A])).rows[0].count, 1);
+  assert.equal(await rollbackLatest(pool), true); // schema 040 has no configured Guest values here
   await assert.rejects(rollbackLatest(pool), /TENANT_ROOM_MEDIA_REQUIRE_REVIEW/);
   assert.equal((await pool.query('SELECT count(*)::integer AS count FROM tenant_room_media_assets')).rows[0].count, 1);
 });

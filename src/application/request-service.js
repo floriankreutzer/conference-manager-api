@@ -282,8 +282,12 @@ export function createRequestService({
       requestId,
       correlationId,
       projection = null,
+      projectionSchemaVersion = 2,
     }) {
       if (projection !== null && projection !== 'guest') {
+        throw new AuthorizationInputError('REQUEST_ROOM_CONTEXT_PROJECTION_INVALID');
+      }
+      if (![2, 3].includes(projectionSchemaVersion)) {
         throw new AuthorizationInputError('REQUEST_ROOM_CONTEXT_PROJECTION_INVALID');
       }
       if (typeof repository.findRoomContextByTenantIdAndRoomId !== 'function') {
@@ -322,10 +326,11 @@ export function createRequestService({
         }
         const currentRoomContext = await repository.findGuestContextByTenantIdAndRequest(
           tenantContext.tenantId, request.id, request.version,
+          projectionSchemaVersion,
         );
         if (currentRoomContext === null) throw new RequestStateConflictError();
         return Object.freeze({
-          schemaVersion: 2,
+          schemaVersion: projectionSchemaVersion,
           requestRef: Object.freeze({
             id: request.id, schemaVersion: request.schemaVersion,
             version: request.version, status: request.status,

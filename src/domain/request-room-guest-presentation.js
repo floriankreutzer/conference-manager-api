@@ -1,5 +1,4 @@
 import { hasUnsafeGuestRoomText } from './site-guest-information.js';
-
 const ASSET_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const DETAIL_KEYS = new Set([
   'floor', 'equipment', 'accessibility', 'serviceIds', 'cateringPackageIds',
@@ -28,11 +27,14 @@ function list(value, normalize) {
   return Object.freeze(result);
 }
 
-export function publicGuestRoomFields(details) {
+export function publicGuestRoomFields(details, { legacyValidation = true } = {}) {
   if (!details || typeof details !== 'object' || Array.isArray(details)
     || Object.keys(details).some((key) => !DETAIL_KEYS.has(key))) invalid();
-  if (details.floor !== null && details.floor !== undefined) text(details.floor, 80);
-  list(details.accessibility ?? [], (value) => text(value, 80));
+  // Keep the legacy v2 rejection behavior; v3 withholds arbitrary historic prose.
+  if (legacyValidation) {
+    if (details.floor !== null && details.floor !== undefined) text(details.floor, 80);
+    list(details.accessibility ?? [], (value) => text(value, 80));
+  }
   return Object.freeze({
     // v2 free prose is stored for authorized editors, but never made public.
     floor: null,
