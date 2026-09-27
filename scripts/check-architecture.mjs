@@ -15,7 +15,7 @@ async function sourceFiles(directory) {
 const packageJson = JSON.parse(await readFile('package.json', 'utf8'));
 const runtimeDependencies = packageJson.dependencies || {};
 const approvedRuntimeDependencies = {
-  '@azure/msal-node': '6.0.0',
+  '@azure/msal-node': '6.0.1',
   pg: '8.23.0',
   sharp: '0.35.4',
 };
