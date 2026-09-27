@@ -8,6 +8,23 @@ import {
 } from '../scripts/module-graph.mjs';
 import { backendSaas2BoundaryViolations } from '../scripts/backend-boundary-policy.mjs';
 
+test('module graph retains static import statements for route and policy boundary checks', () => {
+  const source = [
+    "import { defineRouteModule } from '../http/route-module.js';",
+    "import { createTenantReadinessPolicy } from '../tenancy/tenant-readiness-policy.js';",
+    "const lazy = import('./optional.js');",
+  ].join('\n');
+  const imports = moduleImports(source);
+  assert.deepEqual(imports.map(({ specifier, dynamic }) => [specifier, dynamic]), [
+    ['../http/route-module.js', false],
+    ['../tenancy/tenant-readiness-policy.js', false],
+    ['./optional.js', true],
+  ]);
+  assert.match(imports[0].statement, /\bdefineRouteModule\b/);
+  assert.match(imports[1].statement, /\bcreateTenantReadinessPolicy\b/);
+  assert.equal(imports[2].statement, null);
+});
+
 test('general module graph detects cycles', () => {
   const { graph } = buildModuleGraph({
     'src/a.js': "import './b.js';",
