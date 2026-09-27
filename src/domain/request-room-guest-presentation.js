@@ -31,9 +31,12 @@ function list(value, normalize) {
 export function publicGuestRoomFields(details) {
   if (!details || typeof details !== 'object' || Array.isArray(details)
     || Object.keys(details).some((key) => !DETAIL_KEYS.has(key))) invalid();
+  if (details.floor !== null && details.floor !== undefined) text(details.floor, 80);
+  list(details.accessibility ?? [], (value) => text(value, 80));
   return Object.freeze({
-    floor: details.floor === null || details.floor === undefined ? null : text(details.floor, 80),
-    accessibility: list(details.accessibility ?? [], (value) => text(value, 80)),
+    // v2 free prose is stored for authorized editors, but never made public.
+    floor: null,
+    accessibility: Object.freeze([]),
     floorplanAssetId: details.floorplanAssetId === null || details.floorplanAssetId === undefined
       ? null : asset(details.floorplanAssetId),
     mediaAssetIds: list(details.mediaAssetIds ?? [], asset),
