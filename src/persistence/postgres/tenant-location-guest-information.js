@@ -1,5 +1,5 @@
 import { normalizeTenantLocationsV2 } from '../../domain/tenant-locations.js';
-import { publicSiteGuestInformation } from '../../domain/site-guest-information.js';
+import { normalizeSiteGuestInformation } from '../../domain/site-guest-information.js';
 
 export async function loadSiteGuestInformationWithClient(client, tenantId) {
   const result = await client.query({
@@ -9,7 +9,7 @@ export async function loadSiteGuestInformationWithClient(client, tenantId) {
   });
   return Object.fromEntries(result.rows
     .filter((row) => row.guest_information !== null)
-    .map((row) => [row.id, publicSiteGuestInformation(row.guest_information)]));
+    .map((row) => [row.id, normalizeSiteGuestInformation(row.guest_information)]));
 }
 
 export function withSiteGuestInformation(configuration, guestInformation) {
@@ -32,7 +32,7 @@ export function withSiteGuestInformation(configuration, guestInformation) {
 
 export async function applySiteGuestInformationWithClient(client, tenantId, configuration) {
   for (const site of configuration.sites) {
-    const value = publicSiteGuestInformation(site.guestInformation);
+    const value = normalizeSiteGuestInformation(site.guestInformation);
     const result = await client.query({
       name: 'tenant-locations-guest-information-update',
       text: 'UPDATE sites SET guest_information = $3::jsonb WHERE tenant_id = $1 AND id = $2',
