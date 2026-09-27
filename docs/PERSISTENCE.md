@@ -155,6 +155,14 @@ Migration 037 adds nullable Site Guest Information plus immutable Locations-revi
 
 Migration 038 revokes public execution from the privileged Request-attribution marker and its three trigger functions. The bounded trigger functions run as the migration owner with a fixed `pg_catalog` search path and schema-qualified application references; ordinary restricted-role Request writes still fire them, while direct calls are denied.
 
+Migration 039 introduces a Tenant/Room composite Room-media registry with private reencoded WebP bytes,
+bounded dimensions and byte length, SHA-256 content digest, creating actor and timestamp. A Tenant row
+lock serializes uploads against the 100 MiB quota. Newly attached Locations references must match a
+stored image for the same Tenant and Room within the revision and audit transaction; existing opaque
+legacy IDs remain readable as private configuration history but resolve to no media bytes. Asset GETs
+check the current Room attachment and role on each request. Rollback refuses to drop nonempty media
+storage; restoration and 30-day detached-asset retention still require operational evidence.
+
 The all-role Tenant presentation contract reuses the current Organization row and
 `organization_revision`. Its managed-brand policy maps one fixed reference to a code-shipped preset
 and therefore introduces no upload metadata, asset table, external object reference or migration.
