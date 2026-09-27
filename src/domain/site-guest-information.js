@@ -319,5 +319,13 @@ export function normalizeSiteGuestInformation(value) {
 }
 
 export function publicSiteGuestInformation(value) {
-  return value === undefined ? null : normalizeSiteGuestInformation(value);
+  const information = value === undefined ? null : normalizeSiteGuestInformation(value);
+  if (information === null) return null;
+  // Legacy v2 prose has no proof that it is free of unlabeled access codes.
+  // Retain the stored configuration for authorized editors, but never publish it.
+  return Object.freeze({
+    ...information,
+    ...Object.fromEntries(Object.keys(TEXT_LIMITS).map((key) => [key, null])),
+    wifiNetworkName: null,
+  });
 }
