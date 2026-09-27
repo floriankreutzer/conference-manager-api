@@ -9,7 +9,7 @@ test('guest Room fields project only bounded current presentation and managed as
   const result = publicGuestRoomFields({ floor: '2', accessibility: ['Lift'],
     floorplanAssetId: 'floorplan-1', mediaAssetIds: ['room-1'], serviceIds: ['private-service'],
     cateringPackageIds: [], equipment: [] });
-  assert.deepEqual(result, { floor: '2', accessibility: ['Lift'], floorplanAssetId: 'floorplan-1', mediaAssetIds: ['room-1'] });
+  assert.deepEqual(result, { floor: null, accessibility: [], floorplanAssetId: 'floorplan-1', mediaAssetIds: ['room-1'] });
   assert.equal(Object.isFrozen(result), true);
   assert.equal(Object.isFrozen(result.accessibility), true);
 });
@@ -42,34 +42,26 @@ test('guest Room fields fail closed for malformed or authority-shaped stored pre
   }
 });
 
-test('guest Room fields preserve public wayfinding and conventional Floor labels', () => {
+test('guest Room projection withholds legacy floor and accessibility prose including unlabeled codes', () => {
   assert.deepEqual(publicGuestRoomFields({
     floor: 'Level 2', accessibility: ['Step-free entrance', 'Induction loop'],
   }), {
-    floor: 'Level 2',
-    accessibility: ['Step-free entrance', 'Induction loop'],
+    floor: null,
+    accessibility: [],
     floorplanAssetId: null,
     mediaAssetIds: [],
   });
-  assert.equal(publicGuestRoomFields({ floor: '1. OG' }).floor, '1. OG');
-  assert.equal(publicGuestRoomFields({ floor: 'B[1]' }).floor, 'B[1]');
-  assert.equal(publicGuestRoomFields({ floor: 'Level -1' }).floor, 'Level -1');
-  assert.equal(publicGuestRoomFields({ floor: 'Étage 2' }).floor, 'Étage 2');
-  assert.equal(publicGuestRoomFields({ floor: 'Этаж 2' }).floor, 'Этаж 2');
-  assert.equal(publicGuestRoomFields({ floor: 'Επίπεδο 2' }).floor, 'Επίπεδο 2');
-  assert.equal(publicGuestRoomFields({ floor: 'Հարկ 2' }).floor, 'Հարկ 2');
-  assert.equal(publicGuestRoomFields({ floor: 'Entrance 入口' }).floor, 'Entrance 入口');
-  assert.equal(publicGuestRoomFields({ floor: 'Passwordless entrance' }).floor, 'Passwordless entrance');
+  assert.equal(publicGuestRoomFields({ floor: '1. OG' }).floor, null);
+  assert.equal(publicGuestRoomFields({ floor: 'B[1]' }).floor, null);
   for (const floor of ['Pine Street 1', 'Pink parking area', 'Pinneberg', '会議室A',
     'Reception/受付', 'ホテルWiFi', 'office@例.jp', 'Gate入口', 'Door入口案内',
     'Gate入口案内', 'Access入口案内', 'Entrance入口案内', 'WiFi接続案内',
     'WLAN接続案内', 'API利用案内', 'ᎣᏏᏲ ᎠᏰᎵ',
     'Meet at Door @ reception.', 'Parking costs $5 at reception.']) {
-    assert.equal(publicGuestRoomFields({ floor }).floor, floor);
+    assert.equal(publicGuestRoomFields({ floor }).floor, null);
   }
-  assert.equal(publicGuestRoomFields({ floor: 'Информация о транспорте' }).floor,
-    'Информация о транспорте');
+  assert.equal(publicGuestRoomFields({ floor: 'At the entrance, enter 7421.' }).floor, null);
   assert.deepEqual(publicGuestRoomFields({
     accessibility: ['Use Door 4 beside the north entrance.', 'Access ramp'],
-  }).accessibility, ['Use Door 4 beside the north entrance.', 'Access ramp']);
+  }).accessibility, []);
 });
