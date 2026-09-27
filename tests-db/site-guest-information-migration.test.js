@@ -93,6 +93,8 @@ async function assertMigrationPreserved(pool) {
 
 async function rollbackGuestInformation(pool) {
   try {
+    // Exercise the 037 lock directly after removing later, independent migrations.
+    await rollbackToVersion(pool, 38);
     return await rollbackToVersion(pool, 37);
   } catch (error) {
     await migrateUp(pool);
