@@ -270,7 +270,7 @@ async function validateReferences(client, tenantId, current, proposed, changedAt
   });
   if (newlyAttached.length > 0) {
     // The locked Tenant row already serializes uploads and retention; row locking here
-    // would require UPDATE permission on media for the SELECT-only runtime role.
+    // would require UPDATE permission on media that the runtime role does not have.
     const assets = await client.query({
       name: 'tenant-locations-managed-media-references',
       text: `SELECT id::text AS id, room_id
