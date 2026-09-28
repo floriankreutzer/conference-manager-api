@@ -12,7 +12,7 @@ function validEnv(overrides = {}) {
   return {
     NODE_ENV: 'test',
     DEMO_RUNTIME: 'shared-postgres-v1',
-    DEMO_SEED_VERSION: 'saas-3.6-shared-demo-v5',
+    DEMO_SEED_VERSION: 'saas-3.7-three-demo-customers-v1',
     DEMO_CUSTOMER_ORIGIN: 'https://customer.demo.invalid',
     DEMO_PLATFORM_ORIGIN: 'https://platform.demo.invalid',
     DEMO_CUSTOMER_DATABASE_URL:
