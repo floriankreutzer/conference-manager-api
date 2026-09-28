@@ -411,6 +411,13 @@ async function seedTenantBusinessState(client, fixture) {
       throw new Error('DEMO_FIXTURE_CATALOGUE_REVISION_ADVANCE_FAILED');
     }
     if (tenant.requests.length > 0) {
+    if (tenant.lifecycleStatus === 'ready') {
+      await client.query({
+        name: 'demo-fixture-temporary-booking-authority',
+        text: "UPDATE tenants SET status = 'active' WHERE id = $1 AND status = 'ready'",
+        values: [tenant.id],
+      });
+    }
     const revisionResult = await client.query({
       name: 'demo-fixture-request-authority-revisions',
       text: `SELECT organization_revision, locations_revision, catalog_revision,
@@ -494,6 +501,13 @@ async function seedTenantBusinessState(client, fixture) {
         { actorUserId: request.requesterUserId, correlationId: request.id },
         'employee',
       );
+    }
+    if (tenant.lifecycleStatus === 'ready') {
+      await client.query({
+        name: 'demo-fixture-restore-ready-lifecycle',
+        text: "UPDATE tenants SET status = 'ready' WHERE id = $1 AND status = 'active'",
+        values: [tenant.id],
+      });
     }
     }
     for (const capabilityId of [
