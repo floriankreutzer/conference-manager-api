@@ -65,6 +65,10 @@ test('concrete Demo seeder uses bounded named parameterized writes and never see
   );
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-platform-operator').length, 4);
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-room').length, 12);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-equipment').length, 20);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-catering-item').length, 8);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-catering-package').length, 4);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-cost-center').length, 7);
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-room-price').length, 11);
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-identity-binding').length, 3);
   assert.equal(
@@ -153,6 +157,25 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
         tenant_id: tenant.id, id: entry.id, name: entry.name, description: entry.description,
         active: entry.active, sort_order: entry.order, price_minor: entry.price.amountMinor,
         currency: entry.price.currency, site_ids: entry.siteIds, room_ids: entry.roomIds,
+      }))
+    )),
+    'demo-fixture-read-cost-centers': DEMO_FIXTURE.tenants.flatMap((tenant) => (
+      tenant.costCenters.map((entry) => ({
+        tenant_id: tenant.id, id: entry.id, code: entry.code, name: entry.name, active: entry.active,
+      }))
+    )),
+    'demo-fixture-read-catering-items': DEMO_FIXTURE.tenants.flatMap((tenant) => (
+      tenant.settings.catalogue.cateringItems.map((entry) => ({
+        tenant_id: tenant.id, id: entry.id, name: entry.name, description: entry.description,
+        active: entry.active, sort_order: entry.order, price_minor: entry.price.amountMinor,
+        currency: entry.price.currency, site_ids: entry.siteIds,
+      }))
+    )),
+    'demo-fixture-read-catering-packages': DEMO_FIXTURE.tenants.flatMap((tenant) => (
+      tenant.settings.catalogue.cateringPackages.map((entry) => ({
+        tenant_id: tenant.id, id: entry.id, name: entry.name, description: entry.description,
+        active: entry.active, sort_order: entry.order, price_minor: entry.price.amountMinor,
+        currency: entry.price.currency, site_ids: entry.siteIds, item_ids: entry.itemIds,
       }))
     )),
     'demo-fixture-read-requests': DEMO_FIXTURE.tenants.flatMap((tenant) => tenant.requests.map((request) => ({
