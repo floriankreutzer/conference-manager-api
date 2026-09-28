@@ -305,9 +305,7 @@ async function seedTenantBusinessState(client, fixture) {
 async function seedTenantReadinessState(client, fixture) {
   for (const tenant of fixture.tenants) {
     const provider = tenant.providerSimulation;
-    const room = tenant.settings.locations
-      .flatMap(({ rooms }) => rooms)
-      .find(({ id }) => id === provider.roomMapping.roomId);
+    const rooms = tenant.settings.locations.flatMap(({ rooms: siteRooms }) => siteRooms);
     await client.query({
       name: 'demo-fixture-insert-identity-binding',
       text: `
@@ -346,27 +344,25 @@ async function seedTenantReadinessState(client, fixture) {
         provider.calendarsPermission,
       ],
     });
-    await client.query({
-      name: 'demo-fixture-insert-microsoft365-room-mapping',
-      text: `
-        INSERT INTO microsoft365_room_mappings (
-          tenant_id, room_id, integration_id, external_room_id,
-          resource_address, provider_display_name, provider_capacity,
-          provider_status, last_seen_at, created_at, updated_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $8, $8)
-      `,
-      values: [
-        tenant.id,
-        provider.roomMapping.roomId,
-        provider.integrationId,
-        provider.roomMapping.externalRoomId,
-        provider.roomMapping.resourceAddress,
-        room.name,
-        room.capacity,
-        fixture.fixedClock,
-      ],
-    });
+    for (const mapping of provider.roomMappings) {
+      const room = rooms.find(({ id }) => id === mapping.roomId);
+      await client.query({
+        name: 'demo-fixture-insert-microsoft365-room-mapping',
+        text: `
+          INSERT INTO microsoft365_room_mappings (
+            tenant_id, room_id, integration_id, external_room_id,
+            resource_address, provider_display_name, provider_capacity,
+            provider_status, last_seen_at, created_at, updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $8, $8)
+        `,
+        values: [
+          tenant.id, mapping.roomId, provider.integrationId,
+          mapping.externalRoomId, mapping.resourceAddress,
+          room.name, room.capacity, fixture.fixedClock,
+        ],
+      });
+    }
     for (const capability of ['places', 'free_busy', 'calendar_write']) {
       await client.query({
         name: 'demo-fixture-insert-microsoft365-health',
@@ -719,11 +715,13 @@ export async function readDemoSemanticState({ client } = {}) {
         calendarsPermission: provider.calendars_permission_status,
         health: provider.health,
         scenario: provider.scenario,
-        roomMapping: {
-          roomId: provider.room_id,
-          externalRoomId: provider.external_room_id,
-          resourceAddress: provider.resource_address,
-        },
+        roomMappings: providers
+          .filter(({ tenant_id: tenantId }) => tenantId === tenant.id)
+          .map((mapping) => ({
+            roomId: mapping.room_id,
+            externalRoomId: mapping.external_room_id,
+            resourceAddress: mapping.resource_address,
+          })),
       };
     })(),
   }));
