@@ -269,12 +269,13 @@ async function validateReferences(client, tenantId, current, proposed, changedAt
       .map((id) => ({ id, roomId: room.id }));
   });
   if (newlyAttached.length > 0) {
+    // The locked Tenant row already serializes uploads and retention; row locking here
+    // would require UPDATE permission on media that the runtime role does not have.
     const assets = await client.query({
       name: 'tenant-locations-managed-media-references',
       text: `SELECT id::text AS id, room_id
         FROM tenant_room_media_assets
-        WHERE tenant_id = $1 AND id::text = ANY($2::text[])
-        FOR SHARE`,
+        WHERE tenant_id = $1 AND id::text = ANY($2::text[])`,
       values: [tenantId, newlyAttached.map(({ id }) => id)],
     });
     const roomsByAsset = new Map(assets.rows.map((asset) => [asset.id, asset.room_id]));
