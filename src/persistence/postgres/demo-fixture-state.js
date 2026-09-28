@@ -203,7 +203,7 @@ async function seedTenantBusinessState(client, fixture) {
             fixture.fixedClock,
           ],
         });
-        await client.query({
+        if (room.priceMinor !== null) await client.query({
           name: 'demo-fixture-insert-room-price',
           text: `
             INSERT INTO tenant_room_prices (
@@ -551,7 +551,7 @@ export async function readDemoSemanticState({ client } = {}) {
     SELECT room.tenant_id, room.site_id, room.id, room.name, room.capacity,
            price.price_minor
     FROM rooms AS room
-    JOIN tenant_room_prices AS price
+    LEFT JOIN tenant_room_prices AS price
       ON price.tenant_id = room.tenant_id AND price.room_id = room.id
     ORDER BY room.tenant_id, room.site_id, room.id
   `);
@@ -675,7 +675,7 @@ export async function readDemoSemanticState({ client } = {}) {
               id: room.id,
               name: room.name,
               capacity: safeInteger(room.capacity),
-              priceMinor: safeInteger(room.price_minor),
+              priceMinor: room.price_minor === null ? null : safeInteger(room.price_minor),
             })),
         })),
       catalogue: {
