@@ -103,7 +103,10 @@ export function createDemoCustomerComposition({
         sessionService,
         personaRepository,
       });
-      return [createDemoCustomerControlRoutes({ personaService, mediaRepository: createPostgresDemoCatalogueMediaRepository(selectedPersistence.pool) })];
+      return [createDemoCustomerControlRoutes({
+        personaService,
+        mediaRepository: createPostgresDemoCatalogueMediaRepository(selectedPersistence.pool),
+      })];
     },
   });
   let stopped = false;
