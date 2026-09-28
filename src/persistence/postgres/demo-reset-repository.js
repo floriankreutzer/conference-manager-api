@@ -124,6 +124,7 @@ export const DEMO_RESET_TABLES = Object.freeze([
   'platform_runtime_tenant_mappings',
   'demo_provider_simulations',
   'demo_persona_references',
+  'demo_catalogue_media_assets',
 ]);
 
 const EXPECTED_TABLES = Object.freeze([
