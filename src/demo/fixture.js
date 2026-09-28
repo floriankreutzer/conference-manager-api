@@ -267,13 +267,334 @@ const fixture = {
         catalogue: {
           services: ['room', 'catering'],
           currency: 'EUR',
-          equipment: [{
-            id: 'mobile-display', name: 'Northwind mobile display',
-            description: 'Portable presentation display', active: true, order: 1,
-            price: { amountMinor: 2500, currency: 'EUR' },
-            siteIds: ['11000000-0000-4000-8000-000000000001'],
-            roomIds: ['northwind-berlin-room-1'],
-          }],
+          equipment: [
+            {
+              "id": "mobile-display",
+              "name": "Mobiles Präsentationsdisplay",
+              "description": "Rollbares Display für Präsentationen und Gruppenarbeit.",
+              "active": true,
+              "order": 1,
+              "price": {
+                "amountMinor": 2500,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [
+                "northwind-berlin-room-3",
+                "northwind-berlin-room-4"
+              ]
+            },
+            {
+              "id": "display-86",
+              "name": "86-Zoll-Präsentationsdisplay",
+              "description": "Großformatige Bildfläche für größere Konferenzräume.",
+              "active": true,
+              "order": 2,
+              "price": {
+                "amountMinor": 3500,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [
+                "northwind-berlin-room-1",
+                "northwind-berlin-room-10"
+              ]
+            },
+            {
+              "id": "display-65",
+              "name": "65-Zoll-Präsentationsdisplay",
+              "description": "Präsentationsdisplay für mittelgroße Besprechungen.",
+              "active": true,
+              "order": 3,
+              "price": {
+                "amountMinor": 2200,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [
+                "northwind-berlin-room-2",
+                "northwind-berlin-room-8"
+              ]
+            },
+            {
+              "id": "display-55",
+              "name": "55-Zoll-Präsentationsdisplay",
+              "description": "Kompaktes Display für kleine Gesprächsrunden.",
+              "active": true,
+              "order": 4,
+              "price": {
+                "amountMinor": 1500,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [
+                "northwind-berlin-room-5",
+                "northwind-berlin-room-6"
+              ]
+            },
+            {
+              "id": "video-system",
+              "name": "Hybrides Videokonferenzsystem",
+              "description": "Kamera, Mikrofone und Lautsprecher für hybride Meetings.",
+              "active": true,
+              "order": 5,
+              "price": {
+                "amountMinor": 4500,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [
+                "northwind-berlin-room-1",
+                "northwind-berlin-room-2",
+                "northwind-berlin-room-8",
+                "northwind-berlin-room-10"
+              ]
+            },
+            {
+              "id": "usb-camera",
+              "name": "USB-Konferenzkamera",
+              "description": "Zusätzliche Kamera für Laptop-basierte Konferenzen.",
+              "active": true,
+              "order": 6,
+              "price": {
+                "amountMinor": 1200,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [
+                "northwind-berlin-room-5",
+                "northwind-berlin-room-6",
+                "northwind-berlin-room-10"
+              ]
+            },
+            {
+              "id": "speakerphone",
+              "name": "Konferenzlautsprecher",
+              "description": "Tischlautsprecher mit integriertem Mikrofon.",
+              "active": true,
+              "order": 7,
+              "price": {
+                "amountMinor": 800,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [
+                "northwind-berlin-room-2",
+                "northwind-berlin-room-6",
+                "northwind-berlin-room-8"
+              ]
+            },
+            {
+              "id": "wireless-mic",
+              "name": "Funkmikrofon-Set",
+              "description": "Drahtloses Mikrofon für Präsentationen und Diskussionen.",
+              "active": true,
+              "order": 8,
+              "price": {
+                "amountMinor": 1800,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [
+                "northwind-berlin-room-1",
+                "northwind-berlin-room-7",
+                "northwind-berlin-room-9",
+                "northwind-berlin-room-10"
+              ]
+            },
+            {
+              "id": "whiteboard",
+              "name": "Mobiles Whiteboard",
+              "description": "Beschreibbare Arbeitsfläche inklusive Stiften und Reinigung.",
+              "active": true,
+              "order": 9,
+              "price": {
+                "amountMinor": 1000,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [
+                "northwind-berlin-room-1",
+                "northwind-berlin-room-3",
+                "northwind-berlin-room-4"
+              ]
+            },
+            {
+              "id": "pinboard",
+              "name": "Moderations-Pinnwand",
+              "description": "Mobile Pinnwand für strukturierte Gruppenarbeit.",
+              "active": true,
+              "order": 10,
+              "price": {
+                "amountMinor": 800,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [
+                "northwind-berlin-room-3",
+                "northwind-berlin-room-4"
+              ]
+            },
+            {
+              "id": "moderation-kit",
+              "name": "Moderationskoffer",
+              "description": "Karten, Marker, Klebepunkte und Moderationszubehör.",
+              "active": true,
+              "order": 11,
+              "price": {
+                "amountMinor": 1500,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [
+                "northwind-berlin-room-3",
+                "northwind-berlin-room-4"
+              ]
+            },
+            {
+              "id": "projector",
+              "name": "Präsentationsprojektor",
+              "description": "Projektor für großflächige Präsentationen.",
+              "active": true,
+              "order": 12,
+              "price": {
+                "amountMinor": 3000,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [
+                "northwind-berlin-room-7",
+                "northwind-berlin-room-9"
+              ]
+            },
+            {
+              "id": "projection-screen",
+              "name": "Projektionsleinwand",
+              "description": "Mobile oder fest installierte Präsentationsfläche.",
+              "active": true,
+              "order": 13,
+              "price": {
+                "amountMinor": 1000,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [
+                "northwind-berlin-room-7",
+                "northwind-berlin-room-9"
+              ]
+            },
+            {
+              "id": "flipchart",
+              "name": "Flipchart",
+              "description": "Flipchart mit Papier und Stiften.",
+              "active": true,
+              "order": 14,
+              "price": {
+                "amountMinor": 700,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [
+                "northwind-berlin-room-7"
+              ]
+            },
+            {
+              "id": "usb-c-dock",
+              "name": "USB-C-Anschlussstation",
+              "description": "Anschlusslösung für unterstützte Präsentationsgeräte.",
+              "active": true,
+              "order": 15,
+              "price": {
+                "amountMinor": 500,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [
+                "northwind-berlin-room-5"
+              ]
+            },
+            {
+              "id": "presenter",
+              "name": "Kabelloser Presenter",
+              "description": "Fernsteuerung für Folienpräsentationen.",
+              "active": true,
+              "order": 16,
+              "price": {
+                "amountMinor": 400,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [
+                "northwind-berlin-room-9"
+              ]
+            },
+            {
+              "id": "hearing-support",
+              "name": "Mobile Hörunterstützung",
+              "description": "Zusätzliche Hörunterstützung nach vorheriger Abstimmung.",
+              "active": true,
+              "order": 17,
+              "price": {
+                "amountMinor": 2000,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [
+                "northwind-berlin-room-9"
+              ]
+            },
+            {
+              "id": "studio-light",
+              "name": "Studio-Beleuchtungsset",
+              "description": "Regelbare Beleuchtung für hybride Präsentationen.",
+              "active": true,
+              "order": 18,
+              "price": {
+                "amountMinor": 2000,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [
+                "northwind-berlin-room-10"
+              ]
+            }
+          ]
         },
       },
       requests: [
