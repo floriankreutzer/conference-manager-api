@@ -209,7 +209,8 @@ export function createApplicationHttpHandler({
       APPLICATION_ROUTES.configuration,
     ]);
     const readyDemoRead = allowReadyDemoRead && request.method === 'GET'
-      && [APPLICATION_ROUTES.requests, APPLICATION_ROUTES.notifications].includes(path);
+      && [APPLICATION_ROUTES.requests, APPLICATION_ROUTES.notifications,
+        APPLICATION_ROUTES.requestReport].includes(path);
     const knownTenant = knownTenantRoutes.has(path) || readyDemoRead;
     let tenantContext = knownTenant
       ? await tenantGuard.requireKnown(principal)
