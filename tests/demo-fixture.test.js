@@ -122,3 +122,59 @@ test('fixture schema rejects unknown fields, duplicate Tenants and incorrect per
     (error) => error.code === 'DEMO_FIXTURE_PROVIDER_INVALID',
   );
 });
+
+function incompleteOnboardingFixture() {
+  const candidate = clone(DEMO_FIXTURE);
+  const tenant = candidate.tenants[1];
+  tenant.lifecycleStatus = 'onboarding';
+  tenant.settings.organization.name = '';
+  tenant.settings.locations = [];
+  tenant.requests = [];
+  tenant.providerSimulation.connectionState = 'not_configured';
+  tenant.providerSimulation.placesPermission = 'missing';
+  tenant.providerSimulation.calendarsPermission = 'missing';
+  tenant.providerSimulation.health = 'unknown';
+  tenant.providerSimulation.scenario = 'onboarding';
+  tenant.providerSimulation.roomMapping = null;
+  return candidate;
+}
+
+test('fixture accepts a genuinely empty, unconnected onboarding Tenant', () => {
+  const candidate = incompleteOnboardingFixture();
+  assert.equal(validateDemoFixture(candidate), candidate);
+  assert.notEqual(semanticChecksum(candidate), DEMO_FIXTURE_CHECKSUM);
+});
+
+test('fixture rejects ready empty Tenants and inconsistent onboarding provider state', () => {
+  const readyWithoutRooms = incompleteOnboardingFixture();
+  readyWithoutRooms.tenants[1].lifecycleStatus = 'ready';
+  assert.throws(
+    () => validateDemoFixture(readyWithoutRooms),
+    (error) => error.code === 'DEMO_FIXTURE_SETTINGS_INVALID',
+  );
+
+  const connectedOnboarding = incompleteOnboardingFixture();
+  connectedOnboarding.tenants[1].providerSimulation.connectionState = 'connected';
+  assert.throws(
+    () => validateDemoFixture(connectedOnboarding),
+    (error) => error.code === 'DEMO_FIXTURE_PROVIDER_INVALID',
+  );
+
+  const mappedOnboarding = incompleteOnboardingFixture();
+  mappedOnboarding.tenants[1].providerSimulation.roomMapping = {
+    roomId: 'northwind-berlin-room-1',
+    externalRoomId: 'foreign-room',
+    resourceAddress: 'foreign-room@example.invalid',
+  };
+  assert.throws(
+    () => validateDemoFixture(mappedOnboarding),
+    (error) => error.code === 'DEMO_FIXTURE_PROVIDER_INVALID',
+  );
+
+  const populatedOnboarding = incompleteOnboardingFixture();
+  populatedOnboarding.tenants[1].settings.locations = clone(DEMO_FIXTURE.tenants[1].settings.locations);
+  assert.throws(
+    () => validateDemoFixture(populatedOnboarding),
+    (error) => error.code === 'DEMO_FIXTURE_TENANT_INVALID',
+  );
+});
