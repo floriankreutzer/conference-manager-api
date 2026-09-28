@@ -260,6 +260,57 @@ async function seedTenantBusinessState(client, fixture) {
         });
       }
     }
+    for (const center of tenant.costCenters) {
+      await client.query({
+        name: 'demo-fixture-insert-cost-center',
+        text: `INSERT INTO tenant_cost_centers
+          (tenant_id, id, code, name, active, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $6)`,
+        values: [tenant.id, center.id, center.code, center.name, center.active, fixture.fixedClock],
+      });
+    }
+    for (const item of tenant.settings.catalogue.cateringItems) {
+      await client.query({
+        name: 'demo-fixture-insert-catering-item',
+        text: `INSERT INTO catering_items
+          (tenant_id, id, name, description, active, sort_order, price_minor, currency, created_at, updated_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)`,
+        values: [tenant.id, item.id, item.name, item.description, item.active, item.order,
+          item.price.amountMinor, item.price.currency, fixture.fixedClock],
+      });
+      for (const siteId of item.siteIds) {
+        await client.query({
+          name: 'demo-fixture-insert-catering-item-site',
+          text: 'INSERT INTO catering_item_site_applicability (tenant_id,item_id,site_id) VALUES ($1,$2,$3)',
+          values: [tenant.id, item.id, siteId],
+        });
+      }
+    }
+    for (const cateringPackage of tenant.settings.catalogue.cateringPackages) {
+      await client.query({
+        name: 'demo-fixture-insert-catering-package',
+        text: `INSERT INTO catering_packages
+          (tenant_id, id, name, description, active, sort_order, price_minor, currency, created_at, updated_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)`,
+        values: [tenant.id, cateringPackage.id, cateringPackage.name, cateringPackage.description,
+          cateringPackage.active, cateringPackage.order, cateringPackage.price.amountMinor,
+          cateringPackage.price.currency, fixture.fixedClock],
+      });
+      for (const siteId of cateringPackage.siteIds) {
+        await client.query({
+          name: 'demo-fixture-insert-catering-package-site',
+          text: 'INSERT INTO catering_package_site_applicability (tenant_id,package_id,site_id) VALUES ($1,$2,$3)',
+          values: [tenant.id, cateringPackage.id, siteId],
+        });
+      }
+      for (const itemId of cateringPackage.itemIds) {
+        await client.query({
+          name: 'demo-fixture-insert-catering-package-item',
+          text: 'INSERT INTO catering_package_items (tenant_id,package_id,item_id) VALUES ($1,$2,$3)',
+          values: [tenant.id, cateringPackage.id, itemId],
+        });
+      }
+    }
     for (const request of tenant.requests) {
       await client.query({
         name: 'demo-fixture-insert-request',
@@ -571,6 +622,25 @@ export async function readDemoSemanticState({ client } = {}) {
         ORDER BY room_id) AS room_ids
     FROM equipment entry ORDER BY entry.tenant_id, entry.id
   `);
+  const costCenters = await readRows(client, 'demo-fixture-read-cost-centers', `
+    SELECT tenant_id, id, code, name, active FROM tenant_cost_centers ORDER BY tenant_id, id
+  `);
+  const cateringItems = await readRows(client, 'demo-fixture-read-catering-items', `
+    SELECT entry.tenant_id, entry.id, entry.name, entry.description, entry.active,
+      entry.sort_order, entry.price_minor, entry.currency,
+      ARRAY(SELECT site_id FROM catering_item_site_applicability relation
+        WHERE relation.tenant_id = entry.tenant_id AND relation.item_id = entry.id ORDER BY site_id) AS site_ids
+    FROM catering_items entry ORDER BY entry.tenant_id, entry.id
+  `);
+  const cateringPackages = await readRows(client, 'demo-fixture-read-catering-packages', `
+    SELECT entry.tenant_id, entry.id, entry.name, entry.description, entry.active,
+      entry.sort_order, entry.price_minor, entry.currency,
+      ARRAY(SELECT site_id FROM catering_package_site_applicability relation
+        WHERE relation.tenant_id = entry.tenant_id AND relation.package_id = entry.id ORDER BY site_id) AS site_ids,
+      ARRAY(SELECT item_id FROM catering_package_items relation
+        WHERE relation.tenant_id = entry.tenant_id AND relation.package_id = entry.id ORDER BY item_id) AS item_ids
+    FROM catering_packages entry ORDER BY entry.tenant_id, entry.id
+  `);
   const requests = await readRows(client, 'demo-fixture-read-requests', `
     SELECT tenant_id, id, requester_user_id, room_id, status, starts_at, ends_at,
            internal_participants, external_participants
@@ -691,8 +761,23 @@ export async function readDemoSemanticState({ client } = {}) {
           price: { amountMinor: safeInteger(entry.price_minor), currency: entry.currency },
           siteIds: entry.site_ids, roomIds: entry.room_ids,
         })),
+        cateringItems: cateringItems.filter((entry) => entry.tenant_id === tenant.id).map((entry) => ({
+          id: entry.id, name: entry.name, description: entry.description, active: entry.active,
+          order: safeInteger(entry.sort_order),
+          price: { amountMinor: safeInteger(entry.price_minor), currency: entry.currency },
+          siteIds: entry.site_ids, roomIds: [],
+        })),
+        cateringPackages: cateringPackages.filter((entry) => entry.tenant_id === tenant.id).map((entry) => ({
+          id: entry.id, name: entry.name, description: entry.description, active: entry.active,
+          order: safeInteger(entry.sort_order),
+          price: { amountMinor: safeInteger(entry.price_minor), currency: entry.currency },
+          siteIds: entry.site_ids, roomIds: [], itemIds: entry.item_ids, variants: [],
+        })),
       },
     },
+    costCenters: costCenters.filter((entry) => entry.tenant_id === tenant.id).map((entry) => ({
+      id: entry.id, code: entry.code, name: entry.name, active: entry.active,
+    })),
     requests: requests
       .filter(({ tenant_id: tenantId }) => tenantId === tenant.id)
       .map((request) => ({
