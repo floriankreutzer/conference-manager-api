@@ -361,6 +361,18 @@ async function seedTenantBusinessState(client, fixture) {
           cateringPackage.active, cateringPackage.order, cateringPackage.price.amountMinor,
           cateringPackage.price.currency, fixture.fixedClock],
       });
+      for (const variant of cateringPackage.variants) {
+        await client.query({
+          name: 'demo-fixture-insert-catering-package-variant',
+          text: `INSERT INTO catering_package_variants
+            (tenant_id, package_id, id, name, description, active, sort_order,
+             price_minor, currency, created_at, updated_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)`,
+          values: [tenant.id, cateringPackage.id, variant.id, variant.name, variant.description,
+            variant.active, variant.order, variant.price.amountMinor, variant.price.currency,
+            fixture.fixedClock],
+        });
+      }
       for (const siteId of cateringPackage.siteIds) {
         await client.query({
           name: 'demo-fixture-insert-catering-package-site',
@@ -744,7 +756,14 @@ export async function readDemoSemanticState({ client } = {}) {
       ARRAY(SELECT site_id FROM catering_package_site_applicability relation
         WHERE relation.tenant_id = entry.tenant_id AND relation.package_id = entry.id ORDER BY site_id) AS site_ids,
       ARRAY(SELECT item_id FROM catering_package_items relation
-        WHERE relation.tenant_id = entry.tenant_id AND relation.package_id = entry.id ORDER BY item_id) AS item_ids
+        WHERE relation.tenant_id = entry.tenant_id AND relation.package_id = entry.id ORDER BY item_id) AS item_ids,
+      (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+        'id', variant.id, 'name', variant.name, 'description', variant.description,
+        'active', variant.active, 'order', variant.sort_order,
+        'price', jsonb_build_object('amountMinor', variant.price_minor, 'currency', variant.currency)
+      ) ORDER BY variant.id), '[]'::jsonb)
+       FROM catering_package_variants variant
+       WHERE variant.tenant_id = entry.tenant_id AND variant.package_id = entry.id) AS variants
     FROM catering_packages entry ORDER BY entry.tenant_id, entry.id
   `);
   const requests = await readRows(client, 'demo-fixture-read-requests', `
@@ -882,7 +901,11 @@ export async function readDemoSemanticState({ client } = {}) {
           id: entry.id, name: entry.name, description: entry.description, active: entry.active,
           order: safeInteger(entry.sort_order),
           price: { amountMinor: safeInteger(entry.price_minor), currency: entry.currency },
-          siteIds: entry.site_ids, roomIds: [], itemIds: entry.item_ids, variants: [],
+          siteIds: entry.site_ids, roomIds: [], itemIds: entry.item_ids,
+          variants: entry.variants.map((variant) => ({ ...variant,
+            order: safeInteger(variant.order),
+            price: { amountMinor: safeInteger(variant.price.amountMinor), currency: variant.price.currency },
+          })),
         })),
       },
     },
