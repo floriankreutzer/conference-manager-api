@@ -38,15 +38,15 @@ test('concrete Demo seeder uses bounded named parameterized writes and never see
   assert.equal(queries.every(({ name, values }) => typeof name === 'string' && Array.isArray(values)), true);
   assert.equal(queries.some(({ name }) => name.includes('session')), false);
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-projection-clock').length, 1);
-  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-tenant').length, 2);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-tenant').length, 3);
   assert.equal(
     queries.filter(({ name }) => name === 'demo-fixture-advance-organization-revision').length,
-    2,
+    3,
   );
   const organizationRevisions = queries.filter(
     ({ name }) => name === 'demo-fixture-insert-organization-revision',
   );
-  assert.equal(organizationRevisions.length, 2);
+  assert.equal(organizationRevisions.length, 3);
   assert.deepEqual(
     organizationRevisions.map(({ values }) => values.slice(1, 5)),
     DEMO_FIXTURE.tenants.map((tenant) => [
@@ -56,9 +56,9 @@ test('concrete Demo seeder uses bounded named parameterized writes and never see
       tenant.settings.catalogue.currency,
     ]),
   );
-  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-user').length, 6);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-user').length, 7);
   const userIdentityWrites = queries.filter(({ name }) => name === 'demo-fixture-insert-user-identity');
-  assert.equal(userIdentityWrites.length, 6);
+  assert.equal(userIdentityWrites.length, 7);
   assert.equal(
     userIdentityWrites.every(({ text }) => /VALUES \(\$1::uuid, \$2, \$1::text,/.test(text)),
     true,
@@ -66,10 +66,10 @@ test('concrete Demo seeder uses bounded named parameterized writes and never see
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-platform-operator').length, 4);
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-room').length, 12);
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-room-price').length, 11);
-  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-identity-binding').length, 2);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-identity-binding').length, 3);
   assert.equal(
     queries.filter(({ name }) => name === 'demo-fixture-insert-microsoft365-integration').length,
-    2,
+    3,
   );
   assert.equal(
     queries.filter(({ name }) => name === 'demo-fixture-insert-microsoft365-room-mapping').length,
@@ -167,7 +167,8 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
       external_participants: request.externalParticipants,
     }))),
     'demo-fixture-read-providers': DEMO_FIXTURE.tenants.flatMap((tenant) => (
-      tenant.providerSimulation.roomMappings.map((mapping) => ({
+      (tenant.providerSimulation.roomMappings.length ? tenant.providerSimulation.roomMappings : [null])
+        .map((mapping) => ({
         tenant_id: tenant.id,
         provider: tenant.providerSimulation.provider,
         identity_binding_id: tenant.providerSimulation.identityBindingId,
@@ -178,9 +179,9 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
         calendars_permission_status: tenant.providerSimulation.calendarsPermission,
         health: tenant.providerSimulation.health,
         scenario: tenant.providerSimulation.scenario,
-        room_id: mapping.roomId,
-        external_room_id: mapping.externalRoomId,
-        resource_address: mapping.resourceAddress,
+        room_id: mapping?.roomId ?? null,
+        external_room_id: mapping?.externalRoomId ?? null,
+        resource_address: mapping?.resourceAddress ?? null,
       }))
     )),
     'demo-fixture-read-customer-personas': DEMO_FIXTURE.customerPersonas.map((persona) => ({
