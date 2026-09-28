@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { tenantAuthorizationSnapshot } from '../../authorization/policy.js';
 import { refreshPlatformProjectionBatchWithClient } from './platform-projection-repository.js';
 import {
@@ -116,6 +118,27 @@ function catalogueSnapshot(tenant) {
   };
 }
 
+function mediaAssetKey(roomId) {
+  const northwind = /^northwind-berlin-room-(10|[1-9])$/.exec(roomId);
+  if (northwind) return `northwind-room-${northwind[1].padStart(2, '0')}`;
+  if (roomId === 'contoso-paris-room-1') return roomId;
+  throw new Error('DEMO_FIXTURE_MEDIA_ROOM_INVALID');
+}
+
+async function verifiedMediaBytes(media) {
+  const encoded = await readFile(new URL(
+    `../../demo/media/${mediaAssetKey(media.roomId)}.webp.b64`, import.meta.url,
+  ), 'utf8');
+  const bytes = Buffer.from(encoded.trim(), 'base64');
+  const digest = createHash('sha256').update(bytes).digest('hex');
+  if (bytes.length !== media.byteLength || digest !== media.sha256
+    || bytes.toString('ascii', 0, 4) !== 'RIFF'
+    || bytes.toString('ascii', 8, 12) !== 'WEBP') {
+    throw new Error('DEMO_FIXTURE_MEDIA_BYTES_INVALID');
+  }
+  return bytes;
+}
+
 async function seedTenantBusinessState(client, fixture) {
   for (const tenant of fixture.tenants) {
     await client.query({
@@ -220,7 +243,10 @@ async function seedTenantBusinessState(client, fixture) {
             location.id,
             room.name,
             room.capacity,
-            JSON.stringify({ floor: room.floor, equipment: room.equipment, accessibility: room.accessibility }),
+            JSON.stringify({
+              floor: room.floor, equipment: room.equipment, accessibility: room.accessibility,
+              mediaAssetIds: tenant.roomMedia.filter(({ roomId }) => roomId === room.id).map(({ id }) => id),
+            }),
             fixture.fixedClock,
           ],
         });
@@ -241,6 +267,22 @@ async function seedTenantBusinessState(client, fixture) {
           ],
         });
       }
+    }
+    for (const media of tenant.roomMedia) {
+      const bytes = await verifiedMediaBytes(media);
+      const creator = fixture.customerPersonas.find(({ tenantId, persona }) => (
+        tenantId === tenant.id && persona === 'tenant_admin'
+      ));
+      if (!creator) throw new Error('DEMO_FIXTURE_MEDIA_CREATOR_INVALID');
+      await client.query({
+        name: 'demo-fixture-insert-room-media',
+        text: `INSERT INTO tenant_room_media_assets (
+          tenant_id, id, room_id, bytes, content_type, byte_length,
+          width, height, content_sha256, created_at, created_by_user_id
+        ) VALUES ($1, $2, $3, $4, 'image/webp', $5, $6, $7, $8, $9, $10)`,
+        values: [tenant.id, media.id, media.roomId, bytes, media.byteLength,
+          media.width, media.height, Buffer.from(media.sha256, 'hex'), fixture.fixedClock, creator.userId],
+      });
     }
     for (const service of tenant.settings.catalogue.services) {
       await client.query({
@@ -645,6 +687,31 @@ export async function readDemoSemanticState({ client } = {}) {
       ON price.tenant_id = room.tenant_id AND price.room_id = room.id
     ORDER BY room.tenant_id, room.site_id, room.id
   `);
+  const mediaAssets = await readRows(client, 'demo-fixture-read-room-media', `
+    SELECT tenant_id, id, room_id, bytes, content_type, byte_length,
+      width, height, content_sha256
+    FROM tenant_room_media_assets ORDER BY tenant_id, id
+  `);
+  for (const media of mediaAssets) {
+    const hash = createHash('sha256').update(media.bytes).digest('hex');
+    if (media.content_type !== 'image/webp'
+      || media.bytes.length !== safeInteger(media.byte_length)
+      || !media.content_sha256.equals(Buffer.from(hash, 'hex'))) {
+      throw new Error('DEMO_FIXTURE_MEDIA_BYTES_DIVERGED');
+    }
+  }
+  for (const room of rooms) {
+    const references = mediaAssets
+      .filter(({ tenant_id: tenantId, room_id: roomId }) => (
+        tenantId === room.tenant_id && roomId === room.id
+      ))
+      .map(({ id }) => id).sort();
+    const stored = room.details?.mediaAssetIds;
+    if (!Array.isArray(stored)
+      || JSON.stringify([...stored].sort()) !== JSON.stringify(references)) {
+      throw new Error('DEMO_FIXTURE_MEDIA_REFERENCES_DIVERGED');
+    }
+  }
   const services = await readRows(client, 'demo-fixture-read-services', `
     SELECT tenant_id, id, currency FROM services ORDER BY tenant_id, id
   `);
@@ -815,6 +882,12 @@ export async function readDemoSemanticState({ client } = {}) {
         })),
       },
     },
+    roomMedia: mediaAssets.filter((entry) => entry.tenant_id === tenant.id).map((entry) => ({
+      id: entry.id, roomId: entry.room_id,
+      sha256: entry.content_sha256.toString('hex'),
+      byteLength: safeInteger(entry.byte_length),
+      width: safeInteger(entry.width), height: safeInteger(entry.height),
+    })),
     costCenters: costCenters.filter((entry) => entry.tenant_id === tenant.id).map((entry) => ({
       id: entry.id, code: entry.code, name: entry.name, active: entry.active,
     })),
