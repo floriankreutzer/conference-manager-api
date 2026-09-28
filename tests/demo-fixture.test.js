@@ -177,30 +177,21 @@ test('fixture rejects ready empty Tenants and inconsistent onboarding provider s
   populatedOnboarding.tenants[1].settings.locations = clone(DEMO_FIXTURE.tenants[1].settings.locations);
   assert.throws(
     () => validateDemoFixture(populatedOnboarding),
-    (error) => error.code === 'DEMO_FIXTURE_TENANT_INVALID',
+    (error) => error.code === 'DEMO_FIXTURE_SETTINGS_INVALID',
   );
 });
 
 test('each additional bookable room requires a distinct same-Tenant provider mapping', () => {
   const candidate = clone(DEMO_FIXTURE);
   const tenant = candidate.tenants[0];
-  tenant.settings.locations[0].rooms.push({
-    id: 'northwind-berlin-room-2',
-    name: 'Spree Boardroom',
-    capacity: 12,
-    priceMinor: 9500,
-  });
+  const mapping = tenant.providerSimulation.roomMappings.pop();
   assert.throws(
     () => validateDemoFixture(candidate),
     (error) => error.code === 'DEMO_FIXTURE_PROVIDER_INVALID',
   );
-  tenant.providerSimulation.roomMappings.push({
-    roomId: 'northwind-berlin-room-2',
-    externalRoomId: 'northwind-berlin-room-2',
-    resourceAddress: 'northwind-berlin-room-2@example.invalid',
-  });
+  tenant.providerSimulation.roomMappings.push(mapping);
   assert.equal(validateDemoFixture(candidate), candidate);
-  tenant.providerSimulation.roomMappings[1].roomId = tenant.providerSimulation.roomMappings[0].roomId;
+  tenant.providerSimulation.roomMappings.at(-1).roomId = tenant.providerSimulation.roomMappings[0].roomId;
   assert.throws(
     () => validateDemoFixture(candidate),
     (error) => error.code === 'DEMO_FIXTURE_PROVIDER_INVALID',
