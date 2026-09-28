@@ -127,7 +127,7 @@ function incompleteOnboardingFixture() {
   const candidate = clone(DEMO_FIXTURE);
   const tenant = candidate.tenants[1];
   tenant.lifecycleStatus = 'onboarding';
-  tenant.settings.organization.name = '';
+  tenant.settings.organization.name = null;
   tenant.settings.locations = [];
   tenant.settings.catalogue.services = [];
   tenant.settings.catalogue.equipment = [];
