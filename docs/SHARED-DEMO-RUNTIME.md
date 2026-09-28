@@ -161,7 +161,10 @@ Persona and Tenant values are positively validated and matched against source-de
 
 A default is issued only when the matching Demo cookie is genuinely absent. A presented malformed,
 duplicated, expired, revoked or unknown Customer or Platform Demo cookie fails closed and is never
-silently replaced by a new default session.
+silently replaced by a new default session. On the Demo establish GET alone, a known invalid or
+outdated session returns 401 while expiring only that surface's cookie. A subsequent explicit
+browser retry arrives without the cookie and may issue the documented server-owned default.
+Production session routes and protected Demo routes do not perform this recovery.
 
 Customer roles remain `employee`, `conference_manager` and `tenant_admin`; customer permissions are derived from the canonical Tenant authorization policy. `dual_role` is a Demo persona label that deterministically composes the `employee`, `conference_manager` and `tenant_admin` roles through that policy; it is not a stored fourth customer role. Platform personas use the canonical Platform role/permission policy and server-owned target scope. A customer session never authorizes Platform routes, a Platform session never becomes a Tenant Principal, and choosing a different Demo Tenant creates a new server-issued customer Principal instead of using the submitted Tenant ID directly on business queries.
 
