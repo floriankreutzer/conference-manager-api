@@ -3,6 +3,7 @@ const TEXT_MAX = 160;
 const EQUIPMENT_LIMIT = 100;
 const MEDIA_LIMIT = 20;
 const ROOM_DETAIL_KEYS = new Set([
+  'description',
   'floor',
   'equipment',
   'accessibility',
