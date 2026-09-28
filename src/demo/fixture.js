@@ -206,61 +206,169 @@ const fixture = {
               "id": "northwind-berlin-room-1",
               "name": "Berlin Forum",
               "capacity": 24,
-              "priceMinor": 12500
+              "priceMinor": 12500,
+              "floor": "EG",
+              "equipment": [
+                "display-86",
+                "video-system",
+                "whiteboard",
+                "wireless-mic"
+              ],
+              "accessibility": [
+                "Stufenlos erreichbar",
+                "Aufzug vorhanden"
+              ]
             },
             {
               "id": "northwind-berlin-room-2",
               "name": "Spree Boardroom",
               "capacity": 12,
-              "priceMinor": 9500
+              "priceMinor": 9500,
+              "floor": "1. OG",
+              "equipment": [
+                "display-65",
+                "video-system",
+                "speakerphone"
+              ],
+              "accessibility": [
+                "Stufenlos erreichbar",
+                "Aufzug vorhanden"
+              ]
             },
             {
               "id": "northwind-berlin-room-3",
               "name": "Workshop Loft",
               "capacity": 20,
-              "priceMinor": 11000
+              "priceMinor": 11000,
+              "floor": "2. OG",
+              "equipment": [
+                "mobile-display",
+                "whiteboard",
+                "pinboard",
+                "moderation-kit"
+              ],
+              "accessibility": [
+                "Stufenlos erreichbar",
+                "Aufzug vorhanden"
+              ]
             },
             {
               "id": "northwind-berlin-room-4",
               "name": "Innovation Lab",
               "capacity": 16,
-              "priceMinor": 10000
+              "priceMinor": 10000,
+              "floor": "2. OG",
+              "equipment": [
+                "mobile-display",
+                "whiteboard",
+                "pinboard",
+                "moderation-kit"
+              ],
+              "accessibility": [
+                "Stufenlos erreichbar",
+                "Aufzug vorhanden"
+              ]
             },
             {
               "id": "northwind-berlin-room-5",
               "name": "Focus One",
               "capacity": 4,
-              "priceMinor": 3500
+              "priceMinor": 3500,
+              "floor": "1. OG",
+              "equipment": [
+                "display-55",
+                "usb-camera",
+                "usb-c-dock"
+              ],
+              "accessibility": [
+                "Stufenlos erreichbar",
+                "Aufzug vorhanden"
+              ]
             },
             {
               "id": "northwind-berlin-room-6",
               "name": "Focus Two",
               "capacity": 4,
-              "priceMinor": 3500
+              "priceMinor": 3500,
+              "floor": "1. OG",
+              "equipment": [
+                "display-55",
+                "usb-camera",
+                "speakerphone"
+              ],
+              "accessibility": [
+                "Stufenlos erreichbar",
+                "Aufzug vorhanden"
+              ]
             },
             {
               "id": "northwind-berlin-room-7",
               "name": "Training Campus",
               "capacity": 36,
-              "priceMinor": 16000
+              "priceMinor": 16000,
+              "floor": "EG",
+              "equipment": [
+                "projector",
+                "projection-screen",
+                "wireless-mic",
+                "flipchart"
+              ],
+              "accessibility": [
+                "Stufenlos erreichbar",
+                "Aufzug vorhanden"
+              ]
             },
             {
               "id": "northwind-berlin-room-8",
               "name": "Executive Lounge",
               "capacity": 8,
-              "priceMinor": 9000
+              "priceMinor": 9000,
+              "floor": "3. OG",
+              "equipment": [
+                "display-65",
+                "video-system",
+                "speakerphone"
+              ],
+              "accessibility": [
+                "Stufenlos erreichbar",
+                "Aufzug vorhanden"
+              ]
             },
             {
               "id": "northwind-berlin-room-9",
               "name": "Townhall Auditorium",
               "capacity": 80,
-              "priceMinor": 30000
+              "priceMinor": 30000,
+              "floor": "EG",
+              "equipment": [
+                "projector",
+                "projection-screen",
+                "wireless-mic",
+                "presenter",
+                "hearing-support"
+              ],
+              "accessibility": [
+                "Stufenlos erreichbar",
+                "Aufzug vorhanden"
+              ]
             },
             {
               "id": "northwind-berlin-room-10",
               "name": "Hybrid Studio",
               "capacity": 10,
-              "priceMinor": 12000
+              "priceMinor": 12000,
+              "floor": "3. OG",
+              "equipment": [
+                "display-86",
+                "video-system",
+                "usb-camera",
+                "wireless-mic",
+                "studio-light"
+              ],
+              "accessibility": [
+                "Stufenlos erreichbar",
+                "Aufzug vorhanden"
+              ]
             }
           ],
         }],
@@ -1128,13 +1236,19 @@ const fixture = {
               "id": "contoso-paris-room-1",
               "name": "Paris Atelier",
               "capacity": 16,
-              "priceMinor": 9500
+              "priceMinor": 9500,
+              "floor": null,
+              "equipment": [],
+              "accessibility": []
             },
             {
               "id": "contoso-paris-room-2",
               "name": "Paris Studio",
               "capacity": 6,
-              "priceMinor": null
+              "priceMinor": null,
+              "floor": null,
+              "equipment": [],
+              "accessibility": []
             }
           ],
         }],
@@ -1393,10 +1507,23 @@ function validateTenant(value) {
       fail('DEMO_FIXTURE_SETTINGS_INVALID');
     }
     for (const room of location.rooms) {
-      exactKeys(room, ['id', 'name', 'capacity', 'priceMinor'], 'DEMO_FIXTURE_SETTINGS_INVALID');
+      exactKeys(room, ['id', 'name', 'capacity', 'priceMinor', 'floor', 'equipment', 'accessibility'], 'DEMO_FIXTURE_SETTINGS_INVALID');
       string(room.id, 'DEMO_FIXTURE_SETTINGS_INVALID', { max: 128, pattern: ENTITY_ID_PATTERN });
       string(room.name, 'DEMO_FIXTURE_SETTINGS_INVALID');
       integer(room.capacity, 'DEMO_FIXTURE_SETTINGS_INVALID', 1);
+      if (room.floor !== null) string(room.floor, 'DEMO_FIXTURE_SETTINGS_INVALID', { max: 80 });
+      if (!Array.isArray(room.equipment) || room.equipment.length > 50) fail('DEMO_FIXTURE_SETTINGS_INVALID');
+      for (const entry of room.equipment) {
+        string(entry, 'DEMO_FIXTURE_SETTINGS_INVALID', { max: 80 });
+      }
+      unique(room.equipment, 'DEMO_FIXTURE_SETTINGS_INVALID');
+      if (!Array.isArray(room.accessibility) || room.accessibility.length > 20) {
+        fail('DEMO_FIXTURE_SETTINGS_INVALID');
+      }
+      for (const entry of room.accessibility) {
+        string(entry, 'DEMO_FIXTURE_SETTINGS_INVALID', { max: 80 });
+      }
+      unique(room.accessibility, 'DEMO_FIXTURE_SETTINGS_INVALID');
       if (room.priceMinor === null) {
         if (value.lifecycleStatus !== 'ready') fail('DEMO_FIXTURE_SETTINGS_INVALID');
       } else {
