@@ -342,6 +342,7 @@ export function createPostgresDemoResetRepository({
   auditRepository = null,
   seedBusinessState = seedDemoBusinessState,
   readSemanticState = readDemoSemanticState,
+  onSemanticMismatch = null,
 } = {}) {
   if (!pool || typeof pool.connect !== 'function') throw new TypeError('POSTGRES_POOL_REQUIRED');
   if (
@@ -352,6 +353,9 @@ export function createPostgresDemoResetRepository({
     )
   ) throw new TypeError('DEMO_RESET_AUDIT_REPOSITORY_INVALID');
   assertFactoryConfiguration({ expectedDatabaseName, expectedResetRole, seedBusinessState, readSemanticState });
+  if (onSemanticMismatch !== null && typeof onSemanticMismatch !== 'function') {
+    throw new TypeError('DEMO_RESET_DIAGNOSTIC_INVALID');
+  }
 
   return Object.freeze({
     async reset({ fixture, checksum, authority = null, auditEventFor = null } = {}) {
@@ -405,9 +409,8 @@ export function createPostgresDemoResetRepository({
           const semanticState = await readSemanticState({ client });
           phase = DEMO_RESET_FAILURE_REASON.SEMANTIC_CHECKSUM;
           if (semanticChecksum(semanticState) !== generationChecksum) {
-            if (process.env.NODE_ENV === 'test') {
-              const path = firstSemanticDifference(generation, semanticState);
-              process.stderr.write(`DEMO_SEMANTIC_PATH: ${path?.slice(0, 120) || 'unknown'}\n`);
+            if (onSemanticMismatch) {
+              onSemanticMismatch(firstSemanticDifference(generation, semanticState));
             }
             fail('DEMO_RESET_SEMANTIC_CHECKSUM_MISMATCH');
           }
