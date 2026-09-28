@@ -80,6 +80,7 @@ export function createDemoCustomerControlRoutes({ personaService } = {}) {
     || typeof personaService.establish !== 'function'
     || typeof personaService.switch !== 'function'
     || typeof personaService.tenants !== 'function'
+    || typeof personaService.clearCookie !== 'function'
   ) throw new TypeError('DEMO_CUSTOMER_PERSONA_SERVICE_REQUIRED');
 
   return defineRouteModule({
@@ -98,6 +99,10 @@ export function createDemoCustomerControlRoutes({ personaService } = {}) {
           try {
             result = await personaService.establish(request, { correlationId: requestId });
           } catch (error) {
+            if (
+              error?.message === 'DEMO_CUSTOMER_SESSION_INVALID'
+              || error?.message === 'DEMO_CUSTOMER_SESSION_AUTHORITY_INVALID'
+            ) response.setHeader('Set-Cookie', personaService.clearCookie());
             throw normalizeContextError(error);
           }
           const tenantContext = await tenantGuard.requireKnown(result.principal);
