@@ -1316,6 +1316,228 @@ const fixture = {
               "abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           }
         ],
+      catalogueMedia: [
+        {
+          "id": "52000000-0000-4000-8000-000000000001",
+          "assetKey": "northwind-room-01",
+          "ownerKind": "room_plan",
+          "ownerId": "northwind-berlin-room-1",
+          "sha256": "2e0cc8d36db4ff22eea134002e93c5ea4099046a213a0df9f30f8a0323193355",
+          "byteLength": 26632,
+          "contentType": "image/png",
+          "altText": "Illustrativer Raumplan: Berlin Forum"
+        },
+        {
+          "id": "52000000-0000-4000-8000-000000000002",
+          "assetKey": "northwind-room-02",
+          "ownerKind": "room_plan",
+          "ownerId": "northwind-berlin-room-2",
+          "sha256": "b3e15202ab04ece660ce5b319e3a1589b765d3e7e53552b22f256d4407d77b06",
+          "byteLength": 26757,
+          "contentType": "image/png",
+          "altText": "Illustrativer Raumplan: Spree Boardroom"
+        },
+        {
+          "id": "52000000-0000-4000-8000-000000000003",
+          "assetKey": "northwind-room-03",
+          "ownerKind": "room_plan",
+          "ownerId": "northwind-berlin-room-3",
+          "sha256": "8daeec041666465fbde85d235d21453c1eca04125a4aa72cc17f63fdca7f5324",
+          "byteLength": 28353,
+          "contentType": "image/png",
+          "altText": "Illustrativer Raumplan: Workshop Loft"
+        },
+        {
+          "id": "52000000-0000-4000-8000-000000000004",
+          "assetKey": "northwind-room-04",
+          "ownerKind": "room_plan",
+          "ownerId": "northwind-berlin-room-4",
+          "sha256": "02850b7bde682bef535365729dbf88f3276f4052be9df370d0613c29b2e03abf",
+          "byteLength": 26233,
+          "contentType": "image/png",
+          "altText": "Illustrativer Raumplan: Innovation Lab"
+        },
+        {
+          "id": "52000000-0000-4000-8000-000000000005",
+          "assetKey": "northwind-room-05",
+          "ownerKind": "room_plan",
+          "ownerId": "northwind-berlin-room-5",
+          "sha256": "48f2492c7aec231756a83cb244f2791286de06ce6e3a4bbf40a04d8c11b77117",
+          "byteLength": 25021,
+          "contentType": "image/png",
+          "altText": "Illustrativer Raumplan: Focus One"
+        },
+        {
+          "id": "52000000-0000-4000-8000-000000000006",
+          "assetKey": "northwind-room-06",
+          "ownerKind": "room_plan",
+          "ownerId": "northwind-berlin-room-6",
+          "sha256": "c35bea1f2fe69037710ae92be0b525c73da0010df5ebbefc423e20cf790f953e",
+          "byteLength": 23499,
+          "contentType": "image/png",
+          "altText": "Illustrativer Raumplan: Focus Two"
+        },
+        {
+          "id": "52000000-0000-4000-8000-000000000007",
+          "assetKey": "northwind-room-07",
+          "ownerKind": "room_plan",
+          "ownerId": "northwind-berlin-room-7",
+          "sha256": "b1720744879164c5e859a404b4858fdce024fbbdcf43eb1cbf7f1db4e438fb24",
+          "byteLength": 26215,
+          "contentType": "image/png",
+          "altText": "Illustrativer Raumplan: Training Campus"
+        },
+        {
+          "id": "52000000-0000-4000-8000-000000000008",
+          "assetKey": "northwind-room-08",
+          "ownerKind": "room_plan",
+          "ownerId": "northwind-berlin-room-8",
+          "sha256": "7260f6191697d98cdd5543044da6afef4aac9a556951879da1b8fc05a0b0ee3e",
+          "byteLength": 26571,
+          "contentType": "image/png",
+          "altText": "Illustrativer Raumplan: Executive Lounge"
+        },
+        {
+          "id": "52000000-0000-4000-8000-000000000009",
+          "assetKey": "northwind-room-09",
+          "ownerKind": "room_plan",
+          "ownerId": "northwind-berlin-room-9",
+          "sha256": "e00d7185c66d29ca1fbda601cedef3f3cdcb935b0ec562b18233e9573912faf1",
+          "byteLength": 30021,
+          "contentType": "image/png",
+          "altText": "Illustrativer Raumplan: Townhall Auditorium"
+        },
+        {
+          "id": "52000000-0000-4000-8000-000000000010",
+          "assetKey": "northwind-room-10",
+          "ownerKind": "room_plan",
+          "ownerId": "northwind-berlin-room-10",
+          "sha256": "4b8caaf00b9afeaca84f21bfbc436291b9c24f61338b3fe8421f4a3621797b22",
+          "byteLength": 26584,
+          "contentType": "image/png",
+          "altText": "Illustrativer Raumplan: Hybrid Studio"
+        },
+        {
+          "id": "53000000-0000-4000-8000-000000000001",
+          "assetKey": "coffee-break",
+          "ownerKind": "catering_package",
+          "ownerId": "coffee-break",
+          "sha256": "866d0253456f42a76cd16c2fe03b9e60ec22679924de520a8fe2a6af355ddf6a",
+          "byteLength": 187128,
+          "contentType": "image/webp",
+          "altText": "Illustratives Demobild: Kaffeepause"
+        },
+        {
+          "id": "53000000-0000-4000-8000-000000000002",
+          "assetKey": "business-breakfast",
+          "ownerKind": "catering_package",
+          "ownerId": "business-breakfast",
+          "sha256": "8fb3bcf1c8231f42415e482df65c163d22585845acdf0fcc08ae9afa93daa2d1",
+          "byteLength": 258184,
+          "contentType": "image/webp",
+          "altText": "Illustratives Demobild: Business-Frühstück"
+        },
+        {
+          "id": "53000000-0000-4000-8000-000000000003",
+          "assetKey": "workshop-day",
+          "ownerKind": "catering_package",
+          "ownerId": "workshop-day",
+          "sha256": "5e80d1b2ae57850dd2fc7ab252c542d23ac4ccd8362a0fae465bfdf75238ae73",
+          "byteLength": 246504,
+          "contentType": "image/webp",
+          "altText": "Illustratives Demobild: Workshop-Tag"
+        },
+        {
+          "id": "53000000-0000-4000-8000-000000000004",
+          "assetKey": "vegan-day",
+          "ownerKind": "catering_package",
+          "ownerId": "vegan-day",
+          "sha256": "8f7ce6d7249c419cff20571a6eda8f6ffe7b641090b9322f05c429d0ad3378cb",
+          "byteLength": 260008,
+          "contentType": "image/webp",
+          "altText": "Illustratives Demobild: Veganer Konferenztag"
+        },
+        {
+          "id": "53000000-0000-4000-8000-000000000005",
+          "assetKey": "coffee-tea",
+          "ownerKind": "catering_item",
+          "ownerId": "coffee-tea",
+          "sha256": "00a7cdf0e9d018658728d7aef4386ff0e87f9272ec3bc785f908d027c4b4a6fa",
+          "byteLength": 146026,
+          "contentType": "image/webp",
+          "altText": "Illustratives Demobild: Kaffee und Tee"
+        },
+        {
+          "id": "53000000-0000-4000-8000-000000000006",
+          "assetKey": "water-juice",
+          "ownerKind": "catering_item",
+          "ownerId": "water-juice",
+          "sha256": "d890d3773fc81d548a4ab7804be83dbaa2dd8c4325de629edd9e14ba6b11ee78",
+          "byteLength": 187934,
+          "contentType": "image/webp",
+          "altText": "Illustratives Demobild: Wasser und Saft"
+        },
+        {
+          "id": "53000000-0000-4000-8000-000000000007",
+          "assetKey": "fruit",
+          "ownerKind": "catering_item",
+          "ownerId": "fruit",
+          "sha256": "ca727f10dd85239e54cb0563e41170ff40463f8dfae6f1ca6f5945daf3f9461c",
+          "byteLength": 236294,
+          "contentType": "image/webp",
+          "altText": "Illustratives Demobild: Obstauswahl"
+        },
+        {
+          "id": "53000000-0000-4000-8000-000000000008",
+          "assetKey": "pastry",
+          "ownerKind": "catering_item",
+          "ownerId": "pastry",
+          "sha256": "c27848277dbf9c2fc126571da6cc5dcccd51f53d464504f4736a4579827a3407",
+          "byteLength": 288090,
+          "contentType": "image/webp",
+          "altText": "Illustratives Demobild: Gebäckauswahl"
+        },
+        {
+          "id": "53000000-0000-4000-8000-000000000009",
+          "assetKey": "sandwich-vegetarian",
+          "ownerKind": "catering_item",
+          "ownerId": "sandwich-vegetarian",
+          "sha256": "7416c0ab54ba74957f2aa07a8f60495a1afc32886450e96a237ac7047c505ee1",
+          "byteLength": 274060,
+          "contentType": "image/webp",
+          "altText": "Illustratives Demobild: Vegetarische Sandwiches"
+        },
+        {
+          "id": "53000000-0000-4000-8000-000000000010",
+          "assetKey": "lunch-vegan",
+          "ownerKind": "catering_item",
+          "ownerId": "lunch-vegan",
+          "sha256": "0acb3ac24d44500b1dc463269ec02ea3649560fe69f698faa41cdf7c850cfb05",
+          "byteLength": 298930,
+          "contentType": "image/webp",
+          "altText": "Illustratives Demobild: Veganes Lunch-Buffet"
+        },
+        {
+          "id": "53000000-0000-4000-8000-000000000011",
+          "assetKey": "lunch-classic",
+          "ownerKind": "catering_item",
+          "ownerId": "lunch-classic",
+          "sha256": "5d8e795e397bb2e8f62bb7cd7b330546fc5c97a04d2a78522d26f6a32e265fb7",
+          "byteLength": 281512,
+          "contentType": "image/webp",
+          "altText": "Illustratives Demobild: Klassisches Lunch-Buffet"
+        },
+        {
+          "id": "53000000-0000-4000-8000-000000000012",
+          "assetKey": "afternoon-snack",
+          "ownerKind": "catering_item",
+          "ownerId": "afternoon-snack",
+          "sha256": "5ab9d811f774737a31b522f963efbc7b689b028bade4a6178fe825f2944508dc",
+          "byteLength": 211610,
+          "contentType": "image/webp",
+          "altText": "Illustratives Demobild: Nachmittagssnack"
+        }
+      ],
       roomMedia: [
         {
           "id": "51000000-0000-4000-8000-000000000001",
@@ -1562,6 +1784,18 @@ const fixture = {
             "description": null
           }
         ],
+      catalogueMedia: [
+        {
+          "id": "52000000-0000-4000-8000-000000000011",
+          "assetKey": "contoso-paris-room-1",
+          "ownerKind": "room_plan",
+          "ownerId": "contoso-paris-room-1",
+          "sha256": "aee618669538d54323169b9dea5b7c463e22185d0b2bccab5541c49c38936e2b",
+          "byteLength": 23521,
+          "contentType": "image/png",
+          "altText": "Illustrativer Raumplan: Paris Atelier"
+        }
+      ],
       roomMedia: [
         {
           "id": "51000000-0000-4000-8000-000000000021",
@@ -1608,6 +1842,8 @@ const fixture = {
       },
       costCenters: [],
       requests: [],
+      catalogueMedia: [],
+      catalogueMedia: [],
       roomMedia: [],
       providerSimulation: {
         provider: 'demo_microsoft365',
@@ -1747,6 +1983,7 @@ function validateTenant(value) {
     'settings',
     'costCenters',
     'roomMedia',
+    'catalogueMedia',
     'requests',
     'providerSimulation',
   ], 'DEMO_FIXTURE_TENANT_INVALID');
@@ -1910,6 +2147,37 @@ function validateTenant(value) {
   }
   unique(value.roomMedia.map(({ id }) => id), 'DEMO_FIXTURE_MEDIA_INVALID');
   unique(value.roomMedia.map(({ roomId }) => roomId), 'DEMO_FIXTURE_MEDIA_INVALID');
+  if (!Array.isArray(value.catalogueMedia) || value.catalogueMedia.length > 40) {
+    fail('DEMO_FIXTURE_CATALOGUE_MEDIA_INVALID');
+  }
+  for (const media of value.catalogueMedia) {
+    exactKeys(media, ['id', 'assetKey', 'ownerKind', 'ownerId', 'sha256', 'byteLength',
+      'contentType', 'altText'], 'DEMO_FIXTURE_CATALOGUE_MEDIA_INVALID');
+    string(media.id, 'DEMO_FIXTURE_CATALOGUE_MEDIA_INVALID', { min: 36, max: 36, pattern: UUID_PATTERN });
+    string(media.assetKey, 'DEMO_FIXTURE_CATALOGUE_MEDIA_INVALID', { max: 80,
+      pattern: /^[a-z0-9][a-z0-9-]*$/ });
+    string(media.ownerId, 'DEMO_FIXTURE_CATALOGUE_MEDIA_INVALID', { max: 128,
+      pattern: ENTITY_ID_PATTERN });
+    string(media.sha256, 'DEMO_FIXTURE_CATALOGUE_MEDIA_INVALID', { min: 64, max: 64,
+      pattern: CHECKSUM_PATTERN });
+    string(media.altText, 'DEMO_FIXTURE_CATALOGUE_MEDIA_INVALID', { max: 160 });
+    integer(media.byteLength, 'DEMO_FIXTURE_CATALOGUE_MEDIA_INVALID', 32);
+    if (media.byteLength > 2_097_152 || ![
+      'room_plan', 'catering_package', 'catering_item',
+    ].includes(media.ownerKind)
+      || media.contentType !== (media.ownerKind === 'room_plan' ? 'image/png' : 'image/webp')) {
+      fail('DEMO_FIXTURE_CATALOGUE_MEDIA_INVALID');
+    }
+    const owners = media.ownerKind === 'room_plan'
+      ? value.settings.locations.flatMap(({ rooms }) => rooms)
+      : value.settings.catalogue[media.ownerKind === 'catering_package'
+        ? 'cateringPackages' : 'cateringItems'];
+    if (!owners.some(({ id }) => id === media.ownerId)) fail('DEMO_FIXTURE_CATALOGUE_MEDIA_INVALID');
+  }
+  unique(value.catalogueMedia.map(({ id }) => id), 'DEMO_FIXTURE_CATALOGUE_MEDIA_INVALID');
+  unique(value.catalogueMedia.map(({ assetKey }) => assetKey), 'DEMO_FIXTURE_CATALOGUE_MEDIA_INVALID');
+  unique(value.catalogueMedia.map(({ ownerKind, ownerId }) =>
+    `${ownerKind}:${ownerId}`), 'DEMO_FIXTURE_CATALOGUE_MEDIA_INVALID');
   exactKeys(
     value.providerSimulation,
     [
