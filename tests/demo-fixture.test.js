@@ -152,6 +152,7 @@ function incompleteOnboardingFixture() {
   tenant.settings.catalogue.equipment = [];
   tenant.requests = [];
   tenant.roomMedia = [];
+  tenant.catalogueMedia = [];
   tenant.providerSimulation.connectionState = 'pending';
   tenant.providerSimulation.placesPermission = 'missing';
   tenant.providerSimulation.calendarsPermission = 'missing';
