@@ -2153,7 +2153,7 @@ export function createDemoResetGenerationFixture(baseline, now = new Date()) {
   const daysUntilMonday = ((8 - new Date(today).getUTCDay()) % 7) || 7;
   const monday = today + daysUntilMonday * DAY_MS;
   const generation = structuredClone(baseline);
-  generation.fixedClock = localInstant(monday, 9, 0, 'Europe/Berlin');
+  generation.fixedClock = now.toISOString();
   for (const tenant of generation.tenants) {
     for (const request of tenant.requests) {
       const baselineLocalStart = Date.parse(request.startsAt) + BERLIN_SUMMER_OFFSET_MS;
