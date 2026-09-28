@@ -21,7 +21,7 @@ function clone(value) {
 
 test('Demo fixture is deterministic, bounded and deeply immutable', () => {
   assert.equal(DEMO_FIXTURE.schemaVersion, 1);
-  assert.equal(DEMO_TENANTS.length, 2);
+  assert.equal(DEMO_TENANTS.length, 3);
   assert.equal(Object.isFrozen(DEMO_FIXTURE), true);
   assert.equal(Object.isFrozen(DEMO_FIXTURE.tenants[0].settings), true);
   assert.match(DEMO_FIXTURE_CHECKSUM, /^[0-9a-f]{64}$/);
@@ -52,7 +52,9 @@ test('fixture provides one activatable Tenant and an isolated degraded-provider 
 
 test('customer lookup exposes canonical role unions and provider references for every Tenant', () => {
   for (const tenant of DEMO_TENANTS) {
-    for (const persona of ['employee', 'conference_manager', 'tenant_admin']) {
+    const personas = tenant.lifecycleStatus === 'onboarding'
+      ? ['tenant_admin'] : ['employee', 'conference_manager', 'tenant_admin'];
+    for (const persona of personas) {
       const selection = DEMO_CUSTOMER_PERSONAS_BY_CONTEXT[customerPersonaKey(tenant.id, persona)];
       assert.equal(selection.tenantId, tenant.id);
       assert.equal(selection.persona, persona);
