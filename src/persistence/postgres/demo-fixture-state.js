@@ -680,7 +680,7 @@ export async function readDemoSemanticState({ client } = {}) {
     SELECT tenant_id, id, name, guest_information FROM sites ORDER BY tenant_id, id
   `);
   const rooms = await readRows(client, 'demo-fixture-read-rooms', `
-    SELECT room.tenant_id, room.site_id, room.id, room.name, room.capacity,
+    SELECT room.tenant_id, room.site_id, room.id, room.name, room.capacity, room.details,
            price.price_minor
     FROM rooms AS room
     LEFT JOIN tenant_room_prices AS price
