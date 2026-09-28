@@ -831,11 +831,28 @@ export async function readDemoSemanticState({ client } = {}) {
     FROM catering_packages entry ORDER BY entry.tenant_id, entry.id
   `);
   const requests = await readRows(client, 'demo-fixture-read-requests', `
-    SELECT tenant_id, id, requester_user_id, room_id, status, starts_at, ends_at,
-           internal_participants, external_participants
-    FROM requests
-    ORDER BY tenant_id, id
+    SELECT request.tenant_id, request.id, request.requester_user_id, request.room_id,
+           request.status, request.starts_at, request.ends_at,
+           request.internal_participants, request.external_participants,
+           request.schema_version, request.request_snapshot,
+           request.current_revision_sequence, revision.record AS revision_record
+    FROM requests request
+    LEFT JOIN request_revisions revision ON revision.tenant_id = request.tenant_id
+      AND revision.request_id = request.id
+      AND revision.revision_sequence = request.current_revision_sequence
+    ORDER BY request.tenant_id, request.id
   `);
+  for (const request of requests) {
+    const snapshot = request.request_snapshot;
+    if (safeInteger(request.schema_version) !== 3
+      || !snapshot || snapshot.schemaVersion !== 3
+      || !request.current_revision_sequence
+      || !request.revision_record
+      || JSON.stringify(request.revision_record.details) !== JSON.stringify(snapshot.details)
+      || JSON.stringify(request.revision_record.pricing) !== JSON.stringify(snapshot.pricing)) {
+      throw new Error('DEMO_FIXTURE_REQUEST_REVISION_DIVERGED');
+    }
+  }
   const providers = await readRows(client, 'demo-fixture-read-providers', `
     SELECT simulation.tenant_id, simulation.provider,
            binding.id AS identity_binding_id,
@@ -993,6 +1010,11 @@ export async function readDemoSemanticState({ client } = {}) {
         endsAt: iso(request.ends_at),
         internalParticipants: safeInteger(request.internal_participants),
         externalParticipants: safeInteger(request.external_participants),
+        title: request.request_snapshot.details.title,
+        equipmentIds: request.request_snapshot.details.equipmentIds,
+        cateringPackageId: request.request_snapshot.details.catering.packageSelection?.packageId ?? null,
+        costCenterId: request.request_snapshot.allocations.entries[0]?.costCenterId ?? null,
+        description: request.request_snapshot.details.specialRequirements,
       })),
     providerSimulation: (() => {
       const provider = providers.find(({ tenant_id: tenantId }) => tenantId === tenant.id);
