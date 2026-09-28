@@ -5,6 +5,8 @@ import { readJsonObjectBody, validateExactObject } from '../../security.js';
 export const DEMO_CUSTOMER_SESSION_PATH = '/api/v1/demo/session';
 export const DEMO_CUSTOMER_CONTEXT_PATH = '/api/v1/demo/session/context';
 export const DEMO_CUSTOMER_TENANTS_PATH = '/api/v1/demo/tenants';
+export const DEMO_CUSTOMER_MEDIA_PATH = '/api/v1/demo/media';
+const DEMO_MEDIA_ASSET_PATH = /^\/api\/v1\/demo\/media\/([0-9a-f-]{36})$/i;
 
 const CONTEXT_SCHEMA = Object.freeze({
   required: Object.freeze({
@@ -18,6 +20,7 @@ function routeKey(path) {
   if (path === DEMO_CUSTOMER_SESSION_PATH) return 'demo_customer_session';
   if (path === DEMO_CUSTOMER_CONTEXT_PATH) return 'demo_customer_context';
   if (path === DEMO_CUSTOMER_TENANTS_PATH) return 'demo_customer_tenants';
+  if (path === DEMO_CUSTOMER_MEDIA_PATH || DEMO_MEDIA_ASSET_PATH.test(path)) return 'demo_customer_media';
   return null;
 }
 
@@ -74,7 +77,7 @@ function normalizeContextError(error) {
   return error;
 }
 
-export function createDemoCustomerControlRoutes({ personaService } = {}) {
+export function createDemoCustomerControlRoutes({ personaService, mediaPool } = {}) {
   if (
     !personaService
     || typeof personaService.establish !== 'function'
@@ -108,6 +111,54 @@ export function createDemoCustomerControlRoutes({ personaService } = {}) {
           const tenantContext = await tenantGuard.requireKnown(result.principal);
           if (result.setCookie) response.setHeader('Set-Cookie', result.setCookie);
           sendJson(response, 200, sessionProjection(result, tenantContext, requestId), maxResponseBytes);
+          return 200;
+        }
+
+        if (path === DEMO_CUSTOMER_MEDIA_PATH || DEMO_MEDIA_ASSET_PATH.test(path)) {
+          if (!mediaPool || typeof mediaPool.query !== 'function') {
+            throw new ApiError(503, 'DEMO_MEDIA_UNAVAILABLE');
+          }
+          if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+          await assertNoBody(request);
+          const principal = await principalGuard.require(request);
+          const tenant = await tenantGuard.requireKnown(principal);
+          const assetId = path.match(DEMO_MEDIA_ASSET_PATH)?.[1];
+          if (assetId) {
+            const result = await mediaPool.query({
+              name: 'demo-customer-media-asset',
+              text: `SELECT bytes, content_type, byte_length FROM demo_catalogue_media_assets
+                WHERE tenant_id = $1 AND id = $2`,
+              values: [tenant.tenantId, assetId],
+            });
+            if (result.rowCount !== 1) throw new ApiError(404, 'NOT_FOUND');
+            const media = result.rows[0];
+            if (!Buffer.isBuffer(media.bytes) || media.bytes.length !== Number(media.byte_length)
+              || !['image/png', 'image/webp'].includes(media.content_type)) {
+              throw new ApiError(500, 'DEMO_MEDIA_CORRUPT');
+            }
+            response.statusCode = 200;
+            response.setHeader('Content-Type', media.content_type);
+            response.setHeader('Content-Length', media.bytes.length);
+            response.setHeader('Cache-Control', 'private, no-store');
+            response.setHeader('X-Content-Type-Options', 'nosniff');
+            response.end(media.bytes);
+            return 200;
+          }
+          const result = await mediaPool.query({
+            name: 'demo-customer-media-catalogue',
+            text: `SELECT id, owner_kind, owner_id, content_type, alt_text
+              FROM demo_catalogue_media_assets WHERE tenant_id = $1 ORDER BY id`,
+            values: [tenant.tenantId],
+          });
+          response.setHeader('Cache-Control', 'private, no-store');
+          sendJson(response, 200, {
+            assets: result.rows.map(({ id, owner_kind: ownerKind, owner_id: ownerId,
+              content_type: contentType, alt_text: altText }) => ({
+              id, ownerKind, ownerId, contentType, altText,
+              url: `${DEMO_CUSTOMER_MEDIA_PATH}/${id}`,
+            })),
+            requestId,
+          }, maxResponseBytes);
           return 200;
         }
 
