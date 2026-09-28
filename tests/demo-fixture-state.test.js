@@ -143,6 +143,7 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
         name: room.name,
         capacity: room.capacity,
         price_minor: room.priceMinor,
+        details: { floor: room.floor, equipment: room.equipment, accessibility: room.accessibility },
       })))
     )),
     'demo-fixture-read-services': DEMO_FIXTURE.tenants.flatMap((tenant) => (
