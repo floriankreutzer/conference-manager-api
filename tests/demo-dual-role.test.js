@@ -51,6 +51,7 @@ test('dual-role Demo switch derives a union principal and survives authoritative
     async resolvePrincipal() { return resolvedPrincipal; },
     async revoke(principal) { revoked.push(principal); return true; },
     csrfTokenForPrincipal() { return 'csrf-established'; },
+    clearCookie() { return 'cm_session=; Max-Age=0; Path=/api; HttpOnly'; },
   };
   const personaRepository = {
     async listTenants() { return []; },

@@ -170,6 +170,12 @@ export function createDemoPlatformControlRoutes({
           try {
             result = await personaService.establish(request, { correlationId: requestId });
           } catch (error) {
+            if (
+              error?.message === 'DEMO_PLATFORM_SESSION_INVALID'
+              || error?.message === 'DEMO_PLATFORM_SESSION_AUTHORITY_INVALID'
+            ) {
+              response.setHeader('Set-Cookie', sessionCookie(platformSessionService.clearCookie()));
+            }
             throw normalizePersonaError(error);
           }
           if (result.setCookie) response.setHeader('Set-Cookie', sessionCookie(result.setCookie));
