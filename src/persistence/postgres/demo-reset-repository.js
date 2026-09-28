@@ -149,7 +149,7 @@ function fail(code, cause) {
 }
 
 function firstSemanticDifference(expected, actual, path = '') {
-  if (Object.is(expected, actual)) return null;
+  if (semanticChecksum(expected) === semanticChecksum(actual)) return null;
   if (typeof expected !== typeof actual || expected === null || actual === null
     || typeof expected !== 'object') return path || 'root';
   const left = Object.keys(expected).sort();
