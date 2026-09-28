@@ -2,6 +2,7 @@ import { createCustomerComposition } from '../customer-composition.js';
 import { createLogger } from '../logger.js';
 import { createMetricsRegistry } from '../observability/metrics.js';
 import { createPostgresPersistence } from '../persistence/postgres/index.js';
+import { createPostgresDemoCatalogueMediaRepository } from '../persistence/postgres/demo-catalogue-media-repository.js';
 import { createPostgresDemoPersonaRepository } from '../persistence/postgres/demo-persona-repository.js';
 import { createPostgresDemoRuntimeReadiness } from '../persistence/postgres/demo-runtime-readiness.js';
 import { createPostgresPool } from '../persistence/postgres/pool.js';
@@ -102,7 +103,7 @@ export function createDemoCustomerComposition({
         sessionService,
         personaRepository,
       });
-      return [createDemoCustomerControlRoutes({ personaService, mediaPool: selectedPersistence.pool })];
+      return [createDemoCustomerControlRoutes({ personaService, mediaRepository: createPostgresDemoCatalogueMediaRepository(selectedPersistence.pool) })];
     },
   });
   let stopped = false;
