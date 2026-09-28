@@ -37,6 +37,8 @@ test('reset generation keeps local booking hours across daylight saving and chan
   const later = after.tenants[0].requests[0];
   assert.equal(first.startsAt, '2026-10-20T07:00:00.000Z');
   assert.equal(later.startsAt, '2026-11-03T08:00:00.000Z');
+  assert.equal(before.tenants[1].requests[0].startsAt, '2026-10-21T08:00:00.000Z');
+  assert.equal(after.tenants[1].requests[0].startsAt, '2026-11-04T09:00:00.000Z');
   assert.equal(Date.parse(first.endsAt) - Date.parse(first.startsAt), 120 * 60 * 1000);
   assert.notEqual(semanticChecksum(before), semanticChecksum(after));
   assert.equal(semanticChecksum(DEMO_FIXTURE), DEMO_FIXTURE_CHECKSUM);
