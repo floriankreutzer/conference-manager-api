@@ -102,7 +102,7 @@ export function createDemoCustomerComposition({
         sessionService,
         personaRepository,
       });
-      return [createDemoCustomerControlRoutes({ personaService })];
+      return [createDemoCustomerControlRoutes({ personaService, mediaPool: selectedPersistence.pool })];
     },
   });
   let stopped = false;
