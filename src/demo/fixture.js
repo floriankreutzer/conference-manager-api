@@ -1156,6 +1156,88 @@ const fixture = {
             "externalParticipants": 2
           }
         ],
+      roomMedia: [
+        {
+          "id": "51000000-0000-4000-8000-000000000001",
+          "roomId": "northwind-berlin-room-1",
+          "sha256": "0e97d1b75e31955893dc8460a40b49190e9c9b91e3c53fead0fb7993afcde387",
+          "byteLength": 225950,
+          "width": 1672,
+          "height": 941
+        },
+        {
+          "id": "51000000-0000-4000-8000-000000000002",
+          "roomId": "northwind-berlin-room-2",
+          "sha256": "24c659f53e141243a090be3128e8a45b2a04f166e123f677e2ac5ba3ee56fbd0",
+          "byteLength": 238496,
+          "width": 1672,
+          "height": 941
+        },
+        {
+          "id": "51000000-0000-4000-8000-000000000003",
+          "roomId": "northwind-berlin-room-3",
+          "sha256": "c1c9ade4b2162c3c7a147ea10fa7f92e5cb1279041f5d50b82048cd4fb9cb589",
+          "byteLength": 230970,
+          "width": 1672,
+          "height": 941
+        },
+        {
+          "id": "51000000-0000-4000-8000-000000000004",
+          "roomId": "northwind-berlin-room-4",
+          "sha256": "5830a01f60e1609c085364b9cc7d60be59e35ea512aaba65e970cfa775a67af2",
+          "byteLength": 202872,
+          "width": 1672,
+          "height": 941
+        },
+        {
+          "id": "51000000-0000-4000-8000-000000000005",
+          "roomId": "northwind-berlin-room-5",
+          "sha256": "85d837bbc8dcbbc04ecf36e044effaad8e4f06008c05c718457ccb5446271ea6",
+          "byteLength": 192812,
+          "width": 1672,
+          "height": 941
+        },
+        {
+          "id": "51000000-0000-4000-8000-000000000006",
+          "roomId": "northwind-berlin-room-6",
+          "sha256": "d2fa0db2d251f1f313a1a4c575388e0df0534fdf74b26500e4c7434b2463a4cc",
+          "byteLength": 199094,
+          "width": 1672,
+          "height": 941
+        },
+        {
+          "id": "51000000-0000-4000-8000-000000000007",
+          "roomId": "northwind-berlin-room-7",
+          "sha256": "6af2d97d846039a27a96750844f0ecb27e83a3c920a84ce0bcb113d742323750",
+          "byteLength": 199832,
+          "width": 1672,
+          "height": 940
+        },
+        {
+          "id": "51000000-0000-4000-8000-000000000008",
+          "roomId": "northwind-berlin-room-8",
+          "sha256": "fefd5edb31626b4a5772bb46d670e0066778e3dcdebf401dd925be5b2959de48",
+          "byteLength": 176664,
+          "width": 1672,
+          "height": 941
+        },
+        {
+          "id": "51000000-0000-4000-8000-000000000009",
+          "roomId": "northwind-berlin-room-9",
+          "sha256": "c2edd44e096f47205ee94940693013648b359f933ab9ac4806ede28ddd71acc1",
+          "byteLength": 143546,
+          "width": 1672,
+          "height": 941
+        },
+        {
+          "id": "51000000-0000-4000-8000-000000000010",
+          "roomId": "northwind-berlin-room-10",
+          "sha256": "29a82bf0ab79d189f2a1cc576c8f30d868a998d5e01313560cfd8e41db9bb8d2",
+          "byteLength": 172110,
+          "width": 1672,
+          "height": 941
+        }
+      ],
       providerSimulation: {
         provider: 'demo_microsoft365',
         identityBindingId: '14000000-0000-4000-8000-000000000001',
@@ -1302,6 +1384,16 @@ const fixture = {
             "externalParticipants": 0
           }
         ],
+      roomMedia: [
+        {
+          "id": "51000000-0000-4000-8000-000000000021",
+          "roomId": "contoso-paris-room-1",
+          "sha256": "2014af4e798fd951b964b3e4ff923d3e014817ea94db167fbe26f06d2c438d5a",
+          "byteLength": 188352,
+          "width": 1672,
+          "height": 941
+        }
+      ],
       providerSimulation: {
         provider: 'demo_microsoft365',
         identityBindingId: '24000000-0000-4000-8000-000000000002',
@@ -1338,6 +1430,7 @@ const fixture = {
       },
       costCenters: [],
       requests: [],
+      roomMedia: [],
       providerSimulation: {
         provider: 'demo_microsoft365',
         identityBindingId: '44000000-0000-4000-8000-000000000004',
@@ -1475,6 +1568,7 @@ function validateTenant(value) {
     'lifecycleRevision',
     'settings',
     'costCenters',
+    'roomMedia',
     'requests',
     'providerSimulation',
   ], 'DEMO_FIXTURE_TENANT_INVALID');
@@ -1595,6 +1689,24 @@ function validateTenant(value) {
     integer(request.internalParticipants, 'DEMO_FIXTURE_REQUEST_INVALID');
     integer(request.externalParticipants, 'DEMO_FIXTURE_REQUEST_INVALID');
   }
+  if (!Array.isArray(value.roomMedia) || value.roomMedia.length > 20) {
+    fail('DEMO_FIXTURE_MEDIA_INVALID');
+  }
+  for (const media of value.roomMedia) {
+    exactKeys(media, ['id', 'roomId', 'sha256', 'byteLength', 'width', 'height'], 'DEMO_FIXTURE_MEDIA_INVALID');
+    string(media.id, 'DEMO_FIXTURE_MEDIA_INVALID', { min: 36, max: 36, pattern: UUID_PATTERN });
+    string(media.roomId, 'DEMO_FIXTURE_MEDIA_INVALID', { max: 128, pattern: ENTITY_ID_PATTERN });
+    string(media.sha256, 'DEMO_FIXTURE_MEDIA_INVALID', { min: 64, max: 64, pattern: CHECKSUM_PATTERN });
+    integer(media.byteLength, 'DEMO_FIXTURE_MEDIA_INVALID', 1);
+    integer(media.width, 'DEMO_FIXTURE_MEDIA_INVALID', 1);
+    integer(media.height, 'DEMO_FIXTURE_MEDIA_INVALID', 1);
+    if (media.byteLength > 2_097_152 || media.width * media.height > 4_000_000
+      || !value.settings.locations.some(({ rooms }) => rooms.some(({ id }) => id === media.roomId))) {
+      fail('DEMO_FIXTURE_MEDIA_INVALID');
+    }
+  }
+  unique(value.roomMedia.map(({ id }) => id), 'DEMO_FIXTURE_MEDIA_INVALID');
+  unique(value.roomMedia.map(({ roomId }) => roomId), 'DEMO_FIXTURE_MEDIA_INVALID');
   exactKeys(
     value.providerSimulation,
     [
