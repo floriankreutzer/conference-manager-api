@@ -192,7 +192,7 @@ async function seedTenantBusinessState(client, fixture) {
             INSERT INTO rooms (
               tenant_id, id, site_id, name, capacity, active, details, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, true, '{}'::jsonb, $6, $6)
+            VALUES ($1, $2, $3, $4, $5, true, $6::jsonb, $7, $7)
           `,
           values: [
             tenant.id,
@@ -200,6 +200,7 @@ async function seedTenantBusinessState(client, fixture) {
             location.id,
             room.name,
             room.capacity,
+            JSON.stringify({ floor: room.floor, equipment: room.equipment, accessibility: room.accessibility }),
             fixture.fixedClock,
           ],
         });
@@ -748,6 +749,9 @@ export async function readDemoSemanticState({ client } = {}) {
               name: room.name,
               capacity: safeInteger(room.capacity),
               priceMinor: room.price_minor === null ? null : safeInteger(room.price_minor),
+              floor: room.details.floor,
+              equipment: room.details.equipment,
+              accessibility: room.details.accessibility,
             })),
         })),
       catalogue: {
