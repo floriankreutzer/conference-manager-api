@@ -200,12 +200,68 @@ const fixture = {
           id: '11000000-0000-4000-8000-000000000001',
           name: 'Berlin Demo Campus',
           guestInformation: guestInformation('Berlin', 'DE'),
-          rooms: [{
-            id: 'northwind-berlin-room-1',
-            name: 'Berlin Forum',
-            capacity: 24,
-            priceMinor: 12500,
-          }],
+          rooms: [
+            {
+              "id": "northwind-berlin-room-1",
+              "name": "Berlin Forum",
+              "capacity": 24,
+              "priceMinor": 12500
+            },
+            {
+              "id": "northwind-berlin-room-2",
+              "name": "Spree Boardroom",
+              "capacity": 12,
+              "priceMinor": 9500
+            },
+            {
+              "id": "northwind-berlin-room-3",
+              "name": "Workshop Loft",
+              "capacity": 20,
+              "priceMinor": 11000
+            },
+            {
+              "id": "northwind-berlin-room-4",
+              "name": "Innovation Lab",
+              "capacity": 16,
+              "priceMinor": 10000
+            },
+            {
+              "id": "northwind-berlin-room-5",
+              "name": "Focus One",
+              "capacity": 4,
+              "priceMinor": 3500
+            },
+            {
+              "id": "northwind-berlin-room-6",
+              "name": "Focus Two",
+              "capacity": 4,
+              "priceMinor": 3500
+            },
+            {
+              "id": "northwind-berlin-room-7",
+              "name": "Training Campus",
+              "capacity": 36,
+              "priceMinor": 16000
+            },
+            {
+              "id": "northwind-berlin-room-8",
+              "name": "Executive Lounge",
+              "capacity": 8,
+              "priceMinor": 9000
+            },
+            {
+              "id": "northwind-berlin-room-9",
+              "name": "Townhall Auditorium",
+              "capacity": 80,
+              "priceMinor": 30000
+            },
+            {
+              "id": "northwind-berlin-room-10",
+              "name": "Hybrid Studio",
+              "capacity": 10,
+              "priceMinor": 12000
+            }
+          ],
         }],
         catalogue: {
           services: ['room', 'catering'],
@@ -219,16 +275,208 @@ const fixture = {
           }],
         },
       },
-      requests: [{
-        id: '12000000-0000-4000-8000-000000000001',
-        requesterUserId: '13000000-0000-4000-8000-000000000001',
-        roomId: 'northwind-berlin-room-1',
-        status: 'Confirmed',
-        startsAt: '2026-06-18T08:00:00.000Z',
-        endsAt: '2026-06-18T10:00:00.000Z',
-        internalParticipants: 8,
-        externalParticipants: 2,
-      }],
+      requests: [
+          {
+            "id": "12000000-0000-4000-8000-000000000001",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-1",
+            "status": "Confirmed",
+            "startsAt": "2026-06-16T07:00:00.000Z",
+            "endsAt": "2026-06-16T09:00:00.000Z",
+            "internalParticipants": 16,
+            "externalParticipants": 2
+          },
+          {
+            "id": "12000000-0000-4000-8000-000000000002",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-2",
+            "status": "Confirmed",
+            "startsAt": "2026-06-17T07:00:00.000Z",
+            "endsAt": "2026-06-17T09:00:00.000Z",
+            "internalParticipants": 8,
+            "externalParticipants": 2
+          },
+          {
+            "id": "12000000-0000-4000-8000-000000000003",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-3",
+            "status": "Confirmed",
+            "startsAt": "2026-06-18T07:00:00.000Z",
+            "endsAt": "2026-06-18T09:00:00.000Z",
+            "internalParticipants": 14,
+            "externalParticipants": 2
+          },
+          {
+            "id": "12000000-0000-4000-8000-000000000004",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-4",
+            "status": "Confirmed",
+            "startsAt": "2026-06-19T07:00:00.000Z",
+            "endsAt": "2026-06-19T09:00:00.000Z",
+            "internalParticipants": 10,
+            "externalParticipants": 2
+          },
+          {
+            "id": "12000000-0000-4000-8000-000000000005",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-5",
+            "status": "Confirmed",
+            "startsAt": "2026-06-20T07:00:00.000Z",
+            "endsAt": "2026-06-20T09:00:00.000Z",
+            "internalParticipants": 3,
+            "externalParticipants": 0
+          },
+          {
+            "id": "12000000-0000-4000-8000-000000000006",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-6",
+            "status": "Confirmed",
+            "startsAt": "2026-06-16T07:00:00.000Z",
+            "endsAt": "2026-06-16T09:00:00.000Z",
+            "internalParticipants": 4,
+            "externalParticipants": 0
+          },
+          {
+            "id": "12000000-0000-4000-8000-000000000007",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-7",
+            "status": "Confirmed",
+            "startsAt": "2026-06-17T07:00:00.000Z",
+            "endsAt": "2026-06-17T09:00:00.000Z",
+            "internalParticipants": 26,
+            "externalParticipants": 2
+          },
+          {
+            "id": "12000000-0000-4000-8000-000000000008",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-8",
+            "status": "Confirmed",
+            "startsAt": "2026-06-18T07:00:00.000Z",
+            "endsAt": "2026-06-18T09:00:00.000Z",
+            "internalParticipants": 4,
+            "externalParticipants": 2
+          },
+          {
+            "id": "12000000-0000-4000-8000-000000000009",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-9",
+            "status": "Confirmed",
+            "startsAt": "2026-06-19T07:00:00.000Z",
+            "endsAt": "2026-06-19T09:00:00.000Z",
+            "internalParticipants": 58,
+            "externalParticipants": 2
+          },
+          {
+            "id": "12000000-0000-4000-8000-000000000010",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-10",
+            "status": "Confirmed",
+            "startsAt": "2026-06-20T07:00:00.000Z",
+            "endsAt": "2026-06-20T09:00:00.000Z",
+            "internalParticipants": 6,
+            "externalParticipants": 2
+          },
+          {
+            "id": "12000000-0000-4000-8000-000000000011",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-1",
+            "status": "Confirmed",
+            "startsAt": "2026-06-23T11:00:00.000Z",
+            "endsAt": "2026-06-23T13:00:00.000Z",
+            "internalParticipants": 16,
+            "externalParticipants": 2
+          },
+          {
+            "id": "12000000-0000-4000-8000-000000000012",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-2",
+            "status": "Confirmed",
+            "startsAt": "2026-06-24T11:00:00.000Z",
+            "endsAt": "2026-06-24T13:00:00.000Z",
+            "internalParticipants": 8,
+            "externalParticipants": 2
+          },
+          {
+            "id": "12000000-0000-4000-8000-000000000013",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-3",
+            "status": "Confirmed",
+            "startsAt": "2026-06-25T11:00:00.000Z",
+            "endsAt": "2026-06-25T13:00:00.000Z",
+            "internalParticipants": 14,
+            "externalParticipants": 2
+          },
+          {
+            "id": "12000000-0000-4000-8000-000000000014",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-4",
+            "status": "Confirmed",
+            "startsAt": "2026-06-26T11:00:00.000Z",
+            "endsAt": "2026-06-26T13:00:00.000Z",
+            "internalParticipants": 10,
+            "externalParticipants": 2
+          },
+          {
+            "id": "12000000-0000-4000-8000-000000000015",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-5",
+            "status": "Confirmed",
+            "startsAt": "2026-06-27T11:00:00.000Z",
+            "endsAt": "2026-06-27T13:00:00.000Z",
+            "internalParticipants": 3,
+            "externalParticipants": 0
+          },
+          {
+            "id": "12000000-0000-4000-8000-000000000016",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-6",
+            "status": "Confirmed",
+            "startsAt": "2026-06-23T11:00:00.000Z",
+            "endsAt": "2026-06-23T13:00:00.000Z",
+            "internalParticipants": 4,
+            "externalParticipants": 0
+          },
+          {
+            "id": "12000000-0000-4000-8000-000000000017",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-7",
+            "status": "In Review",
+            "startsAt": "2026-06-24T11:00:00.000Z",
+            "endsAt": "2026-06-24T13:00:00.000Z",
+            "internalParticipants": 26,
+            "externalParticipants": 2
+          },
+          {
+            "id": "12000000-0000-4000-8000-000000000018",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-8",
+            "status": "In Review",
+            "startsAt": "2026-06-25T11:00:00.000Z",
+            "endsAt": "2026-06-25T13:00:00.000Z",
+            "internalParticipants": 4,
+            "externalParticipants": 2
+          },
+          {
+            "id": "12000000-0000-4000-8000-000000000019",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-9",
+            "status": "In Review",
+            "startsAt": "2026-06-26T11:00:00.000Z",
+            "endsAt": "2026-06-26T13:00:00.000Z",
+            "internalParticipants": 58,
+            "externalParticipants": 2
+          },
+          {
+            "id": "12000000-0000-4000-8000-000000000020",
+            "requesterUserId": "13000000-0000-4000-8000-000000000001",
+            "roomId": "northwind-berlin-room-10",
+            "status": "In Review",
+            "startsAt": "2026-06-27T11:00:00.000Z",
+            "endsAt": "2026-06-27T13:00:00.000Z",
+            "internalParticipants": 6,
+            "externalParticipants": 2
+          }
+        ],
       providerSimulation: {
         provider: 'demo_microsoft365',
         identityBindingId: '14000000-0000-4000-8000-000000000001',
@@ -239,11 +487,58 @@ const fixture = {
         calendarsPermission: 'granted',
         health: 'degraded',
         scenario: 'provider_degraded',
-        roomMappings: [{
-          roomId: 'northwind-berlin-room-1',
-          externalRoomId: 'northwind-berlin-room-1',
-          resourceAddress: 'northwind-berlin-room-1@example.invalid',
-        }],
+        roomMappings: [
+            {
+              "roomId": "northwind-berlin-room-1",
+              "externalRoomId": "northwind-berlin-room-1",
+              "resourceAddress": "northwind-berlin-room-1@example.invalid"
+            },
+            {
+              "roomId": "northwind-berlin-room-2",
+              "externalRoomId": "northwind-berlin-room-2",
+              "resourceAddress": "northwind-berlin-room-2@example.invalid"
+            },
+            {
+              "roomId": "northwind-berlin-room-3",
+              "externalRoomId": "northwind-berlin-room-3",
+              "resourceAddress": "northwind-berlin-room-3@example.invalid"
+            },
+            {
+              "roomId": "northwind-berlin-room-4",
+              "externalRoomId": "northwind-berlin-room-4",
+              "resourceAddress": "northwind-berlin-room-4@example.invalid"
+            },
+            {
+              "roomId": "northwind-berlin-room-5",
+              "externalRoomId": "northwind-berlin-room-5",
+              "resourceAddress": "northwind-berlin-room-5@example.invalid"
+            },
+            {
+              "roomId": "northwind-berlin-room-6",
+              "externalRoomId": "northwind-berlin-room-6",
+              "resourceAddress": "northwind-berlin-room-6@example.invalid"
+            },
+            {
+              "roomId": "northwind-berlin-room-7",
+              "externalRoomId": "northwind-berlin-room-7",
+              "resourceAddress": "northwind-berlin-room-7@example.invalid"
+            },
+            {
+              "roomId": "northwind-berlin-room-8",
+              "externalRoomId": "northwind-berlin-room-8",
+              "resourceAddress": "northwind-berlin-room-8@example.invalid"
+            },
+            {
+              "roomId": "northwind-berlin-room-9",
+              "externalRoomId": "northwind-berlin-room-9",
+              "resourceAddress": "northwind-berlin-room-9@example.invalid"
+            },
+            {
+              "roomId": "northwind-berlin-room-10",
+              "externalRoomId": "northwind-berlin-room-10",
+              "resourceAddress": "northwind-berlin-room-10@example.invalid"
+            }
+          ],
       },
     },
     {
@@ -257,12 +552,20 @@ const fixture = {
           id: '21000000-0000-4000-8000-000000000002',
           name: 'Paris Demo Campus',
           guestInformation: guestInformation('Paris', 'FR'),
-          rooms: [{
-            id: 'contoso-paris-room-1',
-            name: 'Paris Atelier',
-            capacity: 16,
-            priceMinor: 9500,
-          }],
+          rooms: [
+            {
+              "id": "contoso-paris-room-1",
+              "name": "Paris Atelier",
+              "capacity": 16,
+              "priceMinor": 9500
+            },
+            {
+              "id": "contoso-paris-room-2",
+              "name": "Paris Studio",
+              "capacity": 6,
+              "priceMinor": null
+            }
+          ],
         }],
         catalogue: {
           services: ['room'],
@@ -280,16 +583,38 @@ const fixture = {
           }],
         },
       },
-      requests: [{
-        id: '22000000-0000-4000-8000-000000000002',
-        requesterUserId: '23000000-0000-4000-8000-000000000002',
-        roomId: 'contoso-paris-room-1',
-        status: 'In Review',
-        startsAt: '2026-06-19T12:00:00.000Z',
-        endsAt: '2026-06-19T13:30:00.000Z',
-        internalParticipants: 5,
-        externalParticipants: 0,
-      }],
+      requests: [
+          {
+            "id": "22000000-0000-4000-8000-000000000002",
+            "requesterUserId": "23000000-0000-4000-8000-000000000002",
+            "roomId": "contoso-paris-room-1",
+            "status": "In Review",
+            "startsAt": "2026-06-17T08:00:00.000Z",
+            "endsAt": "2026-06-17T09:30:00.000Z",
+            "internalParticipants": 5,
+            "externalParticipants": 0
+          },
+          {
+            "id": "22000000-0000-4000-8000-000000000003",
+            "requesterUserId": "23000000-0000-4000-8000-000000000002",
+            "roomId": "contoso-paris-room-1",
+            "status": "In Review",
+            "startsAt": "2026-06-18T08:00:00.000Z",
+            "endsAt": "2026-06-18T09:30:00.000Z",
+            "internalParticipants": 5,
+            "externalParticipants": 0
+          },
+          {
+            "id": "22000000-0000-4000-8000-000000000004",
+            "requesterUserId": "23000000-0000-4000-8000-000000000002",
+            "roomId": "contoso-paris-room-1",
+            "status": "In Review",
+            "startsAt": "2026-06-19T08:00:00.000Z",
+            "endsAt": "2026-06-19T09:30:00.000Z",
+            "internalParticipants": 5,
+            "externalParticipants": 0
+          }
+        ],
       providerSimulation: {
         provider: 'demo_microsoft365',
         identityBindingId: '24000000-0000-4000-8000-000000000002',
@@ -300,11 +625,18 @@ const fixture = {
         calendarsPermission: 'granted',
         health: 'healthy',
         scenario: 'booking_success',
-        roomMappings: [{
-          roomId: 'contoso-paris-room-1',
-          externalRoomId: 'contoso-paris-room-1',
-          resourceAddress: 'contoso-paris-room-1@example.invalid',
-        }],
+        roomMappings: [
+            {
+              "roomId": "contoso-paris-room-1",
+              "externalRoomId": "contoso-paris-room-1",
+              "resourceAddress": "contoso-paris-room-1@example.invalid"
+            },
+            {
+              "roomId": "contoso-paris-room-2",
+              "externalRoomId": "contoso-paris-room-2",
+              "resourceAddress": "contoso-paris-room-2@example.invalid"
+            }
+          ],
       },
     },
   ],
