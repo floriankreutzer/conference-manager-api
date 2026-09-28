@@ -200,6 +200,7 @@ const fixture = {
         locations: [{
           id: '11000000-0000-4000-8000-000000000001',
           name: 'Berlin Demo Campus',
+          timeZone: 'Europe/Berlin',
           guestInformation: guestInformation('Berlin', 'DE'),
           rooms: [
             {
@@ -1335,6 +1336,7 @@ const fixture = {
         locations: [{
           id: '21000000-0000-4000-8000-000000000002',
           name: 'Paris Demo Campus',
+          timeZone: 'Europe/Paris',
           guestInformation: guestInformation('Paris', 'FR'),
           rooms: [
             {
@@ -1618,9 +1620,12 @@ function validateTenant(value) {
     fail('DEMO_FIXTURE_SETTINGS_INVALID');
   }
   for (const location of value.settings.locations) {
-    exactKeys(location, ['id', 'name', 'rooms', 'guestInformation'], 'DEMO_FIXTURE_SETTINGS_INVALID');
+    exactKeys(location, ['id', 'name', 'timeZone', 'rooms', 'guestInformation'], 'DEMO_FIXTURE_SETTINGS_INVALID');
     string(location.id, 'DEMO_FIXTURE_SETTINGS_INVALID', { max: 128, pattern: ENTITY_ID_PATTERN });
     string(location.name, 'DEMO_FIXTURE_SETTINGS_INVALID');
+    if (!['Europe/Berlin', 'Europe/Paris'].includes(location.timeZone)) {
+      fail('DEMO_FIXTURE_SETTINGS_INVALID');
+    }
     normalizeSiteGuestInformation(location.guestInformation);
     if (!Array.isArray(location.rooms) || location.rooms.length < 1 || location.rooms.length > 20) {
       fail('DEMO_FIXTURE_SETTINGS_INVALID');
