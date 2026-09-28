@@ -410,6 +410,7 @@ async function seedTenantBusinessState(client, fixture) {
     if (advancedCatalogue.rowCount !== 1) {
       throw new Error('DEMO_FIXTURE_CATALOGUE_REVISION_ADVANCE_FAILED');
     }
+    if (tenant.requests.length > 0) {
     const revisionResult = await client.query({
       name: 'demo-fixture-request-authority-revisions',
       text: `SELECT organization_revision, locations_revision, catalog_revision,
@@ -493,6 +494,7 @@ async function seedTenantBusinessState(client, fixture) {
         { actorUserId: request.requesterUserId, correlationId: request.id },
         'employee',
       );
+    }
     }
     for (const capabilityId of [
       'microsoft.directory',
