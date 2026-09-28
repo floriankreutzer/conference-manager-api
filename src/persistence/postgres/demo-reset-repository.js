@@ -148,6 +148,20 @@ function fail(code, cause) {
   throw new DemoResetRepositoryError(code, cause ? { cause } : undefined);
 }
 
+function firstSemanticDifference(expected, actual, path = '') {
+  if (Object.is(expected, actual)) return null;
+  if (typeof expected !== typeof actual || expected === null || actual === null
+    || typeof expected !== 'object') return path || 'root';
+  const left = Object.keys(expected).sort();
+  const right = Object.keys(actual).sort();
+  if (left.join(',') !== right.join(',')) return path || 'root';
+  for (const key of left) {
+    const difference = firstSemanticDifference(expected[key], actual[key], `${path}.${key}`);
+    if (difference) return difference;
+  }
+  return null;
+}
+
 function failureReason(value) {
   return RESET_FAILURE_REASONS.has(value) ? value : DEMO_RESET_FAILURE_REASON.UNKNOWN;
 }
@@ -391,6 +405,10 @@ export function createPostgresDemoResetRepository({
           const semanticState = await readSemanticState({ client });
           phase = DEMO_RESET_FAILURE_REASON.SEMANTIC_CHECKSUM;
           if (semanticChecksum(semanticState) !== generationChecksum) {
+            if (process.env.NODE_ENV === 'test') {
+              const path = firstSemanticDifference(generation, semanticState);
+              process.stderr.write(`DEMO_SEMANTIC_PATH: ${path?.slice(0, 120) || 'unknown'}\n`);
+            }
             fail('DEMO_RESET_SEMANTIC_CHECKSUM_MISMATCH');
           }
           if (auditEventFor !== null) {
