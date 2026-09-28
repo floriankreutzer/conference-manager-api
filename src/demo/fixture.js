@@ -595,11 +595,257 @@ const fixture = {
               ]
             }
           ],
-          cateringPackages: [{"id":"coffee-break","name":"Kaffeepause","description":"Kaffee, Tee, Wasser und Gebäck für eine kurze Besprechungspause.","active":true,"order":1,"price":{"amountMinor":1200,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[],"itemIds":["coffee-tea","water-juice","pastry"],"variants":[]},{"id":"business-breakfast","name":"Business-Frühstück","description":"Getränke, Obst und vegetarische Sandwiches zum gemeinsamen Start.","active":true,"order":2,"price":{"amountMinor":1800,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[],"itemIds":["coffee-tea","water-juice","fruit","sandwich-vegetarian"],"variants":[]},{"id":"workshop-day","name":"Workshop-Tag","description":"Tagesbegleitung mit Getränken, Lunch und Nachmittagssnack.","active":true,"order":3,"price":{"amountMinor":4200,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[],"itemIds":["coffee-tea","water-juice","lunch-classic","afternoon-snack"],"variants":[]},{"id":"vegan-day","name":"Veganer Konferenztag","description":"Pflanzliches Tagesangebot mit Obst, Getränken und veganem Lunch.","active":true,"order":4,"price":{"amountMinor":3900,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[],"itemIds":["coffee-tea","water-juice","fruit","lunch-vegan"],"variants":[]}],
-          cateringItems: [{"id":"coffee-tea","name":"Kaffee und Tee","description":"Heißgetränke für die Besprechungspause.","active":true,"order":1,"price":{"amountMinor":450,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[]},{"id":"water-juice","name":"Wasser und Saft","description":"Mineralwasser und Saftauswahl.","active":true,"order":2,"price":{"amountMinor":350,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[]},{"id":"fruit","name":"Obstauswahl","description":"Portionierte saisonale Obstauswahl.","active":true,"order":3,"price":{"amountMinor":450,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[]},{"id":"pastry","name":"Gebäckauswahl","description":"Kleine süße Gebäckstücke zur Kaffeepause.","active":true,"order":4,"price":{"amountMinor":500,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[]},{"id":"sandwich-vegetarian","name":"Vegetarische Sandwiches","description":"Belegte Sandwiches mit vegetarischer Füllung.","active":true,"order":5,"price":{"amountMinor":900,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[]},{"id":"lunch-vegan","name":"Veganes Lunch-Buffet","description":"Pflanzliche warme und kalte Komponenten.","active":true,"order":6,"price":{"amountMinor":2400,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[]},{"id":"lunch-classic","name":"Klassisches Lunch-Buffet","description":"Gemischtes Lunch-Angebot einschließlich vegetarischer Auswahl.","active":true,"order":7,"price":{"amountMinor":2700,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[]},{"id":"afternoon-snack","name":"Nachmittagssnack","description":"Kleine herzhafte und süße Snacks.","active":true,"order":8,"price":{"amountMinor":700,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[]}]
+          cateringPackages: [
+            {
+              "id": "coffee-break",
+              "name": "Kaffeepause",
+              "description": "Kaffee, Tee, Wasser und Gebäck für eine kurze Besprechungspause.",
+              "active": true,
+              "order": 1,
+              "price": {
+                "amountMinor": 1200,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [],
+              "itemIds": [
+                "coffee-tea",
+                "water-juice",
+                "pastry"
+              ],
+              "variants": []
+            },
+            {
+              "id": "business-breakfast",
+              "name": "Business-Frühstück",
+              "description": "Getränke, Obst und vegetarische Sandwiches zum gemeinsamen Start.",
+              "active": true,
+              "order": 2,
+              "price": {
+                "amountMinor": 1800,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [],
+              "itemIds": [
+                "coffee-tea",
+                "water-juice",
+                "fruit",
+                "sandwich-vegetarian"
+              ],
+              "variants": []
+            },
+            {
+              "id": "workshop-day",
+              "name": "Workshop-Tag",
+              "description": "Tagesbegleitung mit Getränken, Lunch und Nachmittagssnack.",
+              "active": true,
+              "order": 3,
+              "price": {
+                "amountMinor": 4200,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [],
+              "itemIds": [
+                "coffee-tea",
+                "water-juice",
+                "lunch-classic",
+                "afternoon-snack"
+              ],
+              "variants": []
+            },
+            {
+              "id": "vegan-day",
+              "name": "Veganer Konferenztag",
+              "description": "Pflanzliches Tagesangebot mit Obst, Getränken und veganem Lunch.",
+              "active": true,
+              "order": 4,
+              "price": {
+                "amountMinor": 3900,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": [],
+              "itemIds": [
+                "coffee-tea",
+                "water-juice",
+                "fruit",
+                "lunch-vegan"
+              ],
+              "variants": []
+            }
+          ],
+          cateringItems: [
+            {
+              "id": "coffee-tea",
+              "name": "Kaffee und Tee",
+              "description": "Heißgetränke für die Besprechungspause.",
+              "active": true,
+              "order": 1,
+              "price": {
+                "amountMinor": 450,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": []
+            },
+            {
+              "id": "water-juice",
+              "name": "Wasser und Saft",
+              "description": "Mineralwasser und Saftauswahl.",
+              "active": true,
+              "order": 2,
+              "price": {
+                "amountMinor": 350,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": []
+            },
+            {
+              "id": "fruit",
+              "name": "Obstauswahl",
+              "description": "Portionierte saisonale Obstauswahl.",
+              "active": true,
+              "order": 3,
+              "price": {
+                "amountMinor": 450,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": []
+            },
+            {
+              "id": "pastry",
+              "name": "Gebäckauswahl",
+              "description": "Kleine süße Gebäckstücke zur Kaffeepause.",
+              "active": true,
+              "order": 4,
+              "price": {
+                "amountMinor": 500,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": []
+            },
+            {
+              "id": "sandwich-vegetarian",
+              "name": "Vegetarische Sandwiches",
+              "description": "Belegte Sandwiches mit vegetarischer Füllung.",
+              "active": true,
+              "order": 5,
+              "price": {
+                "amountMinor": 900,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": []
+            },
+            {
+              "id": "lunch-vegan",
+              "name": "Veganes Lunch-Buffet",
+              "description": "Pflanzliche warme und kalte Komponenten.",
+              "active": true,
+              "order": 6,
+              "price": {
+                "amountMinor": 2400,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": []
+            },
+            {
+              "id": "lunch-classic",
+              "name": "Klassisches Lunch-Buffet",
+              "description": "Gemischtes Lunch-Angebot einschließlich vegetarischer Auswahl.",
+              "active": true,
+              "order": 7,
+              "price": {
+                "amountMinor": 2700,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": []
+            },
+            {
+              "id": "afternoon-snack",
+              "name": "Nachmittagssnack",
+              "description": "Kleine herzhafte und süße Snacks.",
+              "active": true,
+              "order": 8,
+              "price": {
+                "amountMinor": 700,
+                "currency": "EUR"
+              },
+              "siteIds": [
+                "11000000-0000-4000-8000-000000000001"
+              ],
+              "roomIds": []
+            }
+          ]
         },
       },
-      costCenters: [{"id":"cc-1000","code":"1000","name":"Geschäftsleitung","active":true},{"id":"cc-2100","code":"2100","name":"Vertrieb","active":true},{"id":"cc-3100","code":"3100","name":"Produktentwicklung","active":true},{"id":"cc-4100","code":"4100","name":"Personal","active":true},{"id":"cc-5100","code":"5100","name":"IT","active":true},{"id":"cc-6100","code":"6100","name":"Marketing","active":true}],
+      costCenters: [
+        {
+          "id": "cc-1000",
+          "code": "1000",
+          "name": "Geschäftsleitung",
+          "active": true
+        },
+        {
+          "id": "cc-2100",
+          "code": "2100",
+          "name": "Vertrieb",
+          "active": true
+        },
+        {
+          "id": "cc-3100",
+          "code": "3100",
+          "name": "Produktentwicklung",
+          "active": true
+        },
+        {
+          "id": "cc-4100",
+          "code": "4100",
+          "name": "Personal",
+          "active": true
+        },
+        {
+          "id": "cc-5100",
+          "code": "5100",
+          "name": "IT",
+          "active": true
+        },
+        {
+          "id": "cc-6100",
+          "code": "6100",
+          "name": "Marketing",
+          "active": true
+        }
+      ],
       requests: [
           {
             "id": "12000000-0000-4000-8000-000000000001",
@@ -1163,7 +1409,9 @@ function validateTenant(value) {
     value.settings.locations.flatMap(({ rooms }) => rooms.map(({ id }) => id)),
     'DEMO_FIXTURE_SETTINGS_INVALID',
   );
-  exactKeys(value.settings.catalogue, ['services', 'equipment', 'currency', 'cateringPackages', 'cateringItems'], 'DEMO_FIXTURE_SETTINGS_INVALID');
+  exactKeys(value.settings.catalogue, [
+    'services', 'equipment', 'currency', 'cateringPackages', 'cateringItems',
+  ], 'DEMO_FIXTURE_SETTINGS_INVALID');
   const equipment = normalizeTenantCatalogue({
     services: [], equipment: value.settings.catalogue.equipment,
     cateringPackages: value.settings.catalogue.cateringPackages,
