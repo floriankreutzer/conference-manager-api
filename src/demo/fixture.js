@@ -1229,7 +1229,7 @@ const fixture = {
         identityBindingId: '44000000-0000-4000-8000-000000000004',
         integrationId: '45000000-0000-4000-8000-000000000004',
         providerTenantReference: TENANT_C,
-        connectionState: 'not_configured',
+        connectionState: 'pending',
         placesPermission: 'missing',
         calendarsPermission: 'missing',
         health: 'unknown',
@@ -1507,7 +1507,7 @@ function validateTenant(value) {
   if (onboarding) {
     if (
       provider.providerTenantReference !== value.id
-      || provider.connectionState !== 'not_configured'
+      || provider.connectionState !== 'pending'
       || provider.placesPermission !== 'missing'
       || provider.calendarsPermission !== 'missing'
       || provider.health !== 'unknown'
