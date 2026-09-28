@@ -49,6 +49,12 @@ try {
   output(process.stderr, Object.freeze({
     status: 'failed',
     code: SAFE_ERROR.test(candidate || '') ? candidate : 'DEMO_RESET_FAILED',
+    ...(process.env.NODE_ENV === 'test' ? {
+      diagnostic: {
+        sqlstate: /^[0-9A-Z]{5}$/.test(error?.code || '') ? error.code : null,
+        constraint: /^[a-z][a-z0-9_]{0,100}$/.test(error?.constraint || '') ? error.constraint : null,
+      },
+    } : {}),
   }));
   process.exitCode = 1;
 } finally {
