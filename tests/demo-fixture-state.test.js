@@ -69,6 +69,19 @@ test('concrete Demo seeder uses bounded named parameterized writes and never see
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-catering-item').length, 8);
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-catering-package').length, 4);
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-cost-center').length, 7);
+  const catalogueRevisions = queries.filter(({ name }) => name === 'demo-fixture-insert-catalogue-revision');
+  assert.equal(catalogueRevisions.length, 3);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-advance-catalogue-revision').length, 3);
+  assert.deepEqual(catalogueRevisions.map(({ values }) => ({
+    tenantId: values[0],
+    equipmentCount: JSON.parse(values[1]).equipment.length,
+    cateringPackageCount: JSON.parse(values[1]).cateringPackages.length,
+    cateringItemCount: JSON.parse(values[1]).cateringItems.length,
+  })), [
+    { tenantId: DEMO_FIXTURE.tenants[0].id, equipmentCount: 18, cateringPackageCount: 4, cateringItemCount: 8 },
+    { tenantId: DEMO_FIXTURE.tenants[1].id, equipmentCount: 2, cateringPackageCount: 0, cateringItemCount: 0 },
+    { tenantId: DEMO_FIXTURE.tenants[2].id, equipmentCount: 0, cateringPackageCount: 0, cateringItemCount: 0 },
+  ]);
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-room-price').length, 11);
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-identity-binding').length, 3);
   assert.equal(
