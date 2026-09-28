@@ -68,3 +68,35 @@ test('Demo media listing exposes only the authenticated tenant and no cache', as
   assert.equal(reply.headers.get('cache-control'), 'private, no-store');
   assert.equal(JSON.parse(reply.body).assets[0].url, `${path}/${FOREIGN_ASSET}`);
 });
+
+test('Demo media replacement requires a manager, CSRF and matching MIME', async () => {
+  const inspected = [];
+  const png = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(32)]);
+  const path = `/api/v1/demo/media/${FOREIGN_ASSET}`;
+  const upload = () => ({ method: 'PUT', headers: { 'content-type': 'image/png' },
+    async *[Symbol.asyncIterator]() { yield png; } });
+  const mediaRepository = {
+    async find() { return null; }, async list() { return []; },
+    async replace() { throw new Error('WRITE_MUST_BE_AUTHORIZED'); },
+  };
+  const denied = createDemoCustomerControlRoutes({
+    personaService: { async establish() {}, async switch() {}, async tenants() { return []; },
+      clearCookie() { return ''; } },
+    mediaRepository,
+    authorizationPolicy: { requireTenantPermission(principal, tenant, permission) {
+      inspected.push({ principal, tenant, permission });
+      throw new Error('FORBIDDEN');
+    } },
+    auditService: { createEvent() {} },
+  }).createHandler({
+    principalGuard: { async require(req, options) {
+      assert.equal(options.csrf, true); return { userId: 'user' };
+    } },
+    tenantGuard: { async requireKnown() { return { tenantId: TENANT_ID }; } },
+    maxResponseBytes: 100000,
+  });
+  await assert.rejects(denied({ request: upload(), response: response(),
+    parsedUrl: new URL(path, 'https://demo.example'), path, requestId: 'request-id' }),
+  /FORBIDDEN/);
+  assert.equal(inspected[0].permission, 'tenant:catalogue:manage');
+});
