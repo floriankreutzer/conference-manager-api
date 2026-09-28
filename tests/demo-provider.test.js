@@ -81,7 +81,7 @@ test('Customer Demo composition derives provider inventory from every mapped fix
     )).sort(),
   );
   for (const tenant of DEMO_FIXTURE.tenants) {
-    const mapping = tenant.providerSimulation.roomMapping;
+    const mapping = tenant.providerSimulation.roomMappings[0];
     const location = tenant.settings.locations.find(({ rooms }) => (
       rooms.some(({ id }) => id === mapping.roomId)
     ));
