@@ -10,6 +10,7 @@ import {
   DemoFixtureError,
   assertSemanticChecksum,
   customerPersonaKey,
+  createDemoResetGenerationFixture,
   semanticChecksum,
   validateDemoFixture,
 } from '../src/demo/fixture.js';
@@ -27,6 +28,18 @@ test('Demo fixture is deterministic, bounded and deeply immutable', () => {
   assert.match(DEMO_FIXTURE_CHECKSUM, /^[0-9a-f]{64}$/);
   assert.equal(semanticChecksum(DEMO_FIXTURE), DEMO_FIXTURE_CHECKSUM);
   assert.equal(assertSemanticChecksum(DEMO_FIXTURE, DEMO_FIXTURE_CHECKSUM), DEMO_FIXTURE_CHECKSUM);
+});
+
+test('reset generation keeps local booking hours across daylight saving and changes the semantic digest', () => {
+  const before = createDemoResetGenerationFixture(DEMO_FIXTURE, new Date('2026-10-12T12:00:00.000Z'));
+  const after = createDemoResetGenerationFixture(DEMO_FIXTURE, new Date('2026-10-26T12:00:00.000Z'));
+  const first = before.tenants[0].requests[0];
+  const later = after.tenants[0].requests[0];
+  assert.equal(first.startsAt, '2026-10-20T07:00:00.000Z');
+  assert.equal(later.startsAt, '2026-11-03T08:00:00.000Z');
+  assert.equal(Date.parse(first.endsAt) - Date.parse(first.startsAt), 120 * 60 * 1000);
+  assert.notEqual(semanticChecksum(before), semanticChecksum(after));
+  assert.equal(semanticChecksum(DEMO_FIXTURE), DEMO_FIXTURE_CHECKSUM);
 });
 
 test('fixture provides one activatable Tenant and an isolated degraded-provider Tenant', () => {
