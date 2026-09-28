@@ -81,13 +81,14 @@ function auditRepository(attempts) {
 }
 
 function repositoryForPhase(pool, attempts) {
+  let seededFixture = DEMO_FIXTURE;
   return createPostgresDemoResetRepository({
     pool,
     expectedDatabaseName: 'conference_manager_demo_test',
     expectedResetRole: 'demo_reset',
     auditRepository: auditRepository(attempts),
-    async seedBusinessState() {},
-    async readSemanticState() { return DEMO_FIXTURE; },
+    async seedBusinessState({ fixture }) { seededFixture = fixture; },
+    async readSemanticState() { return seededFixture; },
   });
 }
 
