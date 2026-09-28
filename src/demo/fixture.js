@@ -747,7 +747,7 @@ const fixture = {
                 "water-juice",
                 "pastry"
               ],
-              "variants": []
+              "variants": [{"id":"coffee-break-standard","name":"Standard","description":null,"active":true,"order":1,"price":{"amountMinor":0,"currency":"EUR"}}]
             },
             {
               "id": "business-breakfast",
@@ -769,7 +769,7 @@ const fixture = {
                 "fruit",
                 "sandwich-vegetarian"
               ],
-              "variants": []
+              "variants": [{"id":"business-breakfast-standard","name":"Standard","description":null,"active":true,"order":1,"price":{"amountMinor":0,"currency":"EUR"}}]
             },
             {
               "id": "workshop-day",
@@ -791,7 +791,7 @@ const fixture = {
                 "lunch-classic",
                 "afternoon-snack"
               ],
-              "variants": []
+              "variants": [{"id":"workshop-day-standard","name":"Standard","description":null,"active":true,"order":1,"price":{"amountMinor":0,"currency":"EUR"}}]
             },
             {
               "id": "vegan-day",
@@ -813,7 +813,7 @@ const fixture = {
                 "fruit",
                 "lunch-vegan"
               ],
-              "variants": []
+              "variants": [{"id":"vegan-day-standard","name":"Standard","description":null,"active":true,"order":1,"price":{"amountMinor":0,"currency":"EUR"}}]
             }
           ],
           cateringItems: [
@@ -987,7 +987,12 @@ const fixture = {
             "startsAt": "2026-06-16T07:00:00.000Z",
             "endsAt": "2026-06-16T09:00:00.000Z",
             "internalParticipants": 16,
-            "externalParticipants": 2
+            "externalParticipants": 2,
+            "title": "Strategieabstimmung",
+            "equipmentIds": ["display-86","video-system"],
+            "cateringPackageId": "coffee-break",
+            "costCenterId": "cc-1000",
+            "description": "Strategieabstimmung mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000002",
@@ -997,7 +1002,12 @@ const fixture = {
             "startsAt": "2026-06-17T07:00:00.000Z",
             "endsAt": "2026-06-17T09:00:00.000Z",
             "internalParticipants": 8,
-            "externalParticipants": 2
+            "externalParticipants": 2,
+            "title": "Vertriebsplanung",
+            "equipmentIds": ["display-65","video-system"],
+            "cateringPackageId": "business-breakfast",
+            "costCenterId": "cc-2100",
+            "description": "Vertriebsplanung mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000003",
@@ -1007,7 +1017,12 @@ const fixture = {
             "startsAt": "2026-06-18T07:00:00.000Z",
             "endsAt": "2026-06-18T09:00:00.000Z",
             "internalParticipants": 14,
-            "externalParticipants": 2
+            "externalParticipants": 2,
+            "title": "Produkt-Workshop",
+            "equipmentIds": ["mobile-display","whiteboard"],
+            "cateringPackageId": "workshop-day",
+            "costCenterId": "cc-3100",
+            "description": "Produkt-Workshop mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000004",
@@ -1017,7 +1032,12 @@ const fixture = {
             "startsAt": "2026-06-19T07:00:00.000Z",
             "endsAt": "2026-06-19T09:00:00.000Z",
             "internalParticipants": 10,
-            "externalParticipants": 2
+            "externalParticipants": 2,
+            "title": "Design-Sprint",
+            "equipmentIds": ["mobile-display","whiteboard"],
+            "cateringPackageId": "vegan-day",
+            "costCenterId": "cc-4100",
+            "description": "Design-Sprint mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000005",
@@ -1027,7 +1047,12 @@ const fixture = {
             "startsAt": "2026-06-20T07:00:00.000Z",
             "endsAt": "2026-06-20T09:00:00.000Z",
             "internalParticipants": 3,
-            "externalParticipants": 0
+            "externalParticipants": 0,
+            "title": "Projektabstimmung",
+            "equipmentIds": ["display-55","usb-camera"],
+            "cateringPackageId": "coffee-break",
+            "costCenterId": "cc-5100",
+            "description": "Projektabstimmung mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000006",
@@ -1037,7 +1062,12 @@ const fixture = {
             "startsAt": "2026-06-16T07:00:00.000Z",
             "endsAt": "2026-06-16T09:00:00.000Z",
             "internalParticipants": 4,
-            "externalParticipants": 0
+            "externalParticipants": 0,
+            "title": "Bewerbungsgespräch",
+            "equipmentIds": ["display-55","usb-camera"],
+            "cateringPackageId": "business-breakfast",
+            "costCenterId": "cc-6100",
+            "description": "Bewerbungsgespräch mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000007",
@@ -1047,7 +1077,12 @@ const fixture = {
             "startsAt": "2026-06-17T07:00:00.000Z",
             "endsAt": "2026-06-17T09:00:00.000Z",
             "internalParticipants": 26,
-            "externalParticipants": 2
+            "externalParticipants": 2,
+            "title": "Onboarding-Training",
+            "equipmentIds": ["projector","projection-screen"],
+            "cateringPackageId": "workshop-day",
+            "costCenterId": "cc-1000",
+            "description": "Onboarding-Training mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000008",
@@ -1057,7 +1092,12 @@ const fixture = {
             "startsAt": "2026-06-18T07:00:00.000Z",
             "endsAt": "2026-06-18T09:00:00.000Z",
             "internalParticipants": 4,
-            "externalParticipants": 2
+            "externalParticipants": 2,
+            "title": "Kundengespräch",
+            "equipmentIds": ["display-65","video-system"],
+            "cateringPackageId": "vegan-day",
+            "costCenterId": "cc-2100",
+            "description": "Kundengespräch mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000009",
@@ -1067,7 +1107,12 @@ const fixture = {
             "startsAt": "2026-06-19T07:00:00.000Z",
             "endsAt": "2026-06-19T09:00:00.000Z",
             "internalParticipants": 58,
-            "externalParticipants": 2
+            "externalParticipants": 2,
+            "title": "Townhall",
+            "equipmentIds": ["projector","projection-screen"],
+            "cateringPackageId": "coffee-break",
+            "costCenterId": "cc-3100",
+            "description": "Townhall mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000010",
@@ -1077,7 +1122,12 @@ const fixture = {
             "startsAt": "2026-06-20T07:00:00.000Z",
             "endsAt": "2026-06-20T09:00:00.000Z",
             "internalParticipants": 6,
-            "externalParticipants": 2
+            "externalParticipants": 2,
+            "title": "Hybrider Kundenworkshop",
+            "equipmentIds": ["display-86","video-system"],
+            "cateringPackageId": "business-breakfast",
+            "costCenterId": "cc-4100",
+            "description": "Hybrider Kundenworkshop mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000011",
@@ -1087,7 +1137,12 @@ const fixture = {
             "startsAt": "2026-06-23T11:00:00.000Z",
             "endsAt": "2026-06-23T13:00:00.000Z",
             "internalParticipants": 16,
-            "externalParticipants": 2
+            "externalParticipants": 2,
+            "title": "Portfolio-Review",
+            "equipmentIds": ["display-86","video-system"],
+            "cateringPackageId": "workshop-day",
+            "costCenterId": "cc-5100",
+            "description": "Portfolio-Review mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000012",
@@ -1097,7 +1152,12 @@ const fixture = {
             "startsAt": "2026-06-24T11:00:00.000Z",
             "endsAt": "2026-06-24T13:00:00.000Z",
             "internalParticipants": 8,
-            "externalParticipants": 2
+            "externalParticipants": 2,
+            "title": "Angebotsabstimmung",
+            "equipmentIds": ["display-65","video-system"],
+            "cateringPackageId": "vegan-day",
+            "costCenterId": "cc-6100",
+            "description": "Angebotsabstimmung mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000013",
@@ -1107,7 +1167,12 @@ const fixture = {
             "startsAt": "2026-06-25T11:00:00.000Z",
             "endsAt": "2026-06-25T13:00:00.000Z",
             "internalParticipants": 14,
-            "externalParticipants": 2
+            "externalParticipants": 2,
+            "title": "Retrospektive",
+            "equipmentIds": ["mobile-display","whiteboard"],
+            "cateringPackageId": "coffee-break",
+            "costCenterId": "cc-1000",
+            "description": "Retrospektive mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000014",
@@ -1117,7 +1182,12 @@ const fixture = {
             "startsAt": "2026-06-26T11:00:00.000Z",
             "endsAt": "2026-06-26T13:00:00.000Z",
             "internalParticipants": 10,
-            "externalParticipants": 2
+            "externalParticipants": 2,
+            "title": "Innovationsworkshop",
+            "equipmentIds": ["mobile-display","whiteboard"],
+            "cateringPackageId": "business-breakfast",
+            "costCenterId": "cc-2100",
+            "description": "Innovationsworkshop mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000015",
@@ -1127,7 +1197,12 @@ const fixture = {
             "startsAt": "2026-06-27T11:00:00.000Z",
             "endsAt": "2026-06-27T13:00:00.000Z",
             "internalParticipants": 3,
-            "externalParticipants": 0
+            "externalParticipants": 0,
+            "title": "Teamabstimmung",
+            "equipmentIds": ["display-55","usb-camera"],
+            "cateringPackageId": "workshop-day",
+            "costCenterId": "cc-3100",
+            "description": "Teamabstimmung mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000016",
@@ -1137,7 +1212,12 @@ const fixture = {
             "startsAt": "2026-06-23T11:00:00.000Z",
             "endsAt": "2026-06-23T13:00:00.000Z",
             "internalParticipants": 4,
-            "externalParticipants": 0
+            "externalParticipants": 0,
+            "title": "Interviewrunde",
+            "equipmentIds": ["display-55","usb-camera"],
+            "cateringPackageId": "vegan-day",
+            "costCenterId": "cc-4100",
+            "description": "Interviewrunde mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000017",
@@ -1147,7 +1227,12 @@ const fixture = {
             "startsAt": "2026-06-24T11:00:00.000Z",
             "endsAt": "2026-06-24T13:00:00.000Z",
             "internalParticipants": 26,
-            "externalParticipants": 2
+            "externalParticipants": 2,
+            "title": "Methodentraining",
+            "equipmentIds": ["projector","projection-screen"],
+            "cateringPackageId": "coffee-break",
+            "costCenterId": "cc-5100",
+            "description": "Methodentraining mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000018",
@@ -1157,7 +1242,12 @@ const fixture = {
             "startsAt": "2026-06-25T11:00:00.000Z",
             "endsAt": "2026-06-25T13:00:00.000Z",
             "internalParticipants": 4,
-            "externalParticipants": 2
+            "externalParticipants": 2,
+            "title": "Partnergespräch",
+            "equipmentIds": ["display-65","video-system"],
+            "cateringPackageId": "business-breakfast",
+            "costCenterId": "cc-6100",
+            "description": "Partnergespräch mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000019",
@@ -1167,7 +1257,12 @@ const fixture = {
             "startsAt": "2026-06-26T11:00:00.000Z",
             "endsAt": "2026-06-26T13:00:00.000Z",
             "internalParticipants": 58,
-            "externalParticipants": 2
+            "externalParticipants": 2,
+            "title": "Informationsveranstaltung",
+            "equipmentIds": ["projector","projection-screen"],
+            "cateringPackageId": "workshop-day",
+            "costCenterId": "cc-1000",
+            "description": "Informationsveranstaltung mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000020",
@@ -1177,7 +1272,12 @@ const fixture = {
             "startsAt": "2026-06-27T11:00:00.000Z",
             "endsAt": "2026-06-27T13:00:00.000Z",
             "internalParticipants": 6,
-            "externalParticipants": 2
+            "externalParticipants": 2,
+            "title": "Hybride Produktpräsentation",
+            "equipmentIds": ["display-86","video-system"],
+            "cateringPackageId": "vegan-day",
+            "costCenterId": "cc-2100",
+            "description": "Hybride Produktpräsentation mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           }
         ],
       roomMedia: [
@@ -1388,7 +1488,12 @@ const fixture = {
             "startsAt": "2026-06-17T08:00:00.000Z",
             "endsAt": "2026-06-17T09:30:00.000Z",
             "internalParticipants": 5,
-            "externalParticipants": 0
+            "externalParticipants": 0,
+            "title": "Teamworkshop prüfen",
+            "equipmentIds": [],
+            "cateringPackageId": null,
+            "costCenterId": null,
+            "description": null
           },
           {
             "id": "22000000-0000-4000-8000-000000000003",
@@ -1398,7 +1503,12 @@ const fixture = {
             "startsAt": "2026-06-18T08:00:00.000Z",
             "endsAt": "2026-06-18T09:30:00.000Z",
             "internalParticipants": 5,
-            "externalParticipants": 0
+            "externalParticipants": 0,
+            "title": "Kundentermin prüfen",
+            "equipmentIds": [],
+            "cateringPackageId": null,
+            "costCenterId": null,
+            "description": null
           },
           {
             "id": "22000000-0000-4000-8000-000000000004",
@@ -1408,7 +1518,12 @@ const fixture = {
             "startsAt": "2026-06-19T08:00:00.000Z",
             "endsAt": "2026-06-19T09:30:00.000Z",
             "internalParticipants": 5,
-            "externalParticipants": 0
+            "externalParticipants": 0,
+            "title": "Projektbesprechung prüfen",
+            "equipmentIds": [],
+            "cateringPackageId": null,
+            "costCenterId": null,
+            "description": null
           }
         ],
       roomMedia: [
@@ -1712,6 +1827,7 @@ function validateTenant(value) {
       'endsAt',
       'internalParticipants',
       'externalParticipants',
+      'title', 'equipmentIds', 'cateringPackageId', 'costCenterId', 'description',
     ], 'DEMO_FIXTURE_REQUEST_INVALID');
     string(request.id, 'DEMO_FIXTURE_REQUEST_INVALID', { min: 36, max: 36, pattern: UUID_PATTERN });
     string(request.requesterUserId, 'DEMO_FIXTURE_REQUEST_INVALID', { min: 36, max: 36, pattern: UUID_PATTERN });
@@ -1725,6 +1841,20 @@ function validateTenant(value) {
     if (Date.parse(request.endsAt) <= Date.parse(request.startsAt)) fail('DEMO_FIXTURE_REQUEST_INVALID');
     integer(request.internalParticipants, 'DEMO_FIXTURE_REQUEST_INVALID');
     integer(request.externalParticipants, 'DEMO_FIXTURE_REQUEST_INVALID');
+    string(request.title, 'DEMO_FIXTURE_REQUEST_INVALID');
+    if (!Array.isArray(request.equipmentIds)
+      || request.equipmentIds.some((id) => !value.settings.catalogue.equipment.some((entry) => entry.id === id))) {
+      fail('DEMO_FIXTURE_REQUEST_INVALID');
+    }
+    if (request.cateringPackageId !== null
+      && !value.settings.catalogue.cateringPackages.some((entry) => entry.id === request.cateringPackageId)) {
+      fail('DEMO_FIXTURE_REQUEST_INVALID');
+    }
+    if (request.costCenterId !== null
+      && !value.costCenters.some((center) => center.id === request.costCenterId)) {
+      fail('DEMO_FIXTURE_REQUEST_INVALID');
+    }
+    if (request.description !== null) string(request.description, 'DEMO_FIXTURE_REQUEST_INVALID', { max: 2000 });
   }
   if (!Array.isArray(value.roomMedia) || value.roomMedia.length > 20) {
     fail('DEMO_FIXTURE_MEDIA_INVALID');
