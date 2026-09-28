@@ -42,8 +42,15 @@ export function createPostgresDemoCatalogueMediaRepository(pool, { auditReposito
       if (!isInternalUuid(tenantId) || !isInternalUuid(assetId)) return null;
       const result = await pool.query({
         name: 'demo-customer-media-asset',
-        text: `SELECT bytes, content_type, byte_length FROM demo_catalogue_media_assets
-          WHERE tenant_id = $1 AND id = $2`,
+        text: `SELECT bytes, content_type, byte_length FROM demo_catalogue_media_assets asset
+          WHERE asset.tenant_id = $1 AND asset.id = $2 AND (
+            (owner_kind = 'room_plan' AND EXISTS (SELECT 1 FROM rooms room
+              WHERE room.tenant_id = asset.tenant_id AND room.id = asset.owner_id))
+            OR (owner_kind = 'catering_package' AND EXISTS (SELECT 1 FROM catering_packages pkg
+              WHERE pkg.tenant_id = asset.tenant_id AND pkg.id = asset.owner_id))
+            OR (owner_kind = 'catering_item' AND EXISTS (SELECT 1 FROM catering_items item
+              WHERE item.tenant_id = asset.tenant_id AND item.id = asset.owner_id))
+          )`,
         values: [tenantId, assetId],
       });
       if (result.rowCount !== 1) return null;
@@ -58,7 +65,14 @@ export function createPostgresDemoCatalogueMediaRepository(pool, { auditReposito
       const result = await pool.query({
         name: 'demo-customer-media-catalogue',
         text: `SELECT id, owner_kind, owner_id, content_type, alt_text
-          FROM demo_catalogue_media_assets WHERE tenant_id = $1 ORDER BY id`,
+          FROM demo_catalogue_media_assets asset WHERE asset.tenant_id = $1 AND (
+            (owner_kind = 'room_plan' AND EXISTS (SELECT 1 FROM rooms room
+              WHERE room.tenant_id = asset.tenant_id AND room.id = asset.owner_id))
+            OR (owner_kind = 'catering_package' AND EXISTS (SELECT 1 FROM catering_packages pkg
+              WHERE pkg.tenant_id = asset.tenant_id AND pkg.id = asset.owner_id))
+            OR (owner_kind = 'catering_item' AND EXISTS (SELECT 1 FROM catering_items item
+              WHERE item.tenant_id = asset.tenant_id AND item.id = asset.owner_id))
+          ) ORDER BY asset.id`,
         values: [tenantId],
       });
       return result.rows.map(({ id, owner_kind: ownerKind, owner_id: ownerId,
