@@ -244,6 +244,7 @@ async function seedTenantBusinessState(client, fixture) {
             room.name,
             room.capacity,
             JSON.stringify({
+              description: room.description,
               floor: room.floor, equipment: room.equipment, accessibility: room.accessibility,
               mediaAssetIds: tenant.roomMedia.filter(({ roomId }) => roomId === room.id).map(({ id }) => id),
             }),
@@ -852,6 +853,7 @@ export async function readDemoSemanticState({ client } = {}) {
               name: room.name,
               capacity: safeInteger(room.capacity),
               priceMinor: room.price_minor === null ? null : safeInteger(room.price_minor),
+              description: room.details.description,
               floor: room.details.floor,
               equipment: room.details.equipment,
               accessibility: room.details.accessibility,
