@@ -288,4 +288,10 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
     },
   });
   assert.equal(semanticChecksum(state), DEMO_FIXTURE_CHECKSUM);
+  mediaRows[0].bytes = Buffer.from(mediaRows[0].bytes);
+  mediaRows[0].bytes[20] ^= 1;
+  await assert.rejects(
+    readDemoSemanticState({ client: { async query({ name }) { return { rows: byName[name] }; } } }),
+    /DEMO_FIXTURE_MEDIA_BYTES_DIVERGED/,
+  );
 });
