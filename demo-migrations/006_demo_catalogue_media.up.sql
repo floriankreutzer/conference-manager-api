@@ -22,6 +22,7 @@ DECLARE
   reset_role text := current_setting('conference_manager.demo_reset_role');
 BEGIN
   EXECUTE format('GRANT SELECT ON TABLE public.demo_catalogue_media_assets TO %I', customer_role);
+  EXECUTE format('GRANT UPDATE (bytes, content_type, byte_length, content_sha256) ON TABLE public.demo_catalogue_media_assets TO %I', customer_role);
   EXECUTE format('GRANT SELECT, INSERT, TRUNCATE ON TABLE public.demo_catalogue_media_assets TO %I', reset_role);
 END;
 $$;
