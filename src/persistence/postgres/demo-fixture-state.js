@@ -145,6 +145,23 @@ async function verifiedMediaBytes(media) {
   return bytes;
 }
 
+async function verifiedCatalogueBytes(media) {
+  const suffix = media.contentType === 'image/png' ? '-plan.png' : '.webp';
+  const encoded = await readFile(new URL(
+    `../../demo/media/${media.assetKey}${suffix}.b64`, import.meta.url,
+  ), 'utf8');
+  const bytes = Buffer.from(encoded.trim(), 'base64');
+  const digest = createHash('sha256').update(bytes).digest('hex');
+  const signatureValid = media.contentType === 'image/png'
+    ? bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
+    : bytes.toString('ascii', 0, 4) === 'RIFF'
+      && bytes.toString('ascii', 8, 12) === 'WEBP';
+  if (!signatureValid || bytes.length !== media.byteLength || digest !== media.sha256) {
+    throw new Error('DEMO_FIXTURE_CATALOGUE_MEDIA_BYTES_INVALID');
+  }
+  return bytes;
+}
+
 async function seedTenantBusinessState(client, fixture) {
   for (const tenant of fixture.tenants) {
     await client.query({
@@ -254,6 +271,8 @@ async function seedTenantBusinessState(client, fixture) {
               description: room.description,
               floor: room.floor, equipment: room.equipment, accessibility: room.accessibility,
               mediaAssetIds: tenant.roomMedia.filter(({ roomId }) => roomId === room.id).map(({ id }) => id),
+              floorplanAssetId: tenant.catalogueMedia.find(({ ownerKind, ownerId }) =>
+                ownerKind === 'room_plan' && ownerId === room.id)?.id ?? null,
             }),
             fixture.fixedClock,
           ],
@@ -290,6 +309,22 @@ async function seedTenantBusinessState(client, fixture) {
         ) VALUES ($1, $2, $3, $4, 'image/webp', $5, $6, $7, $8, $9, $10)`,
         values: [tenant.id, media.id, media.roomId, bytes, media.byteLength,
           media.width, media.height, Buffer.from(media.sha256, 'hex'), fixture.fixedClock, creator.userId],
+      });
+    }
+    for (const media of tenant.catalogueMedia) {
+      const bytes = await verifiedCatalogueBytes(media);
+      const creator = fixture.customerPersonas.find(({ tenantId, persona }) =>
+        tenantId === tenant.id && persona === 'tenant_admin');
+      if (!creator) throw new Error('DEMO_FIXTURE_CATALOGUE_MEDIA_CREATOR_INVALID');
+      await client.query({
+        name: 'demo-fixture-insert-catalogue-media',
+        text: `INSERT INTO demo_catalogue_media_assets (
+          tenant_id, id, owner_kind, owner_id, bytes, content_type,
+          byte_length, content_sha256, alt_text, created_at, created_by_user_id
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        values: [tenant.id, media.id, media.ownerKind, media.ownerId, bytes,
+          media.contentType, media.byteLength, Buffer.from(media.sha256, 'hex'),
+          media.altText, fixture.fixedClock, creator.userId],
       });
     }
     for (const service of tenant.settings.catalogue.services) {
@@ -785,12 +820,35 @@ export async function readDemoSemanticState({ client } = {}) {
       throw new Error('DEMO_FIXTURE_MEDIA_BYTES_DIVERGED');
     }
   }
+  const catalogueMediaAssets = await readRows(client, 'demo-fixture-read-catalogue-media', `
+    SELECT tenant_id, id, owner_kind, owner_id, bytes, content_type,
+      byte_length, content_sha256, alt_text
+    FROM demo_catalogue_media_assets ORDER BY tenant_id, id
+  `);
+  for (const media of catalogueMediaAssets) {
+    const hash = createHash('sha256').update(media.bytes).digest('hex');
+    const signatureValid = media.content_type === 'image/png'
+      ? media.bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
+      : media.content_type === 'image/webp'
+        && media.bytes.toString('ascii', 0, 4) === 'RIFF'
+        && media.bytes.toString('ascii', 8, 12) === 'WEBP';
+    if (!signatureValid || media.bytes.length !== safeInteger(media.byte_length)
+      || !media.content_sha256.equals(Buffer.from(hash, 'hex'))) {
+      throw new Error('DEMO_FIXTURE_CATALOGUE_MEDIA_BYTES_DIVERGED');
+    }
+  }
   for (const room of rooms) {
     const references = mediaAssets
       .filter(({ tenant_id: tenantId, room_id: roomId }) => (
         tenantId === room.tenant_id && roomId === room.id
       ))
       .map(({ id }) => id).sort();
+    const plan = catalogueMediaAssets.find(({ tenant_id: tenantId, owner_kind: kind,
+      owner_id: ownerId }) => tenantId === room.tenant_id
+      && kind === 'room_plan' && ownerId === room.id);
+    if ((room.details?.floorplanAssetId ?? null) !== (plan?.id ?? null)) {
+      throw new Error('DEMO_FIXTURE_CATALOGUE_MEDIA_REFERENCES_DIVERGED');
+    }
     const stored = room.details?.mediaAssetIds;
     if (!Array.isArray(stored)
       || JSON.stringify([...stored].sort()) !== JSON.stringify(references)) {
@@ -997,6 +1055,19 @@ export async function readDemoSemanticState({ client } = {}) {
         })),
       },
     },
+    catalogueMedia: catalogueMediaAssets.filter((entry) => entry.tenant_id === tenant.id)
+      .map((entry) => ({
+        id: entry.id,
+        assetKey: entry.owner_kind === 'room_plan'
+          ? entry.owner_id.startsWith('northwind-berlin-room-')
+            ? `northwind-room-${String(Number(entry.owner_id.slice('northwind-berlin-room-'.length))).padStart(2, '0')}`
+            : entry.owner_id
+          : entry.owner_id,
+        ownerKind: entry.owner_kind, ownerId: entry.owner_id,
+        sha256: entry.content_sha256.toString('hex'),
+        byteLength: safeInteger(entry.byte_length),
+        contentType: entry.content_type, altText: entry.alt_text,
+      })),
     roomMedia: mediaAssets.filter((entry) => entry.tenant_id === tenant.id).map((entry) => ({
       id: entry.id, roomId: entry.room_id,
       sha256: entry.content_sha256.toString('hex'),
