@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -69,6 +70,9 @@ test('concrete Demo seeder uses bounded named parameterized writes and never see
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-catering-item').length, 8);
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-catering-package').length, 4);
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-cost-center').length, 7);
+  const mediaWrites = queries.filter(({ name }) => name === 'demo-fixture-insert-room-media');
+  assert.equal(mediaWrites.length, 11);
+  assert.equal(mediaWrites.every(({ values }) => values[3].length === values[4]), true);
   const catalogueRevisions = queries.filter(({ name }) => name === 'demo-fixture-insert-catalogue-revision');
   assert.equal(catalogueRevisions.length, 3);
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-advance-catalogue-revision').length, 3);
@@ -131,6 +135,20 @@ test('concrete Demo seeder uses bounded named parameterized writes and never see
 });
 
 test('semantic reader reconstructs the exact source fixture from canonical PostgreSQL projections', async () => {
+  const mediaRows = await Promise.all(DEMO_FIXTURE.tenants.flatMap((tenant) => tenant.roomMedia.map(async (media) => {
+    const match = /^northwind-berlin-room-(10|[1-9])$/.exec(media.roomId);
+    const key = match ? `northwind-room-${match[1].padStart(2, '0')}` : media.roomId;
+    const encoded = await readFile(
+      new URL(`../src/demo/media/${key}.webp.b64`, import.meta.url), 'utf8',
+    );
+    return {
+      tenant_id: tenant.id, id: media.id, room_id: media.roomId,
+      bytes: Buffer.from(encoded.trim(), 'base64'),
+      content_type: 'image/webp', byte_length: media.byteLength,
+      width: media.width, height: media.height,
+      content_sha256: Buffer.from(media.sha256, 'hex'),
+    };
+  })));
   const byName = {
     'demo-fixture-read-tenants': DEMO_FIXTURE.tenants.map((tenant) => ({
       id: tenant.id,
@@ -156,9 +174,13 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
         name: room.name,
         capacity: room.capacity,
         price_minor: room.priceMinor,
-        details: { floor: room.floor, equipment: room.equipment, accessibility: room.accessibility },
+        details: {
+          floor: room.floor, equipment: room.equipment, accessibility: room.accessibility,
+          mediaAssetIds: tenant.roomMedia.filter(({ roomId }) => roomId === room.id).map(({ id }) => id),
+        },
       })))
     )),
+    'demo-fixture-read-room-media': mediaRows,
     'demo-fixture-read-services': DEMO_FIXTURE.tenants.flatMap((tenant) => (
       tenant.settings.catalogue.services.map((id) => ({
         tenant_id: tenant.id,
