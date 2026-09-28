@@ -332,7 +332,7 @@ async function seedTenantReadinessState(client, fixture) {
           places_permission_status, calendars_permission_status,
           created_at, updated_at
         )
-        VALUES ($1, $2, 'microsoft365', $3, $4, 1, $5, NULL, $6, $7, $5, $5)
+        VALUES ($1, $2, 'microsoft365', $3, $4, 1, $5, NULL, $6, $7, $8, $8)
       `,
       values: [
         tenant.id,
@@ -342,6 +342,7 @@ async function seedTenantReadinessState(client, fixture) {
         tenant.lifecycleStatus === 'onboarding' ? null : fixture.fixedClock,
         provider.placesPermission,
         provider.calendarsPermission,
+        fixture.fixedClock,
       ],
     });
     for (const mapping of provider.roomMappings) {
