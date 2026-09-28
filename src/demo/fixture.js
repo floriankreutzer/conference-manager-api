@@ -747,7 +747,11 @@ const fixture = {
                 "water-juice",
                 "pastry"
               ],
-              "variants": [{"id":"coffee-break-standard","name":"Standard","description":null,"active":true,"order":1,"price":{"amountMinor":1200,"currency":"EUR"}}]
+              "variants": [{
+                "id": "coffee-break-standard", "name": "Standard", "description": null,
+                "active": true, "order": 1,
+                "price": { "amountMinor": 1200, "currency": "EUR" }
+              }]
             },
             {
               "id": "business-breakfast",
@@ -769,7 +773,11 @@ const fixture = {
                 "fruit",
                 "sandwich-vegetarian"
               ],
-              "variants": [{"id":"business-breakfast-standard","name":"Standard","description":null,"active":true,"order":1,"price":{"amountMinor":1800,"currency":"EUR"}}]
+              "variants": [{
+                "id": "business-breakfast-standard", "name": "Standard", "description": null,
+                "active": true, "order": 1,
+                "price": { "amountMinor": 1800, "currency": "EUR" }
+              }]
             },
             {
               "id": "workshop-day",
@@ -791,7 +799,11 @@ const fixture = {
                 "lunch-classic",
                 "afternoon-snack"
               ],
-              "variants": [{"id":"workshop-day-standard","name":"Standard","description":null,"active":true,"order":1,"price":{"amountMinor":4200,"currency":"EUR"}}]
+              "variants": [{
+                "id": "workshop-day-standard", "name": "Standard", "description": null,
+                "active": true, "order": 1,
+                "price": { "amountMinor": 4200, "currency": "EUR" }
+              }]
             },
             {
               "id": "vegan-day",
@@ -813,7 +825,11 @@ const fixture = {
                 "fruit",
                 "lunch-vegan"
               ],
-              "variants": [{"id":"vegan-day-standard","name":"Standard","description":null,"active":true,"order":1,"price":{"amountMinor":3900,"currency":"EUR"}}]
+              "variants": [{
+                "id": "vegan-day-standard", "name": "Standard", "description": null,
+                "active": true, "order": 1,
+                "price": { "amountMinor": 3900, "currency": "EUR" }
+              }]
             }
           ],
           cateringItems: [
@@ -992,7 +1008,8 @@ const fixture = {
             "equipmentIds": ["display-86","video-system"],
             "cateringPackageId": "coffee-break",
             "costCenterId": "cc-1000",
-            "description": "Strategieabstimmung mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Strategieabstimmung mit vorbereitetem Raum, passender Präsentationstechnik und " +
+              "abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000002",
@@ -1007,7 +1024,8 @@ const fixture = {
             "equipmentIds": ["display-65","video-system"],
             "cateringPackageId": "business-breakfast",
             "costCenterId": "cc-2100",
-            "description": "Vertriebsplanung mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Vertriebsplanung mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem " +
+              "Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000003",
@@ -1022,7 +1040,8 @@ const fixture = {
             "equipmentIds": ["mobile-display","whiteboard"],
             "cateringPackageId": "workshop-day",
             "costCenterId": "cc-3100",
-            "description": "Produkt-Workshop mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Produkt-Workshop mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem " +
+              "Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000004",
@@ -1037,7 +1056,8 @@ const fixture = {
             "equipmentIds": ["mobile-display","whiteboard"],
             "cateringPackageId": "vegan-day",
             "costCenterId": "cc-4100",
-            "description": "Design-Sprint mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Design-Sprint mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem " +
+              "Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000005",
@@ -1052,7 +1072,8 @@ const fixture = {
             "equipmentIds": ["display-55","usb-camera"],
             "cateringPackageId": "coffee-break",
             "costCenterId": "cc-5100",
-            "description": "Projektabstimmung mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Projektabstimmung mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem " +
+              "Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000006",
@@ -1067,7 +1088,8 @@ const fixture = {
             "equipmentIds": ["display-55","usb-camera"],
             "cateringPackageId": "business-breakfast",
             "costCenterId": "cc-6100",
-            "description": "Bewerbungsgespräch mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Bewerbungsgespräch mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem " +
+              "Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000007",
@@ -1082,7 +1104,8 @@ const fixture = {
             "equipmentIds": ["projector","projection-screen"],
             "cateringPackageId": "workshop-day",
             "costCenterId": "cc-1000",
-            "description": "Onboarding-Training mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Onboarding-Training mit vorbereitetem Raum, passender Präsentationstechnik und " +
+              "abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000008",
@@ -1097,7 +1120,8 @@ const fixture = {
             "equipmentIds": ["display-65","video-system"],
             "cateringPackageId": "vegan-day",
             "costCenterId": "cc-2100",
-            "description": "Kundengespräch mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Kundengespräch mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem " +
+              "Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000009",
@@ -1112,7 +1136,8 @@ const fixture = {
             "equipmentIds": ["projector","projection-screen"],
             "cateringPackageId": "coffee-break",
             "costCenterId": "cc-3100",
-            "description": "Townhall mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Townhall mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. " +
+              "Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000010",
@@ -1127,7 +1152,8 @@ const fixture = {
             "equipmentIds": ["display-86","video-system"],
             "cateringPackageId": "business-breakfast",
             "costCenterId": "cc-4100",
-            "description": "Hybrider Kundenworkshop mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Hybrider Kundenworkshop mit vorbereitetem Raum, passender Präsentationstechnik und " +
+              "abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000011",
@@ -1142,7 +1168,8 @@ const fixture = {
             "equipmentIds": ["display-86","video-system"],
             "cateringPackageId": "workshop-day",
             "costCenterId": "cc-5100",
-            "description": "Portfolio-Review mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Portfolio-Review mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem " +
+              "Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000012",
@@ -1157,7 +1184,8 @@ const fixture = {
             "equipmentIds": ["display-65","video-system"],
             "cateringPackageId": "vegan-day",
             "costCenterId": "cc-6100",
-            "description": "Angebotsabstimmung mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Angebotsabstimmung mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem " +
+              "Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000013",
@@ -1172,7 +1200,8 @@ const fixture = {
             "equipmentIds": ["mobile-display","whiteboard"],
             "cateringPackageId": "coffee-break",
             "costCenterId": "cc-1000",
-            "description": "Retrospektive mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Retrospektive mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem " +
+              "Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000014",
@@ -1187,7 +1216,8 @@ const fixture = {
             "equipmentIds": ["mobile-display","whiteboard"],
             "cateringPackageId": "business-breakfast",
             "costCenterId": "cc-2100",
-            "description": "Innovationsworkshop mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Innovationsworkshop mit vorbereitetem Raum, passender Präsentationstechnik und " +
+              "abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000015",
@@ -1202,7 +1232,8 @@ const fixture = {
             "equipmentIds": ["display-55","usb-camera"],
             "cateringPackageId": "workshop-day",
             "costCenterId": "cc-3100",
-            "description": "Teamabstimmung mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Teamabstimmung mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem " +
+              "Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000016",
@@ -1217,7 +1248,8 @@ const fixture = {
             "equipmentIds": ["display-55","usb-camera"],
             "cateringPackageId": "vegan-day",
             "costCenterId": "cc-4100",
-            "description": "Interviewrunde mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Interviewrunde mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem " +
+              "Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000017",
@@ -1232,7 +1264,8 @@ const fixture = {
             "equipmentIds": ["projector","projection-screen"],
             "cateringPackageId": "coffee-break",
             "costCenterId": "cc-5100",
-            "description": "Methodentraining mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Methodentraining mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem " +
+              "Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000018",
@@ -1247,7 +1280,8 @@ const fixture = {
             "equipmentIds": ["display-65","video-system"],
             "cateringPackageId": "business-breakfast",
             "costCenterId": "cc-6100",
-            "description": "Partnergespräch mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Partnergespräch mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem " +
+              "Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000019",
@@ -1262,7 +1296,8 @@ const fixture = {
             "equipmentIds": ["projector","projection-screen"],
             "cateringPackageId": "workshop-day",
             "costCenterId": "cc-1000",
-            "description": "Informationsveranstaltung mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Informationsveranstaltung mit vorbereitetem Raum, passender Präsentationstechnik und " +
+              "abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           },
           {
             "id": "12000000-0000-4000-8000-000000000020",
@@ -1277,7 +1312,8 @@ const fixture = {
             "equipmentIds": ["display-86","video-system"],
             "cateringPackageId": "vegan-day",
             "costCenterId": "cc-2100",
-            "description": "Hybride Produktpräsentation mit vorbereitetem Raum, passender Präsentationstechnik und abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
+            "description": "Hybride Produktpräsentation mit vorbereitetem Raum, passender Präsentationstechnik und " +
+              "abgestimmtem Catering. Alle Angaben sind synthetische Demodaten."
           }
         ],
       roomMedia: [
