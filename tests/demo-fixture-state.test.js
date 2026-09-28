@@ -345,10 +345,18 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
     },
   });
   assert.equal(semanticChecksum(state), DEMO_FIXTURE_CHECKSUM);
+  const originalPhoto = mediaRows[0].bytes;
   mediaRows[0].bytes = Buffer.from(mediaRows[0].bytes);
   mediaRows[0].bytes[20] ^= 1;
   await assert.rejects(
     readDemoSemanticState({ client: { async query({ name }) { return { rows: byName[name] }; } } }),
     /DEMO_FIXTURE_MEDIA_BYTES_DIVERGED/,
+  );
+  mediaRows[0].bytes = originalPhoto;
+  catalogueMediaRows[0].bytes = Buffer.from(catalogueMediaRows[0].bytes);
+  catalogueMediaRows[0].bytes[20] ^= 1;
+  await assert.rejects(
+    readDemoSemanticState({ client: { async query({ name }) { return { rows: byName[name] }; } } }),
+    /DEMO_FIXTURE_CATALOGUE_MEDIA_BYTES_DIVERGED/,
   );
 });
