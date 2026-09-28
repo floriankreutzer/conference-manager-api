@@ -41,6 +41,9 @@ try {
     pool: resetPool,
     expectedDatabaseName: config.databaseTarget.database,
     expectedResetRole: config.databases.reset.role,
+    onSemanticMismatch: process.env.NODE_ENV === 'test'
+      ? (path) => process.stderr.write(`DEMO_SEMANTIC_PATH: ${path?.slice(0, 120) || 'unknown'}\n`)
+      : null,
   });
   const result = await createDemoResetService({ repository }).reset();
   output(process.stdout, Object.freeze({ status: 'completed', result }));
