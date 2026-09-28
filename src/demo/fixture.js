@@ -183,6 +183,7 @@ function guestInformation(city, countryCode) {
 
 const TENANT_A = '10000000-0000-4000-8000-000000000001';
 const TENANT_B = '20000000-0000-4000-8000-000000000002';
+const TENANT_C = '40000000-0000-4000-8000-000000000004';
 
 const fixture = {
   schemaVersion: DEMO_RUNTIME_SCHEMA_VERSION,
@@ -639,6 +640,30 @@ const fixture = {
           ],
       },
     },
+    {
+      id: TENANT_C,
+      displayName: 'Fabrikam Demo',
+      lifecycleStatus: 'onboarding',
+      lifecycleRevision: 1,
+      settings: {
+        organization: { name: null, countryCode: 'DE' },
+        locations: [],
+        catalogue: { services: [], currency: 'EUR', equipment: [] },
+      },
+      requests: [],
+      providerSimulation: {
+        provider: 'demo_microsoft365',
+        identityBindingId: '44000000-0000-4000-8000-000000000004',
+        integrationId: '45000000-0000-4000-8000-000000000004',
+        providerTenantReference: TENANT_C,
+        connectionState: 'not_configured',
+        placesPermission: 'missing',
+        calendarsPermission: 'missing',
+        health: 'unknown',
+        scenario: 'onboarding',
+        roomMappings: [],
+      },
+    },
   ],
   customerPersonas: [
     customerPersona({
@@ -683,6 +708,13 @@ const fixture = {
       roles: [TENANT_ROLE.EMPLOYEE, TENANT_ROLE.TENANT_ADMIN],
       providerSubject: 'contoso-tenant-admin',
     }),
+    customerPersona({
+      tenantId: TENANT_C,
+      persona: 'tenant_admin',
+      userId: '43000000-0000-4000-8000-000000000004',
+      roles: [TENANT_ROLE.EMPLOYEE, TENANT_ROLE.TENANT_ADMIN],
+      providerSubject: 'fabrikam-tenant-admin',
+    }),
   ],
   platform: {
     personas: [
@@ -690,7 +722,7 @@ const fixture = {
         persona: 'support_reader',
         operatorId: '31000000-0000-4000-8000-000000000001',
         roles: [DEMO_PLATFORM_ROLE.SUPPORT_READER],
-        tenantIds: [TENANT_A, TENANT_B],
+        tenantIds: [TENANT_A, TENANT_B, TENANT_C],
         providerSubject: 'demo-support-reader',
         assuranceLevel: 'mfa',
       }),
@@ -698,7 +730,7 @@ const fixture = {
         persona: 'tenant_operator',
         operatorId: '31000000-0000-4000-8000-000000000002',
         roles: [DEMO_PLATFORM_ROLE.TENANT_OPERATOR],
-        tenantIds: [TENANT_A, TENANT_B],
+        tenantIds: [TENANT_A, TENANT_B, TENANT_C],
         providerSubject: 'demo-tenant-operator',
         assuranceLevel: 'step_up',
       }),
@@ -730,6 +762,7 @@ const fixture = {
     metering: [
       { tenantId: TENANT_A, period: '2026-06', requestCount: 18 },
       { tenantId: TENANT_B, period: '2026-06', requestCount: 7 },
+      { tenantId: TENANT_C, period: '2026-06', requestCount: 0 },
     ],
   },
 };
@@ -1010,7 +1043,9 @@ export function validateDemoFixture(value) {
     'DEMO_FIXTURE_PROVIDER_INVALID',
   );
   const tenantIds = new Set(value.tenants.map(({ id }) => id));
-  if (!Array.isArray(value.customerPersonas) || value.customerPersonas.length < value.tenants.length * 3) {
+  if (!Array.isArray(value.customerPersonas) || value.customerPersonas.length < value.tenants.reduce((count, tenant) => (
+    count + (tenant.lifecycleStatus === 'onboarding' ? 1 : 3)
+  ), 0)) {
     fail('DEMO_FIXTURE_CUSTOMER_PERSONAS_INVALID');
   }
   value.customerPersonas.forEach((persona) => validateCustomerPersona(persona, tenantIds));
@@ -1019,7 +1054,10 @@ export function validateDemoFixture(value) {
     'DEMO_FIXTURE_CUSTOMER_PERSONA_DUPLICATE',
   );
   for (const tenantId of tenantIds) {
-    for (const persona of ['employee', 'conference_manager', 'tenant_admin']) {
+    const tenant = value.tenants.find(({ id }) => id === tenantId);
+    const required = tenant.lifecycleStatus === 'onboarding'
+      ? ['tenant_admin'] : ['employee', 'conference_manager', 'tenant_admin'];
+    for (const persona of required) {
       if (!value.customerPersonas.some((entry) => entry.tenantId === tenantId && entry.persona === persona)) {
         fail('DEMO_FIXTURE_CUSTOMER_PERSONA_REQUIRED');
       }
