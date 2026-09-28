@@ -5,6 +5,7 @@ import {
 import {
   semanticChecksum,
   validateDemoFixture,
+  createDemoResetGenerationFixture,
 } from '../../demo/fixture.js';
 import { withPostgresTransaction } from './transaction.js';
 import { acquireDemoRuntimeResetTransactionLock } from './demo-runtime-gate.js';
@@ -365,6 +366,10 @@ export function createPostgresDemoResetRepository({
             phase = DEMO_RESET_FAILURE_REASON.AUTHORITY;
             await verifyResetAuthority(client, authority);
           }
+          const generation = fixture.seedVersion.startsWith('saas-3.7-')
+            ? createDemoResetGenerationFixture(fixture, new Date())
+            : fixture;
+          const generationChecksum = semanticChecksum(generation);
           phase = DEMO_RESET_FAILURE_REASON.TRUNCATE;
           await client.query({ name: 'demo-reset-truncate', text: TRUNCATE_SQL });
           await client.query({
@@ -377,15 +382,17 @@ export function createPostgresDemoResetRepository({
             text: 'INSERT INTO platform_audit_chain_state (singleton) VALUES (true)',
           });
           phase = DEMO_RESET_FAILURE_REASON.BUSINESS_SEED;
-          await seedBusinessState({ client, fixture });
+          await seedBusinessState({ client, fixture: generation });
           phase = DEMO_RESET_FAILURE_REASON.PROVIDER_SEED;
-          await insertProviderState(client, fixture);
+          await insertProviderState(client, generation);
           phase = DEMO_RESET_FAILURE_REASON.PERSONA_SEED;
-          await insertPersonaReferences(client, fixture);
+          await insertPersonaReferences(client, generation);
           phase = DEMO_RESET_FAILURE_REASON.SEMANTIC_READ;
           const semanticState = await readSemanticState({ client });
           phase = DEMO_RESET_FAILURE_REASON.SEMANTIC_CHECKSUM;
-          if (semanticChecksum(semanticState) !== checksum) fail('DEMO_RESET_SEMANTIC_CHECKSUM_MISMATCH');
+          if (semanticChecksum(semanticState) !== generationChecksum) {
+            fail('DEMO_RESET_SEMANTIC_CHECKSUM_MISMATCH');
+          }
           if (auditEventFor !== null) {
             phase = DEMO_RESET_FAILURE_REASON.SUCCESS_AUDIT;
             await auditRepository.appendWithClient(client, auditEventFor({
