@@ -113,9 +113,9 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
 
   await migrateUp(pool);
   await createRoles(pool);
-  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 5);
+  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 6);
 
-  await t.test('fresh install records 001..004 and permits the real reset sequence', async () => {
+  await t.test('fresh install records all Demo overlays and permits the real reset sequence', async () => {
     await migrateDemoUp(pool, { roles: ROLES });
     assert.deepEqual(await overlayVersions(pool), [
       { version: 1, name: 'demo_runtime_foundation', checksum_length: 64 },
@@ -123,6 +123,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
       { version: 3, name: 'runtime_schema_readiness_grants', checksum_length: 64 },
       { version: 4, name: 'request_attribution_reset_grants', checksum_length: 64 },
       { version: 5, name: 'room_media_role_grants', checksum_length: 64 },
+      { version: 6, name: 'demo_catalogue_media', checksum_length: 64 },
     ]);
     assert.deepEqual(await privileges(pool, ROLES.reset), {
       insert_allowed: true,
@@ -148,8 +149,9 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
   });
 
   await t.test('upgrade from 001..003 is denied before 004 and restored by the checksum runner', async () => {
-    assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true);
-    assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true);
+    for (let index = 0; index < 3; index += 1) {
+      assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true);
+    }
     assert.deepEqual((await overlayVersions(pool)).map(({ version }) => version), [1, 2, 3]);
     assert.deepEqual(await privileges(pool, ROLES.reset), {
       insert_allowed: false,
@@ -165,7 +167,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
       (error) => error.code === '42501',
     );
     await migrateDemoUp(pool, { roles: ROLES });
-    assert.deepEqual((await overlayVersions(pool)).map(({ version }) => version), [1, 2, 3, 4, 5]);
+    assert.deepEqual((await overlayVersions(pool)).map(({ version }) => version), [1, 2, 3, 4, 5, 6]);
     await resetAttributionStateAsRole(pool, ROLES.reset);
   });
 });
