@@ -1360,6 +1360,7 @@ function validateTenant(value) {
     'lifecycleStatus',
     'lifecycleRevision',
     'settings',
+    'costCenters',
     'requests',
     'providerSimulation',
   ], 'DEMO_FIXTURE_TENANT_INVALID');
@@ -1368,7 +1369,7 @@ function validateTenant(value) {
   if (!['active', 'ready', 'onboarding'].includes(value.lifecycleStatus)) fail('DEMO_FIXTURE_TENANT_INVALID');
   const onboarding = value.lifecycleStatus === 'onboarding';
   integer(value.lifecycleRevision, 'DEMO_FIXTURE_TENANT_INVALID', 1);
-  exactKeys(value.settings, ['organization', 'locations', 'catalogue', 'costCenters'], 'DEMO_FIXTURE_SETTINGS_INVALID');
+  exactKeys(value.settings, ['organization', 'locations', 'catalogue'], 'DEMO_FIXTURE_SETTINGS_INVALID');
   exactKeys(value.settings.organization, ['name', 'countryCode'], 'DEMO_FIXTURE_SETTINGS_INVALID');
   if (onboarding && value.settings.organization.name === null) {
     // The Tenant Admin must complete organization data after entering the Demo.
