@@ -173,6 +173,7 @@ export function createApplicationHttpHandler({
   tenantGuard,
   maxBodyBytes,
   maxResponseBytes,
+  allowReadyDemoRead = false,
 } = {}) {
   if (!principalGuard || typeof principalGuard.require !== 'function') {
     throw new TypeError('PRINCIPAL_GUARD_REQUIRED');
@@ -207,9 +208,15 @@ export function createApplicationHttpHandler({
       APPLICATION_ROUTES.siteInfo,
       APPLICATION_ROUTES.configuration,
     ]);
-    const tenantContext = knownTenantRoutes.has(path)
+    const readyDemoRead = allowReadyDemoRead && request.method === 'GET'
+      && [APPLICATION_ROUTES.requests, APPLICATION_ROUTES.notifications].includes(path);
+    const knownTenant = knownTenantRoutes.has(path) || readyDemoRead;
+    let tenantContext = knownTenant
       ? await tenantGuard.requireKnown(principal)
       : await tenantGuard.requireActive(principal);
+    if (readyDemoRead && !['active', 'ready'].includes(tenantContext.status)) {
+      tenantContext = await tenantGuard.requireActive(principal);
+    }
     const common = { principal, tenantContext, correlationId: requestId };
 
     if (path === APPLICATION_ROUTES.profile) {
