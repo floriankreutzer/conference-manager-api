@@ -427,17 +427,18 @@ function validateTenant(value) {
   ], 'DEMO_FIXTURE_TENANT_INVALID');
   string(value.id, 'DEMO_FIXTURE_TENANT_INVALID', { min: 36, max: 36, pattern: UUID_PATTERN });
   string(value.displayName, 'DEMO_FIXTURE_TENANT_INVALID');
-  if (!['active', 'ready'].includes(value.lifecycleStatus)) fail('DEMO_FIXTURE_TENANT_INVALID');
+  if (!['active', 'ready', 'onboarding'].includes(value.lifecycleStatus)) fail('DEMO_FIXTURE_TENANT_INVALID');
+  const onboarding = value.lifecycleStatus === 'onboarding';
   integer(value.lifecycleRevision, 'DEMO_FIXTURE_TENANT_INVALID', 1);
   exactKeys(value.settings, ['organization', 'locations', 'catalogue'], 'DEMO_FIXTURE_SETTINGS_INVALID');
   exactKeys(value.settings.organization, ['name', 'countryCode'], 'DEMO_FIXTURE_SETTINGS_INVALID');
-  string(value.settings.organization.name, 'DEMO_FIXTURE_SETTINGS_INVALID');
+  string(value.settings.organization.name, 'DEMO_FIXTURE_SETTINGS_INVALID', { min: onboarding ? 0 : 1 });
   string(value.settings.organization.countryCode, 'DEMO_FIXTURE_SETTINGS_INVALID', {
     min: 2,
     max: 2,
     pattern: /^[A-Z]{2}$/,
   });
-  if (!Array.isArray(value.settings.locations) || value.settings.locations.length < 1) {
+  if (!Array.isArray(value.settings.locations) || value.settings.locations.length < (onboarding ? 0 : 1)) {
     fail('DEMO_FIXTURE_SETTINGS_INVALID');
   }
   for (const location of value.settings.locations) {
@@ -473,7 +474,7 @@ function validateTenant(value) {
       || entry.roomIds.some((id) => !value.settings.locations.some((site) => site.rooms.some((room) => room.id === id)))
     ) fail('DEMO_FIXTURE_SETTINGS_INVALID');
   }
-  if (!Array.isArray(value.requests) || value.requests.length < 1 || value.requests.length > 20) {
+  if (!Array.isArray(value.requests) || value.requests.length < (onboarding ? 0 : 1) || value.requests.length > 20) {
     fail('DEMO_FIXTURE_REQUEST_INVALID');
   }
   for (const request of value.requests) {
@@ -517,6 +518,9 @@ function validateTenant(value) {
     'DEMO_FIXTURE_PROVIDER_INVALID',
   );
   const provider = value.providerSimulation;
+  if (onboarding && (value.settings.locations.length !== 0 || value.requests.length !== 0)) {
+    fail('DEMO_FIXTURE_TENANT_INVALID');
+  }
   string(provider.provider, 'DEMO_FIXTURE_PROVIDER_INVALID', { max: 48, pattern: NAME_PATTERN });
   string(provider.identityBindingId, 'DEMO_FIXTURE_PROVIDER_INVALID', {
     min: 36,
@@ -533,6 +537,18 @@ function validateTenant(value) {
     max: 36,
     pattern: UUID_PATTERN,
   });
+  if (onboarding) {
+    if (
+      provider.providerTenantReference !== value.id
+      || provider.connectionState !== 'not_configured'
+      || provider.placesPermission !== 'missing'
+      || provider.calendarsPermission !== 'missing'
+      || provider.health !== 'unknown'
+      || provider.scenario !== 'onboarding'
+      || provider.roomMapping !== null
+    ) fail('DEMO_FIXTURE_PROVIDER_INVALID');
+    return;
+  }
   if (
     provider.providerTenantReference !== value.id
     || provider.connectionState !== 'connected'
