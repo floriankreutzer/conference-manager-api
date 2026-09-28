@@ -224,9 +224,10 @@ async function seedTenantBusinessState(client, fixture) {
         name: 'demo-fixture-insert-site',
         text: `
           INSERT INTO sites (tenant_id, id, name, active, time_zone, details, created_at, updated_at, guest_information)
-          VALUES ($1, $2, $3, true, 'Etc/UTC', '{}'::jsonb, $4, $4, $5::jsonb)
+          VALUES ($1, $2, $3, true, $4, '{}'::jsonb, $5, $5, $6::jsonb)
         `,
-        values: [tenant.id, location.id, location.name, fixture.fixedClock, JSON.stringify(location.guestInformation)],
+        values: [tenant.id, location.id, location.name, location.timeZone,
+          fixture.fixedClock, JSON.stringify(location.guestInformation)],
       });
       for (const room of location.rooms) {
         await client.query({
@@ -678,7 +679,7 @@ export async function readDemoSemanticState({ client } = {}) {
     ORDER BY tenant.id
   `);
   const locations = await readRows(client, 'demo-fixture-read-sites', `
-    SELECT tenant_id, id, name, guest_information FROM sites ORDER BY tenant_id, id
+    SELECT tenant_id, id, name, time_zone, guest_information FROM sites ORDER BY tenant_id, id
   `);
   const rooms = await readRows(client, 'demo-fixture-read-rooms', `
     SELECT room.tenant_id, room.site_id, room.id, room.name, room.capacity, room.details,
@@ -843,6 +844,7 @@ export async function readDemoSemanticState({ client } = {}) {
         .map((location) => ({
           id: location.id,
           name: location.name,
+          timeZone: location.time_zone,
           guestInformation: location.guest_information,
           rooms: rooms
             .filter(({ tenant_id: tenantId, site_id: siteId }) => (
