@@ -64,8 +64,8 @@ test('concrete Demo seeder uses bounded named parameterized writes and never see
     true,
   );
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-platform-operator').length, 4);
-  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-room').length, 2);
-  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-room-price').length, 2);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-room').length, 12);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-room-price').length, 11);
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-identity-binding').length, 2);
   assert.equal(
     queries.filter(({ name }) => name === 'demo-fixture-insert-microsoft365-integration').length,
@@ -73,7 +73,7 @@ test('concrete Demo seeder uses bounded named parameterized writes and never see
   );
   assert.equal(
     queries.filter(({ name }) => name === 'demo-fixture-insert-microsoft365-room-mapping').length,
-    2,
+    12,
   );
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-microsoft365-health').length, 6);
   const readyTenant = DEMO_FIXTURE.tenants.find(({ lifecycleStatus }) => lifecycleStatus === 'ready');
@@ -166,21 +166,23 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
       internal_participants: request.internalParticipants,
       external_participants: request.externalParticipants,
     }))),
-    'demo-fixture-read-providers': DEMO_FIXTURE.tenants.map((tenant) => ({
-      tenant_id: tenant.id,
-      provider: tenant.providerSimulation.provider,
-      identity_binding_id: tenant.providerSimulation.identityBindingId,
-      integration_id: tenant.providerSimulation.integrationId,
-      provider_tenant_reference: tenant.providerSimulation.providerTenantReference,
-      connection_state: tenant.providerSimulation.connectionState,
-      places_permission_status: tenant.providerSimulation.placesPermission,
-      calendars_permission_status: tenant.providerSimulation.calendarsPermission,
-      health: tenant.providerSimulation.health,
-      scenario: tenant.providerSimulation.scenario,
-      room_id: tenant.providerSimulation.roomMappings[0].roomId,
-      external_room_id: tenant.providerSimulation.roomMappings[0].externalRoomId,
-      resource_address: tenant.providerSimulation.roomMappings[0].resourceAddress,
-    })),
+    'demo-fixture-read-providers': DEMO_FIXTURE.tenants.flatMap((tenant) => (
+      tenant.providerSimulation.roomMappings.map((mapping) => ({
+        tenant_id: tenant.id,
+        provider: tenant.providerSimulation.provider,
+        identity_binding_id: tenant.providerSimulation.identityBindingId,
+        integration_id: tenant.providerSimulation.integrationId,
+        provider_tenant_reference: tenant.providerSimulation.providerTenantReference,
+        connection_state: tenant.providerSimulation.connectionState,
+        places_permission_status: tenant.providerSimulation.placesPermission,
+        calendars_permission_status: tenant.providerSimulation.calendarsPermission,
+        health: tenant.providerSimulation.health,
+        scenario: tenant.providerSimulation.scenario,
+        room_id: mapping.roomId,
+        external_room_id: mapping.externalRoomId,
+        resource_address: mapping.resourceAddress,
+      }))
+    )),
     'demo-fixture-read-customer-personas': DEMO_FIXTURE.customerPersonas.map((persona) => ({
       context_key: `${persona.tenantId}:${persona.persona}`,
       tenant_id: persona.tenantId,
