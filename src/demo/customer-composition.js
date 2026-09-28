@@ -15,7 +15,7 @@ import { createDemoCustomerHttpServer } from './customer-server.js';
 function providerScenarios() {
   return Object.freeze(Object.fromEntries(DEMO_FIXTURE.tenants.map((tenant) => [
     tenant.id,
-    tenant.providerSimulation.scenario,
+    tenant.providerSimulation.scenario === 'onboarding' ? 'booking_success' : tenant.providerSimulation.scenario,
   ])));
 }
 
