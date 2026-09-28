@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { tenantAuthorizationSnapshot } from '../../authorization/policy.js';
+import { normalizeRequest } from '../../domain/request.js';
+import {
+  appendRequestRevisionWithClient,
+  resolveCurrentRequestCompositionWithClient,
+} from './request-repository.js';
 import { refreshPlatformProjectionBatchWithClient } from './platform-projection-repository.js';
 import {
   DEMO_RUNTIME_SCHEMA_VERSION,
@@ -404,30 +409,89 @@ async function seedTenantBusinessState(client, fixture) {
     if (advancedCatalogue.rowCount !== 1) {
       throw new Error('DEMO_FIXTURE_CATALOGUE_REVISION_ADVANCE_FAILED');
     }
+    const revisionResult = await client.query({
+      name: 'demo-fixture-request-authority-revisions',
+      text: `SELECT organization_revision, locations_revision, catalog_revision,
+        booking_policies_revision, cost_allocation_revision
+        FROM tenants WHERE id = $1`,
+      values: [tenant.id],
+    });
+    const revisionsRow = revisionResult.rows[0];
+    const configurationRevisions = {
+      organization: Number(revisionsRow.organization_revision),
+      locations: Number(revisionsRow.locations_revision),
+      catalogue: Number(revisionsRow.catalog_revision),
+      bookingPolicies: Number(revisionsRow.booking_policies_revision),
+      costAllocation: Number(revisionsRow.cost_allocation_revision),
+    };
     for (const request of tenant.requests) {
-      await client.query({
+      const participants = request.internalParticipants + request.externalParticipants;
+      const draft = {
+        title: request.title,
+        roomId: request.roomId,
+        startsAt: request.startsAt,
+        endsAt: request.endsAt,
+        internalParticipants: request.internalParticipants,
+        externalParticipants: request.externalParticipants,
+        serviceIds: [],
+        equipmentIds: request.equipmentIds,
+        catering: {
+          participantCount: request.cateringPackageId === null ? 0 : participants,
+          packageSelection: request.cateringPackageId === null ? null : {
+            packageId: request.cateringPackageId,
+            variantId: `${request.cateringPackageId}-standard`,
+          },
+          itemQuantities: [],
+        },
+        dietaryRequirements: null,
+        specialRequirements: request.description,
+        allocations: request.costCenterId === null ? [] : [{
+          costCenterId: request.costCenterId, percentageBasisPoints: 10_000,
+        }],
+        configurationRevisions,
+      };
+      const authority = await resolveCurrentRequestCompositionWithClient(client, {
+        tenantId: tenant.id,
+        actorUserId: request.requesterUserId,
+        draft,
+        schemaVersion: 3,
+        operation: 'create',
+        capturedAt: fixture.fixedClock,
+        requestVersion: 1,
+      });
+      if (authority.status !== 'ready') throw new Error('DEMO_FIXTURE_REQUEST_AUTHORITY_INVALID');
+      const inserted = await client.query({
         name: 'demo-fixture-insert-request',
-        text: `
-          INSERT INTO requests (
-            tenant_id, id, requester_user_id, room_id, status, status_reason,
-            starts_at, ends_at, internal_participants, external_participants,
-            status_changed_at, schema_version, request_version, created_at, updated_at
-          )
-          VALUES ($1, $2, $3, $4, $5, NULL, $6, $7, $8, $9, $10, 1, 1, $10, $10)
-        `,
+        text: `INSERT INTO requests (
+          tenant_id, id, requester_user_id, room_id, status, status_reason,
+          starts_at, ends_at, internal_participants, external_participants,
+          status_changed_at, schema_version, request_version, request_snapshot,
+          created_at, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,NULL,$6,$7,$8,$9,$10,3,1,$11::jsonb,$10,$10)
+        RETURNING requester_display_name`,
         values: [
-          tenant.id,
-          request.id,
-          request.requesterUserId,
-          request.roomId,
-          request.status,
-          request.startsAt,
-          request.endsAt,
-          request.internalParticipants,
-          request.externalParticipants,
-          fixture.fixedClock,
+          tenant.id, request.id, request.requesterUserId, request.roomId,
+          request.status, request.startsAt, request.endsAt,
+          request.internalParticipants, request.externalParticipants,
+          fixture.fixedClock, JSON.stringify(authority.snapshot),
         ],
       });
+      const record = normalizeRequest({
+        tenantId: tenant.id, id: request.id, requesterUserId: request.requesterUserId,
+        requesterAttribution: { displayName: inserted.rows[0].requester_display_name },
+        roomId: request.roomId, status: request.status, statusReason: null,
+        startsAt: request.startsAt, endsAt: request.endsAt,
+        internalParticipants: request.internalParticipants,
+        externalParticipants: request.externalParticipants,
+        schemaVersion: 3, version: 1, snapshot: authority.snapshot,
+        statusChangedAt: fixture.fixedClock, createdAt: fixture.fixedClock,
+        updatedAt: fixture.fixedClock,
+      });
+      await appendRequestRevisionWithClient(
+        client, record, 'created',
+        { actorUserId: request.requesterUserId, correlationId: request.id },
+        'employee',
+      );
     }
     for (const capabilityId of [
       'microsoft.directory',
