@@ -129,6 +129,8 @@ function incompleteOnboardingFixture() {
   tenant.lifecycleStatus = 'onboarding';
   tenant.settings.organization.name = '';
   tenant.settings.locations = [];
+  tenant.settings.catalogue.services = [];
+  tenant.settings.catalogue.equipment = [];
   tenant.requests = [];
   tenant.providerSimulation.connectionState = 'not_configured';
   tenant.providerSimulation.placesPermission = 'missing';
