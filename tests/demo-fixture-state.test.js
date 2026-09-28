@@ -15,8 +15,13 @@ import {
 test('concrete Demo seeder uses bounded named parameterized writes and never seeds sessions', async () => {
   const queries = [];
   const resetObservedAt = '2026-08-30T12:34:56.789Z';
+  // The booking path resolves live PostgreSQL authority and is covered by integration tests.
+  const catalogueFixture = {
+    ...DEMO_FIXTURE,
+    tenants: DEMO_FIXTURE.tenants.map((tenant) => ({ ...tenant, requests: [] })),
+  };
   await seedDemoBusinessState({
-    fixture: DEMO_FIXTURE,
+    fixture: catalogueFixture,
     async refreshProjections(client, input) {
       assert.equal(typeof client.query, 'function');
       assert.deepEqual(input, {
