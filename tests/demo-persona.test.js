@@ -336,7 +336,7 @@ test('Demo session HTTP routes map invalid or revoked cookies to stable authenti
   const platformHandler = platformModule.createHandler({
     platformPrincipalGuard: {},
     platformSessionService: {
-      clearCookie() { return 'cm_platform_session=; Max-Age=0; Path=/api/v1/platform; HttpOnly; SameSite=Strict'; },
+      clearCookie() { return 'cm_platform_session=; Max-Age=0; Path=/api/v1/platform; HttpOnly; Secure; SameSite=Strict'; },
     },
     maxBodyBytes: 1024,
     maxResponseBytes: 4096,
@@ -355,7 +355,7 @@ test('Demo session HTTP routes map invalid or revoked cookies to stable authenti
       && error.securityCategory === 'authentication',
   );
   assert.equal(headers.get('Set-Cookie'),
-    'cm_platform_session=; Max-Age=0; Path=/api/v1/platform; HttpOnly; SameSite=Strict');
+    'cm_platform_session=; Max-Age=0; Path=/api/v1/platform; HttpOnly; Secure; SameSite=Strict');
 });
 
 test('Demo session routes do not clear cookies for unrelated failures', async () => {
