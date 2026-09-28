@@ -786,7 +786,11 @@ function validateTenant(value) {
       string(room.id, 'DEMO_FIXTURE_SETTINGS_INVALID', { max: 128, pattern: ENTITY_ID_PATTERN });
       string(room.name, 'DEMO_FIXTURE_SETTINGS_INVALID');
       integer(room.capacity, 'DEMO_FIXTURE_SETTINGS_INVALID', 1);
-      integer(room.priceMinor, 'DEMO_FIXTURE_SETTINGS_INVALID');
+      if (room.priceMinor === null) {
+        if (value.lifecycleStatus !== 'ready') fail('DEMO_FIXTURE_SETTINGS_INVALID');
+      } else {
+        integer(room.priceMinor, 'DEMO_FIXTURE_SETTINGS_INVALID');
+      }
     }
     unique(location.rooms.map(({ id }) => id), 'DEMO_FIXTURE_SETTINGS_INVALID');
   }
