@@ -33,6 +33,8 @@ test('Demo fixture is deterministic, bounded and deeply immutable', () => {
 test('reset generation keeps local booking hours across daylight saving and changes the semantic digest', () => {
   const before = createDemoResetGenerationFixture(DEMO_FIXTURE, new Date('2026-10-12T12:00:00.000Z'));
   const after = createDemoResetGenerationFixture(DEMO_FIXTURE, new Date('2026-10-26T12:00:00.000Z'));
+  assert.equal(before.fixedClock, '2026-10-12T12:00:00.000Z');
+  assert.equal(after.fixedClock, '2026-10-26T12:00:00.000Z');
   const first = before.tenants[0].requests[0];
   const later = after.tenants[0].requests[0];
   assert.equal(first.startsAt, '2026-10-20T07:00:00.000Z');
