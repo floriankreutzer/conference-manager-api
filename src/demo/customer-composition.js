@@ -21,19 +21,21 @@ function providerScenarios() {
 
 export function demoProviderRooms() {
   return Object.freeze(Object.fromEntries(DEMO_FIXTURE.tenants.map((tenant) => {
-    const mapping = tenant.providerSimulation.roomMapping;
-    const location = tenant.settings.locations.find(({ rooms }) => (
-      rooms.some(({ id }) => id === mapping.roomId)
-    ));
-    const room = location?.rooms.find(({ id }) => id === mapping.roomId);
-    if (!location || !room) throw new TypeError('DEMO_PROVIDER_ROOM_FIXTURE_INVALID');
-    return [tenant.providerSimulation.providerTenantReference, Object.freeze([Object.freeze({
-      id: mapping.externalRoomId,
-      displayName: room.name,
-      resourceAddress: mapping.resourceAddress,
-      capacity: room.capacity,
-      building: location.name,
-    })])];
+    const rooms = tenant.providerSimulation.roomMappings.map((mapping) => {
+      const location = tenant.settings.locations.find(({ rooms: siteRooms }) => (
+        siteRooms.some(({ id }) => id === mapping.roomId)
+      ));
+      const room = location?.rooms.find(({ id }) => id === mapping.roomId);
+      if (!location || !room) throw new TypeError('DEMO_PROVIDER_ROOM_FIXTURE_INVALID');
+      return Object.freeze({
+        id: mapping.externalRoomId,
+        displayName: room.name,
+        resourceAddress: mapping.resourceAddress,
+        capacity: room.capacity,
+        building: location.name,
+      });
+    });
+    return [tenant.providerSimulation.providerTenantReference, Object.freeze(rooms)];
   })));
 }
 
