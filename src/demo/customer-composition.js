@@ -1,4 +1,6 @@
 import { createCustomerComposition } from '../customer-composition.js';
+import { createAuditService } from '../audit/audit-service.js';
+import { createAuthorizationPolicy } from '../authorization/policy.js';
 import { createLogger } from '../logger.js';
 import { createMetricsRegistry } from '../observability/metrics.js';
 import { createPostgresPersistence } from '../persistence/postgres/index.js';
@@ -103,9 +105,17 @@ export function createDemoCustomerComposition({
         sessionService,
         personaRepository,
       });
+      const authorizationPolicy = createAuthorizationPolicy();
       return [createDemoCustomerControlRoutes({
         personaService,
-        mediaRepository: createPostgresDemoCatalogueMediaRepository(selectedPersistence.pool),
+        authorizationPolicy,
+        auditService: createAuditService({
+          repository: selectedPersistence.auditRepository,
+          authorizationPolicy,
+        }),
+        mediaRepository: createPostgresDemoCatalogueMediaRepository(selectedPersistence.pool, {
+          auditRepository: selectedPersistence.auditRepository,
+        }),
       })];
     },
   });
