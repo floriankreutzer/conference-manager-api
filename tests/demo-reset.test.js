@@ -132,13 +132,17 @@ function createAuditRepository() {
 }
 
 function repository(pool, { seedBusinessState, readSemanticState, auditRepository = null } = {}) {
+  let seededFixture = DEMO_FIXTURE;
   return createPostgresDemoResetRepository({
     pool,
     expectedDatabaseName: 'conference_manager_demo_test',
     expectedResetRole: 'demo_reset',
     auditRepository,
-    seedBusinessState: seedBusinessState || (async () => {}),
-    readSemanticState: readSemanticState || (async () => DEMO_FIXTURE),
+    seedBusinessState: async (argumentsForSeed) => {
+      seededFixture = argumentsForSeed.fixture;
+      if (seedBusinessState) await seedBusinessState(argumentsForSeed);
+    },
+    readSemanticState: readSemanticState || (async () => seededFixture),
   });
 }
 
@@ -165,7 +169,9 @@ test('reset is atomic, transaction-gated, reseeds deterministic state and return
     auditRepository,
     async seedBusinessState({ fixture }) {
       seeded += 1;
-      assert.equal(fixture, DEMO_FIXTURE);
+      assert.notEqual(fixture, DEMO_FIXTURE);
+      assert.equal(fixture.seedVersion, DEMO_FIXTURE.seedVersion);
+      assert.ok(Date.parse(fixture.tenants[0].requests[0].startsAt) > Date.now());
     },
   }).reset({
     fixture: DEMO_FIXTURE,
