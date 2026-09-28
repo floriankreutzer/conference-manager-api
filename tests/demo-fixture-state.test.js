@@ -78,6 +78,10 @@ test('concrete Demo seeder uses bounded named parameterized writes and never see
   const mediaWrites = queries.filter(({ name }) => name === 'demo-fixture-insert-room-media');
   assert.equal(mediaWrites.length, 11);
   assert.equal(mediaWrites.every(({ values }) => values[3].length === values[4]), true);
+  const catalogueMediaWrites = queries.filter(({ name }) => name === 'demo-fixture-insert-catalogue-media');
+  assert.equal(catalogueMediaWrites.length, 23);
+  assert.equal(catalogueMediaWrites.every(({ values }) =>
+    Buffer.isBuffer(values[4]) && values[4].length === values[6]), true);
   const catalogueRevisions = queries.filter(({ name }) => name === 'demo-fixture-insert-catalogue-revision');
   assert.equal(catalogueRevisions.length, 3);
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-advance-catalogue-revision').length, 3);
@@ -154,6 +158,20 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
       content_sha256: Buffer.from(media.sha256, 'hex'),
     };
   })));
+  const catalogueMediaRows = await Promise.all(DEMO_FIXTURE.tenants.flatMap((tenant) =>
+    tenant.catalogueMedia.map(async (media) => {
+      const prefix = media.contentType === 'image/png' ? 'rooms-' : 'catering-';
+      const suffix = media.contentType === 'image/png' ? '-plan.png' : '.webp';
+      const encoded = await readFile(new URL(
+        `../src/demo/media/${prefix}${media.assetKey}${suffix}.b64`, import.meta.url,
+      ), 'utf8');
+      return {
+        tenant_id: tenant.id, id: media.id, owner_kind: media.ownerKind,
+        owner_id: media.ownerId, bytes: Buffer.from(encoded.trim(), 'base64'),
+        content_type: media.contentType, byte_length: media.byteLength,
+        content_sha256: Buffer.from(media.sha256, 'hex'), alt_text: media.altText,
+      };
+    })));
   const byName = {
     'demo-fixture-read-tenants': DEMO_FIXTURE.tenants.map((tenant) => ({
       id: tenant.id,
@@ -184,10 +202,13 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
           description: room.description,
           floor: room.floor, equipment: room.equipment, accessibility: room.accessibility,
           mediaAssetIds: tenant.roomMedia.filter(({ roomId }) => roomId === room.id).map(({ id }) => id),
+          floorplanAssetId: tenant.catalogueMedia.find(({ ownerKind, ownerId }) =>
+            ownerKind === 'room_plan' && ownerId === room.id)?.id ?? null,
         },
       })))
     )),
     'demo-fixture-read-room-media': mediaRows,
+    'demo-fixture-read-catalogue-media': catalogueMediaRows,
     'demo-fixture-read-services': DEMO_FIXTURE.tenants.flatMap((tenant) => (
       tenant.settings.catalogue.services.map((id) => ({
         tenant_id: tenant.id,
