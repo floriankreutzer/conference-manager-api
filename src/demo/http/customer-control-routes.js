@@ -77,7 +77,7 @@ function normalizeContextError(error) {
   return error;
 }
 
-export function createDemoCustomerControlRoutes({ personaService, mediaPool } = {}) {
+export function createDemoCustomerControlRoutes({ personaService, mediaRepository } = {}) {
   if (
     !personaService
     || typeof personaService.establish !== 'function'
@@ -115,7 +115,8 @@ export function createDemoCustomerControlRoutes({ personaService, mediaPool } = 
         }
 
         if (path === DEMO_CUSTOMER_MEDIA_PATH || DEMO_MEDIA_ASSET_PATH.test(path)) {
-          if (!mediaPool || typeof mediaPool.query !== 'function') {
+          if (!mediaRepository || typeof mediaRepository.find !== 'function'
+            || typeof mediaRepository.list !== 'function') {
             throw new ApiError(503, 'DEMO_MEDIA_UNAVAILABLE');
           }
           if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
@@ -124,14 +125,8 @@ export function createDemoCustomerControlRoutes({ personaService, mediaPool } = 
           const tenant = await tenantGuard.requireKnown(principal);
           const assetId = path.match(DEMO_MEDIA_ASSET_PATH)?.[1];
           if (assetId) {
-            const result = await mediaPool.query({
-              name: 'demo-customer-media-asset',
-              text: `SELECT bytes, content_type, byte_length FROM demo_catalogue_media_assets
-                WHERE tenant_id = $1 AND id = $2`,
-              values: [tenant.tenantId, assetId],
-            });
-            if (result.rowCount !== 1) throw new ApiError(404, 'NOT_FOUND');
-            const media = result.rows[0];
+            const media = await mediaRepository.find({ tenantId: tenant.tenantId, assetId });
+            if (!media) throw new ApiError(404, 'NOT_FOUND');
             if (!Buffer.isBuffer(media.bytes) || media.bytes.length !== Number(media.byte_length)
               || !['image/png', 'image/webp'].includes(media.content_type)) {
               throw new ApiError(500, 'DEMO_MEDIA_CORRUPT');
@@ -144,18 +139,11 @@ export function createDemoCustomerControlRoutes({ personaService, mediaPool } = 
             response.end(media.bytes);
             return 200;
           }
-          const result = await mediaPool.query({
-            name: 'demo-customer-media-catalogue',
-            text: `SELECT id, owner_kind, owner_id, content_type, alt_text
-              FROM demo_catalogue_media_assets WHERE tenant_id = $1 ORDER BY id`,
-            values: [tenant.tenantId],
-          });
+          const assets = await mediaRepository.list({ tenantId: tenant.tenantId });
           response.setHeader('Cache-Control', 'private, no-store');
           sendJson(response, 200, {
-            assets: result.rows.map(({ id, owner_kind: ownerKind, owner_id: ownerId,
-              content_type: contentType, alt_text: altText }) => ({
-              id, ownerKind, ownerId, contentType, altText,
-              url: `${DEMO_CUSTOMER_MEDIA_PATH}/${id}`,
+            assets: assets.map((entry) => ({ ...entry,
+              url: `${DEMO_CUSTOMER_MEDIA_PATH}/${entry.id}`,
             })),
             requestId,
           }, maxResponseBytes);
