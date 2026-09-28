@@ -594,9 +594,12 @@ const fixture = {
                 "northwind-berlin-room-10"
               ]
             }
-          ]
+          ],
+          cateringPackages: [{"id":"coffee-break","name":"Kaffeepause","description":"Kaffee, Tee, Wasser und Gebäck für eine kurze Besprechungspause.","active":true,"order":1,"price":{"amountMinor":1200,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[],"itemIds":["coffee-tea","water-juice","pastry"],"variants":[]},{"id":"business-breakfast","name":"Business-Frühstück","description":"Getränke, Obst und vegetarische Sandwiches zum gemeinsamen Start.","active":true,"order":2,"price":{"amountMinor":1800,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[],"itemIds":["coffee-tea","water-juice","fruit","sandwich-vegetarian"],"variants":[]},{"id":"workshop-day","name":"Workshop-Tag","description":"Tagesbegleitung mit Getränken, Lunch und Nachmittagssnack.","active":true,"order":3,"price":{"amountMinor":4200,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[],"itemIds":["coffee-tea","water-juice","lunch-classic","afternoon-snack"],"variants":[]},{"id":"vegan-day","name":"Veganer Konferenztag","description":"Pflanzliches Tagesangebot mit Obst, Getränken und veganem Lunch.","active":true,"order":4,"price":{"amountMinor":3900,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[],"itemIds":["coffee-tea","water-juice","fruit","lunch-vegan"],"variants":[]}],
+          cateringItems: [{"id":"coffee-tea","name":"Kaffee und Tee","description":"Heißgetränke für die Besprechungspause.","active":true,"order":1,"price":{"amountMinor":450,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[]},{"id":"water-juice","name":"Wasser und Saft","description":"Mineralwasser und Saftauswahl.","active":true,"order":2,"price":{"amountMinor":350,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[]},{"id":"fruit","name":"Obstauswahl","description":"Portionierte saisonale Obstauswahl.","active":true,"order":3,"price":{"amountMinor":450,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[]},{"id":"pastry","name":"Gebäckauswahl","description":"Kleine süße Gebäckstücke zur Kaffeepause.","active":true,"order":4,"price":{"amountMinor":500,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[]},{"id":"sandwich-vegetarian","name":"Vegetarische Sandwiches","description":"Belegte Sandwiches mit vegetarischer Füllung.","active":true,"order":5,"price":{"amountMinor":900,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[]},{"id":"lunch-vegan","name":"Veganes Lunch-Buffet","description":"Pflanzliche warme und kalte Komponenten.","active":true,"order":6,"price":{"amountMinor":2400,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[]},{"id":"lunch-classic","name":"Klassisches Lunch-Buffet","description":"Gemischtes Lunch-Angebot einschließlich vegetarischer Auswahl.","active":true,"order":7,"price":{"amountMinor":2700,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[]},{"id":"afternoon-snack","name":"Nachmittagssnack","description":"Kleine herzhafte und süße Snacks.","active":true,"order":8,"price":{"amountMinor":700,"currency":"EUR"},"siteIds":["11000000-0000-4000-8000-000000000001"],"roomIds":[]}]
         },
       },
+      costCenters: [{"id":"cc-1000","code":"1000","name":"Geschäftsleitung","active":true},{"id":"cc-2100","code":"2100","name":"Vertrieb","active":true},{"id":"cc-3100","code":"3100","name":"Produktentwicklung","active":true},{"id":"cc-4100","code":"4100","name":"Personal","active":true},{"id":"cc-5100","code":"5100","name":"IT","active":true},{"id":"cc-6100","code":"6100","name":"Marketing","active":true}],
       requests: [
           {
             "id": "12000000-0000-4000-8000-000000000001",
@@ -903,8 +906,10 @@ const fixture = {
             description: null, active: true, order: 2,
             price: { amountMinor: 3200, currency: 'EUR' }, siteIds: [], roomIds: [],
           }],
+          cateringPackages: [], cateringItems: []
         },
       },
+      costCenters: [{"id":"cc-100","code":"100","name":"Allgemein","active":true}],
       requests: [
           {
             "id": "22000000-0000-4000-8000-000000000002",
@@ -969,8 +974,9 @@ const fixture = {
       settings: {
         organization: { name: null, countryCode: 'DE' },
         locations: [],
-        catalogue: { services: [], currency: 'EUR', equipment: [] },
+        catalogue: { services: [], currency: 'EUR', equipment: [], cateringPackages: [], cateringItems: [] },
       },
+      costCenters: [],
       requests: [],
       providerSimulation: {
         provider: 'demo_microsoft365',
@@ -1116,7 +1122,7 @@ function validateTenant(value) {
   if (!['active', 'ready', 'onboarding'].includes(value.lifecycleStatus)) fail('DEMO_FIXTURE_TENANT_INVALID');
   const onboarding = value.lifecycleStatus === 'onboarding';
   integer(value.lifecycleRevision, 'DEMO_FIXTURE_TENANT_INVALID', 1);
-  exactKeys(value.settings, ['organization', 'locations', 'catalogue'], 'DEMO_FIXTURE_SETTINGS_INVALID');
+  exactKeys(value.settings, ['organization', 'locations', 'catalogue', 'costCenters'], 'DEMO_FIXTURE_SETTINGS_INVALID');
   exactKeys(value.settings.organization, ['name', 'countryCode'], 'DEMO_FIXTURE_SETTINGS_INVALID');
   if (onboarding && value.settings.organization.name === null) {
     // The Tenant Admin must complete organization data after entering the Demo.
@@ -1157,10 +1163,11 @@ function validateTenant(value) {
     value.settings.locations.flatMap(({ rooms }) => rooms.map(({ id }) => id)),
     'DEMO_FIXTURE_SETTINGS_INVALID',
   );
-  exactKeys(value.settings.catalogue, ['services', 'equipment', 'currency'], 'DEMO_FIXTURE_SETTINGS_INVALID');
+  exactKeys(value.settings.catalogue, ['services', 'equipment', 'currency', 'cateringPackages', 'cateringItems'], 'DEMO_FIXTURE_SETTINGS_INVALID');
   const equipment = normalizeTenantCatalogue({
     services: [], equipment: value.settings.catalogue.equipment,
-    cateringPackages: [], cateringItems: [], roomPrices: [],
+    cateringPackages: value.settings.catalogue.cateringPackages,
+    cateringItems: value.settings.catalogue.cateringItems, roomPrices: [],
   }).equipment;
   for (const entry of equipment) {
     if (
@@ -1168,6 +1175,23 @@ function validateTenant(value) {
       || entry.roomIds.some((id) => !value.settings.locations.some((site) => site.rooms.some((room) => room.id === id)))
     ) fail('DEMO_FIXTURE_SETTINGS_INVALID');
   }
+  for (const entry of [...value.settings.catalogue.equipment,
+    ...value.settings.catalogue.cateringPackages, ...value.settings.catalogue.cateringItems]) {
+    if (entry.siteIds.some((id) => !value.settings.locations.some((site) => site.id === id))
+      || entry.roomIds.some((id) => !value.settings.locations.some((site) => site.rooms.some((room) => room.id === id)))) {
+      fail('DEMO_FIXTURE_SETTINGS_INVALID');
+    }
+  }
+  if (!Array.isArray(value.costCenters) || value.costCenters.length > 200) fail('DEMO_FIXTURE_SETTINGS_INVALID');
+  for (const center of value.costCenters) {
+    exactKeys(center, ['id', 'code', 'name', 'active'], 'DEMO_FIXTURE_SETTINGS_INVALID');
+    string(center.id, 'DEMO_FIXTURE_SETTINGS_INVALID', { max: 128, pattern: ENTITY_ID_PATTERN });
+    string(center.code, 'DEMO_FIXTURE_SETTINGS_INVALID', { max: 64, pattern: /^[A-Z0-9][A-Z0-9._-]{0,63}$/ });
+    string(center.name, 'DEMO_FIXTURE_SETTINGS_INVALID');
+    if (center.active !== true && center.active !== false) fail('DEMO_FIXTURE_SETTINGS_INVALID');
+  }
+  unique(value.costCenters.map(({ id }) => id), 'DEMO_FIXTURE_SETTINGS_INVALID');
+  unique(value.costCenters.map(({ code }) => code), 'DEMO_FIXTURE_SETTINGS_INVALID');
   if (!Array.isArray(value.requests) || value.requests.length < (onboarding ? 0 : 1) || value.requests.length > 20) {
     fail('DEMO_FIXTURE_REQUEST_INVALID');
   }
