@@ -37,7 +37,9 @@ function readinessQuery(surface) {
     ? `(SELECT count(*)::integer
           FROM demo_customer_persona_references AS reference
           JOIN tenants AS tenant
-            ON tenant.id = reference.tenant_id AND tenant.status IN ('ready', 'active')
+            ON tenant.id = reference.tenant_id
+           AND (tenant.status IN ('ready', 'active')
+             OR (tenant.status = 'onboarding' AND reference.persona = 'tenant_admin'))
           JOIN users AS app_user
             ON app_user.tenant_id = reference.tenant_id
            AND app_user.id = reference.subject_id
