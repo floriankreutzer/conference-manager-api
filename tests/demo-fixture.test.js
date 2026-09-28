@@ -134,7 +134,7 @@ function incompleteOnboardingFixture() {
   tenant.settings.catalogue.services = [];
   tenant.settings.catalogue.equipment = [];
   tenant.requests = [];
-  tenant.providerSimulation.connectionState = 'not_configured';
+  tenant.providerSimulation.connectionState = 'pending';
   tenant.providerSimulation.placesPermission = 'missing';
   tenant.providerSimulation.calendarsPermission = 'missing';
   tenant.providerSimulation.health = 'unknown';
