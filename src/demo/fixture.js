@@ -239,11 +239,11 @@ const fixture = {
         calendarsPermission: 'granted',
         health: 'degraded',
         scenario: 'provider_degraded',
-        roomMapping: {
+        roomMappings: [{
           roomId: 'northwind-berlin-room-1',
           externalRoomId: 'northwind-berlin-room-1',
           resourceAddress: 'northwind-berlin-room-1@example.invalid',
-        },
+        }],
       },
     },
     {
@@ -300,11 +300,11 @@ const fixture = {
         calendarsPermission: 'granted',
         health: 'healthy',
         scenario: 'booking_success',
-        roomMapping: {
+        roomMappings: [{
           roomId: 'contoso-paris-room-1',
           externalRoomId: 'contoso-paris-room-1',
           resourceAddress: 'contoso-paris-room-1@example.invalid',
-        },
+        }],
       },
     },
   ],
@@ -513,7 +513,7 @@ function validateTenant(value) {
       'calendarsPermission',
       'health',
       'scenario',
-      'roomMapping',
+      'roomMappings',
     ],
     'DEMO_FIXTURE_PROVIDER_INVALID',
   );
@@ -545,7 +545,8 @@ function validateTenant(value) {
       || provider.calendarsPermission !== 'missing'
       || provider.health !== 'unknown'
       || provider.scenario !== 'onboarding'
-      || provider.roomMapping !== null
+      || !Array.isArray(provider.roomMappings)
+      || provider.roomMappings.length !== 0
     ) fail('DEMO_FIXTURE_PROVIDER_INVALID');
     return;
   }
@@ -560,23 +561,24 @@ function validateTenant(value) {
   ) {
     fail('DEMO_FIXTURE_PROVIDER_INVALID');
   }
-  exactKeys(
-    provider.roomMapping,
-    ['roomId', 'externalRoomId', 'resourceAddress'],
-    'DEMO_FIXTURE_PROVIDER_INVALID',
-  );
-  string(provider.roomMapping.roomId, 'DEMO_FIXTURE_PROVIDER_INVALID', {
-    max: 128,
-    pattern: ENTITY_ID_PATTERN,
-  });
-  string(provider.roomMapping.externalRoomId, 'DEMO_FIXTURE_PROVIDER_INVALID', { max: 128 });
-  string(provider.roomMapping.resourceAddress, 'DEMO_FIXTURE_PROVIDER_INVALID', {
-    max: 320,
-    pattern: RESOURCE_ADDRESS_PATTERN,
-  });
-  if (!value.settings.locations.some(({ rooms }) => (
-    rooms.some(({ id }) => id === provider.roomMapping.roomId)
-  ))) fail('DEMO_FIXTURE_PROVIDER_INVALID');
+  const rooms = value.settings.locations.flatMap(({ rooms: siteRooms }) => siteRooms);
+  if (!Array.isArray(provider.roomMappings) || provider.roomMappings.length !== rooms.length) {
+    fail('DEMO_FIXTURE_PROVIDER_INVALID');
+  }
+  for (const mapping of provider.roomMappings) {
+    exactKeys(mapping, ['roomId', 'externalRoomId', 'resourceAddress'], 'DEMO_FIXTURE_PROVIDER_INVALID');
+    string(mapping.roomId, 'DEMO_FIXTURE_PROVIDER_INVALID', {
+      max: 128, pattern: ENTITY_ID_PATTERN,
+    });
+    string(mapping.externalRoomId, 'DEMO_FIXTURE_PROVIDER_INVALID', { max: 128 });
+    string(mapping.resourceAddress, 'DEMO_FIXTURE_PROVIDER_INVALID', {
+      max: 320, pattern: RESOURCE_ADDRESS_PATTERN,
+    });
+    if (!rooms.some(({ id }) => id === mapping.roomId)) fail('DEMO_FIXTURE_PROVIDER_INVALID');
+  }
+  unique(provider.roomMappings.map(({ roomId }) => roomId), 'DEMO_FIXTURE_PROVIDER_INVALID');
+  unique(provider.roomMappings.map(({ externalRoomId }) => externalRoomId), 'DEMO_FIXTURE_PROVIDER_INVALID');
+  unique(provider.roomMappings.map(({ resourceAddress }) => resourceAddress), 'DEMO_FIXTURE_PROVIDER_INVALID');
 }
 
 function validateCustomerPersona(value, tenantIds) {
