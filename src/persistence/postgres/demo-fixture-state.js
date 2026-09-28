@@ -714,7 +714,10 @@ async function seedPlatformState(client, fixture) {
         fixture.customerPersonas.filter(({ tenantId }) => tenantId === metering.tenantId).length,
         metering.requestCount,
         tenant.requests.filter(({ status }) => status === 'Confirmed').length,
-        '2028-07-01T00:00:00.000Z',
+        new Date(Math.max(
+          Date.parse('2028-07-01T00:00:00.000Z'),
+          Date.parse(fixture.fixedClock) + 732 * 24 * 60 * 60 * 1000,
+        )).toISOString(),
       ],
     });
   }
