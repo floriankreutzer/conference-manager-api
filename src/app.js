@@ -731,7 +731,13 @@ export function createApp({
         if (request.method !== expectedMethod) throw new ApiError(405, 'METHOD_NOT_ALLOWED');
         const principal = await principalGuard.require(request, { csrf: isTransition });
         authorizationPolicy.assertRecognizedPrincipal(principal);
-        const tenantContext = await tenantGuard.requireActive(principal);
+        let tenantContext = config.demoRuntime && !isTransition
+          ? await tenantGuard.requireKnown(principal)
+          : await tenantGuard.requireActive(principal);
+        if (config.demoRuntime && !isTransition
+          && !['active', 'ready'].includes(tenantContext.status)) {
+          tenantContext = await tenantGuard.requireActive(principal);
+        }
         if (!requestService) throw new ApiError(503, 'REQUEST_SERVICE_UNAVAILABLE');
         const requestIdValue = (
           transitionMatch
