@@ -42,7 +42,7 @@ test('fixture provides one activatable Tenant and an isolated degraded-provider 
   assert.equal(activatable.providerSimulation.scenario, 'booking_success');
   assert.equal(activatable.settings.locations[0].rooms.length > 0, true);
   assert.equal(
-    activatable.providerSimulation.roomMapping.roomId,
+    activatable.providerSimulation.roomMappings[0].roomId,
     activatable.settings.locations[0].rooms[0].id,
   );
   assert.ok(degraded);
@@ -116,7 +116,7 @@ test('fixture schema rejects unknown fields, duplicate Tenants and incorrect per
   );
 
   const mismatchedMapping = clone(DEMO_FIXTURE);
-  mismatchedMapping.tenants[1].providerSimulation.roomMapping.roomId = 'foreign-room';
+  mismatchedMapping.tenants[1].providerSimulation.roomMappings[0].roomId = 'foreign-room';
   assert.throws(
     () => validateDemoFixture(mismatchedMapping),
     (error) => error.code === 'DEMO_FIXTURE_PROVIDER_INVALID',
@@ -137,7 +137,7 @@ function incompleteOnboardingFixture() {
   tenant.providerSimulation.calendarsPermission = 'missing';
   tenant.providerSimulation.health = 'unknown';
   tenant.providerSimulation.scenario = 'onboarding';
-  tenant.providerSimulation.roomMapping = null;
+  tenant.providerSimulation.roomMappings = [];
   return candidate;
 }
 
@@ -163,11 +163,11 @@ test('fixture rejects ready empty Tenants and inconsistent onboarding provider s
   );
 
   const mappedOnboarding = incompleteOnboardingFixture();
-  mappedOnboarding.tenants[1].providerSimulation.roomMapping = {
+  mappedOnboarding.tenants[1].providerSimulation.roomMappings = [{
     roomId: 'northwind-berlin-room-1',
     externalRoomId: 'foreign-room',
     resourceAddress: 'foreign-room@example.invalid',
-  };
+  }];
   assert.throws(
     () => validateDemoFixture(mappedOnboarding),
     (error) => error.code === 'DEMO_FIXTURE_PROVIDER_INVALID',
