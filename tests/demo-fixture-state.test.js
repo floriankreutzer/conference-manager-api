@@ -175,6 +175,7 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
         capacity: room.capacity,
         price_minor: room.priceMinor,
         details: {
+          description: room.description,
           floor: room.floor, equipment: room.equipment, accessibility: room.accessibility,
           mediaAssetIds: tenant.roomMedia.filter(({ roomId }) => roomId === room.id).map(({ id }) => id),
         },
