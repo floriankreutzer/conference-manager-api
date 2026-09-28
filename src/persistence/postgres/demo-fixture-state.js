@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { tenantAuthorizationSnapshot } from '../../authorization/policy.js';
 import { normalizeRequest } from '../../domain/request.js';
+import { semanticChecksum } from '../../demo/fixture.js';
 import {
   appendRequestRevisionWithClient,
   resolveCurrentRequestCompositionWithClient,
@@ -848,8 +849,8 @@ export async function readDemoSemanticState({ client } = {}) {
       || !snapshot || snapshot.schemaVersion !== 3
       || !request.current_revision_sequence
       || !request.revision_record
-      || JSON.stringify(request.revision_record.details) !== JSON.stringify(snapshot.details)
-      || JSON.stringify(request.revision_record.pricing) !== JSON.stringify(snapshot.pricing)) {
+      || semanticChecksum(request.revision_record.details) !== semanticChecksum(snapshot.details)
+      || semanticChecksum(request.revision_record.pricing) !== semanticChecksum(snapshot.pricing)) {
       throw new Error('DEMO_FIXTURE_REQUEST_REVISION_DIVERGED');
     }
   }
