@@ -313,6 +313,7 @@ export function createApp({
   });
   const applicationHandler = createApplicationHttpHandler({
     service: productionApplicationService,
+    allowReadyDemoRead: Boolean(config.demoRuntime),
     principalGuard,
     tenantGuard,
     maxBodyBytes: config.maxBodyBytes,
