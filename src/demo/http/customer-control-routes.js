@@ -1,4 +1,6 @@
 import { ApiError } from '../../api-error.js';
+import { PERMISSION } from '../../authorization/policy.js';
+import { AUDIT_ACTION, AUDIT_OUTCOME, AUDIT_RETENTION_CLASS } from '../../audit/event.js';
 import { defineRouteModule } from '../../http/route-module.js';
 import { readJsonObjectBody, validateExactObject } from '../../security.js';
 
@@ -36,6 +38,32 @@ async function assertNoBody(request) {
   for await (const chunk of request) {
     if (chunk.length > 0) throw new ApiError(400, 'REQUEST_BODY_NOT_ALLOWED');
   }
+}
+
+async function mediaBody(request) {
+  const length = request.headers['content-length'];
+  if (length !== undefined && (Array.isArray(length) || !/^\\d+$/.test(length)
+    || Number(length) < 32 || Number(length) > 2_097_152)) {
+    throw new ApiError(413, 'DEMO_MEDIA_INVALID');
+  }
+  const chunks = [];
+  let bytesRead = 0;
+  for await (const chunk of request) {
+    bytesRead += chunk.length;
+    if (bytesRead > 2_097_152) throw new ApiError(413, 'DEMO_MEDIA_INVALID');
+    chunks.push(chunk);
+  }
+  if (bytesRead < 32 || (length !== undefined && Number(length) !== bytesRead)) {
+    throw new ApiError(400, 'DEMO_MEDIA_INVALID');
+  }
+  const bytes = Buffer.concat(chunks, bytesRead);
+  const type = request.headers['content-type'];
+  const valid = type === 'image/png'
+    ? bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
+    : type === 'image/webp' && bytes.toString('ascii', 0, 4) === 'RIFF'
+      && bytes.toString('ascii', 8, 12) === 'WEBP';
+  if (!valid) throw new ApiError(415, 'DEMO_MEDIA_INVALID');
+  return { bytes, contentType: type };
 }
 
 function sendJson(response, statusCode, payload, maxResponseBytes) {
@@ -77,7 +105,9 @@ function normalizeContextError(error) {
   return error;
 }
 
-export function createDemoCustomerControlRoutes({ personaService, mediaRepository } = {}) {
+export function createDemoCustomerControlRoutes({
+  personaService, mediaRepository, auditService, authorizationPolicy,
+} = {}) {
   if (
     !personaService
     || typeof personaService.establish !== 'function'
@@ -119,11 +149,39 @@ export function createDemoCustomerControlRoutes({ personaService, mediaRepositor
             || typeof mediaRepository.list !== 'function') {
             throw new ApiError(503, 'DEMO_MEDIA_UNAVAILABLE');
           }
-          if (request.method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
-          await assertNoBody(request);
-          const principal = await principalGuard.require(request);
-          const tenant = await tenantGuard.requireKnown(principal);
           const assetId = path.match(DEMO_MEDIA_ASSET_PATH)?.[1];
+          const replacing = request.method === 'PUT' && assetId;
+          if (request.method !== 'GET' && !replacing) throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+          if (!replacing) await assertNoBody(request);
+          const principal = await principalGuard.require(request, { csrf: Boolean(replacing) });
+          const tenant = await tenantGuard.requireKnown(principal);
+          if (replacing) {
+            if (!authorizationPolicy?.requireTenantPermission || !auditService?.createEvent
+              || typeof mediaRepository.replace !== 'function') {
+              throw new ApiError(503, 'DEMO_MEDIA_UNAVAILABLE');
+            }
+            authorizationPolicy.requireTenantPermission(
+              principal, tenant, PERMISSION.TENANT_CATALOGUE_MANAGE,
+            );
+            const media = await mediaBody(request);
+            const result = await mediaRepository.replace({
+              tenantId: tenant.tenantId, assetId, actorUserId: principal.userId,
+              ...media,
+              auditEvent: ({ sha256, byteLength, contentType }) => auditService.createEvent({
+                principal, tenantContext: tenant, correlationId: requestId,
+                action: AUDIT_ACTION.TENANT_CONFIGURATION_CHANGED,
+                targetType: 'demo_catalogue_media', targetId: assetId,
+                newState: { sha256, byteLength, contentType },
+                outcome: AUDIT_OUTCOME.SUCCESS,
+                metadata: { operation: 'replace' },
+                retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
+              }),
+            });
+            if (!result) throw new ApiError(404, 'NOT_FOUND');
+            response.setHeader('Cache-Control', 'private, no-store');
+            sendJson(response, 200, result, maxResponseBytes);
+            return 200;
+          }
           if (assetId) {
             const media = await mediaRepository.find({ tenantId: tenant.tenantId, assetId });
             if (!media) throw new ApiError(404, 'NOT_FOUND');
