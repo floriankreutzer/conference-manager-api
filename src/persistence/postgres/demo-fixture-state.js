@@ -339,7 +339,7 @@ async function seedTenantReadinessState(client, fixture) {
         provider.integrationId,
         provider.providerTenantReference,
         provider.connectionState,
-        fixture.fixedClock,
+        tenant.lifecycleStatus === 'onboarding' ? null : fixture.fixedClock,
         provider.placesPermission,
         provider.calendarsPermission,
       ],
@@ -363,6 +363,7 @@ async function seedTenantReadinessState(client, fixture) {
         ],
       });
     }
+    if (tenant.lifecycleStatus === 'onboarding') continue;
     for (const capability of ['places', 'free_busy', 'calendar_write']) {
       await client.query({
         name: 'demo-fixture-insert-microsoft365-health',
@@ -583,7 +584,7 @@ export async function readDemoSemanticState({ client } = {}) {
            integration.status AS connection_state,
            integration.places_permission_status,
            integration.calendars_permission_status,
-           health.status AS health,
+           COALESCE(health.status, 'unknown') AS health,
            simulation.scenario,
            mapping.room_id,
            mapping.external_room_id,
@@ -596,11 +597,11 @@ export async function readDemoSemanticState({ client } = {}) {
     JOIN integrations AS integration
       ON integration.tenant_id = simulation.tenant_id
      AND integration.provider = 'microsoft365'
-    JOIN microsoft365_room_mappings AS mapping
+    LEFT JOIN microsoft365_room_mappings AS mapping
       ON mapping.tenant_id = integration.tenant_id
      AND mapping.integration_id = integration.id
      AND mapping.provider_status = 'active'
-    JOIN microsoft365_capability_health AS health
+    LEFT JOIN microsoft365_capability_health AS health
       ON health.tenant_id = integration.tenant_id
      AND health.integration_id = integration.id
      AND health.capability = 'free_busy'
@@ -716,7 +717,9 @@ export async function readDemoSemanticState({ client } = {}) {
         health: provider.health,
         scenario: provider.scenario,
         roomMappings: providers
-          .filter(({ tenant_id: tenantId }) => tenantId === tenant.id)
+          .filter(({ tenant_id: tenantId, room_id: roomId }) => (
+            tenantId === tenant.id && roomId !== null
+          ))
           .map((mapping) => ({
             roomId: mapping.room_id,
             externalRoomId: mapping.external_room_id,
