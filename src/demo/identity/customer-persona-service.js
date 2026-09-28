@@ -85,6 +85,7 @@ export function createDemoCustomerPersonaService({
     || typeof sessionService.resolvePrincipal !== 'function'
     || typeof sessionService.revoke !== 'function'
     || typeof sessionService.csrfTokenForPrincipal !== 'function'
+    || typeof sessionService.clearCookie !== 'function'
   ) throw new TypeError('DEMO_CUSTOMER_SESSION_SERVICE_REQUIRED');
   if (
     !personaRepository
@@ -125,6 +126,10 @@ export function createDemoCustomerPersonaService({
   }
 
   return Object.freeze({
+    clearCookie() {
+      return sessionService.clearCookie();
+    },
+
     async tenants() {
       return personaRepository.listTenants();
     },

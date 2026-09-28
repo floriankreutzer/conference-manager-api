@@ -145,6 +145,7 @@ test('customer Demo sessions fail closed when canonical database authority chang
       async resolvePrincipal() { return principal; },
       async revoke() { return true; },
       csrfTokenForPrincipal() { return 'csrf'; },
+      clearCookie() { return 'cm_session=; Max-Age=0; Path=/api; HttpOnly'; },
     },
     personaRepository: {
       async listTenants() { return []; },
@@ -210,6 +211,7 @@ test('Platform Demo sessions fail closed when canonical roles or scopes change',
       async resolvePrincipal() { return principal; },
       async revoke() { return true; },
       csrfTokenForPrincipal() { return 'csrf'; },
+      clearCookie() { return 'cm_session=; Max-Age=0; Path=/api; HttpOnly'; },
     },
     personaRepository: {
       async findPlatform() { return persona; },
@@ -231,6 +233,7 @@ test('Demo establish issues defaults only when its own session cookie is genuine
       async resolvePrincipal() { return null; },
       async revoke() { return true; },
       csrfTokenForPrincipal() { return 'csrf'; },
+      clearCookie() { return 'cm_session=; Max-Age=0; Path=/api; HttpOnly'; },
     },
     personaRepository: {
       async listTenants() { return []; },
@@ -263,6 +266,7 @@ test('Demo establish issues defaults only when its own session cookie is genuine
       async resolvePrincipal() { return null; },
       async revoke() { return true; },
       csrfTokenForPrincipal() { return 'csrf'; },
+      clearCookie() { return 'cm_session=; Max-Age=0; Path=/api; HttpOnly'; },
     },
     personaRepository: {
       async findPlatform() { return platformSelection(); },
@@ -290,12 +294,14 @@ test('Demo session HTTP routes map invalid or revoked cookies to stable authenti
     headers: { cookie: 'presented=invalid' },
     async *[Symbol.asyncIterator]() {},
   };
-  const response = { setHeader() {}, end() {} };
+  const headers = new Map();
+  const response = { setHeader(name, value) { headers.set(name, value); }, end() {} };
   const customerModule = createDemoCustomerControlRoutes({
     personaService: {
       async establish() { throw new TypeError('DEMO_CUSTOMER_SESSION_INVALID'); },
       async switch() {},
       async tenants() { return []; },
+      clearCookie() { return 'cm_session=; Max-Age=0; Path=/api; HttpOnly'; },
     },
   });
   const customerHandler = customerModule.createHandler({
@@ -317,6 +323,9 @@ test('Demo session HTTP routes map invalid or revoked cookies to stable authenti
       && error.code === 'UNAUTHENTICATED',
   );
 
+  assert.equal(headers.get('Set-Cookie'), 'cm_session=; Max-Age=0; Path=/api; HttpOnly');
+  headers.clear();
+
   const platformModule = createDemoPlatformControlRoutes({
     personaService: {
       async establish() { throw new TypeError('DEMO_PLATFORM_SESSION_INVALID'); },
@@ -326,7 +335,9 @@ test('Demo session HTTP routes map invalid or revoked cookies to stable authenti
   });
   const platformHandler = platformModule.createHandler({
     platformPrincipalGuard: {},
-    platformSessionService: {},
+    platformSessionService: {
+      clearCookie() { return 'cm_platform_session=; Max-Age=0; Path=/api/v1/platform; HttpOnly; Secure; SameSite=Strict'; },
+    },
     maxBodyBytes: 1024,
     maxResponseBytes: 4096,
   });
@@ -343,4 +354,47 @@ test('Demo session HTTP routes map invalid or revoked cookies to stable authenti
       && error.code === 'PLATFORM_AUTHENTICATION_FAILED'
       && error.securityCategory === 'authentication',
   );
+  assert.equal(headers.get('Set-Cookie'),
+    'cm_platform_session=; Max-Age=0; Path=/api/v1/platform; HttpOnly; Secure; SameSite=Strict');
+});
+
+test('Demo session routes do not clear cookies for unrelated failures', async () => {
+  for (const surface of ['customer', 'platform']) {
+    const headers = new Map();
+    const request = { method: 'GET', headers: {}, async *[Symbol.asyncIterator]() {} };
+    const response = { setHeader(name, value) { headers.set(name, value); }, end() {} };
+    const invalid = surface === 'customer'
+      ? 'DEMO_CUSTOMER_CONTEXT_NOT_AVAILABLE'
+      : 'DEMO_PLATFORM_PERSONA_NOT_AVAILABLE';
+    const personaService = {
+      async establish() { throw new TypeError(invalid); },
+      async switch() {},
+      async tenants() { return []; },
+      clearCookie() { throw new Error('UNEXPECTED_COOKIE_CLEAR'); },
+    };
+    const module = surface === 'customer'
+      ? createDemoCustomerControlRoutes({ personaService })
+      : createDemoPlatformControlRoutes({
+        personaService,
+        resetService: { async reset() {} },
+      });
+    const path = surface === 'customer'
+      ? DEMO_CUSTOMER_SESSION_PATH : DEMO_PLATFORM_SESSION_PATH;
+    const handler = module.createHandler({
+      principalGuard: {},
+      tenantGuard: {},
+      platformPrincipalGuard: {},
+      platformSessionService: { clearCookie() { throw new Error('UNEXPECTED_COOKIE_CLEAR'); } },
+      maxBodyBytes: 1024,
+      maxResponseBytes: 4096,
+    });
+    await assert.rejects(handler({
+      request,
+      response,
+      parsedUrl: new URL(`https://demo.invalid${path}`),
+      path,
+      requestId: '11111111-1111-4111-8111-111111111111',
+    }));
+    assert.equal(headers.has('Set-Cookie'), false);
+  }
 });
