@@ -147,8 +147,9 @@ async function verifiedMediaBytes(media) {
 
 async function verifiedCatalogueBytes(media) {
   const suffix = media.contentType === 'image/png' ? '-plan.png' : '.webp';
+  const prefix = media.contentType === 'image/png' ? 'rooms-' : 'catering-';
   const encoded = await readFile(new URL(
-    `../../demo/media/${media.assetKey}${suffix}.b64`, import.meta.url,
+    `../../demo/media/${prefix}${media.assetKey}${suffix}.b64`, import.meta.url,
   ), 'utf8');
   const bytes = Buffer.from(encoded.trim(), 'base64');
   const digest = createHash('sha256').update(bytes).digest('hex');
