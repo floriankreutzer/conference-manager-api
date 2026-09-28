@@ -96,6 +96,26 @@ async function seedCustomerIdentities(client, fixture) {
   }
 }
 
+function catalogueSnapshot(tenant) {
+  const catalogue = tenant.settings.catalogue;
+  const roomPrices = tenant.settings.locations.flatMap(({ rooms }) => rooms
+    .filter(({ priceMinor }) => priceMinor !== null)
+    .map(({ id, priceMinor }) => ({
+      roomId: id,
+      price: { amountMinor: priceMinor, currency: catalogue.currency },
+    })));
+  return {
+    services: catalogue.services.map((id) => ({
+      id, name: displayName(id), description: null, active: true, order: 0,
+      price: { amountMinor: 0, currency: catalogue.currency }, siteIds: [], roomIds: [],
+    })),
+    equipment: catalogue.equipment,
+    cateringPackages: catalogue.cateringPackages,
+    cateringItems: catalogue.cateringItems,
+    roomPrices,
+  };
+}
+
 async function seedTenantBusinessState(client, fixture) {
   for (const tenant of fixture.tenants) {
     await client.query({
@@ -311,6 +331,22 @@ async function seedTenantBusinessState(client, fixture) {
           values: [tenant.id, cateringPackage.id, itemId],
         });
       }
+    }
+    await client.query({
+      name: 'demo-fixture-insert-catalogue-revision',
+      text: `INSERT INTO tenant_catalogue_revisions
+        (tenant_id, revision, snapshot, effective_at, actor_user_id, correlation_id)
+        VALUES ($1, 2, $2::jsonb, $3, NULL, NULL)`,
+      values: [tenant.id, JSON.stringify(catalogueSnapshot(tenant)), fixture.fixedClock],
+    });
+    const advancedCatalogue = await client.query({
+      name: 'demo-fixture-advance-catalogue-revision',
+      text: `UPDATE tenants SET catalog_revision = 2, updated_at = $2
+        WHERE id = $1 AND catalog_revision = 1`,
+      values: [tenant.id, fixture.fixedClock],
+    });
+    if (advancedCatalogue.rowCount !== 1) {
+      throw new Error('DEMO_FIXTURE_CATALOGUE_REVISION_ADVANCE_FAILED');
     }
     for (const request of tenant.requests) {
       await client.query({
