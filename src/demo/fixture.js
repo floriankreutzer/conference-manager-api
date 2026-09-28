@@ -747,7 +747,7 @@ const fixture = {
                 "water-juice",
                 "pastry"
               ],
-              "variants": [{"id":"coffee-break-standard","name":"Standard","description":null,"active":true,"order":1,"price":{"amountMinor":0,"currency":"EUR"}}]
+              "variants": [{"id":"coffee-break-standard","name":"Standard","description":null,"active":true,"order":1,"price":{"amountMinor":1200,"currency":"EUR"}}]
             },
             {
               "id": "business-breakfast",
@@ -769,7 +769,7 @@ const fixture = {
                 "fruit",
                 "sandwich-vegetarian"
               ],
-              "variants": [{"id":"business-breakfast-standard","name":"Standard","description":null,"active":true,"order":1,"price":{"amountMinor":0,"currency":"EUR"}}]
+              "variants": [{"id":"business-breakfast-standard","name":"Standard","description":null,"active":true,"order":1,"price":{"amountMinor":1800,"currency":"EUR"}}]
             },
             {
               "id": "workshop-day",
@@ -791,7 +791,7 @@ const fixture = {
                 "lunch-classic",
                 "afternoon-snack"
               ],
-              "variants": [{"id":"workshop-day-standard","name":"Standard","description":null,"active":true,"order":1,"price":{"amountMinor":0,"currency":"EUR"}}]
+              "variants": [{"id":"workshop-day-standard","name":"Standard","description":null,"active":true,"order":1,"price":{"amountMinor":4200,"currency":"EUR"}}]
             },
             {
               "id": "vegan-day",
@@ -813,7 +813,7 @@ const fixture = {
                 "fruit",
                 "lunch-vegan"
               ],
-              "variants": [{"id":"vegan-day-standard","name":"Standard","description":null,"active":true,"order":1,"price":{"amountMinor":0,"currency":"EUR"}}]
+              "variants": [{"id":"vegan-day-standard","name":"Standard","description":null,"active":true,"order":1,"price":{"amountMinor":3900,"currency":"EUR"}}]
             }
           ],
           cateringItems: [
