@@ -119,7 +119,7 @@ function catalogueSnapshot(tenant) {
 }
 
 function mediaAssetKey(roomId) {
-  const northwind = /^northwind-berlin-room-(10|[1-9])$/.exec(roomId);
+  const northwind = roomId.match(/^northwind-berlin-room-(10|[1-9])$/);
   if (northwind) return `northwind-room-${northwind[1].padStart(2, '0')}`;
   if (roomId === 'contoso-paris-room-1') return roomId;
   throw new Error('DEMO_FIXTURE_MEDIA_ROOM_INVALID');
