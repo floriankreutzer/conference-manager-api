@@ -93,7 +93,7 @@ test('concrete Demo seeder uses bounded named parameterized writes and never see
     'granted',
     'granted',
   ]);
-  assert.equal(readyMapping.values[1], readyTenant.providerSimulation.roomMapping.roomId);
+  assert.equal(readyMapping.values[1], readyTenant.providerSimulation.roomMappings[0].roomId);
   assert.deepEqual(readyHealth.map(({ values }) => values.slice(2, 5)), [
     ['places', 'healthy', null],
     ['free_busy', 'healthy', null],
@@ -177,9 +177,9 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
       calendars_permission_status: tenant.providerSimulation.calendarsPermission,
       health: tenant.providerSimulation.health,
       scenario: tenant.providerSimulation.scenario,
-      room_id: tenant.providerSimulation.roomMapping.roomId,
-      external_room_id: tenant.providerSimulation.roomMapping.externalRoomId,
-      resource_address: tenant.providerSimulation.roomMapping.resourceAddress,
+      room_id: tenant.providerSimulation.roomMappings[0].roomId,
+      external_room_id: tenant.providerSimulation.roomMappings[0].externalRoomId,
+      resource_address: tenant.providerSimulation.roomMappings[0].resourceAddress,
     })),
     'demo-fixture-read-customer-personas': DEMO_FIXTURE.customerPersonas.map((persona) => ({
       context_key: `${persona.tenantId}:${persona.persona}`,
