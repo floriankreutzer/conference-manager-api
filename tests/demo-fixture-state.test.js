@@ -164,6 +164,7 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
       tenant_id: tenant.id,
       id: location.id,
       name: location.name,
+      time_zone: location.timeZone,
       guest_information: location.guestInformation,
     }))),
     'demo-fixture-read-rooms': DEMO_FIXTURE.tenants.flatMap((tenant) => (
@@ -213,6 +214,7 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
         tenant_id: tenant.id, id: entry.id, name: entry.name, description: entry.description,
         active: entry.active, sort_order: entry.order, price_minor: entry.price.amountMinor,
         currency: entry.price.currency, site_ids: entry.siteIds, item_ids: entry.itemIds,
+        variants: entry.variants,
       }))
     )),
     'demo-fixture-read-requests': DEMO_FIXTURE.tenants.flatMap((tenant) => tenant.requests.map((request) => ({
@@ -225,6 +227,34 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
       ends_at: request.endsAt,
       internal_participants: request.internalParticipants,
       external_participants: request.externalParticipants,
+      schema_version: 3,
+      current_revision_sequence: 1,
+      request_snapshot: {
+        schemaVersion: 3,
+        details: {
+          title: request.title,
+          equipmentIds: request.equipmentIds,
+          catering: { packageSelection: request.cateringPackageId === null ? null : {
+            packageId: request.cateringPackageId,
+          } },
+          specialRequirements: request.description,
+        },
+        pricing: {},
+        allocations: { entries: request.costCenterId === null ? [] : [{
+          costCenterId: request.costCenterId,
+        }] },
+      },
+      revision_record: {
+        details: {
+          title: request.title,
+          equipmentIds: request.equipmentIds,
+          catering: { packageSelection: request.cateringPackageId === null ? null : {
+            packageId: request.cateringPackageId,
+          } },
+          specialRequirements: request.description,
+        },
+        pricing: {},
+      },
     }))),
     'demo-fixture-read-providers': DEMO_FIXTURE.tenants.flatMap((tenant) => (
       (tenant.providerSimulation.roomMappings.length ? tenant.providerSimulation.roomMappings : [null])
