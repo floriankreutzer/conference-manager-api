@@ -204,6 +204,8 @@ const fixture = {
           rooms: [
             {
               "id": "northwind-berlin-room-1",
+              "description": "Großzügiger Konferenzraum mit Tageslicht, variabler Bestuhlung und Videokonferenztechnik. " +
+                "Geeignet für Kundenpräsentationen, Projekt-Kick-offs und bereichsübergreifende Workshops.",
               "name": "Berlin Forum",
               "capacity": 24,
               "priceMinor": 12500,
@@ -221,6 +223,8 @@ const fixture = {
             },
             {
               "id": "northwind-berlin-room-2",
+              "description": "Ruhiger Besprechungsraum mit zentralem Konferenztisch, ergonomischen Stühlen und " +
+                "schallgedämpften Oberflächen. Für vertrauliche Abstimmungen und hybride Entscheidungstermine.",
               "name": "Spree Boardroom",
               "capacity": 12,
               "priceMinor": 9500,
@@ -237,6 +241,8 @@ const fixture = {
             },
             {
               "id": "northwind-berlin-room-3",
+              "description": "Flexibel nutzbarer Workshopraum mit mobilen Tischen, großen Schreibflächen und Platz für " +
+                "Gruppenarbeit. Moderationsmaterial und mobile Pinnwände sind direkt verfügbar.",
               "name": "Workshop Loft",
               "capacity": 20,
               "priceMinor": 11000,
@@ -254,6 +260,8 @@ const fixture = {
             },
             {
               "id": "northwind-berlin-room-4",
+              "description": "Kreativraum für Ideenentwicklung, Design-Sprints und Produktarbeit. Bewegliche Möbel erlauben " +
+                "den Wechsel zwischen Präsentation, Kleingruppen und gemeinsamer Ergebnissicherung.",
               "name": "Innovation Lab",
               "capacity": 16,
               "priceMinor": 10000,
@@ -271,6 +279,8 @@ const fixture = {
             },
             {
               "id": "northwind-berlin-room-5",
+              "description": "Kompakter Rückzugsraum für konzentrierte Abstimmungen und Einzelgespräche. Ein Monitor, eine " +
+                "Kamera und eine einfache Tischanschlusslösung unterstützen hybride Termine.",
               "name": "Focus One",
               "capacity": 4,
               "priceMinor": 3500,
@@ -287,6 +297,8 @@ const fixture = {
             },
             {
               "id": "northwind-berlin-room-6",
+              "description": "Kleiner Besprechungsraum abseits der offenen Arbeitsflächen. Für Interviews, kurze " +
+                "Projektabsprachen und Videokonferenzen in kleiner Runde.",
               "name": "Focus Two",
               "capacity": 4,
               "priceMinor": 3500,
@@ -303,6 +315,9 @@ const fixture = {
             },
             {
               "id": "northwind-berlin-room-7",
+              "description": "Schulungsraum mit Reihen- und Gruppenbestuhlung, guter Sicht auf die Präsentationsfläche und " +
+                "zusätzlichen Stromanschlüssen. Für Trainings, Einführungsveranstaltungen und ganztägige " +
+                "Seminare.",
               "name": "Training Campus",
               "capacity": 36,
               "priceMinor": 16000,
@@ -320,6 +335,8 @@ const fixture = {
             },
             {
               "id": "northwind-berlin-room-8",
+              "description": "Besprechungsbereich mit komfortabler Sitzgruppe und einem separaten Arbeitstisch. Geeignet für " +
+                "kleine Kundengespräche, Interviews und Strategieabstimmungen.",
               "name": "Executive Lounge",
               "capacity": 8,
               "priceMinor": 9000,
@@ -336,6 +353,9 @@ const fixture = {
             },
             {
               "id": "northwind-berlin-room-9",
+              "description": "Großer Veranstaltungsraum mit Bühne, Präsentationsfläche und Mikrofontechnik. Die " +
+                "Reihenbestuhlung unterstützt Townhalls, Informationsveranstaltungen und größere " +
+                "Kundenveranstaltungen.",
               "name": "Townhall Auditorium",
               "capacity": 80,
               "priceMinor": 30000,
@@ -354,6 +374,9 @@ const fixture = {
             },
             {
               "id": "northwind-berlin-room-10",
+              "description": "Raum für anspruchsvolle hybride Meetings mit mehreren Kameraperspektiven, guter " +
+                "Sprachverständlichkeit und regelbarer Beleuchtung. Für externe Präsentationen und digitale " +
+                "Workshops.",
               "name": "Hybrid Studio",
               "capacity": 10,
               "priceMinor": 12000,
@@ -1316,6 +1339,7 @@ const fixture = {
           rooms: [
             {
               "id": "contoso-paris-room-1",
+              "description": "Kleiner Besprechungsraum mit Präsentationsdisplay.",
               "name": "Paris Atelier",
               "capacity": 16,
               "priceMinor": 9500,
@@ -1325,6 +1349,7 @@ const fixture = {
             },
             {
               "id": "contoso-paris-room-2",
+              "description": null,
               "name": "Paris Studio",
               "capacity": 6,
               "priceMinor": null,
@@ -1601,9 +1626,16 @@ function validateTenant(value) {
       fail('DEMO_FIXTURE_SETTINGS_INVALID');
     }
     for (const room of location.rooms) {
-      exactKeys(room, ['id', 'name', 'capacity', 'priceMinor', 'floor', 'equipment', 'accessibility'], 'DEMO_FIXTURE_SETTINGS_INVALID');
+      exactKeys(room, [
+        'id', 'description', 'name', 'capacity', 'priceMinor', 'floor', 'equipment', 'accessibility',
+      ], 'DEMO_FIXTURE_SETTINGS_INVALID');
       string(room.id, 'DEMO_FIXTURE_SETTINGS_INVALID', { max: 128, pattern: ENTITY_ID_PATTERN });
       string(room.name, 'DEMO_FIXTURE_SETTINGS_INVALID');
+      if (room.description === null) {
+        if (value.lifecycleStatus !== 'ready') fail('DEMO_FIXTURE_SETTINGS_INVALID');
+      } else {
+        string(room.description, 'DEMO_FIXTURE_SETTINGS_INVALID', { max: 1000 });
+      }
       integer(room.capacity, 'DEMO_FIXTURE_SETTINGS_INVALID', 1);
       if (room.floor !== null) string(room.floor, 'DEMO_FIXTURE_SETTINGS_INVALID', { max: 80 });
       if (!Array.isArray(room.equipment) || room.equipment.length > 50) fail('DEMO_FIXTURE_SETTINGS_INVALID');
