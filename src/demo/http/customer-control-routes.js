@@ -42,7 +42,7 @@ async function assertNoBody(request) {
 
 async function mediaBody(request) {
   const length = request.headers['content-length'];
-  if (length !== undefined && (Array.isArray(length) || !/^\\d+$/.test(length)
+  if (length !== undefined && (Array.isArray(length) || !/^\d+$/.test(length)
     || Number(length) < 32 || Number(length) > 2_097_152)) {
     throw new ApiError(413, 'DEMO_MEDIA_INVALID');
   }

@@ -99,7 +99,7 @@ The Demo migration runner refuses a missing, gapped or non-exact canonical migra
 The seed descriptor contains:
 
 - runtime schema version `1`;
-- seed version `saas-3.6-shared-demo-v5`;
+- seed version `saas-3.7-three-demo-customers-v1`;
 - a domain-separated SHA-256 semantic checksum over canonicalized fixture meaning.
 
 Reset is destructive by design and is allowed only in the isolated Demo database. Before truncation, the reset repository verifies all of the following:
@@ -177,7 +177,7 @@ Provisioning order is mandatory:
 3. apply canonical migrations `001..038` with the reviewed database migration identity;
 4. remove normal `DATABASE_URL`, `PUBLIC_ORIGIN`, session/CSRF, `PLATFORM_*` and real-provider variables from the Demo command environment;
 5. supply the complete `DEMO_*` configuration and run `npm run demo:db:migrate`;
-6. run `npm run demo:db:reset -- --confirm-seed-version=saas-3.6-shared-demo-v5` to install and verify the initial deterministic seed;
+6. run `npm run demo:db:reset -- --confirm-seed-version=saas-3.7-three-demo-customers-v1` to install and verify the initial deterministic seed;
 7. start `npm run start:demo:customer` and `npm run start:demo:platform` as separate processes;
 8. route the customer and Platform HTTPS origins only to their matching process;
 9. verify both readiness endpoints, both session endpoints, a customer persona/Tenant switch, a denied Platform operation, a shared-state journey and one deterministic provider-degradation journey;
@@ -193,12 +193,12 @@ The commands are intentionally separate:
 
 ```bash
 npm run demo:db:migrate
-npm run demo:db:reset -- --confirm-seed-version=saas-3.6-shared-demo-v5
+npm run demo:db:reset -- --confirm-seed-version=saas-3.7-three-demo-customers-v1
 npm run start:demo:customer
 npm run start:demo:platform
 ```
 
-`npm run demo:db:reset -- --confirm-seed-version=saas-3.6-shared-demo-v5` is the only supported
+`npm run demo:db:reset -- --confirm-seed-version=saas-3.7-three-demo-customers-v1` is the only supported
 initial seed and reseed operation. `npm run demo:db:rollback` rolls back only the latest Demo
 overlay migration and is not a routine populated-environment recovery mechanism. The foundation
 down migration fails closed while Demo persona/provider state is in use. Prefer replacement of the
@@ -210,7 +210,7 @@ isolated Demo database over destructive manual cleanup.
 | --- | --- |
 | `NODE_ENV` | `demo` for deployment; `test` only for isolated tests |
 | `DEMO_RUNTIME` | Exact `shared-postgres-v1` |
-| `DEMO_SEED_VERSION` | Exact `saas-3.6-shared-demo-v5` |
+| `DEMO_SEED_VERSION` | Exact `saas-3.7-three-demo-customers-v1` |
 | `DEMO_CUSTOMER_ORIGIN` | Exact dedicated HTTPS origin |
 | `DEMO_PLATFORM_ORIGIN` | Different exact dedicated HTTPS origin |
 | `DEMO_CUSTOMER_DATABASE_URL` | Customer role; isolated shared Demo target |
@@ -237,7 +237,7 @@ uppercase names and non-empty single-line values.
 For each deployed Demo candidate, record:
 
 - backend and frontend commit/artifact identifiers;
-- canonical schema version `39` and Demo overlay version `5`;
+- canonical schema version `39` and Demo overlay version `6`;
 - seed version and semantic checksum returned by reset;
 - customer and Platform origin identities without credentials;
 - the browser/integration test run covering cross-process shared state;
@@ -259,7 +259,7 @@ resubmit, transition, history and confirmed-change paths support the accepted ne
 while the outer response envelopes remain unchanged. Equipment is resolved using existing
 Tenant-composite Catalogue tables, charged once and included in allocation.
 
-The `saas-3.6-shared-demo-v5` reset fixture contains distinct priced Northwind/Contoso Equipment
+The `saas-3.7-three-demo-customers-v1` reset fixture contains distinct priced Northwind/Contoso Equipment
 and verifies those identity, price and applicability facts during semantic readback. Demo overlay
 004 supplies only the reset privilege required by canonical attribution migration 036. Apply
 canonical migrations first, apply Demo overlays 001 through 004, reset/reseed Demo, deploy both API

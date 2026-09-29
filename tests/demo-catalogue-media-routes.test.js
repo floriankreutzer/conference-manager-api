@@ -100,3 +100,39 @@ test('Demo media replacement requires a manager, CSRF and matching MIME', async 
   /FORBIDDEN/);
   assert.equal(inspected[0].permission, 'tenant:catalogue:manage');
 });
+
+test('Demo media replacement accepts a numeric Content-Length after authorization', async () => {
+  const bytes = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(32)]);
+  const assetId = FOREIGN_ASSET;
+  const path = `/api/v1/demo/media/${assetId}`;
+  let replaced = null;
+  const routes = createDemoCustomerControlRoutes({
+    personaService: { async establish() {}, async switch() {}, async tenants() { return []; },
+      clearCookie() { return ''; } },
+    mediaRepository: {
+      async find() { return null; }, async list() { return []; },
+      async replace(input) { replaced = input; return { id: assetId, byteLength: input.bytes.length }; },
+    },
+    authorizationPolicy: { requireTenantPermission(principal, tenant, permission) {
+      assert.equal(permission, 'tenant:catalogue:manage');
+      assert.equal(tenant.tenantId, TENANT_ID);
+    } },
+    auditService: { createEvent() { return {}; } },
+  }).createHandler({
+    principalGuard: { async require(requestValue, options) {
+      assert.equal(options.csrf, true); return { userId: 'user' };
+    } },
+    tenantGuard: { async requireKnown() { return { tenantId: TENANT_ID }; } },
+    maxResponseBytes: 100000,
+  });
+  const upload = { method: 'PUT', headers: {
+    'content-type': 'image/png', 'content-length': String(bytes.length),
+  }, async *[Symbol.asyncIterator]() { yield bytes; } };
+  const reply = response();
+  const status = await routes({ request: upload, response: reply,
+    parsedUrl: new URL(path, 'https://demo.example'), path, requestId: 'request-id' });
+  assert.equal(status, 200);
+  assert.equal(reply.headers.get('cache-control'), 'private, no-store');
+  assert.deepEqual(replaced.bytes, bytes);
+  assert.equal(replaced.tenantId, TENANT_ID);
+});
