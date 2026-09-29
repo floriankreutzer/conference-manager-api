@@ -1,0 +1,241 @@
+diff --git a/docs/SAAS-3.7-ACCEPTANCE-CORRECTIONS.md b/docs/SAAS-3.7-ACCEPTANCE-CORRECTIONS.md
+new file mode 100644
+index 0000000..d3bfdd6
+--- /dev/null
++++ b/docs/SAAS-3.7-ACCEPTANCE-CORRECTIONS.md
+@@ -0,0 +1,53 @@
++# SaaS 3.7 scenario acceptance corrections
++
++## Scope and authority
++
++Root `AGENTS.md`, the coding standards and the existing Shared Demo topology
++remain mandatory. Frontend issue #215 owns full scenario and release acceptance;
++this document does not mark that gate complete.
++
++The approved Northwind scenario is a fully configured working booking demo.
++Its inherited `provider_degraded` baseline prevented every new availability
++check. The corrected fixture uses `booking_success` and healthy provider
++projections. The pure simulated-provider tests still explicitly exercise
++unavailable discovery, free/busy and calendar writes. The scenario browser
++suite must also exercise fail-closed unavailable integration state, rather
++than reporting a permanently broken Northwind scenario as a successful demo.
++
++Fabrikam must have no local Sites, Rooms, Requests or imported mappings after
++reset. A simulated external directory is a different owner: the source-defined
++Fabrikam provider Tenant now offers two immutable synthetic discovery candidates
++from `src/demo/provider/onboarding-room-inventory.js`. They do not become
++application Rooms until the existing authorized Tenant Admin import commits.
++Other and unknown provider Tenants never receive Fabrikam candidates. No new
++HTTP control, role, persistence table, network transport or production fallback
++is introduced. Existing connection, entitlement, CSRF, import and lifecycle
++checks remain the authority.
++
++## Baseline and rollout
++
++The seed wire-contract identifier remains `saas-3.7-three-demo-customers-v1`;
++its schema and migration inventory have not changed. This corrective **content
++revision changes the canonical semantic checksum**, which is bound to an
++immutable runtime commit by hosted acceptance:
++
++- Previous content: `2a15426e761f6efb78409394888d6799e3f00c7e13500d8b937d1d0cece579f6`.
++- Corrected content: `7e22005f1e9689fbea4ccfc75084f5f3d224fe10e60a6af23c1cb600f2b70014`.
++
++Deploy mutually compatible Customer/Platform builds, then execute the normal
++privileged Demo reset and verify the corrected checksum twice. A deployment
++alone does not rewrite previously seeded provider-health rows. Never manually
++edit database rows, sentinel, checksum or grants to hide a failed reset. Old
++SaaS 3.6/3.7 evidence remains historical and cannot authorize the corrected
++candidate. The synthetic external directory is immutable code configuration;
++reset removes its imported local mappings through the existing reset inventory.
++
++## Verification
++
++`tests/saas37-onboarding-provider-inventory.test.js` reproduced both blocked
++progressions before correction and verifies tenant separation, immutable
++candidates, unchanged empty Fabrikam baseline and retained degradation failure
++behavior. Existing fixture/provider tests continue to cover their original
++contracts except for the explicitly corrected Northwind baseline expectation.
++Run the full API quality, audit and PostgreSQL gates and cross-repository
++scenario browser suite; retain exact source/runtime refs and actual results.
+diff --git a/src/demo/customer-composition.js b/src/demo/customer-composition.js
+index 67cbd4c..393f871 100644
+--- a/src/demo/customer-composition.js
++++ b/src/demo/customer-composition.js
+@@ -12,6 +12,7 @@ import { DEMO_FIXTURE } from './fixture.js';
+ import { createDemoCustomerControlRoutes } from './http/customer-control-routes.js';
+ import { createDemoCustomerPersonaService } from './identity/customer-persona-service.js';
+ import { createDemoMicrosoft365Client } from './provider/microsoft365-client.js';
++import { demoOnboardingProviderRooms } from './provider/onboarding-room-inventory.js';
+ import { createDemoCustomerRuntimeConfig } from './runtime-config.js';
+ import { createDemoCustomerHttpServer } from './customer-server.js';
+ 
+@@ -24,6 +25,12 @@ function providerScenarios() {
+ 
+ export function demoProviderRooms() {
+   return Object.freeze(Object.fromEntries(DEMO_FIXTURE.tenants.map((tenant) => {
++    if (tenant.providerSimulation.scenario === 'onboarding') {
++      return [
++        tenant.providerSimulation.providerTenantReference,
++        demoOnboardingProviderRooms(tenant.providerSimulation.providerTenantReference),
++      ];
++    }
+     const rooms = tenant.providerSimulation.roomMappings.map((mapping) => {
+       const location = tenant.settings.locations.find(({ rooms: siteRooms }) => (
+         siteRooms.some(({ id }) => id === mapping.roomId)
+diff --git a/src/demo/fixture.js b/src/demo/fixture.js
+index 809fb9c..620b6fa 100644
+--- a/src/demo/fixture.js
++++ b/src/demo/fixture.js
+@@ -1628,8 +1628,8 @@ const fixture = {
+         connectionState: 'connected',
+         placesPermission: 'granted',
+         calendarsPermission: 'granted',
+-        health: 'degraded',
+-        scenario: 'provider_degraded',
++        health: 'healthy',
++        scenario: 'booking_success',
+         roomMappings: [
+             {
+               "roomId": "northwind-berlin-room-1",
+diff --git a/src/demo/provider/onboarding-room-inventory.js b/src/demo/provider/onboarding-room-inventory.js
+new file mode 100644
+index 0000000..b8e7743
+--- /dev/null
++++ b/src/demo/provider/onboarding-room-inventory.js
+@@ -0,0 +1,25 @@
++// Synthetic external directory candidates, not imported application rooms.
++// Only the source-defined Fabrikam provider Tenant owns these resources.
++const FABRIKAM_PROVIDER_TENANT = '40000000-0000-4000-8000-000000000004';
++const EMPTY_INVENTORY = Object.freeze([]);
++const FABRIKAM_ROOMS = Object.freeze([
++  Object.freeze({
++    id: 'fabrikam-workshop',
++    displayName: 'Fabrikam Workshop',
++    resourceAddress: 'fabrikam-workshop@example.invalid',
++    capacity: 12,
++    building: 'Fabrikam Demo Campus',
++  }),
++  Object.freeze({
++    id: 'fabrikam-focus',
++    displayName: 'Fabrikam Focus',
++    resourceAddress: 'fabrikam-focus@example.invalid',
++    capacity: 6,
++    building: 'Fabrikam Demo Campus',
++  }),
++]);
++
++export function demoOnboardingProviderRooms(providerTenantReference) {
++  return providerTenantReference === FABRIKAM_PROVIDER_TENANT
++    ? FABRIKAM_ROOMS : EMPTY_INVENTORY;
++}
+diff --git a/tests/demo-fixture.test.js b/tests/demo-fixture.test.js
+index 1cd7e4c..6a66e6a 100644
+--- a/tests/demo-fixture.test.js
++++ b/tests/demo-fixture.test.js
+@@ -46,10 +46,10 @@ test('reset generation keeps local booking hours across daylight saving and chan
+   assert.equal(semanticChecksum(DEMO_FIXTURE), DEMO_FIXTURE_CHECKSUM);
+ });
+ 
+-test('fixture provides one activatable Tenant and an isolated degraded-provider Tenant', () => {
++test('fixture provides an activatable Tenant and an independent fully configured Northwind scenario', () => {
+   const activatable = DEMO_FIXTURE.tenants.find(({ lifecycleStatus }) => lifecycleStatus === 'ready');
+-  const degraded = DEMO_FIXTURE.tenants.find(({ providerSimulation }) => (
+-    providerSimulation.scenario === 'provider_degraded'
++  const configured = DEMO_FIXTURE.tenants.find(({ id }) => (
++    id === '10000000-0000-4000-8000-000000000001'
+   ));
+   assert.ok(activatable);
+   assert.equal(activatable.providerSimulation.connectionState, 'connected');
+@@ -62,9 +62,11 @@ test('fixture provides one activatable Tenant and an isolated degraded-provider
+     activatable.providerSimulation.roomMappings[0].roomId,
+     activatable.settings.locations[0].rooms[0].id,
+   );
+-  assert.ok(degraded);
+-  assert.notEqual(degraded.id, activatable.id);
+-  assert.equal(degraded.providerSimulation.health, 'degraded');
++  assert.ok(configured);
++  assert.notEqual(configured.id, activatable.id);
++  assert.equal(configured.lifecycleStatus, 'active');
++  assert.equal(configured.providerSimulation.health, 'healthy');
++  assert.equal(configured.providerSimulation.scenario, 'booking_success');
+ });
+ 
+ test('customer lookup exposes canonical role unions and provider references for every Tenant', () => {
+diff --git a/tests/demo-provider.test.js b/tests/demo-provider.test.js
+index b5a999d..8efebd6 100644
+--- a/tests/demo-provider.test.js
++++ b/tests/demo-provider.test.js
+@@ -81,6 +81,11 @@ test('Customer Demo composition derives provider inventory from every mapped fix
+     )).sort(),
+   );
+   for (const tenant of DEMO_FIXTURE.tenants) {
++    if (tenant.lifecycleStatus === 'onboarding') {
++      assert.equal(tenant.providerSimulation.roomMappings.length, 0);
++      assert.equal(inventory[tenant.providerSimulation.providerTenantReference].length, 2);
++      continue;
++    }
+     const expected = tenant.providerSimulation.roomMappings.map((mapping) => {
+       const location = tenant.settings.locations.find(({ rooms }) => (
+         rooms.some(({ id }) => id === mapping.roomId)
+diff --git a/tests/saas37-onboarding-provider-inventory.test.js b/tests/saas37-onboarding-provider-inventory.test.js
+index 58dae34..61b194f 100644
+--- a/tests/saas37-onboarding-provider-inventory.test.js
++++ b/tests/saas37-onboarding-provider-inventory.test.js
+@@ -16,3 +16,57 @@ test('Fabrikam starts empty but has tenant-owned simulated provider candidates t
+   assert.equal(new Set(inventory.map(({ id }) => id)).size, inventory.length);
+   assert.equal(Object.isFrozen(inventory), true);
+ });
++
++test('the fully configured Northwind scenario can actually perform a new booking', async () => {
++  const { createDemoMicrosoft365Client } = await import('../src/demo/provider/microsoft365-client.js');
++  const tenant = DEMO_FIXTURE.tenants.find(({ id }) => id === '10000000-0000-4000-8000-000000000001');
++  const reference = tenant.providerSimulation.providerTenantReference;
++  const provider = createDemoMicrosoft365Client({
++    publicOrigin: 'https://customer.demo.test:4443',
++    roomsByTenantReference: demoProviderRooms(),
++    scenarioByTenantReference: { [reference]: tenant.providerSimulation.scenario },
++  });
++  const room = tenant.providerSimulation.roomMappings[0];
++  assert.deepEqual(await provider.lookupFreeBusy({
++    tenantReference: reference,
++    schedules: [room.resourceAddress],
++    startsAt: '2099-01-05T10:00:00.000Z',
++    endsAt: '2099-01-05T11:00:00.000Z',
++  }), [{ schedule: room.resourceAddress, available: true, conflictCount: 0 }]);
++});
++
++test('unimported provider candidates are immutable, tenant-isolated and independent of reset generation', async () => {
++  const { demoOnboardingProviderRooms } = await import('../src/demo/provider/onboarding-room-inventory.js');
++  const first = demoProviderRooms();
++  assert.deepEqual(first[FABRIKAM].map(({ id }) => id), ['fabrikam-workshop', 'fabrikam-focus']);
++  for (const value of [null, undefined, '', '10000000-0000-4000-8000-000000000001', 'unknown']) {
++    assert.deepEqual(demoOnboardingProviderRooms(value), []);
++  }
++  assert.throws(() => { first[FABRIKAM][0].capacity = 999; }, TypeError);
++  for (const [tenantId, rooms] of Object.entries(first)) {
++    if (tenantId === FABRIKAM) continue;
++    assert.ok(rooms.every(({ id }) => !id.startsWith('fabrikam-')));
++  }
++  assert.deepEqual(demoProviderRooms(), first);
++  assert.equal(DEMO_FIXTURE.tenants.find(({ id }) => id === FABRIKAM).settings.locations.length, 0);
++});
++
++test('degraded simulation still rejects discovery, availability and booking instead of silently succeeding', async () => {
++  const { createDemoMicrosoft365Client } = await import('../src/demo/provider/microsoft365-client.js');
++  const provider = createDemoMicrosoft365Client({
++    publicOrigin: 'https://customer.demo.test:4443',
++    roomsByTenantReference: demoProviderRooms(),
++    scenarioByTenantReference: { [FABRIKAM]: 'provider_degraded' },
++  });
++  const expected = (error) => error.code === 'MICROSOFT365_GRAPH_UNAVAILABLE';
++  await assert.rejects(provider.discoverRooms({ tenantReference: FABRIKAM }), expected);
++  const query = {
++    tenantReference: FABRIKAM,
++    startsAt: '2099-01-05T10:00:00.000Z',
++    endsAt: '2099-01-05T11:00:00.000Z',
++  };
++  await assert.rejects(provider.lookupFreeBusy({ ...query, schedules: ['fabrikam-workshop@example.invalid'] }), expected);
++  await assert.rejects(provider.createCalendarEvent({
++    ...query, resourceAddress: 'fabrikam-workshop@example.invalid', idempotencyKey: 'a'.repeat(64),
++  }), expected);
++});
