@@ -135,7 +135,7 @@ async function assertDirectCallsDenied(pool, role) {
 }
 
 test('migration 038 confines Request attribution SECURITY DEFINER execution to triggers', async (t) => {
-  assert.equal(CURRENT_SCHEMA_VERSION, 40);
+  assert.equal(CURRENT_SCHEMA_VERSION, 41);
   const pool = createPostgresPool(databaseConfig());
   t.after(async () => {
     try {
@@ -208,6 +208,8 @@ test('migration 038 confines Request attribution SECURITY DEFINER execution to t
     post_cutover_evidence: true,
   }]);
 
+  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await isPostgresSchemaReady(pool, 40), true);
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await isPostgresSchemaReady(pool, 39), true);
   assert.equal(await rollbackLatest(pool), true);
