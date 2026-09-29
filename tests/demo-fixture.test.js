@@ -46,10 +46,10 @@ test('reset generation keeps local booking hours across daylight saving and chan
   assert.equal(semanticChecksum(DEMO_FIXTURE), DEMO_FIXTURE_CHECKSUM);
 });
 
-test('fixture provides one activatable Tenant and an isolated degraded-provider Tenant', () => {
+test('fixture provides an activatable Tenant and an independent fully configured Northwind scenario', () => {
   const activatable = DEMO_FIXTURE.tenants.find(({ lifecycleStatus }) => lifecycleStatus === 'ready');
-  const degraded = DEMO_FIXTURE.tenants.find(({ providerSimulation }) => (
-    providerSimulation.scenario === 'provider_degraded'
+  const configured = DEMO_FIXTURE.tenants.find(({ id }) => (
+    id === '10000000-0000-4000-8000-000000000001'
   ));
   assert.ok(activatable);
   assert.equal(activatable.providerSimulation.connectionState, 'connected');
@@ -62,9 +62,11 @@ test('fixture provides one activatable Tenant and an isolated degraded-provider 
     activatable.providerSimulation.roomMappings[0].roomId,
     activatable.settings.locations[0].rooms[0].id,
   );
-  assert.ok(degraded);
-  assert.notEqual(degraded.id, activatable.id);
-  assert.equal(degraded.providerSimulation.health, 'degraded');
+  assert.ok(configured);
+  assert.notEqual(configured.id, activatable.id);
+  assert.equal(configured.lifecycleStatus, 'active');
+  assert.equal(configured.providerSimulation.health, 'healthy');
+  assert.equal(configured.providerSimulation.scenario, 'booking_success');
 });
 
 test('customer lookup exposes canonical role unions and provider references for every Tenant', () => {

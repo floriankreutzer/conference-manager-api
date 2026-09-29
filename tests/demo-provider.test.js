@@ -81,6 +81,11 @@ test('Customer Demo composition derives provider inventory from every mapped fix
     )).sort(),
   );
   for (const tenant of DEMO_FIXTURE.tenants) {
+    if (tenant.lifecycleStatus === 'onboarding') {
+      assert.equal(tenant.providerSimulation.roomMappings.length, 0);
+      assert.equal(inventory[tenant.providerSimulation.providerTenantReference].length, 2);
+      continue;
+    }
     const expected = tenant.providerSimulation.roomMappings.map((mapping) => {
       const location = tenant.settings.locations.find(({ rooms }) => (
         rooms.some(({ id }) => id === mapping.roomId)

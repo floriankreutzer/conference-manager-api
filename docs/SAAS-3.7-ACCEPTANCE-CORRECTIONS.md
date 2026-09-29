@@ -1,0 +1,53 @@
+# SaaS 3.7 scenario acceptance corrections
+
+## Scope and authority
+
+Root `AGENTS.md`, the coding standards and the existing Shared Demo topology
+remain mandatory. Frontend issue #215 owns full scenario and release acceptance;
+this document does not mark that gate complete.
+
+The approved Northwind scenario is a fully configured working booking demo.
+Its inherited `provider_degraded` baseline prevented every new availability
+check. The corrected fixture uses `booking_success` and healthy provider
+projections. The pure simulated-provider tests still explicitly exercise
+unavailable discovery, free/busy and calendar writes. The scenario browser
+suite must also exercise fail-closed unavailable integration state, rather
+than reporting a permanently broken Northwind scenario as a successful demo.
+
+Fabrikam must have no local Sites, Rooms, Requests or imported mappings after
+reset. A simulated external directory is a different owner: the source-defined
+Fabrikam provider Tenant now offers two immutable synthetic discovery candidates
+from `src/demo/provider/onboarding-room-inventory.js`. They do not become
+application Rooms until the existing authorized Tenant Admin import commits.
+Other and unknown provider Tenants never receive Fabrikam candidates. No new
+HTTP control, role, persistence table, network transport or production fallback
+is introduced. Existing connection, entitlement, CSRF, import and lifecycle
+checks remain the authority.
+
+## Baseline and rollout
+
+The seed wire-contract identifier remains `saas-3.7-three-demo-customers-v1`;
+its schema and migration inventory have not changed. This corrective **content
+revision changes the canonical semantic checksum**, which is bound to an
+immutable runtime commit by hosted acceptance:
+
+- Previous content: `2a15426e761f6efb78409394888d6799e3f00c7e13500d8b937d1d0cece579f6`.
+- Corrected content: `7e22005f1e9689fbea4ccfc75084f5f3d224fe10e60a6af23c1cb600f2b70014`.
+
+Deploy mutually compatible Customer/Platform builds, then execute the normal
+privileged Demo reset and verify the corrected checksum twice. A deployment
+alone does not rewrite previously seeded provider-health rows. Never manually
+edit database rows, sentinel, checksum or grants to hide a failed reset. Old
+SaaS 3.6/3.7 evidence remains historical and cannot authorize the corrected
+candidate. The synthetic external directory is immutable code configuration;
+reset removes its imported local mappings through the existing reset inventory.
+
+## Verification
+
+`tests/saas37-onboarding-provider-inventory.test.js` reproduced both blocked
+progressions before correction and verifies tenant separation, immutable
+candidates, unchanged empty Fabrikam baseline and retained degradation failure
+behavior. Existing fixture/provider tests continue to cover their original
+contracts except for the explicitly corrected Northwind baseline expectation.
+Run the full API quality, audit and PostgreSQL gates and cross-repository
+scenario browser suite; retain exact source/runtime refs and actual results.
