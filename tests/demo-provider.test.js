@@ -81,18 +81,20 @@ test('Customer Demo composition derives provider inventory from every mapped fix
     )).sort(),
   );
   for (const tenant of DEMO_FIXTURE.tenants) {
-    const mapping = tenant.providerSimulation.roomMapping;
-    const location = tenant.settings.locations.find(({ rooms }) => (
-      rooms.some(({ id }) => id === mapping.roomId)
-    ));
-    const room = location.rooms.find(({ id }) => id === mapping.roomId);
-    assert.deepEqual(inventory[tenant.providerSimulation.providerTenantReference], [{
-      id: mapping.externalRoomId,
-      displayName: room.name,
-      resourceAddress: mapping.resourceAddress,
-      capacity: room.capacity,
-      building: location.name,
-    }]);
+    const expected = tenant.providerSimulation.roomMappings.map((mapping) => {
+      const location = tenant.settings.locations.find(({ rooms }) => (
+        rooms.some(({ id }) => id === mapping.roomId)
+      ));
+      const room = location.rooms.find(({ id }) => id === mapping.roomId);
+      return {
+        id: mapping.externalRoomId,
+        displayName: room.name,
+        resourceAddress: mapping.resourceAddress,
+        capacity: room.capacity,
+        building: location.name,
+      };
+    });
+    assert.deepEqual(inventory[tenant.providerSimulation.providerTenantReference], expected);
   }
 });
 

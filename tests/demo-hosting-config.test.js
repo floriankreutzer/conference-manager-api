@@ -18,7 +18,7 @@ function baseEnv(overrides = {}) {
   return {
     NODE_ENV: 'demo',
     DEMO_RUNTIME: 'shared-postgres-v1',
-    DEMO_SEED_VERSION: 'saas-3.6-shared-demo-v5',
+    DEMO_SEED_VERSION: 'saas-3.7-three-demo-customers-v1',
     DEMO_CUSTOMER_ORIGIN: 'https://conference-manager-demo.onrender.com',
     DEMO_PLATFORM_ORIGIN: 'https://conference-manager-ops-demo.onrender.com',
     DEMO_DATABASE_SSL: 'verify-full',

@@ -132,13 +132,17 @@ function createAuditRepository() {
 }
 
 function repository(pool, { seedBusinessState, readSemanticState, auditRepository = null } = {}) {
+  let seededFixture = DEMO_FIXTURE;
   return createPostgresDemoResetRepository({
     pool,
     expectedDatabaseName: 'conference_manager_demo_test',
     expectedResetRole: 'demo_reset',
     auditRepository,
-    seedBusinessState: seedBusinessState || (async () => {}),
-    readSemanticState: readSemanticState || (async () => DEMO_FIXTURE),
+    seedBusinessState: async (argumentsForSeed) => {
+      seededFixture = argumentsForSeed.fixture;
+      if (seedBusinessState) await seedBusinessState(argumentsForSeed);
+    },
+    readSemanticState: readSemanticState || (async () => seededFixture),
   });
 }
 
@@ -165,7 +169,9 @@ test('reset is atomic, transaction-gated, reseeds deterministic state and return
     auditRepository,
     async seedBusinessState({ fixture }) {
       seeded += 1;
-      assert.equal(fixture, DEMO_FIXTURE);
+      assert.notEqual(fixture, DEMO_FIXTURE);
+      assert.equal(fixture.seedVersion, DEMO_FIXTURE.seedVersion);
+      assert.ok(Date.parse(fixture.tenants[0].requests[0].startsAt) > Date.now());
     },
   }).reset({
     fixture: DEMO_FIXTURE,
@@ -174,7 +180,7 @@ test('reset is atomic, transaction-gated, reseeds deterministic state and return
     auditEventFor: ({ outcome }) => ({ outcome }),
   });
   assert.deepEqual(result, {
-    seedVersion: 'saas-3.6-shared-demo-v5',
+    seedVersion: 'saas-3.7-three-demo-customers-v1',
     checksum: DEMO_FIXTURE_CHECKSUM,
   });
   assert.equal(seeded, 1);
@@ -232,8 +238,8 @@ test('transaction-scoped Demo reset gate serializes concurrent resets', async ()
   ]);
   assert.equal(maximumActiveSeeds, 1);
   assert.deepEqual(results.map(({ seedVersion }) => seedVersion), [
-    'saas-3.6-shared-demo-v5',
-    'saas-3.6-shared-demo-v5',
+    'saas-3.7-three-demo-customers-v1',
+    'saas-3.7-three-demo-customers-v1',
   ]);
   assert.equal(results.every(({ checksum }) => checksum === DEMO_FIXTURE_CHECKSUM), true);
 });
@@ -350,7 +356,7 @@ test('reset service pins the source fixture checksum and validates repository ou
   );
   const result = await service.reset();
   assert.deepEqual(result, {
-    seedVersion: 'saas-3.6-shared-demo-v5',
+    seedVersion: 'saas-3.7-three-demo-customers-v1',
     checksum: DEMO_FIXTURE_CHECKSUM,
   });
   assert.equal(calls.length, 1);

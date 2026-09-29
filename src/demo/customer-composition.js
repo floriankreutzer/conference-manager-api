@@ -1,7 +1,10 @@
 import { createCustomerComposition } from '../customer-composition.js';
+import { createAuditService } from '../audit/audit-service.js';
+import { createAuthorizationPolicy } from '../authorization/policy.js';
 import { createLogger } from '../logger.js';
 import { createMetricsRegistry } from '../observability/metrics.js';
 import { createPostgresPersistence } from '../persistence/postgres/index.js';
+import { createPostgresDemoCatalogueMediaRepository } from '../persistence/postgres/demo-catalogue-media-repository.js';
 import { createPostgresDemoPersonaRepository } from '../persistence/postgres/demo-persona-repository.js';
 import { createPostgresDemoRuntimeReadiness } from '../persistence/postgres/demo-runtime-readiness.js';
 import { createPostgresPool } from '../persistence/postgres/pool.js';
@@ -15,25 +18,27 @@ import { createDemoCustomerHttpServer } from './customer-server.js';
 function providerScenarios() {
   return Object.freeze(Object.fromEntries(DEMO_FIXTURE.tenants.map((tenant) => [
     tenant.id,
-    tenant.providerSimulation.scenario,
+    tenant.providerSimulation.scenario === 'onboarding' ? 'booking_success' : tenant.providerSimulation.scenario,
   ])));
 }
 
 export function demoProviderRooms() {
   return Object.freeze(Object.fromEntries(DEMO_FIXTURE.tenants.map((tenant) => {
-    const mapping = tenant.providerSimulation.roomMapping;
-    const location = tenant.settings.locations.find(({ rooms }) => (
-      rooms.some(({ id }) => id === mapping.roomId)
-    ));
-    const room = location?.rooms.find(({ id }) => id === mapping.roomId);
-    if (!location || !room) throw new TypeError('DEMO_PROVIDER_ROOM_FIXTURE_INVALID');
-    return [tenant.providerSimulation.providerTenantReference, Object.freeze([Object.freeze({
-      id: mapping.externalRoomId,
-      displayName: room.name,
-      resourceAddress: mapping.resourceAddress,
-      capacity: room.capacity,
-      building: location.name,
-    })])];
+    const rooms = tenant.providerSimulation.roomMappings.map((mapping) => {
+      const location = tenant.settings.locations.find(({ rooms: siteRooms }) => (
+        siteRooms.some(({ id }) => id === mapping.roomId)
+      ));
+      const room = location?.rooms.find(({ id }) => id === mapping.roomId);
+      if (!location || !room) throw new TypeError('DEMO_PROVIDER_ROOM_FIXTURE_INVALID');
+      return Object.freeze({
+        id: mapping.externalRoomId,
+        displayName: room.name,
+        resourceAddress: mapping.resourceAddress,
+        capacity: room.capacity,
+        building: location.name,
+      });
+    });
+    return [tenant.providerSimulation.providerTenantReference, Object.freeze(rooms)];
   })));
 }
 
@@ -100,7 +105,18 @@ export function createDemoCustomerComposition({
         sessionService,
         personaRepository,
       });
-      return [createDemoCustomerControlRoutes({ personaService })];
+      const authorizationPolicy = createAuthorizationPolicy();
+      return [createDemoCustomerControlRoutes({
+        personaService,
+        authorizationPolicy,
+        auditService: createAuditService({
+          repository: selectedPersistence.auditRepository,
+          authorizationPolicy,
+        }),
+        mediaRepository: createPostgresDemoCatalogueMediaRepository(selectedPersistence.pool, {
+          auditRepository: selectedPersistence.auditRepository,
+        }),
+      })];
     },
   });
   let stopped = false;

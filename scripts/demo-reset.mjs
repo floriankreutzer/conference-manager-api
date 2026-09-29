@@ -41,6 +41,9 @@ try {
     pool: resetPool,
     expectedDatabaseName: config.databaseTarget.database,
     expectedResetRole: config.databases.reset.role,
+    onSemanticMismatch: process.env.NODE_ENV === 'test'
+      ? (path) => process.stderr.write(`DEMO_SEMANTIC_PATH: ${path?.slice(0, 120) || 'unknown'}\n`)
+      : null,
   });
   const result = await createDemoResetService({ repository }).reset();
   output(process.stdout, Object.freeze({ status: 'completed', result }));
@@ -49,6 +52,12 @@ try {
   output(process.stderr, Object.freeze({
     status: 'failed',
     code: SAFE_ERROR.test(candidate || '') ? candidate : 'DEMO_RESET_FAILED',
+    ...(process.env.NODE_ENV === 'test' ? {
+      diagnostic: {
+        sqlstate: /^[0-9A-Z]{5}$/.test(error?.code || '') ? error.code : null,
+        constraint: /^[a-z][a-z0-9_]{0,100}$/.test(error?.constraint || '') ? error.constraint : null,
+      },
+    } : {}),
   }));
   process.exitCode = 1;
 } finally {

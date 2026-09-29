@@ -52,7 +52,9 @@ const CUSTOMER_SELECT = `
          ) AS roles
   FROM demo_customer_persona_references AS reference
   JOIN tenants AS tenant
-    ON tenant.id = reference.tenant_id AND tenant.status IN ('ready', 'active')
+    ON tenant.id = reference.tenant_id
+   AND (tenant.status IN ('ready', 'active')
+     OR (tenant.status = 'onboarding' AND reference.persona = 'tenant_admin'))
   JOIN users AS app_user
     ON app_user.tenant_id = reference.tenant_id
    AND app_user.id = reference.subject_id
@@ -122,7 +124,7 @@ export function createPostgresDemoPersonaRepository({ pool } = {}) {
         text: `
           SELECT tenant.id, tenant.display_name, tenant.status, tenant.lifecycle_revision
           FROM tenants AS tenant
-          WHERE tenant.status IN ('ready', 'active')
+          WHERE tenant.status IN ('ready', 'active', 'onboarding')
             AND EXISTS (
               SELECT 1
               FROM demo_customer_persona_references AS reference

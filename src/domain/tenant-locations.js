@@ -109,7 +109,7 @@ function normalizeRoom(value, roomIds, { stored = false } = {}) {
   const room = exactObject(value, [
     'id', 'siteId', 'name', 'capacity', 'active', 'floor', 'equipment', 'accessibility',
     'serviceIds', 'cateringPackageIds', 'floorplanAssetId', 'mediaAssetIds',
-  ]);
+  ], ['description']);
   const id = safeId(room.id, 'TENANT_ROOM_ID_INVALID');
   if (roomIds.has(id)) inputError('TENANT_ROOM_ID_DUPLICATE');
   roomIds.add(id);
@@ -125,6 +125,12 @@ function normalizeRoom(value, roomIds, { stored = false } = {}) {
     id,
     siteId,
     name: boundedText(room.name, 'TENANT_ROOM_NAME_INVALID'),
+    ...(Object.hasOwn(room, 'description') ? {
+      description: room.description === null ? null
+        : (stored ? boundedText : publicPresentationText)(
+          room.description, 'TENANT_ROOM_DESCRIPTION_INVALID', 1000,
+        ),
+    } : {}),
     capacity: room.capacity,
     active: room.active,
     floor: room.floor === null ? null : (stored ? boundedText : publicPresentationText)(room.floor, 'TENANT_ROOM_FLOOR_INVALID', 80),
@@ -263,7 +269,7 @@ export function normalizeTenantLocationsV3(value, { stored = false } = {}) {
     const room = exactObject(candidate, [
       'id', 'siteId', 'name', 'capacity', 'active', 'floor', 'equipment', 'accessibility',
       'serviceIds', 'cateringPackageIds', 'floorplanAssetId', 'mediaAssetIds', 'guestPublicValues',
-    ]);
+    ], ['description']);
     const { guestPublicValues, ...legacy } = room;
     return legacy;
   });

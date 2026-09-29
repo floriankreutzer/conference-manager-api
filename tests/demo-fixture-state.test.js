@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -14,8 +15,13 @@ import {
 test('concrete Demo seeder uses bounded named parameterized writes and never seeds sessions', async () => {
   const queries = [];
   const resetObservedAt = '2026-08-30T12:34:56.789Z';
+  // The booking path resolves live PostgreSQL authority and is covered by integration tests.
+  const catalogueFixture = {
+    ...DEMO_FIXTURE,
+    tenants: DEMO_FIXTURE.tenants.map((tenant) => ({ ...tenant, requests: [] })),
+  };
   await seedDemoBusinessState({
-    fixture: DEMO_FIXTURE,
+    fixture: catalogueFixture,
     async refreshProjections(client, input) {
       assert.equal(typeof client.query, 'function');
       assert.deepEqual(input, {
@@ -38,15 +44,15 @@ test('concrete Demo seeder uses bounded named parameterized writes and never see
   assert.equal(queries.every(({ name, values }) => typeof name === 'string' && Array.isArray(values)), true);
   assert.equal(queries.some(({ name }) => name.includes('session')), false);
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-projection-clock').length, 1);
-  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-tenant').length, 2);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-tenant').length, 3);
   assert.equal(
     queries.filter(({ name }) => name === 'demo-fixture-advance-organization-revision').length,
-    2,
+    3,
   );
   const organizationRevisions = queries.filter(
     ({ name }) => name === 'demo-fixture-insert-organization-revision',
   );
-  assert.equal(organizationRevisions.length, 2);
+  assert.equal(organizationRevisions.length, 3);
   assert.deepEqual(
     organizationRevisions.map(({ values }) => values.slice(1, 5)),
     DEMO_FIXTURE.tenants.map((tenant) => [
@@ -56,24 +62,48 @@ test('concrete Demo seeder uses bounded named parameterized writes and never see
       tenant.settings.catalogue.currency,
     ]),
   );
-  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-user').length, 6);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-user').length, 7);
   const userIdentityWrites = queries.filter(({ name }) => name === 'demo-fixture-insert-user-identity');
-  assert.equal(userIdentityWrites.length, 6);
+  assert.equal(userIdentityWrites.length, 7);
   assert.equal(
     userIdentityWrites.every(({ text }) => /VALUES \(\$1::uuid, \$2, \$1::text,/.test(text)),
     true,
   );
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-platform-operator').length, 4);
-  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-room').length, 2);
-  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-room-price').length, 2);
-  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-identity-binding').length, 2);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-room').length, 12);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-equipment').length, 20);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-catering-item').length, 8);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-catering-package').length, 4);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-cost-center').length, 7);
+  const mediaWrites = queries.filter(({ name }) => name === 'demo-fixture-insert-room-media');
+  assert.equal(mediaWrites.length, 11);
+  assert.equal(mediaWrites.every(({ values }) => values[3].length === values[4]), true);
+  const catalogueMediaWrites = queries.filter(({ name }) => name === 'demo-fixture-insert-catalogue-media');
+  assert.equal(catalogueMediaWrites.length, 23);
+  assert.equal(catalogueMediaWrites.every(({ values }) =>
+    Buffer.isBuffer(values[4]) && values[4].length === values[6]), true);
+  const catalogueRevisions = queries.filter(({ name }) => name === 'demo-fixture-insert-catalogue-revision');
+  assert.equal(catalogueRevisions.length, 3);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-advance-catalogue-revision').length, 3);
+  assert.deepEqual(catalogueRevisions.map(({ values }) => ({
+    tenantId: values[0],
+    equipmentCount: JSON.parse(values[1]).equipment.length,
+    cateringPackageCount: JSON.parse(values[1]).cateringPackages.length,
+    cateringItemCount: JSON.parse(values[1]).cateringItems.length,
+  })), [
+    { tenantId: DEMO_FIXTURE.tenants[0].id, equipmentCount: 18, cateringPackageCount: 4, cateringItemCount: 8 },
+    { tenantId: DEMO_FIXTURE.tenants[1].id, equipmentCount: 2, cateringPackageCount: 0, cateringItemCount: 0 },
+    { tenantId: DEMO_FIXTURE.tenants[2].id, equipmentCount: 0, cateringPackageCount: 0, cateringItemCount: 0 },
+  ]);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-room-price').length, 11);
+  assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-identity-binding').length, 3);
   assert.equal(
     queries.filter(({ name }) => name === 'demo-fixture-insert-microsoft365-integration').length,
-    2,
+    3,
   );
   assert.equal(
     queries.filter(({ name }) => name === 'demo-fixture-insert-microsoft365-room-mapping').length,
-    2,
+    12,
   );
   assert.equal(queries.filter(({ name }) => name === 'demo-fixture-insert-microsoft365-health').length, 6);
   const readyTenant = DEMO_FIXTURE.tenants.find(({ lifecycleStatus }) => lifecycleStatus === 'ready');
@@ -93,7 +123,7 @@ test('concrete Demo seeder uses bounded named parameterized writes and never see
     'granted',
     'granted',
   ]);
-  assert.equal(readyMapping.values[1], readyTenant.providerSimulation.roomMapping.roomId);
+  assert.equal(readyMapping.values[1], readyTenant.providerSimulation.roomMappings[0].roomId);
   assert.deepEqual(readyHealth.map(({ values }) => values.slice(2, 5)), [
     ['places', 'healthy', null],
     ['free_busy', 'healthy', null],
@@ -114,6 +144,34 @@ test('concrete Demo seeder uses bounded named parameterized writes and never see
 });
 
 test('semantic reader reconstructs the exact source fixture from canonical PostgreSQL projections', async () => {
+  const mediaRows = await Promise.all(DEMO_FIXTURE.tenants.flatMap((tenant) => tenant.roomMedia.map(async (media) => {
+    const match = /^northwind-berlin-room-(10|[1-9])$/.exec(media.roomId);
+    const key = match ? `northwind-room-${match[1].padStart(2, '0')}` : media.roomId;
+    const encoded = await readFile(
+      new URL(`../src/demo/media/${key}.webp.b64`, import.meta.url), 'utf8',
+    );
+    return {
+      tenant_id: tenant.id, id: media.id, room_id: media.roomId,
+      bytes: Buffer.from(encoded.trim(), 'base64'),
+      content_type: 'image/webp', byte_length: media.byteLength,
+      width: media.width, height: media.height,
+      content_sha256: Buffer.from(media.sha256, 'hex'),
+    };
+  })));
+  const catalogueMediaRows = await Promise.all(DEMO_FIXTURE.tenants.flatMap((tenant) =>
+    tenant.catalogueMedia.map(async (media) => {
+      const prefix = media.contentType === 'image/png' ? 'rooms-' : 'catering-';
+      const suffix = media.contentType === 'image/png' ? '-plan.png' : '.webp';
+      const encoded = await readFile(new URL(
+        `../src/demo/media/${prefix}${media.assetKey}${suffix}.b64`, import.meta.url,
+      ), 'utf8');
+      return {
+        tenant_id: tenant.id, id: media.id, owner_kind: media.ownerKind,
+        owner_id: media.ownerId, bytes: Buffer.from(encoded.trim(), 'base64'),
+        content_type: media.contentType, byte_length: media.byteLength,
+        content_sha256: Buffer.from(media.sha256, 'hex'), alt_text: media.altText,
+      };
+    })));
   const byName = {
     'demo-fixture-read-tenants': DEMO_FIXTURE.tenants.map((tenant) => ({
       id: tenant.id,
@@ -129,6 +187,7 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
       tenant_id: tenant.id,
       id: location.id,
       name: location.name,
+      time_zone: location.timeZone,
       guest_information: location.guestInformation,
     }))),
     'demo-fixture-read-rooms': DEMO_FIXTURE.tenants.flatMap((tenant) => (
@@ -139,8 +198,17 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
         name: room.name,
         capacity: room.capacity,
         price_minor: room.priceMinor,
+        details: {
+          description: room.description,
+          floor: room.floor, equipment: room.equipment, accessibility: room.accessibility,
+          mediaAssetIds: tenant.roomMedia.filter(({ roomId }) => roomId === room.id).map(({ id }) => id),
+          floorplanAssetId: tenant.catalogueMedia.find(({ ownerKind, ownerId }) =>
+            ownerKind === 'room_plan' && ownerId === room.id)?.id ?? null,
+        },
       })))
     )),
+    'demo-fixture-read-room-media': mediaRows,
+    'demo-fixture-read-catalogue-media': catalogueMediaRows,
     'demo-fixture-read-services': DEMO_FIXTURE.tenants.flatMap((tenant) => (
       tenant.settings.catalogue.services.map((id) => ({
         tenant_id: tenant.id,
@@ -155,6 +223,26 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
         currency: entry.price.currency, site_ids: entry.siteIds, room_ids: entry.roomIds,
       }))
     )),
+    'demo-fixture-read-cost-centers': DEMO_FIXTURE.tenants.flatMap((tenant) => (
+      tenant.costCenters.map((entry) => ({
+        tenant_id: tenant.id, id: entry.id, code: entry.code, name: entry.name, active: entry.active,
+      }))
+    )),
+    'demo-fixture-read-catering-items': DEMO_FIXTURE.tenants.flatMap((tenant) => (
+      tenant.settings.catalogue.cateringItems.map((entry) => ({
+        tenant_id: tenant.id, id: entry.id, name: entry.name, description: entry.description,
+        active: entry.active, sort_order: entry.order, price_minor: entry.price.amountMinor,
+        currency: entry.price.currency, site_ids: entry.siteIds,
+      }))
+    )),
+    'demo-fixture-read-catering-packages': DEMO_FIXTURE.tenants.flatMap((tenant) => (
+      tenant.settings.catalogue.cateringPackages.map((entry) => ({
+        tenant_id: tenant.id, id: entry.id, name: entry.name, description: entry.description,
+        active: entry.active, sort_order: entry.order, price_minor: entry.price.amountMinor,
+        currency: entry.price.currency, site_ids: entry.siteIds, item_ids: entry.itemIds,
+        variants: entry.variants,
+      }))
+    )),
     'demo-fixture-read-requests': DEMO_FIXTURE.tenants.flatMap((tenant) => tenant.requests.map((request) => ({
       tenant_id: tenant.id,
       id: request.id,
@@ -165,22 +253,53 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
       ends_at: request.endsAt,
       internal_participants: request.internalParticipants,
       external_participants: request.externalParticipants,
+      schema_version: 3,
+      current_revision_sequence: 1,
+      request_snapshot: {
+        schemaVersion: 3,
+        details: {
+          title: request.title,
+          equipmentIds: request.equipmentIds,
+          catering: { packageSelection: request.cateringPackageId === null ? null : {
+            packageId: request.cateringPackageId,
+          } },
+          specialRequirements: request.description,
+        },
+        pricing: {},
+        allocations: { entries: request.costCenterId === null ? [] : [{
+          costCenterId: request.costCenterId,
+        }] },
+      },
+      revision_record: {
+        details: {
+          title: request.title,
+          equipmentIds: request.equipmentIds,
+          catering: { packageSelection: request.cateringPackageId === null ? null : {
+            packageId: request.cateringPackageId,
+          } },
+          specialRequirements: request.description,
+        },
+        pricing: {},
+      },
     }))),
-    'demo-fixture-read-providers': DEMO_FIXTURE.tenants.map((tenant) => ({
-      tenant_id: tenant.id,
-      provider: tenant.providerSimulation.provider,
-      identity_binding_id: tenant.providerSimulation.identityBindingId,
-      integration_id: tenant.providerSimulation.integrationId,
-      provider_tenant_reference: tenant.providerSimulation.providerTenantReference,
-      connection_state: tenant.providerSimulation.connectionState,
-      places_permission_status: tenant.providerSimulation.placesPermission,
-      calendars_permission_status: tenant.providerSimulation.calendarsPermission,
-      health: tenant.providerSimulation.health,
-      scenario: tenant.providerSimulation.scenario,
-      room_id: tenant.providerSimulation.roomMapping.roomId,
-      external_room_id: tenant.providerSimulation.roomMapping.externalRoomId,
-      resource_address: tenant.providerSimulation.roomMapping.resourceAddress,
-    })),
+    'demo-fixture-read-providers': DEMO_FIXTURE.tenants.flatMap((tenant) => (
+      (tenant.providerSimulation.roomMappings.length ? tenant.providerSimulation.roomMappings : [null])
+        .map((mapping) => ({
+        tenant_id: tenant.id,
+        provider: tenant.providerSimulation.provider,
+        identity_binding_id: tenant.providerSimulation.identityBindingId,
+        integration_id: tenant.providerSimulation.integrationId,
+        provider_tenant_reference: tenant.providerSimulation.providerTenantReference,
+        connection_state: tenant.providerSimulation.connectionState,
+        places_permission_status: tenant.providerSimulation.placesPermission,
+        calendars_permission_status: tenant.providerSimulation.calendarsPermission,
+        health: tenant.providerSimulation.health,
+        scenario: tenant.providerSimulation.scenario,
+        room_id: mapping?.roomId ?? null,
+        external_room_id: mapping?.externalRoomId ?? null,
+        resource_address: mapping?.resourceAddress ?? null,
+      }))
+    )),
     'demo-fixture-read-customer-personas': DEMO_FIXTURE.customerPersonas.map((persona) => ({
       context_key: `${persona.tenantId}:${persona.persona}`,
       tenant_id: persona.tenantId,
@@ -226,4 +345,18 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
     },
   });
   assert.equal(semanticChecksum(state), DEMO_FIXTURE_CHECKSUM);
+  const originalPhoto = mediaRows[0].bytes;
+  mediaRows[0].bytes = Buffer.from(mediaRows[0].bytes);
+  mediaRows[0].bytes[20] ^= 1;
+  await assert.rejects(
+    readDemoSemanticState({ client: { async query({ name }) { return { rows: byName[name] }; } } }),
+    /DEMO_FIXTURE_MEDIA_BYTES_DIVERGED/,
+  );
+  mediaRows[0].bytes = originalPhoto;
+  catalogueMediaRows[0].bytes = Buffer.from(catalogueMediaRows[0].bytes);
+  catalogueMediaRows[0].bytes[20] ^= 1;
+  await assert.rejects(
+    readDemoSemanticState({ client: { async query({ name }) { return { rows: byName[name] }; } } }),
+    /DEMO_FIXTURE_CATALOGUE_MEDIA_BYTES_DIVERGED/,
+  );
 });

@@ -8,7 +8,7 @@ import {
 
 const base = Object.freeze({
   runtime: 'shared-postgres-v1',
-  seedVersion: 'saas-3.6-shared-demo-v5',
+  seedVersion: 'saas-3.7-three-demo-customers-v1',
   origins: Object.freeze({
     customer: 'https://customer.demo.invalid',
     platform: 'https://platform.demo.invalid',

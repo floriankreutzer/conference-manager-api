@@ -31,6 +31,7 @@ const ROOM_DETAIL_KEYS = new Set([
   'cateringPackageIds',
   'floorplanAssetId',
   'mediaAssetIds',
+  'description',
 ]);
 const PROVIDER_STATUSES = new Set(['active', 'missing']);
 
@@ -68,6 +69,7 @@ function publicRoom(row) {
     id: row.id,
     siteId: row.site_id,
     name: row.name,
+    ...(Object.hasOwn(details, 'description') ? { description: details.description } : {}),
     capacity: Number(row.capacity),
     active: row.active,
     floor: details.floor ?? null,
@@ -248,6 +250,7 @@ function siteDetails(site) {
 
 function roomDetails(room) {
   return JSON.stringify({
+    ...(Object.hasOwn(room, 'description') ? { description: room.description } : {}),
     floor: room.floor,
     equipment: room.equipment,
     accessibility: room.accessibility,

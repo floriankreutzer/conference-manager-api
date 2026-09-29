@@ -417,6 +417,7 @@ export async function resolveCurrentRequestCompositionWithClient(client, {
   capturedAt,
   requestVersion,
   changeWindowStartsAt,
+  allowReadyDemoSeed = false,
 }) {
   const draft = normalizeRequestCompositionDraft(draftValue, schemaVersion);
   const tenantResult = await client.query({
@@ -434,10 +435,11 @@ export async function resolveCurrentRequestCompositionWithClient(client, {
         ON organization.tenant_id = tenant.id
       JOIN users actor
         ON actor.tenant_id = tenant.id AND actor.id = $2 AND actor.active = TRUE
-      WHERE tenant.id = $1 AND tenant.status = 'active'
+      WHERE tenant.id = $1
+        AND (tenant.status = 'active' OR ($3::boolean AND tenant.status = 'ready'))
       FOR UPDATE OF tenant, organization
     `,
-    values: [tenantId, actorUserId],
+    values: [tenantId, actorUserId, allowReadyDemoSeed],
   });
   const tenant = tenantResult.rows[0];
   if (!tenant) throw new RequestCompositionUnavailableError();

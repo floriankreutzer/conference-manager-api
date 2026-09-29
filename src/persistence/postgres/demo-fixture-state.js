@@ -1,4 +1,12 @@
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { tenantAuthorizationSnapshot } from '../../authorization/policy.js';
+import { normalizeRequest } from '../../domain/request.js';
+import { semanticChecksum } from '../../demo/fixture.js';
+import {
+  appendRequestRevisionWithClient,
+  resolveCurrentRequestCompositionWithClient,
+} from './request-repository.js';
 import { refreshPlatformProjectionBatchWithClient } from './platform-projection-repository.js';
 import {
   DEMO_RUNTIME_SCHEMA_VERSION,
@@ -96,6 +104,65 @@ async function seedCustomerIdentities(client, fixture) {
   }
 }
 
+function catalogueSnapshot(tenant) {
+  const catalogue = tenant.settings.catalogue;
+  const roomPrices = tenant.settings.locations.flatMap(({ rooms }) => rooms
+    .filter(({ priceMinor }) => priceMinor !== null)
+    .map(({ id, priceMinor }) => ({
+      roomId: id,
+      price: { amountMinor: priceMinor, currency: catalogue.currency },
+    })));
+  return {
+    services: catalogue.services.map((id) => ({
+      id, name: displayName(id), description: null, active: true, order: 0,
+      price: { amountMinor: 0, currency: catalogue.currency }, siteIds: [], roomIds: [],
+    })),
+    equipment: catalogue.equipment,
+    cateringPackages: catalogue.cateringPackages,
+    cateringItems: catalogue.cateringItems,
+    roomPrices,
+  };
+}
+
+function mediaAssetKey(roomId) {
+  const northwind = roomId.match(/^northwind-berlin-room-(10|[1-9])$/);
+  if (northwind) return `northwind-room-${northwind[1].padStart(2, '0')}`;
+  if (roomId === 'contoso-paris-room-1') return roomId;
+  throw new Error('DEMO_FIXTURE_MEDIA_ROOM_INVALID');
+}
+
+async function verifiedMediaBytes(media) {
+  const encoded = await readFile(new URL(
+    `../../demo/media/${mediaAssetKey(media.roomId)}.webp.b64`, import.meta.url,
+  ), 'utf8');
+  const bytes = Buffer.from(encoded.trim(), 'base64');
+  const digest = createHash('sha256').update(bytes).digest('hex');
+  if (bytes.length !== media.byteLength || digest !== media.sha256
+    || bytes.toString('ascii', 0, 4) !== 'RIFF'
+    || bytes.toString('ascii', 8, 12) !== 'WEBP') {
+    throw new Error('DEMO_FIXTURE_MEDIA_BYTES_INVALID');
+  }
+  return bytes;
+}
+
+async function verifiedCatalogueBytes(media) {
+  const suffix = media.contentType === 'image/png' ? '-plan.png' : '.webp';
+  const prefix = media.contentType === 'image/png' ? 'rooms-' : 'catering-';
+  const encoded = await readFile(new URL(
+    `../../demo/media/${prefix}${media.assetKey}${suffix}.b64`, import.meta.url,
+  ), 'utf8');
+  const bytes = Buffer.from(encoded.trim(), 'base64');
+  const digest = createHash('sha256').update(bytes).digest('hex');
+  const signatureValid = media.contentType === 'image/png'
+    ? bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
+    : bytes.toString('ascii', 0, 4) === 'RIFF'
+      && bytes.toString('ascii', 8, 12) === 'WEBP';
+  if (!signatureValid || bytes.length !== media.byteLength || digest !== media.sha256) {
+    throw new Error('DEMO_FIXTURE_CATALOGUE_MEDIA_BYTES_INVALID');
+  }
+  return bytes;
+}
+
 async function seedTenantBusinessState(client, fixture) {
   for (const tenant of fixture.tenants) {
     await client.query({
@@ -181,9 +248,10 @@ async function seedTenantBusinessState(client, fixture) {
         name: 'demo-fixture-insert-site',
         text: `
           INSERT INTO sites (tenant_id, id, name, active, time_zone, details, created_at, updated_at, guest_information)
-          VALUES ($1, $2, $3, true, 'Etc/UTC', '{}'::jsonb, $4, $4, $5::jsonb)
+          VALUES ($1, $2, $3, true, $4, '{}'::jsonb, $5, $5, $6::jsonb)
         `,
-        values: [tenant.id, location.id, location.name, fixture.fixedClock, JSON.stringify(location.guestInformation)],
+        values: [tenant.id, location.id, location.name, location.timeZone,
+          fixture.fixedClock, JSON.stringify(location.guestInformation)],
       });
       for (const room of location.rooms) {
         await client.query({
@@ -192,7 +260,7 @@ async function seedTenantBusinessState(client, fixture) {
             INSERT INTO rooms (
               tenant_id, id, site_id, name, capacity, active, details, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, true, '{}'::jsonb, $6, $6)
+            VALUES ($1, $2, $3, $4, $5, true, $6::jsonb, $7, $7)
           `,
           values: [
             tenant.id,
@@ -200,10 +268,17 @@ async function seedTenantBusinessState(client, fixture) {
             location.id,
             room.name,
             room.capacity,
+            JSON.stringify({
+              description: room.description,
+              floor: room.floor, equipment: room.equipment, accessibility: room.accessibility,
+              mediaAssetIds: tenant.roomMedia.filter(({ roomId }) => roomId === room.id).map(({ id }) => id),
+              floorplanAssetId: tenant.catalogueMedia.find(({ ownerKind, ownerId }) =>
+                ownerKind === 'room_plan' && ownerId === room.id)?.id ?? null,
+            }),
             fixture.fixedClock,
           ],
         });
-        await client.query({
+        if (room.priceMinor !== null) await client.query({
           name: 'demo-fixture-insert-room-price',
           text: `
             INSERT INTO tenant_room_prices (
@@ -220,6 +295,38 @@ async function seedTenantBusinessState(client, fixture) {
           ],
         });
       }
+    }
+    for (const media of tenant.roomMedia) {
+      const bytes = await verifiedMediaBytes(media);
+      const creator = fixture.customerPersonas.find(({ tenantId, persona }) => (
+        tenantId === tenant.id && persona === 'tenant_admin'
+      ));
+      if (!creator) throw new Error('DEMO_FIXTURE_MEDIA_CREATOR_INVALID');
+      await client.query({
+        name: 'demo-fixture-insert-room-media',
+        text: `INSERT INTO tenant_room_media_assets (
+          tenant_id, id, room_id, bytes, content_type, byte_length,
+          width, height, content_sha256, created_at, created_by_user_id
+        ) VALUES ($1, $2, $3, $4, 'image/webp', $5, $6, $7, $8, $9, $10)`,
+        values: [tenant.id, media.id, media.roomId, bytes, media.byteLength,
+          media.width, media.height, Buffer.from(media.sha256, 'hex'), fixture.fixedClock, creator.userId],
+      });
+    }
+    for (const media of tenant.catalogueMedia) {
+      const bytes = await verifiedCatalogueBytes(media);
+      const creator = fixture.customerPersonas.find(({ tenantId, persona }) =>
+        tenantId === tenant.id && persona === 'tenant_admin');
+      if (!creator) throw new Error('DEMO_FIXTURE_CATALOGUE_MEDIA_CREATOR_INVALID');
+      await client.query({
+        name: 'demo-fixture-insert-catalogue-media',
+        text: `INSERT INTO demo_catalogue_media_assets (
+          tenant_id, id, owner_kind, owner_id, bytes, content_type,
+          byte_length, content_sha256, alt_text, created_at, created_by_user_id
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        values: [tenant.id, media.id, media.ownerKind, media.ownerId, bytes,
+          media.contentType, media.byteLength, Buffer.from(media.sha256, 'hex'),
+          media.altText, fixture.fixedClock, creator.userId],
+      });
     }
     for (const service of tenant.settings.catalogue.services) {
       await client.query({
@@ -260,30 +367,171 @@ async function seedTenantBusinessState(client, fixture) {
         });
       }
     }
-    for (const request of tenant.requests) {
+    for (const center of tenant.costCenters) {
       await client.query({
+        name: 'demo-fixture-insert-cost-center',
+        text: `INSERT INTO tenant_cost_centers
+          (tenant_id, id, code, name, active, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $6)`,
+        values: [tenant.id, center.id, center.code, center.name, center.active, fixture.fixedClock],
+      });
+    }
+    for (const item of tenant.settings.catalogue.cateringItems) {
+      await client.query({
+        name: 'demo-fixture-insert-catering-item',
+        text: `INSERT INTO catering_items
+          (tenant_id, id, name, description, active, sort_order, price_minor, currency, created_at, updated_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)`,
+        values: [tenant.id, item.id, item.name, item.description, item.active, item.order,
+          item.price.amountMinor, item.price.currency, fixture.fixedClock],
+      });
+      for (const siteId of item.siteIds) {
+        await client.query({
+          name: 'demo-fixture-insert-catering-item-site',
+          text: 'INSERT INTO catering_item_site_applicability (tenant_id,item_id,site_id) VALUES ($1,$2,$3)',
+          values: [tenant.id, item.id, siteId],
+        });
+      }
+    }
+    for (const cateringPackage of tenant.settings.catalogue.cateringPackages) {
+      await client.query({
+        name: 'demo-fixture-insert-catering-package',
+        text: `INSERT INTO catering_packages
+          (tenant_id, id, name, description, active, sort_order, price_minor, currency, created_at, updated_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)`,
+        values: [tenant.id, cateringPackage.id, cateringPackage.name, cateringPackage.description,
+          cateringPackage.active, cateringPackage.order, cateringPackage.price.amountMinor,
+          cateringPackage.price.currency, fixture.fixedClock],
+      });
+      for (const variant of cateringPackage.variants) {
+        await client.query({
+          name: 'demo-fixture-insert-catering-package-variant',
+          text: `INSERT INTO catering_package_variants
+            (tenant_id, package_id, id, name, description, active, sort_order,
+             price_minor, currency, created_at, updated_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)`,
+          values: [tenant.id, cateringPackage.id, variant.id, variant.name, variant.description,
+            variant.active, variant.order, variant.price.amountMinor, variant.price.currency,
+            fixture.fixedClock],
+        });
+      }
+      for (const siteId of cateringPackage.siteIds) {
+        await client.query({
+          name: 'demo-fixture-insert-catering-package-site',
+          text: 'INSERT INTO catering_package_site_applicability (tenant_id,package_id,site_id) VALUES ($1,$2,$3)',
+          values: [tenant.id, cateringPackage.id, siteId],
+        });
+      }
+      for (const itemId of cateringPackage.itemIds) {
+        await client.query({
+          name: 'demo-fixture-insert-catering-package-item',
+          text: 'INSERT INTO catering_package_items (tenant_id,package_id,item_id) VALUES ($1,$2,$3)',
+          values: [tenant.id, cateringPackage.id, itemId],
+        });
+      }
+    }
+    await client.query({
+      name: 'demo-fixture-insert-catalogue-revision',
+      text: `INSERT INTO tenant_catalogue_revisions
+        (tenant_id, revision, snapshot, effective_at, actor_user_id, correlation_id)
+        VALUES ($1, 2, $2::jsonb, $3, NULL, NULL)`,
+      values: [tenant.id, JSON.stringify(catalogueSnapshot(tenant)), fixture.fixedClock],
+    });
+    const advancedCatalogue = await client.query({
+      name: 'demo-fixture-advance-catalogue-revision',
+      text: `UPDATE tenants SET catalog_revision = 2, updated_at = $2
+        WHERE id = $1 AND catalog_revision = 1`,
+      values: [tenant.id, fixture.fixedClock],
+    });
+    if (advancedCatalogue.rowCount !== 1) {
+      throw new Error('DEMO_FIXTURE_CATALOGUE_REVISION_ADVANCE_FAILED');
+    }
+    if (tenant.requests.length > 0) {
+    const revisionResult = await client.query({
+      name: 'demo-fixture-request-authority-revisions',
+      text: `SELECT organization_revision, locations_revision, catalog_revision,
+        booking_policies_revision, cost_allocation_revision
+        FROM tenants WHERE id = $1`,
+      values: [tenant.id],
+    });
+    const revisionsRow = revisionResult.rows[0];
+    const configurationRevisions = {
+      organization: Number(revisionsRow.organization_revision),
+      locations: Number(revisionsRow.locations_revision),
+      catalogue: Number(revisionsRow.catalog_revision),
+      bookingPolicies: Number(revisionsRow.booking_policies_revision),
+      costAllocation: Number(revisionsRow.cost_allocation_revision),
+    };
+    for (const request of tenant.requests) {
+      const participants = request.internalParticipants + request.externalParticipants;
+      const draft = {
+        title: request.title,
+        roomId: request.roomId,
+        startsAt: request.startsAt,
+        endsAt: request.endsAt,
+        internalParticipants: request.internalParticipants,
+        externalParticipants: request.externalParticipants,
+        serviceIds: [],
+        equipmentIds: request.equipmentIds,
+        catering: {
+          participantCount: request.cateringPackageId === null ? 0 : participants,
+          packageSelection: request.cateringPackageId === null ? null : {
+            packageId: request.cateringPackageId,
+            variantId: `${request.cateringPackageId}-standard`,
+          },
+          itemQuantities: [],
+        },
+        dietaryRequirements: null,
+        specialRequirements: request.description,
+        allocations: request.costCenterId === null ? [] : [{
+          costCenterId: request.costCenterId, percentageBasisPoints: 10_000,
+        }],
+        configurationRevisions,
+      };
+      const authority = await resolveCurrentRequestCompositionWithClient(client, {
+        tenantId: tenant.id,
+        actorUserId: request.requesterUserId,
+        draft,
+        schemaVersion: 3,
+        operation: 'create',
+        capturedAt: fixture.fixedClock,
+        requestVersion: 1,
+        allowReadyDemoSeed: tenant.lifecycleStatus === 'ready',
+      });
+      if (authority.status !== 'ready') throw new Error('DEMO_FIXTURE_REQUEST_AUTHORITY_INVALID');
+      const inserted = await client.query({
         name: 'demo-fixture-insert-request',
-        text: `
-          INSERT INTO requests (
-            tenant_id, id, requester_user_id, room_id, status, status_reason,
-            starts_at, ends_at, internal_participants, external_participants,
-            status_changed_at, schema_version, request_version, created_at, updated_at
-          )
-          VALUES ($1, $2, $3, $4, $5, NULL, $6, $7, $8, $9, $10, 1, 1, $10, $10)
-        `,
+        text: `INSERT INTO requests (
+          tenant_id, id, requester_user_id, room_id, status, status_reason,
+          starts_at, ends_at, internal_participants, external_participants,
+          status_changed_at, schema_version, request_version, request_snapshot,
+          created_at, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,NULL,$6,$7,$8,$9,$10,3,1,$11::jsonb,$10,$10)
+        RETURNING requester_display_name`,
         values: [
-          tenant.id,
-          request.id,
-          request.requesterUserId,
-          request.roomId,
-          request.status,
-          request.startsAt,
-          request.endsAt,
-          request.internalParticipants,
-          request.externalParticipants,
-          fixture.fixedClock,
+          tenant.id, request.id, request.requesterUserId, request.roomId,
+          request.status, request.startsAt, request.endsAt,
+          request.internalParticipants, request.externalParticipants,
+          fixture.fixedClock, JSON.stringify(authority.snapshot),
         ],
       });
+      const record = normalizeRequest({
+        tenantId: tenant.id, id: request.id, requesterUserId: request.requesterUserId,
+        requesterAttribution: { displayName: inserted.rows[0].requester_display_name },
+        roomId: request.roomId, status: request.status, statusReason: null,
+        startsAt: request.startsAt, endsAt: request.endsAt,
+        internalParticipants: request.internalParticipants,
+        externalParticipants: request.externalParticipants,
+        schemaVersion: 3, version: 1, snapshot: authority.snapshot,
+        statusChangedAt: fixture.fixedClock, createdAt: fixture.fixedClock,
+        updatedAt: fixture.fixedClock,
+      });
+      await appendRequestRevisionWithClient(
+        client, record, 'created',
+        { actorUserId: request.requesterUserId, correlationId: request.id },
+        'employee',
+      );
+    }
     }
     for (const capabilityId of [
       'microsoft.directory',
@@ -305,9 +553,7 @@ async function seedTenantBusinessState(client, fixture) {
 async function seedTenantReadinessState(client, fixture) {
   for (const tenant of fixture.tenants) {
     const provider = tenant.providerSimulation;
-    const room = tenant.settings.locations
-      .flatMap(({ rooms }) => rooms)
-      .find(({ id }) => id === provider.roomMapping.roomId);
+    const rooms = tenant.settings.locations.flatMap(({ rooms: siteRooms }) => siteRooms);
     await client.query({
       name: 'demo-fixture-insert-identity-binding',
       text: `
@@ -334,39 +580,39 @@ async function seedTenantReadinessState(client, fixture) {
           places_permission_status, calendars_permission_status,
           created_at, updated_at
         )
-        VALUES ($1, $2, 'microsoft365', $3, $4, 1, $5, NULL, $6, $7, $5, $5)
+        VALUES ($1, $2, 'microsoft365', $3, $4, 1, $5, NULL, $6, $7, $8, $8)
       `,
       values: [
         tenant.id,
         provider.integrationId,
         provider.providerTenantReference,
         provider.connectionState,
-        fixture.fixedClock,
+        tenant.lifecycleStatus === 'onboarding' ? null : fixture.fixedClock,
         provider.placesPermission,
         provider.calendarsPermission,
-      ],
-    });
-    await client.query({
-      name: 'demo-fixture-insert-microsoft365-room-mapping',
-      text: `
-        INSERT INTO microsoft365_room_mappings (
-          tenant_id, room_id, integration_id, external_room_id,
-          resource_address, provider_display_name, provider_capacity,
-          provider_status, last_seen_at, created_at, updated_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $8, $8)
-      `,
-      values: [
-        tenant.id,
-        provider.roomMapping.roomId,
-        provider.integrationId,
-        provider.roomMapping.externalRoomId,
-        provider.roomMapping.resourceAddress,
-        room.name,
-        room.capacity,
         fixture.fixedClock,
       ],
     });
+    for (const mapping of provider.roomMappings) {
+      const room = rooms.find(({ id }) => id === mapping.roomId);
+      await client.query({
+        name: 'demo-fixture-insert-microsoft365-room-mapping',
+        text: `
+          INSERT INTO microsoft365_room_mappings (
+            tenant_id, room_id, integration_id, external_room_id,
+            resource_address, provider_display_name, provider_capacity,
+            provider_status, last_seen_at, created_at, updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $8, $8)
+        `,
+        values: [
+          tenant.id, mapping.roomId, provider.integrationId,
+          mapping.externalRoomId, mapping.resourceAddress,
+          room.name, room.capacity, fixture.fixedClock,
+        ],
+      });
+    }
+    if (tenant.lifecycleStatus === 'onboarding') continue;
     for (const capability of ['places', 'free_busy', 'calendar_write']) {
       await client.query({
         name: 'demo-fixture-insert-microsoft365-health',
@@ -491,7 +737,10 @@ async function seedPlatformState(client, fixture) {
         fixture.customerPersonas.filter(({ tenantId }) => tenantId === metering.tenantId).length,
         metering.requestCount,
         tenant.requests.filter(({ status }) => status === 'Confirmed').length,
-        '2028-07-01T00:00:00.000Z',
+        new Date(Math.max(
+          Date.parse('2028-07-01T00:00:00.000Z'),
+          Date.parse(fixture.fixedClock) + 732 * 24 * 60 * 60 * 1000,
+        )).toISOString(),
       ],
     });
   }
@@ -549,16 +798,64 @@ export async function readDemoSemanticState({ client } = {}) {
     ORDER BY tenant.id
   `);
   const locations = await readRows(client, 'demo-fixture-read-sites', `
-    SELECT tenant_id, id, name, guest_information FROM sites ORDER BY tenant_id, id
+    SELECT tenant_id, id, name, time_zone, guest_information FROM sites ORDER BY tenant_id, id
   `);
   const rooms = await readRows(client, 'demo-fixture-read-rooms', `
-    SELECT room.tenant_id, room.site_id, room.id, room.name, room.capacity,
+    SELECT room.tenant_id, room.site_id, room.id, room.name, room.capacity, room.details,
            price.price_minor
     FROM rooms AS room
-    JOIN tenant_room_prices AS price
+    LEFT JOIN tenant_room_prices AS price
       ON price.tenant_id = room.tenant_id AND price.room_id = room.id
     ORDER BY room.tenant_id, room.site_id, room.id
   `);
+  const mediaAssets = await readRows(client, 'demo-fixture-read-room-media', `
+    SELECT tenant_id, id, room_id, bytes, content_type, byte_length,
+      width, height, content_sha256
+    FROM tenant_room_media_assets ORDER BY tenant_id, id
+  `);
+  for (const media of mediaAssets) {
+    const hash = createHash('sha256').update(media.bytes).digest('hex');
+    if (media.content_type !== 'image/webp'
+      || media.bytes.length !== safeInteger(media.byte_length)
+      || !media.content_sha256.equals(Buffer.from(hash, 'hex'))) {
+      throw new Error('DEMO_FIXTURE_MEDIA_BYTES_DIVERGED');
+    }
+  }
+  const catalogueMediaAssets = await readRows(client, 'demo-fixture-read-catalogue-media', `
+    SELECT tenant_id, id, owner_kind, owner_id, bytes, content_type,
+      byte_length, content_sha256, alt_text
+    FROM demo_catalogue_media_assets ORDER BY tenant_id, id
+  `);
+  for (const media of catalogueMediaAssets) {
+    const hash = createHash('sha256').update(media.bytes).digest('hex');
+    const signatureValid = media.content_type === 'image/png'
+      ? media.bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
+      : media.content_type === 'image/webp'
+        && media.bytes.toString('ascii', 0, 4) === 'RIFF'
+        && media.bytes.toString('ascii', 8, 12) === 'WEBP';
+    if (!signatureValid || media.bytes.length !== safeInteger(media.byte_length)
+      || !media.content_sha256.equals(Buffer.from(hash, 'hex'))) {
+      throw new Error('DEMO_FIXTURE_CATALOGUE_MEDIA_BYTES_DIVERGED');
+    }
+  }
+  for (const room of rooms) {
+    const references = mediaAssets
+      .filter(({ tenant_id: tenantId, room_id: roomId }) => (
+        tenantId === room.tenant_id && roomId === room.id
+      ))
+      .map(({ id }) => id).sort();
+    const plan = catalogueMediaAssets.find(({ tenant_id: tenantId, owner_kind: kind,
+      owner_id: ownerId }) => tenantId === room.tenant_id
+      && kind === 'room_plan' && ownerId === room.id);
+    if ((room.details?.floorplanAssetId ?? null) !== (plan?.id ?? null)) {
+      throw new Error('DEMO_FIXTURE_CATALOGUE_MEDIA_REFERENCES_DIVERGED');
+    }
+    const stored = room.details?.mediaAssetIds;
+    if (!Array.isArray(stored)
+      || JSON.stringify([...stored].sort()) !== JSON.stringify(references)) {
+      throw new Error('DEMO_FIXTURE_MEDIA_REFERENCES_DIVERGED');
+    }
+  }
   const services = await readRows(client, 'demo-fixture-read-services', `
     SELECT tenant_id, id, currency FROM services ORDER BY tenant_id, id
   `);
@@ -573,12 +870,55 @@ export async function readDemoSemanticState({ client } = {}) {
         ORDER BY room_id) AS room_ids
     FROM equipment entry ORDER BY entry.tenant_id, entry.id
   `);
-  const requests = await readRows(client, 'demo-fixture-read-requests', `
-    SELECT tenant_id, id, requester_user_id, room_id, status, starts_at, ends_at,
-           internal_participants, external_participants
-    FROM requests
-    ORDER BY tenant_id, id
+  const costCenters = await readRows(client, 'demo-fixture-read-cost-centers', `
+    SELECT tenant_id, id, code, name, active FROM tenant_cost_centers ORDER BY tenant_id, id
   `);
+  const cateringItems = await readRows(client, 'demo-fixture-read-catering-items', `
+    SELECT entry.tenant_id, entry.id, entry.name, entry.description, entry.active,
+      entry.sort_order, entry.price_minor, entry.currency,
+      ARRAY(SELECT site_id FROM catering_item_site_applicability relation
+        WHERE relation.tenant_id = entry.tenant_id AND relation.item_id = entry.id ORDER BY site_id) AS site_ids
+    FROM catering_items entry ORDER BY entry.tenant_id, entry.id
+  `);
+  const cateringPackages = await readRows(client, 'demo-fixture-read-catering-packages', `
+    SELECT entry.tenant_id, entry.id, entry.name, entry.description, entry.active,
+      entry.sort_order, entry.price_minor, entry.currency,
+      ARRAY(SELECT site_id FROM catering_package_site_applicability relation
+        WHERE relation.tenant_id = entry.tenant_id AND relation.package_id = entry.id ORDER BY site_id) AS site_ids,
+      ARRAY(SELECT item_id FROM catering_package_items relation
+        WHERE relation.tenant_id = entry.tenant_id AND relation.package_id = entry.id ORDER BY item_id) AS item_ids,
+      (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+        'id', variant.id, 'name', variant.name, 'description', variant.description,
+        'active', variant.active, 'order', variant.sort_order,
+        'price', jsonb_build_object('amountMinor', variant.price_minor, 'currency', variant.currency)
+      ) ORDER BY variant.id), '[]'::jsonb)
+       FROM catering_package_variants variant
+       WHERE variant.tenant_id = entry.tenant_id AND variant.package_id = entry.id) AS variants
+    FROM catering_packages entry ORDER BY entry.tenant_id, entry.id
+  `);
+  const requests = await readRows(client, 'demo-fixture-read-requests', `
+    SELECT request.tenant_id, request.id, request.requester_user_id, request.room_id,
+           request.status, request.starts_at, request.ends_at,
+           request.internal_participants, request.external_participants,
+           request.schema_version, request.request_snapshot,
+           request.current_revision_sequence, revision.record AS revision_record
+    FROM requests request
+    LEFT JOIN request_revisions revision ON revision.tenant_id = request.tenant_id
+      AND revision.request_id = request.id
+      AND revision.revision_sequence = request.current_revision_sequence
+    ORDER BY request.tenant_id, request.id
+  `);
+  for (const request of requests) {
+    const snapshot = request.request_snapshot;
+    if (safeInteger(request.schema_version) !== 3
+      || !snapshot || snapshot.schemaVersion !== 3
+      || !request.current_revision_sequence
+      || !request.revision_record
+      || semanticChecksum(request.revision_record.details) !== semanticChecksum(snapshot.details)
+      || semanticChecksum(request.revision_record.pricing) !== semanticChecksum(snapshot.pricing)) {
+      throw new Error('DEMO_FIXTURE_REQUEST_REVISION_DIVERGED');
+    }
+  }
   const providers = await readRows(client, 'demo-fixture-read-providers', `
     SELECT simulation.tenant_id, simulation.provider,
            binding.id AS identity_binding_id,
@@ -587,7 +927,7 @@ export async function readDemoSemanticState({ client } = {}) {
            integration.status AS connection_state,
            integration.places_permission_status,
            integration.calendars_permission_status,
-           health.status AS health,
+           COALESCE(health.status, 'unknown') AS health,
            simulation.scenario,
            mapping.room_id,
            mapping.external_room_id,
@@ -600,11 +940,11 @@ export async function readDemoSemanticState({ client } = {}) {
     JOIN integrations AS integration
       ON integration.tenant_id = simulation.tenant_id
      AND integration.provider = 'microsoft365'
-    JOIN microsoft365_room_mappings AS mapping
+    LEFT JOIN microsoft365_room_mappings AS mapping
       ON mapping.tenant_id = integration.tenant_id
      AND mapping.integration_id = integration.id
      AND mapping.provider_status = 'active'
-    JOIN microsoft365_capability_health AS health
+    LEFT JOIN microsoft365_capability_health AS health
       ON health.tenant_id = integration.tenant_id
      AND health.integration_id = integration.id
      AND health.capability = 'free_busy'
@@ -670,6 +1010,7 @@ export async function readDemoSemanticState({ client } = {}) {
         .map((location) => ({
           id: location.id,
           name: location.name,
+          timeZone: location.time_zone,
           guestInformation: location.guest_information,
           rooms: rooms
             .filter(({ tenant_id: tenantId, site_id: siteId }) => (
@@ -679,7 +1020,11 @@ export async function readDemoSemanticState({ client } = {}) {
               id: room.id,
               name: room.name,
               capacity: safeInteger(room.capacity),
-              priceMinor: safeInteger(room.price_minor),
+              priceMinor: room.price_minor === null ? null : safeInteger(room.price_minor),
+              description: room.details.description,
+              floor: room.details.floor,
+              equipment: room.details.equipment,
+              accessibility: room.details.accessibility,
             })),
         })),
       catalogue: {
@@ -693,8 +1038,46 @@ export async function readDemoSemanticState({ client } = {}) {
           price: { amountMinor: safeInteger(entry.price_minor), currency: entry.currency },
           siteIds: entry.site_ids, roomIds: entry.room_ids,
         })),
+        cateringItems: cateringItems.filter((entry) => entry.tenant_id === tenant.id).map((entry) => ({
+          id: entry.id, name: entry.name, description: entry.description, active: entry.active,
+          order: safeInteger(entry.sort_order),
+          price: { amountMinor: safeInteger(entry.price_minor), currency: entry.currency },
+          siteIds: entry.site_ids, roomIds: [],
+        })),
+        cateringPackages: cateringPackages.filter((entry) => entry.tenant_id === tenant.id).map((entry) => ({
+          id: entry.id, name: entry.name, description: entry.description, active: entry.active,
+          order: safeInteger(entry.sort_order),
+          price: { amountMinor: safeInteger(entry.price_minor), currency: entry.currency },
+          siteIds: entry.site_ids, roomIds: [], itemIds: entry.item_ids,
+          variants: entry.variants.map((variant) => ({ ...variant,
+            order: safeInteger(variant.order),
+            price: { amountMinor: safeInteger(variant.price.amountMinor), currency: variant.price.currency },
+          })),
+        })),
       },
     },
+    catalogueMedia: catalogueMediaAssets.filter((entry) => entry.tenant_id === tenant.id)
+      .map((entry) => ({
+        id: entry.id,
+        assetKey: entry.owner_kind === 'room_plan'
+          ? entry.owner_id.startsWith('northwind-berlin-room-')
+            ? `northwind-room-${String(Number(entry.owner_id.slice('northwind-berlin-room-'.length))).padStart(2, '0')}`
+            : entry.owner_id
+          : entry.owner_id,
+        ownerKind: entry.owner_kind, ownerId: entry.owner_id,
+        sha256: entry.content_sha256.toString('hex'),
+        byteLength: safeInteger(entry.byte_length),
+        contentType: entry.content_type, altText: entry.alt_text,
+      })),
+    roomMedia: mediaAssets.filter((entry) => entry.tenant_id === tenant.id).map((entry) => ({
+      id: entry.id, roomId: entry.room_id,
+      sha256: entry.content_sha256.toString('hex'),
+      byteLength: safeInteger(entry.byte_length),
+      width: safeInteger(entry.width), height: safeInteger(entry.height),
+    })),
+    costCenters: costCenters.filter((entry) => entry.tenant_id === tenant.id).map((entry) => ({
+      id: entry.id, code: entry.code, name: entry.name, active: entry.active,
+    })),
     requests: requests
       .filter(({ tenant_id: tenantId }) => tenantId === tenant.id)
       .map((request) => ({
@@ -706,6 +1089,11 @@ export async function readDemoSemanticState({ client } = {}) {
         endsAt: iso(request.ends_at),
         internalParticipants: safeInteger(request.internal_participants),
         externalParticipants: safeInteger(request.external_participants),
+        title: request.request_snapshot.details.title,
+        equipmentIds: request.request_snapshot.details.equipmentIds,
+        cateringPackageId: request.request_snapshot.details.catering.packageSelection?.packageId ?? null,
+        costCenterId: request.request_snapshot.allocations.entries[0]?.costCenterId ?? null,
+        description: request.request_snapshot.details.specialRequirements,
       })),
     providerSimulation: (() => {
       const provider = providers.find(({ tenant_id: tenantId }) => tenantId === tenant.id);
@@ -719,11 +1107,15 @@ export async function readDemoSemanticState({ client } = {}) {
         calendarsPermission: provider.calendars_permission_status,
         health: provider.health,
         scenario: provider.scenario,
-        roomMapping: {
-          roomId: provider.room_id,
-          externalRoomId: provider.external_room_id,
-          resourceAddress: provider.resource_address,
-        },
+        roomMappings: providers
+          .filter(({ tenant_id: tenantId, room_id: roomId }) => (
+            tenantId === tenant.id && roomId !== null
+          ))
+          .map((mapping) => ({
+            roomId: mapping.room_id,
+            externalRoomId: mapping.external_room_id,
+            resourceAddress: mapping.resource_address,
+          })),
       };
     })(),
   }));

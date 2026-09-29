@@ -5,6 +5,7 @@ import {
 import {
   semanticChecksum,
   validateDemoFixture,
+  createDemoResetGenerationFixture,
 } from '../../demo/fixture.js';
 import { withPostgresTransaction } from './transaction.js';
 import { acquireDemoRuntimeResetTransactionLock } from './demo-runtime-gate.js';
@@ -123,6 +124,7 @@ export const DEMO_RESET_TABLES = Object.freeze([
   'platform_runtime_tenant_mappings',
   'demo_provider_simulations',
   'demo_persona_references',
+  'demo_catalogue_media_assets',
 ]);
 
 const EXPECTED_TABLES = Object.freeze([
@@ -145,6 +147,20 @@ export class DemoResetRepositoryError extends Error {
 
 function fail(code, cause) {
   throw new DemoResetRepositoryError(code, cause ? { cause } : undefined);
+}
+
+function firstSemanticDifference(expected, actual, path = '') {
+  if (semanticChecksum(expected) === semanticChecksum(actual)) return null;
+  if (typeof expected !== typeof actual || expected === null || actual === null
+    || typeof expected !== 'object') return path || 'root';
+  const left = Object.keys(expected).sort();
+  const right = Object.keys(actual).sort();
+  if (left.join(',') !== right.join(',')) return path || 'root';
+  for (const key of left) {
+    const difference = firstSemanticDifference(expected[key], actual[key], `${path}.${key}`);
+    if (difference) return difference;
+  }
+  return null;
 }
 
 function failureReason(value) {
@@ -327,6 +343,7 @@ export function createPostgresDemoResetRepository({
   auditRepository = null,
   seedBusinessState = seedDemoBusinessState,
   readSemanticState = readDemoSemanticState,
+  onSemanticMismatch = null,
 } = {}) {
   if (!pool || typeof pool.connect !== 'function') throw new TypeError('POSTGRES_POOL_REQUIRED');
   if (
@@ -337,6 +354,9 @@ export function createPostgresDemoResetRepository({
     )
   ) throw new TypeError('DEMO_RESET_AUDIT_REPOSITORY_INVALID');
   assertFactoryConfiguration({ expectedDatabaseName, expectedResetRole, seedBusinessState, readSemanticState });
+  if (onSemanticMismatch !== null && typeof onSemanticMismatch !== 'function') {
+    throw new TypeError('DEMO_RESET_DIAGNOSTIC_INVALID');
+  }
 
   return Object.freeze({
     async reset({ fixture, checksum, authority = null, auditEventFor = null } = {}) {
@@ -365,6 +385,10 @@ export function createPostgresDemoResetRepository({
             phase = DEMO_RESET_FAILURE_REASON.AUTHORITY;
             await verifyResetAuthority(client, authority);
           }
+          const generation = fixture.seedVersion.startsWith('saas-3.7-')
+            ? createDemoResetGenerationFixture(fixture, new Date())
+            : fixture;
+          const generationChecksum = semanticChecksum(generation);
           phase = DEMO_RESET_FAILURE_REASON.TRUNCATE;
           await client.query({ name: 'demo-reset-truncate', text: TRUNCATE_SQL });
           await client.query({
@@ -377,15 +401,20 @@ export function createPostgresDemoResetRepository({
             text: 'INSERT INTO platform_audit_chain_state (singleton) VALUES (true)',
           });
           phase = DEMO_RESET_FAILURE_REASON.BUSINESS_SEED;
-          await seedBusinessState({ client, fixture });
+          await seedBusinessState({ client, fixture: generation });
           phase = DEMO_RESET_FAILURE_REASON.PROVIDER_SEED;
-          await insertProviderState(client, fixture);
+          await insertProviderState(client, generation);
           phase = DEMO_RESET_FAILURE_REASON.PERSONA_SEED;
-          await insertPersonaReferences(client, fixture);
+          await insertPersonaReferences(client, generation);
           phase = DEMO_RESET_FAILURE_REASON.SEMANTIC_READ;
           const semanticState = await readSemanticState({ client });
           phase = DEMO_RESET_FAILURE_REASON.SEMANTIC_CHECKSUM;
-          if (semanticChecksum(semanticState) !== checksum) fail('DEMO_RESET_SEMANTIC_CHECKSUM_MISMATCH');
+          if (semanticChecksum(semanticState) !== generationChecksum) {
+            if (onSemanticMismatch) {
+              onSemanticMismatch(firstSemanticDifference(generation, semanticState));
+            }
+            fail('DEMO_RESET_SEMANTIC_CHECKSUM_MISMATCH');
+          }
           if (auditEventFor !== null) {
             phase = DEMO_RESET_FAILURE_REASON.SUCCESS_AUDIT;
             await auditRepository.appendWithClient(client, auditEventFor({
