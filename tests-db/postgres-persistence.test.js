@@ -194,6 +194,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 38, name: 'request_attribution_function_privileges' },
       { version: 39, name: 'tenant_room_media' },
       { version: 40, name: 'structured_guest_values' },
+      { version: 41, name: 'room_media_retention_privileges' },
     ]);
   });
 

@@ -151,7 +151,7 @@ The workflow performs, in order:
 
 1. fail-closed verification that all four database URL secrets exist;
 2. locked dependency installation;
-3. canonical PostgreSQL migrations `001..038` through the migration role;
+3. canonical PostgreSQL migrations `001..041` through the migration role;
 4. Demo overlay migrations and least-privilege grants;
 5. deterministic reset/reseed with the fixed seed version and semantic checksum.
 
