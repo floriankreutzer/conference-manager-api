@@ -31,8 +31,11 @@ Verify the effective role cannot `UPDATE` Tenants, directly `DELETE` media,
 read media bytes, or execute unrelated functions. Do not put its connection
 string into source control or logs. Supply it from a secret store as
 `ROOM_MEDIA_RETENTION_DATABASE_URL` with `DATABASE_SSL=verify-full`, and run
-`NODE_ENV=production node scripts/room-media-retention.mjs --execute` once per day
-in a separately managed job. The script checks schema readiness, limits itself
+`NODE_ENV=production node scripts/room-media-retention.mjs --execute` once per day through the reviewed `.github/workflows/room-media-retention.yml`
+GitHub Actions job on `main` (03:17 UTC, plus manual dispatch). Configure the
+repository secret `ROOM_MEDIA_RETENTION_DATABASE_URL` with only that role's
+connection string. Missing credentials, schema mismatch and incomplete batches
+fail the workflow; monitor GitHub Actions failures and assign an operator. The script checks schema readiness, limits itself
 to 10,000 Tenants and at most 1,000 deletions per Tenant per invocation, and
 fails on an incomplete pass. Alert on any failure/incomplete status and inspect
 retained references before retrying. Logs include aggregate counts and bytes
