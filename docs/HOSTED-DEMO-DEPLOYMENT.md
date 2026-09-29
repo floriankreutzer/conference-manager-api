@@ -2,7 +2,7 @@
 
 ## Purpose and authority
 
-This runbook deploys the SaaS 3.5 Shared Demo Runtime on the accepted zero-cost provider-domain topology:
+This runbook deploys the SaaS 3.7 Shared Demo Runtime on the accepted zero-cost provider-domain topology:
 
 - Customer Demo: Render Free Web Service in Frankfurt;
 - Platform Admin Demo: separate Render Free Web Service in Frankfurt;
@@ -144,7 +144,7 @@ After the hosted-deployment change has been reviewed and merged to `main`, open 
 Enter the exact confirmation value:
 
 ```text
-saas-3.6-shared-demo-v5
+saas-3.7-three-demo-customers-v1
 ```
 
 The workflow performs, in order:
@@ -159,9 +159,9 @@ The workflow generates parser-only transient session/CSRF/HMAC values for the co
 
 A failed migration or reset blocks Render deployment. Do not bypass it with manual table edits or by granting a runtime role broader privileges.
 
-## 6. Create the two Render services from the Blueprint
+## 6. Deploy the two existing Render services from the Blueprint
 
-Only after the hosted database initialization succeeds:
+Only after the hosted database initialization succeeds, deploy the two existing services from the reviewed `main` commit. Keep `autoDeployTrigger: off` and verify the expected frontend SHA and seed version in the Blueprint before triggering each deploy. For a first-time environment only:
 
 1. Open Render.
 2. Select **New → Blueprint**.
@@ -316,7 +316,7 @@ resubmit, transition, history and confirmed-change paths support the accepted ne
 while the outer response envelopes remain unchanged. Equipment is resolved using existing
 Tenant-composite Catalogue tables, charged once and included in allocation.
 
-The `saas-3.6-shared-demo-v5` reset fixture contains distinct priced Northwind/Contoso Equipment
+The `saas-3.7-three-demo-customers-v1` reset fixture contains distinct priced Northwind/Contoso Equipment
 and verifies those identity, price and applicability facts during semantic readback. Demo overlay
 004 adds only the reset role's `INSERT` and `TRUNCATE` privileges on the canonical attribution
 migration-state table introduced by migration 036; customer and Platform roles receive no access.
