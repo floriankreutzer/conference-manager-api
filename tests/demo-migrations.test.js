@@ -73,7 +73,7 @@ test('Demo migration runner reads Production readiness but writes only its own l
     async query(query, values) {
       queries.push({ query, values });
       if (query?.name === 'demo-migration-production-schema') {
-        return { rows: [{ versions: Array.from({ length: 40 }, (_, index) => index + 1) }] };
+        return { rows: [{ versions: Array.from({ length: 41 }, (_, index) => index + 1) }] };
       }
       if (typeof query === 'string' && query.includes('SELECT version, name, checksum')) return { rows: [] };
       return { rows: [], rowCount: 0 };
