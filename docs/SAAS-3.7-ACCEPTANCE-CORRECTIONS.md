@@ -51,3 +51,14 @@ behavior. Existing fixture/provider tests continue to cover their original
 contracts except for the explicitly corrected Northwind baseline expectation.
 Run the full API quality, audit and PostgreSQL gates and cross-repository
 scenario browser suite; retain exact source/runtime refs and actual results.
+
+## Public Room descriptions
+
+The complete visible scenario exposed that the application catalogue omitted
+existing Room descriptions. Its public projection now includes only the bounded,
+nullable description when the stored details explicitly contain it. The existing
+tenant-scoped catalogue read and authorization remain unchanged. No provider or
+private settings fields are added, and legacy presentation shapes remain valid.
+Invalid stored text becomes null; frontend envelope validation and safe text DOM
+rendering are covered independently. Projection bounds and the real ten-room
+preview journey protect this correction. No schema or seed checksum change.
