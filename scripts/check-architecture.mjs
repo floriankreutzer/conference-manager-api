@@ -555,8 +555,22 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 40;/.test(pool)) {
-  throw new Error('Runtime schema readiness must include Site Guest Information and attribution privilege migration version 40.');
+if (!/export const CURRENT_SCHEMA_VERSION = 41;/.test(pool)) {
+  throw new Error('Runtime schema readiness must include bounded Room-media retention migration version 41.');
+}
+const retentionPrivilegeMigration = await readFile(
+  'migrations/041_room_media_retention_privileges.up.sql',
+  'utf8',
+);
+for (const required of [
+  'SECURITY DEFINER',
+  'SET search_path = pg_catalog',
+  'REVOKE ALL PRIVILEGES ON FUNCTION public.prune_expired_unreferenced_room_media',
+  'LIMIT p_limit',
+]) {
+  if (!retentionPrivilegeMigration.includes(required)) {
+    throw new Error(`Room-media retention procedure is missing ${required}.`);
+  }
 }
 const attributionPrivilegeMigration = await readFile(
   'migrations/038_request_attribution_function_privileges.up.sql',
