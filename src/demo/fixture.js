@@ -1628,8 +1628,8 @@ const fixture = {
         connectionState: 'connected',
         placesPermission: 'granted',
         calendarsPermission: 'granted',
-        health: 'degraded',
-        scenario: 'provider_degraded',
+        health: 'healthy',
+        scenario: 'booking_success',
         roomMappings: [
             {
               "roomId": "northwind-berlin-room-1",

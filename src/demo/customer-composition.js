@@ -12,6 +12,7 @@ import { DEMO_FIXTURE } from './fixture.js';
 import { createDemoCustomerControlRoutes } from './http/customer-control-routes.js';
 import { createDemoCustomerPersonaService } from './identity/customer-persona-service.js';
 import { createDemoMicrosoft365Client } from './provider/microsoft365-client.js';
+import { demoOnboardingProviderRooms } from './provider/onboarding-room-inventory.js';
 import { createDemoCustomerRuntimeConfig } from './runtime-config.js';
 import { createDemoCustomerHttpServer } from './customer-server.js';
 
@@ -24,6 +25,12 @@ function providerScenarios() {
 
 export function demoProviderRooms() {
   return Object.freeze(Object.fromEntries(DEMO_FIXTURE.tenants.map((tenant) => {
+    if (tenant.providerSimulation.scenario === 'onboarding') {
+      return [
+        tenant.providerSimulation.providerTenantReference,
+        demoOnboardingProviderRooms(tenant.providerSimulation.providerTenantReference),
+      ];
+    }
     const rooms = tenant.providerSimulation.roomMappings.map((mapping) => {
       const location = tenant.settings.locations.find(({ rooms: siteRooms }) => (
         siteRooms.some(({ id }) => id === mapping.roomId)

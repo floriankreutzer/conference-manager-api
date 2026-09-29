@@ -49,6 +49,12 @@ function safeMediaAssetIds(value) {
   return Object.freeze(normalized);
 }
 
+function safeDescription(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 1000
+    && value === value.trim() && value === value.normalize('NFC')
+    && !/[\u0000-\u001f\u007f]/.test(value) ? value : null;
+}
+
 export function publicApplicationRoom(row) {
   const details = storedDetails(row?.details);
   return Object.freeze({
@@ -58,6 +64,9 @@ export function publicApplicationRoom(row) {
     capacity: row.capacity,
     active: row.active,
     price: row.price === null ? null : Object.freeze({ ...row.price }),
+    ...(details && Object.hasOwn(details, 'description') ? {
+      description: safeDescription(details.description),
+    } : {}),
     equipment: details ? safeEquipment(details.equipment ?? []) : Object.freeze([]),
     floorplanAssetId: details ? safeAssetId(details.floorplanAssetId) : null,
     mediaAssetIds: details ? safeMediaAssetIds(details.mediaAssetIds ?? []) : Object.freeze([]),
