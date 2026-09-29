@@ -15,8 +15,9 @@ only this procedure; it cannot directly delete bytes or update Tenant rows.
 
 After schema 041 is applied on the selected provider, provision a **separate login
 role** for the maintenance job (for the Demo, `cm_demo_media_retention`) with
-a provider-generated secret. Execute these grants through the trusted migration
-operator; do not grant membership in migration, reset, Customer or Platform roles:
+a provider-generated secret. On Neon, the role-creation API can automatically add a new role to `neon_superuser`: this was observed on the isolated SaaS 3.6 acceptance branch on 29 September 2026. Do not use such a role for this job, even after granting only the permissions below. A trusted role administrator must provision a LOGIN role with `NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`, without `neon_superuser` or any migration/reset/runtime membership. Verify these direct attributes in `pg_roles`, the memberships in `pg_auth_members`, and effective `has_table_privilege`/`has_function_privilege` results before providing a connection secret. If that cannot be done in the selected Neon plan, fail this operational gate and use a provider-supported restricted role path. The overprivileged acceptance role was deleted.
+
+Execute these grants through the trusted migration operator; do not grant membership in migration, reset, Customer or Platform roles:
 
 ```sql
 GRANT USAGE ON SCHEMA public TO cm_demo_media_retention;
