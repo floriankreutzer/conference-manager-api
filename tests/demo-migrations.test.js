@@ -15,7 +15,7 @@ const ROLES = Object.freeze({
 
 test('Demo migration stream is versioned independently from Production', async () => {
   const [production, demo] = await Promise.all([loadMigrations(), loadDemoMigrations()]);
-  assert.equal(production.at(-1).version, 40);
+  assert.equal(production.at(-1).version, 41);
   assert.equal(demo.length, 5);
   assert.equal(demo[0].version, 1);
   assert.equal(demo[0].name, 'demo_runtime_foundation');
