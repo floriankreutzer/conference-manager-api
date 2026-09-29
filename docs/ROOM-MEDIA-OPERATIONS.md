@@ -4,7 +4,47 @@ Room media is a Tenant-owned private PostgreSQL `bytea` asset, not an external i
 
 ## Scheduled retention
 
-Run `NODE_ENV=production node scripts/room-media-retention.mjs --execute` once per day in a separately managed job. Supply `ROOM_MEDIA_RETENTION_DATABASE_URL` from a secret store and `DATABASE_SSL=verify-full`, with certificate verification intact. This dedicated database role needs `SELECT` on `tenants`, `rooms`, `tenant_location_revisions`, `tenant_room_media_assets`, and `schema_migrations`, `DELETE` on `tenant_room_media_assets`, and permission to lock Tenant rows (`SELECT ... FOR UPDATE` requires `UPDATE` privilege on `tenants`). The Tenant row lock requires an UPDATE grant on `tenants`; a plain table-wide grant would also permit unauthorized Tenant mutation. Use a narrowly audited SECURITY DEFINER maintenance procedure or a reviewed column grant with protections before enabling the job. Do not grant schema migration, asset insertion or audit modification to this role. Confirm the effective privileges and connection with the selected provider before enabling the job. The script fails closed if the schema is not current, there are more than 10,000 Tenants, or a Tenant still has eligible rows after 1,000 deletions in one run. Alert on any failure/incomplete status and inspect retained references before retrying. Logs include aggregate counts and bytes only. Never pass a browser Tenant ID to the job.
+Schema 041 installs `public.prune_expired_unreferenced_room_media(uuid,timestamptz,integer)`
+as a bounded SECURITY DEFINER procedure owned by the migration role with a fixed
+`pg_catalog` search path and fully qualified relations. PUBLIC has no EXECUTE.
+The procedure locks the Tenant row, rejects missing Tenant/invalid batch limits,
+caps the caller's cutoff to database time, and deletes only assets older than
+30 days that are absent from current Rooms and immutable Locations revisions.
+Application/runtime roles do not receive EXECUTE. The standalone job calls
+only this procedure; it cannot directly delete bytes or update Tenant rows.
+
+After schema 041 is applied on the selected provider, provision a **separate login
+role** for the maintenance job (for the Demo, `cm_demo_media_retention`) with
+a provider-generated secret. Execute these grants through the trusted migration
+operator; do not grant membership in migration, reset, Customer or Platform roles:
+
+```sql
+GRANT USAGE ON SCHEMA public TO cm_demo_media_retention;
+GRANT SELECT (id) ON public.tenants TO cm_demo_media_retention;
+GRANT SELECT (version) ON public.schema_migrations TO cm_demo_media_retention;
+GRANT EXECUTE ON FUNCTION public.prune_expired_unreferenced_room_media(
+  uuid, timestamptz, integer
+) TO cm_demo_media_retention;
+```
+
+Verify the effective role cannot `UPDATE` Tenants, directly `DELETE` media,
+read media bytes, or execute unrelated functions. Do not put its connection
+string into source control or logs. Supply it from a secret store as
+`ROOM_MEDIA_RETENTION_DATABASE_URL` with `DATABASE_SSL=verify-full`, and run
+`NODE_ENV=production node scripts/room-media-retention.mjs --execute` once per day through the reviewed `.github/workflows/room-media-retention.yml`
+GitHub Actions job on `main` (03:17 UTC, plus manual dispatch). Configure the
+repository secret `ROOM_MEDIA_RETENTION_DATABASE_URL` with only that role's
+connection string. Missing credentials, schema mismatch and incomplete batches
+fail the workflow; monitor GitHub Actions failures and assign an operator. The script checks schema readiness, limits itself
+to 10,000 Tenants and at most 1,000 deletions per Tenant per invocation, and
+fails on an incomplete pass. Alert on any failure/incomplete status and inspect
+retained references before retrying. Logs include aggregate counts and bytes
+only. Never pass a browser Tenant ID to the job.
+
+A migration or deployment alone does not prove the job has executed. On the
+isolated restore child, use the dedicated role and real script to verify that
+an aged unreferenced image is deleted and current/historical references survive;
+then record the scheduler run and failure alert behavior.
 
 Do not run this job against an unverified restore, an old binary, a partially migrated fleet, or a database without a recoverable backup. A schema-040 rollback with published structured values and a schema-039 rollback with managed media are guarded: use a forward fix when a down migration would discard live or historical data.
 
@@ -17,7 +57,7 @@ Do not run this job against an unverified restore, an old binary, a partially mi
 5. Run the retention job against the isolated target with a controlled expired detached asset and an expired historically referenced asset. Verify only the eligible asset disappears, the historic asset survives, and the resulting backup/restore target remains consistent. Record elapsed restore time, backup age and objective RPO/RTO comparison.
 6. Dispose of the isolated target under the provider retention policy. Store the evidence in the release record without exposing credentials, personal data, image bytes or privileged URLs.
 
-No live backup/restore has yet been observed. Do not mark H-034 or #170 complete without the signed evidence above.
+An isolated image-bearing Neon snapshot restore and SQL predicate proof were observed for the Demo in #216. Authenticated HTTP delivery from the isolated restore, actual dedicated-role script/scheduler execution and named #182 acceptance remain open. Production provider/RPO/RTO evidence belongs to the eventual Production deployment. Do not mark H-034 or #170 complete on the isolated SQL proof alone.
 
 ## Storage and cost review
 

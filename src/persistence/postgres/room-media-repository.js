@@ -82,48 +82,17 @@ export function createPostgresRoomMediaRepository(pool, { auditRepository } = {}
 }
 
 export async function pruneExpiredUnreferencedRoomMedia(pool, { tenantId, asOf, limit = 100 }) {
-  if (!pool || typeof pool.connect !== 'function') throw new TypeError('ROOM_MEDIA_POOL_REQUIRED');
+  if (!pool || typeof pool.query !== 'function') throw new TypeError('ROOM_MEDIA_POOL_REQUIRED');
   if (!isInternalUuid(tenantId) || !(asOf instanceof Date)
     || Number.isNaN(asOf.getTime()) || !Number.isSafeInteger(limit)
     || limit < 1 || limit > 100) throw new TypeError('ROOM_MEDIA_RETENTION_INPUT_INVALID');
-  return withPostgresTransaction(pool, async (client) => {
-    // Upload and Locations mutations both serialize on the Tenant row.
-    const tenant = await client.query({
-      name: 'room-media-retention-lock-tenant',
-      text: 'SELECT id FROM tenants WHERE id = $1 FOR UPDATE',
-      values: [tenantId],
-    });
-    if (tenant.rowCount !== 1) return Object.freeze({ deleted: 0, bytes: 0 });
-    const removed = await client.query({
-      name: 'room-media-retention-unreferenced',
-      text: `DELETE FROM tenant_room_media_assets asset
-        WHERE asset.tenant_id = $1 AND asset.created_at < $2::timestamptz - INTERVAL '30 days'
-          AND asset.id IN (
-            SELECT candidate.id FROM tenant_room_media_assets candidate
-            WHERE candidate.tenant_id = $1
-              AND candidate.created_at < $2::timestamptz - INTERVAL '30 days'
-              AND NOT EXISTS (
-                SELECT 1 FROM rooms room WHERE room.tenant_id = candidate.tenant_id
-                  AND (room.details->>'floorplanAssetId' = candidate.id::text
-                    OR COALESCE(room.details->'mediaAssetIds', '[]'::jsonb) ? candidate.id::text)
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM tenant_location_revisions revision
-                CROSS JOIN LATERAL jsonb_array_elements(
-                  COALESCE(revision.configuration->'rooms', '[]'::jsonb)
-                ) historic
-                WHERE revision.tenant_id = candidate.tenant_id
-                  AND (historic->>'floorplanAssetId' = candidate.id::text
-                    OR COALESCE(historic->'mediaAssetIds', '[]'::jsonb) ? candidate.id::text)
-              )
-            ORDER BY candidate.created_at, candidate.id LIMIT $3
-          )
-        RETURNING asset.byte_length`,
-      values: [tenantId, asOf, limit],
-    });
-    return Object.freeze({
-      deleted: removed.rowCount,
-      bytes: removed.rows.reduce((sum, row) => sum + row.byte_length, 0),
-    });
+  const result = await pool.query({
+    name: 'room-media-retention-bounded-procedure',
+    text: 'SELECT deleted, bytes FROM public.prune_expired_unreferenced_room_media($1::uuid, $2::timestamptz, $3::integer)',
+    values: [tenantId, asOf, limit],
+  });
+  return Object.freeze({
+    deleted: result.rows[0].deleted,
+    bytes: Number(result.rows[0].bytes),
   });
 }
