@@ -75,3 +75,12 @@ without closing anything and is explicitly logged. Serial execution rereads curr
 state, and an already closed milestone is idempotent. The action does not close
 issues, approve acceptance, change runtime data or deploy services. Only the
 normal completed-issue event or explicit manual invocation can run it.
+
+The API CI retains the deployed immutable frontend artifact selected from
+`render.yaml`. Its shared-Demo test file is read from immutable acceptance source
+`3818da326ec6a09e0bc2c72916df1ed97b280bf0`, which explicitly waits for the new
+document after a persona/context reload. Only that test file is replaced; no
+application module, dependency or static asset is taken from the acceptance
+source. This corrects a WebKit test race where an unfinished reload replaced
+edited fields before save. Expected branding, persistence and security assertions
+remain mandatory. The original failed run is retained in PR #96's evidence.
