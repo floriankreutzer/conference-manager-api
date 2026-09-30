@@ -101,13 +101,37 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: api
-      - name: Checkout immutable three-customer acceptance frontend
+      - name: Resolve deployed immutable frontend ref
+        id: frontend_ref
+        shell: bash
+        run: |
+          frontend_refs="$(awk '/key: DEMO_FRONTEND_REF/{getline; print $2}' api/render.yaml | sort -u)"
+          if [[ "$(wc -l <<< "$frontend_refs")" -ne 1 || ! "$frontend_refs" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "render.yaml must contain exactly one immutable DEMO_FRONTEND_REF." >&2
+            exit 1
+          fi
+          echo "ref=$frontend_refs" >> "$GITHUB_OUTPUT"
+      - name: Checkout immutable frontend commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: floriankreutzer/conference-manager
+          ref: ${{ steps.frontend_ref.outputs.ref }}
+          persist-credentials: false
+          path: frontend
+      - name: Checkout immutable permanent acceptance contract
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager
           ref: b0f0da09ea7cf983e9e330c75ac2d808aa7f27bf
           persist-credentials: false
-          path: frontend
+          path: acceptance
+      - name: Load immutable shared Demo acceptance test
+        working-directory: frontend
+        env:
+          ACCEPTANCE_REF: b0f0da09ea7cf983e9e330c75ac2d808aa7f27bf
+        run: |
+          git fetch --quiet --depth=1 origin "$ACCEPTANCE_REF"
+          git show "$ACCEPTANCE_REF:tests/e2e-shared/shared-demo-runtime.spec.js" > tests/e2e-shared/shared-demo-runtime.spec.js
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -117,6 +141,9 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Install locked frontend dependencies
         working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install locked permanent acceptance dependencies
+        working-directory: acceptance
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Install browser engines
         working-directory: frontend
@@ -175,7 +202,7 @@ jobs:
           DEMO_SEED_VERSION: saas-3.7-three-demo-customers-v1
         run: npm run test:e2e:shared-demo -- --project="${{ matrix.project }}"
       - name: Run permanent three-customer progression and two-cycle reset acceptance
-        working-directory: frontend
+        working-directory: acceptance
         env:
           DEMO_SEED_VERSION: saas-3.7-three-demo-customers-v1
         run: npm run test:e2e:saas37 -- --project="${{ matrix.project }}"
