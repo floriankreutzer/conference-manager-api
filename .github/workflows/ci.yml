@@ -101,29 +101,13 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: api
-      - name: Resolve deployed immutable frontend ref
-        id: frontend_ref
-        shell: bash
-        run: |
-          frontend_refs="$(awk '/key: DEMO_FRONTEND_REF/{getline; print $2}' api/render.yaml | sort -u)"
-          if [[ "$(wc -l <<< "$frontend_refs")" -ne 1 || ! "$frontend_refs" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "render.yaml must contain exactly one immutable DEMO_FRONTEND_REF." >&2
-            exit 1
-          fi
-          echo "ref=$frontend_refs" >> "$GITHUB_OUTPUT"
-      - name: Checkout immutable frontend commit
+      - name: Checkout immutable three-customer acceptance frontend
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager
-          ref: ${{ steps.frontend_ref.outputs.ref }}
+          ref: b0f0da09ea7cf983e9e330c75ac2d808aa7f27bf
+          persist-credentials: false
           path: frontend
-      - name: Load immutable shared Demo acceptance test
-        working-directory: frontend
-        env:
-          ACCEPTANCE_REF: 3818da326ec6a09e0bc2c72916df1ed97b280bf0
-        run: |
-          git fetch --quiet --depth=1 origin "$ACCEPTANCE_REF"
-          git show "$ACCEPTANCE_REF:tests/e2e-shared/shared-demo-runtime.spec.js" > tests/e2e-shared/shared-demo-runtime.spec.js
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -187,7 +171,14 @@ jobs:
           exit 1
       - name: Run shared PostgreSQL browser journey
         working-directory: frontend
+        env:
+          DEMO_SEED_VERSION: saas-3.7-three-demo-customers-v1
         run: npm run test:e2e:shared-demo -- --project="${{ matrix.project }}"
+      - name: Run permanent three-customer progression and two-cycle reset acceptance
+        working-directory: frontend
+        env:
+          DEMO_SEED_VERSION: saas-3.7-three-demo-customers-v1
+        run: npm run test:e2e:saas37 -- --project="${{ matrix.browser }}-saas37"
       - name: Print bounded Demo API logs on failure
         if: failure()
         working-directory: api
