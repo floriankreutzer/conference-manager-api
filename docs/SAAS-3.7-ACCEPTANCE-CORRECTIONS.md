@@ -62,3 +62,25 @@ private settings fields are added, and legacy presentation shapes remain valid.
 Invalid stored text becomes null; frontend envelope validation and safe text DOM
 rendering are covered independently. Projection bounds and the real ten-room
 preview journey protect this correction. No schema or seed checksum change.
+
+## Milestone metadata completion
+
+The GitHub connector cannot patch milestone state. The scoped
+`complete-saas37-milestone.yml` workflow handles this release metadata through
+the repository's ephemeral `GITHUB_TOKEN`, with only `issues: write`.
+It reads API #85–#89 and Frontend #212–#215 and requires every issue to be
+`closed:completed`; milestone 1 must retain its SaaS 3.7 identity and have zero
+open issues. Missing access or changed metadata fails closed. Pending work exits
+without closing anything and is explicitly logged. Serial execution rereads current
+state, and an already closed milestone is idempotent. The action does not close
+issues, approve acceptance, change runtime data or deploy services. Only the
+normal completed-issue event or explicit manual invocation can run it.
+
+The API CI retains the deployed immutable frontend artifact selected from
+`render.yaml`. Its shared-Demo test file is read from immutable acceptance source
+`3818da326ec6a09e0bc2c72916df1ed97b280bf0`, which explicitly waits for the new
+document after a persona/context reload. Only that test file is replaced; no
+application module, dependency or static asset is taken from the acceptance
+source. This corrects a WebKit test race where an unfinished reload replaced
+edited fields before save. Expected branding, persistence and security assertions
+remain mandatory. The original failed run is retained in PR #96's evidence.

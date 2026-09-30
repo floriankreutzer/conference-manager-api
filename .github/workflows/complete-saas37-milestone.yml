@@ -1,0 +1,60 @@
+name: Complete SaaS 3.7 milestone
+
+on:
+  issues:
+    types: [closed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: complete-saas37-milestone
+  cancel-in-progress: false
+
+jobs:
+  completion:
+    if: github.repository == 'floriankreutzer/conference-manager-api' && (github.event_name == 'workflow_dispatch' || github.event.issue.milestone.number == 1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Require completed cross-repository acceptance before closing milestone 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_repo=floriankreutzer/conference-manager-api
+          frontend_repo=floriankreutzer/conference-manager
+          for issue in 85 86 87 88 89; do
+            state="$(gh api "repos/$api_repo/issues/$issue" --jq '[.state, .state_reason] | join(":")')"
+            if [[ "$state" != 'closed:completed' ]]; then
+              echo "SaaS 3.7 remains open: API issue $issue is not completed."
+              exit 0
+            fi
+          done
+          for issue in 212 213 214 215; do
+            state="$(gh api "repos/$frontend_repo/issues/$issue" --jq '[.state, .state_reason] | join(":")')"
+            if [[ "$state" != 'closed:completed' ]]; then
+              echo "SaaS 3.7 remains open: Frontend issue $issue is not completed."
+              exit 0
+            fi
+          done
+          milestone="$(gh api "repos/$api_repo/milestones/1")"
+          if [[ "$(jq -r '.number' <<< "$milestone")" != '1' ]] || [[ "$(jq -r '.title | startswith("SaaS 3.7")' <<< "$milestone")" != 'true' ]]; then
+            echo "The reviewed SaaS 3.7 milestone identity changed." >&2
+            exit 1
+          fi
+          if [[ "$(jq -r '.open_issues' <<< "$milestone")" != '0' ]]; then
+            echo "SaaS 3.7 remains open: milestone has additional unfinished work."
+            exit 0
+          fi
+          if [[ "$(jq -r '.state' <<< "$milestone")" == 'closed' ]]; then
+            echo "SaaS 3.7 milestone is already closed."
+            exit 0
+          fi
+          state="$(gh api --method PATCH "repos/$api_repo/milestones/1" -f state=closed --jq '.state')"
+          test "$state" = 'closed'
+          echo "SaaS 3.7 milestone 1 closed after all nine release issues were completed."
