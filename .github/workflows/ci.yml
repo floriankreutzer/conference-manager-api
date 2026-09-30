@@ -178,7 +178,7 @@ jobs:
         working-directory: frontend
         env:
           DEMO_SEED_VERSION: saas-3.7-three-demo-customers-v1
-        run: npm run test:e2e:saas37 -- --project="${{ matrix.browser }}-saas37"
+        run: npm run test:e2e:saas37 -- --project="${{ matrix.project }}"
       - name: Print bounded Demo API logs on failure
         if: failure()
         working-directory: api
