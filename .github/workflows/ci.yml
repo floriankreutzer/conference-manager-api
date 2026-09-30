@@ -116,11 +116,19 @@ jobs:
         with:
           repository: floriankreutzer/conference-manager
           ref: ${{ steps.frontend_ref.outputs.ref }}
+          persist-credentials: false
           path: frontend
+      - name: Checkout immutable permanent acceptance contract
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: floriankreutzer/conference-manager
+          ref: b0f0da09ea7cf983e9e330c75ac2d808aa7f27bf
+          persist-credentials: false
+          path: acceptance
       - name: Load immutable shared Demo acceptance test
         working-directory: frontend
         env:
-          ACCEPTANCE_REF: 3818da326ec6a09e0bc2c72916df1ed97b280bf0
+          ACCEPTANCE_REF: b0f0da09ea7cf983e9e330c75ac2d808aa7f27bf
         run: |
           git fetch --quiet --depth=1 origin "$ACCEPTANCE_REF"
           git show "$ACCEPTANCE_REF:tests/e2e-shared/shared-demo-runtime.spec.js" > tests/e2e-shared/shared-demo-runtime.spec.js
@@ -133,6 +141,9 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Install locked frontend dependencies
         working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install locked permanent acceptance dependencies
+        working-directory: acceptance
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Install browser engines
         working-directory: frontend
@@ -187,7 +198,14 @@ jobs:
           exit 1
       - name: Run shared PostgreSQL browser journey
         working-directory: frontend
+        env:
+          DEMO_SEED_VERSION: saas-3.7-three-demo-customers-v1
         run: npm run test:e2e:shared-demo -- --project="${{ matrix.project }}"
+      - name: Run permanent three-customer progression and two-cycle reset acceptance
+        working-directory: acceptance
+        env:
+          DEMO_SEED_VERSION: saas-3.7-three-demo-customers-v1
+        run: npm run test:e2e:saas37 -- --project="${{ matrix.project }}"
       - name: Print bounded Demo API logs on failure
         if: failure()
         working-directory: api

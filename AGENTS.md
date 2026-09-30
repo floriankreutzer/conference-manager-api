@@ -308,3 +308,19 @@ Cover at least:
 - CI/security gates actually executed
 
 Only mark an item fulfilled when the concrete implementation and executed verification support the statement.
+
+## 19. Permanent three-Demo-customer regression invariant
+
+The SaaS 3.7 Demo dataset is a permanent backend/release invariant. It is not disposable milestone seed data. Every future backend, persistence, migration, authorization, integration, request/booking, media, lifecycle, reset, or Demo-runtime change must keep the data and behavior required for all three canonical Demo customers operational.
+
+- Northwind: active rich customer with ten usable rooms plus equipment, cost centers, catering, media/detail content and the canonical approximately twenty existing booking/request examples.
+- Contoso: active smaller customer with genuine Conference Manager work derived from authoritative request, room and catalogue state.
+- Fabrikam: onboarding customer with genuine Tenant Admin onboarding work and the provider-discovery/import state required for the onboarding progression.
+
+The canonical seed and reset must remain deterministic, versioned, reproducible and semantically checksummed. Any intentional semantic seed change must update the seed version/checksum and bound cross-repository acceptance evidence in the same reviewed change.
+
+A relevant change is not Definition-of-Done and must not be merged when any canonical customer cannot be provisioned, used through its expected role-owned workflow, isolated from foreign tenants, or restored through the supported reset path. Seed-row existence alone is insufficient evidence.
+
+CI must retain an immutable cross-repository acceptance reference and run the complete three-customer progression plus two canonical reset cycles in Chromium and WebKit against the candidate API. It must also retain the shared role/tenant/CSRF journey. These gates must not be skipped, weakened, reduced to fixture-shape checks, or made optional merely to unblock later development.
+
+If the acceptance contract itself intentionally changes, update the frontend acceptance reference, API seed/reset implementation, checksum/version bindings and documentation together. The exact counterpart frontend commit used for API validation must remain pinned and reviewable.
