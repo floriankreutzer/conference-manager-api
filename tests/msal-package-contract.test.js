@@ -8,6 +8,7 @@ import { createPlatformEntraClient } from '../src/platform/identity/entra-client
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
 const TENANT_ID = '22222222-2222-4222-8222-222222222222';
 const LOGIN_ORIGIN = 'https://login.microsoftonline.com';
+const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function fixture(platform = false) {
   const authority = `${LOGIN_ORIGIN}/${platform ? TENANT_ID : 'organizations'}`;
@@ -48,6 +49,19 @@ function fixture(platform = false) {
       },
     },
   });
+  let protocolShape;
+  const sdkAuthorizationUrl = application.getAuthCodeUrl.bind(application);
+  application.getAuthCodeUrl = async (request) => {
+    const value = await sdkAuthorizationUrl(request);
+    const parameters = new URL(value).searchParams;
+    protocolShape = {
+      keys: [...parameters.keys()],
+      scope: parameters.get('scope'), maxAge: parameters.get('max_age'),
+      sku: parameters.get('x-client-SKU'), version: parameters.get('x-client-VER'),
+      os: parameters.get('x-client-OS'), cpu: parameters.get('x-client-CPU'),
+    };
+    return value;
+  };
   const config = { clientId: CLIENT_ID, clientSecret, authority, publicOrigin, redirectUri, application };
   const client = platform ? createPlatformEntraClient({
     ...config, tenantReference: TENANT_ID,
@@ -59,21 +73,28 @@ function fixture(platform = false) {
     nonce: randomBytes(32).toString('base64url'),
     codeChallenge: createHash('sha256').update(codeVerifier).digest('base64url'),
   };
-  return { client, authority, redirectUri, calls, request, codeVerifier };
+  return { client, authority, redirectUri, calls, request, codeVerifier, protocolShape: () => protocolShape };
 }
 
 for (const [name, platform, authenticationContext] of [
   ['customer', false, undefined], ['platform MFA', true, 'c1'], ['platform step-up', true, 'c2'],
 ]) {
-  test(`installed MSAL preserves ${name} authorization-code query, nonce and PKCE contracts`, async () => {
-    const { client, authority, redirectUri, request } = fixture(platform);
-    const url = new URL(await client.authorizationUrl({ ...request, authenticationContext }));
+  test(`installed MSAL preserves ${name} authorization-code query, nonce and PKCE contracts`, async (context) => {
+    const { client, authority, redirectUri, request, protocolShape } = fixture(platform);
+    let value;
+    try {
+      value = await client.authorizationUrl({ ...request, authenticationContext });
+    } catch (error) {
+      context.diagnostic(JSON.stringify(protocolShape()));
+      throw error;
+    }
+    const url = new URL(value);
     assert.equal(`${url.origin}${url.pathname}`, `${authority}/oauth2/v2.0/authorize`);
-    for (const [key, value] of Object.entries({
+    for (const [key, expected] of Object.entries({
       client_id: CLIENT_ID, redirect_uri: redirectUri, response_type: 'code', response_mode: 'query',
       state: request.state, nonce: request.nonce,
       code_challenge: request.codeChallenge, code_challenge_method: 'S256',
-    })) assert.equal(url.searchParams.get(key), value);
+    })) assert.equal(url.searchParams.get(key), expected);
     if (platform) {
       assert.equal(url.searchParams.get('max_age'), authenticationContext === 'c2' ? '0' : '900');
       assert.deepEqual(JSON.parse(url.searchParams.get('claims')).id_token.acrs.values, [authenticationContext]);
@@ -89,7 +110,13 @@ for (const [name, platform, authenticationContext] of [
       authenticationContext,
     }), { code: platform ? 'PLATFORM_ENTRA_CODE_REDEMPTION_FAILED' : 'ENTRA_CODE_REDEMPTION_FAILED' });
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].url, `${authority}/oauth2/v2.0/token`);
+    const destination = new URL(calls[0].url);
+    assert.equal(`${destination.origin}${destination.pathname}`, `${authority}/oauth2/v2.0/token`);
+    assert.deepEqual([...destination.searchParams.keys()], ['client-request-id']);
+    assert.match(destination.searchParams.get('client-request-id'), GUID_PATTERN);
+    assert.equal(destination.username, '');
+    assert.equal(destination.password, '');
+    assert.equal(destination.hash, '');
     assert.equal(calls[0].body.get('grant_type'), 'authorization_code');
     assert.equal(calls[0].body.get('redirect_uri'), redirectUri);
     assert.equal(calls[0].body.get('code_verifier'), codeVerifier);
