@@ -122,13 +122,13 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager
-          ref: b0f0da09ea7cf983e9e330c75ac2d808aa7f27bf
+          ref: f4c07fcde3d012d81832b24b0d38b0ff23208cf2
           persist-credentials: false
           path: acceptance
       - name: Load immutable shared Demo acceptance test
         working-directory: frontend
         env:
-          ACCEPTANCE_REF: b0f0da09ea7cf983e9e330c75ac2d808aa7f27bf
+          ACCEPTANCE_REF: f4c07fcde3d012d81832b24b0d38b0ff23208cf2
         run: |
           git fetch --quiet --depth=1 origin "$ACCEPTANCE_REF"
           git show "$ACCEPTANCE_REF:tests/e2e-shared/shared-demo-runtime.spec.js" > tests/e2e-shared/shared-demo-runtime.spec.js
@@ -145,6 +145,26 @@ jobs:
       - name: Install locked permanent acceptance dependencies
         working-directory: acceptance
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Prefer the official Ubuntu archive for browser prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Change only the existing mirror priorities, never APT trust or suites.
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          path = Path('/etc/apt/apt-mirrors.txt')
+          if path.is_file():
+              original = path.read_text()
+              azure = 'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1'
+              archive = 'https://archive.ubuntu.com/ubuntu/\tpriority:2'
+              if original.count(azure) == 1 and original.count(archive) == 1:
+                  updated = original.replace(azure, azure[:-1] + '2', 1)
+                  updated = updated.replace(archive, archive[:-1] + '1', 1)
+                  path.write_text(updated)
+                  print('Using the existing official Ubuntu HTTPS mirror first.')
+              else:
+                  print('Runner mirror layout changed; retaining its trusted defaults.')
+          PY
       - name: Install browser engines
         working-directory: frontend
         run: npx playwright install --with-deps "${{ matrix.browser }}"
@@ -223,5 +243,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: shared-demo-playwright-report-${{ matrix.browser }}
-          path: frontend/playwright-report-shared-demo/
+          path: |
+            frontend/playwright-report-shared-demo/
+            acceptance/playwright-report-saas37/
           if-no-files-found: ignore

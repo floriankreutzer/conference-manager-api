@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { ConfidentialClientApplication } from '@azure/msal-node';
 import { PlatformIdentityError } from './errors.js';
+import { canonicalizePlatformEntraSdkUrl } from './entra-sdk-authorization-url.js';
 import {
   PLATFORM_ENTRA_SCOPES,
   validatePlatformEntraAuthorizationUrl,
@@ -201,9 +202,10 @@ export function createPlatformEntraClient({
           codeChallenge,
           codeChallengeMethod: 'S256',
           maxAge: requestedMaxAge,
+          extraQueryParameters: { max_age: String(requestedMaxAge) },
           claims,
         });
-        return validatePlatformEntraAuthorizationUrl(value, {
+        return validatePlatformEntraAuthorizationUrl(canonicalizePlatformEntraSdkUrl(value), {
           authority: authority.toString(),
           clientId: normalizedClientId,
           redirectUri,
