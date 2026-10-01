@@ -99,3 +99,22 @@ the same defect was demonstrated on 6.0.1. A full revert also restores that
 pre-existing defect and must not be described as a verified working platform
 login. No data rollback is needed because no schema or identity persistence
 model changes.
+
+## CI execution correction discovered during final validation
+
+API main run `36861249787` and PR run `36900079406` repeatedly hit the
+isolated WebKit scenario's 420-second aggregate test budget during cycle two.
+The baseline failure predates this upgrade. An unchanged-job retry reproduced
+it, so another retry is not treated as a correction or passing evidence.
+
+Frontend PR floriankreutzer/conference-manager#227 narrowly gives the complete
+isolated WebKit scenario the existing hosted 660-second total budget. CI pins
+counterpart `f4c07fcde3d012d81832b24b0d38b0ff23208cf2`; the deployed frontend
+reference remains unchanged. Chromium keeps 420 seconds. Global, action,
+navigation, assertion, retry, rate-window, customer, negative and two-reset
+requirements are unchanged. Seed version and semantic checksum are unchanged.
+
+CI also prefers the existing official Ubuntu HTTPS package mirror without
+changing APT trust or suites, and retains both the shared journey and permanent
+scenario failure reports. Full exact-head CI, dependency policy and secret
+scan must all succeed after these corrections; a timeout is never acceptance.
