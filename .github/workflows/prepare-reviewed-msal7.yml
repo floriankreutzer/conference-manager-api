@@ -42,9 +42,16 @@ jobs:
                   raise SystemExit('Platform adapter baseline changed; reconciliation required')
               source = source.replace(old, new, 1)
           p.write_text(source)
+          p = Path('tests/platform-entra-auth-security.test.js')
+          source = p.read_text()
+          old = "(url) => url.searchParams.set('scope', 'openid profile offline_access'),"
+          new = "(url) => url.searchParams.set('scope', 'openid profile offline_access User.Read'),"
+          if source.count(old) != 1:
+              raise SystemExit('Reviewed scope rejection test changed; reconciliation required')
+          p.write_text(source.replace(old, new, 1))
           PY
       - name: Verify adaptation on the installed baseline SDK
-        run: node --test tests/msal-package-contract.test.js tests/platform-entra-sdk-url.test.js tests/platform-entra-auth-security.test.js
+        run: node --test tests/msal-package-contract.test.js tests/platform-entra-sdk-url.test.js tests/platform-entra-sdk-claims.test.js tests/platform-entra-auth-security.test.js
       - name: Install the specifically reviewed target version
         run: npm install @azure/msal-node@7.0.0 --save-exact --ignore-scripts --no-fund
       - name: Update only the exact reviewed identity version
@@ -61,7 +68,7 @@ jobs:
           PY
       - name: Verify real target SDK, security regression, dependency policy and audit
         run: |
-          node --test tests/msal-package-contract.test.js tests/platform-entra-sdk-url.test.js tests/platform-entra-auth-security.test.js
+          node --test tests/msal-package-contract.test.js tests/platform-entra-sdk-url.test.js tests/platform-entra-sdk-claims.test.js tests/platform-entra-auth-security.test.js
           npm run check:dependencies
           npm run audit
       - name: Commit scoped upgrade for normal PR validation
@@ -72,6 +79,6 @@ jobs:
           git diff --check
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- package.json package-lock.json scripts/check-architecture.mjs src/platform/identity/entra-client.js
+          git add -- package.json package-lock.json scripts/check-architecture.mjs src/platform/identity/entra-client.js tests/platform-entra-auth-security.test.js
           git commit -m 'fix(identity): adapt real platform SDK redirects and pin reviewed MSAL 7'
           git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"
