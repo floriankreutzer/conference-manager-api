@@ -316,7 +316,7 @@ test('authorization redirect rejects provider output that drops or replaces stat
   for (const mutate of [
     (url) => url.searchParams.append('redirect_uri', 'https://attacker.example/callback'),
     (url) => url.searchParams.set('resource', 'unexpected-resource'),
-    (url) => url.searchParams.set('scope', 'openid profile offline_access'),
+    (url) => url.searchParams.set('scope', 'openid profile offline_access User.Read'),
     (url) => url.searchParams.set('response_type', 'token'),
   ]) {
     const provider = application();
