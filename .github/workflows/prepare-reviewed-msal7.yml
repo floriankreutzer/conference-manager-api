@@ -26,8 +26,25 @@ jobs:
           node-version: '22'
       - name: Install the approved baseline without lifecycle scripts
         run: npm ci --ignore-scripts --no-fund
-      - name: Characterize the installed baseline SDK
-        run: node --test tests/msal-package-contract.test.js
+      - name: Apply only the reviewed SDK-boundary adaptation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/platform/identity/entra-client.js')
+          source = p.read_text()
+          edits = [
+              ("import { PlatformIdentityError } from './errors.js';", "import { PlatformIdentityError } from './errors.js';\nimport { canonicalizePlatformEntraSdkUrl } from './entra-sdk-authorization-url.js';"),
+              ('          maxAge: requestedMaxAge,', '          maxAge: requestedMaxAge,\n          extraQueryParameters: { max_age: String(requestedMaxAge) },'),
+              ('return validatePlatformEntraAuthorizationUrl(value, {', 'return validatePlatformEntraAuthorizationUrl(canonicalizePlatformEntraSdkUrl(value), {'),
+          ]
+          for old, new in edits:
+              if source.count(old) != 1:
+                  raise SystemExit('Platform adapter baseline changed; reconciliation required')
+              source = source.replace(old, new, 1)
+          p.write_text(source)
+          PY
+      - name: Verify adaptation on the installed baseline SDK
+        run: node --test tests/msal-package-contract.test.js tests/platform-entra-sdk-url.test.js tests/platform-entra-auth-security.test.js
       - name: Install the specifically reviewed target version
         run: npm install @azure/msal-node@7.0.0 --save-exact --ignore-scripts --no-fund
       - name: Update only the exact reviewed identity version
@@ -42,9 +59,9 @@ jobs:
               raise SystemExit('Reviewed architecture baseline changed; manual reconciliation required')
           p.write_text(source.replace(old, new, 1))
           PY
-      - name: Verify real target SDK, dependency policy and audit
+      - name: Verify real target SDK, security regression, dependency policy and audit
         run: |
-          node --test tests/msal-package-contract.test.js
+          node --test tests/msal-package-contract.test.js tests/platform-entra-sdk-url.test.js tests/platform-entra-auth-security.test.js
           npm run check:dependencies
           npm run audit
       - name: Commit scoped upgrade for normal PR validation
@@ -55,6 +72,6 @@ jobs:
           git diff --check
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- package.json package-lock.json scripts/check-architecture.mjs
-          git commit -m 'chore(identity): pin reviewed MSAL 7 without relaxing dependency policy'
+          git add -- package.json package-lock.json scripts/check-architecture.mjs src/platform/identity/entra-client.js
+          git commit -m 'fix(identity): adapt real platform SDK redirects and pin reviewed MSAL 7'
           git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"
