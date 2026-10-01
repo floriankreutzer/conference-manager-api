@@ -145,6 +145,26 @@ jobs:
       - name: Install locked permanent acceptance dependencies
         working-directory: acceptance
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Prefer the official Ubuntu archive for browser prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Change only the existing mirror priorities, never APT trust or suites.
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          path = Path('/etc/apt/apt-mirrors.txt')
+          if path.is_file():
+              original = path.read_text()
+              azure = 'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1'
+              archive = 'https://archive.ubuntu.com/ubuntu/\tpriority:2'
+              if original.count(azure) == 1 and original.count(archive) == 1:
+                  updated = original.replace(azure, azure[:-1] + '2', 1)
+                  updated = updated.replace(archive, archive[:-1] + '1', 1)
+                  path.write_text(updated)
+                  print('Using the existing official Ubuntu HTTPS mirror first.')
+              else:
+                  print('Runner mirror layout changed; retaining its trusted defaults.')
+          PY
       - name: Install browser engines
         working-directory: frontend
         run: npx playwright install --with-deps "${{ matrix.browser }}"
