@@ -59,6 +59,14 @@ function fixture(platform = false) {
       scope: parameters.get('scope'), maxAge: parameters.get('max_age'),
       sku: parameters.get('x-client-SKU'), version: parameters.get('x-client-VER'),
       os: parameters.get('x-client-OS'), cpu: parameters.get('x-client-CPU'),
+      claims: parameters.get('claims'), clientInfo: parameters.get('client_info'),
+      metadataLength: (parameters.get('clidata') || '').length,
+      stateMatches: parameters.get('state') === request.state,
+      nonceMatches: parameters.get('nonce') === request.nonce,
+      pkceMatches: parameters.get('code_challenge') === request.codeChallenge,
+      callbackMatches: parameters.get('redirect_uri') === request.redirectUri,
+      clientMatches: parameters.get('client_id') === CLIENT_ID,
+      requestIdValid: GUID_PATTERN.test(parameters.get('client-request-id') || ''),
     };
     return value;
   };
@@ -98,6 +106,8 @@ for (const [name, platform, authenticationContext] of [
     if (platform) {
       assert.equal(url.searchParams.get('max_age'), authenticationContext === 'c2' ? '0' : '900');
       assert.deepEqual(JSON.parse(url.searchParams.get('claims')).id_token.acrs.values, [authenticationContext]);
+      assert.equal(url.searchParams.get('scope'), 'openid profile');
+      assert.equal(url.searchParams.has('clidata'), false);
     }
     assert.equal(url.searchParams.has('client_secret'), false);
   });
