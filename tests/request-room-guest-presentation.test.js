@@ -6,7 +6,8 @@ test('guest Room fields project only bounded current presentation and managed as
   assert.deepEqual(publicGuestRoomFields({}), {
     floor: null, accessibility: [], floorplanAssetId: null, mediaAssetIds: [],
   });
-  const result = publicGuestRoomFields({ floor: '2', accessibility: ['Lift'],
+  const result = publicGuestRoomFields({ description: 'Internal room prose with Door code 1234',
+    floor: '2', accessibility: ['Lift'],
     floorplanAssetId: 'floorplan-1', mediaAssetIds: ['room-1'], serviceIds: ['private-service'],
     cateringPackageIds: [], equipment: [] });
   assert.deepEqual(result, { floor: null, accessibility: [], floorplanAssetId: 'floorplan-1', mediaAssetIds: ['room-1'] });

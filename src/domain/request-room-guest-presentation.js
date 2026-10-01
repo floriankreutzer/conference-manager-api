@@ -1,7 +1,7 @@
 import { hasUnsafeGuestRoomText } from './site-guest-information.js';
 const ASSET_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const DETAIL_KEYS = new Set([
-  'floor', 'equipment', 'accessibility', 'serviceIds', 'cateringPackageIds',
+  'description', 'floor', 'equipment', 'accessibility', 'serviceIds', 'cateringPackageIds',
   'floorplanAssetId', 'mediaAssetIds',
 ]);
 
