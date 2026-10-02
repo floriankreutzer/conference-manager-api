@@ -112,7 +112,12 @@ test('Demo media replacement accepts a numeric Content-Length after authorizatio
       clearCookie() { return ''; } },
     mediaRepository: {
       async find() { return null; }, async list() { return []; },
-      async create() {}, async remove() {}, async replace(input) { replaced = input; return { id: assetId, byteLength: input.bytes.length }; },
+      async create() {},
+      async remove() {},
+      async replace(input) {
+        replaced = input;
+        return { id: assetId, byteLength: input.bytes.length };
+      },
     },
     authorizationPolicy: { requireTenantPermission(principal, tenant, permission) {
       assert.equal(permission, 'tenant:catalogue:manage');
