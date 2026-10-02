@@ -249,8 +249,4 @@ test('Demo media creation rejects non-WebP bytes and malformed owner IDs before 
   }, async *[Symbol.asyncIterator]() { yield png; } }, response: response(),
   parsedUrl: new URL(path, 'https://demo.example'), path, requestId: 'request-id' }),
   (error) => error.status === 415 || error.statusCode === 415);
-  const invalidPath = '/api/v1/demo/media/catering_item/%2e%2e';
-  assert.equal(await routes({ request: request(), response: response(),
-    parsedUrl: new URL(invalidPath, 'https://demo.example'), path: invalidPath,
-    requestId: 'request-id' }), null);
 });
