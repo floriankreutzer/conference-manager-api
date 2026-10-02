@@ -1,6 +1,7 @@
 import { ApiError } from '../../api-error.js';
 import { defineRouteModule } from '../../http/route-module.js';
 import { createDemoCatalogueMediaService } from '../application/catalogue-media-service.js';
+import { RoomImageInputError } from '../../media/room-image-processor.js';
 import { readJsonObjectBody, validateExactObject } from '../../security.js';
 
 export const DEMO_CUSTOMER_SESSION_PATH = '/api/v1/demo/session';
@@ -178,7 +179,7 @@ export function createDemoCustomerControlRoutes({
                 ownerType: createMatch[1], ownerId: createMatch[2], source,
               });
             } catch (error) {
-              if (error instanceof TypeError && ['ROOM_MEDIA_INVALID', 'TENANT_ROOM_MEDIA_INVALID'].includes(error.message)) {
+              if (error instanceof RoomImageInputError) {
                 throw new ApiError(415, 'DEMO_MEDIA_INVALID');
               }
               throw error;
@@ -211,7 +212,7 @@ export function createDemoCustomerControlRoutes({
                 principal, tenant, requestId, assetId, source,
               });
             } catch (error) {
-              if (error instanceof TypeError && error.message === 'ROOM_MEDIA_INVALID') {
+              if (error instanceof RoomImageInputError) {
                 throw new ApiError(415, 'DEMO_MEDIA_INVALID');
               }
               throw error;
