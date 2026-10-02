@@ -62,8 +62,10 @@ async function mediaBody(request) {
   const type = request.headers['content-type'];
   const valid = type === 'image/png'
     ? bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
-    : type === 'image/webp' && bytes.toString('ascii', 0, 4) === 'RIFF'
-      && bytes.toString('ascii', 8, 12) === 'WEBP';
+    : type === 'image/jpeg'
+      ? bytes[0] === 0xff && bytes[1] === 0xd8
+      : type === 'image/webp' && bytes.toString('ascii', 0, 4) === 'RIFF'
+        && bytes.toString('ascii', 8, 12) === 'WEBP';
   if (!valid) throw new ApiError(415, 'DEMO_MEDIA_INVALID');
   return { bytes, contentType: type };
 }
