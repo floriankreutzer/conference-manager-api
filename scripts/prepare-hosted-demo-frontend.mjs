@@ -1,6 +1,5 @@
 import { execFile } from 'node:child_process';
-import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { access, cp, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -9,13 +8,11 @@ import {
   HOSTED_DEMO_DEPLOYMENT_METADATA_PATH,
   serializeHostedDemoDeploymentMetadata,
 } from './hosted-demo-deployment-metadata.mjs';
-import { createAnonymousGitEnvironment } from './hosted-demo-git-environment.mjs';
 
 const execFileAsync = promisify(execFile);
-const FRONTEND_REPOSITORY = 'https://github.com/floriankreutzer/conference-manager.git';
 const FRONTEND_REF_PATTERN = /^[0-9a-f]{40}$/;
+const SOURCE_DIRECTORY = path.resolve(process.cwd(), 'vendor/demo-frontend');
 const TARGET_DIRECTORY = path.resolve(process.cwd(), '.demo-frontend');
-const GIT_HOME_PREFIX = path.join(tmpdir(), 'conference-manager-demo-git-');
 const REQUIRED_FILES = Object.freeze([
   'index.html',
   'platform-admin-demo/index.html',
@@ -30,16 +27,6 @@ function requiredRef(env) {
     throw new Error('DEMO_FRONTEND_REF_INVALID');
   }
   return value;
-}
-
-async function git(environment, ...args) {
-  return execFileAsync('git', args, {
-    cwd: process.cwd(),
-    encoding: 'utf8',
-    env: environment,
-    maxBuffer: 1_048_576,
-    windowsHide: true,
-  });
 }
 
 async function assertFrontendContract(root) {
@@ -67,20 +54,20 @@ async function writeDeploymentMetadata(root, env, frontendRef) {
 }
 
 const frontendRef = requiredRef(process.env);
+await access(SOURCE_DIRECTORY);
+const { stdout } = await execFileAsync('git', ['-C', SOURCE_DIRECTORY, 'rev-parse', 'HEAD'], {
+  cwd: process.cwd(),
+  encoding: 'utf8',
+  maxBuffer: 1_048_576,
+  windowsHide: true,
+});
+if (stdout.trim() !== frontendRef) throw new Error('DEMO_FRONTEND_REF_MISMATCH');
+
 await rm(TARGET_DIRECTORY, { recursive: true, force: true });
-const gitHome = await mkdtemp(GIT_HOME_PREFIX);
-const gitEnvironment = createAnonymousGitEnvironment(process.env, gitHome);
-try {
-  await git(gitEnvironment, 'init', '--quiet', TARGET_DIRECTORY);
-  await git(gitEnvironment, '-C', TARGET_DIRECTORY, 'remote', 'add', 'origin', FRONTEND_REPOSITORY);
-  await git(gitEnvironment, '-C', TARGET_DIRECTORY, 'fetch', '--quiet', '--depth=1', 'origin', frontendRef);
-  await git(gitEnvironment, '-C', TARGET_DIRECTORY, 'checkout', '--quiet', '--detach', 'FETCH_HEAD');
-  const { stdout } = await git(gitEnvironment, '-C', TARGET_DIRECTORY, 'rev-parse', 'HEAD');
-  if (stdout.trim() !== frontendRef) throw new Error('DEMO_FRONTEND_REF_MISMATCH');
-  await assertFrontendContract(TARGET_DIRECTORY);
-  await writeDeploymentMetadata(TARGET_DIRECTORY, process.env, frontendRef);
-  await rm(path.join(TARGET_DIRECTORY, '.git'), { recursive: true, force: true });
-  process.stdout.write(`Prepared immutable Demo frontend ${frontendRef}.\n`);
-} finally {
-  await rm(gitHome, { recursive: true, force: true });
-}
+await cp(SOURCE_DIRECTORY, TARGET_DIRECTORY, {
+  recursive: true,
+  filter: (source) => source !== path.join(SOURCE_DIRECTORY, '.git'),
+});
+await assertFrontendContract(TARGET_DIRECTORY);
+await writeDeploymentMetadata(TARGET_DIRECTORY, process.env, frontendRef);
+process.stdout.write(`Prepared immutable Demo frontend ${frontendRef} from reviewed submodule.\n`);
