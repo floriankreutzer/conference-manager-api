@@ -17,7 +17,7 @@ Every template, export and import document has the exact shape:
 {"schemaVersion":1,"type":"sites","rows":[]}
 ```
 
-The only types are `sites`, `rooms`, `services`, `catering-items`, `catering-packages` and
+The only types are `sites`, `rooms`, `services`, `equipment`, `catering-items`, `catering-packages` and
 `cost-centers`. A request is limited to 65,536 bytes and 1,024 rows. Validation returns at most 100
 presentation-safe errors. Provider identifiers, Tenant identifiers, mailbox and Graph state,
 tokens, room mappings, Organization and Booking Policy fields, Users, equipment, allocation policy,
