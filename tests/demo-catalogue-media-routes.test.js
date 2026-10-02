@@ -188,3 +188,67 @@ test('Demo catering media create and remove require Manager authority, CSRF and 
   assert.equal(removed.tenantId, TENANT_ID);
   assert.equal(removed.assetId, FOREIGN_ASSET);
 });
+
+
+test('Demo media creation is CSRF protected, manager-authorized and owner scoped', async () => {
+  const bytes = Buffer.concat([Buffer.from('RIFF'), Buffer.from([36, 0, 0, 0]), Buffer.from('WEBP'), Buffer.alloc(32)]);
+  const path = '/api/v1/demo/media/catering_item/cateringItems-1';
+  let created = null;
+  const routes = createDemoCustomerControlRoutes({
+    personaService: { async establish() {}, async switch() {}, async tenants() { return []; },
+      clearCookie() { return ''; } },
+    mediaRepository: {
+      async find() { return null; }, async list() { return []; },
+      async create(input) { created = input; return { assetId: FOREIGN_ASSET, sha256: 'a'.repeat(64) }; },
+    },
+    authorizationPolicy: { requireTenantPermission(principal, tenant, permission) {
+      assert.equal(permission, 'tenant:catalogue:manage');
+      assert.equal(tenant.tenantId, TENANT_ID);
+    } },
+    auditService: { createEvent() { return {}; } },
+  }).createHandler({
+    principalGuard: { async require(requestValue, options) {
+      assert.equal(options.csrf, true);
+      return { userId: '20000000-0000-4000-8000-000000000001' };
+    } },
+    tenantGuard: { async requireKnown() { return { tenantId: TENANT_ID }; } },
+    maxResponseBytes: 100000,
+  });
+  const upload = { method: 'POST', headers: {
+    'content-type': 'image/webp', 'content-length': String(bytes.length),
+  }, async *[Symbol.asyncIterator]() { yield bytes; } };
+  const reply = response();
+  assert.equal(await routes({ request: upload, response: reply,
+    parsedUrl: new URL(path, 'https://demo.example'), path, requestId: 'request-id' }), 201);
+  assert.equal(created.tenantId, TENANT_ID);
+  assert.equal(created.ownerKind, 'catering_item');
+  assert.equal(created.ownerId, 'cateringItems-1');
+  assert.equal(reply.headers.get('cache-control'), 'private, no-store');
+});
+
+test('Demo media creation rejects non-WebP bytes and malformed owner IDs before persistence', async () => {
+  const mediaRepository = {
+    async find() { return null; }, async list() { return []; },
+    async create() { throw new Error('CREATE_MUST_NOT_RUN'); },
+  };
+  const routes = createDemoCustomerControlRoutes({
+    personaService: { async establish() {}, async switch() {}, async tenants() { return []; },
+      clearCookie() { return ''; } },
+    mediaRepository,
+    authorizationPolicy: { requireTenantPermission() {} },
+    auditService: { createEvent() { return {}; } },
+  }).createHandler({
+    principalGuard: { async require() { return { userId: '20000000-0000-4000-8000-000000000001' }; } },
+    tenantGuard: { async requireKnown() { return { tenantId: TENANT_ID }; } },
+    maxResponseBytes: 100000,
+  });
+  const png = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(32)]);
+  const path = '/api/v1/demo/media/catering_item/cateringItems-1';
+  await assert.rejects(routes({ request: { method: 'POST', headers: {
+    'content-type': 'image/png', 'content-length': String(png.length),
+  }, async *[Symbol.asyncIterator]() { yield png; } }, response: response(),
+  parsedUrl: new URL(path, 'https://demo.example'), path, requestId: 'request-id' }),
+  (error) => error.status === 415 || error.statusCode === 415);
+  const invalidPath = '/api/v1/demo/media/catering_item/../foreign';
+  assert.equal(routes.routeKey?.(invalidPath), undefined);
+});
