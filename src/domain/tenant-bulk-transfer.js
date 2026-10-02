@@ -13,6 +13,7 @@ export const TENANT_BULK_TYPES = Object.freeze({
   sites: Object.freeze({ aggregate: 'locations', collection: 'sites' }),
   rooms: Object.freeze({ aggregate: 'locations', collection: 'rooms' }),
   services: Object.freeze({ aggregate: 'catalogue', collection: 'services' }),
+  equipment: Object.freeze({ aggregate: 'catalogue', collection: 'equipment' }),
   'catering-items': Object.freeze({ aggregate: 'catalogue', collection: 'cateringItems' }),
   'catering-packages': Object.freeze({ aggregate: 'catalogue', collection: 'cateringPackages' }),
   'cost-centers': Object.freeze({ aggregate: 'cost_allocation', collection: 'costCenters' }),
