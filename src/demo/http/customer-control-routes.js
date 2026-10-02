@@ -2,7 +2,7 @@ import { ApiError } from '../../api-error.js';
 import { PERMISSION } from '../../authorization/policy.js';
 import { AUDIT_ACTION, AUDIT_OUTCOME, AUDIT_RETENTION_CLASS } from '../../audit/event.js';
 import { defineRouteModule } from '../../http/route-module.js';
-import { processRoomImage } from '../../media/room-image-processor.js';
+import { createDemoCatalogueMediaService } from '../application/catalogue-media-service.js';
 import { readJsonObjectBody, validateExactObject } from '../../security.js';
 
 export const DEMO_CUSTOMER_SESSION_PATH = '/api/v1/demo/session';
@@ -113,6 +113,9 @@ function normalizeContextError(error) {
 export function createDemoCustomerControlRoutes({
   personaService, mediaRepository, auditService, authorizationPolicy,
 } = {}) {
+  const mediaLifecycle = mediaRepository && auditService && authorizationPolicy
+    ? createDemoCatalogueMediaService({ mediaRepository, auditService, authorizationPolicy })
+    : null;
   if (
     !personaService
     || typeof personaService.establish !== 'function'
@@ -167,36 +170,20 @@ export function createDemoCustomerControlRoutes({
           const principal = await principalGuard.require(request, { csrf: replacing || removing || creating });
           const tenant = await tenantGuard.requireKnown(principal);
           if (creating) {
-            if (!authorizationPolicy?.requireTenantPermission || !auditService?.createEvent
-              || typeof mediaRepository.create !== 'function') {
-              throw new ApiError(503, 'DEMO_MEDIA_UNAVAILABLE');
-            }
-            authorizationPolicy.requireTenantPermission(
-              principal, tenant, PERMISSION.TENANT_CATALOGUE_MANAGE,
-            );
+            if (!mediaLifecycle) throw new ApiError(503, 'DEMO_MEDIA_UNAVAILABLE');
             const source = await mediaBody(request);
-            let processed;
+            let result;
             try {
-              processed = await processRoomImage(source);
-            } catch {
-              throw new ApiError(415, 'DEMO_MEDIA_INVALID');
+              result = await mediaLifecycle.create({
+                principal, tenant, requestId,
+                ownerType: createMatch[1], ownerId: createMatch[2], source,
+              });
+            } catch (error) {
+              if (error instanceof TypeError && error.message === 'ROOM_MEDIA_INVALID') {
+                throw new ApiError(415, 'DEMO_MEDIA_INVALID');
+              }
+              throw error;
             }
-            const ownerKind = createMatch[1] === 'catering-item' ? 'catering_item' : 'catering_package';
-            const ownerId = createMatch[2];
-            const result = await mediaRepository.create({
-              tenantId: tenant.tenantId, ownerKind, ownerId, actorUserId: principal.userId,
-              ...processed, altText: ownerId,
-              auditEvent: ({ assetId: createdAssetId, sha256, byteLength, contentType }) =>
-                auditService.createEvent({
-                  principal, tenantContext: tenant, correlationId: requestId,
-                  action: AUDIT_ACTION.TENANT_CONFIGURATION_CHANGED,
-                  targetType: 'demo_catalogue_media', targetId: createdAssetId,
-                  newState: { sha256, byteLength, contentType },
-                  outcome: AUDIT_OUTCOME.SUCCESS,
-                  metadata: { operation: 'create', ownerKind },
-                  retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
-                }),
-            });
             if (!result) throw new ApiError(404, 'NOT_FOUND');
             if (result.conflict) throw new ApiError(409, 'CONFLICT');
             response.setHeader('Cache-Control', 'private, no-store');
@@ -206,24 +193,9 @@ export function createDemoCustomerControlRoutes({
             return 201;
           }
           if (removing) {
-            if (!authorizationPolicy?.requireTenantPermission || !auditService?.createEvent
-              || typeof mediaRepository.remove !== 'function') {
-              throw new ApiError(503, 'DEMO_MEDIA_UNAVAILABLE');
-            }
-            authorizationPolicy.requireTenantPermission(
-              principal, tenant, PERMISSION.TENANT_CATALOGUE_MANAGE,
-            );
-            const removed = await mediaRepository.remove({
-              tenantId: tenant.tenantId, assetId, actorUserId: principal.userId,
-              auditEvent: ({ ownerKind }) => auditService.createEvent({
-                principal, tenantContext: tenant, correlationId: requestId,
-                action: AUDIT_ACTION.TENANT_CONFIGURATION_CHANGED,
-                targetType: 'demo_catalogue_media', targetId: assetId,
-                newState: { removed: true },
-                outcome: AUDIT_OUTCOME.SUCCESS,
-                metadata: { operation: 'remove', ownerKind },
-                retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
-              }),
+            if (!mediaLifecycle) throw new ApiError(503, 'DEMO_MEDIA_UNAVAILABLE');
+            const removed = await mediaLifecycle.remove({
+              principal, tenant, requestId, assetId,
             });
             if (!removed) throw new ApiError(404, 'NOT_FOUND');
             response.statusCode = 204;
