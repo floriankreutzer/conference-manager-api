@@ -14,6 +14,7 @@ export function createDemoCatalogueMediaService({
 } = {}) {
   if (!mediaRepository || typeof mediaRepository.create !== 'function'
     || typeof mediaRepository.remove !== 'function'
+    || typeof mediaRepository.replace !== 'function'
     || typeof authorizationPolicy?.requireTenantPermission !== 'function'
     || typeof auditService?.createEvent !== 'function') {
     throw new TypeError('DEMO_CATALOGUE_MEDIA_SERVICE_INVALID');
@@ -26,6 +27,29 @@ export function createDemoCatalogueMediaService({
   };
 
   return Object.freeze({
+    async replace({ principal, tenant, requestId, assetId, source }) {
+      requireManager(principal, tenant);
+      const processed = await processRoomImage(source);
+      return mediaRepository.replace({
+        tenantId: tenant.tenantId,
+        assetId,
+        actorUserId: principal.userId,
+        ...processed,
+        auditEvent: ({ sha256, byteLength, contentType }) => auditService.createEvent({
+          principal,
+          tenantContext: tenant,
+          correlationId: requestId,
+          action: AUDIT_ACTION.TENANT_CONFIGURATION_CHANGED,
+          targetType: 'demo_catalogue_media',
+          targetId: assetId,
+          newState: { sha256, byteLength, contentType },
+          outcome: AUDIT_OUTCOME.SUCCESS,
+          metadata: { operation: 'replace' },
+          retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
+        }),
+      });
+    },
+
     async create({ principal, tenant, requestId, ownerType, ownerId, source }) {
       requireManager(principal, tenant);
       const ownerKind = OWNER_KIND[ownerType];
