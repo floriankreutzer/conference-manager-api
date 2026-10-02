@@ -2,6 +2,9 @@ name: SaaS 3.9 create immutable frontend gitlink
 
 on:
   workflow_dispatch:
+  push:
+    branches: [feat/saas39-private-frontend-submodule]
+    paths: ['.github/workflows/saas39-create-frontend-gitlink.yml']
 
 permissions:
   contents: write
