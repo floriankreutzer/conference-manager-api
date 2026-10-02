@@ -178,7 +178,7 @@ export function createDemoCustomerControlRoutes({
                 ownerType: createMatch[1], ownerId: createMatch[2], source,
               });
             } catch (error) {
-              if (error instanceof TypeError && error.message === 'ROOM_MEDIA_INVALID') {
+              if (error instanceof TypeError && ['ROOM_MEDIA_INVALID', 'TENANT_ROOM_MEDIA_INVALID'].includes(error.message)) {
                 throw new ApiError(415, 'DEMO_MEDIA_INVALID');
               }
               throw error;
