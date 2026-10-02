@@ -266,3 +266,14 @@ canonical migrations first, apply Demo overlays 001 through 004, reset/reseed De
 processes at one compatible SHA, verify Catalogue pages and then pin/deploy the updated frontend.
 Down 035 refuses once any v3 snapshot/proposal/history exists; use a compatible binary or a forward
 fix. Production never activates Demo authority.
+
+
+### Catering media lifecycle (SaaS 3.6 acceptance follow-up)
+
+The Demo catalogue-media boundary supports one managed image for an existing same-Tenant Catering
+item or package. Conference Manager create/replace/remove operations require the canonical Catalogue
+permission and CSRF. New uploads accept only bounded PNG/JPEG/WebP raster input and pass through the
+reviewed decoder/re-encoder before WebP persistence; arbitrary URLs are never accepted. Repository
+writes verify the owner inside the authenticated Tenant and commit the media mutation with audit
+evidence. Demo overlay migration 007 adds only the least privileges required for create/remove.
+This remains a Demo presentation contract and does not establish a Production media provider.

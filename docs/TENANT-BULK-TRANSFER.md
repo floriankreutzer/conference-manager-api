@@ -9,9 +9,11 @@ apply is re-authorized against the actual technical and/or Room-business fields 
 requires `tenant:configure`, `tenant:rooms:business:manage`, or both. Tenant and actor scope always
 come from the server session and unsafe requests use the existing CSRF guard.
 
-## JSON contract
+## Canonical API document contract
 
-Every template, export and import document has the exact shape:
+The server-side bulk API continues to use one exact normalized JSON document for receipt hashing, validation and replay safety. The Conference Manager browser presents this contract as bounded UTF-8 CSV for human import/export and deterministically converts CSV to/from the normalized document before calling these endpoints. This keeps localization and spreadsheet-safety concerns out of the authoritative domain contract.
+
+Every normalized API document has the exact shape:
 
 ```json
 {"schemaVersion":1,"type":"sites","rows":[]}
@@ -65,3 +67,8 @@ the rollback guard in production.
 Internal validation covers exact schemas, size and row bounds, unsupported types, excluded-field
 preservation, no-change behavior, actor and Tenant binding, expiry, stale revisions, replay,
 authorization denial, CSRF, cross-Tenant isolation, migration rollback and Demo reset parity.
+
+
+## Conference Manager CSV presentation
+
+The Conference Manager UI uses CSV, not JSON files, for Rooms, Services (including the existing Equipment catalogue presentation) and Catering bulk workflows. CSV parsing and serialization are presentation concerns: templates expose documented stable columns; arrays/nested values use bounded JSON-cell encoding inside quoted CSV cells where required. Export neutralizes spreadsheet formula prefixes before download. The browser reconstructs the exact normalized document before validation/apply, so Tenant/actor authority, CSRF, revision/receipt binding, replay protection and domain validation remain server-owned.

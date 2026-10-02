@@ -1,7 +1,7 @@
 import { ApiError } from '../../api-error.js';
-import { PERMISSION } from '../../authorization/policy.js';
-import { AUDIT_ACTION, AUDIT_OUTCOME, AUDIT_RETENTION_CLASS } from '../../audit/event.js';
 import { defineRouteModule } from '../../http/route-module.js';
+import { createDemoCatalogueMediaService } from '../application/catalogue-media-service.js';
+import { RoomImageInputError } from '../../media/room-image-processor.js';
 import { readJsonObjectBody, validateExactObject } from '../../security.js';
 
 export const DEMO_CUSTOMER_SESSION_PATH = '/api/v1/demo/session';
@@ -9,6 +9,7 @@ export const DEMO_CUSTOMER_CONTEXT_PATH = '/api/v1/demo/session/context';
 export const DEMO_CUSTOMER_TENANTS_PATH = '/api/v1/demo/tenants';
 export const DEMO_CUSTOMER_MEDIA_PATH = '/api/v1/demo/media';
 const DEMO_MEDIA_ASSET_PATH = /^\/api\/v1\/demo\/media\/([0-9a-f-]{36})$/i;
+const DEMO_MEDIA_CREATE_PATH = /^\/api\/v1\/demo\/media\/(catering-item|catering-package)\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/;
 
 const CONTEXT_SCHEMA = Object.freeze({
   required: Object.freeze({
@@ -22,7 +23,8 @@ function routeKey(path) {
   if (path === DEMO_CUSTOMER_SESSION_PATH) return 'demo_customer_session';
   if (path === DEMO_CUSTOMER_CONTEXT_PATH) return 'demo_customer_context';
   if (path === DEMO_CUSTOMER_TENANTS_PATH) return 'demo_customer_tenants';
-  if (path === DEMO_CUSTOMER_MEDIA_PATH || DEMO_MEDIA_ASSET_PATH.test(path)) return 'demo_customer_media';
+  if (path === DEMO_CUSTOMER_MEDIA_PATH || DEMO_MEDIA_ASSET_PATH.test(path)
+    || DEMO_MEDIA_CREATE_PATH.test(path)) return 'demo_customer_media';
   return null;
 }
 
@@ -60,8 +62,10 @@ async function mediaBody(request) {
   const type = request.headers['content-type'];
   const valid = type === 'image/png'
     ? bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
-    : type === 'image/webp' && bytes.toString('ascii', 0, 4) === 'RIFF'
-      && bytes.toString('ascii', 8, 12) === 'WEBP';
+    : type === 'image/jpeg'
+      ? bytes[0] === 0xff && bytes[1] === 0xd8
+      : type === 'image/webp' && bytes.toString('ascii', 0, 4) === 'RIFF'
+        && bytes.toString('ascii', 8, 12) === 'WEBP';
   if (!valid) throw new ApiError(415, 'DEMO_MEDIA_INVALID');
   return { bytes, contentType: type };
 }
@@ -108,6 +112,10 @@ function normalizeContextError(error) {
 export function createDemoCustomerControlRoutes({
   personaService, mediaRepository, auditService, authorizationPolicy,
 } = {}) {
+  const mediaLifecycle = mediaRepository && auditService && authorizationPolicy
+    && ['create', 'remove', 'replace'].every((method) => typeof mediaRepository[method] === 'function')
+    ? createDemoCatalogueMediaService({ mediaRepository, auditService, authorizationPolicy })
+    : null;
   if (
     !personaService
     || typeof personaService.establish !== 'function'
@@ -144,39 +152,71 @@ export function createDemoCustomerControlRoutes({
           return 200;
         }
 
-        if (path === DEMO_CUSTOMER_MEDIA_PATH || DEMO_MEDIA_ASSET_PATH.test(path)) {
+        if (path === DEMO_CUSTOMER_MEDIA_PATH || DEMO_MEDIA_ASSET_PATH.test(path)
+          || DEMO_MEDIA_CREATE_PATH.test(path)) {
           if (!mediaRepository || typeof mediaRepository.find !== 'function'
             || typeof mediaRepository.list !== 'function') {
             throw new ApiError(503, 'DEMO_MEDIA_UNAVAILABLE');
           }
           const assetId = path.match(DEMO_MEDIA_ASSET_PATH)?.[1];
-          const replacing = request.method === 'PUT' && assetId;
-          if (request.method !== 'GET' && !replacing) throw new ApiError(405, 'METHOD_NOT_ALLOWED');
-          if (!replacing) await assertNoBody(request);
-          const principal = await principalGuard.require(request, { csrf: Boolean(replacing) });
+          const createMatch = path.match(DEMO_MEDIA_CREATE_PATH);
+          const replacing = request.method === 'PUT' && Boolean(assetId);
+          const removing = request.method === 'DELETE' && Boolean(assetId);
+          const creating = request.method === 'POST' && Boolean(createMatch);
+          if (request.method !== 'GET' && !replacing && !removing && !creating) {
+            throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+          }
+          if (!replacing && !removing && !creating) await assertNoBody(request);
+          const principal = await principalGuard.require(request, { csrf: replacing || removing || creating });
           const tenant = await tenantGuard.requireKnown(principal);
-          if (replacing) {
-            if (!authorizationPolicy?.requireTenantPermission || !auditService?.createEvent
-              || typeof mediaRepository.replace !== 'function') {
-              throw new ApiError(503, 'DEMO_MEDIA_UNAVAILABLE');
+          if (creating) {
+            if (!mediaLifecycle) throw new ApiError(503, 'DEMO_MEDIA_UNAVAILABLE');
+            const source = await mediaBody(request);
+            let result;
+            try {
+              result = await mediaLifecycle.create({
+                principal, tenant, requestId,
+                ownerType: createMatch[1], ownerId: createMatch[2], source,
+              });
+            } catch (error) {
+              if (error instanceof RoomImageInputError) {
+                throw new ApiError(415, 'DEMO_MEDIA_INVALID');
+              }
+              throw error;
             }
-            authorizationPolicy.requireTenantPermission(
-              principal, tenant, PERMISSION.TENANT_CATALOGUE_MANAGE,
-            );
-            const media = await mediaBody(request);
-            const result = await mediaRepository.replace({
-              tenantId: tenant.tenantId, assetId, actorUserId: principal.userId,
-              ...media,
-              auditEvent: ({ sha256, byteLength, contentType }) => auditService.createEvent({
-                principal, tenantContext: tenant, correlationId: requestId,
-                action: AUDIT_ACTION.TENANT_CONFIGURATION_CHANGED,
-                targetType: 'demo_catalogue_media', targetId: assetId,
-                newState: { sha256, byteLength, contentType },
-                outcome: AUDIT_OUTCOME.SUCCESS,
-                metadata: { operation: 'replace' },
-                retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
-              }),
+            if (!result) throw new ApiError(404, 'NOT_FOUND');
+            if (result.conflict) throw new ApiError(409, 'CONFLICT');
+            response.setHeader('Cache-Control', 'private, no-store');
+            sendJson(response, 201, {
+              ...result, url: `${DEMO_CUSTOMER_MEDIA_PATH}/${result.assetId}`,
+            }, maxResponseBytes);
+            return 201;
+          }
+          if (removing) {
+            if (!mediaLifecycle) throw new ApiError(503, 'DEMO_MEDIA_UNAVAILABLE');
+            const removed = await mediaLifecycle.remove({
+              principal, tenant, requestId, assetId,
             });
+            if (!removed) throw new ApiError(404, 'NOT_FOUND');
+            response.statusCode = 204;
+            response.setHeader('Cache-Control', 'private, no-store');
+            response.end();
+            return 204;
+          }
+          if (replacing) {
+            if (!mediaLifecycle) throw new ApiError(503, 'DEMO_MEDIA_UNAVAILABLE');
+            const source = await mediaBody(request);
+            let result;
+            try {
+              result = await mediaLifecycle.replace({
+                principal, tenant, requestId, assetId, source,
+              });
+            } catch (error) {
+              if (error instanceof RoomImageInputError) {
+                throw new ApiError(415, 'DEMO_MEDIA_INVALID');
+              }
+              throw error;
+            }
             if (!result) throw new ApiError(404, 'NOT_FOUND');
             response.setHeader('Cache-Control', 'private, no-store');
             sendJson(response, 200, result, maxResponseBytes);
