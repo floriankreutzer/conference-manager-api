@@ -11,7 +11,6 @@ import {
   createDemoCustomerRuntimeConfig,
   createDemoPlatformRuntimeConfig,
 } from '../src/demo/runtime-config.js';
-import { createAnonymousGitEnvironment } from '../scripts/hosted-demo-git-environment.mjs';
 
 function baseEnv(overrides = {}) {
   return {
