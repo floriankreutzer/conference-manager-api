@@ -10,6 +10,7 @@ export const DEMO_CUSTOMER_CONTEXT_PATH = '/api/v1/demo/session/context';
 export const DEMO_CUSTOMER_TENANTS_PATH = '/api/v1/demo/tenants';
 export const DEMO_CUSTOMER_MEDIA_PATH = '/api/v1/demo/media';
 const DEMO_MEDIA_ASSET_PATH = /^\/api\/v1\/demo\/media\/([0-9a-f-]{36})$/i;
+const DEMO_MEDIA_CREATE_PATH = /^\/api\/v1\/demo\/media\/(catering-item|catering-package)\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/;
 
 const CONTEXT_SCHEMA = Object.freeze({
   required: Object.freeze({
