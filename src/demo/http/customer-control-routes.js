@@ -2,6 +2,7 @@ import { ApiError } from '../../api-error.js';
 import { PERMISSION } from '../../authorization/policy.js';
 import { AUDIT_ACTION, AUDIT_OUTCOME, AUDIT_RETENTION_CLASS } from '../../audit/event.js';
 import { defineRouteModule } from '../../http/route-module.js';
+import { processRoomImage } from '../../media/room-image-processor.js';
 import { readJsonObjectBody, validateExactObject } from '../../security.js';
 
 export const DEMO_CUSTOMER_SESSION_PATH = '/api/v1/demo/session';
@@ -22,7 +23,8 @@ function routeKey(path) {
   if (path === DEMO_CUSTOMER_SESSION_PATH) return 'demo_customer_session';
   if (path === DEMO_CUSTOMER_CONTEXT_PATH) return 'demo_customer_context';
   if (path === DEMO_CUSTOMER_TENANTS_PATH) return 'demo_customer_tenants';
-  if (path === DEMO_CUSTOMER_MEDIA_PATH || DEMO_MEDIA_ASSET_PATH.test(path)) return 'demo_customer_media';
+  if (path === DEMO_CUSTOMER_MEDIA_PATH || DEMO_MEDIA_ASSET_PATH.test(path)
+    || DEMO_MEDIA_CREATE_PATH.test(path)) return 'demo_customer_media';
   return null;
 }
 
@@ -144,17 +146,88 @@ export function createDemoCustomerControlRoutes({
           return 200;
         }
 
-        if (path === DEMO_CUSTOMER_MEDIA_PATH || DEMO_MEDIA_ASSET_PATH.test(path)) {
+        if (path === DEMO_CUSTOMER_MEDIA_PATH || DEMO_MEDIA_ASSET_PATH.test(path)
+          || DEMO_MEDIA_CREATE_PATH.test(path)) {
           if (!mediaRepository || typeof mediaRepository.find !== 'function'
             || typeof mediaRepository.list !== 'function') {
             throw new ApiError(503, 'DEMO_MEDIA_UNAVAILABLE');
           }
           const assetId = path.match(DEMO_MEDIA_ASSET_PATH)?.[1];
+          const createMatch = path.match(DEMO_MEDIA_CREATE_PATH);
           const replacing = request.method === 'PUT' && assetId;
-          if (request.method !== 'GET' && !replacing) throw new ApiError(405, 'METHOD_NOT_ALLOWED');
-          if (!replacing) await assertNoBody(request);
-          const principal = await principalGuard.require(request, { csrf: Boolean(replacing) });
+          const removing = request.method === 'DELETE' && assetId;
+          const creating = request.method === 'POST' && Boolean(createMatch);
+          if (request.method !== 'GET' && !replacing && !removing && !creating) {
+            throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+          }
+          if (!replacing && !removing && !creating) await assertNoBody(request);
+          const principal = await principalGuard.require(request, { csrf: replacing || removing || creating });
           const tenant = await tenantGuard.requireKnown(principal);
+          if (creating) {
+            if (!authorizationPolicy?.requireTenantPermission || !auditService?.createEvent
+              || typeof mediaRepository.create !== 'function') {
+              throw new ApiError(503, 'DEMO_MEDIA_UNAVAILABLE');
+            }
+            authorizationPolicy.requireTenantPermission(
+              principal, tenant, PERMISSION.TENANT_CATALOGUE_MANAGE,
+            );
+            const source = await mediaBody(request);
+            let processed;
+            try {
+              processed = await processRoomImage(source);
+            } catch {
+              throw new ApiError(415, 'DEMO_MEDIA_INVALID');
+            }
+            const ownerKind = createMatch[1] === 'catering-item' ? 'catering_item' : 'catering_package';
+            const ownerId = createMatch[2];
+            const result = await mediaRepository.create({
+              tenantId: tenant.tenantId, ownerKind, ownerId, actorUserId: principal.userId,
+              ...processed, altText: ownerId,
+              auditEvent: ({ assetId: createdAssetId, sha256, byteLength, contentType }) =>
+                auditService.createEvent({
+                  principal, tenantContext: tenant, correlationId: requestId,
+                  action: AUDIT_ACTION.TENANT_CONFIGURATION_CHANGED,
+                  targetType: 'demo_catalogue_media', targetId: createdAssetId,
+                  newState: { sha256, byteLength, contentType },
+                  outcome: AUDIT_OUTCOME.SUCCESS,
+                  metadata: { operation: 'create', ownerKind },
+                  retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
+                }),
+            });
+            if (!result) throw new ApiError(404, 'NOT_FOUND');
+            if (result.conflict) throw new ApiError(409, 'CONFLICT');
+            response.setHeader('Cache-Control', 'private, no-store');
+            sendJson(response, 201, {
+              ...result, url: `${DEMO_CUSTOMER_MEDIA_PATH}/${result.assetId}`,
+            }, maxResponseBytes);
+            return 201;
+          }
+          if (removing) {
+            if (!authorizationPolicy?.requireTenantPermission || !auditService?.createEvent
+              || typeof mediaRepository.remove !== 'function') {
+              throw new ApiError(503, 'DEMO_MEDIA_UNAVAILABLE');
+            }
+            authorizationPolicy.requireTenantPermission(
+              principal, tenant, PERMISSION.TENANT_CATALOGUE_MANAGE,
+            );
+            const removed = await mediaRepository.remove({
+              tenantId: tenant.tenantId, assetId, actorUserId: principal.userId,
+              auditEvent: ({ ownerKind }) => auditService.createEvent({
+                principal, tenantContext: tenant, correlationId: requestId,
+                action: AUDIT_ACTION.TENANT_CONFIGURATION_CHANGED,
+                targetType: 'demo_catalogue_media', targetId: assetId,
+                newState: { removed: true },
+                outcome: AUDIT_OUTCOME.SUCCESS,
+                metadata: { operation: 'remove', ownerKind },
+                retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
+              }),
+            });
+            if (!removed) throw new ApiError(404, 'NOT_FOUND');
+            response.statusCode = 204;
+            response.setHeader('Cache-Control', 'private, no-store');
+            response.end();
+            return 204;
+          }
           if (replacing) {
             if (!authorizationPolicy?.requireTenantPermission || !auditService?.createEvent
               || typeof mediaRepository.replace !== 'function') {
