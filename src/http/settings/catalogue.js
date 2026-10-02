@@ -7,7 +7,7 @@ export const TENANT_CATALOGUE_ROUTES = Object.freeze({
   history: '/api/v1/tenant/settings/catalogue/history',
 });
 const BULK_PATH = new RegExp(
-  '^/api/v1/tenant/settings/catalogue/bulk/(services|equipment|catering-items|catering-packages)/(template|export|validate|apply)$',
+  '^/api/v1/tenant/settings/catalogue/bulk/(services|catering-items|catering-packages)/(template|export|validate|apply)$',
 );
 const BULK_MAX_BYTES = 65_536;
 
