@@ -73,6 +73,47 @@ export function createPostgresDemoCatalogueMediaRepository(pool, { auditReposito
         return true;
       });
     },
+    async create({ tenantId, ownerKind, ownerId, actorUserId, contentType, bytes, altText, auditEvent }) {
+      if (!isInternalUuid(tenantId) || !isInternalUuid(actorUserId)
+        || !['catering_item', 'catering_package'].includes(ownerKind)
+        || typeof ownerId !== 'string' || ownerId.length < 1 || ownerId.length > 128
+        || contentType !== 'image/webp' || !Buffer.isBuffer(bytes)
+        || typeof altText !== 'string' || altText.length < 1 || altText.length > 160
+        || typeof auditEvent !== 'function') throw new TypeError('DEMO_MEDIA_INPUT_INVALID');
+      return withPostgresTransaction(pool, async (client) => {
+        const ownerTable = ownerKind === 'catering_item' ? 'catering_items' : 'catering_packages';
+        const owner = await client.query({
+          name: ownerKind === 'catering_item'
+            ? 'demo-customer-media-create-item-owner'
+            : 'demo-customer-media-create-package-owner',
+          text: `SELECT id FROM ${ownerTable} WHERE tenant_id = $1 AND id = $2`,
+          values: [tenantId, ownerId],
+        });
+        if (owner.rowCount !== 1) return null;
+        const assetId = randomUUID();
+        const digest = createHash('sha256').update(bytes).digest();
+        try {
+          await client.query({
+            name: 'demo-customer-media-create',
+            text: `INSERT INTO demo_catalogue_media_assets
+              (tenant_id, id, owner_kind, owner_id, bytes, content_type, byte_length,
+                content_sha256, alt_text, created_at, created_by_user_id)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, $10)`,
+            values: [tenantId, assetId, ownerKind, ownerId, bytes, contentType, bytes.length,
+              digest, altText, actorUserId],
+          });
+        } catch (error) {
+          if (error?.code === '23505') return null;
+          throw error;
+        }
+        if (!auditRepository?.appendWithClient) throw new TypeError('DEMO_MEDIA_AUDIT_REQUIRED');
+        await auditRepository.appendWithClient(client, auditEvent({
+          actorUserId, assetId, ownerKind, ownerId, contentType,
+          byteLength: bytes.length, sha256: digest.toString('hex'),
+        }));
+        return Object.freeze({ assetId, sha256: digest.toString('hex') });
+      });
+    },
     async replace({ tenantId, assetId, actorUserId, contentType, bytes, auditEvent }) {
       if (!isInternalUuid(tenantId) || !isInternalUuid(assetId)
         || !isInternalUuid(actorUserId) || !Buffer.isBuffer(bytes)
