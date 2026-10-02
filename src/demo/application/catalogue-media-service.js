@@ -29,7 +29,11 @@ export function createDemoCatalogueMediaService({
   return Object.freeze({
     async replace({ principal, tenant, requestId, assetId, source }) {
       requireManager(principal, tenant);
-      const processed = await processRoomImage(source);
+      // Existing Demo room plans are PNG and keep that established replacement contract.
+      // Catering assets are WebP; only non-WebP Catering sources need sanitizing/re-encoding.
+      const processed = source.contentType === 'image/png'
+        ? source
+        : await processRoomImage(source);
       return mediaRepository.replace({
         tenantId: tenant.tenantId,
         assetId,
