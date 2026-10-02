@@ -67,6 +67,10 @@ test('Demo migration stream is versioned independently from Production', async (
   assert.doesNotMatch(demo[4].up, /platform_role/);
   assert.equal(demo[5].name, 'demo_catalogue_media');
   assert.match(demo[5].up, /CREATE TABLE demo_catalogue_media_assets/);
+  assert.equal(demo[6].version, 7);
+  assert.equal(demo[6].name, 'demo_catalogue_media_create');
+  assert.match(demo[6].up, /GRANT INSERT, DELETE ON TABLE public\.demo_catalogue_media_assets/);
+  assert.match(demo[6].down, /REVOKE INSERT, DELETE ON TABLE public\.demo_catalogue_media_assets/);
 });
 
 test('Demo migration runner reads Production readiness but writes only its own ledger', async () => {
