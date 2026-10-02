@@ -1,6 +1,4 @@
 import { ApiError } from '../../api-error.js';
-import { PERMISSION } from '../../authorization/policy.js';
-import { AUDIT_ACTION, AUDIT_OUTCOME, AUDIT_RETENTION_CLASS } from '../../audit/event.js';
 import { defineRouteModule } from '../../http/route-module.js';
 import { createDemoCatalogueMediaService } from '../application/catalogue-media-service.js';
 import { readJsonObjectBody, validateExactObject } from '../../security.js';
@@ -204,27 +202,19 @@ export function createDemoCustomerControlRoutes({
             return 204;
           }
           if (replacing) {
-            if (!authorizationPolicy?.requireTenantPermission || !auditService?.createEvent
-              || typeof mediaRepository.replace !== 'function') {
-              throw new ApiError(503, 'DEMO_MEDIA_UNAVAILABLE');
+            if (!mediaLifecycle) throw new ApiError(503, 'DEMO_MEDIA_UNAVAILABLE');
+            const source = await mediaBody(request);
+            let result;
+            try {
+              result = await mediaLifecycle.replace({
+                principal, tenant, requestId, assetId, source,
+              });
+            } catch (error) {
+              if (error instanceof TypeError && error.message === 'ROOM_MEDIA_INVALID') {
+                throw new ApiError(415, 'DEMO_MEDIA_INVALID');
+              }
+              throw error;
             }
-            authorizationPolicy.requireTenantPermission(
-              principal, tenant, PERMISSION.TENANT_CATALOGUE_MANAGE,
-            );
-            const media = await mediaBody(request);
-            const result = await mediaRepository.replace({
-              tenantId: tenant.tenantId, assetId, actorUserId: principal.userId,
-              ...media,
-              auditEvent: ({ sha256, byteLength, contentType }) => auditService.createEvent({
-                principal, tenantContext: tenant, correlationId: requestId,
-                action: AUDIT_ACTION.TENANT_CONFIGURATION_CHANGED,
-                targetType: 'demo_catalogue_media', targetId: assetId,
-                newState: { sha256, byteLength, contentType },
-                outcome: AUDIT_OUTCOME.SUCCESS,
-                metadata: { operation: 'replace' },
-                retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
-              }),
-            });
             if (!result) throw new ApiError(404, 'NOT_FOUND');
             response.setHeader('Cache-Control', 'private, no-store');
             sendJson(response, 200, result, maxResponseBytes);
