@@ -250,3 +250,41 @@ test('Demo media creation rejects non-WebP bytes and malformed owner IDs before 
   parsedUrl: new URL(path, 'https://demo.example'), path, requestId: 'request-id' }),
   (error) => error.status === 415 || error.statusCode === 415);
 });
+
+
+test('Demo media mutations conceal owners and assets outside the authenticated tenant', async () => {
+  const bytes = Buffer.concat([Buffer.from('RIFF'), Buffer.from([36, 0, 0, 0]), Buffer.from('WEBP'), Buffer.alloc(32)]);
+  const calls = [];
+  const routes = createDemoCustomerControlRoutes({
+    personaService: { async establish() {}, async switch() {}, async tenants() { return []; },
+      clearCookie() { return ''; } },
+    mediaRepository: {
+      async find() { return null; }, async list() { return []; },
+      async create(input) { calls.push(['create', input.tenantId, input.ownerId]); return null; },
+      async remove(input) { calls.push(['remove', input.tenantId, input.assetId]); return false; },
+      async replace() { return null; },
+    },
+    authorizationPolicy: { requireTenantPermission() {} },
+    auditService: { createEvent() { return {}; } },
+  }).createHandler({
+    principalGuard: { async require() {
+      return { userId: '20000000-0000-4000-8000-000000000001' };
+    } },
+    tenantGuard: { async requireKnown() { return { tenantId: TENANT_ID }; } },
+    maxResponseBytes: 100000,
+  });
+  const createPath = '/api/v1/demo/media/catering-item/foreign-owner';
+  await assert.rejects(routes({ request: { method: 'POST', headers: {
+    'content-type': 'image/webp', 'content-length': String(bytes.length),
+  }, async *[Symbol.asyncIterator]() { yield bytes; } }, response: response(),
+  parsedUrl: new URL(createPath, 'https://demo.example'), path: createPath, requestId: 'request-id' }),
+  (error) => error.status === 404 || error.statusCode === 404);
+  const deletePath = `/api/v1/demo/media/${FOREIGN_ASSET}`;
+  await assert.rejects(routes({ request: request('DELETE'), response: response(),
+    parsedUrl: new URL(deletePath, 'https://demo.example'), path: deletePath, requestId: 'request-id' }),
+  (error) => error.status === 404 || error.statusCode === 404);
+  assert.deepEqual(calls, [
+    ['create', TENANT_ID, 'foreign-owner'],
+    ['remove', TENANT_ID, FOREIGN_ASSET],
+  ]);
+});
