@@ -192,7 +192,8 @@ test('Demo catering media create and remove require Manager authority, CSRF and 
 
 
 test('Demo media creation is CSRF protected, manager-authorized and owner scoped', async () => {
-  const bytes = Buffer.concat([Buffer.from('RIFF'), Buffer.from([36, 0, 0, 0]), Buffer.from('WEBP'), Buffer.alloc(32)]);
+  const bytes = await sharp({ create: { width: 2, height: 2, channels: 3,
+    background: { r: 16, g: 32, b: 48 } } }).webp().toBuffer();
   const path = '/api/v1/demo/media/catering-item/cateringItems-1';
   let created = null;
   const routes = createDemoCustomerControlRoutes({
@@ -256,7 +257,8 @@ test('Demo media creation rejects non-WebP bytes and malformed owner IDs before 
 
 
 test('Demo media mutations conceal owners and assets outside the authenticated tenant', async () => {
-  const bytes = Buffer.concat([Buffer.from('RIFF'), Buffer.from([36, 0, 0, 0]), Buffer.from('WEBP'), Buffer.alloc(32)]);
+  const bytes = await sharp({ create: { width: 2, height: 2, channels: 3,
+    background: { r: 16, g: 32, b: 48 } } }).webp().toBuffer();
   const calls = [];
   const routes = createDemoCustomerControlRoutes({
     personaService: { async establish() {}, async switch() {}, async tenants() { return []; },
