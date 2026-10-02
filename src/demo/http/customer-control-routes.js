@@ -112,6 +112,7 @@ export function createDemoCustomerControlRoutes({
   personaService, mediaRepository, auditService, authorizationPolicy,
 } = {}) {
   const mediaLifecycle = mediaRepository && auditService && authorizationPolicy
+    && ['create', 'remove', 'replace'].every((method) => typeof mediaRepository[method] === 'function')
     ? createDemoCatalogueMediaService({ mediaRepository, auditService, authorizationPolicy })
     : null;
   if (
