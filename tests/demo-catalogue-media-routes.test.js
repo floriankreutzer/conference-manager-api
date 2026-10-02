@@ -78,7 +78,7 @@ test('Demo media replacement requires a manager, CSRF and matching MIME', async 
     async *[Symbol.asyncIterator]() { yield png; } });
   const mediaRepository = {
     async find() { return null; }, async list() { return []; },
-    async replace() { throw new Error('WRITE_MUST_BE_AUTHORIZED'); },
+    async create() {}, async remove() {}, async replace() { throw new Error('WRITE_MUST_BE_AUTHORIZED'); },
   };
   const denied = createDemoCustomerControlRoutes({
     personaService: { async establish() {}, async switch() {}, async tenants() { return []; },
@@ -112,7 +112,7 @@ test('Demo media replacement accepts a numeric Content-Length after authorizatio
       clearCookie() { return ''; } },
     mediaRepository: {
       async find() { return null; }, async list() { return []; },
-      async replace(input) { replaced = input; return { id: assetId, byteLength: input.bytes.length }; },
+      async create() {}, async remove() {}, async replace(input) { replaced = input; return { id: assetId, byteLength: input.bytes.length }; },
     },
     authorizationPolicy: { requireTenantPermission(principal, tenant, permission) {
       assert.equal(permission, 'tenant:catalogue:manage');
@@ -149,6 +149,7 @@ test('Demo catering media create and remove require Manager authority, CSRF and 
     async find() { return null; }, async list() { return []; },
     async create(input) { created = input; return { assetId: FOREIGN_ASSET, sha256: 'a'.repeat(64) }; },
     async remove(input) { removed = input; return true; },
+    async replace() { return null; },
   };
   const routes = createDemoCustomerControlRoutes({
     personaService: { async establish() {}, async switch() {}, async tenants() { return []; },
@@ -192,7 +193,7 @@ test('Demo catering media create and remove require Manager authority, CSRF and 
 
 test('Demo media creation is CSRF protected, manager-authorized and owner scoped', async () => {
   const bytes = Buffer.concat([Buffer.from('RIFF'), Buffer.from([36, 0, 0, 0]), Buffer.from('WEBP'), Buffer.alloc(32)]);
-  const path = '/api/v1/demo/media/catering_item/cateringItems-1';
+  const path = '/api/v1/demo/media/catering-item/cateringItems-1';
   let created = null;
   const routes = createDemoCustomerControlRoutes({
     personaService: { async establish() {}, async switch() {}, async tenants() { return []; },
@@ -200,6 +201,7 @@ test('Demo media creation is CSRF protected, manager-authorized and owner scoped
     mediaRepository: {
       async find() { return null; }, async list() { return []; },
       async create(input) { created = input; return { assetId: FOREIGN_ASSET, sha256: 'a'.repeat(64) }; },
+      async remove() { return false; }, async replace() { return null; },
     },
     authorizationPolicy: { requireTenantPermission(principal, tenant, permission) {
       assert.equal(permission, 'tenant:catalogue:manage');
@@ -230,6 +232,7 @@ test('Demo media creation rejects non-WebP bytes and malformed owner IDs before 
   const mediaRepository = {
     async find() { return null; }, async list() { return []; },
     async create() { throw new Error('CREATE_MUST_NOT_RUN'); },
+    async remove() { return false; }, async replace() { return null; },
   };
   const routes = createDemoCustomerControlRoutes({
     personaService: { async establish() {}, async switch() {}, async tenants() { return []; },
@@ -243,7 +246,7 @@ test('Demo media creation rejects non-WebP bytes and malformed owner IDs before 
     maxResponseBytes: 100000,
   });
   const png = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(32)]);
-  const path = '/api/v1/demo/media/catering_item/cateringItems-1';
+  const path = '/api/v1/demo/media/catering-item/cateringItems-1';
   await assert.rejects(routes({ request: { method: 'POST', headers: {
     'content-type': 'image/png', 'content-length': String(png.length),
   }, async *[Symbol.asyncIterator]() { yield png; } }, response: response(),
