@@ -136,3 +136,57 @@ test('Demo media replacement accepts a numeric Content-Length after authorizatio
   assert.deepEqual(replaced.bytes, bytes);
   assert.equal(replaced.tenantId, TENANT_ID);
 });
+
+
+test('Demo catering media create and remove require Manager authority, CSRF and Tenant scope', async () => {
+  const webp = Buffer.concat([
+    Buffer.from('52494646240000005745425056503820', 'hex'),
+    Buffer.alloc(24),
+  ]);
+  // Keep the RIFF length exact for the reviewed raster decoder.
+  webp.writeUInt32LE(webp.length - 8, 4);
+  let created = null;
+  let removed = null;
+  const mediaRepository = {
+    async find() { return null; }, async list() { return []; },
+    async create(input) { created = input; return { assetId: FOREIGN_ASSET, sha256: 'a'.repeat(64) }; },
+    async remove(input) { removed = input; return true; },
+  };
+  const routes = createDemoCustomerControlRoutes({
+    personaService: { async establish() {}, async switch() {}, async tenants() { return []; },
+      clearCookie() { return ''; } },
+    mediaRepository,
+    authorizationPolicy: { requireTenantPermission(principal, tenant, permission) {
+      assert.equal(permission, 'tenant:catalogue:manage');
+      assert.equal(tenant.tenantId, TENANT_ID);
+    } },
+    auditService: { createEvent() { return {}; } },
+  }).createHandler({
+    principalGuard: { async require(requestValue, options) {
+      assert.equal(options.csrf, true);
+      return { userId: '10000000-0000-4000-8000-000000000002' };
+    } },
+    tenantGuard: { async requireKnown() { return { tenantId: TENANT_ID }; } },
+    maxResponseBytes: 100000,
+  });
+  const createPath = '/api/v1/demo/media/catering-item/cateringItems-1';
+  const createRequest = {
+    method: 'POST',
+    headers: { 'content-type': 'image/webp', 'content-length': String(webp.length) },
+    async *[Symbol.asyncIterator]() { yield webp; },
+  };
+  const createdReply = response();
+  assert.equal(await routes({ request: createRequest, response: createdReply,
+    parsedUrl: new URL(createPath, 'https://demo.example'), path: createPath, requestId: 'request-id' }), 201);
+  assert.equal(created.tenantId, TENANT_ID);
+  assert.equal(created.ownerKind, 'catering_item');
+  assert.equal(created.ownerId, 'cateringItems-1');
+  assert.equal(created.contentType, 'image/webp');
+  assert.equal(JSON.parse(createdReply.body).url, `/api/v1/demo/media/${FOREIGN_ASSET}`);
+
+  const removePath = `/api/v1/demo/media/${FOREIGN_ASSET}`;
+  assert.equal(await routes({ request: request('DELETE'), response: response(),
+    parsedUrl: new URL(removePath, 'https://demo.example'), path: removePath, requestId: 'request-id' }), 204);
+  assert.equal(removed.tenantId, TENANT_ID);
+  assert.equal(removed.assetId, FOREIGN_ASSET);
+});
