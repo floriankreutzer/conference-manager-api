@@ -157,8 +157,8 @@ export function createDemoCustomerControlRoutes({
           }
           const assetId = path.match(DEMO_MEDIA_ASSET_PATH)?.[1];
           const createMatch = path.match(DEMO_MEDIA_CREATE_PATH);
-          const replacing = request.method === 'PUT' && assetId;
-          const removing = request.method === 'DELETE' && assetId;
+          const replacing = request.method === 'PUT' && Boolean(assetId);
+          const removing = request.method === 'DELETE' && Boolean(assetId);
           const creating = request.method === 'POST' && Boolean(createMatch);
           if (request.method !== 'GET' && !replacing && !removing && !creating) {
             throw new ApiError(405, 'METHOD_NOT_ALLOWED');
