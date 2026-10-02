@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import sharp from 'sharp';
 
 import { createDemoCustomerControlRoutes } from '../src/demo/http/customer-control-routes.js';
 
@@ -139,12 +140,9 @@ test('Demo media replacement accepts a numeric Content-Length after authorizatio
 
 
 test('Demo catering media create and remove require Manager authority, CSRF and Tenant scope', async () => {
-  const webp = Buffer.concat([
-    Buffer.from('52494646240000005745425056503820', 'hex'),
-    Buffer.alloc(24),
-  ]);
-  // Keep the RIFF length exact for the reviewed raster decoder.
-  webp.writeUInt32LE(webp.length - 8, 4);
+  const webp = await sharp({
+    create: { width: 2, height: 2, channels: 3, background: { r: 32, g: 64, b: 96 } },
+  }).webp().toBuffer();
   let created = null;
   let removed = null;
   const mediaRepository = {
