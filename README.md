@@ -1,5 +1,9 @@
 # Conference Manager API
 
+## SaaS 3.9 publishing and Demo boundary
+
+This repository remains private and authoritative for trusted backend implementation and canonical API contracts. SaaS 3.9 introduces a governed public Developer Portal and replaces the hosted Demo's dependency on anonymous public application-source checkout before the application repository may become private. See `docs/SAAS-3.9-PUBLISHING-AND-DEMO-BOUNDARY.md`. The target state is approved; the migration/cutover is not claimed complete.
+
 Trusted production backend for the Conference Manager SaaS application.
 
 ## Scope
