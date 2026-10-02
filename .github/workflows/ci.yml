@@ -125,13 +125,13 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager
-          ref: 59ee24bc0e3e2d94c66b1b370c95cbbc62a31f9e
+          ref: 895b4671b91ae2329a753e5034d8543649bd5145
           persist-credentials: false
           path: acceptance
       - name: Load immutable shared Demo acceptance test
         working-directory: frontend
         env:
-          ACCEPTANCE_REF: 59ee24bc0e3e2d94c66b1b370c95cbbc62a31f9e
+          ACCEPTANCE_REF: 895b4671b91ae2329a753e5034d8543649bd5145
         run: |
           git fetch --quiet --depth=1 origin "$ACCEPTANCE_REF"
           git show "$ACCEPTANCE_REF:tests/e2e-shared/shared-demo-runtime.spec.js" > tests/e2e-shared/shared-demo-runtime.spec.js
