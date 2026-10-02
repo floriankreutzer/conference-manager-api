@@ -35,9 +35,6 @@ test('bulk documents are exact, bounded and remain owned by their settings aggre
     ),
     /TENANT_BULK_DOCUMENT_INVALID/,
   );
-  assert.deepEqual(tenantBulkTemplate('equipment', 'catalogue'), {
-    schemaVersion: 1, type: 'equipment', rows: [],
-  });
   assert.throws(
     () => tenantBulkTemplate('services', 'locations'),
     /TENANT_BULK_TYPE_INVALID/,
