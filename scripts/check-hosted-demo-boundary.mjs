@@ -184,47 +184,31 @@ for (const forbidden of [
   }
 }
 
-const gitEnvironment = await readFile('scripts/hosted-demo-git-environment.mjs', 'utf8');
+const gitmodules = await readFile('.gitmodules', 'utf8');
 for (const required of [
-  "FORBIDDEN_PREFIXES = Object.freeze(['GIT_', 'GH_', 'GITHUB_'])",
-  "'HOME', 'XDG_CONFIG_HOME', 'CURL_HOME', 'USERPROFILE'",
-  'path.isAbsolute(isolatedHome)',
-  'HOME: isolatedHome',
-  'XDG_CONFIG_HOME: isolatedHome',
-  'CURL_HOME: isolatedHome',
-  'USERPROFILE: isolatedHome',
-  "GIT_TERMINAL_PROMPT: '0'",
-  "GIT_CONFIG_NOSYSTEM: '1'",
-  'GIT_CONFIG_GLOBAL: devNull',
-  "GIT_CONFIG_COUNT: '0'",
-  "GCM_INTERACTIVE: 'Never'",
+  '[submodule "vendor/demo-frontend"]',
+  'path = vendor/demo-frontend',
+  'url = https://github.com/floriankreutzer/conference-manager.git',
 ]) {
-  if (!gitEnvironment.includes(required)) {
-    throw new Error(`Hosted Demo Git environment lacks credential boundary ${required}.`);
+  if (!gitmodules.includes(required)) {
+    throw new Error(`Hosted Demo frontend submodule lacks ${required}.`);
   }
-}
-if (/https?:\/\//.test(gitEnvironment)) {
-  throw new Error('Hosted Demo Git environment must not contain an alternate remote destination.');
 }
 
 const prepare = await readFile('scripts/prepare-hosted-demo-frontend.mjs', 'utf8');
 for (const required of [
   'FRONTEND_REF_PATTERN = /^[0-9a-f]{40}$/',
-  'mkdtemp(GIT_HOME_PREFIX)',
-  'createAnonymousGitEnvironment(process.env, gitHome)',
-  'env: environment',
-  "git(gitEnvironment, 'init', '--quiet', TARGET_DIRECTORY)",
-  "'FETCH_HEAD'",
-  'stdout.trim() !== frontendRef',
-  "rm(path.join(TARGET_DIRECTORY, '.git')",
-  'finally {',
-  'rm(gitHome, { recursive: true, force: true })',
+  "SOURCE_DIRECTORY = path.resolve(process.cwd(), 'vendor/demo-frontend')",
+  "['-C', SOURCE_DIRECTORY, 'rev-parse', 'HEAD']",
+  "stdout.trim() !== frontendRef",
+  'await cp(SOURCE_DIRECTORY, TARGET_DIRECTORY',
+  "source !== path.join(SOURCE_DIRECTORY, '.git')",
 ]) {
   if (!prepare.includes(required)) {
     throw new Error(`Hosted Demo frontend preparation lacks ${required}.`);
   }
 }
-if (/\bshell\s*:\s*true\b|GITHUB_TOKEN|SHARED_DEMO_API_READ_TOKEN/.test(prepare)) {
+if (/\bshell\s*:\s*true\b|GITHUB_TOKEN|SHARED_DEMO_API_READ_TOKEN|\bgit\([^)]*fetch/.test(prepare)) {
   throw new Error('Hosted Demo frontend preparation uses forbidden checkout authority.');
 }
 

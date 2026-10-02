@@ -184,18 +184,21 @@ Render generates the Customer session/CSRF secrets, Platform session/CSRF secret
 
 ## 7. Immutable frontend packaging
 
-Each Render build checks out the API repository from reviewed `main` and then fetches the exact 40-character frontend commit configured as `DEMO_FRONTEND_REF`.
+Each reviewed API release pins `conference-manager` as the Git submodule `vendor/demo-frontend` at one exact commit. The same 40-character commit is configured independently as `DEMO_FRONTEND_REF` in `render.yaml`.
 
-`conference-manager` is the public source repository for this pinned browser artifact. The nested frontend fetch must be anonymous even when the surrounding Render build checked out the private API repository with provider-scoped Git credentials. The preparation command strips inherited `GIT_*`, `GH_*`, `GITHUB_*` and askpass configuration, runs the child Git process with its own newly-created empty temporary `HOME`/XDG/curl configuration directory, disables global/system Git configuration and terminal prompting, and then fetches only the fixed public repository at the immutable SHA. The temporary credential-isolation directory is removed after the fetch attempt. Do not add a GitHub PAT, deploy key or other cross-repository credential to either Render service as a workaround.
+Render automatically clones declared Git submodules with the credentials of its connected Git provider. The Render GitHub App therefore must have access to both private repositories after the SaaS 3.9 visibility cutover. Do not add a GitHub PAT, deploy key or other ad-hoc credential to either Render service as a workaround.
+
+The preparation command never performs a network fetch. It verifies that the checked-out submodule HEAD equals `DEMO_FRONTEND_REF`, copies only that reviewed tree into `.demo-frontend`, validates the required Customer and Platform server-backed entrypoints, writes bounded deployment identity metadata, and excludes the submodule Git metadata from the served tree.
 
 The build fails if:
 
-- the ref is not an immutable commit SHA;
-- the commit cannot be fetched anonymously from the fixed public repository;
+- `DEMO_FRONTEND_REF` is not an immutable commit SHA;
+- the Git provider cannot check out the pinned submodule;
+- the checked-out submodule commit differs from `DEMO_FRONTEND_REF`;
 - the Customer server-backed Demo entrypoint is missing;
 - the Platform server-backed Demo entrypoint is missing.
 
-Before the first provider deploy, verify that `DEMO_FRONTEND_REF` in `render.yaml` points to the approved frontend release commit. Changing the frontend pin requires a reviewed repository change.
+Changing the frontend pin requires a reviewed repository change to both the Gitlink and `DEMO_FRONTEND_REF`. A mismatch is intentionally fail-closed.
 
 The API process serves the pinned browser files itself so each surface remains same-origin with its corresponding API. Do not split the browser to a separate Render Static Site and introduce CORS or browser bearer tokens.
 

@@ -1,0 +1,3 @@
+[submodule "vendor/demo-frontend"]
+	path = vendor/demo-frontend
+	url = https://github.com/floriankreutzer/conference-manager.git
