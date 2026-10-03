@@ -1,0 +1,78 @@
+name: Publish approved public API
+
+on:
+  workflow_dispatch:
+    inputs:
+      contract_version:
+        description: Approved public contract version
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout immutable backend source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Setup Node.js
+        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b2d1f0 # v6.1.0
+        with:
+          node-version: 22.22.3
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Prepare allowlisted public artifact
+        env:
+          PUBLIC_API_CONTRACT_VERSION: ${{ inputs.contract_version }}
+        run: node scripts/prepare-public-api-publication.mjs
+      - name: Create short-lived publisher token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.CM_PUBLISHER_APP_ID }}
+          private-key: ${{ secrets.CM_PUBLISHER_PRIVATE_KEY }}
+          owner: floriankreutzer
+          repositories: conference-manager-developer
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Checkout public Developer repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: floriankreutzer/conference-manager-developer
+          token: ${{ steps.app-token.outputs.token }}
+          path: developer
+          persist-credentials: true
+          fetch-depth: 1
+      - name: Stage publication branch
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          CONTRACT_VERSION: ${{ inputs.contract_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="publish/api-${CONTRACT_VERSION}-${SOURCE_SHA:0:12}"
+          git -C developer switch -c "$branch"
+          mkdir -p developer/openapi
+          find developer/openapi -mindepth 1 -maxdepth 1 -type f -delete
+          cp .public-api-publication/* developer/openapi/
+          git -C developer config user.name "conference-manager-api-publisher[bot]"
+          git -C developer config user.email "5173007+conference-manager-api-publisher[bot]@users.noreply.github.com"
+          git -C developer add openapi
+          git -C developer diff --cached --exit-code && { echo "No publication change."; exit 0; } || true
+          git -C developer commit -m "docs(api): publish contract ${CONTRACT_VERSION} from ${SOURCE_SHA}"
+          git -C developer push origin "$branch"
+          echo "PUBLICATION_BRANCH=$branch" >> "$GITHUB_ENV"
+      - name: Open controlled publication pull request
+        if: env.PUBLICATION_BRANCH != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          SOURCE_SHA: ${{ github.sha }}
+          CONTRACT_VERSION: ${{ inputs.contract_version }}
+        run: |
+          gh pr create             --repo floriankreutzer/conference-manager-developer             --head "$PUBLICATION_BRANCH"             --base main             --title "Publish API contract ${CONTRACT_VERSION}"             --body "Generated from private canonical backend commit \`${SOURCE_SHA}\`. Do not merge unless Public documentation safety passes and the owning API release is approved."
