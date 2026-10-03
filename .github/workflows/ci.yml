@@ -131,7 +131,7 @@ jobs:
       - name: Load immutable shared Demo acceptance test
         working-directory: frontend
         env:
-          ACCEPTANCE_REF: afb53730c413a1d813741dbcc3f6c10d0e77d5ca
+          ACCEPTANCE_REF: 1ec6a27765d40e65ed609e6e8c09b30953e9bb45
         run: |
           git fetch --quiet --depth=1 origin "$ACCEPTANCE_REF"
           git show "$ACCEPTANCE_REF:tests/e2e-shared/shared-demo-runtime.spec.js" > tests/e2e-shared/shared-demo-runtime.spec.js
