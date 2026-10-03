@@ -209,6 +209,8 @@ test('migration 038 confines Request attribution SECURITY DEFINER execution to t
   }]);
 
   assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await isPostgresSchemaReady(pool, 41), true);
+  assert.equal(await rollbackLatest(pool), true);
   assert.equal(await isPostgresSchemaReady(pool, 40), true);
   assert.equal(await rollbackLatest(pool), true);
   assert.equal(await isPostgresSchemaReady(pool, 39), true);
