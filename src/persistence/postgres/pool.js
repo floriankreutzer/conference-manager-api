@@ -21,7 +21,8 @@ const { Pool } = pg;
 // Schema 39 stores reencoded, private Room imagery with Tenant and Room ownership.
 // Schema 40 stores bounded public Site and Room Guest values, retaining legacy prose privately.
 // Schema 41 confines Room-media retention to a bounded, explicitly granted maintenance procedure.
-export const CURRENT_SCHEMA_VERSION = 41;
+// Schema 42 admits Equipment in the existing Tenant/actor-bound bulk receipt ledger.
+export const CURRENT_SCHEMA_VERSION = 42;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',
