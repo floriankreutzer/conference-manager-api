@@ -271,6 +271,7 @@ The Demo accepts the following Free-tier behavior:
 - Render local filesystem is ephemeral, so only Neon PostgreSQL is authoritative;
 - no availability SLA is claimed;
 - no artificial keep-alive traffic is used to defeat Free-tier limits;
+- the Platform projection worker refreshes at a bounded 10-minute Demo cadence; Production keeps its independent default cadence;
 - if Free-tier limits or provider terms become unsuitable, the hosting decision is revisited rather than weakening application architecture.
 
 A cold start may delay the first page load. It must never cause fallback to browser business persistence, local fixtures or a different security mode.

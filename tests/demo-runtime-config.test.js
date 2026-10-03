@@ -48,6 +48,7 @@ test('Demo runtime configs preserve one database target while separating securit
   assert.equal(customer.databaseStatementTimeoutMs, 10_000);
   assert.equal(platform.databaseStatementTimeoutMs, 10_000);
   assert.equal(platform.resetDatabaseStatementTimeoutMs, 60_000);
+  assert.equal(platform.projectionIntervalMs, 10 * 60_000);
   assert.equal(customer.entraClientId, null);
   assert.equal(platform.entraClientId, null);
   assert.equal(Object.isFrozen(customer), true);

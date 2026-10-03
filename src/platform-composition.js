@@ -157,6 +157,7 @@ export function createPlatformComposition({
   });
   const projectionWorker = createPlatformProjectionWorker({
     repository: persistence.projectionRepository,
+    ...(config.projectionIntervalMs ? { intervalMs: config.projectionIntervalMs } : {}),
     ...(projectionRunGate ? { runGate: projectionRunGate } : {}),
   });
   const selectedRouteModules = typeof routeModulesFactory === 'function'
