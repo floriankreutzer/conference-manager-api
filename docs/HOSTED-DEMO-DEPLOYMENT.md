@@ -271,7 +271,7 @@ The Demo accepts the following Free-tier behavior:
 - Render local filesystem is ephemeral, so only Neon PostgreSQL is authoritative;
 - no availability SLA is claimed;
 - no artificial keep-alive traffic is used to defeat Free-tier limits;
-- the Platform projection worker refreshes at a bounded 15-minute Demo cadence; Production keeps its independent default cadence;
+- the Platform projection worker refreshes at a bounded 10-minute Demo cadence; Production keeps its independent default cadence;
 - authenticated Demo media uses private conditional revalidation with a content digest so an unchanged browser asset can receive `304 Not Modified` after a metadata-only Tenant-scoped lookup instead of retransferring the PostgreSQL blob;
 - media mutations remain `private, no-store`, and replacement changes the digest so the next conditional read retrieves the new bytes;
 - if Free-tier limits or provider terms become unsuitable, the hosting decision is revisited rather than weakening application architecture.
