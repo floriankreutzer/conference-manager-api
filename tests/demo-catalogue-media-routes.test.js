@@ -298,3 +298,51 @@ test('Demo media mutations conceal owners and assets outside the authenticated t
     ['remove', TENANT_ID, FOREIGN_ASSET],
   ]);
 });
+
+
+test('Demo media conditional GET avoids loading blob bytes when the digest is unchanged', async () => {
+  const sha256 = 'a'.repeat(64);
+  const path = `/api/v1/demo/media/${FOREIGN_ASSET}`;
+  let blobReads = 0;
+  const handle = handler({
+    async findMetadata(input) {
+      assert.deepEqual(input, { tenantId: TENANT_ID, assetId: FOREIGN_ASSET });
+      return { content_type: 'image/webp', byte_length: 1024, sha256 };
+    },
+    async find() {
+      blobReads += 1;
+      throw new Error('BLOB_MUST_NOT_BE_READ');
+    },
+    async list() { return []; },
+  });
+  const req = request();
+  req.headers['if-none-match'] = `"sha256-${sha256}"`;
+  const reply = response();
+  assert.equal(await handle({ request: req, response: reply,
+    parsedUrl: new URL(path, 'https://demo.example'), path, requestId: 'request-id' }), 304);
+  assert.equal(blobReads, 0);
+  assert.equal(reply.headers.get('etag'), `"sha256-${sha256}"`);
+  assert.equal(reply.headers.get('cache-control'), 'private, no-cache');
+  assert.equal(reply.body, undefined);
+});
+
+test('Demo media revalidation serves changed bytes with a digest-bound ETag', async () => {
+  const sha256 = 'b'.repeat(64);
+  const bytes = Buffer.from('RIFF0000WEBPpayload');
+  const path = `/api/v1/demo/media/${FOREIGN_ASSET}`;
+  const handle = handler({
+    async findMetadata() {
+      return { content_type: 'image/webp', byte_length: bytes.length, sha256 };
+    },
+    async find() {
+      return { bytes, content_type: 'image/webp', byte_length: bytes.length, sha256 };
+    },
+    async list() { return []; },
+  });
+  const reply = response();
+  assert.equal(await handle({ request: request(), response: reply,
+    parsedUrl: new URL(path, 'https://demo.example'), path, requestId: 'request-id' }), 200);
+  assert.deepEqual(reply.body, bytes);
+  assert.equal(reply.headers.get('etag'), `"sha256-${sha256}"`);
+  assert.equal(reply.headers.get('cache-control'), 'private, no-cache');
+});
