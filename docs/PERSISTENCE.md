@@ -167,7 +167,7 @@ The all-role Tenant presentation contract reuses the current Organization row an
 `organization_revision`. Its managed-brand policy maps one fixed reference to a code-shipped preset
 and therefore introduces no upload metadata, asset table, external object reference or migration.
 
-Runtime schema readiness advances to exactly version 39. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
+Migration 039 introduced schema version 39; the current exact runtime readiness version is 42. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
 
 No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
 
@@ -311,7 +311,7 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 39.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 42.
 
 ## Shared Demo persistence
 
@@ -323,10 +323,10 @@ reset/seed capability and migration ownership. All four URLs must resolve to the
 distinct.
 
 The canonical `migrations/` stream remains the source of the business schema and must contain the
-exact applied sequence `001..038`. The independent `demo-migrations/` stream has its own
-`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `004`
+exact applied sequence `001..042`. The independent `demo-migrations/` stream has its own
+`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `007`
 installs the immutable database sentinel, provider/persona reference tables, minimized views and
-role grants. Overlay 004 grants only `INSERT` and `TRUNCATE` on the canonical attribution
+role grants, private Room/Catering media and create/attach lifecycle support. Overlay 004 grants only `INSERT` and `TRUNCATE` on the canonical attribution
 migration-state singleton to the reset role; customer and Platform roles receive no access. The
 overlay reads but never writes the canonical `schema_migrations` ledger.
 
@@ -508,7 +508,7 @@ Tenant-composite Catalogue tables, charged once and included in allocation.
 The `saas-3.6-shared-demo-v5` reset fixture contains distinct priced Northwind/Contoso Equipment
 and verifies those identity, price and applicability facts during semantic readback. Demo overlay
 004 supplies only the reset privilege required by canonical attribution migration 036. Apply
-canonical migrations first, apply Demo overlays 001 through 004, reset/reseed Demo, deploy both API
+canonical migrations first, apply Demo overlays 001 through 007, reset/reseed Demo, deploy both API
 processes at one compatible SHA, verify Catalogue pages and then pin/deploy the updated frontend.
 Down 035 refuses once any v3 snapshot/proposal/history exists; use a compatible binary or a forward
 fix. Production never activates Demo authority.
@@ -523,3 +523,12 @@ object ownership and session/CSRF boundaries remain required for these reads and
 ## Guest Information persistence (migration 037)
 
 Nullable Site `guest_information` is separate from legacy `details`. Immutable Location revision maps preserve guest history without changing legacy configuration JSON. V1 writes and rollbacks preserve current values; only explicit v2 mutations replace or clear them. Migration down takes exclusive locks and refuses whenever current or historical guest data exists. See `docs/SITE-GUEST-INFORMATION.md` for rollout and verification.
+
+## Equipment bulk receipts — schema 042
+
+Migration 042 extends only the existing receipt document-type CHECK constraint to admit Equipment.
+The composite Tenant/actor foreign key, immutable payload hash, revision, expiry and atomic Apply
+contract remain unchanged. Runtime, Demo migration prerequisites and reset require canonical
+001..042; Demo overlays remain independently tracked at 001..007. Down migration locks the receipt
+table and refuses rollback if any Equipment receipt exists, preserving compatibility and evidence.
+See `docs/TENANT-BULK-TRANSFER.md` for the authoritative API contract.

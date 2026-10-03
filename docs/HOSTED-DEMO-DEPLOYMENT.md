@@ -323,7 +323,7 @@ The `saas-3.7-three-demo-customers-v1` reset fixture contains distinct priced No
 and verifies those identity, price and applicability facts during semantic readback. Demo overlay
 004 adds only the reset role's `INSERT` and `TRUNCATE` privileges on the canonical attribution
 migration-state table introduced by migration 036; customer and Platform roles receive no access.
-Apply canonical migrations first, apply Demo overlays 001 through 004, reset/reseed Demo, deploy
+Apply canonical migrations first, apply Demo overlays 001 through 007, reset/reseed Demo, deploy
 both API processes at one compatible SHA, verify Catalogue pages and then pin/deploy the updated
 frontend. Down 035 refuses once any v3 snapshot/proposal/history exists; use a compatible binary or
 a forward fix. Production never activates Demo authority.
