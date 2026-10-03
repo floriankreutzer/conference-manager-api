@@ -174,7 +174,7 @@ Provisioning order is mandatory:
 
 1. create a dedicated empty PostgreSQL database whose name matches `conference_manager_demo_*`;
 2. create the four distinct purpose-specific Demo roles and store their credentials in protected deployment configuration;
-3. apply canonical migrations `001..041` with the reviewed database migration identity;
+3. apply canonical migrations `001..042` with the reviewed database migration identity;
 4. remove normal `DATABASE_URL`, `PUBLIC_ORIGIN`, session/CSRF, `PLATFORM_*` and real-provider variables from the Demo command environment;
 5. supply the complete `DEMO_*` configuration and run `npm run demo:db:migrate`;
 6. run `npm run demo:db:reset -- --confirm-seed-version=saas-3.7-three-demo-customers-v1` to install and verify the initial deterministic seed;
@@ -237,7 +237,7 @@ uppercase names and non-empty single-line values.
 For each deployed Demo candidate, record:
 
 - backend and frontend commit/artifact identifiers;
-- canonical schema version `41` and Demo overlay version `6`;
+- canonical schema version `42` and Demo overlay version `7`;
 - seed version and semantic checksum returned by reset;
 - customer and Platform origin identities without credentials;
 - the browser/integration test run covering cross-process shared state;

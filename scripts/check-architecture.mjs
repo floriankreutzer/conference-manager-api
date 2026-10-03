@@ -555,8 +555,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 41;/.test(pool)) {
-  throw new Error('Runtime schema readiness must include bounded Room-media retention migration version 41.');
+if (!/export const CURRENT_SCHEMA_VERSION = 42;/.test(pool)) {
+  throw new Error('Runtime schema readiness must include Equipment bulk receipts migration version 42.');
 }
 const retentionPrivilegeMigration = await readFile(
   'migrations/041_room_media_retention_privileges.up.sql',

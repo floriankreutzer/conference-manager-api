@@ -6,6 +6,15 @@ This repository remains private and authoritative for trusted backend implementa
 
 Trusted production backend for the Conference Manager SaaS application.
 
+## Current Business bulk contract
+
+Conference Manager owns Rooms, Services, Equipment and Catering business data; Tenant Admin
+retains technical provider/mapping and Cost Allocation authority. The existing strict settings
+API supports receipt-bound Equipment template/export/validate/apply alongside the other Catalogue
+types. Canonical schema 042 and Demo overlays 001..007 are required; application processes never
+migrate at startup. Human-facing CSV and named reference choices live in the paired frontend;
+the server retains Tenant/role/actor/CSRF/revision/hash authority. See `docs/TENANT-BULK-TRANSFER.md`.
+
 ## Scope
 
 This repository owns the server-side trust boundary defined by `conference-manager/docs/SAAS-PRODUCTION-TOPOLOGY.md`. The browser remains untrusted.
