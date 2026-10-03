@@ -19,10 +19,10 @@ Every normalized API document has the exact shape:
 {"schemaVersion":1,"type":"sites","rows":[]}
 ```
 
-The only types are `sites`, `rooms`, `services`, `catering-items`, `catering-packages` and
+The only types are `sites`, `rooms`, `services`, `equipment`, `catering-items`, `catering-packages` and
 `cost-centers`. A request is limited to 65,536 bytes and 1,024 rows. Validation returns at most 100
 presentation-safe errors. Provider identifiers, Tenant identifiers, mailbox and Graph state,
-tokens, room mappings, Organization and Booking Policy fields, Users, equipment, allocation policy,
+tokens, room mappings, Organization and Booking Policy fields, Users, allocation policy,
 managed assets and room prices are outside this contract.
 
 Imports use patch semantics inside one owned collection. Rows omitted from the document and every
@@ -71,4 +71,6 @@ authorization denial, CSRF, cross-Tenant isolation, migration rollback and Demo 
 
 ## Conference Manager CSV presentation
 
-The Conference Manager UI uses CSV, not JSON files, for Rooms, Services (including the existing Equipment catalogue presentation) and Catering bulk workflows. CSV parsing and serialization are presentation concerns: templates expose documented stable columns; arrays/nested values use bounded JSON-cell encoding inside quoted CSV cells where required. Export neutralizes spreadsheet formula prefixes before download. The browser reconstructs the exact normalized document before validation/apply, so Tenant/actor authority, CSRF, revision/receipt binding, replay protection and domain validation remain server-owned.
+The Conference Manager UI uses CSV, not JSON files, for Rooms, Services and Equipment and Catering bulk workflows. CSV parsing and serialization are presentation concerns: templates expose documented stable columns; arrays/nested values use bounded JSON-cell encoding inside quoted CSV cells where required. Export neutralizes spreadsheet formula prefixes before download. The browser reconstructs the exact normalized document before validation/apply, so Tenant/actor authority, CSRF, revision/receipt binding, replay protection and domain validation remain server-owned.
+
+Migration 042 extends only the receipt type constraint to Equipment. Existing Tenant/actor foreign keys, receipt TTL, payload hashing, replay and revision controls remain unchanged. Rollback refuses to remove the Equipment type while any Equipment receipt exists. Apply migration 042 with the protected migration owner before deploying the schema-42 runtime; customer/Platform/reset runtime roles receive no DDL grant.

@@ -50,8 +50,8 @@ if (/repository|SELECT|UPDATE|INSERT INTO|DELETE FROM/i.test(revision)) {
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 41;/.test(pool)) {
-  throw new Error('Runtime schema readiness must include Site Guest Information and attribution privilege migration version 41.');
+if (!/export const CURRENT_SCHEMA_VERSION = 42;/.test(pool)) {
+  throw new Error('Runtime schema readiness must include Site Guest Information and attribution privilege migration version 42.');
 }
 
 const migration = await readFile('migrations/020_tenant_settings_revisions.up.sql', 'utf8');
