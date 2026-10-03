@@ -45,7 +45,8 @@
     "test:dast": "node scripts/security-dast.mjs",
     "test:dast:platform": "node --test tests/platform-http-security.test.js",
     "check": "npm run check:syntax && npm run check:agents && npm run check:architecture && npm run check:pilot-activation && npm run check:pilot-operations && npm run check:pilot-readiness && npm run check:multi-tenant && npm run check:application-contract && npm run check:jit && npm run check:roles && npm run check:microsoft365 && npm run check:entitlements && npm run check:booking && npm run check:observability && npm run check:security-baseline && npm run check:dependencies && npm run check:static && npm run check:secrets && npm run check:style && npm test && npm run test:dast && npm run test:dast:platform",
-    "audit": "npm audit --audit-level=high"
+    "audit": "npm audit --audit-level=high",
+    "test:public-api-publication": "node --test tests/public-api-publication.test.js"
   },
   "dependencies": {
     "@azure/msal-node": "7.0.0",
