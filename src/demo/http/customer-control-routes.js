@@ -70,6 +70,16 @@ async function mediaBody(request) {
   return { bytes, contentType: type };
 }
 
+function matchesIfNoneMatch(value, etag) {
+  if (typeof value !== 'string' || value.length > 4096) return false;
+  return value.split(',').some((candidate) => {
+    const validator = candidate.trim();
+    if (validator === '*') return true;
+    const normalized = validator.startsWith('W/') ? validator.slice(2).trimStart() : validator;
+    return normalized === etag;
+  });
+}
+
 function sendJson(response, statusCode, payload, maxResponseBytes) {
   const body = JSON.stringify(payload);
   if (Buffer.byteLength(body) > maxResponseBytes) throw new ApiError(500, 'RESPONSE_TOO_LARGE');
@@ -236,7 +246,7 @@ export function createDemoCustomerControlRoutes({
               response.setHeader('ETag', etag);
               response.setHeader('Cache-Control', 'private, no-cache');
               response.setHeader('X-Content-Type-Options', 'nosniff');
-              if (request.headers['if-none-match'] === etag) {
+              if (matchesIfNoneMatch(request.headers['if-none-match'], etag)) {
                 response.statusCode = 304;
                 response.end();
                 return 304;
