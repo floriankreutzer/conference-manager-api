@@ -247,7 +247,8 @@ export function createDemoCustomerControlRoutes({
             if (!Buffer.isBuffer(media.bytes) || media.bytes.length !== Number(media.byte_length)
               || !['image/png', 'image/webp'].includes(media.content_type)
               || (metadata && (media.content_type !== metadata.content_type
-                || Number(media.byte_length) !== Number(metadata.byte_length)))) {
+                || Number(media.byte_length) !== Number(metadata.byte_length)
+                || media.sha256 !== metadata.sha256))) {
               throw new ApiError(500, 'DEMO_MEDIA_CORRUPT');
             }
             response.statusCode = 200;
