@@ -70,16 +70,6 @@ async function mediaBody(request) {
   return { bytes, contentType: type };
 }
 
-function matchesIfNoneMatch(value, etag) {
-  if (typeof value !== 'string' || value.length > 4096) return false;
-  return value.split(',').some((candidate) => {
-    const validator = candidate.trim();
-    if (validator === '*') return true;
-    const normalized = validator.startsWith('W/') ? validator.slice(2).trimStart() : validator;
-    return normalized === etag;
-  });
-}
-
 function sendJson(response, statusCode, payload, maxResponseBytes) {
   const body = JSON.stringify(payload);
   if (Buffer.byteLength(body) > maxResponseBytes) throw new ApiError(500, 'RESPONSE_TOO_LARGE');
@@ -233,38 +223,16 @@ export function createDemoCustomerControlRoutes({
             return 200;
           }
           if (assetId) {
-            let metadata = null;
-            if (typeof mediaRepository.findMetadata === 'function') {
-              metadata = await mediaRepository.findMetadata({ tenantId: tenant.tenantId, assetId });
-              if (!metadata) throw new ApiError(404, 'NOT_FOUND');
-              if (!['image/png', 'image/webp'].includes(metadata.content_type)
-                || !Number.isSafeInteger(Number(metadata.byte_length))
-                || !/^[0-9a-f]{64}$/.test(metadata.sha256)) {
-                throw new ApiError(500, 'DEMO_MEDIA_CORRUPT');
-              }
-              const etag = `"sha256-${metadata.sha256}"`;
-              response.setHeader('ETag', etag);
-              response.setHeader('Cache-Control', 'private, no-cache');
-              response.setHeader('X-Content-Type-Options', 'nosniff');
-              if (matchesIfNoneMatch(request.headers['if-none-match'], etag)) {
-                response.statusCode = 304;
-                response.end();
-                return 304;
-              }
-            }
             const media = await mediaRepository.find({ tenantId: tenant.tenantId, assetId });
             if (!media) throw new ApiError(404, 'NOT_FOUND');
             if (!Buffer.isBuffer(media.bytes) || media.bytes.length !== Number(media.byte_length)
-              || !['image/png', 'image/webp'].includes(media.content_type)
-              || (metadata && (media.content_type !== metadata.content_type
-                || Number(media.byte_length) !== Number(metadata.byte_length)
-                || media.sha256 !== metadata.sha256))) {
+              || !['image/png', 'image/webp'].includes(media.content_type)) {
               throw new ApiError(500, 'DEMO_MEDIA_CORRUPT');
             }
             response.statusCode = 200;
             response.setHeader('Content-Type', media.content_type);
             response.setHeader('Content-Length', media.bytes.length);
-            if (!metadata) response.setHeader('Cache-Control', 'private, no-store');
+            response.setHeader('Cache-Control', 'private, no-store');
             response.setHeader('X-Content-Type-Options', 'nosniff');
             response.end(media.bytes);
             return 200;
