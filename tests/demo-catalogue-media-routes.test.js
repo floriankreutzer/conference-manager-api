@@ -346,3 +346,52 @@ test('Demo media revalidation serves changed bytes with a digest-bound ETag', as
   assert.equal(reply.headers.get('etag'), `"sha256-${sha256}"`);
   assert.equal(reply.headers.get('cache-control'), 'private, no-cache');
 });
+
+
+test('Demo media conditional GET accepts weak, list and wildcard validators without blob reads', async () => {
+  const sha256 = 'c'.repeat(64);
+  const etag = `"sha256-${sha256}"`;
+  const path = `/api/v1/demo/media/${FOREIGN_ASSET}`;
+  for (const validator of [`W/${etag}`, `"other", W/${etag}, "later"`, '*']) {
+    let blobReads = 0;
+    const handle = handler({
+      async findMetadata() {
+        return { content_type: 'image/webp', byte_length: 1024, sha256 };
+      },
+      async find() {
+        blobReads += 1;
+        throw new Error('BLOB_MUST_NOT_BE_READ');
+      },
+      async list() { return []; },
+    });
+    const req = request();
+    req.headers['if-none-match'] = validator;
+    const reply = response();
+    assert.equal(await handle({ request: req, response: reply,
+      parsedUrl: new URL(path, 'https://demo.example'), path, requestId: 'request-id' }), 304);
+    assert.equal(blobReads, 0);
+  }
+});
+
+test('Demo media conditional GET ignores an oversized validator header and serves the representation', async () => {
+  const sha256 = 'd'.repeat(64);
+  const bytes = Buffer.from('RIFF0000WEBPpayload');
+  const path = `/api/v1/demo/media/${FOREIGN_ASSET}`;
+  let blobReads = 0;
+  const handle = handler({
+    async findMetadata() {
+      return { content_type: 'image/webp', byte_length: bytes.length, sha256 };
+    },
+    async find() {
+      blobReads += 1;
+      return { bytes, content_type: 'image/webp', byte_length: bytes.length, sha256 };
+    },
+    async list() { return []; },
+  });
+  const req = request();
+  req.headers['if-none-match'] = 'x'.repeat(4097);
+  const reply = response();
+  assert.equal(await handle({ request: req, response: reply,
+    parsedUrl: new URL(path, 'https://demo.example'), path, requestId: 'request-id' }), 200);
+  assert.equal(blobReads, 1);
+});
