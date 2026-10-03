@@ -104,6 +104,29 @@ export function createPostgresDemoCatalogueMediaRepository(pool, { auditReposito
         return Object.freeze({ assetId, sha256: digest.toString('hex') });
       });
     },
+    async findMetadata({ tenantId, assetId }) {
+      if (!isInternalUuid(tenantId) || !isInternalUuid(assetId)) return null;
+      const result = await pool.query({
+        name: 'demo-customer-media-asset-metadata',
+        text: `SELECT content_type, byte_length, encode(content_sha256, 'hex') AS sha256
+          FROM demo_catalogue_media_assets asset
+          WHERE asset.tenant_id = $1 AND asset.id = $2 AND (
+            (owner_kind = 'room_plan' AND EXISTS (SELECT 1 FROM rooms room
+              WHERE room.tenant_id = asset.tenant_id AND room.id = asset.owner_id))
+            OR (owner_kind = 'catering_package' AND EXISTS (SELECT 1 FROM catering_packages pkg
+              WHERE pkg.tenant_id = asset.tenant_id AND pkg.id = asset.owner_id))
+            OR (owner_kind = 'catering_item' AND EXISTS (SELECT 1 FROM catering_items item
+              WHERE item.tenant_id = asset.tenant_id AND item.id = asset.owner_id))
+          )`,
+        values: [tenantId, assetId],
+      });
+      if (result.rowCount !== 1) return null;
+      return Object.freeze({
+        content_type: result.rows[0].content_type,
+        byte_length: result.rows[0].byte_length,
+        sha256: result.rows[0].sha256,
+      });
+    },
     async find({ tenantId, assetId }) {
       if (!isInternalUuid(tenantId) || !isInternalUuid(assetId)) return null;
       const result = await pool.query({
