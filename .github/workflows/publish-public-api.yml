@@ -29,12 +29,11 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Prepare allowlisted public artifact
         env:
-          PUBLIC_API_SOURCE_COMMIT: ${{ github.sha }}
           PUBLIC_API_CONTRACT_VERSION: ${{ inputs.contract_version }}
         run: node scripts/prepare-public-api-publication.mjs
       - name: Create short-lived publisher token
         id: app-token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@bcd2ba4a9d01e9c9a9c14a5e8bfc9f9d55f42c99 # v3.2.0
         with:
           app-id: ${{ secrets.CM_PUBLISHER_APP_ID }}
           private-key: ${{ secrets.CM_PUBLISHER_PRIVATE_KEY }}
