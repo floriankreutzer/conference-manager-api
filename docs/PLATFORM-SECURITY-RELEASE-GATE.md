@@ -42,7 +42,7 @@ Record all of the following before executing the gate:
 | Customer Demo artifact | Immutable artifact digest for the customer Demo composition |
 | Platform Demo artifact | Immutable artifact digest for `platform-admin-demo/index.html` composition |
 | Demo API artifacts | Immutable customer and Platform Demo process artifacts from the same API commit |
-| Shared Demo database | Isolated PostgreSQL reference; canonical schema `39`, Demo overlay `5`, seed version/checksum |
+| Shared Demo database | Isolated PostgreSQL reference; canonical schema `42`, Demo overlay `7`, seed version/checksum |
 | Deployment/IaC | Reviewed immutable revision from #113 |
 | Database | PostgreSQL 18 service reference and exact schema version |
 | Operator origin | Exact approved HTTPS origin, recorded only in the protected evidence system |
@@ -81,7 +81,7 @@ Use synthetic, dedicated, non-production test data:
 - deterministic stale revisions, duplicate idempotency keys, replayed recovery contexts, denied targets, and audit-integrity failures;
 - separate deterministic Demo fixtures containing no real customer identifiers, credentials, provider tokens, or Production references.
 - one isolated Shared Demo database with distinct migration, customer, Platform and reset roles, canonical
-  schema `39`, Demo overlay `5`, and the recorded source seed version/checksum.
+  schema `42`, Demo overlay `7`, and the recorded source seed version/checksum.
 
 Do not record raw Tenant/User/operator/provider identifiers, cookies, tokens, claims, secrets, URLs containing credentials, connection strings, invitation artifacts, or customer content in repository evidence.
 

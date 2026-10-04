@@ -44,7 +44,7 @@ Repository evidence never substitutes for deployed evidence. Demo evidence never
 | Platform API artifact | `<digest-reference>` | `PENDING` |
 | Customer Demo API artifact | `<digest-reference>` | `PENDING` |
 | Platform Demo API artifact | `<digest-reference>` | `PENDING` |
-| Shared Demo PostgreSQL/schema/seed | `<service-schema-38-overlay-4-seed-checksum-reference>` | `PENDING` |
+| Shared Demo PostgreSQL/schema/seed | `<service-schema-42-overlay-7-seed-checksum-reference>` | `PENDING` |
 | Deployment/IaC revision | `<immutable-reference>` | `PENDING` |
 | PostgreSQL engine/schema | `<protected-service-and-version-reference>` | `PENDING` |
 | Operator identity policy | `<registration-and-policy-reference>` | `PENDING` |

@@ -174,10 +174,12 @@ Migration 034 sets `revoked_at` on every still-active Customer session. Its down
 The required forward sequence is:
 
 1. block new Customer traffic and drain the complete old-epoch customer fleet;
-2. apply migration 034 and retain protected migration checksum plus pre/post active-session-count evidence;
+2. apply the reviewed canonical migration sequence through 042 (including the one-way 034 cutover when not already applied), and retain protected checksum plus pre/post active-session-count evidence;
 3. deploy the complete new-epoch fleet with no mixed customer instances;
-4. resume traffic only after readiness is schema 38 and a captured old cookie fails;
+4. resume traffic only after readiness is the exact current schema 42 and a captured old cookie fails;
 5. require fresh sign-in and verify the new Principal reflects current role policy.
+
+The following schema-33/034 rollback describes the historical authorization-epoch transition only. It is not a supported direct downgrade of the current schema-42 database. Current recovery requires a reviewed immutable schema-compatible binary or forward fix; every required down-migration guard and whole-fleet/session-invalidation check must pass before any separately approved downgrade.
 
 Emergency rollback remains a global reauthentication event. Block Customer traffic, drain the new fleet, run the migration-034 down bookkeeping step, deploy the schema-33-compatible old binary and then resume only for fresh sign-in. Every pre-cutover row stays revoked and every new-epoch row is unresolvable by the old hash. Before forwarding again, block traffic, reapply migration 034 to revoke every rollback-window session, deploy the new fleet and repeat the old-cookie negative check. A database restore or PITR target older than migration 034 must receive no Customer traffic until migration 034 has been reapplied.
 
