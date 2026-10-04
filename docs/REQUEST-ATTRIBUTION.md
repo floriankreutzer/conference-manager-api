@@ -75,8 +75,8 @@ or new permission is introduced.
 
 1. Deploy the coordinated frontend compatibility stage accepting exact response
    v2 and v3 and independently accepting the supported Request compositions.
-2. Drain old API writers. Apply canonical migrations through 038 explicitly and
-   verify exact integrated readiness 38.
+2. Drain old API writers. Apply canonical migrations through 042 explicitly and
+   verify exact integrated readiness 42. Already migrated deployments must not repeat the cutover.
 3. Deploy API v3 projection writers/readers, then the restored frontend surfaces.
 
 List/history/report cursor purposes are separately advanced for the v3 projection;

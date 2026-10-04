@@ -278,9 +278,9 @@ A cold start may delay the first page load. It must never cause fallback to brow
 
 ## Rollback and recovery
 
-A frontend-only rollback may redeploy an approved compatible frontend ref while the current API/schema remain in place. A backend rollback across migration 034 is not a simple prior-ref redeploy.
+A frontend-only rollback may redeploy an approved compatible frontend ref while the current API/schema remain in place. A backend rollback across migration 034 is not a simple prior-ref redeploy. The following historical authorization-epoch boundary is not a supported direct downgrade from current schema 42: every intervening populated migration guard and compatible release check must pass; prefer a forward fix.
 
-Before crossing that boundary, quiesce both Demo origins because they share canonical schema readiness. Use only the protected migration owner to change canonical migration bookkeeping; migration 034 down must leave Customer revocations intact. The target backend, fixture and canonical schema must be one reviewed compatible set, and all Customer and Platform sessions must be re-established. On re-forward, quiesce again, reapply migration 034 before traffic, deploy the current pair and verify old Customer cookies fail.
+Before crossing that boundary, quiesce both Demo origins because they share canonical schema readiness. Use only the protected migration owner to change canonical migration bookkeeping; migration 034 down must leave Customer revocations intact. The target backend, fixture and canonical schema must be one reviewed compatible set, and all Customer and Platform sessions must be re-established. On re-forward, quiesce again, apply the complete canonical sequence through current schema 042 including migration 034 before traffic, deploy the exact current pair and verify readiness plus old-cookie/fresh-session checks.
 
 For Demo data corruption or an invalid seed state, prefer the supported deterministic reset/reseed operation. If sentinel/schema integrity cannot be established, recreate the isolated Demo database and rerun the controlled initialization workflow. If the main-only initialization workflow cannot initialize the reviewed target contract, stop and forward-fix. Do not apply ad hoc repair SQL or grant a runtime role broader privileges.
 

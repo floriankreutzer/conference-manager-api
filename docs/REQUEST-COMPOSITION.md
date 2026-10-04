@@ -69,7 +69,7 @@ and currency consistency are reinforced by immutable database validation. Down t
 locks and refuses before mutation when any v3 Request, revision or proposal exists, including
 empty v3 selections. Use a compatible binary or forward fix after first v3 use.
 
-Demo seed `saas-3.6-shared-demo-v5` includes priced, applicable Northwind Equipment and a distinct
+Demo seed `saas-3.7-three-demo-customers-v1` includes priced, applicable Northwind Equipment and a distinct
 Contoso projection with a colliding Tenant-local ID and a foreign-only ID. Migrate and reset the
 isolated Demo database, deploy both API processes at one compatible SHA, verify readiness and
 Equipment pages, then pin/deploy the updated frontend. Existing exact v2 clients remain supported
@@ -406,7 +406,7 @@ Migration 027:
   `booking_change_requests`.
 
 Deployment must run `npm run db:migrate` before application rollout and verify
-exact schema readiness at version 38. The application does not auto-migrate.
+exact schema readiness at version 42. The application does not auto-migrate.
 Operators should expect all pre-migration Catalogue editors to reload because
 the migration advances that aggregate revision. Conference Managers with
 `tenant:catalogue:manage` should configure intentional Room prices after rollout;
