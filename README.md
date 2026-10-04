@@ -2,7 +2,7 @@
 
 ## SaaS 3.9 publishing and Demo boundary
 
-This repository remains private and authoritative for trusted backend implementation and canonical API contracts. SaaS 3.9 provides a governed public Developer Portal and immutable authenticated Git-submodule delivery for the Hosted Demo. Both application-source repositories are private; Website and Developer remain public. Final release acceptance is tracked in frontend #254/#170. See `docs/SAAS-3.9-PUBLISHING-AND-DEMO-BOUNDARY.md`.
+This repository remains private and authoritative for trusted backend implementation and canonical API contracts. SaaS 3.9 provides a governed public Developer Portal and immutable authenticated Git-submodule delivery for the Hosted Demo. Both application-source repositories are private; Website and Developer remain public. Infrastructure/security issue #254 and milestone 12 are closed. The independent SaaS 3.6 release gate #170 remains open; unmerged frontend PR #279 is not final acceptance. See [SAAS-3.9-PUBLISHING-AND-DEMO-BOUNDARY.md](docs/SAAS-3.9-PUBLISHING-AND-DEMO-BOUNDARY.md).
 
 Trusted production backend for the Conference Manager SaaS application.
 
@@ -13,7 +13,7 @@ retains technical provider/mapping and Cost Allocation authority. The existing s
 API supports receipt-bound Equipment template/export/validate/apply alongside the other Catalogue
 types. Canonical schema 042 and Demo overlays 001..007 are required; application processes never
 migrate at startup. Human-facing CSV and named reference choices live in the paired frontend;
-the server retains Tenant/role/actor/CSRF/revision/hash authority. See `docs/TENANT-BULK-TRANSFER.md`.
+the server retains Tenant/role/actor/CSRF/revision/hash authority. See [TENANT-BULK-TRANSFER.md](docs/TENANT-BULK-TRANSFER.md).
 
 ## Scope
 
@@ -63,13 +63,13 @@ The SaaS 0 foundation through issue #57 now provides:
 - regression/progression/adversarial tests for HTTP, Tenant, persistence, session, authorization, audit, entitlement,
   booking-integration, observability and production-security boundaries.
 
-The SaaS 1 repository implementation now includes the production Entra identity adapter, Tenant claiming and JIT provisioning, Tenant role administration, Microsoft 365 consent lifecycle, room discovery/mapping, Free/Busy, calendar synchronization, integration health, Tenant Pilot lifecycle, adversarial multi-Tenant gates, and controlled Pilot operations/readiness evidence. Real Microsoft, deployment, browser, restore, DAST, penetration-test, and operational evidence remains an external Pilot gate; see `docs/PILOT-READINESS-RUNBOOK.md`. Calendar Write remains disabled unless the release also satisfies `docs/EXCHANGE-APPLICATION-RBAC.md`.
+The SaaS 1 repository implementation now includes the production Entra identity adapter, Tenant claiming and JIT provisioning, Tenant role administration, Microsoft 365 consent lifecycle, room discovery/mapping, Free/Busy, calendar synchronization, integration health, Tenant Pilot lifecycle, adversarial multi-Tenant gates, and controlled Pilot operations/readiness evidence. Real Microsoft, deployment, browser, restore, DAST, penetration-test, and operational evidence remains an external Pilot gate; see [PILOT-READINESS-RUNBOOK.md](docs/PILOT-READINESS-RUNBOOK.md). Calendar Write remains disabled unless the release also satisfies [EXCHANGE-APPLICATION-RBAC.md](docs/EXCHANGE-APPLICATION-RBAC.md).
 
 SaaS 3.5 adds an isolated Shared Demo Runtime with separate customer and Platform process entrypoints,
 one authoritative PostgreSQL state, deterministic simulated identity/Microsoft scenarios, and a
 sentinel/checksum/lock-protected reset. It reuses the canonical server application and authorization
 boundaries; Production cannot import or fall back to Demo behavior. See
-`docs/SHARED-DEMO-RUNTIME.md`.
+[SHARED-DEMO-RUNTIME.md](docs/SHARED-DEMO-RUNTIME.md).
 
 ## Run locally
 
@@ -86,7 +86,7 @@ A non-persistent development composition may leave `CSRF_SECRET` and `AUDIT_HMAC
 
 Do not rotate `AUDIT_HMAC_SECRET` as an ordinary configuration change. Key rotation requires a reviewed audit-integrity migration/checkpoint strategy because existing events were signed with the previous key.
 
-The checked-in `.env.example` is a development template. Pilot/Production configuration and secrets must be supplied by protected deployment configuration according to `docs/PRODUCTION-SECURE-CONFIGURATION.md`.
+The checked-in `.env.example` is a development template. Pilot/Production configuration and secrets must be supplied by protected deployment configuration according to [PRODUCTION-SECURE-CONFIGURATION.md](docs/PRODUCTION-SECURE-CONFIGURATION.md).
 
 ## Run the Shared Demo Runtime
 
@@ -103,7 +103,7 @@ npm run start:demo:platform
 
 The two start commands are independent processes and must be routed through separate HTTPS origins.
 Do not supply Production/real-provider credentials. The complete configuration, provisioning,
-reset, validation and rollback contract is in `docs/SHARED-DEMO-RUNTIME.md`.
+reset, validation and rollback contract is in [SHARED-DEMO-RUNTIME.md](docs/SHARED-DEMO-RUNTIME.md).
 
 ## API foundation
 
@@ -122,31 +122,31 @@ There is intentionally no browser-controlled session issuance, entitlement-admin
 
 See:
 
-- `docs/API.md`
-- `docs/ARCHITECTURE.md`
-- `docs/AUDIT.md`
-- `docs/AUTHORIZATION.md`
-- `docs/BOOKING-INTEGRATION.md`
-- `docs/ENTITLEMENTS.md`
-- `docs/ENTRA-AUTHENTICATION.md`
-- `docs/ENTRA-PILOT-VALIDATION.md`
-- `docs/EXCHANGE-APPLICATION-RBAC.md`
-- `docs/IDENTITY-SESSION.md`
-- `docs/MICROSOFT365-CALENDAR-WRITE.md`
-- `docs/MICROSOFT365-CONNECTION.md`
-- `docs/MICROSOFT365-FREE-BUSY.md`
-- `docs/MICROSOFT365-INTEGRATION-HEALTH.md`
-- `docs/MICROSOFT365-ROOM-DISCOVERY.md`
-- `docs/MICROSOFT365-ROOM-MAPPING.md`
-- `docs/OBSERVABILITY.md`
-- `docs/PERSISTENCE.md`
-- `docs/PILOT-PENETRATION-TEST.md`
-- `docs/PILOT-READINESS-RUNBOOK.md`
-- `docs/PRODUCTION-SECURE-CONFIGURATION.md`
-- `docs/SECURITY.md`
-- `docs/SHARED-DEMO-RUNTIME.md`
-- `docs/TENANCY.md`
-- `docs/THREAT-MODEL.md`
+- [API.md](docs/API.md)
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [AUDIT.md](docs/AUDIT.md)
+- [AUTHORIZATION.md](docs/AUTHORIZATION.md)
+- [BOOKING-INTEGRATION.md](docs/BOOKING-INTEGRATION.md)
+- [ENTITLEMENTS.md](docs/ENTITLEMENTS.md)
+- [ENTRA-AUTHENTICATION.md](docs/ENTRA-AUTHENTICATION.md)
+- [ENTRA-PILOT-VALIDATION.md](docs/ENTRA-PILOT-VALIDATION.md)
+- [EXCHANGE-APPLICATION-RBAC.md](docs/EXCHANGE-APPLICATION-RBAC.md)
+- [IDENTITY-SESSION.md](docs/IDENTITY-SESSION.md)
+- [MICROSOFT365-CALENDAR-WRITE.md](docs/MICROSOFT365-CALENDAR-WRITE.md)
+- [MICROSOFT365-CONNECTION.md](docs/MICROSOFT365-CONNECTION.md)
+- [MICROSOFT365-FREE-BUSY.md](docs/MICROSOFT365-FREE-BUSY.md)
+- [MICROSOFT365-INTEGRATION-HEALTH.md](docs/MICROSOFT365-INTEGRATION-HEALTH.md)
+- [MICROSOFT365-ROOM-DISCOVERY.md](docs/MICROSOFT365-ROOM-DISCOVERY.md)
+- [MICROSOFT365-ROOM-MAPPING.md](docs/MICROSOFT365-ROOM-MAPPING.md)
+- [OBSERVABILITY.md](docs/OBSERVABILITY.md)
+- [PERSISTENCE.md](docs/PERSISTENCE.md)
+- [PILOT-PENETRATION-TEST.md](docs/PILOT-PENETRATION-TEST.md)
+- [PILOT-READINESS-RUNBOOK.md](docs/PILOT-READINESS-RUNBOOK.md)
+- [PRODUCTION-SECURE-CONFIGURATION.md](docs/PRODUCTION-SECURE-CONFIGURATION.md)
+- [SECURITY.md](docs/SECURITY.md)
+- [SHARED-DEMO-RUNTIME.md](docs/SHARED-DEMO-RUNTIME.md)
+- [TENANCY.md](docs/TENANCY.md)
+- [THREAT-MODEL.md](docs/THREAT-MODEL.md)
 
 ## Required validation
 

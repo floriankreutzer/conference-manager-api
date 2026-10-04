@@ -2,7 +2,7 @@
 
 ## Status
 
-The SaaS 3.9 delivery path and application-source visibility cutover are implemented. Both application repositories are private; Website and Developer remain public. Protected post-private CI and the existing Hosted services have verified the approved delivery path. Final release acceptance and milestone closure remain bound to frontend #254/#170 and their executed evidence.
+The SaaS 3.9 delivery path and application-source visibility cutover are implemented. Both application repositories are private; Website and Developer remain public. Protected post-private CI and the existing Hosted services have verified the approved delivery path. SaaS 3.9 issue #254 and milestone 12 are closed. The independent SaaS 3.6 gate #170 remains open and does not reopen the completed infrastructure/security scope. Dated release evidence remains bound to its exact tested/deployed pair.
 
 ## Repository boundary
 
