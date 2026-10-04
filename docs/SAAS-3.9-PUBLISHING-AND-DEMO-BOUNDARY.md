@@ -2,7 +2,7 @@
 
 ## Status
 
-This document records the approved SaaS 3.9 target state. It does not claim that the hosted Demo delivery migration or application-repository visibility cutover is complete.
+The SaaS 3.9 delivery path and application-source visibility cutover are implemented. Both application repositories are private; Website and Developer remain public. Protected post-private CI and the existing Hosted services have verified the approved delivery path. Final release acceptance and milestone closure remain bound to frontend #254/#170 and their executed evidence.
 
 ## Repository boundary
 
@@ -28,9 +28,9 @@ SaaS 4 #236/#237 own the generic Caterer API contract and documentation content.
 
 ## Hosted Demo transition
 
-Current hosted Demo preparation fetches the exact `DEMO_FRONTEND_REF` from the public `conference-manager` repository using an intentionally anonymous Git environment. That remains the current operational contract until #251 replaces it.
+Render checks out the immutable `vendor/demo-frontend` Git submodule using its existing authenticated repository integration. `demo:hosted:prepare` verifies that its exact commit equals `DEMO_FRONTEND_REF`, copies only the allowlisted browser artifacts, and excludes Git metadata. Preparation performs no anonymous source fetch and fails closed on a missing or mismatched checkout. Both manifest pins and the Gitlink must identify the same merged frontend commit.
 
-The approved target is a controlled immutable frontend artifact that:
+The implemented controlled immutable frontend artifact:
 - is traceable to the exact frontend source commit;
 - has verifiable integrity;
 - fails closed when missing, mismatched or untrusted;
@@ -39,11 +39,11 @@ The approved target is a controlled immutable frontend artifact that:
 - preserves the permanent three-Demo-customer and two-cycle reset acceptance invariant;
 - preserves exact immutable cross-repository acceptance.
 
-`conference-manager` must not be made private before a fresh hosted build proves this replacement path.
+The prerequisite was satisfied before the visibility cutover. Fresh private-source builds of both existing Hosted services and reciprocal private-source CI succeeded. Updating the frontend requires a protected API pin/Gitlink change and new paired deployment; an earlier successful build does not certify a new pair.
 
 ## Cutover gate
 
-Only SaaS 3.9 #254 performs the final application-source visibility cutover after #247–#253 prerequisites are satisfied. After the cutover, CI, Render, cross-repository acceptance, repository protections, dependency/security gates and public links must be revalidated.
+SaaS 3.9 #254 records the final application-source visibility cutover and its acceptance after #247–#253 prerequisites. Post-cutover CI, Render, reciprocal acceptance, repository protections, dependency/security gates and anonymous public links are revalidated before closure. Required frontend quality now runs the repository-owned Semgrep CE policy and conservative lockfile/SPDX checks; private CodeQL is unavailable and equivalent full-query coverage is not claimed.
 
 Repository visibility never permits secrets or confidential data in source control. Existing secret, dependency, static/SAST, tenant-isolation and authorization controls remain mandatory.
 

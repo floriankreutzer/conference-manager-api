@@ -213,7 +213,7 @@ See `docs/MICROSOFT365-CONNECTION.md`.
   provider-neutral inputs and produces only deterministic success, conflict or degradation
   outcomes.
 - A reset-only database role, separate from the migration owner and both runtime roles, verifies an immutable Demo sentinel, current database/role,
-  exact canonical schema `001..038`, exact table inventory and the source fixture checksum before
+  exact canonical schema `001..042`, exact table inventory and the source fixture checksum before
   destructive work.
 - Normal Demo requests hold a shared advisory lock; reset holds the corresponding exclusive lock.
   Truncate, deterministic seed and semantic checksum readback commit in one serializable

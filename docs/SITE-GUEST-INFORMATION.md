@@ -117,7 +117,7 @@ Down obtains exclusive locks and refuses before mutation if any Site is populate
 retains a nonempty map. Clearing the current Site does not permit deleting historical evidence.
 After use, roll back to a compatible binary or apply a reviewed forward fix.
 
-Deploy the combined schema-38 API to both Customer and Platform Demo before consumers request this
+Deploy the combined schema-42 API to both Customer and Platform Demo before consumers request this
 projection. Demo seed includes distinct synthetic Berlin/Paris guest data; semantic readback includes
 the complete value, so drift changes the reset checksum. Production has no Demo/browser fallback.
 Logs, metrics and audit-chain payloads contain neither accepted nor rejected guest

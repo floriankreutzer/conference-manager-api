@@ -138,14 +138,16 @@ The Customer session hash namespace is fixed in source as `customer-session:saas
 Forward rollout across migration 034 is a global reauthentication event:
 
 1. block new Customer traffic and drain every old-epoch customer instance;
-2. apply migration 034 and retain its ledger/checksum plus protected pre/post active-session counts;
+2. apply the reviewed canonical migration sequence through 042 (including 034 when not already applied) and retain its ledger/checksum plus protected pre/post active-session counts;
 3. deploy the whole new-epoch customer fleet; mixed old/new customer instances are prohibited;
-4. require schema-38 readiness before resuming traffic;
+4. require exact schema-42 readiness before resuming traffic;
 5. prove a captured pre-cutover cookie returns unauthenticated and a fresh sign-in returns only current roles/permissions.
+
+The following schema-33/034 rollback describes the historical authorization-epoch transition only. It is not a supported direct downgrade of the current schema-42 database. Current recovery requires a reviewed immutable schema-compatible binary or forward fix; every required down-migration guard and whole-fleet/session-invalidation check must pass before any separately approved downgrade.
 
 Emergency binary rollback must also block Customer traffic and drain the fleet. Run the migration-034 down bookkeeping step, whose SQL deliberately never clears `revoked_at`, then deploy the schema-33-compatible old binary. Pre-cutover legacy rows remain revoked, and new-epoch rows are unresolvable by the old token hash; users must sign in again after traffic resumes. Before a later forward deploy, block traffic and reapply migration 034 so every rollback-window session is revoked.
 
-A restore or PITR target from before migration 034 must not receive Customer traffic. Apply the canonical migrations through 034, deploy one epoch-consistent fleet and repeat the old-cookie/fresh-login checks first. Clearing revocations, rewriting hashes, serving a mixed fleet or merely redeploying old refs without this procedure is a release blocker.
+A restore or PITR target from before migration 034 must not receive Customer traffic. Apply the complete current canonical migrations through 042, including the 034 revocation boundary, deploy one epoch-consistent fleet and repeat the old-cookie/fresh-login checks first. Clearing revocations, rewriting hashes, serving a mixed fleet or merely redeploying old refs without this procedure is a release blocker.
 
 Migration 034 has no authenticated per-session actor and must not fabricate Tenant `session.revoked` events. Store the migration checksum/ledger, release SHA, active-session counts, traffic-drain approval, negative old-cookie result and fresh-Principal verification in protected deployment evidence.
 
@@ -155,7 +157,7 @@ Migration 034 has no authenticated per-session actor and must not fabricate Tena
 - Pilot/Production use `DATABASE_SSL=verify-full` with a certificate/hostname-valid endpoint.
 - SQL application values remain parameterized.
 - Deployment automation applies migrations before application rollout; startup does not auto-migrate.
-- Readiness requires connectivity and exact repository-defined schema version 38.
+- Readiness requires connectivity and exact repository-defined schema version 42.
 - Tenant ownership and referential integrity are reinforced at database level.
 - Advisory locks and optimistic versions protect concurrent security/business transitions.
 - Migration rollback guards prevent silent removal of security/business evidence.

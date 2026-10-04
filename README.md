@@ -2,7 +2,7 @@
 
 ## SaaS 3.9 publishing and Demo boundary
 
-This repository remains private and authoritative for trusted backend implementation and canonical API contracts. SaaS 3.9 introduces a governed public Developer Portal and replaces the hosted Demo's dependency on anonymous public application-source checkout before the application repository may become private. See `docs/SAAS-3.9-PUBLISHING-AND-DEMO-BOUNDARY.md`. The target state is approved; the migration/cutover is not claimed complete.
+This repository remains private and authoritative for trusted backend implementation and canonical API contracts. SaaS 3.9 provides a governed public Developer Portal and immutable authenticated Git-submodule delivery for the Hosted Demo. Both application-source repositories are private; Website and Developer remain public. Final release acceptance is tracked in frontend #254/#170. See `docs/SAAS-3.9-PUBLISHING-AND-DEMO-BOUNDARY.md`.
 
 Trusted production backend for the Conference Manager SaaS application.
 
@@ -91,12 +91,12 @@ The checked-in `.env.example` is a development template. Pilot/Production config
 ## Run the Shared Demo Runtime
 
 The Shared Demo uses a dedicated database named `conference_manager_demo_*`, canonical schema
-version `34`, Demo overlay version `3`, four distinct database roles and only `DEMO_*`
+version `42`, Demo overlay version `7`, four distinct database roles and only `DEMO_*`
 configuration. After provisioning and applying canonical migrations, run:
 
 ```bash
 npm run demo:db:migrate
-npm run demo:db:reset -- --confirm-seed-version=saas-3.5-shared-demo-v1
+npm run demo:db:reset -- --confirm-seed-version=saas-3.7-three-demo-customers-v1
 npm run start:demo:customer
 npm run start:demo:platform
 ```

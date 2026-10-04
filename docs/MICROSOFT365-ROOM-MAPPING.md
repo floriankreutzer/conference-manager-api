@@ -16,7 +16,7 @@ Microsoft 365 owns the external technical identity and provider snapshot:
 - Microsoft capacity snapshot;
 - whether the room was present in the latest successful discovery sync.
 
-Conference Manager owns the local room record:
+The Conference Manager application owns the local room record; this product ownership does not grant every field to the customer `conference_manager` role:
 
 - internal room identifier;
 - site assignment;
@@ -24,6 +24,8 @@ Conference Manager owns the local room record:
 - local capacity used by Conference Manager;
 - local activation policy;
 - all existing Conference Manager-only configuration such as pricing, services/catering applicability, floorplan/media and future local metadata.
+
+The SaaS 3.6 role split in `docs/AUTHORIZATION.md` is authoritative: Tenant Admin owns provider discovery/import/mapping, stable technical identity and Site assignment; the Conference Manager role owns supported local Room business fields, Catalogue and Room prices. A mixed normal Locations mutation requires both capabilities. Provider-backed Rooms are not manually created or physically deleted through ordinary business administration.
 
 Provider refresh never overwrites those local fields. A provider rename or capacity change is retained as provider metadata so the Tenant Admin can see the drift without silently mutating local business configuration.
 

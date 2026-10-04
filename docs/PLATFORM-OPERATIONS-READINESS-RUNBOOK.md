@@ -283,7 +283,7 @@ Procedure:
 | --- | --- |
 | Environment | Dedicated customer and `platform-admin-demo/index.html` origins, both visibly and persistently identified as Demo |
 | Role/assurance | Documented simulated Platform roles; simulated MFA/step-up clearly labelled |
-| Preconditions | Exact customer/API/Platform Demo builds; canonical schema `39`; Demo overlay `5`; deterministic seed version/checksum; no Production/customer credentials or external provider configuration |
+| Preconditions | Exact customer/API/Platform Demo builds; canonical schema `42`; Demo overlay `7`; deterministic seed version/checksum; no Production/customer credentials or external provider configuration |
 | Target confirmation | Demo Tenant labels and fixture IDs only; verify Demo banner before every mutation |
 | Expected evidence | Build IDs, schema versions, reset seed/checksum, scenario list, shared-state/browser run IDs and reset result |
 | Failure behavior | Config, sentinel, role, schema, inventory, lock or checksum mismatch fails closed; Demo never calls Production/Microsoft, sends a real invitation or selects Production fallback |
@@ -292,8 +292,8 @@ Procedure:
 Procedure:
 
 1. verify the isolated database name, distinct migration/customer/Platform/reset roles, separate HTTPS origins, and absence of Production/real-provider configuration;
-2. apply the canonical `001..038` migrations, then run `npm run demo:db:migrate` for Demo overlay `001..004`;
-3. run `npm run demo:db:reset -- --confirm-seed-version=saas-3.6-shared-demo-v5` before process start and record the returned source-defined seed version and semantic checksum;
+2. apply the canonical `001..042` migrations, then run `npm run demo:db:migrate` for Demo overlay `001..007`;
+3. run `npm run demo:db:reset -- --confirm-seed-version=saas-3.7-three-demo-customers-v1` before process start and record the returned source-defined seed version and semantic checksum;
 4. start `npm run start:demo:customer` and `npm run start:demo:platform` as independent processes against the same verified database;
 5. establish separate customer and Platform sessions without authenticating to the Production identity provider; verify cookie/session namespaces do not cross;
 6. demonstrate each representative customer and Platform role and its denied operations, including CSRF, permission and out-of-scope Tenant denials;

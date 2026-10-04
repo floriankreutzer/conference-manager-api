@@ -441,7 +441,9 @@ revision once to add Room prices; pre-migration Catalogue clients must reload. O
 has been used, production rollback requires a reviewed forward fix, compatible application rollback
 or restore/PITR decision rather than deletion of immutable history or bypass of the guard.
 
-Migration 034 down deliberately leaves every cutover revocation in place. An emergency binary rollback must drain Customer traffic before removing schema bookkeeping; all pre-cutover cookies remain revoked and sessions issued by the new epoch are unresolvable by old token hashing. Reapplying migration 034 after a rollback window revokes any sessions the old binary issued. A restore or PITR target older than migration 034 must not receive Customer traffic until migration 034 has been reapplied. Operators must never clear `revoked_at`, reuse an epoch or rewrite hashes to make a rollback appear successful.
+The following authorization-epoch rollback describes the historical 033/034 boundary, not a supported direct downgrade from current schema 42. Every intervening populated rollback guard and compatible target-release check must pass; prefer a forward fix.
+
+Migration 034 down deliberately leaves every cutover revocation in place. An emergency binary rollback must drain Customer traffic before removing schema bookkeeping; all pre-cutover cookies remain revoked and sessions issued by the new epoch are unresolvable by old token hashing. Reapplying migration 034 after a rollback window revokes any sessions the old binary issued. A restore or PITR target older than migration 034 must not receive Customer traffic until the complete current canonical sequence through 042, including migration 034, has been applied and exact schema readiness plus old-cookie/fresh-session checks pass. Operators must never clear `revoked_at`, reuse an epoch or rewrite hashes to make a rollback appear successful.
 
 ## Testing evidence required
 
@@ -505,7 +507,7 @@ resubmit, transition, history and confirmed-change paths support the accepted ne
 while the outer response envelopes remain unchanged. Equipment is resolved using existing
 Tenant-composite Catalogue tables, charged once and included in allocation.
 
-The `saas-3.6-shared-demo-v5` reset fixture contains distinct priced Northwind/Contoso Equipment
+The `saas-3.7-three-demo-customers-v1` reset fixture contains distinct priced Northwind/Contoso Equipment
 and verifies those identity, price and applicability facts during semantic readback. Demo overlay
 004 supplies only the reset privilege required by canonical attribution migration 036. Apply
 canonical migrations first, apply Demo overlays 001 through 007, reset/reseed Demo, deploy both API
