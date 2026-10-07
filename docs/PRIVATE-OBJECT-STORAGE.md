@@ -57,6 +57,46 @@ integrity or unavailable codes, without SDK causes, credentials or provider mess
 The application must still decode/reencode uploads through the existing image processor.
 The storage port verifies digest/length; it is not a replacement image sanitizer.
 
+## Operator backfill and rollback
+
+`scripts/private-media-migration.mjs` accepts only `--execute copy|rollback|purge room|catalogue`.
+It requires a separate `MEDIA_MIGRATION_DATABASE_URL` and exact `MEDIA_MIGRATION_DATABASE_ROLE`,
+rejects the ordinary runtime identity, verifies the live maintenance privilege/role and exact schema, and verifies Demo
+overlay 008 when Catalogue scope is explicitly selected. It uses separately injected operator
+credentials (`MEDIA_OPERATOR_ENDPOINT`, `MEDIA_OPERATOR_REGION`, `MEDIA_OPERATOR_BUCKET`,
+`MEDIA_OPERATOR_ACCESS_KEY_ID`, `MEDIA_OPERATOR_SECRET_ACCESS_KEY`). Runtime/reset roles lack
+the required inventory maintenance privilege; it is checked before provider allocation or I/O.
+The Frankfurt endpoint and credentials are validated before any provider client is allocated.
+The command never prints credentials, connection metadata, objects or provider errors.
+
+Each invocation processes at most ten metadata candidates with a 25-second dispatch budget;
+each individual database/provider operation retains its own deadline. Metadata candidate reads
+exclude blobs; each asset is locked and rechecked before loading its one bounded image. Locked
+or changed candidates report incomplete work and are safely retried. There is no drain loop,
+automatic migration, deployment hook or schedule. Architecture gates prohibit importing the
+operator repository into application/runtime modules.
+
+`copy` registers durable custody before its metadata transaction, verifies the retained blob,
+uploads/read-verifies under the inventory lock, and adds the key while retaining PostgreSQL bytes.
+`rollback` verifies the exact current provider revision, then atomically restores database bytes
+and clears its pointer. Missing/corrupt objects abort without clearing references or fabricating
+bytes. Replacement/reset races cannot restore an older revision over a newer row. Both phases
+are idempotent and retain object inventory.
+
+`purge` additionally requires `--restore-evidence-sha256=<64 lowercase hex characters>` binding
+to the operator's retained successful coordinated restore/rollback acceptance artifact. The digest
+records that explicit authority; it is not itself proof that the exercise ran. Before executing,
+retain exact API/frontend commits, isolated database/object branch and private bucket, source and
+restored digests/lengths, attached/historical/Catalogue reads, missing/corrupt failure checks,
+foreign-Tenant denial and full three-customer/two-reset browser results. Purge re-verifies both
+database and provider copies immediately before dropping bytes. Retain bounded JSON command
+results and the named acceptance artifact as operator execution evidence. No real purge or
+restore acceptance is claimed by the test-only evidence hashes in automated tests.
+
+Rollback does not delete objects or retire custody. Schema downgrade remains guarded until an
+explicit coordinated inventory/retention reconciliation is complete. The unchanged 30-day orphan
+policy and retained backups must govern that separate operation.
+
 ## Dependency review
 
 The official S3 SDK is pinned to `3.1147.0` in manifest, lockfile and architecture policy.

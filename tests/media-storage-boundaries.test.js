@@ -25,3 +25,15 @@ test('provider-neutral media contract is available to repositories; SDK stays in
     'src/customer-composition.js': "import './media/neon-object-storage.js';",
   }), []);
 });
+
+test('operator backfill and rollback cannot become a runtime or browser-controlled authority', () => {
+  for (const file of ['src/index.js', 'src/customer-composition.js', 'src/platform-main.js',
+    'src/demo/platform-composition.js', 'src/http/room-media.js', 'src/persistence/postgres/index.js']) {
+    const prefix = file.startsWith('src/persistence/') ? './' : file.split('/').length === 3 ? '../persistence/postgres/'
+      : './persistence/postgres/';
+    assert.ok(architectureConsolidationBoundaryViolations({
+      [file]: `import '${prefix}media-backfill-repository.js';`,
+      'src/persistence/postgres/media-backfill-repository.js': 'export const backfill = true;',
+    }).some((entry) => entry.includes('operator media migration')));
+  }
+});
