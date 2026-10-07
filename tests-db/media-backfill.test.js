@@ -5,6 +5,7 @@ import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool } from '../src/persistence/postgres/pool.js';
 import { createPostgresMediaObjectRepository } from '../src/persistence/postgres/media-object-repository.js';
 import { createPostgresMediaBackfillRepository } from '../src/persistence/postgres/media-backfill-repository.js';
+import { createPostgresPlatformProjectionRepository } from '../src/persistence/postgres/platform-projection-repository.js';
 import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
@@ -47,6 +48,9 @@ test('bounded backfill, idempotent copy, guarded purge and verified rollback pre
   assert.deepEqual(copied.bytes, bytes);
   assert.deepEqual(objects.get(copied.object_key), bytes);
   assert.equal((await repository.runBatch({ phase: 'copy', kind: 'room' })).changed, 0);
+  const projections = createPostgresPlatformProjectionRepository(pool);
+  assert.deepEqual(await projections.consumeBatch(), { refreshedCount: 1, retryCount: 0, poisonCount: 0 });
+  assert.equal(await rollbackLatest(pool), true); // Drain and remove 044 before testing the 043 media guard.
   await assert.rejects(rollbackLatest(pool), /PRIVATE_MEDIA_OBJECTS_REQUIRE_VERIFIED_ROLLBACK/);
   await assert.rejects(repository.runBatch({ phase: 'purge', kind: 'room' }), /RESTORE_EVIDENCE_REQUIRED/);
   corrupt = true;

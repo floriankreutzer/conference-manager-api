@@ -35,7 +35,7 @@ try {
   if (!await isPostgresSchemaReady(pool)) throw new Error('MEDIA_MIGRATION_SCHEMA_NOT_READY');
   if (kind === 'catalogue') {
     const overlay = await pool.query('SELECT max(version)::integer AS version FROM demo_schema_migrations');
-    if (overlay.rows[0]?.version !== 8) throw new Error('MEDIA_MIGRATION_DEMO_SCHEMA_NOT_READY');
+    if (overlay.rows[0]?.version !== 9) throw new Error('MEDIA_MIGRATION_DEMO_SCHEMA_NOT_READY');
   }
   storage = createNeonObjectStorage(settings);
   const mediaObjects = createPostgresMediaObjectRepository(pool, { storage, includeDemoCatalogue: kind === 'catalogue' });

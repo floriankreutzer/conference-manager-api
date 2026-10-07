@@ -106,6 +106,18 @@ export function createMetricsRegistry({
       increment('authorization_denials_total', Object.freeze({ reason: 'forbidden' }));
     },
 
+    recordProjectionBatch({ refreshedCount = 0, retryCount = 0, poisonCount = 0, reconciliationCount = null }) {
+      const mode = reconciliationCount === null ? 'event' : 'reconciliation';
+      const counts = { refreshed: reconciliationCount ?? refreshedCount, retry: retryCount, poison: poisonCount };
+      if (Object.values(counts).some((value) => !Number.isSafeInteger(value) || value < 0 || value > 100)) {
+        throw new TypeError('METRIC_PROJECTION_COUNT_INVALID');
+      }
+      increment('platform_projection_batches_total', Object.freeze({ mode }));
+      for (const [outcome, count] of Object.entries(counts)) {
+        increment('platform_projection_outcomes_total', Object.freeze({ mode, outcome }), count);
+      }
+    },
+
     recordBookingOperation({ operation, outcome }) {
       increment('booking_operations_total', Object.freeze({
         operation: assertEnum(operation, BOOKING_OPERATIONS, 'METRIC_BOOKING_OPERATION_INVALID'),

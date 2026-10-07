@@ -38,6 +38,10 @@ async function prepareSaas3Rollback(pool) {
     await pool.query('ALTER TABLE tenant_onboarding_invitations ENABLE TRIGGER tenant_onboarding_invitations_revision_guard');
     await pool.query('ALTER TABLE tenants ENABLE TRIGGER tenants_platform_revisions');
   }
+  if (result.rows[0].version >= 44) {
+    // Fixture-only cleanup after revision normalization; production down still requires drain.
+    await pool.query('TRUNCATE platform_projection_outbox');
+  }
 }
 
 export async function rollbackLatest(pool, directory = 'migrations') {

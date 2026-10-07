@@ -151,7 +151,7 @@ The workflow performs, in order:
 
 1. fail-closed verification that all four database URL secrets exist;
 2. locked dependency installation;
-3. canonical PostgreSQL migrations `001..042` through the migration role;
+3. canonical PostgreSQL migrations `001..044` through the migration role;
 4. Demo overlay migrations and least-privilege grants;
 5. deterministic reset/reseed with the fixed seed version and semantic checksum.
 
@@ -298,7 +298,7 @@ The Demo accepts the following Free-tier behavior:
 - Render local filesystem is ephemeral, so only Neon PostgreSQL is authoritative;
 - no availability SLA is claimed;
 - no artificial keep-alive traffic is used to defeat Free-tier limits;
-- the Platform projection worker refreshes at a bounded 10-minute Demo cadence; Production keeps its independent default cadence;
+- the candidate Platform projection worker processes committed invalidations in bounded batches and retains the existing 10-minute Demo fallback cadence; Production keeps its independent default cadence. Optional LISTEN adds no heartbeat or keep-alive queries; see [Platform Projection Outbox](PLATFORM-PROJECTION-OUTBOX.md);
 - if Free-tier limits or provider terms become unsuitable, the hosting decision is revisited rather than weakening application architecture.
 
 A cold start may delay the first page load. It must never cause fallback to browser business persistence, local fixtures or a different security mode.
@@ -362,3 +362,13 @@ The exact v3 Request response envelopes, relational snapshots, honest legacy-nul
 semantics, unchanged audit-chain payload, and mandatory staged writer cutover are
 defined in [Request Attribution](REQUEST-ATTRIBUTION.md). Existing Tenant, role,
 object ownership and session/CSRF boundaries remain required for these reads and writes.
+
+
+## Schema 44 / overlay 9 candidate
+
+Quiesce both existing services before applying the complete canonical sequence through 044 and
+Demo overlays through 009 with the protected migration identity. Run the supported deterministic
+reset, deploy the exact compatible pair and verify all release gates before serving traffic.
+This document does not claim the existing hosted schema 42 / overlay 7 has been upgraded.
+Projection outbox rollback requires quiesced writers and a successfully drained, empty outbox;
+poison rows must be investigated rather than deleted to bypass the migration guard.

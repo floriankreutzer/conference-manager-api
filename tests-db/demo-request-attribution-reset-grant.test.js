@@ -113,7 +113,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
 
   await migrateUp(pool);
   await createRoles(pool);
-  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 8);
+  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 9);
 
   await t.test('fresh install records all Demo overlays and permits the real reset sequence', async () => {
     await migrateDemoUp(pool, { roles: ROLES });
@@ -126,6 +126,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
       { version: 6, name: 'demo_catalogue_media', checksum_length: 64 },
       { version: 7, name: 'demo_catalogue_media_create', checksum_length: 64 },
       { version: 8, name: 'private_media_metadata', checksum_length: 64 },
+      { version: 9, name: 'projection_outbox_privileges', checksum_length: 64 },
     ]);
     assert.deepEqual(await privileges(pool, ROLES.reset), {
       insert_allowed: true,
@@ -151,7 +152,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
   });
 
   await t.test('upgrade from 001..003 is denied before 004 and restored by the checksum runner', async () => {
-    for (let index = 0; index < 5; index += 1) {
+    for (let index = 0; index < 6; index += 1) {
       assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true);
     }
     assert.deepEqual((await overlayVersions(pool)).map(({ version }) => version), [1, 2, 3]);
@@ -169,7 +170,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
       (error) => error.code === '42501',
     );
     await migrateDemoUp(pool, { roles: ROLES });
-    assert.deepEqual((await overlayVersions(pool)).map(({ version }) => version), [1, 2, 3, 4, 5, 6, 7, 8]);
+    assert.deepEqual((await overlayVersions(pool)).map(({ version }) => version), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
     await resetAttributionStateAsRole(pool, ROLES.reset);
   });
 

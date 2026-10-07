@@ -159,7 +159,7 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
   semantic checksum; `src/persistence/postgres/demo-reset-repository.js` owns the sentinel-verified,
   exclusively locked, transactional reset/readback contract.
 - `scripts/demo-db-migrations.mjs` owns the independent checksum-protected Demo overlay migration
-  ledger after verifying the exact canonical schema `001..043`.
+  ledger after verifying the exact canonical schema `001..044`.
 - `scripts/platform-break-glass-grant.mjs` and `scripts/platform-recovery-fallback.mjs` are the only local privileged mutation wrappers. They accept credentials only through fixed descriptors and require live Platform sessions plus a dual-control, exact Tenant/permission-bound, one-use grant. The retired process-local Tenant-operator runtime and package entry point are prohibited.
 - `scripts/check-architecture.mjs` prevents architecture, migration and composition drift.
 - `scripts/check-security-baseline.mjs` prevents drift between the documented Pilot/Production security baseline and executable controls.
@@ -250,7 +250,7 @@ See `docs/AUDIT.md` for the normative event/integrity contract.
 
 Schema ownership lives in `migrations/`. Migrations are paired up/down files, numerically versioned, checksum protected and serialized by a PostgreSQL advisory lock.
 
-The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 43.
+The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 44.
 
 - Migration 001 establishes Tenant-owned product structures.
 - Migration 002 adds User security-version state and server-side sessions.
@@ -297,6 +297,8 @@ The application never auto-migrates at startup. Deployment automation runs migra
 
 - Migration 043 adds canonical private Room-object metadata and immutable durable upload intents. PostgreSQL delivery remains active until the separately accepted backfill/cutover.
 
+- Migration 044 atomically coalesces Platform projection invalidations per Tenant, with protected dispatch, bounded retries and an empty-queue rollback guard.
+
 Every migration that removes security/business evidence includes a fail-closed rollback guard.
 
 ## Shared Demo architecture
@@ -329,8 +331,8 @@ listening. Its HTTP reset path performs the same bounded refresh after reset com
 returning success. Projection failure remains visible and is not represented as a rolled-back
 authoritative reset.
 
-The canonical schema now includes migrations `001..043`; the Demo-only overlay is independently tracked
-as `demo-migrations/001..008`. Neither application process auto-migrates or auto-seeds. See
+The canonical schema now includes migrations `001..044`; the Demo-only overlay is independently tracked
+as `demo-migrations/001..009`. Neither application process auto-migrates or auto-seeds. See
 `docs/SHARED-DEMO-RUNTIME.md` for provisioning and operations.
 
 ## Request composition architecture
@@ -470,3 +472,15 @@ never activates Demo authority.
 ## Site Guest Information boundary
 
 `site-guest-information.js` is a provider-neutral exact-schema public-presentation validator with a fixed public map-origin allowlist and no imports or network transport. Locations v2 owns its Site configuration; the existing Request service authorizes before a final Tenant/Request/version/status-bound repository projection. Separate Site/revision columns preserve v1 writers and immutable history. See `docs/SITE-GUEST-INFORMATION.md`.
+
+
+## Platform projection invalidation
+
+`platform-projection-repository.js` owns both affected-Tenant outbox dispatch and slow reconciliation;
+both reuse the existing authoritative-source projection policy. Migration 044 records demand and
+marks snapshots stale in the source transaction. `platform-projection-notifications.js` owns one
+optional fixed-channel, empty-payload PostgreSQL LISTEN connection, not business event authority.
+`projection-worker.js` serializes bounded dispatch, coalesces wakeups, reconnects at the existing
+poll cadence, and awaits pending subscription/release work on shutdown. No HTTP route writes
+outbox state and no application/domain module imports the database listener. See
+[Platform Projection Outbox](PLATFORM-PROJECTION-OUTBOX.md).

@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool } from '../src/persistence/postgres/pool.js';
 import { createPostgresMediaObjectRepository } from '../src/persistence/postgres/media-object-repository.js';
+import { createPostgresPlatformProjectionRepository } from '../src/persistence/postgres/platform-projection-repository.js';
 import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
 import { mediaObjectReference } from '../src/media/object-storage-contract.js';
 import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
@@ -50,6 +51,9 @@ test('private media metadata preserves rollback, immutable intents, orphan recov
   assert.deepEqual(objects.get(durable.key), bytes);
   await assert.rejects(repository.read(durable, `v1/${FOREIGN}/room/${durable.assetId}/${digest}`), /INTEGRITY_FAILED/);
   assert.deepEqual(await repository.read(durable, durable.key), bytes);
+  const projections = createPostgresPlatformProjectionRepository(pool);
+  assert.deepEqual(await projections.consumeBatch(), { refreshedCount: 1, retryCount: 0, poisonCount: 0 });
+  assert.equal(await rollbackLatest(pool), true); // Drain 044 before exercising the unchanged 043 custody guard.
   await assert.rejects(rollbackLatest(pool), /PRIVATE_MEDIA_OBJECTS_REQUIRE_VERIFIED_ROLLBACK/);
   await assert.rejects(pool.query(`INSERT INTO tenant_room_media_assets
     (tenant_id,id,room_id,bytes,byte_length,width,height,content_sha256,created_by_user_id)

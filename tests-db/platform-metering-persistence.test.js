@@ -7,7 +7,8 @@ import {
   createPostgresPlatformUsageSource,
 } from '../src/persistence/postgres/platform-metering-repository.js';
 import { createPostgresPool } from '../src/persistence/postgres/pool.js';
-import { migrateUp, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { createPostgresPlatformProjectionRepository } from '../src/persistence/postgres/platform-projection-repository.js';
+import { migrateUp, rollbackLatest, rollbackToVersion } from '../scripts/db-migrations.mjs';
 import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
 
 const TENANT_A = 'a1111111-1111-4111-8111-111111111111';
@@ -648,6 +649,9 @@ test('Platform metering PostgreSQL ledger, reconciliation and quota invariants',
   });
 
   await t.test('migration rollback refuses retained state and is reversible after reviewed cleanup', async () => {
+    assert.deepEqual(await createPostgresPlatformProjectionRepository(pool).consumeBatch(),
+      { refreshedCount: 2, retryCount: 0, poisonCount: 0 });
+    assert.equal(await rollbackLatest(pool), true); // Successfully drain 044 before testing retained 033 evidence.
     await assert.rejects(
       rollbackToVersion(pool, 33),
       (error) => error.code === '55000'

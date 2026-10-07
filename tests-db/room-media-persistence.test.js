@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool } from '../src/persistence/postgres/pool.js';
 import { createPostgresRoomMediaRepository } from '../src/persistence/postgres/room-media-repository.js';
+import { createPostgresPlatformProjectionRepository } from '../src/persistence/postgres/platform-projection-repository.js';
 import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
 
 const TENANT_A = '11111111-1111-4111-8111-111111111111';
@@ -75,6 +76,8 @@ test('Room bytes are Tenant-owned, attachment-bound, active-scoped and rollback 
     { deleted: 1, bytes: bytes.length });
   assert.equal((await pool.query(`SELECT count(*)::integer AS count FROM tenant_room_media_assets
     WHERE tenant_id = $1`, [TENANT_A])).rows[0].count, 1);
+  assert.equal((await createPostgresPlatformProjectionRepository(pool).consumeBatch({ limit: 100 })).retryCount, 0);
+  assert.equal(await rollbackLatest(pool), true); // schema 044 has a successfully drained outbox
   assert.equal(await rollbackLatest(pool), true); // schema 043 has no external objects here
   assert.equal(await rollbackLatest(pool), true); // schema 042 has no Equipment receipts here
   assert.equal(await rollbackLatest(pool), true); // schema 041 drops only the maintenance procedure

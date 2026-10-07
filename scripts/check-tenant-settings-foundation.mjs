@@ -50,8 +50,8 @@ if (/repository|SELECT|UPDATE|INSERT INTO|DELETE FROM/i.test(revision)) {
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 43;/.test(pool)) {
-  throw new Error('Runtime schema readiness must include private media metadata migration version 43.');
+if (!/export const CURRENT_SCHEMA_VERSION = 44;/.test(pool)) {
+  throw new Error('Runtime schema readiness must include projection outbox migration version 44.');
 }
 
 const migration = await readFile('migrations/020_tenant_settings_revisions.up.sql', 'utf8');

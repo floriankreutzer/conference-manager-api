@@ -7,6 +7,7 @@ import {
   isPostgresSchemaReady,
 } from '../src/persistence/postgres/pool.js';
 import { migrateUp, rollbackToVersion } from '../scripts/db-migrations.mjs';
+import { createPostgresPlatformProjectionRepository } from '../src/persistence/postgres/platform-projection-repository.js';
 
 const TENANT_A = '91919191-9191-4191-8191-919191919191';
 const TENANT_B = '92929292-9292-4292-8292-929292929292';
@@ -205,7 +206,7 @@ async function tableHasColumn(pool, tableName, columnName) {
 }
 
 test('migration 036 preserves honest legacy attribution and enforces post-cutover snapshots', async (t) => {
-  assert.equal(CURRENT_SCHEMA_VERSION, 43);
+  assert.equal(CURRENT_SCHEMA_VERSION, 44);
   const pool = createPostgresPool(databaseConfig());
   t.after(async () => pool.end());
 
@@ -562,6 +563,7 @@ test('migration 036 preserves honest legacy attribution and enforces post-cutove
     (error) => error?.code === '23514' && /BOOKING_CHANGE_ACTOR_ROLE_REQUIRED/.test(error.message),
   );
 
+  assert.equal((await createPostgresPlatformProjectionRepository(pool).consumeBatch({ limit: 100 })).retryCount, 0);
   await assert.rejects(
     rollbackToVersion(pool, 36),
     (error) => error?.code === '55000'

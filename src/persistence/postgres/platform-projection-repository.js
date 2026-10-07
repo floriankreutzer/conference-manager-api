@@ -5,6 +5,7 @@ import {
   TENANT_READINESS_CHECK,
 } from '../../tenancy/tenant-readiness-policy.js';
 import { withPostgresTransaction } from './transaction.js';
+import { subscribePlatformProjectionNotifications } from './platform-projection-notifications.js';
 
 const readinessPolicy = createTenantReadinessPolicy();
 
@@ -160,7 +161,8 @@ async function storeProjection(client, source, observedAt) {
         missing_required_entitlement_count = EXCLUDED.missing_required_entitlement_count,
         evaluated_at = EXCLUDED.evaluated_at,
         revision = platform_tenant_readiness_snapshots.revision + 1,
-        invalidated_at = NULL, invalidation_reason = NULL, updated_at = EXCLUDED.updated_at
+        invalidated_at = NULL, invalidation_reason = NULL,
+        updated_at = GREATEST(EXCLUDED.updated_at, platform_tenant_readiness_snapshots.updated_at)
     `,
     values: [tenant.id, tenant.lifecycle_revision, tenant.entitlement_revision,
       onboardingState, readiness.state, readiness.blockerCodes, JSON.stringify(checks),
@@ -185,7 +187,8 @@ async function storeProjection(client, source, observedAt) {
         total_mapping_count = EXCLUDED.total_mapping_count,
         observed_at = EXCLUDED.observed_at,
         revision = platform_microsoft_fleet_snapshots.revision + 1,
-        invalidated_at = NULL, invalidation_reason = NULL, updated_at = EXCLUDED.updated_at
+        invalidated_at = NULL, invalidation_reason = NULL,
+        updated_at = GREATEST(EXCLUDED.updated_at, platform_microsoft_fleet_snapshots.updated_at)
     `,
     values: [tenant.id, tenant.lifecycle_revision, connectionState(tenant.connection_status),
       permissionState(tenant.places_permission_status), permissionState(tenant.calendars_permission_status),
@@ -258,6 +261,72 @@ export function createPostgresPlatformProjectionRepository(pool) {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
   }
   return Object.freeze({
+    subscribe: (onWake, onDisconnect) => subscribePlatformProjectionNotifications(pool, onWake, onDisconnect),
+    async consumeBatch({ limit = 25 } = {}) {
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+        throw new TypeError('PLATFORM_PROJECTION_BATCH_LIMIT_INVALID');
+      }
+      return withPostgresTransaction(pool, async (client) => {
+        // Tenant -> outbox -> projection lock order matches authoritative Tenant writes.
+        // Non-Tenant writes can wait for outbox custody; source reads never lock their rows.
+        const candidates = await client.query({
+          name: 'platform-projection-outbox-candidates',
+          text: `SELECT tenant.id FROM platform_projection_outbox event
+            JOIN tenants tenant ON tenant.id = event.tenant_id
+            WHERE event.state = 'pending' AND event.available_at <= clock_timestamp()
+            ORDER BY event.available_at, event.tenant_id
+            LIMIT $1 FOR UPDATE OF tenant SKIP LOCKED`,
+          values: [limit],
+        });
+        const result = { refreshedCount: 0, retryCount: 0, poisonCount: 0 };
+        const deadline = performance.now() + 25_000;
+        for (const { id } of candidates.rows) {
+          if (performance.now() >= deadline) break;
+          const custody = await client.query({
+            name: 'platform-projection-outbox-lock',
+            text: `SELECT source_version, attempts FROM platform_projection_outbox
+              WHERE tenant_id = $1 AND state = 'pending' AND available_at <= clock_timestamp()
+              FOR UPDATE SKIP LOCKED`,
+            values: [id],
+          });
+          if (custody.rowCount !== 1) continue;
+          const event = custody.rows[0];
+          await client.query('SAVEPOINT platform_projection_event');
+          try {
+            const source = await loadSource(client, id);
+            if (!source) throw new Error('PLATFORM_PROJECTION_SOURCE_MISSING');
+            const clock = await client.query({
+              name: 'platform-projection-outbox-clock',
+              text: "SELECT date_trunc('milliseconds', clock_timestamp()) AS observed_at",
+            });
+            await storeProjection(client, source, clock.rows[0].observed_at.toISOString());
+            await client.query({
+              name: 'platform-projection-outbox-acknowledge',
+              text: 'DELETE FROM platform_projection_outbox WHERE tenant_id = $1 AND source_version = $2',
+              values: [id, event.source_version],
+            });
+            await client.query('RELEASE SAVEPOINT platform_projection_event');
+            result.refreshedCount += 1;
+          } catch {
+            // Roll back every partial projection write, but retain and classify durable intent.
+            await client.query('ROLLBACK TO SAVEPOINT platform_projection_event');
+            await client.query('RELEASE SAVEPOINT platform_projection_event');
+            const attempts = Math.min(Number(event.attempts) + 1, 5);
+            await client.query({
+              name: 'platform-projection-outbox-retry',
+              text: `UPDATE platform_projection_outbox SET attempts = $2,
+                state = CASE WHEN $2 = 5 THEN 'poison' ELSE 'pending' END,
+                available_at = clock_timestamp() + make_interval(secs => $3),
+                last_failure = 'projection_failed' WHERE tenant_id = $1 AND source_version = $4`,
+              values: [id, attempts, Math.min(30 * (2 ** (attempts - 1)), 480), event.source_version],
+            });
+            if (attempts === 5) result.poisonCount += 1;
+            else result.retryCount += 1;
+          }
+        }
+        return Object.freeze(result);
+      });
+    },
     async refreshBatch({ limit = 25 } = {}) {
       return withPostgresTransaction(
         pool,

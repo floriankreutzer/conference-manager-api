@@ -3,6 +3,7 @@ import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
 import { normalizeSiteGuestInformation } from '../src/domain/site-guest-information.js';
 import { createPostgresPool } from '../src/persistence/postgres/pool.js';
+import { createPostgresPlatformProjectionRepository } from '../src/persistence/postgres/platform-projection-repository.js';
 import { migrateUp, rollbackToVersion } from '../scripts/db-migrations.mjs';
 import { clearSaas3TestState } from './support/saas3-test-state.js';
 import { removeSaas2TenantAdministrationFixtures } from './support/saas2-tenant-cleanup.js';
@@ -94,12 +95,23 @@ async function assertMigrationPreserved(pool) {
 async function rollbackGuestInformation(pool) {
   try {
     // Exercise the 037 lock directly after removing later, independent migrations.
-    await rollbackToVersion(pool, 38);
+    await removeLaterMigrations(pool);
     return await rollbackToVersion(pool, 37);
   } catch (error) {
     await migrateUp(pool);
     throw error;
   }
+}
+
+async function removeLaterMigrations(pool) {
+  const ledger = await pool.query('SELECT MAX(version) AS version FROM schema_migrations');
+  if (Number(ledger.rows[0].version) >= 44) {
+    const result = await createPostgresPlatformProjectionRepository(pool).consumeBatch();
+    assert.equal(result.retryCount, 0);
+    assert.equal(result.poisonCount, 0);
+    assert.equal((await pool.query('SELECT count(*)::integer AS count FROM platform_projection_outbox')).rows[0].count, 0);
+  }
+  return rollbackToVersion(pool, 38);
 }
 
 async function waitingAccessExclusiveLock(pool, relation) {
@@ -119,7 +131,7 @@ async function waitingAccessExclusiveLock(pool, relation) {
 }
 
 async function assertConcurrentWritePreventsRollback(pool, relation, write) {
-  await rollbackToVersion(pool, 38);
+  await removeLaterMigrations(pool);
   const writer = await pool.connect();
   let pendingRollback;
   let waited;

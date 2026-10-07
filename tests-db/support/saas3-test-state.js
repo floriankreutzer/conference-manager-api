@@ -1,4 +1,5 @@
 const SAAS3_TABLES = Object.freeze([
+  'platform_projection_outbox',
   'platform_runtime_tenant_mappings',
   'platform_runtime_deployments',
   'platform_quota_operation_receipts',
