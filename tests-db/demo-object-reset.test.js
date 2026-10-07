@@ -37,7 +37,7 @@ test('two external-object reset cycles preserve all three canonical customers, c
   await migrateDemoUp(pool, { roles });
   scoped = await pool.connect();
   await scoped.query(`SET ROLE "${roles.reset}"`);
-  const client = { query: (query) => scoped.query(query), release() {} };
+  const client = { query: (query, values) => scoped.query(query, values), release() {} };
   const resetPool = { query: client.query, async connect() { return client; } };
   const objects = new Map();
   const calls = [];
