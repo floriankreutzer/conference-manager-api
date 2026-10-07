@@ -93,3 +93,11 @@ UTF-8 byte equality, fixed dimensions, bodyless responses, aborts, sink isolatio
 independent units/windows, malformed/secret-bearing inputs and overflow. Run the repository's full
 `npm run check`, `npm run audit`, PostgreSQL and immutable paired browser/CI gates after final changes.
 Record actually executed results separately from pending operational/provider acceptance.
+
+## Offline FinOps report candidate
+
+The companion [FinOps report](SAAS-3.8-FINOPS-REPORT.md) reuses this exact budget contract for
+new-threshold suppression, comparable interval-rate anomaly candidates, independent metered cost
+components and a script-free aggregate HTML dashboard. Its October 7 provider checkpoint has dated
+published-plan provenance and explicitly incomplete coverage. It does not claim a deployed collector,
+alert delivery, invoice-aligned ingestion or complete monthly cost attribution.

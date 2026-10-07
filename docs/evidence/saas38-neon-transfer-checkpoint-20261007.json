@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "current": {
+    "schemaVersion": 1,
+    "periodStart": "2026-10-03T11:49:06.000Z",
+    "periodEnd": "2026-11-01T00:00:00.000Z",
+    "observedAt": "2026-10-07T21:19:20.390Z",
+    "measurements": [
+      {
+        "source": "database_transfer",
+        "unit": "bytes",
+        "used": 7991773109,
+        "limit": 500000000000
+      }
+    ]
+  },
+  "history": [],
+  "rates": [
+    {
+      "source": "database_transfer",
+      "currency": "USD",
+      "priceMicrosPerUnit": 100000,
+      "unitSize": 1000000000,
+      "included": 500000000000,
+      "rateObservedAt": "2026-10-07T21:19:20.390Z",
+      "provenance": "neon_published"
+    }
+  ]
+}
