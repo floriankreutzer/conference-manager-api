@@ -67,6 +67,8 @@ test('isolated PostgreSQL 18 session reads measure 100, 1000 and 10000 actual ac
   assert.ok(['localhost', '127.0.0.1', '[::1]'].includes(databaseUrl.hostname));
   const config = { ...loadConfig({ NODE_ENV: 'test', DATABASE_URL: databaseUrl.toString(),
     DATABASE_SSL: 'disable', RATE_LIMIT_MAX: '10000', PUBLIC_ORIGIN: 'http://127.0.0.1:3000',
+    ENTRA_CLIENT_ID: randomUUID(), ENTRA_CLIENT_SECRET: randomBytes(32).toString('hex'),
+    OIDC_TRANSACTION_SECRET: randomBytes(32).toString('hex'),
     AUDIT_HMAC_SECRET: randomBytes(32).toString('hex'), CSRF_SECRET: randomBytes(32).toString('hex') }), port: 0 };
   const persistence = createPostgresPersistence(config);
   t.after(() => persistence.close());
