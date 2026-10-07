@@ -9,6 +9,7 @@ import {
 } from '../../demo/fixture.js';
 import { withPostgresTransaction } from './transaction.js';
 import { acquireDemoRuntimeResetTransactionLock } from './demo-runtime-gate.js';
+import { demoFixtureMediaReferences } from './demo-fixture-media.js';
 import {
   readDemoSemanticState,
   seedDemoBusinessState,
@@ -29,6 +30,7 @@ export const DEMO_RESET_FAILURE_REASON = Object.freeze({
   TRANSACTION_LOCK: 'transaction_lock_failed',
   PRECONDITIONS: 'preconditions_failed',
   AUTHORITY: 'authority_failed',
+  MEDIA_REGISTRATION: 'media_registration_failed',
   TRUNCATE: 'truncate_failed',
   AUDIT_CHAIN: 'audit_chain_failed',
   BUSINESS_SEED: 'business_seed_failed',
@@ -342,11 +344,16 @@ export function createPostgresDemoResetRepository({
   expectedDatabaseName,
   expectedResetRole,
   auditRepository = null,
+  mediaObjects = null,
   seedBusinessState = seedDemoBusinessState,
   readSemanticState = readDemoSemanticState,
   onSemanticMismatch = null,
 } = {}) {
   if (!pool || typeof pool.connect !== 'function') throw new TypeError('POSTGRES_POOL_REQUIRED');
+  if (mediaObjects !== null && (!mediaObjects?.register || !mediaObjects?.putWithClient
+    || !mediaObjects?.lockWithClient || !mediaObjects?.read)) {
+    throw new TypeError('DEMO_RESET_MEDIA_PORT_INVALID');
+  }
   if (
     auditRepository !== null
     && (
@@ -377,6 +384,23 @@ export function createPostgresDemoResetRepository({
       }
       let phase = DEMO_RESET_FAILURE_REASON.TRANSACTION;
       try {
+        if (mediaObjects) {
+          // SERIALIZABLE seeding must begin after committed intents are visible.
+          // First verify the same live reset authority, register without provider I/O,
+          // then revalidate everything under the authoritative reset lock below.
+          await withPostgresTransaction(pool, async (client) => {
+            phase = DEMO_RESET_FAILURE_REASON.TRANSACTION_LOCK;
+            await acquireDemoRuntimeResetTransactionLock(client);
+            phase = DEMO_RESET_FAILURE_REASON.PRECONDITIONS;
+            await verifyPreconditions(client, expectedDatabaseName, expectedResetRole);
+            if (authority !== null) {
+              phase = DEMO_RESET_FAILURE_REASON.AUTHORITY;
+              await verifyResetAuthority(client, authority);
+            }
+          });
+          phase = DEMO_RESET_FAILURE_REASON.MEDIA_REGISTRATION;
+          for (const reference of demoFixtureMediaReferences(fixture)) await mediaObjects.register(reference);
+        }
         return await withPostgresTransaction(pool, async (client) => {
           phase = DEMO_RESET_FAILURE_REASON.TRANSACTION_LOCK;
           await acquireDemoRuntimeResetTransactionLock(client);
@@ -390,6 +414,14 @@ export function createPostgresDemoResetRepository({
             ? createDemoResetGenerationFixture(fixture, new Date())
             : fixture;
           const generationChecksum = semanticChecksum(generation);
+          if (mediaObjects) {
+            // Cleanup locks custody before reading live asset tables. Acquire the same
+            // order before TRUNCATE's exclusive table locks to avoid an inverse-lock deadlock.
+            phase = DEMO_RESET_FAILURE_REASON.BUSINESS_SEED;
+            for (const reference of demoFixtureMediaReferences(generation)) {
+              await mediaObjects.lockWithClient(client, reference);
+            }
+          }
           phase = DEMO_RESET_FAILURE_REASON.TRUNCATE;
           await client.query({ name: 'demo-reset-truncate', text: TRUNCATE_SQL });
           await client.query({
@@ -402,13 +434,13 @@ export function createPostgresDemoResetRepository({
             text: 'INSERT INTO platform_audit_chain_state (singleton) VALUES (true)',
           });
           phase = DEMO_RESET_FAILURE_REASON.BUSINESS_SEED;
-          await seedBusinessState({ client, fixture: generation });
+          await seedBusinessState({ client, fixture: generation, mediaObjects });
           phase = DEMO_RESET_FAILURE_REASON.PROVIDER_SEED;
           await insertProviderState(client, generation);
           phase = DEMO_RESET_FAILURE_REASON.PERSONA_SEED;
           await insertPersonaReferences(client, generation);
           phase = DEMO_RESET_FAILURE_REASON.SEMANTIC_READ;
-          const semanticState = await readSemanticState({ client });
+          const semanticState = await readSemanticState({ client, mediaObjects });
           phase = DEMO_RESET_FAILURE_REASON.SEMANTIC_CHECKSUM;
           if (semanticChecksum(semanticState) !== generationChecksum) {
             if (onSemanticMismatch) {

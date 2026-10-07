@@ -8,6 +8,7 @@ import {
   resolveCurrentRequestCompositionWithClient,
 } from './request-repository.js';
 import { refreshPlatformProjectionBatchWithClient } from './platform-projection-repository.js';
+import { publishDemoFixtureMedia, readDemoFixtureMediaBytes } from './demo-fixture-media.js';
 import {
   DEMO_RUNTIME_SCHEMA_VERSION,
   DEMO_SEED_VERSION,
@@ -163,7 +164,7 @@ async function verifiedCatalogueBytes(media) {
   return bytes;
 }
 
-async function seedTenantBusinessState(client, fixture) {
+async function seedTenantBusinessState(client, fixture, mediaObjects) {
   for (const tenant of fixture.tenants) {
     await client.query({
       name: 'demo-fixture-update-organization',
@@ -302,14 +303,15 @@ async function seedTenantBusinessState(client, fixture) {
         tenantId === tenant.id && persona === 'tenant_admin'
       ));
       if (!creator) throw new Error('DEMO_FIXTURE_MEDIA_CREATOR_INVALID');
+      const key = await publishDemoFixtureMedia(client, tenant.id, media, 'room', bytes, mediaObjects);
       await client.query({
         name: 'demo-fixture-insert-room-media',
         text: `INSERT INTO tenant_room_media_assets (
           tenant_id, id, room_id, bytes, content_type, byte_length,
-          width, height, content_sha256, created_at, created_by_user_id
-        ) VALUES ($1, $2, $3, $4, 'image/webp', $5, $6, $7, $8, $9, $10)`,
-        values: [tenant.id, media.id, media.roomId, bytes, media.byteLength,
-          media.width, media.height, Buffer.from(media.sha256, 'hex'), fixture.fixedClock, creator.userId],
+          width, height, content_sha256, created_at, created_by_user_id, object_key
+        ) VALUES ($1, $2, $3, $4, 'image/webp', $5, $6, $7, $8, $9, $10, $11)`,
+        values: [tenant.id, media.id, media.roomId, mediaObjects ? null : bytes, media.byteLength,
+          media.width, media.height, Buffer.from(media.sha256, 'hex'), fixture.fixedClock, creator.userId, key],
       });
     }
     for (const media of tenant.catalogueMedia) {
@@ -317,15 +319,16 @@ async function seedTenantBusinessState(client, fixture) {
       const creator = fixture.customerPersonas.find(({ tenantId, persona }) =>
         tenantId === tenant.id && persona === 'tenant_admin');
       if (!creator) throw new Error('DEMO_FIXTURE_CATALOGUE_MEDIA_CREATOR_INVALID');
+      const key = await publishDemoFixtureMedia(client, tenant.id, media, 'catalogue', bytes, mediaObjects);
       await client.query({
         name: 'demo-fixture-insert-catalogue-media',
         text: `INSERT INTO demo_catalogue_media_assets (
           tenant_id, id, owner_kind, owner_id, bytes, content_type,
-          byte_length, content_sha256, alt_text, created_at, created_by_user_id
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-        values: [tenant.id, media.id, media.ownerKind, media.ownerId, bytes,
+          byte_length, content_sha256, alt_text, created_at, created_by_user_id, object_key
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        values: [tenant.id, media.id, media.ownerKind, media.ownerId, mediaObjects ? null : bytes,
           media.contentType, media.byteLength, Buffer.from(media.sha256, 'hex'),
-          media.altText, fixture.fixedClock, creator.userId],
+          media.altText, fixture.fixedClock, creator.userId, key],
       });
     }
     for (const service of tenant.settings.catalogue.services) {
@@ -749,6 +752,7 @@ async function seedPlatformState(client, fixture) {
 export async function seedDemoBusinessState({
   client,
   fixture,
+  mediaObjects = null,
   refreshProjections = refreshPlatformProjectionBatchWithClient,
 } = {}) {
   requireClient(client);
@@ -757,7 +761,7 @@ export async function seedDemoBusinessState({
   }
   await seedTenants(client, fixture);
   await seedCustomerIdentities(client, fixture);
-  await seedTenantBusinessState(client, fixture);
+  await seedTenantBusinessState(client, fixture, mediaObjects);
   await seedTenantReadinessState(client, fixture);
   await seedPlatformState(client, fixture);
   const projectionClock = await client.query({
@@ -787,7 +791,7 @@ async function readRows(client, name, text) {
   return (await client.query({ name, text })).rows;
 }
 
-export async function readDemoSemanticState({ client } = {}) {
+export async function readDemoSemanticState({ client, mediaObjects = null } = {}) {
   requireClient(client);
   const tenants = await readRows(client, 'demo-fixture-read-tenants', `
     SELECT tenant.id, tenant.display_name, tenant.status, tenant.lifecycle_revision,
@@ -809,11 +813,12 @@ export async function readDemoSemanticState({ client } = {}) {
     ORDER BY room.tenant_id, room.site_id, room.id
   `);
   const mediaAssets = await readRows(client, 'demo-fixture-read-room-media', `
-    SELECT tenant_id, id, room_id, bytes, content_type, byte_length,
+    SELECT tenant_id, id, room_id, CASE WHEN object_key IS NULL THEN bytes END AS bytes, object_key, content_type, byte_length,
       width, height, content_sha256
     FROM tenant_room_media_assets ORDER BY tenant_id, id
   `);
   for (const media of mediaAssets) {
+    media.bytes = await readDemoFixtureMediaBytes(media, 'room', mediaObjects);
     const hash = createHash('sha256').update(media.bytes).digest('hex');
     if (media.content_type !== 'image/webp'
       || media.bytes.length !== safeInteger(media.byte_length)
@@ -822,11 +827,12 @@ export async function readDemoSemanticState({ client } = {}) {
     }
   }
   const catalogueMediaAssets = await readRows(client, 'demo-fixture-read-catalogue-media', `
-    SELECT tenant_id, id, owner_kind, owner_id, bytes, content_type,
+    SELECT tenant_id, id, owner_kind, owner_id, CASE WHEN object_key IS NULL THEN bytes END AS bytes, object_key, content_type,
       byte_length, content_sha256, alt_text
     FROM demo_catalogue_media_assets ORDER BY tenant_id, id
   `);
   for (const media of catalogueMediaAssets) {
+    media.bytes = await readDemoFixtureMediaBytes(media, 'catalogue', mediaObjects);
     const hash = createHash('sha256').update(media.bytes).digest('hex');
     const signatureValid = media.content_type === 'image/png'
       ? media.bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))

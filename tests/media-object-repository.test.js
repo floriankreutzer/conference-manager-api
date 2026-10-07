@@ -68,6 +68,17 @@ test('upload requires the exact transaction client and locks the independently c
   assert.equal(missing.calls.length, 0);
 });
 
+test('reset may reserve committed custody before exclusive asset-table locks without provider I/O', async () => {
+  const state = setup({ 'media-object-upload-lock': { rowCount: 1, rows: [row] } });
+  await assert.rejects(state.repository.lockWithClient(state.client, ref), /UPLOAD_TRANSACTION_REQUIRED/);
+  await withPostgresTransaction(state.pool, async (client) => {
+    assert.equal((await state.repository.lockWithClient(client, ref)).key, ref.key);
+    await assert.rejects(state.repository.lockWithClient({}, ref), /UPLOAD_TRANSACTION_REQUIRED/);
+  });
+  assert.deepEqual(state.calls, []);
+  assert.equal(state.queries.at(-1), 'COMMIT');
+});
+
 test('upload verification failure rolls back metadata publication and read rejects corrupted data', async () => {
   const state = setup({ 'media-object-upload-lock': { rowCount: 1, rows: [row] } },
     { get: async () => Buffer.from('corrupt') });

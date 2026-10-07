@@ -4,6 +4,7 @@ import { createPostgresDemoRuntimeReadiness } from '../persistence/postgres/demo
 import { withDemoRuntimeSharedGate } from '../persistence/postgres/demo-runtime-gate.js';
 import { createPostgresPlatformPersistence } from '../persistence/postgres/platform-index.js';
 import { createPostgresPool } from '../persistence/postgres/pool.js';
+import { createPostgresMediaObjectRepository } from '../persistence/postgres/media-object-repository.js';
 import { createPlatformComposition } from '../platform-composition.js';
 import { PLATFORM_OPERATIONAL_ROUTE_MODULES } from '../platform/app.js';
 import { createDemoPlatformControlRoutes } from './http/platform-control-routes.js';
@@ -34,6 +35,7 @@ export function createDemoPlatformComposition({
   gatePool,
   resetPool,
   readiness,
+  resetMediaObjectStorage = null,
   staticFileAdapter = null,
   metrics,
 } = {}) {
@@ -82,6 +84,9 @@ export function createDemoPlatformComposition({
     expectedDatabaseName: config.databaseTarget.database,
     expectedResetRole: config.databases.reset.role,
     auditRepository: selectedPersistence.auditRepository,
+    mediaObjects: resetMediaObjectStorage ? createPostgresMediaObjectRepository(selectedResetPool, {
+      storage: resetMediaObjectStorage, includeDemoCatalogue: true,
+    }) : null,
   });
   const resetService = createDemoResetService({ repository: resetRepository });
   const composition = createPlatformComposition({
