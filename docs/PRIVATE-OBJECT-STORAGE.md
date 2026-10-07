@@ -86,6 +86,26 @@ two full external seed/reset cycles, all three canonical customers, failed verif
 foreign-Tenant denial and preserved orphan custody. Real provider/hosted activation and paired
 external-object browser acceptance remain separate deployment gates.
 
+## Isolated external-object browser acceptance
+
+The API CI matrix retains the original PostgreSQL media mode and additionally executes both
+Chromium and WebKit with explicitly injected external-object ports. Every row runs the unchanged
+immutable shared role/Tenant/CSRF journey and full three-customer progression with two resets.
+Customer and Platform remain separate processes with the existing credential exclusions.
+
+`scripts/demo-object-acceptance.mjs` requires `NODE_ENV=test` before activating its isolated
+loopback S3 protocol fixture or compositions. Production/Demo entrypoints never import it.
+The fixture uses a freshly generated masked authority, fixed loopback destination, bounded
+object count/bytes, request deadlines and canonical content-addressed keys. The real pinned
+S3 SDK and private adapter serialize/sign requests and verify response integrity; only their
+transport is replaced for this test environment. Reset seeds object metadata with NULL database
+blobs, so object reads cannot succeed through a PostgreSQL fallback. Fixture roundtrip tests
+also cover foreign keys, missing objects, denied authority and invalid-byte rejection before I/O.
+
+These checks prove external-object application integration, not Neon provider availability,
+provider credential isolation, hosted deployment or coordinated real-provider restore.
+Those operational gates remain separate and must pass before cutover.
+
 ## Operator backfill and rollback
 
 `scripts/private-media-migration.mjs` accepts only `--execute copy|rollback|purge room|catalogue`.
