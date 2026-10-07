@@ -12,7 +12,7 @@ const TENANT = '11111111-1111-4111-8111-111111111111';
 const FOREIGN = '22222222-2222-4222-8222-222222222222';
 const USER = '33333333-3333-4333-8333-333333333333';
 const OTHER_USER = '44444444-4444-4444-8444-444444444444';
-const bytes = Buffer.from('already sanitized WebP bytes');
+const bytes = Buffer.from('already sanitized WebP bytes for a valid fixture');
 
 test('private media publishes verified objects audit-atomically under the real Customer role', async (t) => {
   const database = loadDatabaseConfig(process.env, 'test');
