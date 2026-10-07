@@ -17,7 +17,7 @@ const runtimeDependencies = packageJson.dependencies || {};
 const approvedRuntimeDependencies = {
   '@azure/msal-node': '7.0.0',
   pg: '8.23.0',
-  sharp: '0.35.4',
+  sharp: '0.35.5',
 };
 const runtimeEnvironmentAuthority = new Set([
   'src/config.js',
