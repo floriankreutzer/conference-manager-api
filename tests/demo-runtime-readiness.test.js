@@ -67,14 +67,39 @@ for (const surface of ['customer', 'platform']) {
       { connected_role: 'unexpected_role' },
       { sentinel_key: 'unexpected' },
       { overlay_versions: OVERLAY_VERSIONS.slice(0, -1) },
+      { overlay_versions: [...OVERLAY_VERSIONS, DEMO_OVERLAY_MIGRATION_VERSION + 1] },
       { persona_keys: [] },
+      { persona_keys: [...row(surface).persona_keys, 'unexpected-persona'] },
       { authority_count: 0 },
-      ...(surface === 'platform' ? [{ provider_tenant_ids: [] }] : []),
+      ...(surface === 'platform' ? [{ provider_tenant_ids: [] },
+        { provider_tenant_ids: [...row(surface).provider_tenant_ids, 'unexpected-tenant'] }] : []),
     ]) {
       const { value } = readiness(surface, row(surface, override));
       assert.equal(await value.isReady(), false);
       await assert.rejects(value.assertReady(), /DEMO_RUNTIME_NOT_READY/);
     }
+  });
+
+  test(`${surface} running readiness bounds every inventory and retains fresh authority checks`, async () => {
+    const current = row(surface);
+    const { value, queries } = readiness(surface, current);
+    assert.equal(await value.isReady(), true);
+    assert.equal(queries.length, 1);
+    assert.equal(queries[0].name, `demo-${surface}-bounded-readiness`);
+    assert.deepEqual(queries[0].values, [current.persona_keys.length + 1, OVERLAY_VERSIONS.length + 1,
+      ...(surface === 'platform' ? [DEMO_FIXTURE.tenants.length + 1] : [])]);
+    assert.match(queries[0].text, /persona_inventory AS MATERIALIZED[\s\S]*LIMIT \$1/);
+    assert.match(queries[0].text, /overlay_inventory AS MATERIALIZED[\s\S]*LIMIT \$2/);
+    assert.match(queries[0].text, /FROM persona_inventory AS reference/);
+    current.authority_count = 0;
+    assert.equal(await value.isReady(), false);
+    current.authority_count = current.persona_keys.length;
+    assert.equal(await value.isReady(), true);
+    assert.equal(queries.length, 3);
+    assert.equal(await value.assertReady(), true);
+    assert.equal(queries[3].name, `demo-${surface}-startup-integrity`);
+    assert.doesNotMatch(queries[3].text, /LIMIT/);
+    assert.deepEqual(queries[3].values, []);
   });
 }
 
