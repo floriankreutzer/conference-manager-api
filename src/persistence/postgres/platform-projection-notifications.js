@@ -39,12 +39,12 @@ export async function subscribePlatformProjectionNotifications(pool, onWake, onD
   return async () => {
     if (closed) return;
     closed = true;
-    detach();
+    client.removeListener('notification', notification);
     try {
       await client.query('UNLISTEN cm_platform_projection');
       client.release();
     } catch {
       client.release(new Error('PLATFORM_PROJECTION_LISTENER_RELEASE_FAILED'));
-    }
+    } finally { detach(); }
   };
 }

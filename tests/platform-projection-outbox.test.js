@@ -151,6 +151,24 @@ test('single-connection pool preserves its only client for requests and durable 
   assert.equal(acquired, false);
 });
 
+test('disconnect during UNLISTEN is handled before listener detachment and discards the client once', async () => {
+  const client = new EventEmitter();
+  const releases = [];
+  client.query = async (query) => {
+    if (query.startsWith('UNLISTEN')) {
+      client.emit('error', new Error('private driver failure during release'));
+      throw new Error('private query failure');
+    }
+  };
+  client.release = (error) => releases.push(error?.message ?? null);
+  const release = await subscribePlatformProjectionNotifications({ async connect() { return client; } },
+    () => {}, () => { assert.fail('shutdown must not reconnect'); });
+  await release(); await release();
+  assert.deepEqual(releases, ['PLATFORM_PROJECTION_LISTENER_RELEASE_FAILED']);
+  assert.equal(client.listenerCount('error'), 0);
+  assert.equal(client.listenerCount('notification'), 0);
+});
+
 function failingProjection(attempts) {
   const queries = [];
   const client = {
