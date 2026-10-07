@@ -4,6 +4,8 @@ import test from 'node:test';
 import { createPlatformHttpServer } from '../src/platform/server.js';
 import { PlatformOperationDeniedError } from '../src/platform/application/platform-operation-errors.js';
 import { PLATFORM_ROLE, permissionsForPlatformRoles } from '../src/platform/identity/policy.js';
+import { createMetricsRegistry } from '../src/observability/metrics.js';
+import { assertPlatformRouteKey } from '../src/platform/http/observability.js';
 
 const PUBLIC_ORIGIN = 'https://platform.example';
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -453,7 +455,7 @@ async function harness(t, overrides = {}, configOverrides = {}) {
       securityOutcome() {},
       unhandledError() {},
     },
-    metrics: { recordApiRequest() {} },
+    metrics: overrides.metrics || { recordApiRequest() {} },
     requestIdFactory: () => REQUEST_ID,
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -468,6 +470,17 @@ function authenticatedHeaders() {
     idempotencyKey: IDEMPOTENCY_KEY,
   };
 }
+
+test('Platform real HTTP completion records framed JSON bytes with its separate fixed route vocabulary', async (t) => {
+  const metrics = createMetricsRegistry({ assertRouteKey: assertPlatformRouteKey });
+  const runtime = await harness(t, { metrics });
+  const result = await request(runtime.server, { path: '/api/v1/platform/health/live' });
+  assert.equal(result.statusCode, 200);
+  const sample = metrics.snapshot().counters.find(({ metric }) => metric === 'api_response_payload_bytes_total');
+  assert.equal(sample.value, Buffer.byteLength(result.rawBody));
+  assert.equal(sample.labels.route, 'platform_health_live');
+  assert.equal(result.body.metrics, undefined);
+});
 
 test('Platform session projection is minimal and customer cookies fail with bounded audit evidence', async (t) => {
   const runtime = await harness(t);

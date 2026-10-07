@@ -10,6 +10,7 @@ import {
   createPlatformRequestId,
 } from '../platform/http/security.js';
 import { createDemoStaticHandler } from './static-handler.js';
+import { observeResponsePayloadSafely } from '../observability/response-payload.js';
 
 const RESET_PATH = '/api/v1/platform/demo/reset';
 const LIVENESS_PATH = '/api/v1/platform/health/live';
@@ -80,6 +81,10 @@ export function createDemoPlatformHttpServer(options) {
         await staticHandler(request, response);
       } catch (error) {
         sendRuntimeFailure(response, config, error);
+      } finally {
+        observeResponsePayloadSafely({
+          response, metrics: options.metrics, route: 'platform_demo_static', method: request.method,
+        });
       }
       return;
     }

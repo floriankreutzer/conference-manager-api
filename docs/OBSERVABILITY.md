@@ -41,6 +41,8 @@ Current metrics are:
 | --- | --- | --- |
 | `api_requests_total` | fixed route, bounded method, status class | API volume/error-rate |
 | `api_request_duration_ms` | fixed route, bounded method, status class | API latency |
+| `api_response_payload_bytes_total` | fixed route, bounded method, status class, fixed payload class | completed framed response-body bytes |
+| `api_response_payload_observations_total` | same dimensions as payload bytes | denominator for mean framed response size |
 | `authentication_failures_total` | fixed reason | unauthenticated request trend |
 | `authorization_denials_total` | fixed reason | denied authenticated access trend |
 | `booking_operations_total` | fixed operation, outcome | booking use-case outcome |
@@ -49,6 +51,26 @@ Current metrics are:
 | `dependency_health_observations_total` | health state, required flag | dependency health trend |
 
 Tenant ID, User ID, Request ID, email, provider reference and provider-specific resource IDs are deliberately not valid metric dimensions. HTTP methods outside the server allowlist are normalized to `OTHER` before metrics are recorded.
+
+### SaaS 3.8 response-transfer foundation
+
+Customer and Platform transports observe `Content-Length` only after Node reports `finish`.
+This is evidence of framed body bytes handed to the transport, not client receipt or provider-billed egress.
+HEAD, 204/205/304 and other bodyless outcomes count zero body bytes even when a representation length exists.
+Aborted responses, missing/malformed lengths and chunked responses are not included. HTTP/TLS headers,
+database protocol/WAL/backups, external provider calls and collector/log traffic are outside this counter.
+Payload classes are exactly `json`, `image`, `other` and `empty`; no body, MIME value, URL or identifier is retained.
+The observation count includes framed zero-byte responses. Sink failures cannot change HTTP outcomes.
+
+Customer Production, Customer Demo, Platform Production and Platform Demo executable entry points
+emit the metrics through the existing structured stdout mechanism. Platform uses its separate fixed
+route vocabulary; enabling operational telemetry does not grant Customer/Platform authority.
+The Demo static paths use one fixed route identity per surface and do not emit asset paths.
+Demo shared-gate failures generated outside application dispatch remain outside this response metric.
+No public telemetry route, new dependency, telemetry service or billing configuration is introduced.
+
+Operator-side budget evaluation and remaining real provider evidence are defined in
+[SaaS 3.8 Transfer Budgets](SAAS-3.8-TRANSFER-BUDGETS.md).
 
 The in-process snapshot is diagnostic state only and is not exposed as a browser API. This avoids publishing operational volumes or creating a second platform-operator authorization surface. The deployment telemetry collector consumes stdout metric samples instead.
 

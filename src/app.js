@@ -29,6 +29,7 @@ import { readEntraTransactionCookie } from './identity/entra-transaction-cookie.
 import { createLogger } from './logger.js';
 import { createHealthMonitor } from './observability/health.js';
 import { createMetricsRegistry } from './observability/metrics.js';
+import { observeResponsePayloadSafely } from './observability/response-payload.js';
 import { readTenantClaimCookie } from './onboarding/claim-cookie.js';
 import {
   applySecurityHeaders,
@@ -827,6 +828,7 @@ export function createApp({
         response.destroy();
       }
     } finally {
+      observeResponsePayloadSafely({ response, metrics, route, method: request.method });
       const durationMs = Math.max(0, clock() - startedAt);
       recordRequestCompletionSafely({
         metrics,
