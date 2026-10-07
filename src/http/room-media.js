@@ -1,6 +1,7 @@
 import { ApiError } from '../api-error.js';
 import { RoomImageInputError, ROOM_IMAGE_INPUT_MAX_BYTES } from '../media/room-image-processor.js';
 import { defineRouteModule } from './route-module.js';
+import { sendPrivateMediaResponse } from './private-media-response.js';
 
 const MEDIA_PATH = /^\/api\/v1\/tenant\/rooms\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/media(?:\/([0-9a-fA-F-]{36}))?$/;
 
@@ -71,13 +72,8 @@ export function createRoomMediaHttpHandler({ service, principalGuard, tenantGuar
     await emptyBody(request);
     const asset = await service.read({ principal, tenantContext, roomId: match[1], assetId: match[2] });
     if (!asset) throw new ApiError(404, 'NOT_FOUND');
-    response.statusCode = 200;
-    response.setHeader('Content-Type', 'image/webp');
-    response.setHeader('X-Content-Type-Options', 'nosniff');
-    response.setHeader('Cache-Control', 'private, no-store');
-    response.setHeader('Content-Length', asset.bytes.length);
-    response.end(asset.bytes);
-    return 200;
+    return sendPrivateMediaResponse({ request, response, tenantId: tenantContext.tenantId,
+      assetId: match[2], contentType: 'image/webp', bytes: asset.bytes });
   };
 }
 
