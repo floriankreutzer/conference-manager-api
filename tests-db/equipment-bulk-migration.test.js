@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool } from '../src/persistence/postgres/pool.js';
+import { createPostgresPlatformProjectionRepository } from '../src/persistence/postgres/platform-projection-repository.js';
 import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
 import { createPostgresTenantBulkTransferRepository } from '../src/persistence/postgres/tenant-bulk-transfer-repository.js';
 
@@ -16,6 +17,7 @@ test('Equipment receipt migration preserves Tenant/actor constraints and blocks 
   const pool = createPostgresPool({ mode: 'test', ...database });
   t.after(() => pool.end());
   await migrateUp(pool);
+  assert.equal(await rollbackLatest(pool), true); // Empty schema 044
   assert.equal(await rollbackLatest(pool), true); // Empty schema 043
   assert.equal(await rollbackLatest(pool), true); // Unused Equipment schema 042
   await migrateUp(pool);
@@ -30,6 +32,8 @@ test('Equipment receipt migration preserves Tenant/actor constraints and blocks 
   assert.equal(await repository.load({ tenantId: FOREIGN, id: RECEIPT }), null);
   await assert.rejects(repository.create({ ...input, id: FOREIGN, actorUserId: FOREIGN }),
     (error) => error.code === '23503');
+  assert.equal((await createPostgresPlatformProjectionRepository(pool).consumeBatch({ limit: 100 })).retryCount, 0);
+  assert.equal(await rollbackLatest(pool), true); // Successfully drained schema 044
   assert.equal(await rollbackLatest(pool), true); // Schema 043 is still empty
   await assert.rejects(rollbackLatest(pool), /EQUIPMENT_BULK_RECEIPTS_REQUIRE_REVIEW/);
   assert.equal((await pool.query('SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1')).rows[0].version, 42);

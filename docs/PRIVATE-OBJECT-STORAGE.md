@@ -114,7 +114,7 @@ Those operational gates remain separate and must pass before cutover.
 `scripts/private-media-migration.mjs` accepts only `--execute copy|rollback|purge room|catalogue`.
 It requires a separate `MEDIA_MIGRATION_DATABASE_URL` and exact `MEDIA_MIGRATION_DATABASE_ROLE`,
 rejects the ordinary runtime identity, verifies the live maintenance privilege/role and exact schema, and verifies Demo
-overlay 008 when Catalogue scope is explicitly selected. It uses separately injected operator
+overlay 009 when Catalogue scope is explicitly selected. It uses separately injected operator
 credentials (`MEDIA_OPERATOR_ENDPOINT`, `MEDIA_OPERATOR_REGION`, `MEDIA_OPERATOR_BUCKET`,
 `MEDIA_OPERATOR_ACCESS_KEY_ID`, `MEDIA_OPERATOR_SECRET_ACCESS_KEY`). Runtime/reset roles lack
 the required inventory maintenance privilege; it is checked before provider allocation or I/O.

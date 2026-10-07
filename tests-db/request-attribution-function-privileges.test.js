@@ -8,6 +8,7 @@ import {
   isPostgresSchemaReady,
 } from '../src/persistence/postgres/pool.js';
 import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { createPostgresPlatformProjectionRepository } from '../src/persistence/postgres/platform-projection-repository.js';
 
 const ROLE_SUFFIX = String(process.pid);
 const ROLES = Object.freeze({
@@ -135,7 +136,7 @@ async function assertDirectCallsDenied(pool, role) {
 }
 
 test('migration 038 confines Request attribution SECURITY DEFINER execution to triggers', async (t) => {
-  assert.equal(CURRENT_SCHEMA_VERSION, 43);
+  assert.equal(CURRENT_SCHEMA_VERSION, 44);
   const pool = createPostgresPool(databaseConfig());
   t.after(async () => {
     try {
@@ -208,6 +209,8 @@ test('migration 038 confines Request attribution SECURITY DEFINER execution to t
     post_cutover_evidence: true,
   }]);
 
+  assert.equal((await createPostgresPlatformProjectionRepository(pool).consumeBatch({ limit: 100 })).retryCount, 0);
+  assert.equal(await rollbackLatest(pool), true); // Successfully drained outbox schema 044
   assert.equal(await rollbackLatest(pool), true); // Empty object metadata schema 043
   assert.equal(await isPostgresSchemaReady(pool, 42), true);
   assert.equal(await rollbackLatest(pool), true);

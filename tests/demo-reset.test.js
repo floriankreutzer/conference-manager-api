@@ -36,7 +36,7 @@ function validSentinel(overrides = {}) {
     reset_role: 'demo_reset',
     current_database: 'conference_manager_demo_test',
     current_role: 'demo_reset',
-    production_schema_versions: Array.from({ length: 43 }, (_, index) => index + 1),
+    production_schema_versions: Array.from({ length: 44 }, (_, index) => index + 1),
     ...overrides,
   };
 }

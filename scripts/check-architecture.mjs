@@ -556,8 +556,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 43;/.test(pool)) {
-  throw new Error('Runtime schema readiness must include private media metadata migration version 43.');
+if (!/export const CURRENT_SCHEMA_VERSION = 44;/.test(pool)) {
+  throw new Error('Runtime schema readiness must include projection outbox migration version 44.');
 }
 const retentionPrivilegeMigration = await readFile(
   'migrations/041_room_media_retention_privileges.up.sql',
@@ -1115,6 +1115,34 @@ for (const migration of [
   'migrations/026_tenant_user_lifecycle_revision.down.sql',
 ]) {
   await readFile(migration, 'utf8');
+}
+
+const projectionOutbox = await readFile('migrations/044_platform_projection_outbox.up.sql', 'utf8');
+for (const required of [
+  'tenant_id uuid PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE',
+  'attempts BETWEEN 0 AND 5',
+  'SECURITY DEFINER SET search_path = pg_catalog',
+  'REVOKE ALL PRIVILEGES ON FUNCTION enqueue_platform_projection_invalidation() FROM PUBLIC',
+  "pg_notify('cm_platform_projection', '')",
+]) {
+  if (!projectionOutbox.includes(required)) throw new Error(`Projection invalidation is missing ${required}.`);
+}
+for (const source of ['tenants', 'tenant_identity_bindings', 'tenant_onboarding_invitations',
+  'integrations', 'tenant_entitlements', 'microsoft365_room_mappings', 'microsoft365_capability_health']) {
+  if (!new RegExp(`ON ${source}\\s+FOR EACH ROW EXECUTE FUNCTION enqueue_platform_projection_invalidation`).test(projectionOutbox)) {
+    throw new Error(`Projection invalidation must cover ${source}.`);
+  }
+}
+const projectionRollback = await readFile('migrations/044_platform_projection_outbox.down.sql', 'utf8');
+if (!projectionRollback.includes('LOCK TABLE platform_projection_outbox IN ACCESS EXCLUSIVE MODE')
+  || !projectionRollback.includes('PLATFORM_PROJECTION_OUTBOX_ROLLBACK_REQUIRES_DRAIN')) {
+  throw new Error('Projection outbox rollback must protect undelivered demand.');
+}
+const projectionNotifications = await readFile('src/persistence/postgres/platform-projection-notifications.js', 'utf8');
+if (!projectionNotifications.includes("message.payload === ''")
+  || !projectionNotifications.includes('UNLISTEN cm_platform_projection')
+  || /\b(?:fetch|setInterval|setTimeout)\s*\(/.test(projectionNotifications)) {
+  throw new Error('Projection notifications must remain empty, releasable wakeups without network or heartbeat loops.');
 }
 
 console.log('Architecture boundary check passed.');

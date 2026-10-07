@@ -3,6 +3,7 @@ import { createAuditService } from './audit/audit-service.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { createCapabilityPolicy } from './entitlements/capabilities.js';
 import { createHealthMonitor } from './observability/health.js';
+import { createMetricsRegistry } from './observability/metrics.js';
 import { createTenantInvitationSecretFactory } from './onboarding/invitation-policy.js';
 import { createPostgresPlatformPersistence } from './persistence/postgres/platform-index.js';
 import { createPlatformDiagnosticOperationsService } from './platform/application/diagnostic-operations-service.js';
@@ -52,6 +53,7 @@ export function createPlatformComposition({
   shutdownTimeoutMs,
   metrics,
 } = {}) {
+  const selectedMetrics = metrics || createMetricsRegistry();
   const authorizationPolicy = createPlatformAuthorizationPolicy();
   const tenantTargetPolicy = createPlatformTenantTargetPolicy({
     operatorRepository: persistence.operatorRepository,
@@ -160,6 +162,7 @@ export function createPlatformComposition({
     repository: persistence.projectionRepository,
     ...(config.projectionIntervalMs ? { intervalMs: config.projectionIntervalMs } : {}),
     ...(projectionRunGate ? { runGate: projectionRunGate } : {}),
+    onResult: (result) => selectedMetrics.recordProjectionBatch?.(result),
   });
   const selectedRouteModules = typeof routeModulesFactory === 'function'
     ? routeModulesFactory({ platformSessionService: sessionService })
@@ -167,7 +170,7 @@ export function createPlatformComposition({
   const platformProcess = createPlatformProcess({
     config,
     persistence,
-    ...(metrics ? { metrics } : {}),
+    metrics: selectedMetrics,
     ...(shutdownTimeoutMs ? { shutdownTimeoutMs } : {}),
     ...(httpServerFactory ? { httpServerFactory } : {}),
     routeModules: selectedRouteModules,
@@ -196,7 +199,7 @@ export function createPlatformComposition({
     }),
     async start() {
       await projectionWorker.runOnce();
-      projectionWorker.start();
+      await projectionWorker.start();
       return platformProcess.start();
     },
     async stop() {

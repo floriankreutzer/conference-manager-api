@@ -23,7 +23,8 @@ const { Pool } = pg;
 // Schema 41 confines Room-media retention to a bounded, explicitly granted maintenance procedure.
 // Schema 42 admits Equipment in the existing Tenant/actor-bound bulk receipt ledger.
 // Schema 43 adds private media metadata and immutable durable upload intents.
-export const CURRENT_SCHEMA_VERSION = 43;
+// Schema 44 atomically records coalescing Platform projection invalidations.
+export const CURRENT_SCHEMA_VERSION = 44;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',
