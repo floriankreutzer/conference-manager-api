@@ -9,6 +9,9 @@ const APPROVED_STATIC_ADAPTER_IMPORTS = new Set([
   'node:fs/promises',
   'node:path',
   'node:stream/promises',
+  'node:crypto',
+  'node:util',
+  'node:zlib',
 ]);
 const FORBIDDEN_ADAPTER_PATTERN = new RegExp([
   'process\\.env',
@@ -66,6 +69,12 @@ for (const required of [
   'realpath(candidate)',
   'fileStat.isFile()',
   'pipeline(createReadStream(file.path), response)',
+  'approvedFiles.has(file)',
+  'size > MAX_FILE_BYTES',
+  'active >= 8',
+  'cache.size >= MAX_CACHE_ENTRIES',
+  'cacheBytes + bytes.length > MAX_CACHE_BYTES',
+  '[constants.BROTLI_PARAM_QUALITY]: 4',
 ]) {
   if (!adapter.includes(required)) {
     throw new Error(`Hosted Demo file adapter lacks boundary ${required}.`);
@@ -79,6 +88,10 @@ if (/\b(?:SELECT|INSERT INTO|UPDATE|DELETE FROM)\b/.test(adapter)) {
 }
 
 const loader = await readFile('src/demo/static-file-loader.js', 'utf8');
+const conditionalTransport = await readFile('src/transport/conditional-get.js', 'utf8');
+if (/\b(?:import|require|process|globalThis|fetch|eval)\b|https?:\/\//.test(conditionalTransport)) {
+  throw new Error('Shared conditional transport must remain import-free and authority-free.');
+}
 for (const required of [
   "STATIC_FILE_ADAPTER_MODULE = './static-file-adapter.mjs'",
   'await import(STATIC_FILE_ADAPTER_MODULE)',

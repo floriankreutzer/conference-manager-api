@@ -421,6 +421,14 @@ See `docs/BOOKING-INTEGRATION.md` and `docs/MICROSOFT365-CONNECTION.md`.
 
 ## Rate limiting and edge responsibility
 
+`src/transport/conditional-get.js` is an import-free, authority-free shared transport value
+contract for bounded conditional GET and public-static encoding negotiation. Customer image
+responses use it only after current authorization/verified media loading; both Demo static
+surfaces use it through the existing injected filesystem port. It cannot access sessions,
+database/provider state, environment, network or application/domain authority. Static digest
+verification, bounded compression/cache and copied-HTML fingerprint packaging are described
+in `HOSTED-DEMO-DEPLOYMENT.md`; the Customer/Platform identity boundaries remain separate.
+
 The foundation rate limiter is local, in-memory and bounded. It is not a multi-instance quota service. Pilot/Production require trusted edge/shared abuse controls. Forwarded client-address headers are not currently trusted; introducing a trusted-proxy key model requires separate review.
 
 ## Production security release boundary

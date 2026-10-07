@@ -1,3 +1,5 @@
+import { matchesEntityTag, selectStaticEncoding } from '../transport/conditional-get.js';
+
 const SURFACES = new Set(['customer', 'platform']);
 const REQUEST_TARGET_LIMIT = 8_192;
 const CONTENT_TYPES = Object.freeze({
@@ -142,6 +144,7 @@ export function createDemoStaticHandler({ root, surface, fileAdapter } = {}) {
       sendEmpty(response, surface, 400);
       return;
     }
+    if (file?.kind === 'too_large') { sendEmpty(response, surface, 413); return; }
     if (file?.kind !== 'file') {
       sendEmpty(response, surface, 404);
       return;
@@ -150,6 +153,32 @@ export function createDemoStaticHandler({ root, surface, fileAdapter } = {}) {
     const contentType = CONTENT_TYPES[extensionOf(relativePath)];
     if (!contentType) {
       sendEmpty(response, surface, 415);
+      return;
+    }
+    if (typeof fileAdapter.representation === 'function') {
+      const compressible = /^(?:text\/|application\/json|image\/svg\+xml)/.test(contentType) && file.size <= 1048576;
+      const encoding = selectStaticEncoding(request.headers['accept-encoding'], { compressible });
+      if (encoding === null) { sendEmpty(response, surface, 406, { Vary: 'Accept-Encoding' }); return; }
+      const representation = await fileAdapter.representation(file, { encoding });
+      if (!Buffer.isBuffer(representation?.bytes) || representation.bytes.length > 8388608
+        || representation.encoding !== encoding || !/^[a-f0-9]{64}$/.test(representation.digest)
+        || !/^"[a-f0-9]{64}"$/.test(representation.etag)) throw new TypeError('DEMO_STATIC_REPRESENTATION_INVALID');
+      const query = new URL(request.url, 'demo://local').searchParams;
+      const requestedDigest = query.get('sha256');
+      const immutable = query.size === 1 && /^[a-f0-9]{64}$/.test(requestedDigest || '')
+        && requestedDigest === representation.digest;
+      if (requestedDigest !== null && !immutable) { sendEmpty(response, surface, 404); return; }
+      applyStaticHeaders(response, { surface, contentType });
+      response.setHeader('ETag', representation.etag);
+      response.setHeader('Vary', 'Accept-Encoding');
+      if (immutable) response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      if (encoding !== 'identity') response.setHeader('Content-Encoding', encoding);
+      if (matchesEntityTag(request.headers['if-none-match'], representation.etag)) {
+        response.statusCode = 304; response.end(); return;
+      }
+      response.statusCode = 200;
+      response.setHeader('Content-Length', representation.bytes.length);
+      response.end(request.method === 'HEAD' ? undefined : representation.bytes);
       return;
     }
     applyStaticHeaders(response, {

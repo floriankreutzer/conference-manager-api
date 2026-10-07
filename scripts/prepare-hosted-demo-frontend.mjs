@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { access, cp, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { fingerprintDemoAssets } from './fingerprint-demo-assets.mjs';
 
 import {
   createHostedDemoDeploymentMetadata,
@@ -70,4 +71,5 @@ await cp(SOURCE_DIRECTORY, TARGET_DIRECTORY, {
 });
 await assertFrontendContract(TARGET_DIRECTORY);
 await writeDeploymentMetadata(TARGET_DIRECTORY, process.env, frontendRef);
+await fingerprintDemoAssets(TARGET_DIRECTORY);
 process.stdout.write(`Prepared immutable Demo frontend ${frontendRef} from reviewed submodule.\n`);
