@@ -62,6 +62,7 @@ export function createDemoCustomerComposition({
   persistence,
   gatePool,
   readiness,
+  mediaObjectStorage = null,
   staticFileAdapter = null,
   logger = createLogger(),
   metrics = createMetricsRegistry(),
@@ -71,7 +72,9 @@ export function createDemoCustomerComposition({
     throw new TypeError('DEMO_STATIC_FILE_ADAPTER_REQUIRED');
   }
   const runtimeConfig = createDemoCustomerRuntimeConfig(config);
-  const selectedPersistence = persistence || createPostgresPersistence(runtimeConfig);
+  const selectedPersistence = persistence || createPostgresPersistence(runtimeConfig, {
+    mediaObjectStorage, includeDemoCatalogue: true,
+  });
   const selectedReadiness = readiness || createPostgresDemoRuntimeReadiness({
     pool: selectedPersistence.pool,
     surface: 'customer',
@@ -122,6 +125,7 @@ export function createDemoCustomerComposition({
         }),
         mediaRepository: createPostgresDemoCatalogueMediaRepository(selectedPersistence.pool, {
           auditRepository: selectedPersistence.auditRepository,
+          mediaObjects: selectedPersistence.mediaObjectRepository,
         }),
       })];
     },

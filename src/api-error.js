@@ -33,6 +33,7 @@ import {
   TenantUnavailableError,
 } from './tenancy/errors.js';
 import { RoomAvailabilityUnavailableError } from './application/room-availability-service.js';
+import { MediaObjectStorageError } from './media/object-storage-contract.js';
 import {
   TenantBookingPolicyInputError,
   TenantBookingPolicyViolationError,
@@ -118,6 +119,7 @@ export function asApiError(error) {
   if (error instanceof RoomAvailabilityUnavailableError) {
     return new ApiError(503, 'ROOM_AVAILABILITY_UNAVAILABLE');
   }
+  if (error instanceof MediaObjectStorageError) return new ApiError(503, 'ROOM_MEDIA_UNAVAILABLE');
   if (error instanceof SiteTimeZoneRequiredError) {
     return new ApiError(409, 'SITE_TIME_ZONE_REQUIRED');
   }
