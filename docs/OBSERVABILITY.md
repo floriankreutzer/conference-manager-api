@@ -92,6 +92,14 @@ Request-completion telemetry runs only after the application has determined its 
 
 `GET /api/v1/health/ready` evaluates only dependencies required for safe request processing, such as configured PostgreSQL connectivity and exact schema readiness. Any required dependency failure or timeout yields HTTP 503 `not_ready`.
 
+Customer and Platform PostgreSQL persistence use one current-schema query per evaluation. A successful
+query at the exact required schema version proves connectivity for this probe, so a second `SELECT 1`
+adds no readiness evidence and is omitted. Compared with the former two-query pair, this removes
+one roundtrip per persistence readiness evaluation. No healthy-result caching is introduced: connection
+failure, schema mismatch and timeout are still evaluated on every probe, and recovery is rechecked.
+This is a query-count reduction, not a claim of a measured monthly cost saving or full #267 completion.
+Demo sentinel/persona/provider checks and startup/deployment/reset integrity checks remain unchanged.
+
 ### Aggregate operational status
 
 `GET /api/v1/health/status` evaluates required readiness checks and optional degradation checks.

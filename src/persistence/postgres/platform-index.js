@@ -24,7 +24,7 @@ import {
 } from './platform-metering-repository.js';
 import { createPostgresPlatformRuntimeStatusRepository } from './platform-runtime-status-repository.js';
 import { createPostgresPlatformProjectionRepository } from './platform-projection-repository.js';
-import { createPostgresPool, isPostgresReady, isPostgresSchemaReady } from './pool.js';
+import { createPostgresPool, isPostgresSchemaReady } from './pool.js';
 
 export function createPostgresPlatformPersistence(config) {
   const pool = createPostgresPool({
@@ -112,7 +112,6 @@ export function createPostgresPlatformPersistence(config) {
     runtimeStatusRepository,
     projectionRepository,
     readinessChecks: [
-      () => isPostgresReady(pool),
       () => isPostgresSchemaReady(pool),
     ],
     close: () => pool.end(),
