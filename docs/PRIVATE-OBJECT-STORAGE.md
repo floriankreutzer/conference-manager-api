@@ -57,6 +57,35 @@ integrity or unavailable codes, without SDK causes, credentials or provider mess
 The application must still decode/reencode uploads through the existing image processor.
 The storage port verifies digest/length; it is not a replacement image sanitizer.
 
+## Demo seed and reset port
+
+The Demo Platform composition may explicitly receive a reset-only provider-neutral storage port.
+Only its distinct reset-role pool registers/publishes objects; ordinary Platform persistence
+retains no media inventory/provider authority. Runtime entrypoints still do not activate it.
+
+Object reset validates the canonical fixture/checksum, takes the existing exclusive reset gate
+and verifies database identity, sentinel, schema inventory and any concrete live reset session.
+After that preflight commits, it independently registers the bounded 34 canonical media intents
+without provider I/O. Its authoritative SERIALIZABLE reset starts only after those commits are
+visible and rechecks every precondition and the live authority. Revocation between preflight
+and reset prevents truncation/provider publication; durable unused intents remain for retention.
+
+Reset locks canonical inventory rows before acquiring exclusive asset-table locks, matching
+cleanup's custody-before-reference order. It then performs the unchanged atomic truncate/seed/
+semantic-readback sequence. Seed files retain their existing MIME signatures, lengths and
+SHA-256 verification before object upload/readback. PostgreSQL stores metadata with NULL blobs
+only in explicitly injected object mode. Semantic reconstruction reads and verifies the exact
+provider objects and retains the canonical seed version, complete three-customer business state
+and semantic checksum. Missing/corrupt objects abort the reset; no PostgreSQL fallback hides them.
+
+Inventory remains excluded from reset truncation. Provider verification, metadata, semantic
+checksum or required success-audit failure rolls database state back while retaining committed
+custody. The failure taxonomy adds only the bounded `media_registration_failed` phase; raw
+provider/driver details do not enter reset audit evidence. Database integration tests exercise
+two full external seed/reset cycles, all three canonical customers, failed verification rollback,
+foreign-Tenant denial and preserved orphan custody. Real provider/hosted activation and paired
+external-object browser acceptance remain separate deployment gates.
+
 ## Operator backfill and rollback
 
 `scripts/private-media-migration.mjs` accepts only `--execute copy|rollback|purge room|catalogue`.

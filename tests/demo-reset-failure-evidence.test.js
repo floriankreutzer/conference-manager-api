@@ -156,7 +156,8 @@ test('Demo reset classifies transaction lock failure as transaction-lock evidenc
 test('Demo reset failure reasons remain a closed bounded taxonomy', () => {
   const reasons = Object.values(DEMO_RESET_FAILURE_REASON);
   assert.equal(new Set(reasons).size, reasons.length);
-  assert.equal(reasons.length, 14);
+  assert.equal(reasons.length, 15);
+  assert.equal(reasons.includes('media_registration_failed'), true);
   for (const reason of reasons) {
     assert.match(reason, /^[a-z][a-z0-9_]{2,31}$/);
   }
