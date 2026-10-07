@@ -1,6 +1,5 @@
 import {
   createPostgresPool,
-  isPostgresReady,
   isPostgresSchemaReady,
 } from './pool.js';
 import { createPostgresApplicationRepository } from './application-repository.js';
@@ -105,7 +104,6 @@ export function createPostgresPersistence(config) {
     tenantBulkTransferRepository,
     loadTenant: (tenantId) => tenantRepository.findById(tenantId),
     readinessChecks: [
-      () => isPostgresReady(pool),
       () => isPostgresSchemaReady(pool),
     ],
     close: () => pool.end(),
