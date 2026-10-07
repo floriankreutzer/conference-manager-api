@@ -1,5 +1,6 @@
 import { ApiError } from '../../api-error.js';
 import { defineRouteModule } from '../../http/route-module.js';
+import { sendPrivateMediaResponse } from '../../http/private-media-response.js';
 import { createDemoCatalogueMediaService } from '../application/catalogue-media-service.js';
 import { RoomImageInputError } from '../../media/room-image-processor.js';
 import { readJsonObjectBody, validateExactObject } from '../../security.js';
@@ -229,13 +230,8 @@ export function createDemoCustomerControlRoutes({
               || !['image/png', 'image/webp'].includes(media.content_type)) {
               throw new ApiError(500, 'DEMO_MEDIA_CORRUPT');
             }
-            response.statusCode = 200;
-            response.setHeader('Content-Type', media.content_type);
-            response.setHeader('Content-Length', media.bytes.length);
-            response.setHeader('Cache-Control', 'private, no-store');
-            response.setHeader('X-Content-Type-Options', 'nosniff');
-            response.end(media.bytes);
-            return 200;
+            return sendPrivateMediaResponse({ request, response, tenantId: tenant.tenantId,
+              assetId, contentType: media.content_type, bytes: media.bytes });
           }
           const assets = await mediaRepository.list({ tenantId: tenant.tenantId });
           response.setHeader('Cache-Control', 'private, no-store');

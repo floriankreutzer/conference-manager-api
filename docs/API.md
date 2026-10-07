@@ -10,6 +10,17 @@ The browser and API share one public HTTPS origin in Pilot and Production. API p
 
 Successful JSON responses use `Content-Type: application/json; charset=utf-8` and `Cache-Control: no-store`.
 
+Private Room and Demo Catalogue image GETs use a strong opaque ETag bound to the current
+internal Tenant, asset identity, MIME and verified bytes. `If-None-Match` accepts bounded
+strong/weak validator lists or `*`; malformed/oversized lists are ignored and receive the
+authorized full response. A match returns bodyless HTTP 304 only after normal session,
+Tenant, permission and attachment/owner checks and verified loading succeed. Missing,
+foreign, detached or unavailable assets retain their existing concealed/error behavior.
+Responses use `Cache-Control: private, no-cache, max-age=0, must-revalidate` and `Vary: Cookie`;
+cached bytes require server revalidation on every reuse. Uploads, mutations and listings
+retain `no-store`. This reduces browser response payload, not database/provider reads;
+no shared cache, healthy-authority cache, image compression or provider fallback is introduced.
+
 Every response receives a server-generated `X-Request-Id`. Public errors expose stable machine codes and request IDs only. They do not expose stack traces, SQL, configuration, provider payloads, provider identifiers, credentials, session tokens or consent state.
 
 A stale bounded Tenant settings mutation returns HTTP 409 with the exact code `TENANT_SETTINGS_REVISION_CONFLICT`. Its only domain context field is the bounded positive safe-integer `currentRevision`, alongside `code` and `requestId`; no current configuration, Tenant identifier or other state is included. The exact envelope is:

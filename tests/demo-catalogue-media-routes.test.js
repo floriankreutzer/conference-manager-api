@@ -7,6 +7,42 @@ import { createDemoCustomerControlRoutes } from '../src/demo/http/customer-contr
 const TENANT_ID = '10000000-0000-4000-8000-000000000001';
 const FOREIGN_ASSET = '52000000-0000-4000-8000-000000000011';
 
+test('Catalogue conditional reads revalidate owner scope and replacements invalidate the same asset URL', async () => {
+  let bytes = Buffer.from('verified catalogue bytes');
+  let reads = 0;
+  let denied = false;
+  const handle = handler({
+    async find(input) {
+      assert.equal(input.tenantId, TENANT_ID);
+      reads += 1;
+      return bytes ? { bytes, byte_length: bytes.length, content_type: 'image/webp' } : null;
+    },
+    async list() { return []; },
+  }, async () => { if (denied) throw new Error('UNAUTHENTICATED'); return {}; });
+  const path = `/api/v1/demo/media/${FOREIGN_ASSET}`;
+  async function read(etag) {
+    const input = request(); input.headers['if-none-match'] = etag;
+    const reply = response();
+    const status = await handle({ request: input, response: reply,
+      path, parsedUrl: new URL(path, 'https://demo.example') });
+    return { status, reply };
+  }
+  const etag = (await read()).reply.headers.get('etag');
+  const cached = await read(etag);
+  assert.equal(cached.status, 304);
+  assert.equal(cached.reply.body, undefined);
+  assert.equal(reads, 2);
+  bytes = Buffer.from('replacement catalogue bytes');
+  const replaced = await read(etag);
+  assert.equal(replaced.status, 200);
+  assert.notEqual(replaced.reply.headers.get('etag'), etag);
+  bytes = null;
+  await assert.rejects(read(etag), { code: 'NOT_FOUND' });
+  denied = true;
+  await assert.rejects(read('*'), /UNAUTHENTICATED/);
+  assert.equal(reads, 4);
+});
+
 function request(method = 'GET') {
   return { method, headers: {}, async *[Symbol.asyncIterator]() {} };
 }

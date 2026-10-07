@@ -8,7 +8,10 @@ not authorize unrelated plan upgrades or paid runner capacity.
 
 The `conference-manager-media` bucket was created on the existing production branch
 at 18:54 UTC on that date and independently reread with `access_level: private`.
-No scoped service credentials were issued for this foundation change.
+No application-scoped service credentials were explicitly issued for this foundation change.
+The provider also generated its default branch storage/AI credentials when the bucket was
+created; their secret values were not retrieved and they were not changed. Operational
+credential inventory must account for these defaults separately from scoped application keys.
 
 `src/media/object-storage-contract.js` defines a provider-neutral, URL-free media port.
 `src/media/neon-object-storage.js` implements `put(reference, bytes)`, `get(reference)`,
@@ -185,3 +188,21 @@ separate where possible and never emit secret material to logs or source control
 Provider contract references inspected on 7 October 2026: Neon `docs/storage/overview`,
 `docs/storage/authentication` and `docs/storage/s3-compatibility`. Lifecycle/versioning and
 credential limitations above must be reverified before operational cutover.
+
+## Private image revalidation and immutable acceptance
+
+The SaaS 3.8 conditional-image candidate uses frontend acceptance
+`195d530cdc97f67512ef9b2d89831e0b1a0f27fb` in all four browser/storage rows.
+That frontend binds its own isolated CI to API `87719aaea146ade797273039e03e8406dbcc3e19`,
+the initial conditional-image implementation. This successor adds the already accepted
+object reset/browser compositions and the matching immutable acceptance pin; image response
+implementation is unchanged. Exact final paired heads and gates belong in the PR evidence.
+
+Authorized Room and Catalogue image GETs use an opaque strong ETag, private mandatory
+revalidation and Vary: Cookie. Current session, same-Tenant object/attachment authority and
+verified bytes are required before every bodyless 304. JSON/session/mutation responses remain
+no-store. The permanent journey now explicitly denies conditional requests without a session,
+with foreign ownership, after reset revokes the session, and after reset removes the image.
+Independent byte hashes, all three customers and both full reset cycles remain mandatory.
+Historical old-contract failure is not relabeled. No avoided provider/database read, deployed
+cache behavior, hosted/provider restore acceptance or cutover is claimed.
