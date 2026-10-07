@@ -55,7 +55,8 @@ this adapter, although the SDK's transitive dependencies increase supply-chain m
 
 ## Migration acceptance still required
 
-1. Add reviewed metadata/lifecycle schema and least-privilege Demo grants without changing
+1. Accept canonical schema 043 and Demo overlay 008 metadata/inventory foundation and its
+   least-privilege grants, then wire runtime publication/read/backfill without changing
    historical migration checksums. Keep the canonical seed semantics/checksum intact.
 2. Backfill bounded, idempotent batches, verify every digest and byte count, and retain
    PostgreSQL bytes until a restore/rollback exercise has succeeded.

@@ -113,7 +113,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
 
   await migrateUp(pool);
   await createRoles(pool);
-  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 7);
+  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 8);
 
   await t.test('fresh install records all Demo overlays and permits the real reset sequence', async () => {
     await migrateDemoUp(pool, { roles: ROLES });
@@ -125,6 +125,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
       { version: 5, name: 'room_media_role_grants', checksum_length: 64 },
       { version: 6, name: 'demo_catalogue_media', checksum_length: 64 },
       { version: 7, name: 'demo_catalogue_media_create', checksum_length: 64 },
+      { version: 8, name: 'private_media_metadata', checksum_length: 64 },
     ]);
     assert.deepEqual(await privileges(pool, ROLES.reset), {
       insert_allowed: true,
@@ -150,7 +151,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
   });
 
   await t.test('upgrade from 001..003 is denied before 004 and restored by the checksum runner', async () => {
-    for (let index = 0; index < 4; index += 1) {
+    for (let index = 0; index < 5; index += 1) {
       assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true);
     }
     assert.deepEqual((await overlayVersions(pool)).map(({ version }) => version), [1, 2, 3]);
@@ -168,7 +169,30 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
       (error) => error.code === '42501',
     );
     await migrateDemoUp(pool, { roles: ROLES });
-    assert.deepEqual((await overlayVersions(pool)).map(({ version }) => version), [1, 2, 3, 4, 5, 6, 7]);
+    assert.deepEqual((await overlayVersions(pool)).map(({ version }) => version), [1, 2, 3, 4, 5, 6, 7, 8]);
     await resetAttributionStateAsRole(pool, ROLES.reset);
+  });
+
+  await t.test('private media overlay preserves inventory across reset and denies Platform or destructive runtime access', async () => {
+    for (const [purpose, role] of Object.entries(ROLES)) {
+      const result = await pool.query(`SELECT
+        has_table_privilege($1, 'media_object_inventory', 'SELECT') AS read,
+        has_table_privilege($1, 'media_object_inventory', 'INSERT') AS register,
+        has_column_privilege($1, 'media_object_inventory', 'object_key', 'UPDATE') AS row_lock,
+        has_column_privilege($1, 'media_object_inventory', 'registered_at', 'UPDATE') AS change_age,
+        has_table_privilege($1, 'media_object_inventory', 'DELETE') AS delete,
+        has_table_privilege($1, 'media_object_inventory', 'TRUNCATE') AS truncate`, [role]);
+      assert.deepEqual(result.rows[0], { read: purpose !== 'platform', register: purpose !== 'platform',
+        row_lock: purpose !== 'platform', change_age: false, delete: false, truncate: false });
+    }
+    for (const role of [ROLES.customer, ROLES.reset]) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(`SET LOCAL ROLE ${identifier(role)}`);
+        await assert.rejects(client.query('TRUNCATE media_object_inventory'), (error) => error.code === '42501');
+        await client.query('ROLLBACK');
+      } finally { client.release(); }
+    }
   });
 });

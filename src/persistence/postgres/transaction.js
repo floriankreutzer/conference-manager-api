@@ -13,6 +13,11 @@ const TRANSACTION_INFRASTRUCTURE_PHASE = Object.freeze({
 });
 const transactionContext = new AsyncLocalStorage();
 
+export function isPostgresTransactionActive(pool, client) {
+  const active = transactionContext.getStore();
+  return active?.pool === pool && (client === undefined || active.client === client);
+}
+
 function beginStatement({ isolationLevel = 'READ COMMITTED', readOnly = false } = {}) {
   if (!ISOLATION_LEVELS.has(isolationLevel)) throw new TypeError('TRANSACTION_ISOLATION_INVALID');
   if (typeof readOnly !== 'boolean') throw new TypeError('TRANSACTION_READ_ONLY_INVALID');
