@@ -12,9 +12,24 @@ No scoped service credentials were issued for this foundation change.
 
 `src/media/object-storage-contract.js` defines a provider-neutral, URL-free media port.
 `src/media/neon-object-storage.js` implements `put(reference, bytes)`, `get(reference)`,
-`remove(reference)` and `close()`. It is not yet wired into the running application.
+`remove(reference)` and `close()`. It is not yet activated in a runtime entrypoint.
 PostgreSQL remains the only active media store until the separately reviewed migration,
 backfill, rollback and three-customer/reset acceptance have completed.
+
+The Customer PostgreSQL factory accepts an explicitly injected provider-neutral storage port.
+Room and Demo Catalogue repositories register durable intents after owner/actor preflight and
+before entering their metadata transaction. They repeat ownership, conflict and quota checks
+under the existing authoritative locks, upload and read back the object under the inventory
+lock, then publish its key/length/digest and append required audit evidence atomically. In this
+injected object mode newly published metadata carries no PostgreSQL blob. Provider or audit
+failure rolls back publication while leaving committed inventory custody for cleanup.
+
+Reads apply existing same-Tenant owner, Room attachment and active-room predicates before
+provider access. Object mode rejects unbackfilled PostgreSQL-only rows and never falls back
+to database bytes after an object failure. Disabled object mode fails closed on external rows.
+Catalogue replacement derives a new content-addressed key; deletion removes only authorized
+metadata and retains durable object custody. These repository seams remain inactive in all
+entrypoints until operator backfill, seed/reset and coordinated restore acceptance exist.
 
 The port requires an internal Tenant ID, internal asset ID, kind (`room` or `catalogue`),
 canonical MIME, byte length and lowercase SHA-256 digest from authoritative metadata.
