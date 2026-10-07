@@ -16,7 +16,8 @@ test('Equipment receipt migration preserves Tenant/actor constraints and blocks 
   const pool = createPostgresPool({ mode: 'test', ...database });
   t.after(() => pool.end());
   await migrateUp(pool);
-  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty schema 043
+  assert.equal(await rollbackLatest(pool), true); // Unused Equipment schema 042
   await migrateUp(pool);
   await pool.query("INSERT INTO tenants (id, display_name, status) VALUES ($1, 'Equipment Tenant', 'active')", [TENANT]);
   await pool.query('INSERT INTO users (tenant_id, id, display_name) VALUES ($1, $2, $3)', [TENANT, USER, 'Manager']);
@@ -29,6 +30,7 @@ test('Equipment receipt migration preserves Tenant/actor constraints and blocks 
   assert.equal(await repository.load({ tenantId: FOREIGN, id: RECEIPT }), null);
   await assert.rejects(repository.create({ ...input, id: FOREIGN, actorUserId: FOREIGN }),
     (error) => error.code === '23503');
+  assert.equal(await rollbackLatest(pool), true); // Schema 043 is still empty
   await assert.rejects(rollbackLatest(pool), /EQUIPMENT_BULK_RECEIPTS_REQUIRE_REVIEW/);
   assert.equal((await pool.query('SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1')).rows[0].version, 42);
   assert.equal((await repository.load({ tenantId: TENANT, id: RECEIPT })).documentType, 'equipment');

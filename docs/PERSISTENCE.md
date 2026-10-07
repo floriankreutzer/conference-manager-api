@@ -167,7 +167,7 @@ The all-role Tenant presentation contract reuses the current Organization row an
 `organization_revision`. Its managed-brand policy maps one fixed reference to a code-shipped preset
 and therefore introduces no upload metadata, asset table, external object reference or migration.
 
-Migration 039 introduced schema version 39; the current exact runtime readiness version is 42. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
+Migration 039 introduced schema version 39; the current exact runtime readiness version is 43. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
 
 No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
 
@@ -311,7 +311,7 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 42.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 43.
 
 ## Shared Demo persistence
 
@@ -323,8 +323,8 @@ reset/seed capability and migration ownership. All four URLs must resolve to the
 distinct.
 
 The canonical `migrations/` stream remains the source of the business schema and must contain the
-exact applied sequence `001..042`. The independent `demo-migrations/` stream has its own
-`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `007`
+exact applied sequence `001..043`. The independent `demo-migrations/` stream has its own
+`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `008`
 installs the immutable database sentinel, provider/persona reference tables, minimized views and
 role grants, private Room/Catering media and create/attach lifecycle support. Overlay 004 grants only `INSERT` and `TRUNCATE` on the canonical attribution
 migration-state singleton to the reset role; customer and Platform roles receive no access. The
@@ -343,7 +343,7 @@ operator security version while holding the exclusive lock. Truncation preserves
 sequence positions; audit and operational identifiers therefore remain monotonic, and the reset
 role requires sequence usage rather than sequence ownership.
 
-Reset intentionally preserves the two migration ledgers and immutable sentinel. It resets all
+Reset intentionally preserves the two migration ledgers, immutable sentinel and durable media object inventory. It resets all
 authoritative customer/Platform business, session, audit, projection and metering rows while
 preserving identity-sequence positions. It is not a Production migration or backup/restore mechanism and its role must
 never be provisioned against a Pilot/Production database. See `docs/SHARED-DEMO-RUNTIME.md`.
@@ -443,7 +443,7 @@ or restore/PITR decision rather than deletion of immutable history or bypass of 
 
 The following authorization-epoch rollback describes the historical 033/034 boundary, not a supported direct downgrade from current schema 42. Every intervening populated rollback guard and compatible target-release check must pass; prefer a forward fix.
 
-Migration 034 down deliberately leaves every cutover revocation in place. An emergency binary rollback must drain Customer traffic before removing schema bookkeeping; all pre-cutover cookies remain revoked and sessions issued by the new epoch are unresolvable by old token hashing. Reapplying migration 034 after a rollback window revokes any sessions the old binary issued. A restore or PITR target older than migration 034 must not receive Customer traffic until the complete current canonical sequence through 042, including migration 034, has been applied and exact schema readiness plus old-cookie/fresh-session checks pass. Operators must never clear `revoked_at`, reuse an epoch or rewrite hashes to make a rollback appear successful.
+Migration 034 down deliberately leaves every cutover revocation in place. An emergency binary rollback must drain Customer traffic before removing schema bookkeeping; all pre-cutover cookies remain revoked and sessions issued by the new epoch are unresolvable by old token hashing. Reapplying migration 034 after a rollback window revokes any sessions the old binary issued. A restore or PITR target older than migration 034 must not receive Customer traffic until the complete current canonical sequence through 043, including migration 034, has been applied and exact schema readiness plus old-cookie/fresh-session checks pass. Operators must never clear `revoked_at`, reuse an epoch or rewrite hashes to make a rollback appear successful.
 
 ## Testing evidence required
 
@@ -510,7 +510,7 @@ Tenant-composite Catalogue tables, charged once and included in allocation.
 The `saas-3.7-three-demo-customers-v1` reset fixture contains distinct priced Northwind/Contoso Equipment
 and verifies those identity, price and applicability facts during semantic readback. Demo overlay
 004 supplies only the reset privilege required by canonical attribution migration 036. Apply
-canonical migrations first, apply Demo overlays 001 through 007, reset/reseed Demo, deploy both API
+canonical migrations first, apply Demo overlays 001 through 008, reset/reseed Demo, deploy both API
 processes at one compatible SHA, verify Catalogue pages and then pin/deploy the updated frontend.
 Down 035 refuses once any v3 snapshot/proposal/history exists; use a compatible binary or a forward
 fix. Production never activates Demo authority.
@@ -531,6 +531,33 @@ Nullable Site `guest_information` is separate from legacy `details`. Immutable L
 Migration 042 extends only the existing receipt document-type CHECK constraint to admit Equipment.
 The composite Tenant/actor foreign key, immutable payload hash, revision, expiry and atomic Apply
 contract remain unchanged. Runtime, Demo migration prerequisites and reset require canonical
-001..042; Demo overlays remain independently tracked at 001..007. Down migration locks the receipt
+001..043; Demo overlays remain independently tracked at 001..008. Down migration locks the receipt
 table and refuses rollback if any Equipment receipt exists, preserving compatibility and evidence.
 See `docs/TENANT-BULK-TRANSFER.md` for the authoritative API contract.
+
+
+## Private media metadata — schema 043, Demo overlay 008
+
+Schema 043 permits verified external object references while retaining the existing binary format
+for staged backfill/rollback. Bytes and key cannot both be absent. Keys must exactly match internal
+Tenant, asset, kind and SHA-256; size, MIME, pixel and ownership constraints remain enforced.
+
+`media_object_inventory` records committed immutable upload intents before authoritative metadata
+transactions. It deliberately has no Tenant foreign key and is excluded from Demo reset truncation,
+so failed writes, replaced objects and removed Tenants retain cleanup custody. Registration is
+Tenant-serialized and capped at 10,000 objects per Tenant. Updates are prohibited by a trigger;
+runtime/reset roles receive only SELECT, INSERT and key-column UPDATE privilege for row locking.
+Overlay 008 explicitly revokes inherited destructive grants. Platform runtime receives no access.
+
+The repository requires the exact managed transaction client for upload/publication and locks the
+intent row until commit. Uploads are read back and digest-verified before publication. Cleanup uses
+the same row lock, SKIP LOCKED, indexed reference checks, a 30-day minimum age, at most 100 candidates
+and a 25-second processing budget. It rechecks current Room/Catalogue metadata before deletion;
+Room asset rows retained by immutable Locations history protect their objects. Failed provider
+deletions preserve intents; successful deletion followed by rollback is safely retryable.
+
+Canonical and Demo down migrations refuse external pointers, missing database bytes or outstanding
+object custody. A coordinated object/database rollback must restore and verify bytes before clearing
+pointers; objects/inventory must be reconciled explicitly before schema downgrade. No runtime
+automigration, storage activation, maintenance schedule or backfill is introduced by this schema
+foundation. See PRIVATE-OBJECT-STORAGE.md for the remaining acceptance and deployment gates.

@@ -30,7 +30,7 @@ The service uses Node.js 22 native HTTP and ECMAScript modules. The implemented 
   network-free simulated Microsoft 365 adapter;
 - production observability, threat-model and secure-configuration gates.
 
-Runtime dependencies are limited to exact-pinned `pg`, `@azure/msal-node`, and `sharp`. The image decoder is restricted to the managed Room media adapter, where bounded PNG/JPEG/WebP input is decoded and re-encoded without source metadata before storage. Provider-specific Microsoft handling uses bounded native HTTP plus a bounded MSAL transport isolated inside identity/integration adapters; Microsoft SDK types do not enter application or domain contracts.
+Runtime dependencies are limited to exact-pinned `pg`, `@azure/msal-node`, `sharp` and `@aws-sdk/client-s3`. The image decoder is restricted to the managed Room media adapter, where bounded PNG/JPEG/WebP input is decoded and re-encoded without source metadata before storage. Provider-specific Microsoft handling uses bounded native HTTP plus a bounded MSAL transport isolated inside identity/integration adapters; Microsoft SDK types do not enter application or domain contracts. The S3 SDK is restricted to the private media storage adapter. That adapter is a validated, bounded foundation and is not activated in runtime composition yet; PostgreSQL remains the active media store. See `PRIVATE-OBJECT-STORAGE.md` for its URL-free port, integrity checks and remaining cutover gates.
 
 ```text
 Browser (untrusted)
@@ -159,7 +159,7 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
   semantic checksum; `src/persistence/postgres/demo-reset-repository.js` owns the sentinel-verified,
   exclusively locked, transactional reset/readback contract.
 - `scripts/demo-db-migrations.mjs` owns the independent checksum-protected Demo overlay migration
-  ledger after verifying the exact canonical schema `001..042`.
+  ledger after verifying the exact canonical schema `001..043`.
 - `scripts/platform-break-glass-grant.mjs` and `scripts/platform-recovery-fallback.mjs` are the only local privileged mutation wrappers. They accept credentials only through fixed descriptors and require live Platform sessions plus a dual-control, exact Tenant/permission-bound, one-use grant. The retired process-local Tenant-operator runtime and package entry point are prohibited.
 - `scripts/check-architecture.mjs` prevents architecture, migration and composition drift.
 - `scripts/check-security-baseline.mjs` prevents drift between the documented Pilot/Production security baseline and executable controls.
@@ -250,7 +250,7 @@ See `docs/AUDIT.md` for the normative event/integrity contract.
 
 Schema ownership lives in `migrations/`. Migrations are paired up/down files, numerically versioned, checksum protected and serialized by a PostgreSQL advisory lock.
 
-The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 42.
+The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 43.
 
 - Migration 001 establishes Tenant-owned product structures.
 - Migration 002 adds User security-version state and server-side sessions.
@@ -295,6 +295,8 @@ The application never auto-migrates at startup. Deployment automation runs migra
 - Migration 037 adds nullable Site Guest Information and immutable Locations-revision guest maps without changing exact v1 contracts.
 - Migration 038 removes public execution of the Request-attribution marker and confines its migration-owner authority to schema-qualified SECURITY DEFINER triggers.
 
+- Migration 043 adds canonical private Room-object metadata and immutable durable upload intents. PostgreSQL delivery remains active until the separately accepted backfill/cutover.
+
 Every migration that removes security/business evidence includes a fail-closed rollback guard.
 
 ## Shared Demo architecture
@@ -327,8 +329,8 @@ listening. Its HTTP reset path performs the same bounded refresh after reset com
 returning success. Projection failure remains visible and is not represented as a rolled-back
 authoritative reset.
 
-The canonical schema now includes migrations `001..042`; the Demo-only overlay is independently tracked
-as `demo-migrations/001..007`. Neither application process auto-migrates or auto-seeds. See
+The canonical schema now includes migrations `001..043`; the Demo-only overlay is independently tracked
+as `demo-migrations/001..008`. Neither application process auto-migrates or auto-seeds. See
 `docs/SHARED-DEMO-RUNTIME.md` for provisioning and operations.
 
 ## Request composition architecture
@@ -452,7 +454,7 @@ The `saas-3.6-shared-demo-v5` reset fixture contains distinct priced Northwind/C
 and verifies those identity, price and applicability facts during semantic readback. Demo overlay
 004 grants only the reset role's `INSERT` and `TRUNCATE` access to the canonical attribution
 migration-state table; customer and Platform roles receive no access. Apply canonical migrations
-first, apply Demo overlays 001 through 007, reset/reseed Demo, deploy both API processes at one
+first, apply Demo overlays 001 through 008, reset/reseed Demo, deploy both API processes at one
 compatible SHA, verify Catalogue pages and then pin/deploy the updated frontend. Down 035 refuses
 once any v3 snapshot/proposal/history exists; use a compatible binary or a forward fix. Production
 never activates Demo authority.

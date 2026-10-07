@@ -17,6 +17,7 @@ const META_TABLES = Object.freeze([
   'schema_migrations',
   'demo_schema_migrations',
   'demo_database_sentinel',
+  'media_object_inventory',
 ]);
 const RESET_AUTHORITY = Object.freeze({
   operatorId: OPERATOR_ID,
@@ -52,7 +53,7 @@ function fakeResetPool({ failQueryName = null, failCommit = false, failTransacti
                 reset_role: 'demo_reset',
                 current_database: 'conference_manager_demo_test',
                 current_role: 'demo_reset',
-                production_schema_versions: Array.from({ length: 42 }, (_, index) => index + 1),
+                production_schema_versions: Array.from({ length: 43 }, (_, index) => index + 1),
               }],
             };
           }
