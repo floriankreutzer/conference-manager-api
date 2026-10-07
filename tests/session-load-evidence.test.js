@@ -1,9 +1,43 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { randomBytes, randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { measureSessionReads } from '../scripts/session-load-evidence.mjs';
+import { createSessionLoadRuntime } from '../scripts/support/session-load-runtime.mjs';
+import { loadConfig } from '../src/config.js';
+import { createPostgresPersistence } from '../src/persistence/postgres/index.js';
+import { tenantAuthorizationSnapshot, TENANT_ROLE } from '../src/authorization/policy.js';
 
 const cookie = `cm_session=${'a'.repeat(43)}`;
+test('full session-load composition serves canonical HTTP with controlled repository ports and no provider or DB connection', async () => {
+  const config = { ...loadConfig({ NODE_ENV: 'test', DATABASE_URL: 'postgresql://fixture@127.0.0.1:1/conference_manager_test_1_1',
+    ENTRA_CLIENT_ID: randomUUID(), ENTRA_CLIENT_SECRET: randomBytes(32).toString('hex'),
+    OIDC_TRANSACTION_SECRET: randomBytes(32).toString('hex'),
+    AUDIT_HMAC_SECRET: randomBytes(32).toString('hex'), CSRF_SECRET: randomBytes(32).toString('hex') }), port: 0 };
+  const persistence = createPostgresPersistence(config);
+  const tenantId = randomUUID(); const userId = randomUUID();
+  const at = new Date().toISOString();
+  let session;
+  const runtime = createSessionLoadRuntime({ config, persistence: { ...persistence,
+    sessionRepository: { ...persistence.sessionRepository,
+      async issue(record) { session = { ...record, securityVersion: 1 }; return session; },
+      async resolveByTokenHash(hash) { assert.equal(hash, session.tokenHash); return session; } },
+    async loadTenant(id) { assert.equal(id, tenantId); return { id, status: 'active', displayName: 'Synthetic load fixture',
+      createdAt: at, updatedAt: at }; } } });
+  try {
+    const address = await runtime.start();
+    config.publicOrigin = `http://127.0.0.1:${address.port}`;
+    const issued = await runtime.sessionService.issue({ tenantId, userId, securityVersion: 1,
+      providerIdentity: { provider: 'microsoft_entra', reference: 'synthetic' },
+      ...tenantAuthorizationSnapshot([TENANT_ROLE.EMPLOYEE]) });
+    const result = await measureSessionReads({ origin: config.publicOrigin,
+      cookies: [issued.setCookie.split(';', 1)[0]], verify(body) {
+        assert.equal(body.user.id, userId); assert.equal(body.tenant.id, tenantId);
+      } });
+    assert.equal(result.requests, 1); assert.equal(persistence.pool.totalCount, 0);
+  }
+  finally { await runtime.stop(); }
+});
 test('load measurement accepts only bounded loopback session reads and never follows redirects', async () => {
   for (const origin of ['https://127.0.0.1:1234', 'http://localhost:1234', 'http://example.com:1234',
     'http://127.0.0.1:1234/other', 'http://user:password@127.0.0.1:1234', 'http://127.0.0.1:1234/?token=secret']) {

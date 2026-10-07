@@ -3,12 +3,11 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { tenantAuthorizationSnapshot, TENANT_ROLE } from '../src/authorization/policy.js';
 import { loadConfig } from '../src/config.js';
-import { createCustomerComposition } from '../src/customer-composition.js';
 import { createSessionService } from '../src/identity/session-service.js';
-import { createLogger } from '../src/logger.js';
 import { createPostgresPersistence } from '../src/persistence/postgres/index.js';
 import { migrateUp } from '../scripts/db-migrations.mjs';
 import { measureSessionReads } from '../scripts/session-load-evidence.mjs';
+import { createSessionLoadRuntime } from '../scripts/support/session-load-runtime.mjs';
 
 function instrument(pool) {
   const clients = new Set();
@@ -85,8 +84,7 @@ test('isolated PostgreSQL 18 session reads measure 100, 1000 and 10000 actual ac
     const counts = await persistence.pool.query(`SELECT count(*)::int AS users,
       count(DISTINCT tenant_id)::int AS tenants FROM users WHERE active = TRUE`);
     assert.deepEqual(counts.rows[0], { users: target, tenants: 10 });
-    const runtime = createCustomerComposition({ config, persistence: { ...persistence, close: async () => {} },
-      logger: createLogger({ write() {} }) });
+    const runtime = createSessionLoadRuntime({ config, persistence: { ...persistence, close: async () => {} } });
     try {
       const address = await runtime.start();
       // Bind the test configuration to its actual ephemeral port; retain exact production Host validation.

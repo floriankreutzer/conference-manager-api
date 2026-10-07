@@ -12,6 +12,9 @@ seeds 100, 1,000 and 10,000 active Users and valid session records. No real iden
 external integrations, production database or paid resources are used. Fixture generation reuses the
 canonical session service's token/hash epoch and the canonical role-permission snapshot; bulk fixture
 insertion is explicitly outside the measured login/audit path.
+The complete Customer composition receives a test-only provider port that rejects every external
+operation. A native construction test catches missing service/configuration prerequisites before
+the real database run; the session workload must never invoke that provider port.
 
 | Scenario | Active fixture Users | Tenants | Users per Tenant | Reads | Concurrent HTTP clients | DB pool |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |

@@ -199,8 +199,8 @@ jobs:
           path = Path('/etc/apt/apt-mirrors.txt')
           if path.is_file():
               original = path.read_text()
-              azure = 'http://azure.archive.ubuntu.com/ubuntu/\\tpriority:1'
-              archive = 'https://archive.ubuntu.com/ubuntu/\\tpriority:2'
+              azure = 'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1'
+              archive = 'https://archive.ubuntu.com/ubuntu/\tpriority:2'
               if original.count(azure) == 1 and original.count(archive) == 1:
                   updated = original.replace(azure, azure[:-1] + '2', 1)
                   updated = updated.replace(archive, archive[:-1] + '1', 1)
