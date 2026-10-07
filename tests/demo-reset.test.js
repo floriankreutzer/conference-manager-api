@@ -132,13 +132,14 @@ function createAuditRepository() {
   };
 }
 
-function repository(pool, { seedBusinessState, readSemanticState, auditRepository = null } = {}) {
+function repository(pool, { seedBusinessState, readSemanticState, auditRepository = null, mediaObjects = null } = {}) {
   let seededFixture = DEMO_FIXTURE;
   return createPostgresDemoResetRepository({
     pool,
     expectedDatabaseName: 'conference_manager_demo_test',
     expectedResetRole: 'demo_reset',
     auditRepository,
+    mediaObjects,
     seedBusinessState: async (argumentsForSeed) => {
       seededFixture = argumentsForSeed.fixture;
       if (seedBusinessState) await seedBusinessState(argumentsForSeed);
@@ -146,6 +147,63 @@ function repository(pool, { seedBusinessState, readSemanticState, auditRepositor
     readSemanticState: readSemanticState || (async () => seededFixture),
   });
 }
+
+test('object reset verifies authority before durable registration and starts SERIALIZABLE seeding after intent commits', async () => {
+  const pool = createFakePool();
+  const registered = [];
+  let seedCalls = 0;
+  const mediaObjects = {
+    async register(reference) {
+      assert.equal(pool.queries.at(-1).text, 'COMMIT');
+      assert.equal(pool.queries.some(({ name }) => name === 'demo-reset-truncate'), false);
+      registered.push(reference);
+    },
+    async putWithClient() {}, async lockWithClient() {}, async read() {},
+  };
+  await repository(pool, { mediaObjects, async seedBusinessState(input) {
+    seedCalls += 1;
+    assert.equal(input.mediaObjects, mediaObjects);
+    assert.equal(registered.length, 34);
+  } }).reset({ fixture: DEMO_FIXTURE, checksum: DEMO_FIXTURE_CHECKSUM });
+  assert.equal(seedCalls, 1);
+  assert.equal(pool.queries.filter(({ name }) => name === 'demo-reset-sentinel').length, 2);
+  assert.equal(pool.queries.filter(({ text }) => text === 'COMMIT').length, 2);
+  assert.equal(new Set(registered.map(({ key }) => key)).size, 34);
+});
+
+test('object reset denies invalid sentinel and revoked authority before provider publication', async () => {
+  const invalid = createFakePool({ sentinel: validSentinel({ current_database: 'production' }) });
+  let registrationCount = 0;
+  let seedCalls = 0;
+  const mediaObjects = { async register() { registrationCount += 1; },
+    async putWithClient() {}, async lockWithClient() {}, async read() {} };
+  await assert.rejects(repository(invalid, { mediaObjects }).reset({ fixture: DEMO_FIXTURE, checksum: DEMO_FIXTURE_CHECKSUM }));
+  assert.equal(registrationCount, 0);
+  const revoked = createFakePool({ authorityResults: [true, false] });
+  const audits = createAuditRepository();
+  await assert.rejects(repository(revoked, { mediaObjects, auditRepository: audits,
+    async seedBusinessState() { seedCalls += 1; } }).reset({
+    fixture: DEMO_FIXTURE, checksum: DEMO_FIXTURE_CHECKSUM, authority: RESET_AUTHORITY,
+    auditEventFor: ({ outcome, reasonCode }) => ({ outcome, reasonCode }),
+  }), /DEMO_RESET_AUTHORITY_REVOKED/);
+  assert.equal(registrationCount, 34);
+  assert.equal(seedCalls, 0);
+  assert.equal(revoked.queries.some(({ name }) => name === 'demo-reset-truncate'), false);
+  assert.deepEqual(audits.attempts, [{ outcome: 'failure', reasonCode: 'authority_failed' }]);
+});
+
+test('object reset registration failure retains bounded failure evidence without truncation', async () => {
+  const pool = createFakePool();
+  const audits = createAuditRepository();
+  const mediaObjects = { async register() { throw new Error('private-provider-details'); },
+    async putWithClient() {}, async lockWithClient() {}, async read() {} };
+  await assert.rejects(repository(pool, { mediaObjects, auditRepository: audits }).reset({
+    fixture: DEMO_FIXTURE, checksum: DEMO_FIXTURE_CHECKSUM, authority: RESET_AUTHORITY,
+    auditEventFor: ({ outcome, reasonCode }) => ({ outcome, reasonCode }),
+  }), /private-provider-details/);
+  assert.equal(pool.queries.some(({ name }) => name === 'demo-reset-truncate'), false);
+  assert.deepEqual(audits.attempts, [{ outcome: 'failure', reasonCode: 'media_registration_failed' }]);
+});
 
 test('reset rejects a missing or wrong sentinel before destructive SQL', async () => {
   for (const pool of [

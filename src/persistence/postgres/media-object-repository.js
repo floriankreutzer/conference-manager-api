@@ -14,6 +14,18 @@ export function createPostgresMediaObjectRepository(pool, { storage, includeDemo
   if (!pool?.connect || !storage?.put || !storage?.get || !storage?.remove
     || typeof includeDemoCatalogue !== 'boolean') throw new TypeError('MEDIA_OBJECT_REPOSITORY_DEPENDENCIES_REQUIRED');
 
+  async function lockWithClient(client, input) {
+    if (!client || !isPostgresTransactionActive(pool, client)) throw new TypeError('MEDIA_OBJECT_UPLOAD_TRANSACTION_REQUIRED');
+    const reference = mediaObjectReference(input);
+    const intent = await client.query({ name: 'media-object-upload-lock',
+      text: 'SELECT * FROM media_object_inventory WHERE tenant_id = $1 AND object_key = $2 FOR UPDATE',
+      values: [reference.tenantId, reference.key] });
+    if (intent.rowCount !== 1 || !rowMatches(intent.rows[0], reference)) {
+      throw new MediaObjectStorageError('MEDIA_STORAGE_INTENT_MISSING');
+    }
+    return reference;
+  }
+
   return Object.freeze({
     // Register BEFORE entering the authoritative metadata transaction. This committed
     // intent survives process death, an upload failure, audit failure or reset rollback.
@@ -50,16 +62,13 @@ export function createPostgresMediaObjectRepository(pool, { storage, includeDemo
       if (!client || !isPostgresTransactionActive(pool, client)) throw new TypeError('MEDIA_OBJECT_UPLOAD_TRANSACTION_REQUIRED');
       const reference = mediaObjectReference(input);
       verifyMediaObjectBytes(bytes, reference);
-      const intent = await client.query({ name: 'media-object-upload-lock',
-        text: 'SELECT * FROM media_object_inventory WHERE tenant_id = $1 AND object_key = $2 FOR UPDATE',
-        values: [reference.tenantId, reference.key] });
-      if (intent.rowCount !== 1 || !rowMatches(intent.rows[0], reference)) {
-        throw new MediaObjectStorageError('MEDIA_STORAGE_INTENT_MISSING');
-      }
+      await lockWithClient(client, reference);
       if (await storage.put(reference, bytes) !== reference.key) throw new MediaObjectStorageError('MEDIA_STORAGE_INTEGRITY_FAILED');
       verifyMediaObjectBytes(await storage.get(reference), reference);
       return reference.key;
     },
+
+    lockWithClient,
 
     async read(input, persistedKey) {
       const reference = mediaObjectReference(input);

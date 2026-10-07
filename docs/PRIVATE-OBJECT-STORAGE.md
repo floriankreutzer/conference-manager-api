@@ -8,7 +8,10 @@ not authorize unrelated plan upgrades or paid runner capacity.
 
 The `conference-manager-media` bucket was created on the existing production branch
 at 18:54 UTC on that date and independently reread with `access_level: private`.
-No scoped service credentials were issued for this foundation change.
+No application-scoped service credentials were explicitly issued for this foundation change.
+The provider also generated its default branch storage/AI credentials when the bucket was
+created; their secret values were not retrieved and they were not changed. Operational
+credential inventory must account for these defaults separately from scoped application keys.
 
 `src/media/object-storage-contract.js` defines a provider-neutral, URL-free media port.
 `src/media/neon-object-storage.js` implements `put(reference, bytes)`, `get(reference)`,
@@ -56,6 +59,55 @@ integrity or unavailable codes, without SDK causes, credentials or provider mess
 
 The application must still decode/reencode uploads through the existing image processor.
 The storage port verifies digest/length; it is not a replacement image sanitizer.
+
+## Demo seed and reset port
+
+The Demo Platform composition may explicitly receive a reset-only provider-neutral storage port.
+Only its distinct reset-role pool registers/publishes objects; ordinary Platform persistence
+retains no media inventory/provider authority. Runtime entrypoints still do not activate it.
+
+Object reset validates the canonical fixture/checksum, takes the existing exclusive reset gate
+and verifies database identity, sentinel, schema inventory and any concrete live reset session.
+After that preflight commits, it independently registers the bounded 34 canonical media intents
+without provider I/O. Its authoritative SERIALIZABLE reset starts only after those commits are
+visible and rechecks every precondition and the live authority. Revocation between preflight
+and reset prevents truncation/provider publication; durable unused intents remain for retention.
+
+Reset locks canonical inventory rows before acquiring exclusive asset-table locks, matching
+cleanup's custody-before-reference order. It then performs the unchanged atomic truncate/seed/
+semantic-readback sequence. Seed files retain their existing MIME signatures, lengths and
+SHA-256 verification before object upload/readback. PostgreSQL stores metadata with NULL blobs
+only in explicitly injected object mode. Semantic reconstruction reads and verifies the exact
+provider objects and retains the canonical seed version, complete three-customer business state
+and semantic checksum. Missing/corrupt objects abort the reset; no PostgreSQL fallback hides them.
+
+Inventory remains excluded from reset truncation. Provider verification, metadata, semantic
+checksum or required success-audit failure rolls database state back while retaining committed
+custody. The failure taxonomy adds only the bounded `media_registration_failed` phase; raw
+provider/driver details do not enter reset audit evidence. Database integration tests exercise
+two full external seed/reset cycles, all three canonical customers, failed verification rollback,
+foreign-Tenant denial and preserved orphan custody. Real provider/hosted activation and paired
+external-object browser acceptance remain separate deployment gates.
+
+## Isolated external-object browser acceptance
+
+The API CI matrix retains the original PostgreSQL media mode and additionally executes both
+Chromium and WebKit with explicitly injected external-object ports. Every row runs the unchanged
+immutable shared role/Tenant/CSRF journey and full three-customer progression with two resets.
+Customer and Platform remain separate processes with the existing credential exclusions.
+
+`scripts/demo-object-acceptance.mjs` requires `NODE_ENV=test` before activating its isolated
+loopback S3 protocol fixture or compositions. Production/Demo entrypoints never import it.
+The fixture uses a freshly generated masked authority, fixed loopback destination, bounded
+object count/bytes, request deadlines and canonical content-addressed keys. The real pinned
+S3 SDK and private adapter serialize/sign requests and verify response integrity; only their
+transport is replaced for this test environment. Reset seeds object metadata with NULL database
+blobs, so object reads cannot succeed through a PostgreSQL fallback. Fixture roundtrip tests
+also cover foreign keys, missing objects, denied authority and invalid-byte rejection before I/O.
+
+These checks prove external-object application integration, not Neon provider availability,
+provider credential isolation, hosted deployment or coordinated real-provider restore.
+Those operational gates remain separate and must pass before cutover.
 
 ## Operator backfill and rollback
 
@@ -136,3 +188,21 @@ separate where possible and never emit secret material to logs or source control
 Provider contract references inspected on 7 October 2026: Neon `docs/storage/overview`,
 `docs/storage/authentication` and `docs/storage/s3-compatibility`. Lifecycle/versioning and
 credential limitations above must be reverified before operational cutover.
+
+## Private image revalidation and immutable acceptance
+
+The SaaS 3.8 conditional-image candidate uses frontend acceptance
+`195d530cdc97f67512ef9b2d89831e0b1a0f27fb` in all four browser/storage rows.
+That frontend binds its own isolated CI to API `87719aaea146ade797273039e03e8406dbcc3e19`,
+the initial conditional-image implementation. This successor adds the already accepted
+object reset/browser compositions and the matching immutable acceptance pin; image response
+implementation is unchanged. Exact final paired heads and gates belong in the PR evidence.
+
+Authorized Room and Catalogue image GETs use an opaque strong ETag, private mandatory
+revalidation and Vary: Cookie. Current session, same-Tenant object/attachment authority and
+verified bytes are required before every bodyless 304. JSON/session/mutation responses remain
+no-store. The permanent journey now explicitly denies conditional requests without a session,
+with foreign ownership, after reset revokes the session, and after reset removes the image.
+Independent byte hashes, all three customers and both full reset cycles remain mandatory.
+Historical old-contract failure is not relabeled. No avoided provider/database read, deployed
+cache behavior, hosted/provider restore acceptance or cutover is claimed.
