@@ -202,6 +202,33 @@ Changing the frontend pin requires a reviewed repository change to both the Gitl
 
 The API process serves the pinned browser files itself so each surface remains same-origin with its corresponding API. Do not split the browser to a separate Render Static Site and introduce CORS or browser bearer tokens.
 
+### Content fingerprints and bounded static transfer
+
+After validating/copying the exact reviewed frontend and writing deployment metadata,
+`fingerprint-demo-assets.mjs` rewrites local HTML `src`/`href` entry asset references to
+same-origin URLs with their exact SHA-256 query (`?sha256=<digest>`). It removes old manual
+version query strings, does not change source checkout or asset bytes, excludes external/anchor
+references and refuses filesystem escapes. This is a deterministic build transform of the
+pinned source; deployment metadata still identifies that exact reviewed source commit.
+The transform caps HTML at 1 MiB, each asset at 8 MiB and references at 200.
+
+The static port verifies real paths and file identity, computes content/representation ETags,
+and grants `public, max-age=31536000, immutable` only after matching the requested hash to
+actual bytes. Wrong/duplicate hashes return 404. HTML, deployment identity metadata and
+ordinary unhashed URLs remain `no-cache` and support conditional revalidation. A changed
+file gets a new validator; its old hash URL cannot deliver new bytes under an immutable URL.
+
+Only public static text/JSON/SVG of at most 1 MiB negotiates gzip or Brotli. Binary images and
+fonts are never compressed, and dynamic API/session responses do not use this path. Each
+encoded representation has its own strong ETag and `Vary: Accept-Encoding`; HEAD and 304
+send no payload. Valid encoding exclusions fail with 406 when no available representation is
+acceptable; malformed/oversized negotiation headers conservatively select identity.
+
+The process cache holds at most 128 representations and 16 MiB of bytes, with eight concurrent
+uncached read/compression operations and no waiting queue. Normal static files cap at 8 MiB;
+oversized files return 413. Brotli quality is fixed at four. No filesystem mutation, provider
+network, browser authority, private media or session secret enters this public transfer path.
+
 ### Build-bound deployment identity evidence
 
 A configured or expected commit ref is not evidence that Render is currently serving that ref. Every real Render build therefore emits the non-secret same-origin file:

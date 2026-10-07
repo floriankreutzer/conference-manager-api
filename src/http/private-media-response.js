@@ -1,16 +1,7 @@
 import { createHash } from 'node:crypto';
+import { matchesEntityTag } from '../transport/conditional-get.js';
 
 const MAX_BYTES = 2 * 1024 * 1024;
-const MAX_CONDITIONAL_HEADER = 8192;
-
-function matchesEntityTag(value, etag) {
-  if (typeof value !== 'string' || value.length > MAX_CONDITIONAL_HEADER) return false;
-  if (value.trim() === '*') return true;
-  const candidates = value.split(',');
-  if (candidates.length > 32) return false;
-  if (candidates.some((candidate) => !/^(?:W\/)?"[a-zA-Z0-9_-]{1,128}"$/.test(candidate.trim()))) return false;
-  return candidates.some((candidate) => candidate.trim().replace(/^W\//, '') === etag);
-}
 
 // Call only after current session, Tenant and attachment/owner authorization and verified
 // media loading. Every cache reuse is revalidated; a conditional header grants no authority.
