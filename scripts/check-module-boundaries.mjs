@@ -168,6 +168,9 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
       && !MEDIA_STORAGE_COMPOSITION_ROOTS.has(file)) {
       violations.push(violation(file, 'concrete object storage may be imported only by customer composition roots.'));
     }
+    if (graph.get(file)?.includes('src/persistence/postgres/media-backfill-repository.js')) {
+      violations.push(violation(file, 'operator media migration must not enter application runtime modules.'));
+    }
     if (/process\.env/.test(source) && !RUNTIME_ENVIRONMENT_AUTHORITY.has(file)) {
       violations.push(violation(
         file,
