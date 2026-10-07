@@ -35,6 +35,7 @@ export function createDemoPlatformComposition({
   resetPool,
   readiness,
   staticFileAdapter = null,
+  metrics,
 } = {}) {
   if (!config) throw new TypeError('DEMO_CONFIG_REQUIRED');
   if (config.staticRoot && !staticFileAdapter) {
@@ -86,6 +87,7 @@ export function createDemoPlatformComposition({
   const composition = createPlatformComposition({
     config: runtimeConfig,
     persistence: runtimePersistence,
+    ...(metrics ? { metrics } : {}),
     httpServerFactory: (options) => createDemoPlatformHttpServer({
       ...options,
       demoRuntimeGatePool: selectedGatePool,

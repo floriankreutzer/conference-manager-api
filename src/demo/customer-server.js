@@ -7,6 +7,7 @@ import {
 } from '../persistence/postgres/demo-runtime-gate.js';
 import { applySecurityHeaders, createRequestId } from '../security.js';
 import { createDemoStaticHandler } from './static-handler.js';
+import { observeResponsePayloadSafely } from '../observability/response-payload.js';
 
 const LIVENESS_PATH = '/api/v1/health/live';
 
@@ -76,6 +77,10 @@ export function createDemoCustomerHttpServer(options) {
         await staticHandler(request, response);
       } catch (error) {
         sendRuntimeFailure(response, config, error);
+      } finally {
+        observeResponsePayloadSafely({
+          response, metrics: options.metrics, route: 'demo_customer_static', method: request.method,
+        });
       }
       return;
     }

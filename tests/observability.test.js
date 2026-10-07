@@ -29,6 +29,7 @@ function httpRequest({ port, path }) {
       response.on('data', (chunk) => chunks.push(chunk));
       response.on('end', () => resolve({
         statusCode: response.statusCode,
+        payloadBytes: Buffer.concat(chunks).length,
         body: JSON.parse(Buffer.concat(chunks).toString('utf8')),
       }));
     });
@@ -99,6 +100,22 @@ test('metrics use bounded low-cardinality labels and reject arbitrary dimensions
     () => metrics.recordApiRequest({ route: 'request', method: 'ATTACK-METHOD', statusCode: 200, durationMs: 1 }),
     /METRIC_METHOD_INVALID/,
   );
+});
+
+test('all Demo Customer route identities are accepted without dynamic labels by logging and metrics', () => {
+  const entries = [];
+  const logger = createLogger({ write: (line) => entries.push(JSON.parse(line)) });
+  const metrics = createMetricsRegistry();
+  for (const route of [
+    'demo_customer_session', 'demo_customer_context', 'demo_customer_tenants',
+    'demo_customer_media', 'demo_customer_static',
+  ]) {
+    logger.requestCompleted({ requestId: CORRELATION_ID, route, method: 'GET', statusCode: 200, durationMs: 1 });
+    metrics.recordApiRequest({ route, method: 'GET', statusCode: 200, durationMs: 1 });
+    metrics.recordResponsePayload({ route, method: 'GET', statusCode: 200, payloadClass: 'json', bytes: 1 });
+  }
+  assert.equal(entries.length, 5);
+  assert.equal(metrics.snapshot().counters.length, 15);
 });
 
 test('health monitor separates required readiness from optional degradation', async () => {
@@ -175,6 +192,18 @@ test('operational logs and HTTP metrics do not contain dynamic request identifie
   assert.doesNotMatch(snapshot, /SECRET-OBJECT-123/);
 });
 
+test('real HTTP completion observes the exact UTF-8 JSON body size without public telemetry', async () => {
+  const metrics = createMetricsRegistry();
+  await withServer({ config: testConfig(), metrics, logger: createLogger({ write() {} }) }, async (port) => {
+    const result = await httpRequest({ port, path: '/api/v1/health/live' });
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.body.metrics, undefined);
+    const sample = metrics.snapshot().counters.find(({ metric }) => metric === 'api_response_payload_bytes_total');
+    assert.equal(sample.value, result.payloadBytes);
+    assert.deepEqual(sample.labels, { route: 'health_live', method: 'GET', status: '2xx', payload: 'json' });
+  });
+});
+
 test('successful modular bulk route completes with its bounded route identity', async () => {
   const logs = [];
   const metrics = createMetricsRegistry();
@@ -245,7 +274,7 @@ test('post-response telemetry observer failures cannot replace an HTTP outcome',
     assert.equal(result.statusCode, 200);
     assert.equal(result.body.status, 'ok');
   });
-  assert.deepEqual(calls, ['metric_sample', 'request_completed']);
+  assert.deepEqual(calls, ['metric_sample', 'metric_sample', 'request_completed']);
 });
 
 test('booking service records booking and provider outcomes without tenant or provider references', async () => {

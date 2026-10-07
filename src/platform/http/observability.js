@@ -9,6 +9,7 @@ export const PLATFORM_HTTP_ROUTE = Object.freeze({
   DEMO_SESSION: 'platform_demo_session',
   DEMO_PERSONA: 'platform_demo_persona',
   DEMO_RESET: 'platform_demo_reset',
+  DEMO_STATIC: 'platform_demo_static',
   TENANT_DIRECTORY: 'platform_tenant_directory',
   TENANT_CREATE: 'platform_tenant_create',
   INVITATION_REVOKE: 'platform_invitation_revoke',

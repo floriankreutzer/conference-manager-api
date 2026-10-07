@@ -1,10 +1,12 @@
 import { createDemoCustomerComposition } from './customer-composition.js';
 import { loadDemoCustomerConfig } from './config.js';
 import { loadDemoStaticFileAdapter } from './static-file-loader.js';
+import { createMetricsRegistry } from '../observability/metrics.js';
 
 const config = loadDemoCustomerConfig(process.env);
 const staticFileAdapter = await loadDemoStaticFileAdapter(config.staticRoot);
-const composition = createDemoCustomerComposition({ config, staticFileAdapter });
+const metrics = createMetricsRegistry({ write: (line) => process.stdout.write(line) });
+const composition = createDemoCustomerComposition({ config, staticFileAdapter, metrics });
 await composition.start();
 
 let stopping = false;
