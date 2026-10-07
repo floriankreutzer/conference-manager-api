@@ -5,6 +5,7 @@ const BOOKING_OPERATIONS = new Set(['availability', 'reservation_validation', 'c
 const OUTCOMES = new Set(['success', 'failure', 'denied']);
 const DEPENDENCY_STATES = new Set(['healthy', 'degraded', 'unavailable']);
 const MAX_DURATION_MS = 120_000;
+const PAYLOAD_CLASSES = new Set(['json', 'image', 'other', 'empty']);
 
 function assertEnum(value, allowed, code) {
   if (!allowed.has(value)) throw new TypeError(code);
@@ -46,11 +47,13 @@ export function createMetricsRegistry({
     })}\n`);
   }
 
-  function increment(metric, labels) {
+  function increment(metric, labels, amount = 1) {
     const key = labelsKey(metric, labels);
     const current = counters.get(key) || { metric, labels: Object.freeze({ ...labels }), value: 0 };
-    counters.set(key, { ...current, value: current.value + 1 });
-    emit({ metric, labels, value: 1 });
+    const value = current.value + amount;
+    if (!Number.isSafeInteger(value)) throw new TypeError('METRIC_COUNTER_OVERFLOW');
+    counters.set(key, { ...current, value });
+    emit({ metric, labels, value: amount });
   }
 
   function observe(metric, labels, durationMs) {
@@ -85,6 +88,18 @@ export function createMetricsRegistry({
 
     recordAuthenticationFailure() {
       increment('authentication_failures_total', Object.freeze({ reason: 'unauthorized' }));
+    },
+
+    recordResponsePayload({ route, method, statusCode, payloadClass, bytes }) {
+      const labels = Object.freeze({
+        route: assertRouteKey(route),
+        method: assertEnum(method, METHODS, 'METRIC_METHOD_INVALID'),
+        status: statusClass(statusCode),
+        payload: assertEnum(payloadClass, PAYLOAD_CLASSES, 'METRIC_PAYLOAD_CLASS_INVALID'),
+      });
+      if (!Number.isSafeInteger(bytes) || bytes < 0) throw new TypeError('METRIC_BYTES_INVALID');
+      increment('api_response_payload_bytes_total', labels, bytes);
+      increment('api_response_payload_observations_total', labels);
     },
 
     recordAuthorizationDenied() {

@@ -50,6 +50,7 @@ export function createPlatformComposition({
   routeModulesFactory,
   projectionRunGate,
   shutdownTimeoutMs,
+  metrics,
 } = {}) {
   const authorizationPolicy = createPlatformAuthorizationPolicy();
   const tenantTargetPolicy = createPlatformTenantTargetPolicy({
@@ -166,6 +167,7 @@ export function createPlatformComposition({
   const platformProcess = createPlatformProcess({
     config,
     persistence,
+    ...(metrics ? { metrics } : {}),
     ...(shutdownTimeoutMs ? { shutdownTimeoutMs } : {}),
     ...(httpServerFactory ? { httpServerFactory } : {}),
     routeModules: selectedRouteModules,

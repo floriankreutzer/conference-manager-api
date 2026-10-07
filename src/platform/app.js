@@ -1,4 +1,5 @@
 import { isInternalUuid } from '../domain/identifiers.js';
+import { observeResponsePayloadSafely } from '../observability/response-payload.js';
 import { assertPlatformHttpConfig } from './config.js';
 import { asPlatformHttpError, PlatformHttpError } from './http/errors.js';
 import { platformAuthenticationRoutes } from './http/authentication-routes.js';
@@ -203,6 +204,7 @@ export function createPlatformApp({
         response.destroy();
       }
     } finally {
+      observeResponsePayloadSafely({ response, metrics, route, method: request.method });
       recordPlatformRequestCompletionSafely({
         metrics,
         logger,

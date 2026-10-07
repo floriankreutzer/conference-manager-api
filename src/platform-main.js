@@ -1,10 +1,16 @@
 import { createPlatformComposition } from './platform-composition.js';
 import { loadPlatformConfig } from './platform/config.js';
 import { createProductionPlatformAuthentication } from './platform-production-authentication.js';
+import { createMetricsRegistry } from './observability/metrics.js';
+import { assertPlatformRouteKey } from './platform/http/observability.js';
 
 const composition = createPlatformComposition({
   config: loadPlatformConfig(process.env),
   authenticationFactory: createProductionPlatformAuthentication,
+  metrics: createMetricsRegistry({
+    assertRouteKey: assertPlatformRouteKey,
+    write: (line) => process.stdout.write(line),
+  }),
 });
 await composition.start();
 
