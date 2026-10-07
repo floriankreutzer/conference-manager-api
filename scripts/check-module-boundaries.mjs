@@ -53,6 +53,10 @@ const PLATFORM_DEMO_FORBIDDEN_MODULES = new Set([
 ]);
 const LEGACY_PLATFORM_BOUNDARY_MESSAGE = ': Customer runtime code must not import the Platform control-plane boundary ';
 const SQL_STATEMENT = /\b(?:SELECT|INSERT INTO|UPDATE|DELETE FROM)\b/;
+const MEDIA_STORAGE_COMPOSITION_ROOTS = new Set([
+  'src/index.js', 'src/customer-composition.js',
+  'src/demo/customer-main.js', 'src/demo/customer-composition.js',
+]);
 
 function normalized(file) {
   return String(file).replaceAll('\\', '/');
@@ -156,6 +160,14 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
 
   for (const [file, source] of sources) {
     const imports = moduleImports(source);
+    if (imports.some(({ specifier }) => specifier.startsWith('@aws-sdk/'))
+      && file !== 'src/media/neon-object-storage.js') {
+      violations.push(violation(file, 'the object-storage SDK is restricted to the private storage adapter.'));
+    }
+    if (graph.get(file)?.includes('src/media/neon-object-storage.js')
+      && !MEDIA_STORAGE_COMPOSITION_ROOTS.has(file)) {
+      violations.push(violation(file, 'concrete object storage may be imported only by customer composition roots.'));
+    }
     if (/process\.env/.test(source) && !RUNTIME_ENVIRONMENT_AUTHORITY.has(file)) {
       violations.push(violation(
         file,

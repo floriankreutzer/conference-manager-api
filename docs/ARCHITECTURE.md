@@ -30,7 +30,7 @@ The service uses Node.js 22 native HTTP and ECMAScript modules. The implemented 
   network-free simulated Microsoft 365 adapter;
 - production observability, threat-model and secure-configuration gates.
 
-Runtime dependencies are limited to exact-pinned `pg`, `@azure/msal-node`, and `sharp`. The image decoder is restricted to the managed Room media adapter, where bounded PNG/JPEG/WebP input is decoded and re-encoded without source metadata before storage. Provider-specific Microsoft handling uses bounded native HTTP plus a bounded MSAL transport isolated inside identity/integration adapters; Microsoft SDK types do not enter application or domain contracts.
+Runtime dependencies are limited to exact-pinned `pg`, `@azure/msal-node`, `sharp` and `@aws-sdk/client-s3`. The image decoder is restricted to the managed Room media adapter, where bounded PNG/JPEG/WebP input is decoded and re-encoded without source metadata before storage. Provider-specific Microsoft handling uses bounded native HTTP plus a bounded MSAL transport isolated inside identity/integration adapters; Microsoft SDK types do not enter application or domain contracts. The S3 SDK is restricted to the private media storage adapter. That adapter is a validated, bounded foundation and is not activated in runtime composition yet; PostgreSQL remains the active media store. See `PRIVATE-OBJECT-STORAGE.md` for its URL-free port, integrity checks and remaining cutover gates.
 
 ```text
 Browser (untrusted)

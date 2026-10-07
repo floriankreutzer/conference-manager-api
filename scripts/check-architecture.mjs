@@ -15,6 +15,7 @@ async function sourceFiles(directory) {
 const packageJson = JSON.parse(await readFile('package.json', 'utf8'));
 const runtimeDependencies = packageJson.dependencies || {};
 const approvedRuntimeDependencies = {
+  '@aws-sdk/client-s3': '3.1147.0',
   '@azure/msal-node': '7.0.0',
   pg: '8.23.1',
   sharp: '0.35.5',
@@ -27,7 +28,7 @@ const runtimeEnvironmentAuthority = new Set([
   'src/demo/platform-main.js',
 ]);
 if (JSON.stringify(runtimeDependencies) !== JSON.stringify(approvedRuntimeDependencies)) {
-  throw new Error('Runtime dependencies must remain exactly the reviewed PostgreSQL, Microsoft identity, and image processing adapters.');
+  throw new Error('Runtime dependencies must remain exactly the reviewed PostgreSQL, identity, image and object-storage adapters.');
 }
 
 const files = await sourceFiles('src');
