@@ -25,17 +25,17 @@ const EXPECTED_OVERLAY_VERSIONS = Object.freeze(Array.from(
 ));
 const EXPECTED_PROVIDER_TENANTS = Object.freeze(DEMO_FIXTURE.tenants.map(({ id }) => id).sort());
 
-function readinessQuery(surface) {
+function readinessQuery(surface, bounded) {
   const personaView = surface === 'customer'
     ? 'demo_customer_persona_references'
     : 'demo_platform_persona_references';
   const providerSelection = surface === 'platform'
     ? `, (SELECT COALESCE(array_agg(tenant_id::text ORDER BY tenant_id), ARRAY[]::text[])
-          FROM demo_provider_simulations) AS provider_tenant_ids`
+          FROM provider_inventory) AS provider_tenant_ids`
     : '';
   const authoritySelection = surface === 'customer'
     ? `(SELECT count(*)::integer
-          FROM demo_customer_persona_references AS reference
+          FROM persona_inventory AS reference
           JOIN tenants AS tenant
             ON tenant.id = reference.tenant_id
            AND (tenant.status IN ('ready', 'active')
@@ -45,10 +45,17 @@ function readinessQuery(surface) {
            AND app_user.id = reference.subject_id
            AND app_user.active = true) AS authority_count`
     : `(SELECT count(*)::integer
-          FROM demo_platform_persona_references AS reference
+          FROM persona_inventory AS reference
           JOIN platform_operators AS operator
             ON operator.id = reference.operator_id AND operator.status = 'active') AS authority_count`;
   return `
+    WITH persona_inventory AS MATERIALIZED (
+      SELECT * FROM ${personaView} ${bounded ? 'LIMIT $1' : ''}
+    ), overlay_inventory AS MATERIALIZED (
+      SELECT version FROM demo_schema_migrations ${bounded ? 'LIMIT $2' : ''}
+    ) ${surface === 'platform' ? `, provider_inventory AS MATERIALIZED (
+      SELECT tenant_id FROM demo_provider_simulations ${bounded ? 'LIMIT $3' : ''}
+    )` : ''}
     SELECT current_database() AS connected_database,
            current_user AS connected_role,
            sentinel.sentinel_key,
@@ -56,9 +63,9 @@ function readinessQuery(surface) {
            sentinel.database_name,
            sentinel.${surface}_role AS recorded_role,
            (SELECT COALESCE(array_agg(version ORDER BY version), ARRAY[]::integer[])
-              FROM demo_schema_migrations) AS overlay_versions,
+              FROM overlay_inventory) AS overlay_versions,
            (SELECT COALESCE(array_agg(context_key ORDER BY context_key), ARRAY[]::text[])
-              FROM ${personaView}) AS persona_keys,
+              FROM persona_inventory) AS persona_keys,
            ${authoritySelection}
            ${providerSelection}
     FROM demo_database_sentinel AS sentinel
@@ -86,10 +93,13 @@ export function createPostgresDemoRuntimeReadiness({
   }
   const personas = expectedPersonaKeys(surface);
 
-  async function evaluate() {
+  async function evaluate({ bounded }) {
     const result = await pool.query({
-      name: `demo-${surface}-runtime-readiness`,
-      text: readinessQuery(surface),
+      name: `demo-${surface}-${bounded ? 'bounded-readiness' : 'startup-integrity'}`,
+      text: readinessQuery(surface, bounded),
+      // One surplus row detects unexpected inventory without an unbounded aggregate.
+      values: bounded ? [personas.length + 1, EXPECTED_OVERLAY_VERSIONS.length + 1,
+        ...(surface === 'platform' ? [EXPECTED_PROVIDER_TENANTS.length + 1] : [])] : [],
     });
     if (result.rowCount !== 1) return false;
     const row = result.rows[0];
@@ -111,14 +121,14 @@ export function createPostgresDemoRuntimeReadiness({
   return Object.freeze({
     async isReady() {
       try {
-        return await evaluate();
+        return await evaluate({ bounded: true });
       } catch {
         return false;
       }
     },
     async assertReady() {
       try {
-        if (await evaluate()) return true;
+        if (await evaluate({ bounded: false })) return true;
       } catch {
         // Startup exposes only a bounded readiness outcome, never driver connection details.
       }

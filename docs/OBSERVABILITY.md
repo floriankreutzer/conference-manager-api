@@ -98,7 +98,11 @@ adds no readiness evidence and is omitted. Compared with the former two-query pa
 one roundtrip per persistence readiness evaluation. No healthy-result caching is introduced: connection
 failure, schema mismatch and timeout are still evaluated on every probe, and recovery is rechecked.
 This is a query-count reduction, not a claim of a measured monthly cost saving or full #267 completion.
-Demo sentinel/persona/provider checks and startup/deployment/reset integrity checks remain unchanged.
+Demo running readiness bounds sentinel/persona/provider inventories to expected rows plus one
+surplus row before aggregate/authority work. It retains exact comparisons and current persona
+authority; startup performs full inventory inspection. Migration, reset/readback and acceptance
+integrity gates remain mandatory. Row and roundtrip bounds are not measured provider egress or
+constant query-latency evidence.
 
 ### Aggregate operational status
 

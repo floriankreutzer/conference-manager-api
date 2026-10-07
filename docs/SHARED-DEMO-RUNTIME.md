@@ -84,8 +84,11 @@ The deployed database first receives the canonical Production schema migrations 
 
 Before either HTTP listener starts, its runtime verifies the connected database and role against the
 immutable sentinel, the exact Demo overlay ledger `1..9`, and its complete persona seed. Platform
-also verifies the provider-simulation Tenant inventory. The same check remains in normal readiness;
-missing, stale or mismatched state therefore fails closed both before serving and while running.
+also verifies the complete provider-simulation Tenant inventory. Running readiness materializes
+each inventory once with a bound of expected rows plus one surplus row before aggregation or
+authority joins. It retains exact inventory, live persona authority, role and sentinel comparisons;
+missing, stale, surplus or mismatched state therefore fails closed both before serving and while
+running. Startup keeps the full inventory inspection. Neither path caches healthy results.
 The normal readiness chain additionally verifies connectivity and the exact canonical schema version
 through read-only access to `schema_migrations`; both Customer and Platform runtime roles must pass
 that check before a deployment is considered ready.
@@ -296,3 +299,16 @@ See [Platform Projection Outbox](PLATFORM-PROJECTION-OUTBOX.md) for retry, shutd
 rollback and cost constraints. Reset now includes the outbox in its exact table inventory; immutable
 private-object custody remains preserved. Seed version and semantic checksum are unchanged.
 This source contract is not evidence of a hosted schema migration or deployment.
+
+
+## Readiness work budget candidate
+
+Production Customer and Platform readiness retain one exact-schema roundtrip, which also probes
+connectivity; liveness is process-only. Demo adds one bounded sentinel/inventory/authority statement.
+The runtime reads at most expected personas plus one, expected overlays plus one, and for Platform
+expected provider Tenants plus one before arrays and authority joins. Full startup inspection,
+checksum-protected migration validation, transactional seed/readback and permanent browser acceptance
+remain separate integrity gates. A disabled persona or changed schema still fails the next readiness
+check; no TTL cache delays detection. Row/roundtrip bounds are implementation evidence, not a
+measured guarantee of constant query latency or hosted monthly savings. PostgreSQL plan and load
+measurements are required for stronger cost claims.
