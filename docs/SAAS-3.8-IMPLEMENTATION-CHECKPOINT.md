@@ -73,21 +73,32 @@ are dated modeling inputs, not observed configured hard quotas or invoice-aligne
 Shared allowances cannot be copied independently to overlapping product totals.
 
 The private `conference-manager-media` bucket exists. The isolated acceptance branch has no compute
-endpoint. Authenticated SDK, proxy and credential-free presigned upload attempts failed through this
-execution network; independent object inventory remains empty. Temporary scoped application keys
-were revoked; provider-created default branch credentials were neither retrieved nor modified.
-No authenticated provider roundtrip, coordinated restore, object backfill/purge or live cutover is
-claimed. Isolated S3 fixtures prove application integration, not those provider properties.
+endpoint. On October 8 a provider-presigned PUT and GET succeeded with exact equality for a
+57-byte synthetic object; unsigned access to that same existing object returned HTTP 403.
+Its SHA-256 is `ba128237e1a85e020c63f61e037d9fa9cbc26cb266993e9b945efe4ccc33c926`.
+The probe was deleted and its prefix independently listed empty. Deletion does not attest physical
+retention expiry. Both temporary scoped SDK credentials were revoked and independently reread as
+revoked. Default branch credentials were neither retrieved nor modified. Earlier failed attempts
+remain failed: the production adapter's default Node transport still fails DNS, and diagnostic
+proxy attempts time out. Presigned success is not SDK, credential-scope, restore or cutover acceptance.
+See [the retained observations and remaining execution plan](SAAS-3.8-LIVE-EVIDENCE-20261008.md).
 
-The last independently retained hosted baseline is API `dccd86b3dc1eb208423407f104686aff347581ef`,
-canonical schema 42 and Demo overlay 7. Repository merges do not establish new deployment identity.
-The implementation expects canonical schema 44 / overlay 9 and retains the seed version
+Both existing Free Frankfurt Render surfaces independently serve API
+`c9f1e45565c268768c1b814b610bf5cab6b8650a`, canonical schema 44 and Demo overlay 9.
+Protected initialization run `37792057793` succeeded, and the migration ledgers were independently
+read back. Full Hosted acceptance `37794776976` succeeded: four cross-role journeys and both
+complete three-customer/two-reset browser scenarios, with stable deployment identity and repeatable
+cleanup recorded in artifact `11561275861`. Frontend #283 merged at
+`5466dbe34b05af06e491eab563ac832cf3e0182f`; its exact candidate passed CI `37797402564`,
+Secret Scan `37797407490`, Dependency Review `37797402731` and three-surface OWASP ZAP
+`37797402697`. Historical failed runs remain failed. PostgreSQL media remains active.
+The deployment retains the seed version
 `saas-3.7-three-demo-customers-v1`, with semantic checksum
 `7e22005f1e9689fbea4ccfc75084f5f3d224fe10e60a6af23c1cb600f2b70014`.
 The served frontend is pinned to `5d5102b4f9842ec704ff26441ebe96719324ddb0` and the permanent
 acceptance contract to `195d530cdc97f67512ef9b2d89831e0b1a0f27fb`.
-Never deploy that runtime against the old schema or describe
-the existing origins as upgraded without newly observed build metadata and hosted acceptance.
+Build metadata and readiness were verified before and after the successful Hosted run and after
+the frontend merge; repository merge identity alone is not deployment evidence.
 
 ## Prepared release sequence and unresolved evidence
 
@@ -111,10 +122,12 @@ the existing origins as upgraded without newly observed build metadata and hoste
    total attributable monthly costs and identical permitted topology comparisons before a separate
    provider migration decision. Session-only scaling does not complete that work package.
 
-The workspace confirmation was requested but no answer was received. Provider data-plane network
-access remains technically blocked. Neither missing condition is replaced by assumed consent or
-test-only evidence. Existing private-storage usage costs are authorized; unrelated plan/quota,
-compute/runner capacity and provider migrations are not implicitly authorized.
+The Render workspace identity was confirmed and reused; both services retain automatic deployment
+disabled. The PostgreSQL-mode release sequence is complete. Private-provider SDK/restore acceptance
+remains blocked by default Node transport connectivity and the lack of an isolated database compute.
+Existing private-storage usage costs are authorized; unrelated plan/quota, compute/runner capacity
+and provider migrations are not implicitly authorized. The remaining operational gates above remain
+open; neither presigned access nor fixture-only evidence substitutes for them.
 
 ## Roadmap integrity
 
