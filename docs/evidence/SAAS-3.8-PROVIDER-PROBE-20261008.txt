@@ -1,0 +1,182 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import pg from './conference-manager-live-release/node_modules/pg/lib/index.js';
+import { S3Client, PutObjectCommand } from './conference-manager-live-release/node_modules/@aws-sdk/client-s3/dist-cjs/index.js';
+import { createNeonObjectStorage } from './conference-manager-live-release/src/media/neon-object-storage.js';
+import { verifyMediaObjectBytes } from './conference-manager-live-release/src/media/object-storage-contract.js';
+import { migrateUp } from './conference-manager-live-release/scripts/db-migrations.mjs';
+import { migrateDemoUp } from './conference-manager-live-release/scripts/demo-db-migrations.mjs';
+import { createPostgresMediaObjectRepository } from './conference-manager-live-release/src/persistence/postgres/media-object-repository.js';
+import { createPostgresMediaBackfillRepository } from './conference-manager-live-release/src/persistence/postgres/media-backfill-repository.js';
+
+const targets = Object.freeze({
+  original: { endpoint: 'https://br-falling-glade-b17oqqiv.storage.c-5.eu-central-1.aws.neon.tech', host: 'ep-plain-firefly-b1sogv2a.c-5.eu-central-1.aws.neon.tech' },
+  root: { endpoint: 'https://br-sweet-smoke-b1w5vtbq.storage.c-5.eu-central-1.aws.neon.tech', host: 'ep-holy-sunset-b1lulgle.c-5.eu-central-1.aws.neon.tech' },
+  restored: { endpoint: 'https://br-nameless-night-b1g4g3ep.storage.c-5.eu-central-1.aws.neon.tech', host: 'ep-summer-recipe-b19cx5e5.c-5.eu-central-1.aws.neon.tech' },
+});
+const target = targets[process.env.PROBE_TARGET];
+if (!target) throw new Error('PROBE_TARGET_INVALID');
+const endpoint = target.endpoint;
+const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jfWQAAAAASUVORK5CYII=', 'base64');
+const reference = Object.freeze({ tenantId: '11111111-1111-4111-8111-111111111111',
+  assetId: '88888888-8888-4888-8888-888888888888', kind: 'catalogue', contentType: 'image/png',
+  byteLength: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') });
+let active = false;
+function storage(prefix) {
+  return createNeonObjectStorage({ endpoint, region: 'eu-central-1', bucket: 'conference-manager-media',
+    accessKeyId: process.env[prefix + '_ID'], secretAccessKey: process.env[prefix + '_SECRET'] });
+}
+function response(body, status = 200) {
+  return Response.json(body, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
+}
+export default { async fetch(request) {
+  const authorization = request.headers.get('authorization') ?? '';
+  const actual = createHash('sha256').update(authorization).digest();
+  const expected = Buffer.from(process.env.AUTH_HASH ?? '', 'hex');
+  if (expected.length !== actual.length || !timingSafeEqual(actual, expected)
+    || Date.now() > Number(process.env.EXPIRES_AT)) return response({ code: 'UNAUTHORIZED' }, 401);
+  const phase = new URL(request.url).pathname;
+  if (request.method !== 'POST' || !['/roundtrip', '/revoked', '/migrate', '/verify', '/negative', '/restore1', '/restore2', '/restore3', '/restore4', '/restore5', '/copyroom', '/copycatalogue', '/rollbackroom', '/rollbackcatalogue'].includes(phase)) return response({ code: 'INVALID_REQUEST' }, 400);
+  if (request.body) {
+    const reader = request.body.getReader();
+    const first = await reader.read();
+    await reader.cancel();
+    if (!first.done || first.value?.byteLength) return response({ code: 'INVALID_REQUEST' }, 400);
+  }
+  if (active) return response({ code: 'BUSY' }, 409);
+  active = true;
+  const writer = storage('WRITE');
+  const reader = storage('READ');
+  let stage = 'start';
+  try {
+    if (phase === '/migrate' || phase === '/verify' || phase === '/negative' || /^\/(?:copy|rollback|restore)/.test(phase)) {
+      stage = 'database_preflight';
+      const url = new URL(process.env.MIGRATION_URL);
+      if (url.hostname !== target.host
+        || url.username !== 'cm_demo_migration' || url.pathname !== '/conference_manager_demo_shared') throw new Error('DATABASE_SCOPE_INVALID');
+      url.search = '';
+      const pool = new pg.Pool({ connectionString: url.href, ssl: { rejectUnauthorized: true }, max: 2,
+        connectionTimeoutMillis: 5000, statement_timeout: 5000, query_timeout: 10000,
+        application_name: 'saas38-isolated-provider-acceptance' });
+      pool.on('error', () => {});
+      try {
+        const identity = await pool.query('SELECT current_user AS role, current_database() AS database');
+        if (identity.rows[0]?.role !== 'cm_demo_migration' || identity.rows[0]?.database !== 'conference_manager_demo_shared') throw new Error('DATABASE_SCOPE_INVALID');
+        if (phase === '/migrate') {
+          stage = 'canonical_migration';
+          await migrateUp(pool, fileURLToPath(new URL('./migrations', import.meta.url)));
+          stage = 'demo_migration';
+          await migrateDemoUp(pool, { directory: fileURLToPath(new URL('./demo-migrations', import.meta.url)),
+            roles: { customer: 'cm_demo_customer', platform: 'cm_demo_platform', reset: 'cm_demo_reset' } });
+          const counts = await pool.query("SELECT (SELECT count(*)::integer FROM schema_migrations) AS canonical,(SELECT count(*)::integer FROM demo_schema_migrations) AS demo");
+          return response({ migrated: true, ...counts.rows[0] });
+        }
+        stage = 'backfill_preflight';
+        const preflight = await pool.query("SELECT has_table_privilege(current_user,'public.media_object_inventory','DELETE') AS maintenance,(SELECT count(*)::integer FROM schema_migrations) AS canonical,(SELECT count(*)::integer FROM demo_schema_migrations) AS demo");
+        if (preflight.rows[0]?.maintenance !== true || preflight.rows[0]?.canonical !== 44 || preflight.rows[0]?.demo !== 9) throw new Error('MIGRATION_PREFLIGHT_FAILED');
+        if (phase.startsWith('/restore')) {
+          if (process.env.PROBE_TARGET !== 'restored') throw new Error('RESTORE_TARGET_REQUIRED');
+          stage = 'restore_objects_from_backup';
+          const part = Number(phase.slice(-1));
+          const kind = part <= 2 ? 'room' : 'catalogue';
+          const offset = (part <= 2 ? part - 1 : part - 3) * 10;
+          const table = kind === 'room' ? 'tenant_room_media_assets' : 'demo_catalogue_media_assets';
+          const rows = await pool.query(`SELECT tenant_id,id,content_type,byte_length,content_sha256,object_key FROM ${table} ORDER BY tenant_id,id LIMIT $1 OFFSET $2`, [10,offset]);
+          const backup = createNeonObjectStorage({ endpoint: 'https://br-twilight-tree-b18xtqg3.storage.c-5.eu-central-1.aws.neon.tech',
+            region: 'eu-central-1', bucket: 'conference-manager-media', accessKeyId: process.env.BACKUP_ID, secretAccessKey: process.env.BACKUP_SECRET });
+          const deadline = Date.now() + 25000;
+          let copiedBytes = 0;
+          try {
+            for (const row of rows.rows) {
+              if (Date.now() > deadline) throw new Error('RESTORE_BUDGET_EXHAUSTED');
+              const input = { tenantId: row.tenant_id, assetId: row.id, kind,
+                contentType: row.content_type, byteLength: row.byte_length, sha256: row.content_sha256.toString('hex') };
+              const key = `v1/${input.tenantId}/${kind}/${input.assetId}/${input.sha256}`;
+              if (row.object_key !== key) throw new Error('POINTER_MISMATCH');
+              const saved = await backup.get(input);
+              await writer.put(input, saved);
+              verifyMediaObjectBytes(await reader.get(input), input);
+              copiedBytes += saved.length;
+            }
+            return response({ restored: rows.rowCount, copiedBytes, kind, part, source: 'provider_object_backup', databaseBlobFallback: false });
+          } finally { backup.close(); }
+        }
+        if (phase === '/negative') {
+          stage = 'negative_missing';
+          const row = (await pool.query('SELECT * FROM demo_catalogue_media_assets ORDER BY tenant_id,id LIMIT 1')).rows[0];
+          const input = { tenantId: row.tenant_id, assetId: row.id, kind: 'catalogue',
+            contentType: row.content_type, byteLength: row.byte_length, sha256: row.content_sha256.toString('hex') };
+          verifyMediaObjectBytes(row.bytes, input);
+          let missingDenied = false; let rollbackDenied = false; let corruptDenied = false;
+          try {
+            await writer.remove(input);
+            try { await reader.get(input); } catch (error) { missingDenied = error.code === 'MEDIA_STORAGE_OBJECT_MISSING'; }
+            const mediaObjects = createPostgresMediaObjectRepository(pool, { storage: writer, includeDemoCatalogue: true });
+            const repository = createPostgresMediaBackfillRepository(pool, { mediaObjects, includeDemoCatalogue: true });
+            try { await repository.runBatch({ phase: 'rollback', kind: 'catalogue', limit: 1 }); }
+            catch (error) { rollbackDenied = error.code === 'MEDIA_STORAGE_OBJECT_MISSING'; }
+            const unchanged = (await pool.query('SELECT object_key FROM demo_catalogue_media_assets WHERE tenant_id=$1 AND id=$2', [row.tenant_id,row.id])).rows[0];
+            if (unchanged?.object_key !== row.object_key) throw new Error('ROLLBACK_CLEARED_MISSING_POINTER');
+            stage = 'negative_corrupt';
+            const damaged = Buffer.from(row.bytes); damaged[damaged.length - 1] ^= 1;
+            const client = new S3Client({ endpoint, region: 'eu-central-1', forcePathStyle: true, maxAttempts: 1,
+              credentials: { accessKeyId: process.env.WRITE_ID, secretAccessKey: process.env.WRITE_SECRET },
+              requestHandler: { connectionTimeout: 1000, requestTimeout: 5000, throwOnRequestTimeout: true },
+              requestChecksumCalculation: 'WHEN_REQUIRED', responseChecksumValidation: 'WHEN_REQUIRED' });
+            try { await client.send(new PutObjectCommand({ Bucket: 'conference-manager-media', Key: row.object_key,
+              Body: damaged, ContentLength: damaged.length, ContentType: row.content_type }), { abortSignal: AbortSignal.timeout(5000) }); }
+            finally { client.destroy(); }
+            try { await reader.get(input); } catch (error) { corruptDenied = error.code === 'MEDIA_STORAGE_INTEGRITY_FAILED'; }
+            return response({ missingDenied, rollbackDenied, pointerPreserved: true, corruptDenied });
+          } finally { await writer.put(input, row.bytes); verifyMediaObjectBytes(await writer.get(input), input); }
+        }
+        if (phase === '/verify') {
+          stage = 'verify_objects';
+          const rows = await pool.query("SELECT 'room' AS kind,tenant_id,id,content_type,byte_length,content_sha256,object_key,bytes FROM tenant_room_media_assets UNION ALL SELECT 'catalogue',tenant_id,id,content_type,byte_length,content_sha256,object_key,bytes FROM demo_catalogue_media_assets ORDER BY kind,tenant_id,id LIMIT 101");
+          if (rows.rowCount !== 34) throw new Error('FIXTURE_ASSET_COUNT_INVALID');
+          const deadline = Date.now() + 25000;
+          let verifiedBytes = 0;
+          const digest = createHash('sha256');
+          for (const row of rows.rows) {
+            if (Date.now() > deadline) throw new Error('VERIFY_BUDGET_EXHAUSTED');
+            const input = { tenantId: row.tenant_id, assetId: row.id, kind: row.kind,
+              contentType: row.content_type, byteLength: row.byte_length, sha256: row.content_sha256.toString('hex') };
+            verifyMediaObjectBytes(row.bytes, input);
+            const got = await reader.get(input);
+            if (!got.equals(row.bytes)) throw new Error('BYTE_MISMATCH');
+            const key = `v1/${input.tenantId}/${input.kind}/${input.assetId}/${input.sha256}`;
+            if (row.object_key !== key) throw new Error('POINTER_MISMATCH');
+            digest.update(key + ':' + input.byteLength + '\n');
+            verifiedBytes += got.length;
+          }
+          return response({ verified: rows.rowCount, verifiedBytes, retainedDatabaseBytes: true, inventorySha256: digest.digest('hex') });
+        }
+        const kind = phase.endsWith('room') ? 'room' : 'catalogue';
+        const operation = phase.startsWith('/copy') ? 'copy' : 'rollback';
+        const mediaObjects = createPostgresMediaObjectRepository(pool, { storage: writer, includeDemoCatalogue: kind === 'catalogue' });
+        const repository = createPostgresMediaBackfillRepository(pool, { mediaObjects, includeDemoCatalogue: kind === 'catalogue' });
+        stage = 'backfill_' + operation;
+        return response(await repository.runBatch({ phase: operation, kind }));
+      } finally { await pool.end(); }
+    }
+    if (phase === '/revoked') {
+      stage = 'revoked_key';
+      try { await writer.put(reference, bytes); return response({ code: 'REVOKED_KEY_ACCEPTED' }, 500); }
+      catch (error) { return response({ revokedDenied: error.code === 'MEDIA_STORAGE_UNAVAILABLE', code: error.code }); }
+    }
+    stage = 'put'; await writer.put(reference, bytes);
+    stage = 'read'; const got = await reader.get(reference);
+    if (!got.equals(bytes)) throw new Error('BYTE_MISMATCH');
+    stage = 'readonly_write'; let readOnlyDenied = false;
+    try { await reader.put(reference, bytes); }
+    catch (error) { readOnlyDenied = error.code === 'MEDIA_STORAGE_UNAVAILABLE'; }
+    if (!readOnlyDenied) return response({ code: 'READONLY_WRITE_ACCEPTED' }, 500);
+    stage = 'delete'; await writer.remove(reference);
+    stage = 'missing'; let missing = false;
+    try { await reader.get(reference); }
+    catch (error) { missing = error.code === 'MEDIA_STORAGE_OBJECT_MISSING'; }
+    return response({ put: true, exactRead: true, readOnlyDenied, removed: true, missing,
+      bytes: reference.byteLength, sha256: reference.sha256, node: process.version });
+  } catch (error) { return response({ stage, code: error.code ?? 'PROBE_FAILED' }, 502); }
+  finally { writer.close(); reader.close(); active = false; }
+} };

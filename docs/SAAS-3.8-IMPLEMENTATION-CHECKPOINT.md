@@ -72,16 +72,25 @@ provider-defined project transfer bytes. Published Launch allowance/rates and de
 are dated modeling inputs, not observed configured hard quotas or invoice-aligned v2 counters.
 Shared allowances cannot be copied independently to overlapping product totals.
 
-The private `conference-manager-media` bucket exists. The isolated acceptance branch has no compute
-endpoint. On October 8 a provider-presigned PUT and GET succeeded with exact equality for a
-57-byte synthetic object; unsigned access to that same existing object returned HTTP 403.
-Its SHA-256 is `ba128237e1a85e020c63f61e037d9fa9cbc26cb266993e9b945efe4ccc33c926`.
-The probe was deleted and its prefix independently listed empty. Deletion does not attest physical
-retention expiry. Both temporary scoped SDK credentials were revoked and independently reread as
-revoked. Default branch credentials were neither retrieved nor modified. Earlier failed attempts
-remain failed: the production adapter's default Node transport still fails DNS, and diagnostic
-proxy attempts time out. Presigned success is not SDK, credential-scope, restore or cutover acceptance.
-See [the retained observations and remaining execution plan](SAAS-3.8-LIVE-EVIDENCE-20261008.md).
+The private `conference-manager-media` bucket exists. Historical local Node DNS/proxy failures remain
+failures, but the October 8 Frankfurt operator Function executed the accepted default-SDK adapter
+successfully: exact PUT/GET/REMOVE, read-only write denial and post-revocation denial. With the
+owner-approved separate EUR 5 operator test threshold, accepted migrators reached canonical 44 /
+Demo 9 on isolated branches. Bounded, repeatable copy verified 34 images / 5,192,696 bytes against
+retained PostgreSQL blobs. A separate provider object backup plus an unfinalized database snapshot
+restore reproduced the same inventory digest; database snapshots alone restored no storage buckets.
+Missing/corrupt-object checks and guarded rollback passed. Actual rollback cleared all 34 pointers
+while retaining all blobs. Production was never finalized, backfilled, purged or cut over.
+
+All seven new scoped test credentials were revoked. The temporary operator Function and three test
+compute endpoints were removed and independently listed absent. Four data/backup branches remain;
+the project now has eleven branches, so one extra branch may incur prorated Launch charges. Retained
+storage/branch lifecycle and invoice coverage remain open. Provider-created default credentials
+were not retrieved or changed. See [the exact results and scope](SAAS-3.8-LIVE-EVIDENCE-20261008.md).
+
+The October 2 Free-plan announcement doubles Free PostgreSQL storage to 1 GB/project. Independently
+read subscription remains Launch v3; no downgrade or project/organization migration was performed.
+The existing project's storage fitting below 1 GB does not alone justify a plan/topology change.
 
 Both existing Free Frankfurt Render surfaces independently serve API
 `c9f1e45565c268768c1b814b610bf5cab6b8650a`, canonical schema 44 and Demo overlay 9.
@@ -123,11 +132,15 @@ the frontend merge; repository merge identity alone is not deployment evidence.
    provider migration decision. Session-only scaling does not complete that work package.
 
 The Render workspace identity was confirmed and reused; both services retain automatic deployment
-disabled. The PostgreSQL-mode release sequence is complete. Private-provider SDK/restore acceptance
-remains blocked by default Node transport connectivity and the lack of an isolated database compute.
-Existing private-storage usage costs are authorized; unrelated plan/quota, compute/runner capacity
-and provider migrations are not implicitly authorized. The remaining operational gates above remain
-open; neither presigned access nor fixture-only evidence substitutes for them.
+disabled. The PostgreSQL-mode release sequence is complete. Actual isolated SDK/backfill/paired
+restore/rollback primitives now pass; full actual-provider private-media browser/reset acceptance,
+cross-branch credential denial and operational FinOps remain open. The successful operator Function
+is not application runtime acceptance. The current local browser runner fails host dependency
+validation and direct Node provider access remains unavailable. Production media stays PostgreSQL.
+The owner approved the separate EUR 5 operator test threshold on October 8; this is not a provider
+hard cap, plan upgrade or unlimited ongoing spend authorization. Additional paid execution is paused
+pending a usable isolated runner and retained-data cost/lifecycle reconciliation. Neither a provider
+primitive, presigned access nor fixture-only evidence substitutes for the complete permanent gate.
 
 ## Roadmap integrity
 
