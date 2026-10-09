@@ -8,7 +8,7 @@ import {
   resolveCurrentRequestCompositionWithClient,
 } from './request-repository.js';
 import { refreshPlatformProjectionBatchWithClient } from './platform-projection-repository.js';
-import { publishDemoFixtureMedia, readDemoFixtureMediaBytes } from './demo-fixture-media.js';
+import { forEachDemoMediaBatch, publishDemoFixtureMedia, readDemoFixtureMediaBytes } from './demo-fixture-media.js';
 import {
   DEMO_RUNTIME_SCHEMA_VERSION,
   DEMO_SEED_VERSION,
@@ -297,7 +297,7 @@ async function seedTenantBusinessState(client, fixture, mediaObjects) {
         });
       }
     }
-    for (const media of tenant.roomMedia) {
+    await forEachDemoMediaBatch(tenant.roomMedia, async (media) => {
       const bytes = await verifiedMediaBytes(media);
       const creator = fixture.customerPersonas.find(({ tenantId, persona }) => (
         tenantId === tenant.id && persona === 'tenant_admin'
@@ -313,8 +313,8 @@ async function seedTenantBusinessState(client, fixture, mediaObjects) {
         values: [tenant.id, media.id, media.roomId, mediaObjects ? null : bytes, media.byteLength,
           media.width, media.height, Buffer.from(media.sha256, 'hex'), fixture.fixedClock, creator.userId, key],
       });
-    }
-    for (const media of tenant.catalogueMedia) {
+    });
+    await forEachDemoMediaBatch(tenant.catalogueMedia, async (media) => {
       const bytes = await verifiedCatalogueBytes(media);
       const creator = fixture.customerPersonas.find(({ tenantId, persona }) =>
         tenantId === tenant.id && persona === 'tenant_admin');
@@ -330,7 +330,7 @@ async function seedTenantBusinessState(client, fixture, mediaObjects) {
           media.contentType, media.byteLength, Buffer.from(media.sha256, 'hex'),
           media.altText, fixture.fixedClock, creator.userId, key],
       });
-    }
+    });
     for (const service of tenant.settings.catalogue.services) {
       await client.query({
         name: 'demo-fixture-insert-service',
@@ -817,7 +817,7 @@ export async function readDemoSemanticState({ client, mediaObjects = null } = {}
       width, height, content_sha256
     FROM tenant_room_media_assets ORDER BY tenant_id, id
   `);
-  for (const media of mediaAssets) {
+  await forEachDemoMediaBatch(mediaAssets, async (media) => {
     media.bytes = await readDemoFixtureMediaBytes(media, 'room', mediaObjects);
     const hash = createHash('sha256').update(media.bytes).digest('hex');
     if (media.content_type !== 'image/webp'
@@ -825,13 +825,13 @@ export async function readDemoSemanticState({ client, mediaObjects = null } = {}
       || !media.content_sha256.equals(Buffer.from(hash, 'hex'))) {
       throw new Error('DEMO_FIXTURE_MEDIA_BYTES_DIVERGED');
     }
-  }
+  });
   const catalogueMediaAssets = await readRows(client, 'demo-fixture-read-catalogue-media', `
     SELECT tenant_id, id, owner_kind, owner_id, CASE WHEN object_key IS NULL THEN bytes END AS bytes, object_key, content_type,
       byte_length, content_sha256, alt_text
     FROM demo_catalogue_media_assets ORDER BY tenant_id, id
   `);
-  for (const media of catalogueMediaAssets) {
+  await forEachDemoMediaBatch(catalogueMediaAssets, async (media) => {
     media.bytes = await readDemoFixtureMediaBytes(media, 'catalogue', mediaObjects);
     const hash = createHash('sha256').update(media.bytes).digest('hex');
     const signatureValid = media.content_type === 'image/png'
@@ -843,7 +843,7 @@ export async function readDemoSemanticState({ client, mediaObjects = null } = {}
       || !media.content_sha256.equals(Buffer.from(hash, 'hex'))) {
       throw new Error('DEMO_FIXTURE_CATALOGUE_MEDIA_BYTES_DIVERGED');
     }
-  }
+  });
   for (const room of rooms) {
     const references = mediaAssets
       .filter(({ tenant_id: tenantId, room_id: roomId }) => (

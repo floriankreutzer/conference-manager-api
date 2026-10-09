@@ -1,5 +1,21 @@
 import { mediaObjectReference, verifyMediaObjectBytes, MediaObjectStorageError } from '../../media/object-storage-contract.js';
 
+const DEMO_MEDIA_BATCH_SIZE = 4;
+
+// Keep provider work below the adapter's eight-operation limit. Drain each batch
+// before surfacing a failure so reset cannot roll back while uploads still run.
+export async function forEachDemoMediaBatch(media, work) {
+  if (!Array.isArray(media) || typeof work !== 'function') {
+    throw new TypeError('DEMO_MEDIA_BATCH_INVALID');
+  }
+  for (let offset = 0; offset < media.length; offset += DEMO_MEDIA_BATCH_SIZE) {
+    const settled = await Promise.allSettled(media.slice(offset, offset + DEMO_MEDIA_BATCH_SIZE)
+      .map(async (item) => work(item)));
+    const failure = settled.find(({ status }) => status === 'rejected');
+    if (failure) throw failure.reason;
+  }
+}
+
 function fixtureReference(tenantId, media, kind) {
   return mediaObjectReference({ tenantId, assetId: media.id, kind,
     contentType: kind === 'room' ? 'image/webp' : media.contentType,
