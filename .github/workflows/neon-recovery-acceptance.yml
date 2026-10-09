@@ -1,0 +1,226 @@
+name: Neon Restored Pair Acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neon-object-adapter-acceptance
+  cancel-in-progress: false
+
+jobs:
+  restored-pair-browser:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    timeout-minutes: 60
+    env:
+      NODE_ENV: test
+      NEON_RECOVERY_BRANCH: ${{ vars.CM_NEON_RECOVERY_BRANCH }}
+      NEON_RECOVERY_HOST: ${{ vars.CM_NEON_RECOVERY_HOST }}
+      NEON_RECOVERY_ACCESS_KEY_ID: ${{ secrets.CM_NEON_RECOVERY_ACCESS_KEY_ID }}
+      NEON_RECOVERY_SECRET_ACCESS_KEY: ${{ secrets.CM_NEON_RECOVERY_SECRET_ACCESS_KEY }}
+      DEMO_CUSTOMER_DATABASE_URL: ${{ secrets.CM_NEON_RECOVERY_CUSTOMER_DATABASE_URL }}
+      DEMO_PLATFORM_DATABASE_URL: ${{ secrets.CM_NEON_RECOVERY_PLATFORM_DATABASE_URL }}
+      DEMO_RESET_DATABASE_URL: ${{ secrets.CM_NEON_RECOVERY_RESET_DATABASE_URL }}
+      DEMO_MIGRATION_DATABASE_URL: ${{ secrets.CM_NEON_RECOVERY_MIGRATION_DATABASE_URL }}
+    steps:
+      - name: Create short-lived private source token
+        id: source-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.CM_CI_READER_APP_ID }}
+          private-key: ${{ secrets.CM_CI_READER_PRIVATE_KEY }}
+          owner: floriankreutzer
+          permission-contents: read
+      - name: Checkout API
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: api
+          persist-credentials: false
+      - name: Resolve deployed immutable frontend ref
+        id: frontend_ref
+        shell: bash
+        run: |
+          frontend_refs="$(awk '/key: DEMO_FRONTEND_REF/{getline; print $2}' api/render.yaml | sort -u)"
+          if [[ "$(wc -l <<< "$frontend_refs")" -ne 1 || ! "$frontend_refs" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "render.yaml must contain exactly one immutable DEMO_FRONTEND_REF." >&2
+            exit 1
+          fi
+          echo "ref=$frontend_refs" >> "$GITHUB_OUTPUT"
+      - name: Checkout immutable frontend commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: floriankreutzer/conference-manager
+          ref: ${{ steps.frontend_ref.outputs.ref }}
+          token: ${{ steps.source-token.outputs.token }}
+          persist-credentials: false
+          path: frontend
+      - name: Checkout immutable permanent acceptance contract
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: floriankreutzer/conference-manager
+          ref: 6228a827502b2cb59c8b9c50adebb9ad6431fe8b
+          token: ${{ steps.source-token.outputs.token }}
+          persist-credentials: false
+          path: acceptance
+      - name: Verify immutable frontend and acceptance refs
+        env:
+          FRONTEND_REF: ${{ steps.frontend_ref.outputs.ref }}
+          ACCEPTANCE_REF: 6228a827502b2cb59c8b9c50adebb9ad6431fe8b
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git -C frontend rev-parse HEAD)" == "$FRONTEND_REF" ]] || {
+            echo "Frontend checkout does not match the immutable deployed ref." >&2
+            exit 1
+          }
+          [[ "$(git -C acceptance rev-parse HEAD)" == "$ACCEPTANCE_REF" ]] || {
+            echo "Acceptance checkout does not match the immutable acceptance ref." >&2
+            exit 1
+          }
+      - name: Load immutable shared Demo acceptance test
+        run: |
+          set -euo pipefail
+          test -f acceptance/tests/e2e-shared/shared-demo-runtime.spec.js
+          cp acceptance/tests/e2e-shared/shared-demo-runtime.spec.js frontend/tests/e2e-shared/shared-demo-runtime.spec.js
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - name: Install locked API dependencies
+        working-directory: api
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install locked permanent acceptance dependencies
+        working-directory: acceptance
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Prefer the official Ubuntu archive for browser prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Change only the existing mirror priorities, never APT trust or suites.
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          path = Path('/etc/apt/apt-mirrors.txt')
+          if path.is_file():
+              original = path.read_text()
+              azure = 'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1'
+              archive = 'https://archive.ubuntu.com/ubuntu/\tpriority:2'
+              if original.count(azure) == 1 and original.count(archive) == 1:
+                  updated = original.replace(azure, azure[:-1] + '2', 1)
+                  updated = updated.replace(archive, archive[:-1] + '1', 1)
+                  path.write_text(updated)
+                  print('Using the existing official Ubuntu HTTPS mirror first.')
+              else:
+                  print('Runner mirror layout changed; retaining its trusted defaults.')
+          PY
+      - name: Install browser engines
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium webkit
+      - name: Add fixed Demo hosts
+        run: echo "127.0.0.1 customer.demo.test platform.demo.test" | sudo tee -a /etc/hosts >/dev/null
+      - name: Prepare distinct ephemeral session secrets
+        working-directory: api
+        run: node scripts/prepare-neon-recovery.mjs
+      - name: Verify restored metadata and every provider byte before resets
+        working-directory: api
+        run: node scripts/neon-recovery-acceptance.mjs preflight
+      - name: Start separate Customer and Platform Demo APIs
+        working-directory: api
+        run: |
+          customer_command=(node scripts/neon-recovery-acceptance.mjs customer)
+          platform_command=(node scripts/neon-recovery-acceptance.mjs platform)
+          env \
+            -u DEMO_PLATFORM_DATABASE_URL \
+            -u DEMO_RESET_DATABASE_URL \
+            -u DEMO_MIGRATION_DATABASE_URL \
+            -u DEMO_PLATFORM_SESSION_SECRET \
+            -u DEMO_PLATFORM_CSRF_SECRET \
+            DEMO_RATE_LIMIT_MAX=1000 \
+            "${customer_command[@]}" >customer-demo-api.log 2>&1 &
+          echo $! >customer-demo-api.pid
+          env \
+            -u DEMO_CUSTOMER_DATABASE_URL \
+            -u DEMO_MIGRATION_DATABASE_URL \
+            -u DEMO_CUSTOMER_SESSION_SECRET \
+            -u DEMO_CUSTOMER_CSRF_SECRET \
+            DEMO_RATE_LIMIT_MAX=1000 \
+            "${platform_command[@]}" >platform-demo-api.log 2>&1 &
+          echo $! >platform-demo-api.pid
+      - name: Wait for both Demo APIs to be ready
+        working-directory: api
+        run: |
+          for attempt in {1..60}; do
+            customer=0
+            platform=0
+            curl --fail --silent --show-error \
+              -H "Host: customer.demo.test:4443" \
+              http://127.0.0.1:3000/api/v1/health/ready >/dev/null && customer=1 || true
+            curl --fail --silent --show-error \
+              -H "Host: platform.demo.test:4443" \
+              http://127.0.0.1:3100/api/v1/platform/health/ready >/dev/null && platform=1 || true
+            if [[ "$customer" == 1 && "$platform" == 1 ]]; then exit 0; fi
+            sleep 1
+          done
+          echo "The separate Demo API processes did not become ready." >&2
+          exit 1
+      - name: chromium complete shared acceptance
+        working-directory: frontend
+        env:
+          DEMO_SEED_VERSION: saas-3.7-three-demo-customers-v1
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-recovery-chromium-shared
+        run: npm run test:e2e:shared-demo -- --project="chromium-shared-demo"
+      - name: chromium complete scenarios acceptance
+        working-directory: acceptance
+        env:
+          DEMO_SEED_VERSION: saas-3.7-three-demo-customers-v1
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-recovery-chromium-scenarios
+        run: npm run test:e2e:saas37 -- --project="chromium-shared-demo"
+      - name: webkit complete shared acceptance
+        working-directory: frontend
+        env:
+          DEMO_SEED_VERSION: saas-3.7-three-demo-customers-v1
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-recovery-webkit-shared
+        run: npm run test:e2e:shared-demo -- --project="webkit-shared-demo"
+      - name: webkit complete scenarios acceptance
+        working-directory: acceptance
+        env:
+          DEMO_SEED_VERSION: saas-3.7-three-demo-customers-v1
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-recovery-webkit-scenarios
+        run: npm run test:e2e:saas37 -- --project="webkit-shared-demo"
+      - name: Print bounded Demo API logs on failure
+        if: failure()
+        working-directory: api
+        run: |
+          if [[ -f customer-demo-api.log ]]; then tail -n 200 customer-demo-api.log; fi
+          if [[ -f platform-demo-api.log ]]; then tail -n 200 platform-demo-api.log; fi
+      - name: Stop Demo API processes
+        if: always()
+        working-directory: api
+        run: |
+          if [[ -f customer-demo-api.pid ]]; then kill "$(cat customer-demo-api.pid)" || true; fi
+          if [[ -f platform-demo-api.pid ]]; then kill "$(cat platform-demo-api.pid)" || true; fi
+      - name: Verify bounded operator rollback after both complete browsers
+        working-directory: api
+        run: node scripts/neon-recovery-acceptance.mjs rollback
+      - name: Retain bounded reference inventory before runner disposal
+        if: always()
+        working-directory: api
+        run: node scripts/neon-recovery-acceptance.mjs inventory
+      - name: Retain full browser reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: neon-restored-pair-${{ github.run_id }}
+          path: |
+            api/neon-recovery-preflight.json
+            api/neon-recovery-rollback.json
+            api/neon-recovery-inventory.json
+            frontend/playwright-report-recovery-*/
+            acceptance/playwright-report-recovery-*/
+          if-no-files-found: error
+          retention-days: 30
