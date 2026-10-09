@@ -4,7 +4,8 @@ import { loadDemoConfig, loadDemoCustomerConfig, loadDemoPlatformConfig } from '
 import { createDemoCustomerComposition } from '../src/demo/customer-composition.js';
 import { createDemoPlatformComposition } from '../src/demo/platform-composition.js';
 import { createNeonObjectStorage } from '../src/media/neon-object-storage.js';
-import { restoredMediaReferences, verifyRestoredProviderBytes } from './support/neon-recovery-media.mjs';
+import { restoredMediaReferences, verifyRestoredProviderBytes, verifyRestoredSemanticState } from './support/neon-recovery-media.mjs';
+import { readDemoSemanticState } from '../src/persistence/postgres/demo-fixture-state.js';
 import { createPostgresPool } from '../src/persistence/postgres/pool.js';
 import { createPostgresMediaObjectRepository } from '../src/persistence/postgres/media-object-repository.js';
 import { createPostgresMediaBackfillRepository } from '../src/persistence/postgres/media-backfill-repository.js';
@@ -63,11 +64,14 @@ try {
     const { references, manifest, digest } = restoredMediaReferences(result.rows);
     storage = createNeonObjectStorage(settings.storage);
     await verifyRestoredProviderBytes(storage, references);
+    const mediaObjects = createPostgresMediaObjectRepository(operator, { storage, includeDemoCatalogue: true });
+    const semanticChecksum = verifyRestoredSemanticState(await readDemoSemanticState({ client: operator, mediaObjects }));
     await operator.query('COMMIT');
     await writeFile('neon-recovery-preflight.json', `${JSON.stringify({ schemaVersion: 1,
       scope: 'restored-pair-byte-preflight-not-full-recovery', sourceRuntimeRef: process.env.GITHUB_SHA,
       branch: settings.branch, sourceBranch: RECOVERY_ROOT, snapshot: RECOVERY_SNAPSHOT,
-      objects: manifest, manifestSha256: digest, databaseBlobsVerified: true, providerBytesVerified: true })}\n`,
+      objects: manifest, manifestSha256: digest, semanticChecksum,
+      databaseBlobsVerified: true, providerBytesVerified: true, businessStateVerified: true })}\n`,
     { mode: 0o600, flag: 'wx' });
   } else if (mode === 'inventory') {
     await operator.query('BEGIN READ ONLY');

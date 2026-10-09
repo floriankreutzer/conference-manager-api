@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
-import { DEMO_FIXTURE } from '../src/demo/fixture.js';
+import { DEMO_FIXTURE, DEMO_FIXTURE_CHECKSUM, createDemoResetGenerationFixture, semanticChecksum } from '../src/demo/fixture.js';
 import { demoFixtureMediaReferences } from '../src/persistence/postgres/demo-fixture-media.js';
-import { restoredMediaReferences, verifyRestoredProviderBytes } from '../scripts/support/neon-recovery-media.mjs';
+import { restoredMediaReferences, verifyRestoredProviderBytes, verifyRestoredSemanticState } from '../scripts/support/neon-recovery-media.mjs';
 import { RECOVERY_MANIFEST } from '../scripts/support/neon-recovery-config.mjs';
 
 const references = [...demoFixtureMediaReferences(DEMO_FIXTURE)].sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
@@ -12,6 +12,18 @@ const rows = references.map((r) => ({ tenant_id: r.tenantId, id: r.assetId, kind
   content_type: r.contentType, byte_length: r.byteLength, sha256: r.sha256, object_key: r.key, blob_valid: true,
   inventory_key: r.key, inventory_length: r.byteLength, inventory_sha256: r.sha256,
   inventory_type: r.contentType, inventory_tenant: r.tenantId, inventory_asset: r.assetId, inventory_kind: r.kind }));
+
+test('restored business state must match the canonical seed or its supported dated reset generation before reset', () => {
+  assert.equal(verifyRestoredSemanticState(DEMO_FIXTURE), DEMO_FIXTURE_CHECKSUM);
+  const generation = createDemoResetGenerationFixture(DEMO_FIXTURE, new Date('2026-10-09T20:00:00Z'));
+  assert.equal(verifyRestoredSemanticState(generation), semanticChecksum(generation));
+  for (const fixture of [DEMO_FIXTURE, generation]) {
+    const changed = structuredClone(fixture);
+    changed.tenants[0].displayName = 'Damaged restoration';
+    assert.throws(() => verifyRestoredSemanticState(changed));
+  }
+  assert.throws(() => verifyRestoredSemanticState({ ...generation, fixedClock: 'invalid' }));
+});
 
 test('restored preflight binds all 34 canonical revisions to retained DB blobs and inventory custody', () => {
   const result = restoredMediaReferences(rows);

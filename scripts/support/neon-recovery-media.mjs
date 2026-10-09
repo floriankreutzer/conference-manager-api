@@ -2,6 +2,15 @@ import { createHash } from 'node:crypto';
 import { mediaObjectReference, verifyMediaObjectBytes } from '../../src/media/object-storage-contract.js';
 import { forEachDemoMediaBatch } from '../../src/persistence/postgres/demo-fixture-media.js';
 import { RECOVERY_MANIFEST } from './neon-recovery-config.mjs';
+import { DEMO_FIXTURE, DEMO_FIXTURE_CHECKSUM, createDemoResetGenerationFixture,
+  assertSemanticChecksum, semanticChecksum } from '../../src/demo/fixture.js';
+
+export function verifyRestoredSemanticState(state) {
+  const expected = state?.fixedClock === DEMO_FIXTURE.fixedClock
+    ? DEMO_FIXTURE_CHECKSUM
+    : semanticChecksum(createDemoResetGenerationFixture(DEMO_FIXTURE, new Date(state?.fixedClock)));
+  return assertSemanticChecksum(state, expected);
+}
 
 export function restoredMediaReferences(rows) {
   if (!Array.isArray(rows) || rows.length !== 34 || rows.filter(({ kind }) => kind === 'room').length !== 11) {

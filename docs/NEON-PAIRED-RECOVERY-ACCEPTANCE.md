@@ -63,6 +63,10 @@ each live principal, database and unexpired recovery marker, schema 44/overlay 9
 all 34 retained blobs, immutable keys, inventory ownership and the exact manifest.
 The unchanged SDK independently reads/verifies every object in batches of at most
 four before any application reset. No initial reseed hides an invalid restoration.
+The existing semantic-state reader also verifies the complete three-customer
+business state against the canonical seed or its supported dated reset generation
+in the same read-only transaction. Changed business state fails before any reset;
+the report retains its verified semantic checksum.
 
 The existing Customer/Platform compositions then execute the complete immutable
 shared role/Tenant/CSRF journey and full three-customer/two-reset acceptance in
