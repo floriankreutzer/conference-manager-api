@@ -1,4 +1,4 @@
-name: Neon Object Application Acceptance
+name: Neon Restored Pair Acceptance
 
 on:
   workflow_dispatch:
@@ -11,35 +11,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  real-neon-browser:
+  restored-pair-browser:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        include:
-          - browser: chromium
-            project: chromium-shared-demo
-            media_storage: objects
-          - browser: webkit
-            project: webkit-shared-demo
-            media_storage: objects
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
-        env:
-          POSTGRES_DB: postgres
-          POSTGRES_USER: postgres
-          POSTGRES_HOST_AUTH_METHOD: trust
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+    timeout-minutes: 60
+    env:
+      NODE_ENV: test
+      NEON_RECOVERY_BRANCH: ${{ vars.CM_NEON_RECOVERY_BRANCH }}
+      NEON_RECOVERY_HOST: ${{ vars.CM_NEON_RECOVERY_HOST }}
+      NEON_RECOVERY_ACCESS_KEY_ID: ${{ secrets.CM_NEON_RECOVERY_ACCESS_KEY_ID }}
+      NEON_RECOVERY_SECRET_ACCESS_KEY: ${{ secrets.CM_NEON_RECOVERY_SECRET_ACCESS_KEY }}
+      DEMO_CUSTOMER_DATABASE_URL: ${{ secrets.CM_NEON_RECOVERY_CUSTOMER_DATABASE_URL }}
+      DEMO_PLATFORM_DATABASE_URL: ${{ secrets.CM_NEON_RECOVERY_PLATFORM_DATABASE_URL }}
+      DEMO_RESET_DATABASE_URL: ${{ secrets.CM_NEON_RECOVERY_RESET_DATABASE_URL }}
+      DEMO_MIGRATION_DATABASE_URL: ${{ secrets.CM_NEON_RECOVERY_MIGRATION_DATABASE_URL }}
     steps:
       - name: Create short-lived private source token
         id: source-token
@@ -135,33 +120,20 @@ jobs:
           PY
       - name: Install browser engines
         working-directory: frontend
-        run: npx playwright install --with-deps "${{ matrix.browser }}"
+        run: npx playwright install --with-deps chromium webkit
       - name: Add fixed Demo hosts
         run: echo "127.0.0.1 customer.demo.test platform.demo.test" | sudo tee -a /etc/hosts >/dev/null
-      - name: Provision isolated Demo database roles
+      - name: Prepare distinct ephemeral session secrets
         working-directory: api
-        run: node scripts/provision-shared-demo-ci.mjs
-      - name: Apply canonical and Demo migrations
+        run: node scripts/prepare-neon-recovery.mjs
+      - name: Verify restored metadata and every provider byte before resets
         working-directory: api
-        env:
-          CI_MEDIA_STORAGE_PROVIDER: neon
-          NEON_ACCEPTANCE_CONFIRM_BRANCH: br-falling-glade-b17oqqiv
-          NEON_ACCEPTANCE_ACCESS_KEY_ID: ${{ secrets.CM_NEON_ACCEPTANCE_ACCESS_KEY_ID }}
-          NEON_ACCEPTANCE_SECRET_ACCESS_KEY: ${{ secrets.CM_NEON_ACCEPTANCE_SECRET_ACCESS_KEY }}
-        run: |
-          DATABASE_URL="$DEMO_MIGRATION_DATABASE_URL" DATABASE_SSL=disable npm run db:migrate
-          npm run demo:db:migrate
-          node scripts/demo-object-acceptance.mjs seed >neon-browser-seed.json
+        run: node scripts/neon-recovery-acceptance.mjs preflight
       - name: Start separate Customer and Platform Demo APIs
         working-directory: api
-        env:
-          CI_MEDIA_STORAGE_PROVIDER: neon
-          NEON_ACCEPTANCE_CONFIRM_BRANCH: br-falling-glade-b17oqqiv
-          NEON_ACCEPTANCE_ACCESS_KEY_ID: ${{ secrets.CM_NEON_ACCEPTANCE_ACCESS_KEY_ID }}
-          NEON_ACCEPTANCE_SECRET_ACCESS_KEY: ${{ secrets.CM_NEON_ACCEPTANCE_SECRET_ACCESS_KEY }}
         run: |
-          customer_command=(node scripts/demo-object-acceptance.mjs customer)
-          platform_command=(node scripts/demo-object-acceptance.mjs platform)
+          customer_command=(node scripts/neon-recovery-acceptance.mjs customer)
+          platform_command=(node scripts/neon-recovery-acceptance.mjs platform)
           env \
             -u DEMO_PLATFORM_DATABASE_URL \
             -u DEMO_RESET_DATABASE_URL \
@@ -196,16 +168,30 @@ jobs:
           done
           echo "The separate Demo API processes did not become ready." >&2
           exit 1
-      - name: Run unchanged shared role and Tenant browser journey
+      - name: chromium complete shared acceptance
         working-directory: frontend
         env:
           DEMO_SEED_VERSION: saas-3.7-three-demo-customers-v1
-        run: npm run test:e2e:shared-demo -- --project="${{ matrix.project }}"
-      - name: Run permanent three-customer progression and two-cycle reset acceptance
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-recovery-chromium-shared
+        run: npm run test:e2e:shared-demo -- --project="chromium-shared-demo"
+      - name: chromium complete scenarios acceptance
         working-directory: acceptance
         env:
           DEMO_SEED_VERSION: saas-3.7-three-demo-customers-v1
-        run: npm run test:e2e:saas37 -- --project="${{ matrix.project }}"
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-recovery-chromium-scenarios
+        run: npm run test:e2e:saas37 -- --project="chromium-shared-demo"
+      - name: webkit complete shared acceptance
+        working-directory: frontend
+        env:
+          DEMO_SEED_VERSION: saas-3.7-three-demo-customers-v1
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-recovery-webkit-shared
+        run: npm run test:e2e:shared-demo -- --project="webkit-shared-demo"
+      - name: webkit complete scenarios acceptance
+        working-directory: acceptance
+        env:
+          DEMO_SEED_VERSION: saas-3.7-three-demo-customers-v1
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-recovery-webkit-scenarios
+        run: npm run test:e2e:saas37 -- --project="webkit-shared-demo"
       - name: Print bounded Demo API logs on failure
         if: failure()
         working-directory: api
@@ -218,19 +204,23 @@ jobs:
         run: |
           if [[ -f customer-demo-api.pid ]]; then kill "$(cat customer-demo-api.pid)" || true; fi
           if [[ -f platform-demo-api.pid ]]; then kill "$(cat platform-demo-api.pid)" || true; fi
+      - name: Verify bounded operator rollback after both complete browsers
+        working-directory: api
+        run: node scripts/neon-recovery-acceptance.mjs rollback
       - name: Retain bounded reference inventory before runner disposal
         if: always()
         working-directory: api
-        run: node scripts/neon-browser-inventory.mjs
+        run: node scripts/neon-recovery-acceptance.mjs inventory
       - name: Retain full browser reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: real-neon-browser-${{ github.run_id }}-${{ matrix.browser }}
+          name: neon-restored-pair-${{ github.run_id }}
           path: |
-            api/neon-browser-seed.json
-            api/neon-browser-inventory.json
-            frontend/playwright-report-shared-demo/
-            acceptance/playwright-report-saas37/
+            api/neon-recovery-preflight.json
+            api/neon-recovery-rollback.json
+            api/neon-recovery-inventory.json
+            frontend/playwright-report-recovery-*/
+            acceptance/playwright-report-recovery-*/
           if-no-files-found: error
           retention-days: 30
