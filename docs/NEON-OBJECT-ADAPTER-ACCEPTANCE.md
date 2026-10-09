@@ -21,7 +21,9 @@ new service, bucket, production credential or tariff change is required.
 ## Protected setup and execution
 
 1. Independently verify the named branch and private bucket before execution.
-2. Create a temporary credential **on that branch**, with `storage:write` scope.
+2. Select the acceptance branch in the Console before opening Create credential.
+   Create a temporary credential **on that branch**, selecting **both**
+   `storage:read` and `storage:write` explicitly.
    An ancestor/production credential is not acceptable. Neon scopes are branch-
    bound and cover descendants; they are not bucket-level isolation policies.
 3. Set API repository Actions secrets `CM_NEON_ACCEPTANCE_ACCESS_KEY_ID` from the
@@ -63,3 +65,49 @@ Success unblocks the SDK-specific provider gate only. The full real-provider
 application/paired recovery/three-customer/two-reset gates remain mandatory before
 production switching or blob removal. Never replace or weaken the existing CI
 matrix, hosted acceptance or restore-evidence digest requirement with this probe.
+
+## Successful unchanged-SDK probe — 9 October 2026
+
+Run `37976525762` succeeded on accepted main
+`fb5703eb8752b109513b4b7d9ae01e9c6d34ac92`. The mandatory probe step exited zero:
+exact-byte readback, anonymous HTTP 403, delete and missing-object classification
+all passed. Its retained artifact is `11638562611` (30-day retention).
+The branch-anchored temporary read/write credential was independently observed
+revoked at `2026-10-09T18:56:29Z`. This supersedes the SDK-specific access blocker;
+the earlier failed run `37974144848` remains failed historical evidence. Branch
+and scopes both changed, so this does not isolate the earlier failure's cause.
+
+## Prepared real-provider application gate
+
+`Neon Object Application Acceptance` is a manual main-only successor gate. It
+reuses the existing full Customer/Platform compositions and the immutable shared
+role/Tenant/CSRF and three-customer/two-reset journeys in Chromium and WebKit.
+The fixed acceptance branch is the only real object destination; the unchanged
+SDK uses normal transport and deadlines. PostgreSQL 18 and separate credentials
+remain on the runner's fresh loopback database. Production database destinations
+are rejected before provider allocation. Browser jobs run sequentially, sharing
+the adapter-probe concurrency group to avoid conflicting operator executions.
+The normal four-row mandatory CI remains unchanged.
+
+The protected setup uses the same two temporary Actions secrets as above, with
+both storage scopes anchored specifically to the acceptance branch. After its
+required PR gates and merge, run `Neon Object Application Acceptance` once on
+main. Revoke the temporary key and remove both secrets after BOTH browser jobs
+complete, even on failure. Retain the full reports and exact source references.
+Do not start while another acceptance operation owns the same branch.
+
+Application writes use content-addressed keys and durable inventory in the
+isolated runner database. An always-run bounded read-only export retains up to
+10,000 inventory references, digests, lengths and registration dates before
+runner disposal. Export failure fails the job; a hard runner termination can
+still leave incomplete custody and requires provider inventory reconciliation. Canonical retained objects and the independent backup
+branch must not be deleted. Scenario-created objects can outlive their metadata
+when the runner disappears; this workflow does not authorize prefix deletion or
+bypass the 30-day reference-aware retention policy. Preserve the branch for
+inventory reconciliation. A failed job or unavailable report is not acceptance.
+
+This gate has not yet run. Even a successful result would establish real-provider
+application/browser/reset integration with a local database, not a coordinated
+Neon database/object snapshot restore, production backfill/cutover, blob purge,
+live alert delivery, representative business load or attributable cost savings.
+Those remain mandatory separate release gates.
