@@ -106,7 +106,17 @@ when the runner disappears; this workflow does not authorize prefix deletion or
 bypass the 30-day reference-aware retention policy. Preserve the branch for
 inventory reconciliation. A failed job or unavailable report is not acceptance.
 
-This gate has not yet run. Even a successful result would establish real-provider
+The first application run `37980396431` uses main
+`a5ac741a7f9397023dfe5a8d3cdd7179766f48d7`. Its Chromium shared journey failed
+at the reset HTTP request's unchanged 15-second deadline after the Business CSV
+journey passed. The subsequent permanent progression step was not executed.
+The always-run inventory export and browser report upload succeeded; Chromium
+artifact `11640143770` retains that failed evidence. Serial provider publication
+and semantic readback are the identified optimization target, not proof that a
+candidate fix has passed real-provider acceptance. Every successor must retain
+the complete unchanged journeys and pass both browser jobs before this gate closes.
+
+Even a successful result would establish real-provider
 application/browser/reset integration with a local database, not a coordinated
 Neon database/object snapshot restore, production backfill/cutover, blob purge,
 live alert delivery, representative business load or attributable cost savings.

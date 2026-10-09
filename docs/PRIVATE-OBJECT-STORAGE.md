@@ -81,6 +81,13 @@ only in explicitly injected object mode. Semantic reconstruction reads and verif
 provider objects and retains the canonical seed version, complete three-customer business state
 and semantic checksum. Missing/corrupt objects abort the reset; no PostgreSQL fallback hides them.
 
+Seed publication and semantic media readback process batches of at most four images.
+This bounds provider concurrency below its eight-operation limit and avoids serial network
+round trips for all 34 canonical images. Every started batch settles before an error is
+propagated; no later batch starts after failure and rollback cannot race outstanding uploads.
+The existing inventory locks, byte/digest verification, semantic checksum, audit requirements
+and transaction isolation remain unchanged. No cache or verification bypass is introduced.
+
 Inventory remains excluded from reset truncation. Provider verification, metadata, semantic
 checksum or required success-audit failure rolls database state back while retaining committed
 custody. The failure taxonomy adds only the bounded `media_registration_failed` phase; raw
