@@ -206,3 +206,18 @@ with foreign ownership, after reset revokes the session, and after reset removes
 Independent byte hashes, all three customers and both full reset cycles remain mandatory.
 Historical old-contract failure is not relabeled. No avoided provider/database read, deployed
 cache behavior, hosted/provider restore acceptance or cutover is claimed.
+
+## Current persona-switch acceptance candidate — 9 October 2026
+
+The current CI permanent acceptance pin is frontend
+`6228a827502b2cb59c8b9c50adebb9ad6431fe8b` (draft frontend PR #284).
+It preserves the complete existing customer/media/security/reset assertions and
+adds pointer-actionability preflight plus a single awaited click/response/reload
+operation. The two WebKit/PostgreSQL failures on API candidate
+`a0bb54986c15388cebfc7958cd5d2eddb132e113` remain failed evidence; their
+post-reload response timeout did not establish the underlying pointer cause.
+No retries, forced clicks, deadline increase or skipped assertions are introduced.
+The served frontend pin, live services, seed and checksum remain unchanged.
+All four browser/storage rows must pass against this updated immutable test pin
+before API PR #132 can be considered ready. This is still isolated protocol
+acceptance, not real-Neon provider or hosted cutover evidence.
