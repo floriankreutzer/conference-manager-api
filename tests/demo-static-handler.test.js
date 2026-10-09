@@ -269,15 +269,76 @@ test('reviewed HTML packaging fingerprints local entry assets and refuses escape
   await assert.rejects(fingerprintDemoAssets(root), /DEMO_FINGERPRINT_PATH_INVALID/);
 });
 
-test('static representation work rejects excess concurrency and forged file authority', async (t) => {
+test('static representation work queues bounded bursts but rejects excess concurrency and forged authority', async (t) => {
   const root = await fixtureRoot();
   t.after(() => rm(root, { recursive: true, force: true }));
   const adapter = createDemoStaticFileAdapter({ root });
   const file = await adapter.open('assets/app.css');
-  const results = await Promise.allSettled(Array.from({ length: 16 }, () => adapter.representation(file, { encoding: 'gzip' })));
-  assert.equal(results.filter((result) => result.status === 'fulfilled').length, 8);
-  assert.equal(results.filter((result) => result.status === 'rejected').length, 8);
+  const results = await Promise.allSettled(Array.from({ length: 73 }, () => adapter.representation(file, { encoding: 'gzip' })));
+  assert.equal(results.filter((result) => result.status === 'fulfilled').length, 72);
+  const rejected = results.filter((result) => result.status === 'rejected');
+  assert.equal(rejected.length, 1);
+  assert.match(rejected[0].reason.message, /DEMO_STATIC_CAPACITY_EXCEEDED/);
   await assert.rejects(adapter.representation({ ...file }), /DEMO_STATIC_FILE_REQUIRED/);
   const cached = await adapter.representation(await adapter.open('assets/app.css'), { encoding: 'gzip' });
   assert.equal(gunzipSync(cached.bytes).toString('utf8'), 'body{}');
+});
+
+test('cold Customer and Platform module bursts preserve bytes, digests and encoding without 500s', async (t) => {
+  const root = await fixtureRoot();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const sources = Array.from({ length: 48 }, (_, index) => `export const value = ${index};\n`.repeat(200));
+  await Promise.all(sources.map((source, index) => writeFile(path.join(root, 'src', `module-${index}.js`), source)));
+  for (const [surface, encoding, decode] of [['customer', 'br', brotliDecompressSync], ['platform', 'gzip', gunzipSync]]) {
+    const { server, origin } = await startStaticServer({ root, surface });
+    try {
+      const results = await Promise.all(sources.map((source, index) => rawRequest(origin,
+        `/src/module-${index}.js?sha256=${createHash('sha256').update(source).digest('hex')}`,
+        { headers: { 'Accept-Encoding': encoding } })));
+      for (const [index, result] of results.entries()) {
+        assert.equal(result.status, 200, `${surface} module ${index}`);
+        assert.equal(result.headers['content-encoding'], encoding);
+        assert.equal(result.headers['cache-control'], 'public, max-age=31536000, immutable');
+        assert.equal(decode(result.bytes).toString('utf8'), sources[index]);
+        assert.equal(result.headers.etag, `"${createHash('sha256').update(result.bytes).digest('hex')}"`);
+        assert.equal(result.headers.vary, 'Accept-Encoding');
+      }
+    } finally { await closeServer(server); }
+  }
+});
+
+test('static overload returns bounded retryable 503 with strict headers and no internal error', async () => {
+  const headers = {};
+  let body;
+  const response = { setHeader: (key, value) => { headers[key.toLowerCase()] = value; }, end: (value) => { body = value; } };
+  const handler = createDemoStaticHandler({ root: '.', surface: 'customer', fileAdapter: {
+    open: async () => ({ kind: 'file', size: 1 }), pipe: async () => {},
+    representation: async () => { throw new Error('DEMO_STATIC_CAPACITY_EXCEEDED'); },
+  } });
+  await handler({ url: '/src/app.js', method: 'GET', headers: {} }, response);
+  assert.equal(response.statusCode, 503);
+  assert.equal(headers['retry-after'], '1');
+  assert.equal(headers.vary, 'Accept-Encoding');
+  assert.equal(headers['content-length'], 0);
+  assert.equal(body, undefined);
+  assertStrictStaticHeaders(headers);
+});
+
+test('queued representations expire without retaining slots and subsequent work recovers', async (t) => {
+  const root = await fixtureRoot();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const adapter = createDemoStaticFileAdapter({ root });
+  const file = await adapter.open('assets/app.css');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const work = Array.from({ length: 16 }, () => adapter.representation(file, { encoding: 'gzip' }));
+  const settled = Promise.allSettled(work);
+  t.mock.timers.tick(5_000);
+  const results = await settled;
+  assert.equal(results.filter((result) => result.status === 'fulfilled').length, 8);
+  const rejected = results.filter((result) => result.status === 'rejected');
+  assert.equal(rejected.length, 8);
+  for (const result of rejected) assert.match(result.reason.message, /DEMO_STATIC_CAPACITY_EXCEEDED/);
+  t.mock.timers.reset();
+  const recovered = await adapter.representation(await adapter.open('src/app.js'), { encoding: 'br' });
+  assert.equal(brotliDecompressSync(recovered.bytes).toString('utf8'), 'export const ready = true;');
 });

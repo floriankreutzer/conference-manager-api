@@ -9,6 +9,9 @@ import { gzip, brotliCompress, constants } from 'node:zlib';
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_CACHE_BYTES = 16 * 1024 * 1024;
 const MAX_CACHE_ENTRIES = 128;
+const MAX_ACTIVE_REPRESENTATIONS = 8;
+const MAX_QUEUED_REPRESENTATIONS = 64;
+const REPRESENTATION_WAIT_MS = 5_000;
 const compressGzip = promisify(gzip);
 const compressBrotli = promisify(brotliCompress);
 
@@ -24,6 +27,26 @@ export function createDemoStaticFileAdapter({ root } = {}) {
   const cache = new Map();
   let cacheBytes = 0;
   let active = 0;
+  const waiting = [];
+
+  async function acquireRepresentationSlot() {
+    if (active < MAX_ACTIVE_REPRESENTATIONS) { active += 1; return; }
+    if (waiting.length >= MAX_QUEUED_REPRESENTATIONS) throw new Error('DEMO_STATIC_CAPACITY_EXCEEDED');
+    await new Promise((resolve, reject) => {
+      const entry = { resolve, timer: null };
+      entry.timer = setTimeout(() => {
+        waiting.splice(waiting.indexOf(entry), 1);
+        reject(new Error('DEMO_STATIC_CAPACITY_EXCEEDED'));
+      }, REPRESENTATION_WAIT_MS);
+      waiting.push(entry);
+    });
+  }
+
+  function releaseRepresentationSlot() {
+    const next = waiting.shift();
+    if (next) { clearTimeout(next.timer); next.resolve(); }
+    else active -= 1;
+  }
 
   async function representation(file, { encoding = 'identity' } = {}) {
     if (!approvedFiles.has(file) || !['identity', 'gzip', 'br'].includes(encoding)) {
@@ -35,9 +58,13 @@ export function createDemoStaticFileAdapter({ root } = {}) {
       const entry = cache.get(key); cache.delete(key); cache.set(key, entry);
       return entry;
     }
-    if (active >= 8) throw new Error('DEMO_STATIC_CAPACITY_EXCEEDED');
-    active += 1;
+    await acquireRepresentationSlot();
     try {
+      // An earlier request may have populated the bounded cache while this one waited.
+      if (cache.has(key)) {
+        const entry = cache.get(key); cache.delete(key); cache.set(key, entry);
+        return entry;
+      }
       const chunks = []; let size = 0;
       for await (const chunk of createReadStream(file.path)) {
         size += chunk.length;
@@ -62,7 +89,7 @@ export function createDemoStaticFileAdapter({ root } = {}) {
         cache.set(key, entry); cacheBytes += bytes.length;
       }
       return entry;
-    } finally { active -= 1; }
+    } finally { releaseRepresentationSlot(); }
   }
 
   return Object.freeze({

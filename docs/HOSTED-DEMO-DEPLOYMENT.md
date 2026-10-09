@@ -225,7 +225,12 @@ send no payload. Valid encoding exclusions fail with 406 when no available repre
 acceptable; malformed/oversized negotiation headers conservatively select identity.
 
 The process cache holds at most 128 representations and 16 MiB of bytes, with eight concurrent
-uncached read/compression operations and no waiting queue. Normal static files cap at 8 MiB;
+uncached read/compression operations. Up to 64 additional representation requests wait FIFO
+for at most five seconds, without reading or compressing file bytes while queued. Cache entries
+are rechecked after admission. Queue overflow or expiry returns an empty, non-cacheable 503
+with `Retry-After: 1`, not an internal-error response. Worker slots are released on success and
+failure. This absorbs a cold ES-module graph burst without removing resource bounds.
+Normal static files cap at 8 MiB;
 oversized files return 413. Brotli quality is fixed at four. No filesystem mutation, provider
 network, browser authority, private media or session secret enters this public transfer path.
 
