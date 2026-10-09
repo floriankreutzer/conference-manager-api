@@ -10,11 +10,18 @@ import { createPostgresMediaObjectRepository } from '../src/persistence/postgres
 import { createPostgresDemoResetRepository } from '../src/persistence/postgres/demo-reset-repository.js';
 import { createDemoResetService } from '../src/demo/reset-service.js';
 import { createCiMediaStorageServer, createCiMediaObjectStorage } from './support/ci-media-storage.mjs';
+import { loadNeonBrowserStorageConfig } from './support/neon-browser-config.mjs';
+import { createNeonObjectStorage } from '../src/media/neon-object-storage.js';
 
 const mode = process.argv[2];
 if (process.env.NODE_ENV !== 'test' || process.argv.length !== 3
   || !['storage', 'seed', 'customer', 'platform'].includes(mode)) throw new Error('CI_OBJECT_ACCEPTANCE_TEST_MODE_REQUIRED');
 const token = process.env.CI_MEDIA_STORAGE_TOKEN;
+const provider = process.env.CI_MEDIA_STORAGE_PROVIDER ?? 'fixture';
+if (!['fixture', 'neon'].includes(provider) || (provider === 'neon' && mode === 'storage')) {
+  throw new Error('CI_OBJECT_ACCEPTANCE_PROVIDER_INVALID');
+}
+const neonConfig = provider === 'neon' ? loadNeonBrowserStorageConfig(process.env) : null;
 let composition;
 let pool;
 let storage;
@@ -22,7 +29,7 @@ if (mode === 'storage') {
   composition = createCiMediaStorageServer({ token });
   await composition.start();
 } else {
-  storage = createCiMediaObjectStorage({ token });
+  storage = neonConfig ? createNeonObjectStorage(neonConfig) : createCiMediaObjectStorage({ token });
   if (mode === 'seed') {
     const config = loadDemoConfig(process.env);
     const runtime = createDemoPlatformRuntimeConfig(config);
