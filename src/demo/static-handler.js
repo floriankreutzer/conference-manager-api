@@ -159,7 +159,14 @@ export function createDemoStaticHandler({ root, surface, fileAdapter } = {}) {
       const compressible = /^(?:text\/|application\/json|image\/svg\+xml)/.test(contentType) && file.size <= 1048576;
       const encoding = selectStaticEncoding(request.headers['accept-encoding'], { compressible });
       if (encoding === null) { sendEmpty(response, surface, 406, { Vary: 'Accept-Encoding' }); return; }
-      const representation = await fileAdapter.representation(file, { encoding });
+      let representation;
+      try {
+        representation = await fileAdapter.representation(file, { encoding });
+      } catch (error) {
+        if (error?.message !== 'DEMO_STATIC_CAPACITY_EXCEEDED') throw error;
+        sendEmpty(response, surface, 503, { 'Retry-After': '1', Vary: 'Accept-Encoding' });
+        return;
+      }
       if (!Buffer.isBuffer(representation?.bytes) || representation.bytes.length > 8388608
         || representation.encoding !== encoding || !/^[a-f0-9]{64}$/.test(representation.digest)
         || !/^"[a-f0-9]{64}"$/.test(representation.etag)) throw new TypeError('DEMO_STATIC_REPRESENTATION_INVALID');

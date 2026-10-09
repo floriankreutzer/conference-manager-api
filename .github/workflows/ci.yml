@@ -152,14 +152,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager
-          ref: 195d530cdc97f67512ef9b2d89831e0b1a0f27fb
+          ref: 6228a827502b2cb59c8b9c50adebb9ad6431fe8b
           token: ${{ steps.source-token.outputs.token }}
           persist-credentials: false
           path: acceptance
       - name: Verify immutable frontend and acceptance refs
         env:
           FRONTEND_REF: ${{ steps.frontend_ref.outputs.ref }}
-          ACCEPTANCE_REF: 195d530cdc97f67512ef9b2d89831e0b1a0f27fb
+          ACCEPTANCE_REF: 6228a827502b2cb59c8b9c50adebb9ad6431fe8b
         shell: bash
         run: |
           set -euo pipefail
