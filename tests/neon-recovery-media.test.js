@@ -4,7 +4,8 @@ import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { DEMO_FIXTURE, DEMO_FIXTURE_CHECKSUM, createDemoResetGenerationFixture, semanticChecksum } from '../src/demo/fixture.js';
 import { demoFixtureMediaReferences } from '../src/persistence/postgres/demo-fixture-media.js';
-import { restoredMediaReferences, verifyRestoredProviderBytes, verifyRestoredSemanticState } from '../scripts/support/neon-recovery-media.mjs';
+import { restoredMediaReferences, verifyRestoredProviderBytes,
+  verifyRestoredSemanticState } from '../scripts/support/neon-recovery-media.mjs';
 import { RECOVERY_MANIFEST } from '../scripts/support/neon-recovery-config.mjs';
 
 const references = [...demoFixtureMediaReferences(DEMO_FIXTURE)].sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
