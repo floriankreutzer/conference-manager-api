@@ -1,0 +1,336 @@
+{
+  "schemaVersion": 1,
+  "observedDate": "2026-10-09",
+  "scope": "Independent provider backup byte integrity; not coordinated database restore or application cutover",
+  "sourceRuntimeRef": "356459004dbede11cc3cd17a93d4e6cf515d410b",
+  "branch": "br-twilight-tree-b18xtqg3",
+  "bucket": "conference-manager-media",
+  "objects": [
+    {
+      "index": 0,
+      "kind": "catalogue",
+      "expectedSha256": "33f8bc5f45e7e5e5147394f40ae2b19e4bcbe09f49c338fe5fa1b6de7c47a80f",
+      "sha256": "33f8bc5f45e7e5e5147394f40ae2b19e4bcbe09f49c338fe5fa1b6de7c47a80f",
+      "expectedBytes": 12383,
+      "bytes": 12383,
+      "passed": true
+    },
+    {
+      "index": 1,
+      "kind": "catalogue",
+      "expectedSha256": "192ebdaf5d18960b4c138849e9bdbb498bb9911f490ed4fe02f39df1eebbc7d7",
+      "sha256": "192ebdaf5d18960b4c138849e9bdbb498bb9911f490ed4fe02f39df1eebbc7d7",
+      "expectedBytes": 13953,
+      "bytes": 13953,
+      "passed": true
+    },
+    {
+      "index": 2,
+      "kind": "catalogue",
+      "expectedSha256": "a11e87c826a48f69a90743abd14cda6111e8e29771f2f3a7384a75b0ec40efab",
+      "sha256": "a11e87c826a48f69a90743abd14cda6111e8e29771f2f3a7384a75b0ec40efab",
+      "expectedBytes": 14434,
+      "bytes": 14434,
+      "passed": true
+    },
+    {
+      "index": 3,
+      "kind": "catalogue",
+      "expectedSha256": "fb3656543afe7b05390c2674b8588c1cae3b76aed27e6cf268c54ecb953d5392",
+      "sha256": "fb3656543afe7b05390c2674b8588c1cae3b76aed27e6cf268c54ecb953d5392",
+      "expectedBytes": 12768,
+      "bytes": 12768,
+      "passed": true
+    },
+    {
+      "index": 4,
+      "kind": "catalogue",
+      "expectedSha256": "3cff292a157a020f823291475764bace95a6764f2e37b5aab7e28e4256787f0e",
+      "sha256": "3cff292a157a020f823291475764bace95a6764f2e37b5aab7e28e4256787f0e",
+      "expectedBytes": 12097,
+      "bytes": 12097,
+      "passed": true
+    },
+    {
+      "index": 5,
+      "kind": "catalogue",
+      "expectedSha256": "7372b10c12946f5dce2ceff34b910895ede3a95c45e583bed755383321a56029",
+      "sha256": "7372b10c12946f5dce2ceff34b910895ede3a95c45e583bed755383321a56029",
+      "expectedBytes": 11167,
+      "bytes": 11167,
+      "passed": true
+    },
+    {
+      "index": 6,
+      "kind": "catalogue",
+      "expectedSha256": "2301bc2f82291222c2b059ba6d0ee442b8c7b11bc7a335f367b8ff3708f90eab",
+      "sha256": "2301bc2f82291222c2b059ba6d0ee442b8c7b11bc7a335f367b8ff3708f90eab",
+      "expectedBytes": 14868,
+      "bytes": 14868,
+      "passed": true
+    },
+    {
+      "index": 7,
+      "kind": "catalogue",
+      "expectedSha256": "c56a22ed5e1019fb09d1b101f03c595c69da87e9f79f12d6144095314bc6212f",
+      "sha256": "c56a22ed5e1019fb09d1b101f03c595c69da87e9f79f12d6144095314bc6212f",
+      "expectedBytes": 13554,
+      "bytes": 13554,
+      "passed": true
+    },
+    {
+      "index": 8,
+      "kind": "catalogue",
+      "expectedSha256": "cd630e0aaef46cbbc1f5bc4590bb0b75fa13c5bd53727bb2589c821136c96221",
+      "sha256": "cd630e0aaef46cbbc1f5bc4590bb0b75fa13c5bd53727bb2589c821136c96221",
+      "expectedBytes": 16443,
+      "bytes": 16443,
+      "passed": true
+    },
+    {
+      "index": 9,
+      "kind": "catalogue",
+      "expectedSha256": "6e0ad25489ccfc5cdad5782cb2a11ae98c1547ad426e8f4e2118179dd87cdf17",
+      "sha256": "6e0ad25489ccfc5cdad5782cb2a11ae98c1547ad426e8f4e2118179dd87cdf17",
+      "expectedBytes": 12819,
+      "bytes": 12819,
+      "passed": true
+    },
+    {
+      "index": 10,
+      "kind": "catalogue",
+      "expectedSha256": "866d0253456f42a76cd16c2fe03b9e60ec22679924de520a8fe2a6af355ddf6a",
+      "sha256": "866d0253456f42a76cd16c2fe03b9e60ec22679924de520a8fe2a6af355ddf6a",
+      "expectedBytes": 187128,
+      "bytes": 187128,
+      "passed": true
+    },
+    {
+      "index": 11,
+      "kind": "catalogue",
+      "expectedSha256": "8fb3bcf1c8231f42415e482df65c163d22585845acdf0fcc08ae9afa93daa2d1",
+      "sha256": "8fb3bcf1c8231f42415e482df65c163d22585845acdf0fcc08ae9afa93daa2d1",
+      "expectedBytes": 258184,
+      "bytes": 258184,
+      "passed": true
+    },
+    {
+      "index": 12,
+      "kind": "catalogue",
+      "expectedSha256": "5e80d1b2ae57850dd2fc7ab252c542d23ac4ccd8362a0fae465bfdf75238ae73",
+      "sha256": "5e80d1b2ae57850dd2fc7ab252c542d23ac4ccd8362a0fae465bfdf75238ae73",
+      "expectedBytes": 246504,
+      "bytes": 246504,
+      "passed": true
+    },
+    {
+      "index": 13,
+      "kind": "catalogue",
+      "expectedSha256": "8f7ce6d7249c419cff20571a6eda8f6ffe7b641090b9322f05c429d0ad3378cb",
+      "sha256": "8f7ce6d7249c419cff20571a6eda8f6ffe7b641090b9322f05c429d0ad3378cb",
+      "expectedBytes": 260008,
+      "bytes": 260008,
+      "passed": true
+    },
+    {
+      "index": 14,
+      "kind": "catalogue",
+      "expectedSha256": "00a7cdf0e9d018658728d7aef4386ff0e87f9272ec3bc785f908d027c4b4a6fa",
+      "sha256": "00a7cdf0e9d018658728d7aef4386ff0e87f9272ec3bc785f908d027c4b4a6fa",
+      "expectedBytes": 146026,
+      "bytes": 146026,
+      "passed": true
+    },
+    {
+      "index": 15,
+      "kind": "catalogue",
+      "expectedSha256": "d890d3773fc81d548a4ab7804be83dbaa2dd8c4325de629edd9e14ba6b11ee78",
+      "sha256": "d890d3773fc81d548a4ab7804be83dbaa2dd8c4325de629edd9e14ba6b11ee78",
+      "expectedBytes": 187934,
+      "bytes": 187934,
+      "passed": true
+    },
+    {
+      "index": 16,
+      "kind": "catalogue",
+      "expectedSha256": "ca727f10dd85239e54cb0563e41170ff40463f8dfae6f1ca6f5945daf3f9461c",
+      "sha256": "ca727f10dd85239e54cb0563e41170ff40463f8dfae6f1ca6f5945daf3f9461c",
+      "expectedBytes": 236294,
+      "bytes": 236294,
+      "passed": true
+    },
+    {
+      "index": 17,
+      "kind": "catalogue",
+      "expectedSha256": "c27848277dbf9c2fc126571da6cc5dcccd51f53d464504f4736a4579827a3407",
+      "sha256": "c27848277dbf9c2fc126571da6cc5dcccd51f53d464504f4736a4579827a3407",
+      "expectedBytes": 288090,
+      "bytes": 288090,
+      "passed": true
+    },
+    {
+      "index": 18,
+      "kind": "catalogue",
+      "expectedSha256": "7416c0ab54ba74957f2aa07a8f60495a1afc32886450e96a237ac7047c505ee1",
+      "sha256": "7416c0ab54ba74957f2aa07a8f60495a1afc32886450e96a237ac7047c505ee1",
+      "expectedBytes": 274060,
+      "bytes": 274060,
+      "passed": true
+    },
+    {
+      "index": 19,
+      "kind": "catalogue",
+      "expectedSha256": "0acb3ac24d44500b1dc463269ec02ea3649560fe69f698faa41cdf7c850cfb05",
+      "sha256": "0acb3ac24d44500b1dc463269ec02ea3649560fe69f698faa41cdf7c850cfb05",
+      "expectedBytes": 298930,
+      "bytes": 298930,
+      "passed": true
+    },
+    {
+      "index": 20,
+      "kind": "catalogue",
+      "expectedSha256": "5d8e795e397bb2e8f62bb7cd7b330546fc5c97a04d2a78522d26f6a32e265fb7",
+      "sha256": "5d8e795e397bb2e8f62bb7cd7b330546fc5c97a04d2a78522d26f6a32e265fb7",
+      "expectedBytes": 281512,
+      "bytes": 281512,
+      "passed": true
+    },
+    {
+      "index": 21,
+      "kind": "catalogue",
+      "expectedSha256": "5ab9d811f774737a31b522f963efbc7b689b028bade4a6178fe825f2944508dc",
+      "sha256": "5ab9d811f774737a31b522f963efbc7b689b028bade4a6178fe825f2944508dc",
+      "expectedBytes": 211610,
+      "bytes": 211610,
+      "passed": true
+    },
+    {
+      "index": 22,
+      "kind": "room",
+      "expectedSha256": "0e97d1b75e31955893dc8460a40b49190e9c9b91e3c53fead0fb7993afcde387",
+      "sha256": "0e97d1b75e31955893dc8460a40b49190e9c9b91e3c53fead0fb7993afcde387",
+      "expectedBytes": 225950,
+      "bytes": 225950,
+      "passed": true
+    },
+    {
+      "index": 23,
+      "kind": "room",
+      "expectedSha256": "24c659f53e141243a090be3128e8a45b2a04f166e123f677e2ac5ba3ee56fbd0",
+      "sha256": "24c659f53e141243a090be3128e8a45b2a04f166e123f677e2ac5ba3ee56fbd0",
+      "expectedBytes": 238496,
+      "bytes": 238496,
+      "passed": true
+    },
+    {
+      "index": 24,
+      "kind": "room",
+      "expectedSha256": "c1c9ade4b2162c3c7a147ea10fa7f92e5cb1279041f5d50b82048cd4fb9cb589",
+      "sha256": "c1c9ade4b2162c3c7a147ea10fa7f92e5cb1279041f5d50b82048cd4fb9cb589",
+      "expectedBytes": 230970,
+      "bytes": 230970,
+      "passed": true
+    },
+    {
+      "index": 25,
+      "kind": "room",
+      "expectedSha256": "5830a01f60e1609c085364b9cc7d60be59e35ea512aaba65e970cfa775a67af2",
+      "sha256": "5830a01f60e1609c085364b9cc7d60be59e35ea512aaba65e970cfa775a67af2",
+      "expectedBytes": 202872,
+      "bytes": 202872,
+      "passed": true
+    },
+    {
+      "index": 26,
+      "kind": "room",
+      "expectedSha256": "85d837bbc8dcbbc04ecf36e044effaad8e4f06008c05c718457ccb5446271ea6",
+      "sha256": "85d837bbc8dcbbc04ecf36e044effaad8e4f06008c05c718457ccb5446271ea6",
+      "expectedBytes": 192812,
+      "bytes": 192812,
+      "passed": true
+    },
+    {
+      "index": 27,
+      "kind": "room",
+      "expectedSha256": "d2fa0db2d251f1f313a1a4c575388e0df0534fdf74b26500e4c7434b2463a4cc",
+      "sha256": "d2fa0db2d251f1f313a1a4c575388e0df0534fdf74b26500e4c7434b2463a4cc",
+      "expectedBytes": 199094,
+      "bytes": 199094,
+      "passed": true
+    },
+    {
+      "index": 28,
+      "kind": "room",
+      "expectedSha256": "6af2d97d846039a27a96750844f0ecb27e83a3c920a84ce0bcb113d742323750",
+      "sha256": "6af2d97d846039a27a96750844f0ecb27e83a3c920a84ce0bcb113d742323750",
+      "expectedBytes": 199832,
+      "bytes": 199832,
+      "passed": true
+    },
+    {
+      "index": 29,
+      "kind": "room",
+      "expectedSha256": "fefd5edb31626b4a5772bb46d670e0066778e3dcdebf401dd925be5b2959de48",
+      "sha256": "fefd5edb31626b4a5772bb46d670e0066778e3dcdebf401dd925be5b2959de48",
+      "expectedBytes": 176664,
+      "bytes": 176664,
+      "passed": true
+    },
+    {
+      "index": 30,
+      "kind": "room",
+      "expectedSha256": "c2edd44e096f47205ee94940693013648b359f933ab9ac4806ede28ddd71acc1",
+      "sha256": "c2edd44e096f47205ee94940693013648b359f933ab9ac4806ede28ddd71acc1",
+      "expectedBytes": 143546,
+      "bytes": 143546,
+      "passed": true
+    },
+    {
+      "index": 31,
+      "kind": "room",
+      "expectedSha256": "29a82bf0ab79d189f2a1cc576c8f30d868a998d5e01313560cfd8e41db9bb8d2",
+      "sha256": "29a82bf0ab79d189f2a1cc576c8f30d868a998d5e01313560cfd8e41db9bb8d2",
+      "expectedBytes": 172110,
+      "bytes": 172110,
+      "passed": true
+    },
+    {
+      "index": 32,
+      "kind": "catalogue",
+      "expectedSha256": "3e39b46306dae5b39b7e13cdc1b5b742bde3d75da4bc0b216b45f43ff226868d",
+      "sha256": "3e39b46306dae5b39b7e13cdc1b5b742bde3d75da4bc0b216b45f43ff226868d",
+      "expectedBytes": 11232,
+      "bytes": 11232,
+      "passed": true
+    },
+    {
+      "index": 33,
+      "kind": "room",
+      "expectedSha256": "2014af4e798fd951b964b3e4ff923d3e014817ea94db167fbe26f06d2c438d5a",
+      "sha256": "2014af4e798fd951b964b3e4ff923d3e014817ea94db167fbe26f06d2c438d5a",
+      "expectedBytes": 188352,
+      "bytes": 188352,
+      "passed": true
+    }
+  ],
+  "totalBytes": 5192696,
+  "passed": true,
+  "sigv4": {
+    "client": "curl 8.5.0",
+    "branch": "br-falling-glade-b17oqqiv",
+    "putStatus": 200,
+    "getStatus": 200,
+    "matchingSha256": true,
+    "anonymousStatus": 403,
+    "productionCredentialStatus": 403,
+    "deletedExactEphemeralObject": true,
+    "missingStatus": 404,
+    "credentialRevoked": true,
+    "revokedStatus": 403
+  },
+  "unchangedApplicationAdapter": {
+    "put": false,
+    "errorCode": "MEDIA_STORAGE_UNAVAILABLE",
+    "temporaryCredentialRevoked": true
+  }
+}

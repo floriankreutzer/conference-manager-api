@@ -8,6 +8,58 @@ are recorded separately.
 
 ## Accepted source
 
+### Current reconciliation — 9 October 2026
+
+The earlier checkpoints below are historical. Current accepted API main is
+`356459004dbede11cc3cd17a93d4e6cf515d410b` (PR #132); frontend main is
+`ee541cdb1f2c9c5605421a6f48968ac773fd05f9` (PR #285). The immutable served frontend
+remains `5d5102b4f9842ec704ff26441ebe96719324ddb0`; API CI uses acceptance source
+`6228a827502b2cb59c8b9c50adebb9ad6431fe8b`. API CI `37936151197` passed quality,
+real PostgreSQL integration and all four complete browser/storage rows. Frontend #285 CI
+`37940128261` passed after a targeted shared-journey rerun; the first WebKit shared CSV
+failure remains recorded rather than being relabeled. Hosted DAST `37940128221` passed.
+
+Render workspace `tea-daa8bkpf2nfc739hdddg` was explicitly confirmed. Both existing Free
+Frankfurt services were deliberately deployed from the accepted API ref with auto-deploy off.
+Protected migration run `37792057793` established canonical schema 44 / Demo overlay 9.
+Hosted Demo Acceptance #497, run `37946740113`, attempt 1, succeeded on current frontend
+main. Its downloaded evidence artifact `11625658932` verifies both build identities before
+and after the complete shared-role and three-customer Chromium/WebKit journeys, two reset
+cycles, repeatable cleanup and the unchanged semantic checksum. See
+[deployment evidence](HOSTED-DEMO-DEPLOYMENT-EVIDENCE.md#accepted-saas-38-hosted-baseline--9-october-2026).
+
+Current provider observations supersede the earlier empty-inventory/network-only checkpoint:
+production object inventory is empty; the isolated acceptance and backup branches each contain
+34 private objects. Credential-free signed byte downloads are now possible. The unchanged
+production S3 adapter's real-provider test still failed with `MEDIA_STORAGE_UNAVAILABLE` in
+this execution environment; its temporary acceptance-branch credential was revoked immediately.
+A separate SDK diagnostic with the same bounded connection/request timeouts and an explicitly
+injected environment-proxy agent returned `TimeoutError`; its read-only credential was revoked.
+All 34 backup objects were downloaded and independently checked against the SHA-256 key suffix
+and listed byte length: 5,192,696 bytes, no mismatches. This establishes stored object integrity,
+not comparison to authoritative database metadata. A separate curl SigV4 test on the isolated
+acceptance branch uploaded and re-uploaded one unique test object (HTTP 200), downloaded exact
+matching bytes (200), rejected anonymous access (403) and rejected the same branch credential
+on production (403). Exact test-object deletion succeeded; a signed subsequent read returned
+404. Credential revocation succeeded and a subsequent signed request returned 403. No default
+credentials were retrieved. These provider-level results do not attest SDK publication,
+application authorization, coordinated database/object restore or production cutover. PostgreSQL media remains
+authoritative and retained; no production object publication or blob purge was performed.
+
+The 9 October Neon project observation reports 8,992,098,511 project-defined transfer bytes
+within `2026-10-03T11:49:06Z` to `2026-11-01T00:00:00Z`, on existing Launch v3 Frankfurt.
+This is not an invoice or independently verified hard quota. Both-surface Render application
+payload logs were paginated completely for `2026-10-09T14:47:54Z` to `15:40:00Z`:
+21,992 unique payload records total 84,456,624 HTTP body bytes. This observation interval
+extends beyond the hosted job and includes ordinary service traffic; it is not a pure test
+cost attribution. Provider bandwidth samples report 72.474754 and 65.53743 in provider unit
+`mb`; HTTP-count/latency metrics returned no points, which is unavailable evidence rather
+than zero. These overlapping provider/application boundaries must not be summed into billed
+egress. Invoice coverage, durable collection/alert delivery and representative business-load
+capacity remain separate open gates.
+
+### Earlier foundation checkpoint
+
 Private object metadata/publication/backfill and deterministic external-object reset integration
 are accepted through API #119–123. Frontend #281 isolates routine hosted acceptance from public
 Demo traffic; frontend #282 strengthens private conditional-image acceptance. API #124 and #125
@@ -65,6 +117,8 @@ the workload/topology evidence specification is in [Load Evidence](SAAS-3.8-LOAD
 
 ## Provider and deployed-state boundaries
 
+The observations in this section predate the current reconciliation above.
+
 The independently read Neon Demo project record reports existing Launch v3 in Frankfurt. Earlier
 runbook Free-plan wording describes the original topology, not an independently verified current
 invoice or plan change performed by this work. The October 7 FinOps checkpoint records 7,991,773,109
@@ -111,9 +165,9 @@ the existing origins as upgraded without newly observed build metadata and hoste
    total attributable monthly costs and identical permitted topology comparisons before a separate
    provider migration decision. Session-only scaling does not complete that work package.
 
-The workspace confirmation was requested but no answer was received. Provider data-plane network
-access remains technically blocked. Neither missing condition is replaced by assumed consent or
-test-only evidence. Existing private-storage usage costs are authorized; unrelated plan/quota,
+At that earlier checkpoint, workspace confirmation and provider data-plane access were missing;
+the current reconciliation records their subsequent observed status. Neither missing evidence
+is replaced by assumed consent or test-only evidence. Existing private-storage usage costs are authorized; unrelated plan/quota,
 compute/runner capacity and provider migrations are not implicitly authorized.
 
 ## Roadmap integrity
