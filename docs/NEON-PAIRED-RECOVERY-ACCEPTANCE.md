@@ -89,3 +89,15 @@ historical-revision application reads must additionally be verified and retained
 Unit/provider-fixture tests do not replace those real-provider negative checks.
 This prepared workflow is not an executed success, production cutover, FinOps
 completion, representative business load or permission to close SaaS 3.8.
+
+## CI image bootstrap evidence
+
+Initial candidate CI run 37992999496 failed before database/browser test execution
+when Docker Hub rejected anonymous image pulls with its rate limit. That run
+remains failed evidence. Required PostgreSQL services now use Docker's official
+Amazon ECR Public repository, pinned to the same PostgreSQL 18.6 Alpine manifest:
+`sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873`.
+On 9 October both Docker Hub and ECR manifest GETs returned HTTP200 and identical
+SHA-256, including Linux amd64. No database version, health check, test, retry,
+deadline or paid registry account changes. All required checks must run again
+against the successor head; image-source verification is not database acceptance.
