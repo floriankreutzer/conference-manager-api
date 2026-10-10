@@ -77,7 +77,7 @@ revoked at `2026-10-09T18:56:29Z`. This supersedes the SDK-specific access block
 the earlier failed run `37974144848` remains failed historical evidence. Branch
 and scopes both changed, so this does not isolate the earlier failure's cause.
 
-## Prepared real-provider application gate
+## Real-provider application gate
 
 `Neon Object Application Acceptance` is a manual main-only successor gate. It
 reuses the existing full Customer/Platform compositions and the immutable shared
@@ -116,8 +116,50 @@ and semantic readback are the identified optimization target, not proof that a
 candidate fix has passed real-provider acceptance. Every successor must retain
 the complete unchanged journeys and pass both browser jobs before this gate closes.
 
-Even a successful result would establish real-provider
-application/browser/reset integration with a local database, not a coordinated
-Neon database/object snapshot restore, production backfill/cutover, blob purge,
-live alert delivery, representative business load or attributable cost savings.
-Those remain mandatory separate release gates.
+### Successful complete application acceptance — 9 October 2026
+
+After the bounded reset publication/readback correction in PR #136,
+[run 37984079130](https://github.com/floriankreutzer/conference-manager-api/actions/runs/37984079130)
+passed on API `6a42c22bd22dad05543c5c4eef893972c61b9d9b`. Both Chromium and WebKit
+completed the unchanged shared role/Tenant/CSRF journey and the entire
+Northwind/Contoso/Fabrikam progression with two canonical resets. The served
+frontend remained `5d5102b4f9842ec704ff26441ebe96719324ddb0`; the full acceptance
+contract remained `6228a827502b2cb59c8b9c50adebb9ad6431fe8b`. SDK transport, operation
+deadlines, browser assertions and the separate four-row CI gate were unchanged.
+The earlier failed application run above remains failed historical evidence.
+
+| Browser | GitHub artifact | Archive bytes | Independently verified archive SHA-256 |
+| --- | --- | ---: | --- |
+| Chromium | `11643205381` | 622,290 | `6ec0147f8a735ccbcd35712c75fd9a735ea14839b78229d00cdfd4e68b5da8f9` |
+| WebKit | `11644106258` | 611,364 | `feb36ec74843fb22847f0b44bd6960901a471093bff9e16c1397c39f41f5d395` |
+
+Both complete archives were downloaded on 10 October and independently hashed;
+each digest matches GitHub's artifact metadata. This resolves the earlier local
+archive-download limitation. Each archive includes its seed binding, bounded
+reference inventory and both complete HTML browser reports. The unchanged
+original ZIPs are durably retained beyond their GitHub expiry on 8 November.
+The embedded reports contain six passed cases, two explicitly skipped dedicated
+200% zoom cases, no failures, no flaky results and no retries. The separate
+headed zoom gate is not evidenced by these archives. See the
+[archive verification record](evidence/saas38-application-acceptance-20261010.json).
+
+Each archived inventory records 53 references, including all 34 canonical
+objects. Their union contains 71 distinct references / 6,846,628 bytes, including
+37 additional references / 1,653,932 bytes. These are run-bound database
+inventories, separate from the post-run provider observation below; neither
+inventory reconciliation nor application cleanup proves provider deletion.
+
+The temporary acceptance-branch credential was independently confirmed revoked
+at `2026-10-09T20:34:49Z`; removal of the two temporary Actions secret entries is
+a separate repository-settings action, not implied by provider revocation.
+The post-run provider inventory recorded in issue #264 was 73 objects / 6,846,776
+bytes: 34 canonical objects / 5,192,696 bytes and 39 scenario/revision objects /
+1,654,080 bytes. Preserve their reference-aware custody and 30-day retention;
+neither a completed job nor archive download authorizes prefix deletion.
+
+This successful gate establishes real-provider application/browser/reset
+integration with runner-local PostgreSQL. The separate
+[restored-pair acceptance](NEON-PAIRED-RECOVERY-ACCEPTANCE.md), real-provider
+corruption/failed-rollback and retained-revision reads, production backfill/cutover,
+blob purge, live alert delivery, representative business load and attributable
+cost savings remain separate gates. Hosted Demo still uses PostgreSQL media.

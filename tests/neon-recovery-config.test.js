@@ -38,9 +38,27 @@ test('independent role passwords are required and errors do not contain credenti
 const now = 1_000_000;
 const marker = { branch_id: branch, source_branch_id: RECOVERY_ROOT, snapshot_id: RECOVERY_SNAPSHOT,
   object_manifest_sha256: RECOVERY_MANIFEST, created_at: new Date(now - 1000), expires_at: new Date(now + 59_000) };
-function client(identity = { role: 'cm_demo_customer', database: 'conference_manager_demo_shared' }, rows = [marker]) {
-  return { async query(sql) { return { rows: sql.startsWith('SELECT current_user') ? [identity] : rows }; } };
+function client(identity = { role: 'cm_demo_customer', database: 'conference_manager_demo_shared' }, rows = [marker],
+  relations = [{ kind: 'v', owner: 'cm_demo_migration' }]) {
+  const queries = [];
+  return { queries, async query(sql) {
+    queries.push(sql);
+    if (sql.startsWith('SELECT current_user')) return { rows: [identity] };
+    if (sql.includes('pg_catalog.pg_class')) return { rows: relations };
+    return { rows };
+  } };
 }
+
+test('recovery rejects non-view and foreign-owned markers before reading their contents', async () => {
+  for (const relations of [[], [{ kind: 'r', owner: 'cm_demo_migration' }],
+    [{ kind: 'm', owner: 'cm_demo_migration' }], [{ kind: 'f', owner: 'cm_demo_migration' }],
+    [{ kind: 'v', owner: 'cm_demo_customer' }], [{ kind: 'v', owner: 'postgres' }]]) {
+    const database = client(undefined, [marker], relations);
+    await assert.rejects(assertNeonRecoveryIdentity(database, 'cm_demo_customer', branch, now),
+      /NEON_RECOVERY_MARKER_INVALID/);
+    assert.equal(database.queries.some((sql) => sql.includes('FROM public.neon_recovery_acceptance')), false);
+  }
+});
 
 test('live recovery marker binds database, principal, branch, snapshot, bytes and maximum lifetime', async () => {
   assert.equal(await assertNeonRecoveryIdentity(client(), 'cm_demo_customer', branch, now), now + 59_000);
