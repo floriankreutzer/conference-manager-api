@@ -21,12 +21,15 @@ for (const surface of ['customer', 'platform']) {
     const fixture = trafficFixture(surface);
     const load = (overrides) => loadDemoTrafficGateConfig({ ...fixture.env, ...overrides }, { ...fixture, now: NOW });
     assert.equal(load({}).mode, 'acceptance');
+    const lastPermittedExpiry = NOW + 90 * 60_000;
+    assert.equal(load({ DEMO_TRAFFIC_ACCEPTANCE_EXPIRES_AT: new Date(lastPermittedExpiry).toISOString() }).expiresAt,
+      lastPermittedExpiry);
     const key = `DEMO_${surface.toUpperCase()}_ACCEPTANCE_TOKEN`;
     for (const overrides of [
       { DEMO_TRAFFIC_MODE: 'opne' }, { DEMO_TRAFFIC_MODE: 'closed' },
       { [key]: 'short' }, { [key]: fixture.token.toUpperCase() },
       { DEMO_TRAFFIC_ACCEPTANCE_EXPIRES_AT: '2026-10-10' },
-      { DEMO_TRAFFIC_ACCEPTANCE_EXPIRES_AT: new Date(NOW + 60 * 60_000 + 1).toISOString() },
+      { DEMO_TRAFFIC_ACCEPTANCE_EXPIRES_AT: new Date(NOW + 90 * 60_000 + 1).toISOString() },
       { DEMO_TRAFFIC_UNKNOWN: 'true' },
       { [`DEMO_${surface === 'customer' ? 'PLATFORM' : 'CUSTOMER'}_ACCEPTANCE_TOKEN`]: fixture.token },
     ]) assert.throws(() => load(overrides), /DEMO_TRAFFIC_/);

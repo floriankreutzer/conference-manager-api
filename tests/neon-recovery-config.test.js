@@ -89,7 +89,10 @@ test('recovery workflow preserves both immutable full browser contracts and does
   assert.match(workflow, /if: github.ref == 'refs\/heads\/main'/);
   assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /timeout-minutes: 60/);
-  assert.match(workflow, /ref: 6228a827502b2cb59c8b9c50adebb9ad6431fe8b/);
+  assert.match(workflow, /ref: b63d0461c857ee132242fb4509156409a37496a3/);
+  assert.match(workflow,
+    /node acceptance\/scripts\/copy-shared-acceptance\.mjs --source acceptance --target frontend --ref "\$ACCEPTANCE_REF"/);
+  assert.doesNotMatch(workflow, /cp acceptance\/tests\/e2e-shared\/shared-demo-runtime\.spec\.js/);
   assert.equal(workflow.match(/npm run test:e2e:shared-demo/g)?.length, 2);
   assert.equal(workflow.match(/npm run test:e2e:saas37/g)?.length, 2);
   assert.match(workflow, /neon-recovery-acceptance.mjs preflight/);

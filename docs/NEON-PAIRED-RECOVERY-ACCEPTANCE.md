@@ -295,8 +295,11 @@ approved child cleanup.
 The compositions then execute the complete immutable shared role/Tenant/CSRF
 journey and full three-customer/two-reset acceptance in Chromium and WebKit
 sequentially. Frontend serving comes from render.yaml's immutable pin; acceptance
-is `6228a827502b2cb59c8b9c50adebb9ad6431fe8b`. No retries, deadline changes,
-assertion weakening or optional test paths are added.
+is `b63d0461c857ee132242fb4509156409a37496a3`. This reviewed successor preserves
+the business scenarios and binds their context explicitly to the selected origin.
+The source-commit-verified copy helper transfers the complete six-file Shared
+acceptance set (spec and support dependencies); it never replaces the served application. No retries,
+deadline changes, assertion weakening or optional test paths are added.
 After both browsers pass, APIs stop and the existing operator repository rolls back
 Room/Catalogue pointers in at most six existing bounded batches per kind, verifying
 all 34 resulting PostgreSQL blobs. It never purges blobs or deletes objects.

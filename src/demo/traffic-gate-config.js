@@ -4,7 +4,9 @@ const MODES = new Set(['open', 'closed', 'acceptance']);
 const TOKEN_KEYS = Object.freeze({ customer: 'DEMO_CUSTOMER_ACCEPTANCE_TOKEN',
   platform: 'DEMO_PLATFORM_ACCEPTANCE_TOKEN' });
 const EXPIRY_KEY = 'DEMO_TRAFFIC_ACCEPTANCE_EXPIRES_AT';
-const MAX_WINDOW_MS = 60 * 60_000;
+// Hosted acceptance retains its 80-minute job and 70-minute destructive reserve.
+// This independent traffic deadline never changes recovery marker/provider TTLs.
+const MAX_WINDOW_MS = 90 * 60_000;
 const ALLOWED_KEYS = new Set(['DEMO_TRAFFIC_MODE', EXPIRY_KEY]);
 
 function fail(code) { throw new DemoConfigError(code); }

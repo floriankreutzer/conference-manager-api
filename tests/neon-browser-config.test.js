@@ -51,7 +51,10 @@ test('real browser workflow preserves both complete journeys and serializes prov
   assert.match(workflow, /browser: webkit/);
   assert.match(workflow, /test:e2e:shared-demo/);
   assert.match(workflow, /test:e2e:saas37/);
-  assert.match(workflow, /ref: 6228a827502b2cb59c8b9c50adebb9ad6431fe8b/);
+  assert.match(workflow, /ref: b63d0461c857ee132242fb4509156409a37496a3/);
+  assert.match(workflow,
+    /node acceptance\/scripts\/copy-shared-acceptance\.mjs --source acceptance --target frontend --ref "\$ACCEPTANCE_REF"/);
+  assert.doesNotMatch(workflow, /cp acceptance\/tests\/e2e-shared\/shared-demo-runtime\.spec\.js/);
   assert.equal(workflow.match(/CI_MEDIA_STORAGE_PROVIDER: neon/g)?.length, 2);
   assert.doesNotMatch(workflow, /pull_request:|push:|continue-on-error|createCiMediaStorageServer/);
 });

@@ -140,7 +140,7 @@ required before the `acceptance` mode can be used operationally.
 | `DEMO_TRAFFIC_MODE` | Absent means `open`; exact values are `open`, `closed`, `acceptance` |
 | `DEMO_CUSTOMER_ACCEPTANCE_TOKEN` | Customer service only; independent random 32 bytes encoded as 64 lowercase hex characters |
 | `DEMO_PLATFORM_ACCEPTANCE_TOKEN` | Platform service only; separate independent token in the same format |
-| `DEMO_TRAFFIC_ACCEPTANCE_EXPIRES_AT` | Acceptance only; absolute UTC ISO timestamp including milliseconds, at most 60 minutes ahead at startup |
+| `DEMO_TRAFFIC_ACCEPTANCE_EXPIRES_AT` | Acceptance only; absolute UTC ISO timestamp including milliseconds, at most 90 minutes ahead at startup |
 
 Nonempty unused settings, another surface's token, unknown `DEMO_TRAFFIC_*`
 settings, malformed deadlines and aliases of configured application/storage/DB
@@ -170,6 +170,19 @@ most the 10-second shutdown watchdog; no closed-ready claim follows failed stop.
 Expiry during unfinished active bootstrap terminates the process because startup
 has not yet returned a safely stoppable runtime. Expiry never selects `open`.
 
+The Hosted traffic window is separate from the disposable recovery marker and
+provider TTL. Its initial 60-minute draft could not contain the unchanged browser
+suite ceilings (22 + 38 minutes), cleanup and deployment verification. The
+pre-deployment correction permits one absolute window of at most 90 minutes,
+while the Hosted workflow retains its 80-minute job ceiling and requires at least
+70 minutes remaining before the first destructive browser journey: 60 minutes
+for both unchanged suites and 10 minutes for bounded cleanup and verification.
+Select the shared absolute end once, before enabling acceptance on either
+surface. A late deployment, failed check or exhausted reserve fails closed; it
+never resets that end, retries a write or extends an exercise. The separately
+approved recovery marker remains at most 60 minutes and its provider TTL remains
+unchanged. This source change provisions no resource and opens no traffic gate.
+
 Acceptance requires exactly one `X-CM-Demo-Acceptance` request header. The gate
 checks its fixed-length token with `timingSafeEqual` and removes it from parsed,
 distinct and raw request headers before normal application handling. It grants
@@ -179,14 +192,31 @@ Origin on unsafe requests. A correct gate token cannot make a cross-origin
 request valid. Host and request-target bounds apply to closed probes as well.
 
 A protected browser adapter must add the appropriate token only to requests whose
-origin exactly equals that surface's independently verified HTTPS origin. Do not
-use global browser extra headers, URL parameters, cookies, local storage or a
-frontend configuration bundle. Preserve real browser session/persona switching,
+origin exactly equals that surface's independently verified HTTPS origin. Never
+set gate headers on an unconfined browser context. The reviewed successor fixture
+uses an explicitly selected single-origin context, a bounded TLS-only CONNECT
+proxy that validates the exact authority and ClientHello SNI, and an early guarded
+runner for the pinned Playwright version. Upstream TLS verification remains
+mandatory. The context's header is usable only through that confined transport;
+cross-origin, other-port and plaintext redirect attempts fail before forwarding.
+Do not place tokens in URL parameters, cookies, local storage or a frontend
+configuration bundle. Preserve real browser session/persona switching,
 CSRF, foreign-Tenant and cross-origin negative assertions. Headers must not enter
 traces, HAR files, diagnostic request dumps or uploaded artifacts. The application
 strip alone cannot sanitize browser or intermediary artifacts. Existing immutable
 browser assertions and the three-customer/two-reset contract must remain intact;
 a test fixture or partial native probe is not this missing Hosted acceptance.
+
+The diagnostic boundary covers the reviewed runner, its workers, error-context
+and attachment writes, and allowlisted final evidence. It assumes trusted test
+code and the reviewed gate that removes the header before normal application
+handling; it is not a sandbox for arbitrary code or a compromised approved server
+that encodes credentials into native browser downloads. Mandatory CSV downloads
+keep their existing behavior. Native browser profiles/downloads are not uploaded.
+The headed Zoom screenshot test remains in its existing credential-free CI step;
+it was already excluded from Hosted runs. Both real browser engines and the real
+API request implementation must pass the transport and diagnostic negative tests
+before operational use. Source publication alone is not that execution evidence.
 
 ### Required Render setting and deployment order
 
