@@ -26,21 +26,90 @@ child including its data/compute afterward. Provision it only when the reviewed
 workflow, secrets and execution path are ready. Keep the restored baseline,
 production, acceptance, original root and independent backup unchanged.
 
+Create a normal child of the already paired `br-rapid-morning-b1a704p9`, not
+another snapshot restore or a schema-only branch. Normal children inherit their
+parent's buckets and objects at fork time; independently inspect the child's
+private bucket and retained inventory before execution. Missing inherited storage
+is a preparation failure, not permission to reseed or repeat the transfer blindly.
+See the provider's [bucket branching contract](https://neon.com/docs/storage/buckets#bucket-branching).
+
 Bind protected repository variables `CM_NEON_RECOVERY_BRANCH` and
 `CM_NEON_RECOVERY_HOST` to the independently inspected child ID and exact compute
 hostname. Never use a preserved branch or production endpoint. No workflow input
 can supply a destination. The configuration accepts only the Frankfurt Neon
 endpoint format, exact role/database, verified TLS and no connection URL options.
 
-Install `public.neon_recovery_acceptance` ONLY on that verified child, owned by
-`cm_demo_migration`, with one `singleton=true` row containing its `branch_id`,
-`source_branch_id=br-rapid-morning-b1a704p9`,
-`snapshot_id=snap-fragrant-cell-b1oh6t1r`, the manifest digest above, and
-`created_at`/`expires_at` separated by at most 60 minutes. Grant SELECT only to the
-three inherited runtime/reset roles in addition to the owner; revoke PUBLIC.
-Set the time window immediately before execution, not during PR validation.
-The marker prevents accidental endpoint selection; a malicious database owner
-can forge it and is outside this operator guard's threat model.
+Install `public.neon_recovery_acceptance` ONLY on that verified child as a
+**constant ordinary view**, owned by `cm_demo_migration`. An additional table
+would fail the existing exact Demo application-table inventory before reset.
+Do not change that inventory, add the marker to the truncate list, or use a
+materialized view. The recovery guard rejects a wrong relation type or owner
+before reading the marker or allocating provider access.
+
+Connect as `cm_demo_migration` to the independently verified child database
+`conference_manager_demo_shared`. Substitute only its verified branch ID below.
+Create the marker once, immediately before dispatch, after checking that the shared
+workflow concurrency group is free. `CREATE VIEW` deliberately fails when the
+relation already exists; do not replace an existing marker or extend its expiry.
+The SQL captures database time once and stores fixed timestamp literals in the view:
+
+```sql
+BEGIN;
+
+DO $operator$
+DECLARE
+  marker_created_at timestamptz := clock_timestamp();
+BEGIN
+  IF current_database() <> 'conference_manager_demo_shared'
+     OR current_user <> 'cm_demo_migration' THEN
+    RAISE EXCEPTION 'RECOVERY_OPERATOR_CONTEXT_INVALID';
+  END IF;
+
+  EXECUTE format(
+    $view$
+      CREATE VIEW public.neon_recovery_acceptance AS
+      SELECT
+        true AS singleton,
+        %L::text AS branch_id,
+        %L::text AS source_branch_id,
+        %L::text AS snapshot_id,
+        %L::text AS object_manifest_sha256,
+        %L::timestamptz AS created_at,
+        %L::timestamptz AS expires_at
+    $view$,
+    '<VERIFIED_CHILD_ID>',
+    'br-rapid-morning-b1a704p9',
+    'snap-fragrant-cell-b1oh6t1r',
+    '0d4cece4b98b531c346830164c383a2c6c8a8a324f8990b3c7d50e0f3e4fd39f',
+    marker_created_at,
+    marker_created_at + interval '60 minutes'
+  );
+END
+$operator$;
+
+REVOKE ALL ON public.neon_recovery_acceptance
+  FROM PUBLIC, cm_demo_customer, cm_demo_platform, cm_demo_reset;
+GRANT SELECT ON public.neon_recovery_acceptance
+  TO cm_demo_customer, cm_demo_platform, cm_demo_reset;
+
+COMMIT;
+```
+
+Verify the view owner, the single `singleton=true` row, exact branch/source/
+snapshot/manifest values, SELECT-only runtime/reset grants and revoked PUBLIC
+access. Verify all four live principals can read the same fixed `created_at` and
+`expires_at`; the maximum difference remains 60 minutes. Never put dynamic
+`now()` or `clock_timestamp()` expressions in the view's SELECT: that would
+renew the time window on every read. Checkout/install/queue time counts against
+this fixed window. The marker prevents accidental endpoint selection; a malicious
+database owner can forge it and is outside this operator guard's threat model.
+
+The PostgreSQL regression creates the real view under the migration owner,
+checks each role's access, executes two full canonical resets with semantic
+readback, and verifies the unchanged marker and application-table inventory.
+A table-shaped marker fails the recovery guard and the independent reset gate
+without changing the seeded business state. These local/CI checks do not prove
+the real Neon restored pair has passed its separate manual gate.
 
 Set these temporary protected Actions secrets without posting their values:
 

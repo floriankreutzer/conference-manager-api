@@ -43,13 +43,23 @@ export function loadNeonRecoveryConfig(env) {
   return Object.freeze({ branch: env.NEON_RECOVERY_BRANCH, databases: Object.freeze(databases), storage });
 }
 
-// This marker is installed ONLY on the independently verified disposable child.
+// This constant view is installed ONLY on the independently verified disposable child.
+// A table would violate the unchanged Demo reset application-table inventory.
 // A wrong endpoint or missing marker fails before SDK allocation or mutations.
 // It guards operator mistakes; it is not authority against a malicious DB owner.
 export async function assertNeonRecoveryIdentity(client, role, branch, now = Date.now()) {
   const identity = await client.query('SELECT current_user AS role, current_database() AS database');
   if (identity.rows[0]?.role !== role || identity.rows[0]?.database !== 'conference_manager_demo_shared') {
     throw new Error('NEON_RECOVERY_IDENTITY_INVALID');
+  }
+  const relation = await client.query(`SELECT relation.relkind AS kind,
+    pg_catalog.pg_get_userbyid(relation.relowner) AS owner
+    FROM pg_catalog.pg_class AS relation
+    JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = 'public' AND relation.relname = 'neon_recovery_acceptance'`);
+  if (relation.rows.length !== 1 || relation.rows[0]?.kind !== 'v'
+    || relation.rows[0]?.owner !== RECOVERY_ROLES.DEMO_MIGRATION_DATABASE_URL) {
+    throw new Error('NEON_RECOVERY_MARKER_INVALID');
   }
   const marker = await client.query(`SELECT branch_id, source_branch_id, snapshot_id, object_manifest_sha256,
     created_at, expires_at FROM public.neon_recovery_acceptance WHERE singleton = true`);

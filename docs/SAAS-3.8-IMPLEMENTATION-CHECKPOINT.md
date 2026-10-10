@@ -8,9 +8,60 @@ are recorded separately.
 
 ## Accepted source
 
-### Current reconciliation — 9 October 2026
+### Reconciliation baseline — 10 October 2026
 
-The earlier checkpoints below are historical. Current accepted API main is
+The independently inspected accepted API baseline is
+`faf241ae2c7d1f15b7d5bbc671d8b62ff888ad96` (PR #137), tree
+`30ff34c5f417369dcf31c488375149fbc5a6ad2a`. Main CI `37995961808` and Secret Scan
+`37995961711` passed. Its final PR candidate `6722c35f8ee249f6d9ccb0d89f50581d99dca9a3`
+passed CI `37994149746`, Secret Scan `37994149545` and Dependency Policy
+`37994149547`, including real PostgreSQL and all four complete browser/storage
+rows. This source baseline is newer than the last independently accepted hosted
+API `356459004dbede11cc3cd17a93d4e6cf515d410b`; a merge does not update deployment
+identity. Frontend main remains `ee541cdb1f2c9c5605421a6f48968ac773fd05f9`, served
+frontend `5d5102b4f9842ec704ff26441ebe96719324ddb0`, and permanent acceptance
+`6228a827502b2cb59c8b9c50adebb9ad6431fe8b`.
+
+| Evidence boundary | Completed evidence | Remaining boundary |
+| --- | --- | --- |
+| Existing hosted Demo | Hosted #497 / `37946740113`, schema 44 / overlay 9, full browser/customer/reset acceptance | Hosted media remain PostgreSQL-backed |
+| Unchanged SDK on real Neon | `37976525762`: private exact-byte read/write, anonymous denial, synthetic cleanup; credential revoked | Provider probe alone is not application recovery |
+| Real Neon application integration | `37984079130`: complete Chromium and WebKit shared and three-customer/two-reset journeys on API `6a42c22bd22dad05543c5c4eef893972c61b9d9b` | Database was runner-local PostgreSQL |
+| Explicit recovery | Snapshot `snap-fragrant-cell-b1oh6t1r` restored DB root `br-rapid-morning-b1a704p9`; independent backup supplied all 34 exact objects / 5,192,696 bytes | Restored-pair browser, authorization, rollback and negative/revision evidence still required |
+| Restored-pair harness | PR #137 accepted with dedicated manual main-only workflow and fixed target/role/TLS/expiry guards | Preparing or merging this harness is not an executed recovery result |
+
+On 10 October both successful application archives were independently downloaded
+and rehashed against GitHub metadata. Their complete original ZIPs are durably
+retained and contain seed bindings, inventory and both HTML reports. The reports
+show six passed cases, two documented dedicated-zoom skips, no failures, no flaky
+results and no retries; they do not replace the separate headed zoom gate. See
+[application evidence](NEON-OBJECT-ADAPTER-ACCEPTANCE.md#successful-complete-application-acceptance--9-october-2026)
+and the [archive verification record](evidence/saas38-application-acceptance-20261010.json).
+Earlier local SDK/download failures below are historical and are superseded only
+at the specific boundaries these later results verify.
+
+The exact next execution remains the approved disposable child of restored root
+`br-rapid-morning-b1a704p9`, named `saas38-paired-recovery-browser-20261009`, fixed
+0.25 CU, idle pause 300 seconds, at most 60 minutes and full child/data/compute
+teardown. That additional approval is retained in issue #264 comment `6089489070`;
+do not request the same compute/cleanup decision again. Provision only after the
+protected execution path and secrets are ready. Use the constant operator marker
+view specified in [the recovery runbook](NEON-PAIRED-RECOVERY-ACCEPTANCE.md): an
+extra `public` table conflicts with the unchanged exact Demo reset inventory.
+Do not migrate or reseed the restored state before preflight. Keep production,
+acceptance, restored baseline, original root and independent backup unchanged.
+
+Owner decision remains: retain Neon Launch for October and review the move to
+Free in November after the usage counter resets. Recheck actual organization-wide
+eligibility and usage then; the calendar date does not prove eligibility. Keep
+the existing Render topology; no Functions migration or new paid capacity is
+authorized by this checkpoint. #268 remains completed; #262–267, #269 and #270
+remain open for their named recovery, deployment, telemetry, alert, cost and
+representative workload evidence.
+
+### Hosted baseline and earlier provider observations — 9 October 2026
+
+This historical hosted checkpoint used accepted API main
 `356459004dbede11cc3cd17a93d4e6cf515d410b` (PR #132); frontend main is
 `ee541cdb1f2c9c5605421a6f48968ac773fd05f9` (PR #285). The immutable served frontend
 remains `5d5102b4f9842ec704ff26441ebe96719324ddb0`; API CI uses acceptance source
@@ -28,7 +79,7 @@ and after the complete shared-role and three-customer Chromium/WebKit journeys, 
 cycles, repeatable cleanup and the unchanged semantic checksum. See
 [deployment evidence](HOSTED-DEMO-DEPLOYMENT-EVIDENCE.md#accepted-saas-38-hosted-baseline--9-october-2026).
 
-Current provider observations supersede the earlier empty-inventory/network-only checkpoint:
+At this earlier observation, provider access superseded the empty-inventory/network-only checkpoint:
 production object inventory is empty; the isolated acceptance and backup branches each contain
 34 private objects. Credential-free signed byte downloads are now possible. The unchanged
 production S3 adapter's real-provider test still failed with `MEDIA_STORAGE_UNAVAILABLE` in

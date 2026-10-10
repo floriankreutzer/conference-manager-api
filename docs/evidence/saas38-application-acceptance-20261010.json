@@ -1,0 +1,419 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-10-10T06:04:03Z",
+  "scope": "downloaded real-Neon application acceptance archives; loopback PostgreSQL; not paired recovery",
+  "workflowRun": {
+    "id": 37984079130,
+    "url": "https://github.com/floriankreutzer/conference-manager-api/actions/runs/37984079130",
+    "sourceRuntimeRef": "6a42c22bd22dad05543c5c4eef893972c61b9d9b"
+  },
+  "immutableBindings": {
+    "servedFrontendRef": "5d5102b4f9842ec704ff26441ebe96719324ddb0",
+    "scenarioAcceptanceRef": "6228a827502b2cb59c8b9c50adebb9ad6431fe8b",
+    "seedVersion": "saas-3.7-three-demo-customers-v1",
+    "semanticChecksum": "7e22005f1e9689fbea4ccfc75084f5f3d224fe10e60a6af23c1cb600f2b70014"
+  },
+  "verificationMethod": {
+    "archiveBytesUnchanged": true,
+    "archiveSha256ComparedWithProviderMetadata": true,
+    "allZipCrcChecksPassed": true,
+    "embeddedPlaywrightZipAndJsonParsed": true,
+    "htmlOrJavaScriptExecuted": false,
+    "fullReportFilesAndScenarioAttachmentInspected": true,
+    "personalCommitMetadataExcludedFromThisSummary": true
+  },
+  "archives": [
+    {
+      "artifactId": 11643205381,
+      "artifactMetadataUrl": "https://api.github.com/repos/floriankreutzer/conference-manager-api/actions/artifacts/11643205381",
+      "archiveFileName": "saas38-11643205381.zip",
+      "archiveSizeBytes": 622290,
+      "archiveSha256": "6ec0147f8a735ccbcd35712c75fd9a735ea14839b78229d00cdfd4e68b5da8f9",
+      "browserProject": "chromium-shared-demo",
+      "archiveEntries": [
+        {
+          "path": "api/neon-browser-seed.json",
+          "uncompressedSizeBytes": 161,
+          "sha256": "6c8516e1405145e7377f15ccdb4335e3fc6a02ce86f85242c6a342b155fdaff3"
+        },
+        {
+          "path": "frontend/playwright-report-shared-demo/index.html",
+          "uncompressedSizeBytes": 591235,
+          "sha256": "b24b586bc4624be8f8f303e8681221a0cbffdf359bd9444ed07e9cbe62a022ac"
+        },
+        {
+          "path": "api/neon-browser-inventory.json",
+          "uncompressedSizeBytes": 17890,
+          "sha256": "5c3baa358fcb7c808d1d3335c37af869ed65dc6487f4854944904333d790ed1a"
+        },
+        {
+          "path": "acceptance/playwright-report-saas37/index.html",
+          "uncompressedSizeBytes": 758079,
+          "sha256": "30849de085901cbf9bcd1682867bfc74addbeb1c2a11fb725c0455ffce921da6"
+        }
+      ],
+      "seed": {
+        "status": "completed",
+        "result": {
+          "seedVersion": "saas-3.7-three-demo-customers-v1",
+          "checksum": "7e22005f1e9689fbea4ccfc75084f5f3d224fe10e60a6af23c1cb600f2b70014"
+        }
+      },
+      "inventory": {
+        "sourceRuntimeRef": "6a42c22bd22dad05543c5c4eef893972c61b9d9b",
+        "scope": "isolated-application-custody-not-restore",
+        "branch": "br-falling-glade-b17oqqiv",
+        "totalReferences": 53,
+        "totalReferencedBytes": 6111432,
+        "canonicalReferences": 34,
+        "canonicalMissingReferences": 0,
+        "canonicalReferencedBytes": 5192696,
+        "canonicalMetadataMatchesRetainedManifest": true,
+        "additionalReferences": 19,
+        "additionalReferencedBytes": 918736,
+        "allKeyDigestSuffixesMatchMetadata": true,
+        "inventoryOnlyNotLiveProviderExistenceOrDeletionEvidence": true
+      },
+      "reports": [
+        {
+          "kind": "shared",
+          "archivePath": "frontend/playwright-report-shared-demo/index.html",
+          "embeddedZipSha256": "7cd5a06fcca8c15fea4e62310ca3ddf2110db6b11e2bec4985f84ba11dd5499b",
+          "summaryJsonSha256": "ccaa31d00a8f2dff93a1b69205a67b9a1dc3f2c5bf29fae0926dab6be54ea062",
+          "sourceRef": "5d5102b4f9842ec704ff26441ebe96719324ddb0",
+          "stats": {
+            "total": 3,
+            "expected": 2,
+            "unexpected": 0,
+            "flaky": 0,
+            "skipped": 1,
+            "ok": true
+          },
+          "reportErrors": 0,
+          "tests": [
+            {
+              "file": "business-csv.spec.js",
+              "title": "Business CSV validates, applies, reloads and reimports every owned data type against PostgreSQL",
+              "projectName": "chromium-shared-demo",
+              "outcome": "expected",
+              "results": [
+                {
+                  "status": "passed",
+                  "retry": 0,
+                  "duration": 91594,
+                  "startTime": "2026-10-09T20:01:55.517Z"
+                }
+              ],
+              "skipReasons": []
+            },
+            {
+              "file": "manager-worklist-browser-zoom.spec.js",
+              "title": "manager worklist remains operable at actual Chromium browser zoom 200%",
+              "projectName": "chromium-shared-demo",
+              "outcome": "skipped",
+              "results": [
+                {
+                  "status": "skipped",
+                  "retry": 0,
+                  "duration": 1,
+                  "startTime": "2026-10-09T20:03:27.356Z"
+                }
+              ],
+              "skipReasons": [
+                "Run in the dedicated headed Chromium zoom CI step"
+              ]
+            },
+            {
+              "file": "shared-demo-runtime.spec.js",
+              "title": "shared Demo persists cross-surface state, isolates authority, and resets reproducibly",
+              "projectName": "chromium-shared-demo",
+              "outcome": "expected",
+              "results": [
+                {
+                  "status": "passed",
+                  "retry": 0,
+                  "duration": 101831,
+                  "startTime": "2026-10-09T20:03:27.373Z"
+                }
+              ],
+              "skipReasons": []
+            }
+          ]
+        },
+        {
+          "kind": "saas37",
+          "archivePath": "acceptance/playwright-report-saas37/index.html",
+          "embeddedZipSha256": "c6d86ec71b23bb36834765fd916c6a55d0fc646fbf87daa095a191d0d08ce33b",
+          "summaryJsonSha256": "ef49685b96c6797b835f289ce62486eab7054587e6667220ca8b7d35c7492f2d",
+          "sourceRef": "6228a827502b2cb59c8b9c50adebb9ad6431fe8b",
+          "stats": {
+            "total": 1,
+            "expected": 1,
+            "unexpected": 0,
+            "flaky": 0,
+            "skipped": 0,
+            "ok": true
+          },
+          "reportErrors": 0,
+          "tests": [
+            {
+              "file": "three-customer-scenarios.spec.js",
+              "title": "SaaS 3.7: three visible scenarios persist, isolate authority and restore twice",
+              "projectName": "chromium-shared-demo",
+              "outcome": "expected",
+              "results": [
+                {
+                  "status": "passed",
+                  "retry": 0,
+                  "duration": 534912,
+                  "startTime": "2026-10-09T20:05:10.800Z"
+                }
+              ],
+              "skipReasons": []
+            }
+          ],
+          "scenarioEvidence": {
+            "schemaVersion": 1,
+            "browser": "chromium-shared-demo",
+            "seedVersion": "saas-3.7-three-demo-customers-v1",
+            "checksum": "7e22005f1e9689fbea4ccfc75084f5f3d224fe10e60a6af23c1cb600f2b70014",
+            "cycles": [
+              {
+                "cycle": 1,
+                "northwindRooms": 10,
+                "northwindSeedRequests": 20,
+                "contosoTasksCompleted": 7,
+                "fabrikamRoomsImported": 2,
+                "allThreeRestored": true,
+                "checksum": "7e22005f1e9689fbea4ccfc75084f5f3d224fe10e60a6af23c1cb600f2b70014"
+              },
+              {
+                "cycle": 2,
+                "northwindRooms": 10,
+                "northwindSeedRequests": 20,
+                "contosoTasksCompleted": 7,
+                "fabrikamRoomsImported": 2,
+                "allThreeRestored": true,
+                "checksum": "7e22005f1e9689fbea4ccfc75084f5f3d224fe10e60a6af23c1cb600f2b70014"
+              }
+            ],
+            "cleanupVerified": true
+          }
+        }
+      ]
+    },
+    {
+      "artifactId": 11644106258,
+      "artifactMetadataUrl": "https://api.github.com/repos/floriankreutzer/conference-manager-api/actions/artifacts/11644106258",
+      "archiveFileName": "saas38-11644106258.zip",
+      "archiveSizeBytes": 611364,
+      "archiveSha256": "feb36ec74843fb22847f0b44bd6960901a471093bff9e16c1397c39f41f5d395",
+      "browserProject": "webkit-shared-demo",
+      "archiveEntries": [
+        {
+          "path": "api/neon-browser-seed.json",
+          "uncompressedSizeBytes": 161,
+          "sha256": "6c8516e1405145e7377f15ccdb4335e3fc6a02ce86f85242c6a342b155fdaff3"
+        },
+        {
+          "path": "api/neon-browser-inventory.json",
+          "uncompressedSizeBytes": 17890,
+          "sha256": "37f28fb64538d2bcddfd9c1be495885864378efc38e149a6732a2321bc2f6553"
+        },
+        {
+          "path": "frontend/playwright-report-shared-demo/index.html",
+          "uncompressedSizeBytes": 592199,
+          "sha256": "ebe5998cc0846314200456843fadab75541bcc43926c1bd70b4ac82243556dc6"
+        },
+        {
+          "path": "acceptance/playwright-report-saas37/index.html",
+          "uncompressedSizeBytes": 741015,
+          "sha256": "7453073c42cfd406fdc906fc4a5c5dd5a4f54b6a4a642df46a0d479dff44d079"
+        }
+      ],
+      "seed": {
+        "status": "completed",
+        "result": {
+          "seedVersion": "saas-3.7-three-demo-customers-v1",
+          "checksum": "7e22005f1e9689fbea4ccfc75084f5f3d224fe10e60a6af23c1cb600f2b70014"
+        }
+      },
+      "inventory": {
+        "sourceRuntimeRef": "6a42c22bd22dad05543c5c4eef893972c61b9d9b",
+        "scope": "isolated-application-custody-not-restore",
+        "branch": "br-falling-glade-b17oqqiv",
+        "totalReferences": 53,
+        "totalReferencedBytes": 6111432,
+        "canonicalReferences": 34,
+        "canonicalMissingReferences": 0,
+        "canonicalReferencedBytes": 5192696,
+        "canonicalMetadataMatchesRetainedManifest": true,
+        "additionalReferences": 19,
+        "additionalReferencedBytes": 918736,
+        "allKeyDigestSuffixesMatchMetadata": true,
+        "inventoryOnlyNotLiveProviderExistenceOrDeletionEvidence": true
+      },
+      "reports": [
+        {
+          "kind": "shared",
+          "archivePath": "frontend/playwright-report-shared-demo/index.html",
+          "embeddedZipSha256": "83e4aecc00bd92d2941c12f6827c3e66a68825754185a5ee8d8cb9d45cf02f59",
+          "summaryJsonSha256": "a25aa471bbb8bc622f0ec2d3cb52e8c13c5d6abd6f9da1fc00b1631eb57db985",
+          "sourceRef": "5d5102b4f9842ec704ff26441ebe96719324ddb0",
+          "stats": {
+            "total": 3,
+            "expected": 2,
+            "unexpected": 0,
+            "flaky": 0,
+            "skipped": 1,
+            "ok": true
+          },
+          "reportErrors": 0,
+          "tests": [
+            {
+              "file": "business-csv.spec.js",
+              "title": "Business CSV validates, applies, reloads and reimports every owned data type against PostgreSQL",
+              "projectName": "webkit-shared-demo",
+              "outcome": "expected",
+              "results": [
+                {
+                  "status": "passed",
+                  "retry": 0,
+                  "duration": 90411,
+                  "startTime": "2026-10-09T20:15:41.250Z"
+                }
+              ],
+              "skipReasons": []
+            },
+            {
+              "file": "manager-worklist-browser-zoom.spec.js",
+              "title": "manager worklist remains operable at actual Chromium browser zoom 200%",
+              "projectName": "webkit-shared-demo",
+              "outcome": "skipped",
+              "results": [
+                {
+                  "status": "skipped",
+                  "retry": 0,
+                  "duration": 2,
+                  "startTime": "2026-10-09T20:17:12.314Z"
+                }
+              ],
+              "skipReasons": [
+                "Run in the dedicated headed Chromium zoom CI step"
+              ]
+            },
+            {
+              "file": "shared-demo-runtime.spec.js",
+              "title": "shared Demo persists cross-surface state, isolates authority, and resets reproducibly",
+              "projectName": "webkit-shared-demo",
+              "outcome": "expected",
+              "results": [
+                {
+                  "status": "passed",
+                  "retry": 0,
+                  "duration": 135347,
+                  "startTime": "2026-10-09T20:17:12.337Z"
+                }
+              ],
+              "skipReasons": []
+            }
+          ]
+        },
+        {
+          "kind": "saas37",
+          "archivePath": "acceptance/playwright-report-saas37/index.html",
+          "embeddedZipSha256": "305fd6940dc4790421a0d6776ef9fd210843f825b8af46b5909edd6605c18ce6",
+          "summaryJsonSha256": "46e7db145c8741560b518996fe268e05571f9b179645bfe802b668b5bc2d411f",
+          "sourceRef": "6228a827502b2cb59c8b9c50adebb9ad6431fe8b",
+          "stats": {
+            "total": 1,
+            "expected": 1,
+            "unexpected": 0,
+            "flaky": 0,
+            "skipped": 0,
+            "ok": true
+          },
+          "reportErrors": 0,
+          "tests": [
+            {
+              "file": "three-customer-scenarios.spec.js",
+              "title": "SaaS 3.7: three visible scenarios persist, isolate authority and restore twice",
+              "projectName": "webkit-shared-demo",
+              "outcome": "expected",
+              "results": [
+                {
+                  "status": "passed",
+                  "retry": 0,
+                  "duration": 736703,
+                  "startTime": "2026-10-09T20:19:29.617Z"
+                }
+              ],
+              "skipReasons": []
+            }
+          ],
+          "scenarioEvidence": {
+            "schemaVersion": 1,
+            "browser": "webkit-shared-demo",
+            "seedVersion": "saas-3.7-three-demo-customers-v1",
+            "checksum": "7e22005f1e9689fbea4ccfc75084f5f3d224fe10e60a6af23c1cb600f2b70014",
+            "cycles": [
+              {
+                "cycle": 1,
+                "northwindRooms": 10,
+                "northwindSeedRequests": 20,
+                "contosoTasksCompleted": 7,
+                "fabrikamRoomsImported": 2,
+                "allThreeRestored": true,
+                "checksum": "7e22005f1e9689fbea4ccfc75084f5f3d224fe10e60a6af23c1cb600f2b70014"
+              },
+              {
+                "cycle": 2,
+                "northwindRooms": 10,
+                "northwindSeedRequests": 20,
+                "contosoTasksCompleted": 7,
+                "fabrikamRoomsImported": 2,
+                "allThreeRestored": true,
+                "checksum": "7e22005f1e9689fbea4ccfc75084f5f3d224fe10e60a6af23c1cb600f2b70014"
+              }
+            ],
+            "cleanupVerified": true
+          }
+        }
+      ]
+    }
+  ],
+  "combinedInventory": {
+    "uniqueRetainedReferences": 71,
+    "sharedReferencesAcrossBrowsers": 35,
+    "canonicalReferences": 34,
+    "additionalDistinctReferences": 37,
+    "totalReferencedBytes": 6846628,
+    "canonicalReferencedBytes": 5192696,
+    "additionalReferencedBytes": 1653932,
+    "canonicalManifestSha256": "0d4cece4b98b531c346830164c383a2c6c8a8a324f8990b3c7d50e0f3e4fd39f",
+    "canonicalManifestEvidenceUrl": "https://github.com/floriankreutzer/conference-manager/issues/264#issuecomment-6089229185",
+    "interpretation": "Union of the two retained run inventories, not a current provider object listing. Additional references have custody evidence, not deletion authorization."
+  },
+  "combinedTests": {
+    "reportedCases": 8,
+    "passed": 6,
+    "skipped": 2,
+    "failed": 0,
+    "flaky": 0,
+    "retries": 0,
+    "verifiedScenarioResetCycles": 4,
+    "skipExplanation": "The separate 200% headed Chromium browser zoom case is intentionally skipped in both shared reports and delegates to its dedicated CI step. These archives do not attest that dedicated step."
+  },
+  "retention": {
+    "archivesPersistentlySaved": true,
+    "originalArchiveBytesRetained": true,
+    "saveObservedAt": "2026-10-10T06:04:03Z",
+    "privateStorageIdentifiersOmitted": true
+  },
+  "limitations": [
+    "This is real Neon object-storage application acceptance with runner-local PostgreSQL, not recovery of a restored Neon database/object pair.",
+    "The reports verify application cleanup and canonical resets; cleanupVerified does not prove deletion of all additional provider objects.",
+    "No production media cutover, PostgreSQL blob purge, live alert delivery, representative business-load capacity or attributable invoice savings is claimed.",
+    "Archive SHA-256 and retained JSON evidence do not replace separate failed rollback, corrupt-object and historical-revision application checks."
+  ]
+}
