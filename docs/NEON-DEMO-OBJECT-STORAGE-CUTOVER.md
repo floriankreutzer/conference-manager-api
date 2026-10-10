@@ -111,7 +111,9 @@ to PostgreSQL without retrieving or replacing unrelated Render secrets.
    child. Retain the actual four-role preflight,
    exact restored objects, both complete browser contracts and verified PostgreSQL
    rollback. Retain real missing/corrupt-object, failed-rollback and historical
-   Room reattachment/read evidence. A prepared workflow is not an executed result.
+   Room reattachment/read evidence from its mandatory `faults` phase. That phase
+   must precede the unchanged browser contracts and positive rollback; native or
+   PostgreSQL fixture checks alone are not a real-provider execution result.
 3. Revoke temporary exercise credentials and remove temporary Actions secrets;
    dispose of the authorized child/compute. Preserve the protected restored and
    independent backup baselines and their retained evidence.

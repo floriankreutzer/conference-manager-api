@@ -168,6 +168,9 @@ jobs:
           done
           echo "The separate Demo API processes did not become ready." >&2
           exit 1
+      - name: Verify real provider faults, failed rollback and authorized Room history before resets
+        working-directory: api
+        run: node scripts/neon-recovery-acceptance.mjs faults
       - name: chromium complete shared acceptance
         working-directory: frontend
         env:
@@ -218,6 +221,7 @@ jobs:
           name: neon-restored-pair-${{ github.run_id }}
           path: |
             api/neon-recovery-preflight.json
+            api/neon-recovery-faults.json
             api/neon-recovery-rollback.json
             api/neon-recovery-inventory.json
             frontend/playwright-report-recovery-*/

@@ -4,7 +4,9 @@ import { loadDemoConfig, loadDemoCustomerConfig, loadDemoPlatformConfig } from '
 import { createDemoCustomerComposition } from '../src/demo/customer-composition.js';
 import { createDemoPlatformComposition } from '../src/demo/platform-composition.js';
 import { createNeonObjectStorage } from '../src/media/neon-object-storage.js';
-import { restoredMediaReferences, verifyRestoredProviderBytes, verifyRestoredSemanticState } from './support/neon-recovery-media.mjs';
+import { readRestoredMediaReferences, verifyRestoredProviderBytes, verifyRestoredSemanticState } from './support/neon-recovery-media.mjs';
+import { runRecoveryFaultScenarios, verifyRecoveryBaseline } from './support/neon-recovery-scenarios.mjs';
+import { closeNeonRecoveryResources } from './support/neon-recovery-cleanup.mjs';
 import { readDemoSemanticState } from '../src/persistence/postgres/demo-fixture-state.js';
 import { createPostgresPool } from '../src/persistence/postgres/pool.js';
 import { createPostgresMediaObjectRepository } from '../src/persistence/postgres/media-object-repository.js';
@@ -20,7 +22,7 @@ let stopping = false;
 let maintenancePool;
 const clients = [];
 try {
-  if (process.argv.length !== 3 || !['preflight', 'inventory', 'rollback', 'customer', 'platform'].includes(mode)) {
+  if (process.argv.length !== 3 || !['preflight', 'faults', 'inventory', 'rollback', 'customer', 'platform'].includes(mode)) {
     throw new Error('NEON_RECOVERY_MODE_INVALID');
   }
   const settings = loadNeonRecoveryConfig(process.env);
@@ -51,17 +53,7 @@ try {
       throw new Error('NEON_RECOVERY_SCHEMA_INVALID');
     }
     await operator.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-    const result = await operator.query(`SELECT a.*, i.object_key AS inventory_key,
-      i.byte_length AS inventory_length, encode(i.content_sha256, 'hex') AS inventory_sha256,
-      i.content_type AS inventory_type, i.tenant_id AS inventory_tenant, i.asset_id AS inventory_asset, i.kind AS inventory_kind
-      FROM (SELECT tenant_id, id, 'room' AS kind, content_type, byte_length, object_key,
-        encode(content_sha256, 'hex') AS sha256, bytes IS NOT NULL AND octet_length(bytes) = byte_length
-        AND sha256(bytes) = content_sha256 AS blob_valid FROM tenant_room_media_assets
-        UNION ALL SELECT tenant_id, id, 'catalogue', content_type, byte_length, object_key,
-        encode(content_sha256, 'hex'), bytes IS NOT NULL AND octet_length(bytes) = byte_length
-        AND sha256(bytes) = content_sha256 FROM demo_catalogue_media_assets) a
-      LEFT JOIN media_object_inventory i ON i.object_key = a.object_key ORDER BY a.object_key LIMIT 35`);
-    const { references, manifest, digest } = restoredMediaReferences(result.rows);
+    const { references, manifest, digest } = await readRestoredMediaReferences(operator);
     storage = createNeonObjectStorage(settings.storage);
     await verifyRestoredProviderBytes(storage, references);
     const mediaObjects = createPostgresMediaObjectRepository(operator, { storage, includeDemoCatalogue: true });
@@ -73,6 +65,44 @@ try {
       objects: manifest, manifestSha256: digest, semanticChecksum,
       databaseBlobsVerified: true, providerBytesVerified: true, businessStateVerified: true })}\n`,
     { mode: 0o600, flag: 'wx' });
+  } else if (mode === 'faults') {
+    const evidence = { schemaVersion: 1, scope: 'restored-pair-http-fault-history-not-full-recovery',
+      sourceRuntimeRef: process.env.GITHUB_SHA, branch: settings.branch,
+      sourceBranch: RECOVERY_ROOT, snapshot: RECOVERY_SNAPSHOT, outcome: 'started', cases: [] };
+    try {
+      const authority = await operator.query(`SELECT has_table_privilege(current_user,
+        'public.media_object_inventory', 'DELETE') AS maintenance`);
+      if (authority.rows[0]?.maintenance !== true) throw new Error('NEON_RECOVERY_MAINTENANCE_INVALID');
+      storage = createNeonObjectStorage(settings.storage);
+      const before = await verifyRecoveryBaseline({ client: operator, storage });
+      evidence.before = { manifestSha256: before.digest, objects: before.references.length,
+        semanticChecksum: before.semanticChecksum, retainedDatabaseBlobsVerified: true, providerBytesVerified: true };
+      maintenancePool = createPostgresPool({ mode: 'test', databaseUrl: config.databases.migration.url,
+        databaseSsl: 'verify-full', databasePoolMax: 2, databaseConnectionTimeoutMs: 5000,
+        databaseStatementTimeoutMs: 10000, databaseIdleTimeoutMs: 1000 });
+      const mediaObjects = createPostgresMediaObjectRepository(maintenancePool, { storage, includeDemoCatalogue: true });
+      const repository = createPostgresMediaBackfillRepository(maintenancePool, { mediaObjects, includeDemoCatalogue: true });
+      const assertAuthority = async () => {
+        try {
+          await operator.query('BEGIN READ ONLY');
+          const currentExpiry = await assertNeonRecoveryIdentity(operator, config.databases.migration.role, settings.branch);
+          await operator.query('COMMIT');
+          return currentExpiry;
+        } catch {
+          await operator.query('ROLLBACK').catch(() => {});
+          throw new Error('NEON_RECOVERY_MUTATION_AUTHORITY_INVALID');
+        }
+      };
+      await runRecoveryFaultScenarios({ client: operator, repository, storage, settings,
+        references: before.references, expiresAt: expires, assertAuthority, evidence });
+      evidence.outcome = 'passed';
+    } catch (error) {
+      evidence.outcome = 'failed';
+      evidence.restorationFailed = error?.message === 'NEON_RECOVERY_RESTORATION_FAILED';
+      throw error;
+    } finally {
+      await writeFile('neon-recovery-faults.json', `${JSON.stringify(evidence)}\n`, { mode: 0o600, flag: 'wx' });
+    }
   } else if (mode === 'inventory') {
     await operator.query('BEGIN READ ONLY');
     const result = await operator.query(`SELECT object_key, content_type, byte_length,
@@ -127,19 +157,20 @@ try {
 } catch {
   process.stderr.write('NEON_RECOVERY_ACCEPTANCE_FAILED\n');
   process.exitCode = 1;
-  if (composition) await Promise.allSettled([composition.stop()]);
+  if (composition) await closeNeonRecoveryResources([() => composition.stop()]);
   composition = null;
 } finally {
-  await Promise.allSettled(clients.map((client) => client.end()));
-  await maintenancePool?.end();
-  if (!composition) storage?.close();
+  await closeNeonRecoveryResources([
+    ...clients.map((client) => () => client.end()),
+    () => maintenancePool?.end(),
+    () => { if (!composition) return storage?.close(); },
+  ]);
 }
 
 async function stop(code) {
   if (stopping) return;
   stopping = true;
   clearTimeout(expiryTimer);
-  process.exitCode = code;
-  try { await composition.stop(); } catch { process.exitCode = 1; }
-  finally { storage.close(); }
+  process.exitCode ||= code;
+  await closeNeonRecoveryResources([() => composition.stop(), () => storage.close()]);
 }
