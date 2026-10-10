@@ -95,5 +95,6 @@ test('recovery workflow preserves both immutable full browser contracts and does
   assert.match(workflow, /neon-recovery-acceptance.mjs preflight/);
   assert.match(workflow, /neon-recovery-acceptance.mjs rollback/);
   assert.match(workflow, /neon-recovery-acceptance.mjs inventory/);
+  assert.match(workflow, /^            api\/neon-recovery-preflight-failure\.json$/m);
   assert.doesNotMatch(workflow, /pull_request:|push:|continue-on-error|db:migrate|provision-shared-demo-ci|\bmjs seed\b/);
 });

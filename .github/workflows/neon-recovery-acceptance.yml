@@ -221,6 +221,7 @@ jobs:
           name: neon-restored-pair-${{ github.run_id }}
           path: |
             api/neon-recovery-preflight.json
+            api/neon-recovery-preflight-failure.json
             api/neon-recovery-faults.json
             api/neon-recovery-rollback.json
             api/neon-recovery-inventory.json

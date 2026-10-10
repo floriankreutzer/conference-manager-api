@@ -17,6 +17,55 @@ comment 6089229185. This transfer is not full application recovery acceptance.
 Canonical object manifest SHA-256:
 `0d4cece4b98b531c346830164c383a2c6c8a8a324f8990b3c7d50e0f3e4fd39f`.
 
+### First execution and metadata defect
+
+[Run 38041237794](https://github.com/floriankreutzer/conference-manager-api/actions/runs/38041237794)
+on `d3ba6a3f37c68cea156265eb89f8b8960287e042` failed in preflight on
+10 October 2026 at 09:25:01 UTC, before API startup, faults, browser acceptance or
+positive rollback. Its always-run inventory succeeded; that phase exercised all
+four database identities but did not read object storage. The failed run and its
+original inventory archive remain failed evidence, retained under SHA-256
+`f9927b43d66f4dcb542955c8e1b568b221625e10268aec691c969cc779a11e64`.
+
+Subsequent independent GETs found correct lengths and hashes for all 34 child
+objects, but every response had `application/x-www-form-urlencoded` instead of
+the expected 11 `image/png` and 23 `image/webp` values. For one Catalogue object,
+the protected restore parent returned that same wrong MIME while the independent
+backup returned identical bytes with `image/png`. This comparison covers that
+sample only; neither protected branch received a complete MIME audit or repair.
+The existing application adapter correctly rejects mismatched response metadata.
+The generic original failure log does not exclude another preflight error.
+
+Only the disposable child was repaired: 09:44:39–09:48:00 UTC, identical bytes
+under the same 34 keys with the canonical MIME, followed by complete size/hash/MIME
+GET verification. The operator used official SDK presigns over its existing proxy;
+this did not execute the runner's unchanged application adapter or prove complete
+recovery. Two earlier operator transport attempts failed and remain recorded.
+The first marker window was never renewed. At 09:48:42 UTC, its remaining 29:35
+was shorter than the measured 31:15 full reference run, with remote-Neon duration
+still unmeasured. No second workflow was started. All three child credentials
+were confirmed revoked; the child and its compute were confirmed absent from
+independent project inventories after cleanup. Production and all five protected
+branches were retained. Issue #264 records the full evidence and cleanup.
+
+### Object metadata prerequisite
+
+Before dispatch, inspect every inherited object against its authoritative
+database reference: exact immutable key, length, SHA-256 **and Content-Type**.
+An inventory match or correct bytes alone does not verify the restored object.
+Read through the unchanged application adapter using the intended child credential
+where that execution path is available. An operator GET is useful diagnosis but
+does not replace the runner's mandatory adapter preflight.
+
+For any separately authorized transfer or correction on the disposable child,
+explicitly set the upload Content-Type from the verified reference and send the
+verified binary body. Do not allow an HTTP client's implicit form Content-Type.
+GET every written object afterward and verify the same four properties; a PUT
+status, object listing or HEAD alone is insufficient. A mismatch blocks dispatch.
+Do not infer permission to overwrite protected parents or backup evidence. Resolve
+preparation defects before creating the single fixed marker, and preserve failed
+attempts without classifying a corrected copy as an originally flawless restore.
+
 ## Protected execution
 
 The owner approved one additional disposable child named
@@ -25,6 +74,12 @@ The owner approved one additional disposable child named
 child including its data/compute afterward. Provision it only when the reviewed
 workflow, secrets and execution path are ready. Keep the restored baseline,
 production, acceptance, original root and independent backup unchanged.
+
+That one-child authorization was used by `br-weathered-boat-b1fe52yn`, now deleted.
+The following procedure is retained for a future separately approved exercise;
+it does not authorize a replacement child or a new time window. Finish the
+corrective source work and identify the complete next execution scope before
+requesting another bounded resource decision.
 
 Create a normal child of the already paired `br-rapid-morning-b1a704p9`, not
 another snapshot restore or a schema-only branch. Normal children inherit their
@@ -48,6 +103,27 @@ before reading the marker or allocating provider access.
 
 Connect as `cm_demo_migration` to the independently verified child database
 `conference_manager_demo_shared`. Substitute only its verified branch ID below.
+First inspect both global and `public`-schema default relation ACLs for that owner;
+additional grants may be applied when the view is created:
+
+```sql
+SELECT pg_get_userbyid(defaults.defaclrole) AS owner,
+       CASE WHEN defaults.defaclnamespace = 0 THEN '(global)'
+            ELSE namespace.nspname END AS schema_name,
+       CASE WHEN privilege.grantee = 0 THEN 'PUBLIC'
+            ELSE pg_get_userbyid(privilege.grantee) END AS grantee,
+       privilege.privilege_type, privilege.is_grantable
+FROM pg_catalog.pg_default_acl AS defaults
+LEFT JOIN pg_catalog.pg_namespace AS namespace
+  ON namespace.oid = defaults.defaclnamespace
+CROSS JOIN LATERAL pg_catalog.aclexplode(defaults.defaclacl) AS privilege
+WHERE defaults.defaclrole = 'cm_demo_migration'::regrole
+  AND defaults.defaclobjtype = 'r'
+  AND (defaults.defaclnamespace = 0 OR namespace.nspname = 'public')
+ORDER BY schema_name, grantee, privilege_type;
+```
+
+This is inspection, not permission to change global default privileges or roles.
 Create the marker once, immediately before dispatch, after checking that the shared
 workflow concurrency group is free. `CREATE VIEW` deliberately fails when the
 relation already exists; do not replace an existing marker or extend its expiry.
@@ -95,9 +171,44 @@ GRANT SELECT ON public.neon_recovery_acceptance
 COMMIT;
 ```
 
-Verify the view owner, the single `singleton=true` row, exact branch/source/
-snapshot/manifest values, SELECT-only runtime/reset grants and revoked PUBLIC
-access. Verify all four live principals can read the same fixed `created_at` and
+Inspect the complete resulting view ACL; checking PUBLIC alone is insufficient:
+
+```sql
+SELECT relation.relkind, pg_get_userbyid(relation.relowner) AS owner,
+       CASE WHEN privilege.grantee = 0 THEN 'PUBLIC'
+            ELSE pg_get_userbyid(privilege.grantee) END AS grantee,
+       pg_get_userbyid(privilege.grantor) AS grantor,
+       privilege.privilege_type, privilege.is_grantable
+FROM pg_catalog.pg_class AS relation
+JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(relation.relacl,
+  pg_catalog.acldefault('r', relation.relowner))) AS privilege
+WHERE namespace.nspname = 'public' AND relation.relname = 'neon_recovery_acceptance'
+ORDER BY grantee, privilege_type;
+
+SELECT attribute.attname, privilege.*
+FROM pg_catalog.pg_attribute AS attribute
+CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) AS privilege
+WHERE attribute.attrelid = 'public.neon_recovery_acceptance'::regclass
+  AND attribute.attnum > 0 AND NOT attribute.attisdropped;
+```
+
+Expected: ordinary view owned by `cm_demo_migration`, its normal owner rights,
+and only `cm_demo_customer`, `cm_demo_platform`, `cm_demo_reset` granted SELECT
+without grant option. PUBLIC and other non-owner grantees have no privileges;
+the column-ACL query returns no rows. If an observed default grant added a role
+such as `authenticated`, revoke its privileges **only on this verified child's
+marker**, then repeat the full ACL readback. Do not change protected branches,
+global defaults, role membership, or the marker definition. Inspect effective
+privileges and observed role-inheritance paths with
+[`has_table_privilege`, `has_any_column_privilege`, and `pg_has_role`](https://www.postgresql.org/docs/18/functions-info.html#FUNCTIONS-INFO-ACCESS-TABLE).
+For `pg_has_role`, inspect `USAGE` for immediately inherited rights and `SET` for
+an allowed role switch; `MEMBER` alone does not establish either access path.
+An unexplained inherited or SET ROLE path blocks dispatch; the database-owner
+threat-model limit below still applies.
+
+Verify the single `singleton=true` row and exact branch/source/snapshot/manifest
+values. Verify all four live principals can read the same fixed `created_at` and
 `expires_at`; the maximum difference remains 60 minutes. Never put dynamic
 `now()` or `clock_timestamp()` expressions in the view's SELECT: that would
 renew the time window on every read. Checkout/install/queue time counts against
@@ -198,6 +309,22 @@ evidence retention or on failure. The operator must enforce compute teardown eve
 if the runner fails; workflow timeout and runtime expiry alone do not delete it.
 
 ## Evidence limits
+
+Errors caught in the preflight body now retain a separate `neon-recovery-preflight-failure.json`
+with `outcome: failed` and scope `restored-pair-preflight-failure-not-acceptance`.
+It identifies the failed stage and only stages already completed, using the fixed
+sequence `configuration`, `identities`, `schema`, `database-media`, `provider-bytes`,
+`semantic-state`, `commit`, `report`. The source SHA is validated or null, durations
+are measured monotonically, and error codes come from an exact allowlist with
+`UNKNOWN` as the fallback. The report contains no raw messages, stacks, causes,
+URLs, credentials, provider payloads or object keys. It is created exclusively
+with mode 0600 and retained by the existing always-run artifact step. Failure to
+write it emits only `NEON_RECOVERY_DIAGNOSTIC_WRITE_FAILED`; the original failure
+status and all cleanup attempts remain. Other modes and successful preflight
+reports retain their existing contracts. A cleanup-only failure after a successful
+preflight body still emits the existing cleanup error and fails the process; it
+does not retrospectively create this failure report. No failure report is a
+partial pass.
 
 Successful preflight, provider-fault/history verification, both complete browser
 contracts and positive rollback are separate required evidence. None alone is the

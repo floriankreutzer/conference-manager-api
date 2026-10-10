@@ -7,6 +7,7 @@ import { createNeonObjectStorage } from '../src/media/neon-object-storage.js';
 import { readRestoredMediaReferences, verifyRestoredProviderBytes, verifyRestoredSemanticState } from './support/neon-recovery-media.mjs';
 import { runRecoveryFaultScenarios, verifyRecoveryBaseline } from './support/neon-recovery-scenarios.mjs';
 import { closeNeonRecoveryResources } from './support/neon-recovery-cleanup.mjs';
+import { createNeonRecoveryPreflightDiagnostics } from './support/neon-recovery-diagnostics.mjs';
 import { readDemoSemanticState } from '../src/persistence/postgres/demo-fixture-state.js';
 import { createPostgresPool } from '../src/persistence/postgres/pool.js';
 import { createPostgresMediaObjectRepository } from '../src/persistence/postgres/media-object-repository.js';
@@ -15,6 +16,8 @@ import { loadNeonRecoveryConfig, assertNeonRecoveryIdentity, RECOVERY_ROOT,
   RECOVERY_SNAPSHOT } from './support/neon-recovery-config.mjs';
 
 const mode = process.argv[2];
+const diagnostics = mode === 'preflight'
+  ? createNeonRecoveryPreflightDiagnostics({ sourceRuntimeRef: process.env.GITHUB_SHA }) : null;
 let storage;
 let composition;
 let expiryTimer;
@@ -35,6 +38,7 @@ try {
     || expectedKeys.some((key) => !settings.databases.some((database) => database.key === key))) {
     throw new Error('NEON_RECOVERY_IDENTITY_INVALID');
   }
+  diagnostics?.advance('identities');
   let expires = Infinity;
   for (const database of settings.databases) {
     const client = new Client({ connectionString: database.url, ssl: { rejectUnauthorized: true },
@@ -47,18 +51,24 @@ try {
   }
   const operator = clients.at(-1);
   if (mode === 'preflight') {
+    diagnostics.advance('schema');
     const versions = await operator.query(`SELECT (SELECT max(version) FROM schema_migrations) AS runtime,
       (SELECT max(version) FROM demo_schema_migrations) AS overlay`);
     if (versions.rows[0]?.runtime !== 44 || versions.rows[0]?.overlay !== 9) {
       throw new Error('NEON_RECOVERY_SCHEMA_INVALID');
     }
+    diagnostics.advance('database-media');
     await operator.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     const { references, manifest, digest } = await readRestoredMediaReferences(operator);
+    diagnostics.advance('provider-bytes');
     storage = createNeonObjectStorage(settings.storage);
     await verifyRestoredProviderBytes(storage, references);
+    diagnostics.advance('semantic-state');
     const mediaObjects = createPostgresMediaObjectRepository(operator, { storage, includeDemoCatalogue: true });
     const semanticChecksum = verifyRestoredSemanticState(await readDemoSemanticState({ client: operator, mediaObjects }));
+    diagnostics.advance('commit');
     await operator.query('COMMIT');
+    diagnostics.advance('report');
     await writeFile('neon-recovery-preflight.json', `${JSON.stringify({ schemaVersion: 1,
       scope: 'restored-pair-byte-preflight-not-full-recovery', sourceRuntimeRef: process.env.GITHUB_SHA,
       branch: settings.branch, sourceBranch: RECOVERY_ROOT, snapshot: RECOVERY_SNAPSHOT,
@@ -154,9 +164,10 @@ try {
     process.once('SIGTERM', () => stop(0));
     process.once('SIGINT', () => stop(0));
   }
-} catch {
+} catch (error) {
   process.stderr.write('NEON_RECOVERY_ACCEPTANCE_FAILED\n');
   process.exitCode = 1;
+  if (diagnostics) await diagnostics.retainFailure(error);
   if (composition) await closeNeonRecoveryResources([() => composition.stop()]);
   composition = null;
 } finally {
