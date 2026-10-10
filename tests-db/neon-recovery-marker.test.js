@@ -82,7 +82,9 @@ test('constant recovery view survives two canonical resets while table and owner
   await migrateDemoUp(migrationPool, { roles: ROLES });
 
   const instructions = await readFile(new URL('../docs/NEON-PAIRED-RECOVERY-ACCEPTANCE.md', import.meta.url), 'utf8');
-  const definition = instructions.match(/```sql\n([\s\S]*?)\n```/)?.[1];
+  const markerBlocks = [...instructions.matchAll(/^```sql neon-recovery-marker-installation\n([\s\S]*?)\n```$/gm)];
+  assert.equal(markerBlocks.length, 1, 'The runbook must contain exactly one named marker installation block.');
+  const definition = markerBlocks[0][1];
   assert.ok(definition, 'The operator runbook must contain its executable marker installation.');
   const install = definition.replace('<VERIFIED_CHILD_ID>', BRANCH);
   const inventory = () => pool.query("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public' ORDER BY tablename");
