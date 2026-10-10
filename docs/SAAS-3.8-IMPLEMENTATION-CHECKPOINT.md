@@ -8,9 +8,37 @@ are recorded separately.
 
 ## Accepted source
 
+### Accepted base for Hosted Demo storage wiring — 10 October 2026
+
+[PR #138](https://github.com/floriankreutzer/conference-manager-api/pull/138)
+merged the constant recovery-marker view and its fail-closed owner/type checks as
+`5784dac63e09033a770fe31c8e66a10655f79d43`, tree
+`f2c2bebd598395d90edd1c2573e3ffbfc3f02707`. All eight PR checks passed. Main CI
+`38030936684` and Secret Scan `38030936895` passed in their first attempt; all seven
+Main check runs completed successfully by `2026-10-10T06:42:11Z`. PostgreSQL accepted
+126 tests in 58 files; all four full browser/storage rows passed. This is the
+accepted source base for the subsequent runtime-wiring work, not a Hosted deploy.
+
+The owner has prioritized activation on the existing Hosted Demo. General FinOps,
+dashboard/alert and representative benchmark completion do not precede every
+storage change. The specific restored-pair, authorization, negative/revision and
+rollback gates still precede a live cutover.
+
+Fresh provider reads on 10 October found the private live-branch bucket enabled
+but empty (zero objects), while the isolated restored root retained all 34 objects
+/ 5,192,696 bytes. Both Render services still served API `356459004dbede11cc3cd17a93d4e6cf515d410b`.
+The normal Demo entrypoints now have explicit opt-in Customer/reset storage wiring,
+strict per-surface configuration and a read-only metadata-mode startup guard.
+PostgreSQL is the default; no runtime startup performs a backfill or rollback.
+The operator copy command already changes authoritative pointers, so the two
+services need a coordinated pause, complete verification and object-aware reset
+configuration. See the [cutover and rollback runbook](NEON-DEMO-OBJECT-STORAGE-CUTOVER.md).
+Runtime preparation does not resolve the protected Secrets/Variables/dispatch
+access boundary or establish that the restored-pair exercise has run.
+
 ### Reconciliation baseline — 10 October 2026
 
-The independently inspected accepted API baseline is
+The earlier independently inspected accepted API baseline was
 `faf241ae2c7d1f15b7d5bbc671d8b62ff888ad96` (PR #137), tree
 `30ff34c5f417369dcf31c488375149fbc5a6ad2a`. Main CI `37995961808` and Secret Scan
 `37995961711` passed. Its final PR candidate `6722c35f8ee249f6d9ccb0d89f50581d99dca9a3`

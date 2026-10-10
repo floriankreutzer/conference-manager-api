@@ -56,7 +56,9 @@ const SQL_STATEMENT = /\b(?:SELECT|INSERT INTO|UPDATE|DELETE FROM)\b/;
 const MEDIA_STORAGE_COMPOSITION_ROOTS = new Set([
   'src/index.js', 'src/customer-composition.js',
   'src/demo/customer-main.js', 'src/demo/customer-composition.js',
+  'src/demo/media-storage-runtime.js',
 ]);
+const DEMO_MEDIA_RUNTIME_ENTRYPOINTS = new Set(['src/demo/customer-main.js', 'src/demo/platform-main.js']);
 
 function normalized(file) {
   return String(file).replaceAll('\\', '/');
@@ -166,7 +168,12 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
     }
     if (graph.get(file)?.includes('src/media/neon-object-storage.js')
       && !MEDIA_STORAGE_COMPOSITION_ROOTS.has(file)) {
-      violations.push(violation(file, 'concrete object storage may be imported only by customer composition roots.'));
+      violations.push(violation(file,
+        'concrete object storage may be imported only by customer composition roots or the restricted Demo media runtime factory.'));
+    }
+    if (graph.get(file)?.includes('src/demo/media-storage-runtime.js')
+      && !DEMO_MEDIA_RUNTIME_ENTRYPOINTS.has(file)) {
+      violations.push(violation(file, 'the Hosted media runtime factory is restricted to Demo process entrypoints.'));
     }
     if (graph.get(file)?.includes('src/persistence/postgres/media-backfill-repository.js')) {
       violations.push(violation(file, 'operator media migration must not enter application runtime modules.'));

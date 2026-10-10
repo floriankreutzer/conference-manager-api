@@ -1,5 +1,6 @@
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
+import { outboundConfigurationViolation } from './outbound-configuration-boundary.mjs';
 
 async function sourceFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -49,10 +50,8 @@ for (const file of files) {
       throw new Error('Guest information validation must remain independent and contain no network transport.');
     }
   }
-  if (/https?:\/\//.test(content)
-    && !['src/config.js', 'src/domain/site-guest-information.js'].includes(file)) {
-    throw new Error(`${file} contains a hard-coded outbound URL; provider destinations require an approved integration boundary.`);
-  }
+  const outboundViolation = outboundConfigurationViolation(file, content);
+  if (outboundViolation) throw new Error(outboundViolation);
   if (/x-tenant-id|x-tenant-context/i.test(content)) {
     throw new Error(`${file} introduces a client-controlled tenant header into the trusted runtime.`);
   }
