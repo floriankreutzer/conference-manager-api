@@ -12,6 +12,20 @@ export function verifyRestoredSemanticState(state) {
   return assertSemanticChecksum(state, expected);
 }
 
+export async function readRestoredMediaReferences(client) {
+  const result = await client.query(`SELECT a.*, i.object_key AS inventory_key,
+    i.byte_length AS inventory_length, encode(i.content_sha256, 'hex') AS inventory_sha256,
+    i.content_type AS inventory_type, i.tenant_id AS inventory_tenant, i.asset_id AS inventory_asset, i.kind AS inventory_kind
+    FROM (SELECT tenant_id, id, 'room' AS kind, content_type, byte_length, object_key,
+      encode(content_sha256, 'hex') AS sha256, bytes IS NOT NULL AND octet_length(bytes) = byte_length
+      AND sha256(bytes) = content_sha256 AS blob_valid FROM public.tenant_room_media_assets
+      UNION ALL SELECT tenant_id, id, 'catalogue', content_type, byte_length, object_key,
+      encode(content_sha256, 'hex'), bytes IS NOT NULL AND octet_length(bytes) = byte_length
+      AND sha256(bytes) = content_sha256 FROM public.demo_catalogue_media_assets) a
+    LEFT JOIN public.media_object_inventory i ON i.object_key = a.object_key ORDER BY a.object_key LIMIT 35`);
+  return restoredMediaReferences(result.rows);
+}
+
 export function restoredMediaReferences(rows) {
   if (!Array.isArray(rows) || rows.length !== 34 || rows.filter(({ kind }) => kind === 'room').length !== 11) {
     throw new Error('NEON_RECOVERY_MEDIA_INVALID');

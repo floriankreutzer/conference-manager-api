@@ -8,7 +8,38 @@ are recorded separately.
 
 ## Accepted source
 
-### Accepted base for Hosted Demo storage wiring — 10 October 2026
+### Accepted normal Demo storage runtime — 10 October 2026
+
+[PR #139](https://github.com/floriankreutzer/conference-manager-api/pull/139)
+merged as `24d1505c1e80fd4b608811630e714d111f161ec0`, preserving the exact tested
+tree `245130370af6e5af5bbb38b236d8565e05f8dda6` of candidate
+`d5be2bf6c04693e25486e4a78ed45de9ed736b51`. All eight required PR checks passed
+in their first attempt. [CI 38033607750](https://github.com/floriankreutzer/conference-manager-api/actions/runs/38033607750)
+completed successfully at `2026-10-10T07:28:56Z`: quality, PostgreSQL 18.6 and all
+four complete browser/storage rows. PostgreSQL passed 131 tests in 59 files;
+the native suite passed 1,023 tests, Platform HTTP security passed 17, HTTP DAST
+passed and the dependency audit reported zero vulnerabilities. Secret Scan
+`38033607730` and Dependency Policy `38033607729` also passed on the exact head.
+Post-merge main CI `38034614908` and Secret Scan `38034614827` are separate
+source-bound evidence, not a Hosted deployment or a real restored-pair run.
+
+The accepted runtime now supports explicitly selected Neon media storage for
+Customer media and the separate Platform reset repository. A temporary read-only
+startup guard checks actual database/role identity and both media kinds before
+SDK allocation. PostgreSQL remains the default. The ordinary PostgreSQL reset CLI
+rejects object mode or external pointers before resetting authoritative media.
+
+The recovery extension adds a mandatory, main-only `faults` phase to the
+existing paired-recovery workflow: real missing/corrupt-object HTTP failures,
+conditional-read denial, exact one-asset failed rollback with unchanged authority,
+verified original-object restoration and authorized historical Room reattachment.
+It retains all existing browser/customer/reset contracts and the positive operator
+rollback. Its native and PostgreSQL fixture tests do not replace actual execution
+on the independently verified disposable child. See the
+[recovery runbook](NEON-PAIRED-RECOVERY-ACCEPTANCE.md) and
+[coordinated cutover runbook](NEON-DEMO-OBJECT-STORAGE-CUTOVER.md).
+
+### Earlier accepted marker foundation — 10 October 2026
 
 [PR #138](https://github.com/floriankreutzer/conference-manager-api/pull/138)
 merged the constant recovery-marker view and its fail-closed owner/type checks as
@@ -17,7 +48,7 @@ merged the constant recovery-marker view and its fail-closed owner/type checks a
 `38030936684` and Secret Scan `38030936895` passed in their first attempt; all seven
 Main check runs completed successfully by `2026-10-10T06:42:11Z`. PostgreSQL accepted
 126 tests in 58 files; all four full browser/storage rows passed. This is the
-accepted source base for the subsequent runtime-wiring work, not a Hosted deploy.
+accepted source base used for the subsequent runtime-wiring work, not a Hosted deploy.
 
 The owner has prioritized activation on the existing Hosted Demo. General FinOps,
 dashboard/alert and representative benchmark completion do not precede every

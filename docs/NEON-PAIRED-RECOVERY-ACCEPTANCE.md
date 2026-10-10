@@ -137,11 +137,55 @@ business state against the canonical seed or its supported dated reset generatio
 in the same read-only transaction. Changed business state fails before any reset;
 the report retains its verified semantic checksum.
 
-The existing Customer/Platform compositions then execute the complete immutable
-shared role/Tenant/CSRF journey and full three-customer/two-reset acceptance in
-Chromium and WebKit sequentially. Frontend serving comes from render.yaml's
-immutable pin; acceptance is `6228a827502b2cb59c8b9c50adebb9ad6431fe8b`.
-No retries, deadline changes, assertion weakening or optional test paths are added.
+After both existing Customer/Platform compositions become ready, the mandatory
+`faults` phase verifies the missing recovery cases before any browser reset can
+hide their effects. It uses the same four live identities, independently bound
+child, unexpired marker and exact restored manifest. It never targets a preserved
+branch or adds a production API endpoint.
+
+- Select exactly one manifest-verified Room object and one Catalogue object. Read
+  and verify their original bytes through the unchanged application storage adapter
+  before any fault. Only the isolated operator may temporarily remove an exact
+  selected key or replace its contents with a same-length corrupt value. The
+  application adapter's normal input and digest validation remains unchanged.
+- Read each missing/corrupt object through an authenticated Customer HTTP session.
+  Ordinary GET, the previously valid ETag and `If-None-Match: *` must all fail with
+  503 and `Cache-Control: no-store`. Retained database bytes must not create a
+  fallback response, and conditional requests must not turn the failure into 304.
+- Exercise the existing operator rollback with a one-asset limit against the exact
+  selected first candidate. A missing/corrupt provider read must fail while all
+  authoritative media rows, pointers, database bytes, inventory and Room references
+  remain unchanged. This proves failed one-asset rollback integrity; it does not
+  establish atomicity across a complete multi-asset batch.
+- Restore the verified original provider bytes in cleanup and verify their digest
+  through the unchanged adapter. Failure to restore or verify fails the phase.
+  Do not begin another fault without sufficient time for restoration inside the
+  existing exercise deadline.
+- Use the existing authorized Locations history and rollback contracts to detach
+  a Room media reference, verify that the detached asset is unavailable through its
+  ordinary HTTP route, inspect the immutable historical snapshot, then reattach it
+  with the expected current revision. The restored application GET must return the
+  exact original bytes and ETag. This is an application read of a historical Room
+  reference; it does not invent historical Catalogue-read functionality.
+
+The phase retains minimized source/branch/manifest-bound evidence and re-verifies
+all 34 provider objects and canonical business semantics before browser acceptance.
+Cookies, CSRF tokens, credentials, connection strings and raw media bytes are not
+part of its report. The bounded fault injector belongs only to this isolated
+operator phase, not to either application composition or the normal media adapter.
+
+If a history check fails after detachment, the exercise stops without forcing a
+rollback from an unverified historical configuration. The unchanged-business-state
+claim applies only to each measured failed one-asset rollback, not to an entire
+failed exercise. Verified provider-byte restoration is a separate cleanup guarantee;
+any failed restoration leaves custody unresolved until the operator completes the
+approved child cleanup.
+
+The compositions then execute the complete immutable shared role/Tenant/CSRF
+journey and full three-customer/two-reset acceptance in Chromium and WebKit
+sequentially. Frontend serving comes from render.yaml's immutable pin; acceptance
+is `6228a827502b2cb59c8b9c50adebb9ad6431fe8b`. No retries, deadline changes,
+assertion weakening or optional test paths are added.
 After both browsers pass, APIs stop and the existing operator repository rolls back
 Room/Catalogue pointers in at most six existing bounded batches per kind, verifying
 all 34 resulting PostgreSQL blobs. It never purges blobs or deletes objects.
@@ -155,11 +199,12 @@ if the runner fails; workflow timeout and runtime expiry alone do not delete it.
 
 ## Evidence limits
 
-Successful preflight, browsers and positive rollback are separate named evidence;
-none alone is the full retained restore artifact required by purge. Real corrupt
-object failure, failed rollback preserving its pointer/data, and explicitly retained
-historical-revision application reads must additionally be verified and retained.
-Unit/provider-fixture tests do not replace those real-provider negative checks.
+Successful preflight, provider-fault/history verification, both complete browser
+contracts and positive rollback are separate required evidence. None alone is the
+full retained restore artifact required by purge. The fault phase must actually
+run against the independently verified restored Neon pair and its reports must be
+retained; adding the workflow phase or passing native/PostgreSQL fixture tests does
+not establish that real-provider execution succeeded.
 This prepared workflow is not an executed success, production cutover, FinOps
 completion, representative business load or permission to close SaaS 3.8.
 
