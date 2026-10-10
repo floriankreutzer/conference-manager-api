@@ -129,7 +129,7 @@ workflow concurrency group is free. `CREATE VIEW` deliberately fails when the
 relation already exists; do not replace an existing marker or extend its expiry.
 The SQL captures database time once and stores fixed timestamp literals in the view:
 
-```sql
+```sql neon-recovery-marker-installation
 BEGIN;
 
 DO $operator$
