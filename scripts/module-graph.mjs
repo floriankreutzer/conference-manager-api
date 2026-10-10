@@ -23,6 +23,11 @@ export function moduleImports(source) {
     })));
 }
 
+export function hasDynamicModuleImport(source) {
+  const [imports] = parse(String(source || ''));
+  return imports.some((entry) => entry.type === 'dynamic');
+}
+
 export function moduleSpecifiers(source) {
   return Object.freeze(moduleImports(source).map((entry) => entry.specifier));
 }

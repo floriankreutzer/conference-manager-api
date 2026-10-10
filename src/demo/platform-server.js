@@ -71,6 +71,7 @@ export function createDemoPlatformHttpServer(options) {
     maxHeaderSize: 16_384,
     requireHostHeader: true,
   }, async (request, response) => {
+    if (options.trafficGate?.handle(request, response)) return;
     const path = requestPath(request, config.publicOrigin);
     if (path === LIVENESS_PATH || (request.method === 'POST' && path === RESET_PATH)) {
       await app(request, response);

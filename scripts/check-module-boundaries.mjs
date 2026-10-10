@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { backendSaas2BoundaryViolations } from './backend-boundary-policy.mjs';
 import {
   buildModuleGraph,
+  hasDynamicModuleImport,
   isInside,
   moduleImports,
 } from './module-graph.mjs';
@@ -59,6 +60,11 @@ const MEDIA_STORAGE_COMPOSITION_ROOTS = new Set([
   'src/demo/media-storage-runtime.js',
 ]);
 const DEMO_MEDIA_RUNTIME_ENTRYPOINTS = new Set(['src/demo/customer-main.js', 'src/demo/platform-main.js']);
+const DEMO_CLOSED_BOOTSTRAP_MODULES = new Set([
+  'src/demo/entrypoint-runtime.js', 'src/demo/closed-runtime.js', 'src/demo/traffic-gate.js',
+  'src/demo/traffic-gate-config.js', 'src/demo/config.js', 'src/demo/runtime-contract.js',
+  'src/demo/media-storage-config.js', 'src/media/neon-storage-config.js',
+]);
 
 function normalized(file) {
   return String(file).replaceAll('\\', '/');
@@ -162,6 +168,15 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
 
   for (const [file, source] of sources) {
     const imports = moduleImports(source);
+    if (DEMO_CLOSED_BOOTSTRAP_MODULES.has(file)) {
+      const activePath = firstReachablePath(graph, file, (dependency) => !DEMO_CLOSED_BOOTSTRAP_MODULES.has(dependency));
+      const externalImport = imports.some(({ specifier }) => !specifier.startsWith('.')
+        && !['node:http', 'node:crypto'].includes(specifier));
+      if (activePath || externalImport || hasDynamicModuleImport(source)) {
+        violations.push(violation(file,
+          'closed Demo bootstrap must remain within pure configuration, traffic gating and the bounded listener.'));
+      }
+    }
     if (imports.some(({ specifier }) => specifier.startsWith('@aws-sdk/'))
       && file !== 'src/media/neon-object-storage.js') {
       violations.push(violation(file, 'the object-storage SDK is restricted to the private storage adapter.'));

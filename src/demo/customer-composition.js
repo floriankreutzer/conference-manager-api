@@ -64,6 +64,7 @@ export function createDemoCustomerComposition({
   readiness,
   mediaObjectStorage = null,
   staticFileAdapter = null,
+  trafficGate = null,
   logger = createLogger(),
   metrics = createMetricsRegistry(),
 } = {}) {
@@ -109,6 +110,7 @@ export function createDemoCustomerComposition({
       ...options,
       demoRuntimeGatePool: selectedGatePool,
       staticFileAdapter,
+      trafficGate,
     }),
     routeModulesFactory({ sessionService }) {
       const personaService = createDemoCustomerPersonaService({

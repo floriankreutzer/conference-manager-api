@@ -148,3 +148,31 @@ test('the established policy admits the isolated Production auth root and Platfo
 
   assert.deepEqual(violations, []);
 });
+
+test('closed Demo bootstrap forbids direct and transitive active resource imports', () => {
+  for (const target of ['src/demo/platform-composition.js', 'src/persistence/postgres/pool.js',
+    'src/media/neon-object-storage.js', 'src/demo/static-file-loader.js']) {
+    const violations = architectureConsolidationBoundaryViolations({
+      'src/demo/entrypoint-runtime.js': "import './closed-runtime.js';",
+      'src/demo/closed-runtime.js': `import '../../${target}';`,
+      [target]: 'export const forbidden = true;',
+    });
+    assert.ok(violations.some((item) => item.includes('closed Demo bootstrap')));
+  }
+});
+
+test('closed Demo bootstrap rejects external SDK and opaque dynamic import authority', () => {
+  for (const source of ["import '@aws-sdk/client-s3';", "import 'pg';",
+    'const load = (target) => import(target);', 'const load = (target) => import /* comment */ (target);']) {
+    const violations = architectureConsolidationBoundaryViolations({ 'src/demo/closed-runtime.js': source });
+    assert.ok(violations.some((item) => item.includes('closed Demo bootstrap')));
+  }
+});
+
+test('closed Demo listener may use bounded native HTTP and injected gate without active dependencies', () => {
+  assert.deepEqual(architectureConsolidationBoundaryViolations({
+    'src/demo/entrypoint-runtime.js': "import './closed-runtime.js'; import './traffic-gate.js';",
+    'src/demo/closed-runtime.js': "import http from 'node:http'; export const listen = http.createServer;",
+    'src/demo/traffic-gate.js': "import { timingSafeEqual } from 'node:crypto'; export const compare = timingSafeEqual;",
+  }), []);
+});

@@ -126,6 +126,140 @@ to PostgreSQL without retrieving or replacing unrelated Render secrets.
    coordinated service pause/resume and exact-version deployment. Do this before
    interrupting the live Demo.
 
+## Draft application traffic gate: preparation, not cutover approval
+
+The Demo entrypoints support an application gate for the existing two Render Free
+services. This gate does not replace accepted real-provider paired recovery,
+required CI/browser rows, current live inventory or explicit deployment evidence.
+It does not activate provider maintenance mode, create a service or change a plan.
+The full protected Hosted browser adapter and its secret-leak verification remain
+required before the `acceptance` mode can be used operationally.
+
+| Setting | Contract |
+| --- | --- |
+| `DEMO_TRAFFIC_MODE` | Absent means `open`; exact values are `open`, `closed`, `acceptance` |
+| `DEMO_CUSTOMER_ACCEPTANCE_TOKEN` | Customer service only; independent random 32 bytes encoded as 64 lowercase hex characters |
+| `DEMO_PLATFORM_ACCEPTANCE_TOKEN` | Platform service only; separate independent token in the same format |
+| `DEMO_TRAFFIC_ACCEPTANCE_EXPIRES_AT` | Acceptance only; absolute UTC ISO timestamp including milliseconds, at most 90 minutes ahead at startup |
+
+Nonempty unused settings, another surface's token, unknown `DEMO_TRAFFIC_*`
+settings, malformed deadlines and aliases of configured application/storage/DB
+secrets prevent startup. An already expired deadline starts closed; restarting
+cannot extend the same absolute deadline. Remove acceptance tokens and deadline
+when selecting `open` or `closed`. Do not extend an acceptance window to rescue a
+failed run. Any subsequent exercise needs its own independently accepted basis.
+
+`closed` validates the ordinary pure Demo and media configuration before opening
+only a bounded HTTP listener. It constructs no active composition, database pool,
+storage SDK, static-file adapter or projection worker, and therefore can start
+while the database is in a mixed-pointer transition state. Opening or entering
+acceptance retains every existing actual database identity, role, sentinel, seed,
+media-mode and composition readiness check. There is no startup migration.
+
+All static files, APIs and resets return 503 while closed. The exact existing
+liveness GET remains available; ordinary application readiness remains 503. The
+new exact GET paths `/api/v1/health/deploy` and
+`/api/v1/platform/health/deploy` report deployment readiness without database
+initialization only when closed. In `open` and `acceptance`, these strictly
+bodyless exact GETs dispatch to the existing normal application readiness route,
+including its dependency checks and 503 failures; no acceptance token is needed
+for this health-only path. A closed 200 is not business readiness. At expiry, ordinary traffic closes immediately and deployment health is 503 while
+active resources drain. A successful complete stop permits a closed listener and
+a green deployment probe. Failed or hanging stops terminate the process after at
+most the 10-second shutdown watchdog; no closed-ready claim follows failed stop.
+Expiry during unfinished active bootstrap terminates the process because startup
+has not yet returned a safely stoppable runtime. Expiry never selects `open`.
+
+The Hosted traffic window is separate from the disposable recovery marker and
+provider TTL. Its initial 60-minute draft could not contain the unchanged browser
+suite ceilings (22 + 38 minutes), cleanup and deployment verification. The
+pre-deployment correction permits one absolute window of at most 90 minutes,
+while the Hosted workflow retains its 80-minute job ceiling and requires at least
+70 minutes remaining before the first destructive browser journey: 60 minutes
+for both unchanged suites and 10 minutes for bounded cleanup and verification.
+Select the shared absolute end once, before enabling acceptance on either
+surface. A late deployment, failed check or exhausted reserve fails closed; it
+never resets that end, retries a write or extends an exercise. The separately
+approved recovery marker remains at most 60 minutes and its provider TTL remains
+unchanged. This source change provisions no resource and opens no traffic gate.
+
+Acceptance requires exactly one `X-CM-Demo-Acceptance` request header. The gate
+checks its fixed-length token with `timingSafeEqual` and removes it from parsed,
+distinct and raw request headers before normal application handling. It grants
+no identity, role, Tenant, session or CSRF privilege. The ordinary principal and
+Same-Origin requirements remain authoritative, including Platform's required
+Origin on unsafe requests. A correct gate token cannot make a cross-origin
+request valid. Host and request-target bounds apply to closed probes as well.
+
+A protected browser adapter must add the appropriate token only to requests whose
+origin exactly equals that surface's independently verified HTTPS origin. Never
+set gate headers on an unconfined browser context. The reviewed successor fixture
+uses an explicitly selected single-origin context, a bounded TLS-only CONNECT
+proxy that validates the exact authority and ClientHello SNI, and an early guarded
+runner for the pinned Playwright version. Upstream TLS verification remains
+mandatory. The context's header is usable only through that confined transport;
+cross-origin, other-port and plaintext redirect attempts fail before forwarding.
+Do not place tokens in URL parameters, cookies, local storage or a frontend
+configuration bundle. Preserve real browser session/persona switching,
+CSRF, foreign-Tenant and cross-origin negative assertions. Headers must not enter
+traces, HAR files, diagnostic request dumps or uploaded artifacts. The application
+strip alone cannot sanitize browser or intermediary artifacts. Existing immutable
+browser assertions and the three-customer/two-reset contract must remain intact;
+a test fixture or partial native probe is not this missing Hosted acceptance.
+
+The diagnostic boundary covers the reviewed runner, its workers, error-context
+and attachment writes, and allowlisted final evidence. It assumes trusted test
+code and the reviewed gate that removes the header before normal application
+handling; it is not a sandbox for arbitrary code or a compromised approved server
+that encodes credentials into native browser downloads. Mandatory CSV downloads
+keep their existing behavior. Native browser profiles/downloads are not uploaded.
+The headed Zoom screenshot test remains in its existing credential-free CI step;
+it was already excluded from Hosted runs. Both real browser engines and the real
+API request implementation must pass the transport and diagnostic negative tests
+before operational use. Source publication alone is not that execution evidence.
+
+### Required Render setting and deployment order
+
+The connected Render tools cannot update a web service's health-check path or
+pin a trigger-deploy call to an arbitrary commit. The required operator setting is
+the **Health Check Path** in each existing service's Render Dashboard: select its
+new `/health/deploy` path above after the accepted gate binary is already installed.
+Record both actual deploy commit IDs; a selected repository branch or successful
+trigger request is not evidence of the deployed commit. No tariff/topology change
+is required. Provider maintenance mode is unavailable on these Free services.
+
+1. Before any pointer mutation, accept this gate and all existing CI/security/DB
+   and four browser rows. While the current database remains consistently in
+   PostgreSQL mode, install the exact accepted gate binary on both services in
+   `open` mode using the existing readiness paths. Confirm each actual live SHA.
+2. Set both Dashboard Health Check Paths to their new deployment paths. Verify the
+   probes on the installed binary, then save `DEMO_TRAFFIC_MODE=closed` and deploy
+   both surfaces. Keep normal PostgreSQL storage configuration at this stage.
+3. Verify both closed deployments and ordinary 503 responses. Independently prove
+   that Render has retired every previous active instance and that no previous
+   request, reset or projection worker is still using the database. A green probe
+   describes one new instance only: rolling deployment leaves an older instance
+   alive temporarily. A failed deploy, 503 response or elapsed timer alone does
+   not establish this coordinated pause. Retain provider retirement evidence and
+   independent database activity evidence before starting any operator batch.
+4. Only after all preceding cutover preconditions and quiescence evidence pass,
+   perform the bounded forward or rollback work below. Keep both modes closed
+   while changing storage configuration and deploying the accepted target binary.
+5. After complete pairing/integrity checks, a separately verified protected Hosted
+   browser adapter may enter `acceptance` on both surfaces with distinct tokens
+   and the same short absolute end. Check actual deployments and authenticated
+   normal readiness, then run every unchanged Hosted acceptance contract. A
+   deadline or failed check closes the exercise; it does not reopen ordinary use.
+6. Only accepted complete evidence permits an explicit deployment of `open` on
+   both services, with acceptance settings cleared. On any failure, keep or
+   explicitly deploy `closed`, retain evidence and follow verified rollback.
+
+Primary Render references inspected 10 October 2026:
+[deploy lifecycle](https://render.com/docs/deploys),
+[health checks](https://render.com/docs/health-checks),
+[maintenance mode](https://render.com/docs/maintenance-mode), and
+[MCP capabilities](https://render.com/docs/mcp-server).
+
 ## Forward transition
 
 1. Establish and verify the coordinated pause described above. Record the source

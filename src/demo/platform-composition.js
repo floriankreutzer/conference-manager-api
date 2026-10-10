@@ -37,6 +37,7 @@ export function createDemoPlatformComposition({
   readiness,
   resetMediaObjectStorage = null,
   staticFileAdapter = null,
+  trafficGate = null,
   metrics,
 } = {}) {
   if (!config) throw new TypeError('DEMO_CONFIG_REQUIRED');
@@ -97,6 +98,7 @@ export function createDemoPlatformComposition({
       ...options,
       demoRuntimeGatePool: selectedGatePool,
       staticFileAdapter,
+      trafficGate,
     }),
     projectionRunGate: (work) => withDemoRuntimeSharedGate(selectedGatePool, work),
     routeModulesFactory({ platformSessionService }) {
@@ -130,7 +132,10 @@ export function createDemoPlatformComposition({
       try {
         await composition.stop();
       } finally {
-        await Promise.allSettled([selectedGatePool.end(), selectedResetPool.end()]);
+        const results = await Promise.allSettled([selectedGatePool.end(), selectedResetPool.end()]);
+        if (results.some(({ status }) => status === 'rejected')) {
+          throw new Error('DEMO_PLATFORM_POOL_SHUTDOWN_FAILED');
+        }
       }
     },
   });
