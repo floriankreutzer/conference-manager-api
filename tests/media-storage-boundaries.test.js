@@ -37,3 +37,25 @@ test('operator backfill and rollback cannot become a runtime or browser-controll
     }).some((entry) => entry.includes('operator media migration')));
   }
 });
+
+test('only Demo process entrypoints can reach the shared media startup factory', () => {
+  const factory = 'src/demo/media-storage-runtime.js';
+  const adapter = 'src/media/neon-object-storage.js';
+  for (const file of ['src/demo/customer-main.js', 'src/demo/platform-main.js']) {
+    assert.deepEqual(architectureConsolidationBoundaryViolations({
+      [file]: "import './media-storage-runtime.js';",
+      [factory]: "import '../media/neon-object-storage.js';",
+      [adapter]: 'export const storage = true;',
+    }), []);
+  }
+  for (const file of ['src/platform-main.js', 'src/platform/media.js', 'src/demo/platform-composition.js',
+    'src/demo/customer-composition.js', 'src/http/room-media.js', 'src/demo/http/customer-control-routes.js']) {
+    const prefix = file.startsWith('src/demo/http/') ? '../' : file.startsWith('src/demo/') ? './'
+      : file === 'src/platform-main.js' ? './demo/' : '../demo/';
+    assert.ok(architectureConsolidationBoundaryViolations({
+      [file]: `import '${prefix}media-storage-runtime.js';`,
+      [factory]: "import '../media/neon-object-storage.js';",
+      [adapter]: 'export const storage = true;',
+    }).some((entry) => entry.includes('factory is restricted to Demo process entrypoints')));
+  }
+});

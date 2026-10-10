@@ -15,9 +15,11 @@ credential inventory must account for these defaults separately from scoped appl
 
 `src/media/object-storage-contract.js` defines a provider-neutral, URL-free media port.
 `src/media/neon-object-storage.js` implements `put(reference, bytes)`, `get(reference)`,
-`remove(reference)` and `close()`. It is not yet activated in a runtime entrypoint.
-PostgreSQL remains the only active media store until the separately reviewed migration,
-backfill, rollback and three-customer/reset acceptance have completed.
+`remove(reference)` and `close()`. The ordinary Hosted Demo entrypoints now provide
+explicit opt-in wiring; PostgreSQL remains their default and the last verified live
+deployment's media store. Activation requires the separately reviewed recovery,
+backfill, rollback and three-customer/reset acceptance in the
+[coordinated cutover runbook](NEON-DEMO-OBJECT-STORAGE-CUTOVER.md).
 
 The Customer PostgreSQL factory accepts an explicitly injected provider-neutral storage port.
 Room and Demo Catalogue repositories register durable intents after owner/actor preflight and
@@ -31,8 +33,10 @@ Reads apply existing same-Tenant owner, Room attachment and active-room predicat
 provider access. Object mode rejects unbackfilled PostgreSQL-only rows and never falls back
 to database bytes after an object failure. Disabled object mode fails closed on external rows.
 Catalogue replacement derives a new content-addressed key; deletion removes only authorized
-metadata and retains durable object custody. These repository seams remain inactive in all
-entrypoints until operator backfill, seed/reset and coordinated restore acceptance exist.
+metadata and retains durable object custody. Explicitly enabling these repository seams
+requires operator backfill, seed/reset and coordinated restore acceptance. A read-only
+startup guard rejects storage modes inconsistent with Room/Catalogue pointers; it does
+not perform a migration or replace full provider-content verification.
 
 The port requires an internal Tenant ID, internal asset ID, kind (`room` or `catalogue`),
 canonical MIME, byte length and lowercase SHA-256 digest from authoritative metadata.
@@ -64,7 +68,9 @@ The storage port verifies digest/length; it is not a replacement image sanitizer
 
 The Demo Platform composition may explicitly receive a reset-only provider-neutral storage port.
 Only its distinct reset-role pool registers/publishes objects; ordinary Platform persistence
-retains no media inventory/provider authority. Runtime entrypoints still do not activate it.
+retains no media inventory/provider authority. The ordinary Platform Demo entrypoint can
+explicitly configure this reset-only port using a separate named reset credential.
+The default remains PostgreSQL; Customer and reset paths must transition together.
 
 Object reset validates the canonical fixture/checksum, takes the existing exclusive reset gate
 and verifies database identity, sentinel, schema inventory and any concrete live reset session.
@@ -169,13 +175,15 @@ this adapter, although the SDK's transitive dependencies increase supply-chain m
 
 ## Migration acceptance still required
 
-1. Accept canonical schema 043 and Demo overlay 008 metadata/inventory foundation and its
-   least-privilege grants, then wire runtime publication/read/backfill without changing
-   historical migration checksums. Keep the canonical seed semantics/checksum intact.
+1. Retain the accepted schema 043 / Demo overlay 008 metadata/inventory foundation and
+   least-privilege grants. The current Demo runtime requires schema 044 / overlay 009;
+   preserve historical migration checksums and the canonical seed semantics/checksum.
 2. Backfill bounded, idempotent batches, verify every digest and byte count, and retain
    PostgreSQL bytes until a restore/rollback exercise has succeeded.
-3. Dual-write only after same-Tenant owner, quota and concurrency checks. Preserve required
-   audit atomicity; failed transactions must leave no visible metadata for unpublished objects.
+3. Publish objects and their metadata only after same-Tenant owner, quota and concurrency
+   checks. New object-mode publications have NULL database blobs; copy retains pre-existing
+   blobs. Preserve required audit atomicity: a failed transaction must leave no visible
+   metadata for an unpublished object. Rollback must verify the current provider revision.
 4. Reads first validate current authority in PostgreSQL, then read the exact immutable key.
    Do not hide missing/corrupt storage through an automatic database fallback.
 5. Track deletion/replacement/reset orphans durably. The storage provider does not enforce
@@ -183,7 +191,8 @@ this adapter, although the SDK's transitive dependencies increase supply-chain m
    protect objects explicitly. Apply the existing 30-day unreferenced retention rule.
 6. Prove coordinated database/object restore and rollback on an isolated same-region branch,
    including attached and historically retained images, missing/corrupt objects and foreign
-   Tenant denial. Cut over and remove database blobs only after these gates pass.
+   Tenant denial. Cut over only after these gates pass. Blob purge remains a separate
+   evidence-bound operator action and is not part of activating the storage mode.
 7. Run the complete shared role/Tenant/CSRF journey, all three canonical customers and two
    reset cycles in Chromium and WebKit against the exact candidate commits.
 

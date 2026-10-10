@@ -1,9 +1,8 @@
 import pg from 'pg';
 
 import { loadDemoConfig } from '../src/demo/config.js';
-import { createDemoResetService } from '../src/demo/reset-service.js';
-import { createPostgresDemoResetRepository } from '../src/persistence/postgres/demo-reset-repository.js';
-import { migrateDemoUp } from './demo-db-migrations.mjs';
+import { assertDemoPostgresStorageConfiguration } from '../src/demo/media-storage-config.js';
+import { resetPostgresDemo } from './support/demo-postgres-reset.mjs';
 
 const { Pool } = pg;
 const SAFE_ERROR = /^[A-Z][A-Z0-9_]{2,127}$/;
@@ -15,6 +14,7 @@ function output(stream, value) {
 let migrationPool;
 let resetPool;
 try {
+  assertDemoPostgresStorageConfiguration(process.env);
   const config = loadDemoConfig(process.env);
   if (process.argv[2] !== `--confirm-seed-version=${config.seedVersion}`) {
     throw new Error('DEMO_RESET_CONFIRMATION_REQUIRED');
@@ -31,21 +31,11 @@ try {
     max: 1,
     application_name: 'conference-manager-demo-reset',
   });
-  const roles = Object.freeze({
-    customer: config.databases.customer.role,
-    platform: config.databases.platform.role,
-    reset: config.databases.reset.role,
-  });
-  await migrateDemoUp(migrationPool, { roles });
-  const repository = createPostgresDemoResetRepository({
-    pool: resetPool,
-    expectedDatabaseName: config.databaseTarget.database,
-    expectedResetRole: config.databases.reset.role,
+  const result = await resetPostgresDemo({ config, migrationPool, resetPool,
     onSemanticMismatch: process.env.NODE_ENV === 'test'
       ? (path) => process.stderr.write(`DEMO_SEMANTIC_PATH: ${path?.slice(0, 120) || 'unknown'}\n`)
       : null,
   });
-  const result = await createDemoResetService({ repository }).reset();
   output(process.stdout, Object.freeze({ status: 'completed', result }));
 } catch (error) {
   const candidate = error?.code || error?.message;
