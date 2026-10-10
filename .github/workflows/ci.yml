@@ -152,14 +152,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager
-          ref: b63d0461c857ee132242fb4509156409a37496a3
+          ref: b2ef694d68632a41ab135ce8a23749a1b9f06c4b
           token: ${{ steps.source-token.outputs.token }}
           persist-credentials: false
           path: acceptance
       - name: Verify immutable frontend and acceptance refs
         env:
           FRONTEND_REF: ${{ steps.frontend_ref.outputs.ref }}
-          ACCEPTANCE_REF: b63d0461c857ee132242fb4509156409a37496a3
+          ACCEPTANCE_REF: b2ef694d68632a41ab135ce8a23749a1b9f06c4b
         shell: bash
         run: |
           set -euo pipefail
@@ -177,7 +177,7 @@ jobs:
           node-version: '22'
       - name: Load verified immutable shared Demo acceptance dependencies
         env:
-          ACCEPTANCE_REF: b63d0461c857ee132242fb4509156409a37496a3
+          ACCEPTANCE_REF: b2ef694d68632a41ab135ce8a23749a1b9f06c4b
         run: node acceptance/scripts/copy-shared-acceptance.mjs --source acceptance --target frontend --ref "$ACCEPTANCE_REF"
       - name: Install locked API dependencies
         working-directory: api

@@ -295,7 +295,7 @@ approved child cleanup.
 The compositions then execute the complete immutable shared role/Tenant/CSRF
 journey and full three-customer/two-reset acceptance in Chromium and WebKit
 sequentially. Frontend serving comes from render.yaml's immutable pin; acceptance
-is `b63d0461c857ee132242fb4509156409a37496a3`. This reviewed successor preserves
+is `b2ef694d68632a41ab135ce8a23749a1b9f06c4b`. This reviewed successor preserves
 the business scenarios and binds their context explicitly to the selected origin.
 The source-commit-verified copy helper transfers the complete six-file Shared
 acceptance set (spec and support dependencies); it never replaces the served application. No retries,

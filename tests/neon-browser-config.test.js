@@ -51,7 +51,7 @@ test('real browser workflow preserves both complete journeys and serializes prov
   assert.match(workflow, /browser: webkit/);
   assert.match(workflow, /test:e2e:shared-demo/);
   assert.match(workflow, /test:e2e:saas37/);
-  assert.match(workflow, /ref: b63d0461c857ee132242fb4509156409a37496a3/);
+  assert.match(workflow, /ref: b2ef694d68632a41ab135ce8a23749a1b9f06c4b/);
   assert.match(workflow,
     /node acceptance\/scripts\/copy-shared-acceptance\.mjs --source acceptance --target frontend --ref "\$ACCEPTANCE_REF"/);
   assert.doesNotMatch(workflow, /cp acceptance\/tests\/e2e-shared\/shared-demo-runtime\.spec\.js/);
