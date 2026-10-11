@@ -21,7 +21,8 @@ function summary(inventory) {
 
 export function initialLiveMediaReport(operation) {
   return { schemaVersion: 1, operationId: operation.record.operationId, recordSha256: operation.recordSha256,
-    sourceSha: operation.record.sourceSha, runId: operation.runId, action: operation.action, kind: operation.kind,
+    sourceSha: operation.record.sourceSha, controllerSha: operation.controllerSha,
+    runId: operation.runId, action: operation.action, kind: operation.kind,
     projectId: operation.record.projectId, branchId: operation.record.branchId,
     databaseEndpointId: operation.record.databaseEndpointId, expiresAt: operation.record.expiresAt,
     externalEvidenceSha256: operation.record.externalEvidenceSha256, recoveryEvidenceSha256: operation.record.recoveryEvidenceSha256,

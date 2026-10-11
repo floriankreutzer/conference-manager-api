@@ -53,7 +53,7 @@ function timestamp(value) {
   return parsed;
 }
 
-export function loadLiveMediaOperation(env, { now = Date.now(), sourceSha } = {}) {
+export function loadLiveMediaRecord(env, { now = Date.now() } = {}) {
   const action = env.LIVE_MEDIA_ACTION;
   const kind = env.LIVE_MEDIA_KIND;
   requireLiveMedia(['preflight', 'reconcile', 'copy', 'rollback'].includes(action)
@@ -62,6 +62,7 @@ export function loadLiveMediaOperation(env, { now = Date.now(), sourceSha } = {}
     && env.GITHUB_REPOSITORY === 'floriankreutzer/conference-manager-api' && env.GITHUB_REF === 'refs/heads/main'
     && env.GITHUB_RUN_ATTEMPT === '1' && env.GITHUB_ACTOR === 'floriankreutzer'
     && env.GITHUB_TRIGGERING_ACTOR === 'floriankreutzer' && /^[1-9][0-9]{0,19}$/.test(env.GITHUB_RUN_ID || '')
+    && /^[a-f0-9]{40}$/.test(env.GITHUB_SHA || '')
     && FORBIDDEN_ENV.every((key) => env[key] === undefined), 'LIVE_MEDIA_EXECUTION_CONTEXT_INVALID');
   const raw = env.LIVE_MEDIA_OPERATION_JSON;
   requireLiveMedia(typeof raw === 'string' && raw.length <= 8192 && HEX.test(env.LIVE_MEDIA_RECORD_SHA256 || ''));
@@ -74,7 +75,6 @@ export function loadLiveMediaOperation(env, { now = Date.now(), sourceSha } = {}
   requireLiveMedia(record.schemaVersion === 1 && /^[a-f0-9]{32}$/.test(record.operationId || '')
     && ['copy', 'rollback'].includes(record.direction)
     && /^[a-f0-9]{40}$/.test(record.sourceSha || '')
-    && sourceSha === record.sourceSha && env.GITHUB_SHA === record.sourceSha
     && Object.entries(LIVE_MEDIA_TARGET).every(([key, value]) => record[key] === value)
     && /^[a-z][a-z0-9_]{2,62}$/.test(record.operatorRole || '') && !RUNTIME_ROLES.has(record.operatorRole)
     && HEX.test(record.externalEvidenceSha256 || '') && HEX.test(record.recoveryEvidenceSha256 || '')
@@ -87,6 +87,14 @@ export function loadLiveMediaOperation(env, { now = Date.now(), sourceSha } = {}
   const expiresAt = timestamp(record.expiresAt);
   requireLiveMedia(issuedAt <= now && expiresAt > issuedAt && expiresAt - issuedAt <= LIVE_MEDIA_LIMITS.operationMs
     && now + LIVE_MEDIA_LIMITS.finishReserveMs < expiresAt, 'LIVE_MEDIA_DEADLINE_EXPIRED');
+  return Object.freeze({ action, kind, record: Object.freeze(record), recordSha256: sha256(raw), expiresAt,
+    runId: env.GITHUB_RUN_ID, controllerSha: env.GITHUB_SHA });
+}
+
+export function loadLiveMediaOperation(env, { now = Date.now(), sourceSha } = {}) {
+  const operation = loadLiveMediaRecord(env, { now });
+  const { record } = operation;
+  requireLiveMedia(sourceSha === record.sourceSha, 'LIVE_MEDIA_SOURCE_INVALID');
   let url;
   try { url = new URL(env.CM_NEON_LIVE_OPERATOR_DATABASE_URL); } catch { liveMediaFail('LIVE_MEDIA_DATABASE_INVALID'); }
   requireLiveMedia(['postgres:', 'postgresql:'].includes(url.protocol) && url.hostname === record.databaseHost
@@ -111,8 +119,7 @@ export function loadLiveMediaOperation(env, { now = Date.now(), sourceSha } = {}
   requireLiveMedia(storage.accessKeyId !== storage.secretAccessKey
     && ![storage.accessKeyId, storage.secretAccessKey].includes(password),
   'LIVE_MEDIA_SECRET_SCOPE_INVALID');
-  return Object.freeze({ action, kind, record: Object.freeze(record), recordSha256: sha256(raw), expiresAt,
-    runId: env.GITHUB_RUN_ID, databaseUrl: env.CM_NEON_LIVE_OPERATOR_DATABASE_URL, storage });
+  return Object.freeze({ ...operation, databaseUrl: env.CM_NEON_LIVE_OPERATOR_DATABASE_URL, storage });
 }
 
 export function requireLiveMediaReserve(operation, now, milliseconds) {

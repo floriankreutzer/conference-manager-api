@@ -1,13 +1,15 @@
-import { execFileSync, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Client } from 'pg';
 import { createNeonObjectStorage } from '../src/media/neon-object-storage.js';
-import { loadLiveMediaOperation, LIVE_MEDIA_LIMITS, liveMediaFail } from './support/live-media-operator-config.mjs';
+import { loadLiveMediaRecord, loadLiveMediaOperation, LIVE_MEDIA_LIMITS, liveMediaFail } from './support/live-media-operator-config.mjs';
+import { assertLiveMediaSourceBinding } from './support/live-media-source-binding.mjs';
 import { assertOperatorIdentity, assertNoOtherDatabaseSessions, readLiveMediaInventory } from './support/live-media-operator-db.mjs';
 import { initialLiveMediaReport, runLiveMediaOperation } from './support/live-media-operator-run.mjs';
 import { assertLiveRuntimesClosed } from './support/live-media-operator-http.mjs';
 
+const processStartedAt = Date.now();
 const root = fileURLToPath(new URL('../', import.meta.url));
 const reportPath = new URL('../live-media-operator-result.json', import.meta.url);
 const persist = (report) => writeFileSync(reportPath, JSON.stringify(report) + '\n', { mode: 0o600 });
@@ -47,7 +49,9 @@ function batch(operation) {
 
 try {
   if (process.argv.length !== 2) liveMediaFail('LIVE_MEDIA_CONFIGURATION_INVALID');
-  const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  const selection = loadLiveMediaRecord(process.env);
+  const sourceSha = assertLiveMediaSourceBinding({ sourceSha: selection.record.sourceSha, controllerSha: selection.controllerSha,
+    expectedHead: selection.record.sourceSha, repository: root });
   const operation = loadLiveMediaOperation(process.env, { sourceSha });
   report = initialLiveMediaReport(operation);
   persist(report);
@@ -61,7 +65,7 @@ try {
   };
   process.once('SIGTERM', abort);
   process.once('SIGINT', abort);
-  const processDeadline = Math.min(Date.now() + LIVE_MEDIA_LIMITS.processMs, operation.expiresAt);
+  const processDeadline = Math.min(processStartedAt + LIVE_MEDIA_LIMITS.processMs, operation.expiresAt);
   watchdog = setTimeout(abort, processDeadline - Date.now());
   client = new Client({ connectionString: operation.databaseUrl, ssl: { rejectUnauthorized: true },
     connectionTimeoutMillis: 5000, statement_timeout: 10_000, query_timeout: 12_000,

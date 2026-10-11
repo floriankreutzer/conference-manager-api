@@ -1,11 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { mediaObjectReference } from '../src/media/object-storage-contract.js';
-import { LIVE_MEDIA_TARGET, loadLiveMediaOperation, sha256 } from '../scripts/support/live-media-operator-config.mjs';
+import { LIVE_MEDIA_TARGET, loadLiveMediaRecord, loadLiveMediaOperation, sha256 } from '../scripts/support/live-media-operator-config.mjs';
 import { runLiveMediaOperation, parseLiveMediaBatch } from '../scripts/support/live-media-operator-run.mjs';
 import { assertLiveRuntimesClosed } from '../scripts/support/live-media-operator-http.mjs';
 import { assertOperatorIdentity } from '../scripts/support/live-media-operator-db.mjs';
+import { assertLiveMediaSourceBinding } from '../scripts/support/live-media-source-binding.mjs';
 
 const NOW = Date.parse('2026-10-11T18:00:00.000Z');
 const SOURCE = 'a'.repeat(40);
@@ -65,7 +69,7 @@ test('Live operator binds immutable record, exact source/target and explicit own
   assert.equal(operation.record.operatorRole, 'cm_demo_migration');
   for (const [key, value] of Object.entries({ GITHUB_REF: 'refs/heads/unreviewed', GITHUB_ACTOR: 'another-user',
     GITHUB_TRIGGERING_ACTOR: 'another-user', GITHUB_RUN_ATTEMPT: '2', GITHUB_EVENT_NAME: 'push',
-    GITHUB_SHA: 'f'.repeat(40), RUNNER_DEBUG: '1', ACTIONS_STEP_DEBUG: 'true', NODE_OPTIONS: '--inspect',
+    GITHUB_SHA: 'invalid-sha', RUNNER_DEBUG: '1', ACTIONS_STEP_DEBUG: 'true', NODE_OPTIONS: '--inspect',
     DATABASE_URL: 'unscoped', MEDIA_OPERATOR_ACCESS_KEY_ID: 'unscoped', CM_NEON_RECOVERY_ACCESS_KEY_ID: 'unscoped',
     DEMO_MEDIA_STORAGE_ACCESS_KEY_ID: 'unscoped', LIVE_MEDIA_ACTION: 'purge', LIVE_MEDIA_KIND: 'all' })) {
     assert.throws(() => load({ ...setup(), [key]: value }), /^Error: LIVE_MEDIA_[A-Z_]+$/);
@@ -77,6 +81,9 @@ test('Live operator binds immutable record, exact source/target and explicit own
     assert.throws(() => load(setup('copy', override)), /^Error: LIVE_MEDIA_[A-Z_]+$/);
   }
   assert.equal(load(setup('preflight', { manifestSha256: null })).action, 'preflight');
+  const advanced = load({ ...setup(), GITHUB_SHA: 'f'.repeat(40) });
+  assert.equal(advanced.controllerSha, 'f'.repeat(40));
+  assert.equal(advanced.record.sourceSha, SOURCE);
 });
 
 test('record rejects duplicate keys, whitespace, digest drift, URL credentials scope and queries', () => {
@@ -204,6 +211,10 @@ test('workflow exposes only manual enums and three dedicated secrets after insta
   assert.match(workflow, /github\.run_attempt == 1/);
   assert.equal((workflow.match(/secrets\./g) || []).length, 3);
   assert.ok(workflow.indexOf('npm ci --ignore-scripts') < workflow.indexOf('secrets.CM_NEON_LIVE'));
+  assert.ok(workflow.indexOf('scripts/live-media-operator-source.mjs') < workflow.indexOf('ref: ${{ steps.source.outputs.source_sha }}'));
+  assert.ok(workflow.indexOf('Verify selected checkout') < workflow.indexOf('npm ci --ignore-scripts'));
+  assert.match(workflow, /fetch-depth: 0/);
+  assert.doesNotMatch(workflow, /fromJSON|GITHUB_SHA:/);
   assert.doesNotMatch(workflow, /schedule:|workflow_run:|pull_request:|contents: write|id-token: write/);
   const entry = readFileSync(new URL('../scripts/live-media-operator.mjs', import.meta.url), 'utf8');
   assert.match(entry, /stdio: \['ignore', 'pipe', 'ignore'\]/);
@@ -212,6 +223,50 @@ test('workflow exposes only manual enums and three dedicated secrets after insta
   const http = readFileSync(new URL('../scripts/support/live-media-operator-http.mjs', import.meta.url), 'utf8');
   assert.match(http, /redirect: 'error'/);
   assert.doesNotMatch(entry, /shell: true|console\.(?:log|error)|process\.stderr\.write/);
+});
+
+test('trusted controller validates the record without operator credentials and rejects digest drift', () => {
+  const env = setup();
+  for (const key of Object.keys(env).filter((key) => key.startsWith('CM_NEON_LIVE_OPERATOR_'))) delete env[key];
+  assert.equal(loadLiveMediaRecord(env, { now: NOW }).record.sourceSha, SOURCE);
+  assert.throws(() => loadLiveMediaRecord({ ...env, LIVE_MEDIA_RECORD_SHA256: '0'.repeat(64) }, { now: NOW }), /RECORD_INVALID/);
+  assert.throws(() => loadLiveMediaOperation(setup(), { now: NOW, sourceSha: 'f'.repeat(40) }), /SOURCE_INVALID/);
+});
+
+test('real Git binding accepts advanced main but rejects unmerged, side-parent and wrong checkouts', (t) => {
+  const repository = mkdtempSync(join(tmpdir(), 'cm-live-source-'));
+  t.after(() => rmSync(repository, { recursive: true, force: true }));
+  const git = (args) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], { cwd: repository,
+    encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env,
+      GIT_AUTHOR_NAME: 'Synthetic test', GIT_AUTHOR_EMAIL: 'test@example.invalid',
+      GIT_COMMITTER_NAME: 'Synthetic test', GIT_COMMITTER_EMAIL: 'test@example.invalid' } }).trim();
+  const commit = (name) => {
+    writeFileSync(join(repository, name), name + '\n');
+    git(['add', name]); git(['commit', '--quiet', '-m', name]);
+    return git(['rev-parse', 'HEAD']);
+  };
+  git(['init', '--quiet', '--initial-branch=main']);
+  const sourceSha = commit('accepted-source');
+  git(['checkout', '--quiet', '-b', 'side']);
+  const side = commit('side-change');
+  git(['checkout', '--quiet', 'main']);
+  commit('main-advance');
+  git(['merge', '--quiet', '--no-ff', '-m', 'accepted-merge', 'side']);
+  const controllerSha = git(['rev-parse', 'HEAD']);
+  assert.equal(assertLiveMediaSourceBinding({ sourceSha, controllerSha, expectedHead: controllerSha, repository }), controllerSha);
+  assert.throws(() => assertLiveMediaSourceBinding({ sourceSha: side, controllerSha, expectedHead: controllerSha, repository }),
+    /LIVE_MEDIA_SOURCE_INVALID/);
+  git(['checkout', '--quiet', '--detach', sourceSha]);
+  const foreign = commit('unmerged-change');
+  git(['checkout', '--quiet', 'main']);
+  for (const invalid of [foreign, 'f'.repeat(40), '--unsafe']) {
+    assert.throws(() => assertLiveMediaSourceBinding({ sourceSha: invalid, controllerSha, expectedHead: controllerSha, repository }),
+      /LIVE_MEDIA_SOURCE_INVALID/);
+  }
+  assert.throws(() => assertLiveMediaSourceBinding({ sourceSha, controllerSha, expectedHead: sourceSha, repository }),
+    /LIVE_MEDIA_SOURCE_INVALID/);
+  git(['checkout', '--quiet', '--detach', sourceSha]);
+  assert.equal(assertLiveMediaSourceBinding({ sourceSha, controllerSha, expectedHead: sourceSha, repository }), sourceSha);
 });
 
 test('closed runtime requires exact bounded gate bodies, not status-only dependency failures', async () => {

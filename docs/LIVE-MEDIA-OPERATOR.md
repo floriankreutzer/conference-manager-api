@@ -9,8 +9,9 @@ acceptance behavior changes. The workflow cannot deploy or reopen either service
 ## Authority and prerequisites
 
 The owner dispatches **Live media operator** from `main`, with reruns and debug
-logging disabled. Exactly one invocation runs, using the checked-out dispatch
-commit. Only `preflight`, `reconcile`, `copy` and `rollback` exist. Copy/rollback
+logging disabled. The current main dispatch commit is the trusted controller;
+the operation record selects the frozen reviewed operator source. Only
+`preflight`, `reconcile`, `copy` and `rollback` exist. Copy/rollback
 select exactly one of `room` or `catalogue`; read-only actions require `none`.
 There is no purge, reset, retry loop or automatic continuation.
 
@@ -77,7 +78,7 @@ schema requires every field below and rejects any additional field:
 | `schemaVersion` | `1` |
 | `operationId` | One newly reviewed 32-character lowercase hex operation identifier |
 | `direction` | `copy` or `rollback` |
-| `sourceSha` | Exact reviewed merged main commit containing this workflow |
+| `sourceSha` | Exact reviewed merged main commit containing the frozen operator and source-binding controller |
 | `projectId` | `divine-shape-86658581` |
 | `branchId` | `br-summer-rice-b1f8voyp` |
 | `databaseEndpointId` | `ep-solitary-thunder-b1ydpuiq` |
@@ -94,8 +95,17 @@ schema requires every field below and rejects any additional field:
 | `customerDeploymentId` / `platformDeploymentId` | Distinct exact Render deployment identifiers bound in the external receipt |
 
 The API/frontend pins and deployment IDs are **expected externally verified
-identities**, not observed facts produced by the wrapper. Its source SHA is
-separately checked against Git HEAD and the dispatch SHA. A record digest binds
+identities**, not observed facts produced by the wrapper. Before any record-selected
+code, dependencies or secrets are used, the controller checks the exact compact
+record/digest and requires its source to be an ancestor of the immutable captured
+dispatch SHA and a member of its first 4,096 first-parent main commits. Unmerged,
+foreign and PR-side commits fail; the check never uses moving `origin/main`.
+Only the validated SHA becomes a checkout output. The selected Git HEAD is
+checked before dependency installation and again with ancestry at invocation.
+The result records both frozen `sourceSha` and actual `controllerSha`; `GITHUB_SHA`
+is never overwritten. A later ordinary main commit therefore does not change the
+frozen operator, record or deadline. Source outside the bounded history fails for
+manual assessment. A record digest binds
 the evidence references and scope; it does not validate the evidence's contents.
 
 A pre-outage `preflight` with null manifest is read-only and never mutation
