@@ -50,7 +50,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1147.0",
-    "@azure/msal-node": "7.0.0",
+    "@azure/msal-node": "7.0.1",
     "pg": "8.23.1",
     "sharp": "0.35.5"
   },
