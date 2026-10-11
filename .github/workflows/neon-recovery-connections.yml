@@ -1,0 +1,69 @@
+name: Neon Recovery Connection Readback
+
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: Approved read-only preparation phase
+        required: true
+        type: choice
+        options:
+          - before-marker
+          - marker-readback
+      provisioned_at:
+        description: Independently verified provider created_at in YYYY-MM-DDTHH:mm:ssZ form
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neon-object-adapter-acceptance
+  cancel-in-progress: false
+
+jobs:
+  connection-readback:
+    if: >-
+      github.repository == 'floriankreutzer/conference-manager-api' &&
+      github.ref == 'refs/heads/main' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact dispatch source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Read four independently bound database identities
+        env:
+          NODE_ENV: test
+          DEMO_DATABASE_SSL: verify-full
+          NEON_RECOVERY_CONNECTION_PHASE: ${{ inputs.phase }}
+          NEON_RECOVERY_PROVISIONED_AT: ${{ inputs.provisioned_at }}
+          NEON_RECOVERY_BRANCH: ${{ vars.CM_NEON_RECOVERY_BRANCH }}
+          NEON_RECOVERY_HOST: ${{ vars.CM_NEON_RECOVERY_HOST }}
+          DEMO_CUSTOMER_DATABASE_URL: ${{ secrets.CM_NEON_RECOVERY_CUSTOMER_DATABASE_URL }}
+          DEMO_PLATFORM_DATABASE_URL: ${{ secrets.CM_NEON_RECOVERY_PLATFORM_DATABASE_URL }}
+          DEMO_RESET_DATABASE_URL: ${{ secrets.CM_NEON_RECOVERY_RESET_DATABASE_URL }}
+          DEMO_MIGRATION_DATABASE_URL: ${{ secrets.CM_NEON_RECOVERY_MIGRATION_DATABASE_URL }}
+        run: node scripts/neon-recovery-connections.mjs
+      - name: Retain bounded read-only result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: neon-recovery-connections-${{ inputs.phase }}-${{ github.run_id }}
+          path: neon-recovery-connections.json
+          if-no-files-found: error
+          retention-days: 30
