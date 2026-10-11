@@ -346,3 +346,10 @@ Provider references inspected on 10 October 2026:
 [Object Storage](https://neon.com/docs/storage/overview),
 [Authentication](https://neon.com/docs/storage/authentication), and
 [Render environment variables](https://render.com/docs/configure-environment-variables).
+
+## Browser-operated execution path
+
+The manual, bounded Live operator workflow and its immutable operation-record
+contract are documented in [LIVE-MEDIA-OPERATOR.md](LIVE-MEDIA-OPERATOR.md).
+That execution path does not supply external provider/retirement evidence or
+authorize deployment, reopening, purge, reset or additional Recovery resources.
