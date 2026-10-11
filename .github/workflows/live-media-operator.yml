@@ -1,0 +1,86 @@
+name: Live media operator
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: One reviewed operation; no automatic batch continuation
+        required: true
+        type: choice
+        options: [preflight, reconcile, copy, rollback]
+      kind:
+        description: Use none for read-only operations
+        required: true
+        type: choice
+        options: [none, room, catalogue]
+      record_sha256:
+        description: SHA-256 of the exact approved compact operation record
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-media-operator
+  cancel-in-progress: false
+
+jobs:
+  operator:
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+      github.actor == 'floriankreutzer' && github.triggering_actor == 'floriankreutzer' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout trusted main controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Require ordinary runner logging before operator secret allocation
+        run: test -z "${RUNNER_DEBUG:-}${ACTIONS_STEP_DEBUG:-}${ACTIONS_RUNNER_DEBUG:-}"
+      - name: Validate frozen source from trusted main without secrets
+        id: source
+        env:
+          LIVE_MEDIA_ACTION: ${{ inputs.action }}
+          LIVE_MEDIA_KIND: ${{ inputs.kind }}
+          LIVE_MEDIA_RECORD_SHA256: ${{ inputs.record_sha256 }}
+          LIVE_MEDIA_OPERATION_JSON: ${{ vars.CM_NEON_LIVE_OPERATOR_RECORD }}
+        run: node scripts/live-media-operator-source.mjs
+      - name: Checkout validated immutable operator source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.source.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify selected checkout before dependency installation
+        env:
+          EXPECTED_SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+      - name: Install locked dependencies without operator secrets
+        run: npm ci --ignore-scripts --no-fund
+      - name: One bounded Live operator invocation
+        env:
+          LIVE_MEDIA_ACTION: ${{ inputs.action }}
+          LIVE_MEDIA_KIND: ${{ inputs.kind }}
+          LIVE_MEDIA_RECORD_SHA256: ${{ inputs.record_sha256 }}
+          LIVE_MEDIA_OPERATION_JSON: ${{ vars.CM_NEON_LIVE_OPERATOR_RECORD }}
+          CM_NEON_LIVE_OPERATOR_DATABASE_URL: ${{ secrets.CM_NEON_LIVE_OPERATOR_DATABASE_URL }}
+          CM_NEON_LIVE_OPERATOR_ACCESS_KEY_ID: ${{ secrets.CM_NEON_LIVE_OPERATOR_ACCESS_KEY_ID }}
+          CM_NEON_LIVE_OPERATOR_SECRET_ACCESS_KEY: ${{ secrets.CM_NEON_LIVE_OPERATOR_SECRET_ACCESS_KEY }}
+        run: node scripts/live-media-operator.mjs
+      - name: Preserve bounded secret-free outcome
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        with:
+          name: live-media-operator-${{ github.run_id }}
+          path: live-media-operator-result.json
+          if-no-files-found: warn
+          retention-days: 7
