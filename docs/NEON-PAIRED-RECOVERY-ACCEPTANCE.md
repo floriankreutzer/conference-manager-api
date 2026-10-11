@@ -66,6 +66,96 @@ Do not infer permission to overwrite protected parents or backup evidence. Resol
 preparation defects before creating the single fixed marker, and preserve failed
 attempts without classifying a corrected copy as an originally flawless restore.
 
+## Four-role connection readback before another resource attempt
+
+The one-time R4 preparation on 11 October 2026 stopped after its first separate
+role-login helper failed without retaining the original error. No complete role
+readback was confirmed. Its cleanup block replaced the original phase with
+`close`, and its outer handler discarded the error code. R4 was deleted and
+branch/endpoint absence independently verified at 19:39:16 UTC. There were 20
+successful initial object GETs, no MIME PUT, no marker and no Recovery dispatch.
+That authorization is consumed and does not authorize a replacement child.
+
+Subsequent credential-free controls at 19:45:47 UTC reproduced `EAI_AGAIN` from
+the local OS resolver for both the old endpoint name and an unrelated permitted
+control hostname. The configured HTTPS proxy returned an HTTP response for the
+control, but installed `pg` uses direct TCP and does not use HTTP proxy variables.
+This establishes a present operator-environment limitation, not a recovered
+historical R4 cause or evidence that the owner's repository secrets were wrong.
+Do not disable TLS, change DNS, tunnel PostgreSQL through another transport, or
+allocate another provider child merely to repeat this local failure.
+
+`Neon Recovery Connection Readback` is a separate, manual, read-only preparation
+workflow for the existing GitHub runner. It does not run on push or pull request.
+Its source and local tests do not themselves constitute a successful Neon login.
+Before any future child is created, obtain a new concrete resource authorization
+that explicitly includes both read-only phases below in addition to the unchanged
+single full Recovery dispatch. This source change grants no provider permission.
+
+| Phase | Required result | Allowed work |
+| --- | --- | --- |
+| `before-marker` | Four separate actual role logins, exact session/current identity, database and schema 44/overlay 9; marker absent | Fixed read-only metadata queries |
+| `marker-readback` | The same four actual identities read one matching fixed marker window, within the independently approved provider boundary | Existing marker guard and read-only metadata queries |
+
+Each phase may be dispatched at most once under that future authorization. A new
+dispatch is not prevented by `run_attempt=1`; the operator must retain and enforce
+the two phase/run IDs externally. Job reruns are rejected. Any failed phase stops
+preparation and invokes the separately authorized exact-child cleanup. Do not
+retry, replace the child, renew its marker or extend its provider deadline.
+
+Before each dispatch, independently verify project/branch/name/parent, sole
+compute and host, actual provider `created_at`, fixed compute limits and cleanup
+guard. Bind the existing protected variables `CM_NEON_RECOVERY_BRANCH` and
+`CM_NEON_RECOVERY_HOST` to that verified child. Only four temporary database
+secrets are supplied to the diagnostic step; it receives no Object Storage key,
+provider-management credential, CI-reader token, frontend or browser context.
+The existing full Recovery workflow retains its six secrets and two variables.
+
+The only manual inputs are the phase and the provider's canonical UTC
+`provisioned_at` timestamp (`YYYY-MM-DDTHH:mm:ssZ`). No input supplies a destination
+or database credential. The timestamp is owner-attested: this workflow has no
+provider API and cannot independently prove branch/host/time binding. The report
+must be matched to fresh provider evidence and the approved run by the operator.
+The deadline is derived as T0+30 minutes; the outer provider boundary is T0+90
+minutes. Future, malformed or expired T0 fails before connection allocation.
+Every operation and the final result remain inside the preparation window;
+the diagnostic process is additionally bounded to 60 seconds. Queue, checkout,
+install and both readback runs consume the same original preparation window.
+No workflow or marker timestamp changes those deadlines.
+
+The workflow uses the existing `neon-object-adapter-acceptance` concurrency group
+with cancellation disabled. Independently require this group to be idle before
+each dispatch: an additional pending run may replace another pending run even
+when the running job is not cancelled. It checks the exact repository, main, first attempt
+and checked-out dispatch SHA. The operator must also verify that SHA is the
+reviewed current main before dispatch; a valid SHA alone is not approval. A skipped
+job or green workflow conclusion is not readback evidence: require a successful
+executed diagnostic job and its matching passed artifact, phase, branch, original
+T0, source SHA and four completed identities. A report written immediately before
+a later deadline or close failure is not acceptance when the process/job failed.
+Each connection requires certificate/hostname verification, fixed read-only
+startup settings and `BEGIN READ ONLY`. There is no `SET ROLE`, DDL, reset,
+application mutation, media access or marker installation. Both schema and
+identity results must match; connecting alone is not a successful readback.
+
+The first failure retains its original phase and an exact allowlisted code,
+including DNS, connection, TLS, selected PostgreSQL and local guard categories.
+Connection close errors are separate and cannot replace that first failure.
+Raw messages, stacks, causes, URLs, passwords and provider payloads are excluded.
+The result file `neon-recovery-connections.json` is created exclusively with mode
+0600 and retained for 30 days. Failure, partial completion or inability to retain
+the report fails the process. Neither a green diagnostic nor marker readback
+replaces object verification, full Recovery acceptance or Live-cutover gates.
+
+The execution order for a future approved attempt is: verify/arm the exact child;
+rotate its four role passwords and configure the four database secrets/two
+variables; run `before-marker`; finish all remaining configuration and storage
+verification; install the one fixed marker and inspect its complete ACL through
+the separately authorized operator; run `marker-readback`; verify all identities,
+fixed times, remaining budget and free concurrency; then dispatch the unchanged
+full Recovery workflow once. Preparation and both readbacks must finish before
+T0+30 minutes. Retain immutable results and enforce cleanup independently.
+
 ## Protected execution
 
 The owner approved one additional disposable child named

@@ -12,7 +12,7 @@ export const RECOVERY_ROLES = Object.freeze({
 
 // The owner binds these protected repository variables to independently inspected
 // provider metadata. No workflow input can choose a branch or destination.
-export function loadNeonRecoveryConfig(env) {
+export function loadNeonRecoveryDatabaseConfig(env) {
   if (env.NODE_ENV !== 'test' || env.GITHUB_ACTIONS !== 'true' || env.GITHUB_REF !== 'refs/heads/main'
     || !/^[a-f0-9]{40}$/.test(env.GITHUB_SHA || '')
     || !/^br-[a-z0-9-]{5,80}$/.test(env.NEON_RECOVERY_BRANCH || '')
@@ -35,12 +35,17 @@ export function loadNeonRecoveryConfig(env) {
   if (!databases.length || new Set(databases.map(({ url }) => new URL(url).password)).size !== databases.length) {
     throw new Error('NEON_RECOVERY_DATABASE_INVALID');
   }
+  return Object.freeze({ branch: env.NEON_RECOVERY_BRANCH, databases: Object.freeze(databases) });
+}
+
+export function loadNeonRecoveryConfig(env) {
+  const { branch, databases } = loadNeonRecoveryDatabaseConfig(env);
   const storage = validateNeonStorageConfig({
     endpoint: `https://${env.NEON_RECOVERY_BRANCH}.storage.c-5.eu-central-1.aws.neon.tech`,
     region: 'eu-central-1', bucket: 'conference-manager-media',
     accessKeyId: env.NEON_RECOVERY_ACCESS_KEY_ID, secretAccessKey: env.NEON_RECOVERY_SECRET_ACCESS_KEY,
   });
-  return Object.freeze({ branch: env.NEON_RECOVERY_BRANCH, databases: Object.freeze(databases), storage });
+  return Object.freeze({ branch, databases, storage });
 }
 
 // This constant view is installed ONLY on the independently verified disposable child.
