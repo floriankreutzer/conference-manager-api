@@ -87,12 +87,14 @@ async function validateRoomReferences(client) {
       CASE WHEN jsonb_array_length(doc->'mediaAssetIds')<=20 THEN doc->'mediaAssetIds' ELSE '[]'::jsonb END
       ELSE '[]'::jsonb END AS media FROM docs
   ), refs AS MATERIALIZED (
-    SELECT tenant_id,room_id,doc->'floorplanAssetId' AS value FROM shaped
+    SELECT tenant_id,room_id,doc->'floorplanAssetId' AS value,true AS floorplan FROM shaped
     WHERE doc ? 'floorplanAssetId' AND doc->'floorplanAssetId' <> 'null'::jsonb
-    UNION ALL SELECT tenant_id,room_id,m.value FROM shaped CROSS JOIN LATERAL jsonb_array_elements(media) AS m(value)
+    UNION ALL SELECT tenant_id,room_id,m.value,false FROM shaped CROSS JOIN LATERAL jsonb_array_elements(media) AS m(value)
   ), checked AS (
-    SELECT f.*,a.id AS matched FROM refs f LEFT JOIN public.tenant_room_media_assets a
+    SELECT f.*,a.id AS matched,c.id AS catalogue_matched FROM refs f LEFT JOIN public.tenant_room_media_assets a
     ON a.tenant_id=f.tenant_id AND a.room_id=f.room_id AND a.id::text=lower(f.value #>> '{}')
+    LEFT JOIN public.demo_catalogue_media_assets c ON f.floorplan AND c.tenant_id=f.tenant_id
+      AND c.owner_kind='room_plan' AND c.owner_id=f.room_id AND c.id::text=lower(f.value #>> '{}')
   ) SELECT
     (SELECT count(*) FROM shaped WHERE jsonb_typeof(doc) IS DISTINCT FROM 'object'
       OR room_id IS NULL OR room_id !~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
@@ -104,7 +106,8 @@ async function validateRoomReferences(client) {
       FROM jsonb_array_elements(media) AS m(value))) AS duplicate_media_documents,
     (SELECT count(*) FROM checked WHERE jsonb_typeof(value) IS DISTINCT FROM 'string'
       OR (value #>> '{}') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') AS invalid_references,
-    (SELECT count(*) FROM checked WHERE matched IS NULL) AS dangling_or_misowned_references`);
+    (SELECT count(*) FROM checked WHERE matched IS NULL AND catalogue_matched IS NULL) AS dangling_or_misowned_references,
+    (SELECT count(*) FROM checked WHERE matched IS NOT NULL AND catalogue_matched IS NOT NULL) AS ambiguous_references`);
   requireLiveMedia(rows.length === 1 && Object.values(rows[0]).every((value) => count(value) === 0),
     'LIVE_MEDIA_REFERENCES_INVALID');
 }
