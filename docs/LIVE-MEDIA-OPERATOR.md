@@ -112,6 +112,14 @@ A pre-outage `preflight` with null manifest is read-only and never mutation
 authority. It reads bounded metadata, validates every current and historical
 Room reference, hashes retained PostgreSQL bytes, and GET-verifies each existing
 published object revision. It reports `preflight_only`, even with zero assets.
+Floorplan references may resolve to a same-tenant, same-room asset in
+`tenant_room_media_assets` or to a catalogue asset with the same tenant,
+`owner_kind='room_plan'` and the exact room as `owner_id`. Catalogue room plans
+are not valid gallery references: every `mediaAssetIds` entry must resolve to
+the room-media table. These ownership rules apply to current rooms and every
+retained historical room, without changing their stored references or bytes.
+A floorplan that resolves to correctly owned assets in both tables is ambiguous
+and is rejected rather than silently selecting one asset kind.
 If no published object exists, `providerReads` is zero and
 `providerReadVerified` remains false: storage credentials and provider access
 have not been exercised. Do not claim complete operational acceptance from this
