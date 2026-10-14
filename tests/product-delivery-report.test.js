@@ -383,3 +383,48 @@ test('snapshot validation rejects metric-incompatible reasons and contradictory 
   altered.delivery[1].buckets[0].metrics[2].reason = 'unresolved_recovery';
   assert.throws(() => normalizeProductDeliverySnapshot(altered));
 });
+
+test('decision duration requires a positive known decision and submission cohort', () => {
+  for (const base of [
+    compileProductDeliveryReport(source()),
+    uncollectedProductDeliveryReport(Date.parse('2026-10-15T12:00:00.000Z')),
+  ]) {
+    const invalid = JSON.parse(JSON.stringify(base));
+    const duration = invalid.product.find((item) => item.id === 'manager_decision_time');
+    duration.value = 500;
+    duration.reason = 'available';
+    assert.throws(() => normalizeProductDeliverySnapshot(invalid));
+  }
+  const partial = JSON.parse(JSON.stringify(compileProductDeliveryReport(source())));
+  partial.product.find((item) => item.id === 'manager_decisions').value = null;
+  partial.product.find((item) => item.id === 'manager_decisions').reason = 'incomplete_source';
+  assert.throws(() => normalizeProductDeliverySnapshot(partial));
+});
+
+test('closed snapshots retain source-record ceilings and possible time bounds', () => {
+  const input = source();
+  input.deployments = [deployment('bounded-deploy')];
+  for (const mutate of [
+    (v) => {
+      v.delivery[1].buckets[0].metrics[0].value = Number.MAX_SAFE_INTEGER;
+    },
+    (v) => {
+      v.product[0].value = 2000;
+      v.product[1].value = 1;
+      v.provenance.eventCount = 4200;
+    },
+    (v) => {
+      v.delivery[1].buckets[0].metrics[1].value = 2000;
+      v.delivery[1].buckets[1].metrics[1].value = 1;
+      for (const index of [1, 3, 4]) {
+        v.delivery[1].buckets[1].metrics[index].value = index === 1 ? 1 : 0;
+        v.delivery[1].buckets[1].metrics[index].reason = 'available';
+      }
+      v.provenance.eventCount = 4200;
+    },
+  ]) {
+    const report = JSON.parse(JSON.stringify(compileProductDeliveryReport(input)));
+    mutate(report);
+    assert.throws(() => normalizeProductDeliverySnapshot(report));
+  }
+});

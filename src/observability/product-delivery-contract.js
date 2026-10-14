@@ -132,6 +132,18 @@ export function normalizeProductDeliverySnapshot(value) {
     const item = value.product.find((entry) => entry.id === id);
     requireProductCondition(item.value === null && item.reason === 'missing_start_clock');
   }
+  const outcomeCounts = value.product.filter(
+    (item) => item.unit === 'count' && !['request_started', 'request_abandoned'].includes(item.id),
+  );
+  requireProductCondition(
+    outcomeCounts.every((item) => item.value === null) ||
+      outcomeCounts.every((item) => item.value !== null),
+  );
+  const decisions = value.product.find((item) => item.id === 'manager_decisions').value;
+  const submissions = value.product.find((item) => item.id === 'request_submitted').value;
+  const decisionTime = value.product.find((item) => item.id === 'manager_decision_time').value;
+  if (decisionTime !== null)
+    requireProductCondition(decisions > 0 && submissions > 0 && decisionTime < end - start);
   exactProductObject(value.feedback, [
     'source',
     'total',
@@ -204,6 +216,12 @@ export function normalizeProductDeliverySnapshot(value) {
             bucket.unresolvedRecoveries <= 2000),
       );
       const [lead, frequency, recovery, failure, rework] = bucket.metrics;
+      const observation = value.observedAt === null ? end : productInstant(value.observedAt);
+      if (lead.value !== null)
+        requireProductCondition(
+          lead.value <= observation - productInstant('0000-01-01T00:00:00.000Z'),
+        );
+      if (recovery.value !== null) requireProductCondition(recovery.value <= observation - start);
       const deploymentCount = frequency.value;
       const unresolved = bucket.unresolvedRecoveries;
       if (deploymentCount === null) {
@@ -291,8 +309,10 @@ export function normalizeProductDeliverySnapshot(value) {
     0,
   );
   requireProductCondition(
-    knownProductEvents + knownDeployments + (value.feedback.total || 0) <=
-      value.provenance.eventCount,
+    knownProductEvents <= 2000 &&
+      knownDeployments <= 2000 &&
+      knownProductEvents + knownDeployments + (value.feedback.total || 0) <=
+        value.provenance.eventCount,
   );
   return Object.freeze(JSON.parse(JSON.stringify(value)));
 }
