@@ -55,6 +55,36 @@ No partial result is published as success. The test runner's unchanged 120-secon
 applies. Native negative/protocol tests prove destination, cookie and bound rejection, exact body
 accounting and redirect denial. They do not substitute for the real PostgreSQL run.
 
+## Populated Room-page baseline
+
+`tests-db/catalog-load-evidence.test.js` adds a separate isolated PostgreSQL 18 workload at the
+same three User populations, ten Tenants, 16 HTTP clients and ten-connection pool. Each Tenant has
+one active Site and ten active priced Rooms. Room/Site IDs deliberately collide between Tenants;
+Room names and prices differ, so every response must match the caller Tenant's exact five Rooms,
+including capacity, equipment, media fields and price. All three canonical Customer roles use
+real canonical sessions. The fixture generation and SQL/protocol counters are shared with the
+unchanged session workload; neither duplicates session hashing or authorization policy.
+
+Before timing, the real repository supplies the configuration generation for each Tenant and the
+test warms pool connections. Each User then reads exactly one fixed first Room page through the
+complete production Customer HTTP composition. The helper permits only the loopback destination,
+five-entry Room route and bounded generation context. Existing 8 KiB, timeout, concurrency and
+abort/drain bounds remain unchanged. The response must be schema v2, contain the expected generation,
+have five entries and a nonempty continuation cursor, and report incomplete pagination. No
+production configuration, migration, Demo fixture, provider adapter or runtime behavior changes.
+
+The measured query count includes session/Tenant lookup and the canonical repeatable-read catalogue
+transaction (BEGIN, UTC setup, three context queries, Room query and COMMIT): nine calls per read.
+Diagnostics retain completed requests, percentiles, body bytes and local PostgreSQL protocol bytes,
+plus `representativeActivityMixApproved: false`. The normal disposable-database, PostgreSQL-version
+and unchanged 120-second per-file gates apply independently to both workloads. A failed or partial
+run cannot publish a successful population result.
+
+This is a populated read-operation baseline, not an approved monthly business mix, booking/write,
+pagination traversal, media download, worker, cold-start, real provider egress or alternative-topology
+measurement. Exact successful CI evidence must be retained before calling it measured. It does not
+close #269 or #270 or provide additional spending authorization.
+
 ## Monthly workload model
 
 An active-user population is not the same as simultaneously connected users, requests per second or

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { randomBytes, randomUUID } from 'node:crypto';
 import test from 'node:test';
-import { measureSessionReads } from '../scripts/session-load-evidence.mjs';
+import { measureSessionReads, measureCatalogRoomReads } from '../scripts/session-load-evidence.mjs';
 import { createSessionLoadRuntime } from '../scripts/support/session-load-runtime.mjs';
 import { loadConfig } from '../src/config.js';
 import { createPostgresPersistence } from '../src/persistence/postgres/index.js';
@@ -37,6 +37,37 @@ test('full session-load composition serves canonical HTTP with controlled reposi
     assert.equal(result.requests, 1); assert.equal(persistence.pool.totalCount, 0);
   }
   finally { await runtime.stop(); }
+});
+
+test('room-page measurement fixes the route and page size, bounds context and rejects foreign data', async () => {
+  const base = { origin: 'http://127.0.0.1:1234', cookies: [cookie], verify() {} };
+  for (const context of [undefined, '', 'a'.repeat(2049), 'safe&section=sites', 'https://example.com']) {
+    await assert.rejects(measureCatalogRoomReads({ ...base, context }), /LOAD_CONTEXT_INVALID/);
+  }
+  let requests = 0;
+  let redirect = false;
+  const payload = JSON.stringify({ entries: [{ name: 'Synthetic owned room' }] });
+  const server = createServer((req, res) => {
+    requests += 1;
+    assert.equal(req.method, 'GET');
+    assert.equal(req.url, '/api/v1/application/catalog?section=rooms&limit=5&context=bounded');
+    if (redirect) { res.writeHead(302, { Location: 'https://example.com/private' }); res.end(); }
+    else res.end(payload);
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const options = { ...base, origin: `http://127.0.0.1:${server.address().port}`, context: 'bounded' };
+    const result = await measureCatalogRoomReads({ ...options, cookies: Array(100).fill(cookie),
+      verify(body) { assert.equal(body.entries[0].name, 'Synthetic owned room'); } });
+    assert.equal(result.requests, 100);
+    assert.equal(result.payloadBytes, 100 * Buffer.byteLength(payload));
+    await assert.rejects(measureCatalogRoomReads({ ...options,
+      verify(body) { assert.equal(body.entries[0].name, 'Synthetic foreign room'); } }), /^Error: LOAD_ACCEPTANCE_FAILED$/);
+    assert.equal(requests, 101);
+    redirect = true;
+    await assert.rejects(measureCatalogRoomReads(options), /^Error: LOAD_ACCEPTANCE_FAILED$/);
+    assert.equal(requests, 102);
+  } finally { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
 });
 test('load measurement accepts only bounded loopback session reads and never follows redirects', async () => {
   for (const origin of ['https://127.0.0.1:1234', 'http://localhost:1234', 'http://example.com:1234',
@@ -80,10 +111,12 @@ test('load measurement rejects incomplete, oversized, malformed and identity-inv
   try {
     const base = { origin: `http://127.0.0.1:${server.address().port}`, cookies: [cookie],
       deadlineMs: 100, verify() {} };
-    for (const nextMode of ['stall', 'oversize', 'malformed', 'identity']) {
-      mode = nextMode;
-      await assert.rejects(measureSessionReads({ ...base,
-        verify(body) { assert.equal(body.tenant, 'owned'); } }), /^Error: LOAD_ACCEPTANCE_FAILED$/);
+    for (const measure of [measureSessionReads, (options) => measureCatalogRoomReads({ context: 'bounded', ...options })]) {
+      for (const nextMode of ['stall', 'oversize', 'malformed', 'identity']) {
+        mode = nextMode;
+        await assert.rejects(measure({ ...base,
+          verify(body) { assert.equal(body.tenant, 'owned'); } }), /^Error: LOAD_ACCEPTANCE_FAILED$/);
+      }
     }
   } finally { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
 });

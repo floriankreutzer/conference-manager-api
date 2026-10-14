@@ -2,7 +2,7 @@ import { Agent, request } from 'node:http';
 import { performance } from 'node:perf_hooks';
 
 // Test-only protocol measurement: the destination and operation cannot be supplied remotely.
-export async function measureSessionReads({ origin, cookies, verify, concurrency = 16, deadlineMs = 45_000 }) {
+async function measureReads({ origin, cookies, verify, concurrency = 16, deadlineMs = 45_000 }, path) {
   const url = new URL(origin);
   if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password
     || url.pathname !== '/' || url.search || url.hash || !url.port) throw new Error('LOAD_DESTINATION_INVALID');
@@ -21,7 +21,7 @@ export async function measureSessionReads({ origin, cookies, verify, concurrency
   async function read(index) {
     const at = performance.now();
     const result = await new Promise((resolve, reject) => {
-      const req = request(new URL('/api/v1/session', url), {
+      const req = request(new URL(path, url), {
         agent, signal: controller.signal, headers: { Cookie: cookies[index] },
       }, (response) => {
         const chunks = [];
@@ -65,4 +65,16 @@ export async function measureSessionReads({ origin, cookies, verify, concurrency
       elapsedMs: Number(elapsedMs.toFixed(3)), requestsPerSecond: Number((cookies.length * 1_000 / elapsedMs).toFixed(3)),
       latencyMs: { p50: percentile(0.5), p95: percentile(0.95), p99: percentile(0.99) } });
   } finally { clearTimeout(timer); controller.abort(); agent.destroy(); }
+}
+
+export function measureSessionReads(options) {
+  return measureReads(options, '/api/v1/session');
+}
+
+// The caller can select only a bounded catalogue generation, never a destination, route or page size.
+export async function measureCatalogRoomReads({ context, ...options }) {
+  if (typeof context !== 'string' || !/^[A-Za-z0-9_-]{1,2048}$/.test(context)) {
+    throw new Error('LOAD_CONTEXT_INVALID');
+  }
+  return measureReads(options, `/api/v1/application/catalog?section=rooms&limit=5&context=${context}`);
 }
