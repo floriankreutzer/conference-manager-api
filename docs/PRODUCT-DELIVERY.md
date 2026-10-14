@@ -76,7 +76,9 @@ The normalized kind is an extraction contract, not a browser-controlled audit ac
 or a newly emitted business event. Source mapping/coverage verification remains an
 operator obligation until an authenticated collector implements it. The compiler
 counts source events and computes median submission-to-decision time only when every
-decision has its trusted matching submission clock in the window; it never silently
+decision has its trusted matching submission clock in the window. A submission can
+serve at most one decision; a later resubmission supersedes the earlier clock. Reused
+or missing pairs keep the whole duration cohort unknown; the compiler never silently
 reports a partial-cohort duration as complete.
 
 ### DORA calculations

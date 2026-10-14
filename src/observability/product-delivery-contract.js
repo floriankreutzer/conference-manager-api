@@ -143,7 +143,9 @@ export function normalizeProductDeliverySnapshot(value) {
   const submissions = value.product.find((item) => item.id === 'request_submitted').value;
   const decisionTime = value.product.find((item) => item.id === 'manager_decision_time').value;
   if (decisionTime !== null)
-    requireProductCondition(decisions > 0 && submissions > 0 && decisionTime < end - start);
+    requireProductCondition(
+      decisions > 0 && submissions >= decisions && decisionTime < end - start,
+    );
   exactProductObject(value.feedback, [
     'source',
     'total',
@@ -221,7 +223,8 @@ export function normalizeProductDeliverySnapshot(value) {
         requireProductCondition(
           lead.value <= observation - productInstant('0000-01-01T00:00:00.000Z'),
         );
-      if (recovery.value !== null) requireProductCondition(recovery.value <= observation - start);
+      if (recovery.value !== null)
+        requireProductCondition(recovery.value <= observation - productInstant(bucket.periodStart));
       const deploymentCount = frequency.value;
       const unresolved = bucket.unresolvedRecoveries;
       if (deploymentCount === null) {

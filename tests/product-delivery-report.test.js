@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   compileProductDeliveryReport,
@@ -427,4 +428,62 @@ test('closed snapshots retain source-record ceilings and possible time bounds', 
     mutate(report);
     assert.throws(() => normalizeProductDeliverySnapshot(report));
   }
+});
+
+test('decision clocks pair one-to-one and never reuse an older superseded submission', () => {
+  const input = JSON.parse(
+    readFileSync(
+      new URL('./support/product-delivery-source-fixture.json', import.meta.url),
+      'utf8',
+    ),
+  );
+  const second = {
+    ...input.productEvents[1],
+    sourceId: 'second-decision',
+    occurredAt: '2026-10-14T14:00:00.000Z',
+  };
+  input.productEvents.push(second);
+  assert.equal(metric(compileProductDeliveryReport(input), 'manager_decision_time').value, null);
+  input.productEvents.push({
+    ...input.productEvents[0],
+    sourceId: 'resubmission',
+    occurredAt: '2026-10-14T12:00:00.000Z',
+  });
+  assert.equal(
+    metric(compileProductDeliveryReport(input), 'manager_decision_time').value,
+    5_400_000,
+  );
+  input.productEvents[3].occurredAt = '2026-10-14T10:30:00.000Z';
+  assert.equal(metric(compileProductDeliveryReport(input), 'manager_decision_time').value, null);
+  input.productEvents.reverse();
+  assert.equal(metric(compileProductDeliveryReport(input), 'manager_decision_time').value, null);
+  const corrupt = JSON.parse(JSON.stringify(compileProductDeliveryReport(source())));
+  corrupt.product.find((item) => item.id === 'manager_decisions').value = 2;
+  corrupt.product.find((item) => item.id === 'request_submitted').value = 1;
+  const duration = corrupt.product.find((item) => item.id === 'manager_decision_time');
+  duration.value = 500;
+  duration.reason = 'available';
+  corrupt.provenance.eventCount = 3;
+  assert.throws(() => normalizeProductDeliverySnapshot(corrupt));
+});
+
+test('recovery ceilings start at the originating weekly deployment bucket', () => {
+  const input = JSON.parse(
+    readFileSync(
+      new URL('./support/product-delivery-source-fixture.json', import.meta.url),
+      'utf8',
+    ),
+  );
+  Object.assign(input.deployments[0], {
+    outcome: 'impaired',
+    failureAt: input.deployments[0].deployedAt,
+    recoveredAt: '2026-10-15T10:00:00.000Z',
+    changes: [],
+  });
+  const report = compileProductDeliveryReport(input);
+  const recovery = report.delivery[1].buckets[3].metrics[2];
+  assert.equal(recovery.value, 79_199_500);
+  const corrupt = JSON.parse(JSON.stringify(report));
+  corrupt.delivery[1].buckets[3].metrics[2].value = 20 * 86_400_000;
+  assert.throws(() => normalizeProductDeliverySnapshot(corrupt));
 });

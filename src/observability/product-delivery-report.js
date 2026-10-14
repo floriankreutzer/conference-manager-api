@@ -228,16 +228,29 @@ function productMetrics(input) {
     input.productComplete
       ? input.productEvents.filter((event) => event.kind === kind).length
       : null;
-  const decisions = input.productEvents.filter((event) => event.kind === 'manager_decision');
+  const submissionsByWorkflow = new Map();
+  for (const event of input.productEvents.filter((item) => item.kind === 'request_submitted')) {
+    const key = requestWorkflowKey(event);
+    const submissions = submissionsByWorkflow.get(key) || [];
+    submissions.push(event);
+    submissionsByWorkflow.set(key, submissions);
+  }
+  const order = (left, right) =>
+    left.occurredAt.localeCompare(right.occurredAt) || left.sourceId.localeCompare(right.sourceId);
+  for (const submissions of submissionsByWorkflow.values()) submissions.sort(order);
+  const decisions = input.productEvents
+    .filter((event) => event.kind === 'manager_decision')
+    .sort(order);
+  const consumed = new Set();
   const durations = decisions.map((event) => {
-    const submissions = input.productEvents.filter(
-      (candidate) =>
-        candidate.kind === 'request_submitted' &&
-        requestWorkflowKey(candidate) === requestWorkflowKey(event) &&
-        candidate.occurredAt <= event.occurredAt,
-    );
-    const latest = submissions.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))[0];
-    return latest ? instant(event.occurredAt) - instant(latest.occurredAt) : null;
+    const latest = submissionsByWorkflow
+      .get(requestWorkflowKey(event))
+      ?.findLast((candidate) => candidate.occurredAt <= event.occurredAt);
+    // A later resubmission supersedes the earlier pending clock. Never reuse one
+    // submission for two decisions or fall back to an older superseded clock.
+    if (!latest || consumed.has(latest)) return null;
+    consumed.add(latest);
+    return instant(event.occurredAt) - instant(latest.occurredAt);
   });
   const duration =
     input.productComplete && durations.every((value) => value !== null) ? median(durations) : null;
