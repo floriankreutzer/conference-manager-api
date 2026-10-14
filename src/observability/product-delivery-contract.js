@@ -100,6 +100,7 @@ function metrics(value, ids) {
             metric.reason === 'available' &&
             (metric.unit !== 'count' ||
               (Number.isSafeInteger(metric.value) && metric.value <= 2000)) &&
+            (metric.unit !== 'milliseconds' || Number.isSafeInteger(metric.value * 2)) &&
             (metric.unit !== 'ratio' || metric.value <= 1)),
     );
   });
@@ -125,7 +126,7 @@ export function normalizeProductDeliverySnapshot(value) {
   requireProductCondition(end - start === 28 * DAY_MS && start % DAY_MS === 0);
   if (value.observedAt !== null)
     requireProductCondition(
-      productInstant(value.observedAt) >= end && productInstant(value.observedAt) - end <= DAY_MS,
+      productInstant(value.observedAt) >= end && productInstant(value.observedAt) - end < DAY_MS,
     );
   metrics(value.product, PRODUCT_METRIC_IDS);
   for (const id of ['request_started', 'request_abandoned', 'time_to_submit']) {
@@ -249,8 +250,7 @@ export function normalizeProductDeliverySnapshot(value) {
         for (const ratio of [failure, rework]) {
           if (ratio.value !== null)
             requireProductCondition(
-              Math.abs(ratio.value * deploymentCount - Math.round(ratio.value * deploymentCount)) <
-                1e-9,
+              ratio.value === Math.round(ratio.value * deploymentCount) / deploymentCount,
             );
           else requireProductCondition(ratio.reason === 'missing_classification');
         }
@@ -264,7 +264,7 @@ export function normalizeProductDeliverySnapshot(value) {
           requireProductCondition(
             unresolved <= deploymentCount &&
               failure.value !== null &&
-              failure.value * deploymentCount + 1e-9 >= unresolved,
+              Math.round(failure.value * deploymentCount) >= unresolved,
           );
           if (failure.value === 1)
             requireProductCondition(lead.value === null && lead.reason === 'empty_denominator');

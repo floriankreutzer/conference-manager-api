@@ -491,3 +491,38 @@ test('recovery ceilings start at the originating weekly deployment bucket', () =
   corrupt.delivery[1].buckets[3].metrics[2].value = 20 * 86_400_000;
   assert.throws(() => normalizeProductDeliverySnapshot(corrupt));
 });
+
+test('timestamp-derived medians allow half milliseconds but reject impossible fractions and day drift', () => {
+  const input = source();
+  const deployedAt = '2026-09-19T12:00:00.000Z';
+  input.deployments = [
+    deployment('half-millisecond', {
+      deployedAt,
+      changes: [
+        {
+          commit: 'a'.repeat(40),
+          committedAt: '2026-09-19T11:59:59.998Z',
+          firstSuccessfulDeployment: true,
+        },
+        {
+          commit: 'b'.repeat(40),
+          committedAt: '2026-09-19T11:59:59.999Z',
+          firstSuccessfulDeployment: true,
+        },
+      ],
+    }),
+  ];
+  const report = compileProductDeliveryReport(input);
+  assert.equal(delivery(report, 'change_lead_time').value, 1.5);
+  const invalid = JSON.parse(JSON.stringify(report));
+  const corruptRatio = JSON.parse(JSON.stringify(report));
+  corruptRatio.delivery[1].buckets[0].metrics[4].value = 1e-12;
+  assert.throws(() => normalizeProductDeliverySnapshot(corruptRatio));
+  invalid.delivery[1].buckets[0].metrics[0].value = 0.1;
+  assert.throws(() => normalizeProductDeliverySnapshot(invalid));
+  const drifted = JSON.parse(JSON.stringify(report));
+  drifted.observedAt = '2026-10-16T00:00:00.000Z';
+  assert.throws(() => normalizeProductDeliverySnapshot(drifted));
+  input.observedAt = drifted.observedAt;
+  assert.throws(() => compileProductDeliveryReport(input));
+});

@@ -74,7 +74,7 @@ function validateInput(input) {
     end - start === 28 * DAY_MS &&
       start % DAY_MS === 0 &&
       observed >= end &&
-      observed - end <= DAY_MS &&
+      observed - end < DAY_MS &&
       typeof input.productComplete === 'boolean' &&
       typeof input.feedbackComplete === 'boolean',
   );
