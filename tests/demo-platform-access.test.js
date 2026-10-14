@@ -9,6 +9,7 @@ import { createDemoPlatformRuntimeConfig } from '../src/demo/runtime-config.js';
 import { createDemoTrafficGate } from '../src/demo/traffic-gate.js';
 import { loadDemoTrafficGateConfig } from '../src/demo/traffic-gate-config.js';
 import { createHealthMonitor } from '../src/observability/health.js';
+import { createPlatformLogger } from '../src/platform/http/observability.js';
 import { platformHealthRoutes } from '../src/platform/http/health-routes.js';
 import { platformSessionRoutes } from '../src/platform/http/session-routes.js';
 import { trafficFixture, NOW, listen, request, authenticatedPrincipal } from './support/demo-traffic-gate-fixture.js';
@@ -42,7 +43,9 @@ test('temporary Platform access configuration fails closed for malformed or unus
 
 test('password gate protects all assets and APIs, strips credentials and rejects duplicate/malformed authority', async (t) => {
   const fixture = credentials();
-  const gate = createDemoPlatformAccessGate({ settings: fixture.settings, publicOrigin: 'https://platform.demo.invalid' });
+  const events = [];
+  const logger = createPlatformLogger({ write: (line) => events.push(JSON.parse(line)) });
+  const gate = createDemoPlatformAccessGate({ settings: fixture.settings, publicOrigin: 'https://platform.demo.invalid', logger });
   let calls = 0;
   const port = await listen(t, http.createServer((req, res) => {
     if (gate.handle(req, res)) return;
@@ -71,6 +74,11 @@ test('password gate protects all assets and APIs, strips credentials and rejects
     ['/api/%2e%2e/private', {}], ['/'.padEnd(8_194, 'x'), {}],
   ]) assert.equal((await request(port, 'platform', path, { authorization: fixture.authorization, ...headers })).status, 400);
   assert.equal(calls, 0);
+  assert.ok(events.length > 0);
+  assert.ok(events.every((event) => event.event === 'platform_security_request_denied' && event.category === 'authentication'));
+  assert.ok(!JSON.stringify(events).includes(fixture.password));
+  assert.ok(!JSON.stringify(events).includes(fixture.authorization));
+  assert.ok(!JSON.stringify(events).includes(fixture.passwordHash));
   assert.equal((await request(port, 'platform', '/', { authorization: fixture.authorization })).status, 200);
   assert.equal(calls, 1);
 });

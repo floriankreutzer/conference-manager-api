@@ -40,6 +40,10 @@ target-scope checks, step-up and session-bound CSRF remain authoritative and unc
 Possession of the shared password does not issue a Platform session or grant any permission.
 There is no new database table, migration, provider request, dependency or frontend change.
 
+Denied perimeter requests use the existing minimized operational authentication telemetry:
+only a generated request ID, fixed category/event and timestamp. No shared-password holder
+is represented as a durable authenticated operator audit actor.
+
 The native prompt protects the entire Operations origin, including direct API and asset requests.
 API clients and future Hosted acceptance must explicitly supply the perimeter credential through
 protected configuration. Do not weaken the permanent isolated browser acceptance journeys or

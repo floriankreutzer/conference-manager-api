@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { createPlatformLogger } from '../platform/http/observability.js';
 import {
   applyPlatformSecurityHeaders,
   assertPlatformRequestHost,
@@ -43,7 +44,7 @@ function digest(password) {
   return createHash('sha256').update(HASH_NAMESPACE).update(password).digest();
 }
 
-function reject(response, statusCode) {
+function reject(response, statusCode, logger) {
   const requestId = createPlatformRequestId();
   const code = statusCode === 401 ? 'PLATFORM_DEMO_ACCESS_REQUIRED'
     : statusCode === 429 ? 'PLATFORM_DEMO_ACCESS_RATE_LIMITED' : 'PLATFORM_DEMO_ACCESS_REQUEST_INVALID';
@@ -59,14 +60,23 @@ function reject(response, statusCode) {
   }
   if (statusCode === 429) response.setHeader('Retry-After', '60');
   response.end(body);
+  try {
+    logger.securityOutcome({ requestId, category: 'authentication' });
+  } catch {
+    // Operational observation cannot turn an access denial into application access.
+  }
 }
 
-export function createDemoPlatformAccessGate({ settings, publicOrigin, clock = () => Date.now() } = {}) {
+export function createDemoPlatformAccessGate({
+  settings, publicOrigin, clock = () => Date.now(), logger = createPlatformLogger(),
+} = {}) {
   if (!['public', 'password'].includes(settings?.mode)
     || (settings.mode === 'password' && (typeof settings.passwordHash !== 'string'
       || !/^[a-f0-9]{64}$/.test(settings.passwordHash)))
     || (settings.mode === 'public' && settings.passwordHash !== null)
-    || typeof clock !== 'function') throw new TypeError('DEMO_PLATFORM_ACCESS_GATE_INVALID');
+    || typeof clock !== 'function' || typeof logger?.securityOutcome !== 'function') {
+    throw new TypeError('DEMO_PLATFORM_ACCESS_GATE_INVALID');
+  }
   const origin = new URL(publicOrigin);
   if (origin.protocol !== 'https:' || origin.origin !== publicOrigin) {
     throw new TypeError('DEMO_PLATFORM_ACCESS_GATE_INVALID');
@@ -82,7 +92,7 @@ export function createDemoPlatformAccessGate({ settings, publicOrigin, clock = (
         assertPlatformRequestHost(request.headers, publicOrigin);
         assertPlatformRequestOrigin(request.headers, publicOrigin);
       } catch {
-        reject(response, 400);
+        reject(response, 400, logger);
         return true;
       }
       if (request.method === 'GET' && HEALTH_PATHS.has(request.url)
@@ -94,10 +104,10 @@ export function createDemoPlatformAccessGate({ settings, publicOrigin, clock = (
         // Forwarded headers are not trusted; successful credentials do not consume this failure budget.
         failures.consume(request.socket?.remoteAddress || 'unknown');
       } catch {
-        reject(response, 429);
+        reject(response, 429, logger);
         return true;
       }
-      reject(response, 401);
+      reject(response, 401, logger);
       return true;
     },
   });
