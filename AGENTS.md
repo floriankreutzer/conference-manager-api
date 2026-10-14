@@ -334,19 +334,13 @@ Required reviews, security checks, regression/progression tests and release gate
 ## Documentation status integrity
 
 Reconcile current documentation with the exact merged implementation and named deployment evidence. Distinguish current main, unmerged pull requests, deployed immutable counterparts, dated test evidence and planned behavior. Keep historical failures and accepted scope limits explicitly historical. A closed milestone does not prove every later change passed its own gates.
-
 ## Confluence documentation governance
-
-For any work that creates, edits, moves, renames, restructures, or archives Conference Manager content in Confluence:
-
-1. Read the internal [AGENT.md – Confluence Governance](https://acckreutzer-1733338800840.atlassian.net/wiki/spaces/~5de0302805eece0d0920638f/pages/720987/AGENT.md+Confluence+Governance) completely before making a Confluence change.
-2. Read [AGENT.1 – Documentation Standard & Page Templates](https://acckreutzer-1733338800840.atlassian.net/wiki/spaces/~5de0302805eece0d0920638f/pages/21168209/AGENT.1+Documentation+Standard+Page+Templates) completely before creating or materially restructuring documentation.
-3. Follow the documented page classes and keep current normative/description content separate from dated audit, test, deployment, security, regulatory, and acceptance evidence.
-4. For milestone documentation, use the governed Overview → Requirements & Design → Audit & Acceptance Evidence pattern; add an Operations/Runbook child only when the milestone needs a repeatable procedure.
-5. Current repository `main` remains authoritative for implemented code/runtime behavior. Confluence must not contradict the exact merged implementation, repository governance, or named deployment evidence.
-6. Confluence is the governed internal source for product/architecture/security/regulatory documentation structure and evidence organization within the boundaries defined by the Confluence governance pages. Do not create a parallel documentation hierarchy in a repository.
-7. Preserve historical failures, waivers, superseded states, and dated acceptance as historical evidence. Never rewrite them as current success.
-8. Public repository boundaries still apply: never copy internal credentials, customer data, sensitive vulnerability details, private provider/account evidence, or unnecessary internal architecture/governance content into public repository files merely because it exists in Confluence.
-
-If the Confluence governance pages conflict with repository implementation facts, treat the current repository implementation as authoritative for code/runtime state and reconcile the documentation explicitly rather than silently choosing one version.
+For any Conference Manager Confluence create/edit/move/rename/restructure/archive work:
+- Read [AGENT.md – Confluence Governance](https://acckreutzer-1733338800840.atlassian.net/wiki/spaces/~5de0302805eece0d0920638f/pages/720987/AGENT.md+Confluence+Governance) first, and read [AGENT.1 – Documentation Standard & Page Templates](https://acckreutzer-1733338800840.atlassian.net/wiki/spaces/~5de0302805eece0d0920638f/pages/21168209/AGENT.1+Documentation+Standard+Page+Templates) before creating or materially restructuring documentation.
+- Follow the governed page classes; separate current normative/description content from dated audit, test, deployment, security, regulatory, and acceptance evidence.
+- Milestones use Overview → Requirements & Design → Audit & Acceptance Evidence, plus Operations/Runbook only when a repeatable procedure is needed.
+- Current repository `main` remains authoritative for implemented code/runtime behavior; Confluence must be reconciled to exact merged/deployed facts rather than becoming a parallel implementation truth.
+- Confluence is the governed internal structure for product/architecture/security/regulatory documentation and evidence organization; preserve historical failures, waivers, superseded states, and dated acceptance as historical evidence.
+- Public repository boundaries remain mandatory: never copy credentials, customer data, sensitive vulnerability/provider evidence, or unnecessary internal material from Confluence into public files.
+If Confluence and repository facts conflict, reconcile the documentation explicitly; do not silently choose or rewrite history.
 
