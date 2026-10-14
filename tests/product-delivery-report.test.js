@@ -483,6 +483,10 @@ test('recovery ceilings start at the originating weekly deployment bucket', () =
   const report = compileProductDeliveryReport(input);
   const recovery = report.delivery[1].buckets[3].metrics[2];
   assert.equal(recovery.value, 79_199_500);
+  const impossibleLead = JSON.parse(JSON.stringify(report));
+  impossibleLead.delivery[1].buckets[3].metrics[0].value = 500;
+  impossibleLead.delivery[1].buckets[3].metrics[0].reason = 'available';
+  assert.throws(() => normalizeProductDeliverySnapshot(impossibleLead));
   const corrupt = JSON.parse(JSON.stringify(report));
   corrupt.delivery[1].buckets[3].metrics[2].value = 20 * 86_400_000;
   assert.throws(() => normalizeProductDeliverySnapshot(corrupt));

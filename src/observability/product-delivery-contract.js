@@ -221,7 +221,8 @@ export function normalizeProductDeliverySnapshot(value) {
       const observation = value.observedAt === null ? end : productInstant(value.observedAt);
       if (lead.value !== null)
         requireProductCondition(
-          lead.value <= observation - productInstant('0000-01-01T00:00:00.000Z'),
+          lead.value <
+            productInstant(bucket.periodEnd) - productInstant('0000-01-01T00:00:00.000Z'),
         );
       if (recovery.value !== null)
         requireProductCondition(recovery.value <= observation - productInstant(bucket.periodStart));
@@ -265,6 +266,8 @@ export function normalizeProductDeliverySnapshot(value) {
               failure.value !== null &&
               failure.value * deploymentCount + 1e-9 >= unresolved,
           );
+          if (failure.value === 1)
+            requireProductCondition(lead.value === null && lead.reason === 'empty_denominator');
           if (unresolved > 0)
             requireProductCondition(
               recovery.value === null && recovery.reason === 'unresolved_recovery',
