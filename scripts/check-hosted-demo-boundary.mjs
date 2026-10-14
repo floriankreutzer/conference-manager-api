@@ -188,6 +188,22 @@ const trafficPosition = platformServer.indexOf('options.trafficGate?.handle(requ
 if (accessPosition < 0 || trafficPosition < 0 || accessPosition >= trafficPosition) {
   throw new Error('Platform Demo access perimeter must run before traffic, static and application handling.');
 }
+const providerPosition = platformServer.indexOf('handleDemoProviderUsage({ request, response');
+const staticPosition = platformServer.indexOf("if (staticHandler &&");
+if (providerPosition <= trafficPosition || providerPosition >= staticPosition
+  || !platformEntrypoint.includes('loadDemoProviderUsage(process.env, platformAccess)')
+  || !platformComposition.includes('providerUsage = null')) {
+  throw new Error('Private provider reporting must preserve explicit opt-in after both Demo gates.');
+}
+const providerHandler = await readFile('src/demo/http/platform-provider-usage-handler.js', 'utf8');
+if (!providerHandler.includes('accessGate?.hasPrivateReadAccess(request) !== true')) {
+  throw new Error('Private provider reads require the request-bound password capability.');
+}
+for (const file of ['src/demo/customer-main.js', 'src/demo/customer-composition.js', 'src/platform-main.js']) {
+  if ((await readFile(file, 'utf8')).includes('providerUsage')) {
+    throw new Error('Provider snapshots belong exclusively to the private Operations Demo.');
+  }
+}
 
 const blueprint = await readFile('render.yaml', 'utf8');
 for (const required of [

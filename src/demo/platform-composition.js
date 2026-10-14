@@ -39,6 +39,7 @@ export function createDemoPlatformComposition({
   staticFileAdapter = null,
   trafficGate = null,
   accessGate = null,
+  providerUsage = null,
   metrics,
 } = {}) {
   if (!config) throw new TypeError('DEMO_CONFIG_REQUIRED');
@@ -101,6 +102,7 @@ export function createDemoPlatformComposition({
       staticFileAdapter,
       trafficGate,
       accessGate,
+      providerUsage,
     }),
     projectionRunGate: (work) => withDemoRuntimeSharedGate(selectedGatePool, work),
     routeModulesFactory({ platformSessionService }) {

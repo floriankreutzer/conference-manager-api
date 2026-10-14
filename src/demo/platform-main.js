@@ -9,9 +9,11 @@ import { assertPlatformRouteKey } from '../platform/http/observability.js';
 import { startDemoMediaStorageRuntime } from './media-storage-runtime.js';
 import { loadDemoPlatformAccessConfig } from './platform-access-config.js';
 import { createDemoPlatformAccessGate } from './platform-access-gate.js';
+import { loadDemoProviderUsage } from './platform-provider-usage.js';
 
 const config = loadDemoPlatformConfig(process.env);
 const platformAccess = loadDemoPlatformAccessConfig(process.env);
+const providerUsage = loadDemoProviderUsage(process.env, platformAccess);
 const runtime = await startDemoEntrypointRuntime({
   env: process.env, config, surface: 'platform',
   boundary: { applySecurityHeaders: applyPlatformSecurityHeaders, assertRequestHost: assertPlatformRequestHost,
@@ -28,7 +30,7 @@ const runtime = await startDemoEntrypointRuntime({
     return startDemoMediaStorageRuntime({
       env: process.env, config, surface: 'platform',
       createComposition: (resetMediaObjectStorage) => createDemoPlatformComposition({
-        config, staticFileAdapter, metrics, resetMediaObjectStorage, trafficGate, accessGate,
+        config, staticFileAdapter, metrics, resetMediaObjectStorage, trafficGate, accessGate, providerUsage,
       }),
     });
   },
