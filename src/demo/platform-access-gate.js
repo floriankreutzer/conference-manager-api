@@ -36,7 +36,7 @@ function passwordFromAuthorization(value) {
   const encoded = value.slice(6);
   const decoded = Buffer.from(encoded, 'base64');
   if (decoded.toString('base64') !== encoded) return null;
-  return /^ops:([A-Za-z0-9_-]{43})$/.exec(decoded.toString('utf8'))?.[1] ?? null;
+  return decoded.toString('utf8').match(/^ops:([A-Za-z0-9_-]{43})$/)?.[1] ?? null;
 }
 
 function digest(password) {
