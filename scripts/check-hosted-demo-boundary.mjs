@@ -195,12 +195,25 @@ if (providerPosition <= trafficPosition || providerPosition >= staticPosition
   || !platformComposition.includes('providerUsage = null')) {
   throw new Error('Private provider reporting must preserve explicit opt-in after both Demo gates.');
 }
-const providerHandler = await readFile('src/demo/http/platform-provider-usage-handler.js', 'utf8');
-if (!providerHandler.includes('accessGate?.hasPrivateReadAccess(request) !== true')) {
-  throw new Error('Private provider reads require the request-bound password capability.');
+const privateHandler = await readFile('src/demo/http/platform-private-projection-handler.js', 'utf8');
+if (!privateHandler.includes('accessGate?.hasPrivateReadAccess(request) !== true')) {
+  throw new Error('Private projections require the request-bound password capability.');
+}
+for (const [name, projection] of [['provider-usage', 'providerUsage'], ['product-delivery', 'productDelivery']]) {
+  const source = await readFile(`src/demo/http/platform-${name}-handler.js`, 'utf8');
+  if (!source.includes("from './platform-private-projection-handler.js'")
+    || !source.includes(`projection: ${projection}`)) {
+    throw new Error('Private projection wrappers must retain the shared authorization boundary.');
+  }
+}
+const productPosition = platformServer.indexOf('handleDemoProductDelivery({ request, response');
+if (productPosition <= trafficPosition || productPosition >= staticPosition
+  || !platformEntrypoint.includes('loadDemoProductDelivery(process.env, platformAccess)')
+  || !platformComposition.includes('productDelivery = null')) {
+  throw new Error('Private Product/Delivery reporting must remain behind both Operations gates.');
 }
 for (const file of ['src/demo/customer-main.js', 'src/demo/customer-composition.js', 'src/platform-main.js']) {
-  if ((await readFile(file, 'utf8')).includes('providerUsage')) {
+  if ((await readFile(file, 'utf8')).match(/providerUsage|productDelivery/)) {
     throw new Error('Provider snapshots belong exclusively to the private Operations Demo.');
   }
 }

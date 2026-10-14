@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "environment": "demo",
+  "observedAt": "2026-10-15T12:00:00.000Z",
+  "periodStart": "2026-09-17T00:00:00.000Z",
+  "periodEnd": "2026-10-15T00:00:00.000Z",
+  "productComplete": true,
+  "productEvents": [
+    {
+      "source": "tenant_audit",
+      "sourceId": "synthetic-audit-1",
+      "kind": "request_submitted",
+      "occurredAt": "2026-10-14T10:00:00.000Z",
+      "tenantId": "10000000-0000-4000-8000-000000000001",
+      "targetId": "synthetic-request"
+    },
+    {
+      "source": "request_revision",
+      "sourceId": "synthetic-revision-2",
+      "kind": "manager_decision",
+      "occurredAt": "2026-10-14T11:00:00.000Z",
+      "tenantId": "10000000-0000-4000-8000-000000000001",
+      "targetId": "synthetic-request"
+    }
+  ],
+  "deliveryComplete": {
+    "application": false,
+    "api": true,
+    "website": false
+  },
+  "deployments": [
+    {
+      "source": "render",
+      "sourceId": "synthetic-deploy-1",
+      "component": "api",
+      "artifactCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "changes": [
+        {
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "committedAt": "2026-10-14T12:00:00.000Z",
+          "firstSuccessfulDeployment": true
+        }
+      ],
+      "deployedAt": "2026-10-14T12:00:00.500Z",
+      "outcome": "healthy",
+      "failureAt": null,
+      "recoveredAt": null,
+      "rework": false
+    }
+  ],
+  "feedbackSource": "protected_operator_registry",
+  "feedbackComplete": true,
+  "feedback": [
+    {
+      "source": "protected_operator_registry",
+      "sourceId": "synthetic-case-1",
+      "occurredAt": "2026-10-14T13:00:00.000Z",
+      "category": "usability",
+      "workflow": "request",
+      "severity": "high",
+      "sentiment": "negative",
+      "state": "open"
+    }
+  ]
+}
