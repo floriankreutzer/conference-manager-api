@@ -2,7 +2,20 @@
 
 Room media is a Tenant-owned private PostgreSQL `bytea` asset, not an external image URL. The service stores reencoded WebP with a 2 MiB input cap, a 4 megapixel cap and an initial 100 MiB payload quota per Tenant. Existing Locations revisions can retain references after a Room detaches the image. The retention query locks the Tenant row and deletes only assets older than 30 days that are referenced neither by current Room state nor by any immutable Locations revision. It processes at most 100 rows per transaction.
 
-## Scheduled retention
+## Current hosted Demo boundary — 14 October 2026
+
+The hosted Demo now uses private Neon Object Storage. Original PostgreSQL bytes
+remain retained. The former `room-media-retention.yml` scheduler was disabled
+through cutover and is now retired: its PostgreSQL-only procedure does not
+reconcile provider objects or Catalogue/history custody. No automatic retention
+or deletion is enabled, and this cleanup authorizes no data purge.
+
+The CLI and restricted procedure remain supported for explicitly reviewed
+PostgreSQL deployments and isolated acceptance. Recovery/backfill repositories
+and both storage-mode CI rows remain required. Object-aware retention needs its
+own reviewed reference/custody policy and executed acceptance before activation.
+
+## PostgreSQL-only retention procedure
 
 Schema 041 installs `public.prune_expired_unreferenced_room_media(uuid,timestamptz,integer)`
 as a bounded SECURITY DEFINER procedure owned by the migration role with a fixed
@@ -32,11 +45,11 @@ Verify the effective role cannot `UPDATE` Tenants, directly `DELETE` media,
 read media bytes, or execute unrelated functions. Do not put its connection
 string into source control or logs. Supply it from a secret store as
 `ROOM_MEDIA_RETENTION_DATABASE_URL` with `DATABASE_SSL=verify-full`, and run
-`NODE_ENV=production node scripts/room-media-retention.mjs --execute` once per day through the reviewed `.github/workflows/room-media-retention.yml`
-GitHub Actions job on `main` (03:17 UTC, plus manual dispatch). Configure the
-repository secret `ROOM_MEDIA_RETENTION_DATABASE_URL` with only that role's
-connection string. Missing credentials, schema mismatch and incomplete batches
-fail the workflow; monitor GitHub Actions failures and assign an operator. The script checks schema readiness, limits itself
+`NODE_ENV=production node scripts/room-media-retention.mjs --execute` only under a
+separately reviewed PostgreSQL-only maintenance scope. The former GitHub Actions
+scheduler is retired; do not configure or dispatch it. Missing credentials,
+schema mismatch and incomplete batches fail the command. A future scheduler
+must own its failure alert and acceptance evidence before activation. The script checks schema readiness, limits itself
 to 10,000 Tenants and at most 1,000 deletions per Tenant per invocation, and
 fails on an incomplete pass. Alert on any failure/incomplete status and inspect
 retained references before retrying. Logs include aggregate counts and bytes

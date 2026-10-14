@@ -65,16 +65,11 @@ preview journey protect this correction. No schema or seed checksum change.
 
 ## Milestone metadata completion
 
-The GitHub connector cannot patch milestone state. The scoped
-`complete-saas37-milestone.yml` workflow handles this release metadata through
-the repository's ephemeral `GITHUB_TOKEN`, with only `issues: write`.
-It reads API #85–#89 and Frontend #212–#215 and requires every issue to be
-`closed:completed`; milestone 1 must retain its SaaS 3.7 identity and have zero
-open issues. Missing access or changed metadata fails closed. Pending work exits
-without closing anything and is explicitly logged. Serial execution rereads current
-state, and an already closed milestone is idempotent. The action does not close
-issues, approve acceptance, change runtime data or deploy services. Only the
-normal completed-issue event or explicit manual invocation can run it.
+The one-time `complete-saas37-milestone.yml` workflow was retired on 14 October
+2026 after independent GitHub metadata readback confirmed milestone 1 closed,
+with zero open issues. Its historical implementation remains in Git history;
+removal does not retire the permanent three-customer/two-reset CI contract.
+Any future milestone administration requires a fresh issue/evidence review.
 
 The API CI retains the deployed immutable frontend artifact selected from
 `render.yaml`. Its shared-Demo test file is read from immutable acceptance source
