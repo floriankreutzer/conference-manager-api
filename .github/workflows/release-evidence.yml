@@ -1,0 +1,92 @@
+name: Release source evidence
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22.22.3'
+      - name: Checkout immutable public release evidence tool
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: floriankreutzer/conference-manager-website
+          ref: 7dbf952ce36d1b5153b8f39112f511ec13bd21a9
+          path: .release-tool
+          persist-credentials: false
+      - name: Install the pinned standalone evidence tool dependency
+        run: |
+          npm ci --prefix .release-tool/scripts/release --ignore-scripts
+          npm audit --prefix .release-tool/scripts/release --audit-level=high
+      - name: Generate and independently verify source evidence
+        run: |
+          node .release-tool/scripts/release/generate.mjs generate "$GITHUB_REPOSITORY"
+          node .release-tool/scripts/release/generate.mjs verify "$GITHUB_REPOSITORY" "$GITHUB_SHA"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-source-${{ github.sha }}
+          path: release-evidence/
+          if-no-files-found: error
+          retention-days: 3
+
+  attest:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.event.repository.private == false
+    needs: inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: release-source-${{ github.sha }}
+          path: release-evidence
+      - name: Attest source archive, SBOM and binding manifest
+        id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: release-evidence/*
+      - name: Verify signer/source and reject tampered bytes and wrong source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          policy=(--repo "$GITHUB_REPOSITORY" --bundle "$ATTESTATION_BUNDLE" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release-evidence.yml" --deny-self-hosted-runners)
+          for file in source.tar sbom.cdx.json provenance.json; do
+            gh attestation verify "release-evidence/$file" "${policy[@]}" --source-digest "$GITHUB_SHA"
+          done
+          cp release-evidence/source.tar tampered-source.tar
+          printf 'tampered' >> tampered-source.tar
+          if gh attestation verify tampered-source.tar "${policy[@]}" --source-digest "$GITHUB_SHA"; then
+            echo 'Tampered artifact unexpectedly verified' >&2
+            exit 1
+          fi
+          if gh attestation verify release-evidence/source.tar "${policy[@]}" --source-digest 0000000000000000000000000000000000000000; then
+            echo 'Wrong source unexpectedly verified' >&2
+            exit 1
+          fi
+          cp "$ATTESTATION_BUNDLE" attestation.jsonl
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-attestation-${{ github.sha }}
+          path: attestation.jsonl
+          if-no-files-found: error
+          retention-days: 3
