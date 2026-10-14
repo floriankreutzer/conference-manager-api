@@ -444,16 +444,17 @@ test('decision clocks pair one-to-one and never reuse an older superseded submis
   };
   input.productEvents.push(second);
   assert.equal(metric(compileProductDeliveryReport(input), 'manager_decision_time').value, null);
-  input.productEvents.push({
+  const resubmission = {
     ...input.productEvents[0],
     sourceId: 'resubmission',
     occurredAt: '2026-10-14T12:00:00.000Z',
-  });
+  };
+  input.productEvents.push(resubmission);
   assert.equal(
     metric(compileProductDeliveryReport(input), 'manager_decision_time').value,
     5_400_000,
   );
-  input.productEvents[3].occurredAt = '2026-10-14T10:30:00.000Z';
+  resubmission.occurredAt = '2026-10-14T10:30:00.000Z';
   assert.equal(metric(compileProductDeliveryReport(input), 'manager_decision_time').value, null);
   input.productEvents.reverse();
   assert.equal(metric(compileProductDeliveryReport(input), 'manager_decision_time').value, null);
@@ -525,4 +526,47 @@ test('timestamp-derived medians allow half milliseconds but reject impossible fr
   assert.throws(() => normalizeProductDeliverySnapshot(drifted));
   input.observedAt = drifted.observedAt;
   assert.throws(() => compileProductDeliveryReport(input));
+});
+
+test('complete provenance equals all represented records; partial sources retain only bounded uncertainty', () => {
+  const input = source();
+  input.deliveryComplete.website = true;
+  const complete = compileProductDeliveryReport(input);
+  const corrupt = JSON.parse(JSON.stringify(complete));
+  corrupt.provenance.eventCount = 4200;
+  assert.throws(() => normalizeProductDeliverySnapshot(corrupt));
+  input.feedbackSource = 'protected_operator_registry';
+  input.feedbackComplete = false;
+  const partial = JSON.parse(JSON.stringify(compileProductDeliveryReport(input)));
+  partial.provenance.eventCount = 200;
+  assert.equal(normalizeProductDeliverySnapshot(partial).provenance.eventCount, 200);
+  partial.provenance.eventCount = 201;
+  assert.throws(() => normalizeProductDeliverySnapshot(partial));
+  input.feedbackComplete = true;
+  const allComplete = JSON.parse(JSON.stringify(compileProductDeliveryReport(input)));
+  allComplete.provenance.eventCount = 1;
+  assert.throws(() => normalizeProductDeliverySnapshot(allComplete));
+});
+
+test('Product recovery failure rate uses its confirmed outcome denominator and never an unknown zero', () => {
+  const input = JSON.parse(
+    readFileSync(
+      new URL('./support/product-delivery-source-fixture.json', import.meta.url),
+      'utf8',
+    ),
+  );
+  const report = compileProductDeliveryReport(input);
+  assert.equal(metric(report, 'recovery_failure_rate').value, 0.25);
+  const corrupt = JSON.parse(JSON.stringify(report));
+  corrupt.product.find((item) => item.id === 'recovery_failure_rate').value = 0.5;
+  assert.throws(() => normalizeProductDeliverySnapshot(corrupt));
+  input.productComplete = false;
+  assert.equal(
+    metric(compileProductDeliveryReport(input), 'recovery_failure_rate').reason,
+    'incomplete_source',
+  );
+  assert.equal(
+    metric(compileProductDeliveryReport(source()), 'recovery_failure_rate').reason,
+    'empty_denominator',
+  );
 });

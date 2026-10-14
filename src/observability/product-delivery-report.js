@@ -254,6 +254,9 @@ function productMetrics(input) {
   });
   const duration =
     input.productComplete && durations.every((value) => value !== null) ? median(durations) : null;
+  const recoveryCompleted = count('recovery_completed');
+  const recoveryFailed = count('recovery_failed');
+  const recoveryTotal = (recoveryCompleted || 0) + (recoveryFailed || 0);
   const values = [
     count('onboarding_started'),
     count('onboarding_completed'),
@@ -264,8 +267,9 @@ function productMetrics(input) {
     count('manager_decision'),
     duration,
     count('transition_failure'),
-    count('recovery_completed'),
-    count('recovery_failed'),
+    recoveryCompleted,
+    recoveryFailed,
+    input.productComplete && recoveryTotal > 0 ? recoveryFailed / recoveryTotal : null,
   ];
   return PRODUCT_METRIC_IDS.map((id, index) =>
     metric(
@@ -273,7 +277,9 @@ function productMetrics(input) {
       values[index],
       ['request_started', 'request_abandoned', 'time_to_submit'].includes(id)
         ? 'missing_start_clock'
-        : 'incomplete_source',
+        : id === 'recovery_failure_rate' && input.productComplete
+          ? 'empty_denominator'
+          : 'incomplete_source',
     ),
   );
 }

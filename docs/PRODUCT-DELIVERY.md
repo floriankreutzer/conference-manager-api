@@ -79,7 +79,9 @@ counts source events and computes median submission-to-decision time only when e
 decision has its trusted matching submission clock in the window. A submission can
 serve at most one decision; a later resubmission supersedes the earlier clock. Reused
 or missing pairs keep the whole duration cohort unknown; the compiler never silently
-reports a partial-cohort duration as complete.
+reports a partial-cohort duration as complete. Product recovery failure rate is failed
+recoveries / (completed + failed recoveries), only with complete outcome coverage and
+a non-empty denominator; it is independent from deployment change failure rate.
 
 ### DORA calculations
 
@@ -126,6 +128,8 @@ Only the compiled aggregate belongs in `DEMO_PRODUCT_DELIVERY_SNAPSHOT`, never a
 extract, credential or customer record. Source/actor/target identities are discarded
 from output. The sourceDigest is SHA-256 of the compiler's JSON serialization of the
 validated input object; eventCount is the number of supplied source records. This
+matches the represented source-record total exactly when all sources are complete;
+partial-source uncertainty is bounded by each source ceiling. The fingerprint
 supports reproducibility against protected source evidence, not source authentication,
 cryptographic attestation, telemetry completeness or independent verification.
 

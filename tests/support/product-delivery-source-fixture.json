@@ -21,6 +21,38 @@
       "occurredAt": "2026-10-14T11:00:00.000Z",
       "tenantId": "10000000-0000-4000-8000-000000000001",
       "targetId": "synthetic-request"
+    },
+    {
+      "source": "platform_audit",
+      "sourceId": "synthetic-recovery-1",
+      "kind": "recovery_completed",
+      "occurredAt": "2026-10-14T14:00:00.000Z",
+      "tenantId": "10000000-0000-4000-8000-000000000001",
+      "targetId": "synthetic-recovery-1"
+    },
+    {
+      "source": "platform_audit",
+      "sourceId": "synthetic-recovery-2",
+      "kind": "recovery_completed",
+      "occurredAt": "2026-10-14T14:01:00.000Z",
+      "tenantId": "10000000-0000-4000-8000-000000000001",
+      "targetId": "synthetic-recovery-2"
+    },
+    {
+      "source": "platform_audit",
+      "sourceId": "synthetic-recovery-3",
+      "kind": "recovery_completed",
+      "occurredAt": "2026-10-14T14:02:00.000Z",
+      "tenantId": "10000000-0000-4000-8000-000000000001",
+      "targetId": "synthetic-recovery-3"
+    },
+    {
+      "source": "platform_audit",
+      "sourceId": "synthetic-recovery-4",
+      "kind": "recovery_failed",
+      "occurredAt": "2026-10-14T14:03:00.000Z",
+      "tenantId": "10000000-0000-4000-8000-000000000001",
+      "targetId": "synthetic-recovery-4"
     }
   ],
   "deliveryComplete": {

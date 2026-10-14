@@ -10,6 +10,7 @@ export const PRODUCT_METRIC_IDS = Object.freeze([
   'transition_failures',
   'recovery_completed',
   'recovery_failed',
+  'recovery_failure_rate',
 ]);
 export const DELIVERY_METRIC_IDS = Object.freeze([
   'change_lead_time',
@@ -33,6 +34,7 @@ const NULL_REASONS = Object.freeze({
   request_started: ['missing_start_clock'],
   request_abandoned: ['missing_start_clock'],
   time_to_submit: ['missing_start_clock'],
+  recovery_failure_rate: ['incomplete_source', 'empty_denominator'],
   change_lead_time: ['incomplete_source', 'empty_denominator', 'missing_classification'],
   deployment_frequency: ['incomplete_source'],
   failed_deployment_recovery_time: [
@@ -147,6 +149,19 @@ export function normalizeProductDeliverySnapshot(value) {
     requireProductCondition(
       decisions > 0 && submissions >= decisions && decisionTime < end - start,
     );
+  const recoveryCompleted = value.product.find((item) => item.id === 'recovery_completed').value;
+  const recoveryFailed = value.product.find((item) => item.id === 'recovery_failed').value;
+  const recoveryRate = value.product.find((item) => item.id === 'recovery_failure_rate');
+  const recoveryTotal = (recoveryCompleted || 0) + (recoveryFailed || 0);
+  if (recoveryCompleted === null)
+    requireProductCondition(
+      recoveryRate.value === null && recoveryRate.reason === 'incomplete_source',
+    );
+  else if (recoveryTotal === 0)
+    requireProductCondition(
+      recoveryRate.value === null && recoveryRate.reason === 'empty_denominator',
+    );
+  else requireProductCondition(recoveryRate.value === recoveryFailed / recoveryTotal);
   exactProductObject(value.feedback, [
     'source',
     'total',
@@ -313,6 +328,21 @@ export function normalizeProductDeliverySnapshot(value) {
     (sum, component) =>
       sum + component.buckets.reduce((count, bucket) => count + (bucket.metrics[1].value || 0), 0),
     0,
+  );
+  const productComplete = outcomeCounts.every((item) => item.value !== null);
+  const deliveryComplete = value.delivery.every(
+    (component) => component.buckets[0].metrics[1].value !== null,
+  );
+  const feedbackComplete =
+    value.feedback.source === 'not_configured' || value.feedback.total !== null;
+  const representedRecords = knownProductEvents + knownDeployments + (value.feedback.total || 0);
+  const possibleRecords =
+    (productComplete ? knownProductEvents : 2000) +
+    (deliveryComplete ? knownDeployments : 2000) +
+    (feedbackComplete ? value.feedback.total || 0 : 200);
+  requireProductCondition(
+    value.provenance.eventCount >= representedRecords &&
+      value.provenance.eventCount <= possibleRecords,
   );
   requireProductCondition(
     knownProductEvents <= 2000 &&
