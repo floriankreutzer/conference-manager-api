@@ -7,8 +7,11 @@ import { loadDemoStaticFileAdapter } from './static-file-loader.js';
 import { createMetricsRegistry } from '../observability/metrics.js';
 import { assertPlatformRouteKey } from '../platform/http/observability.js';
 import { startDemoMediaStorageRuntime } from './media-storage-runtime.js';
+import { loadDemoPlatformAccessConfig } from './platform-access-config.js';
+import { createDemoPlatformAccessGate } from './platform-access-gate.js';
 
 const config = loadDemoPlatformConfig(process.env);
+const platformAccess = loadDemoPlatformAccessConfig(process.env);
 const runtime = await startDemoEntrypointRuntime({
   env: process.env, config, surface: 'platform',
   boundary: { applySecurityHeaders: applyPlatformSecurityHeaders, assertRequestHost: assertPlatformRequestHost,
@@ -16,6 +19,7 @@ const runtime = await startDemoEntrypointRuntime({
     createRequestId: createPlatformRequestId },
   onExpiryFailure() { process.exit(1); },
   async startActive(trafficGate) {
+    const accessGate = createDemoPlatformAccessGate({ settings: platformAccess, publicOrigin: config.origins.platform });
     const staticFileAdapter = await loadDemoStaticFileAdapter(config.staticRoot);
     const metrics = createMetricsRegistry({
       assertRouteKey: assertPlatformRouteKey,
@@ -24,7 +28,7 @@ const runtime = await startDemoEntrypointRuntime({
     return startDemoMediaStorageRuntime({
       env: process.env, config, surface: 'platform',
       createComposition: (resetMediaObjectStorage) => createDemoPlatformComposition({
-        config, staticFileAdapter, metrics, resetMediaObjectStorage, trafficGate,
+        config, staticFileAdapter, metrics, resetMediaObjectStorage, trafficGate, accessGate,
       }),
     });
   },
