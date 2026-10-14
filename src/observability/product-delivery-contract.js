@@ -147,7 +147,10 @@ export function normalizeProductDeliverySnapshot(value) {
   const decisionTime = value.product.find((item) => item.id === 'manager_decision_time').value;
   if (decisionTime !== null)
     requireProductCondition(
-      decisions > 0 && submissions >= decisions && decisionTime < end - start,
+      decisions > 0 &&
+        submissions >= decisions &&
+        decisionTime < end - start &&
+        (decisions % 2 === 0 || Number.isSafeInteger(decisionTime)),
     );
   const recoveryCompleted = value.product.find((item) => item.id === 'recovery_completed').value;
   const recoveryFailed = value.product.find((item) => item.id === 'recovery_failed').value;
@@ -280,6 +283,12 @@ export function normalizeProductDeliverySnapshot(value) {
             unresolved <= deploymentCount &&
               failure.value !== null &&
               Math.round(failure.value * deploymentCount) >= unresolved,
+          );
+          const failedCount = Math.round(failure.value * deploymentCount);
+          requireProductCondition(
+            recovery.value === null ||
+              failedCount % 2 === 0 ||
+              Number.isSafeInteger(recovery.value),
           );
           if (failure.value === 1)
             requireProductCondition(lead.value === null && lead.reason === 'empty_denominator');

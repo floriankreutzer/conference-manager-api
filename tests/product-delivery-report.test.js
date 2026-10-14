@@ -570,3 +570,52 @@ test('Product recovery failure rate uses its confirmed outcome denominator and n
     'empty_denominator',
   );
 });
+
+test('odd median cohorts require integer milliseconds while even cohorts may use halves', () => {
+  const input = JSON.parse(
+    readFileSync(
+      new URL('./support/product-delivery-source-fixture.json', import.meta.url),
+      'utf8',
+    ),
+  );
+  const oddDecision = JSON.parse(JSON.stringify(compileProductDeliveryReport(input)));
+  oddDecision.product.find((item) => item.id === 'manager_decision_time').value = 0.5;
+  assert.throws(() => normalizeProductDeliverySnapshot(oddDecision));
+  const even = source();
+  const tenantId = '10000000-0000-4000-8000-000000000001';
+  even.productEvents = [1, 2].flatMap((milliseconds) => [
+    {
+      source: 'tenant_audit',
+      sourceId: `submitted-${milliseconds}`,
+      kind: 'request_submitted',
+      occurredAt: '2026-10-14T10:00:00.000Z',
+      tenantId,
+      targetId: `request-${milliseconds}`,
+    },
+    {
+      source: 'request_revision',
+      sourceId: `decided-${milliseconds}`,
+      kind: 'manager_decision',
+      occurredAt: `2026-10-14T10:00:00.00${milliseconds}Z`,
+      tenantId,
+      targetId: `request-${milliseconds}`,
+    },
+  ]);
+  assert.equal(metric(compileProductDeliveryReport(even), 'manager_decision_time').value, 1.5);
+  even.deployments = [1, 2].map((milliseconds) =>
+    deployment(`failed-${milliseconds}`, {
+      outcome: 'impaired',
+      changes: [],
+      failureAt: '2026-09-19T12:00:00.000Z',
+      recoveredAt: `2026-09-19T12:00:00.00${milliseconds}Z`,
+    }),
+  );
+  assert.equal(
+    delivery(compileProductDeliveryReport(even), 'failed_deployment_recovery_time').value,
+    1.5,
+  );
+  even.deployments.pop();
+  const oddRecovery = JSON.parse(JSON.stringify(compileProductDeliveryReport(even)));
+  oddRecovery.delivery[1].buckets[0].metrics[2].value = 0.5;
+  assert.throws(() => normalizeProductDeliverySnapshot(oddRecovery));
+});
