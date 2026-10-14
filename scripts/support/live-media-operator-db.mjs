@@ -50,16 +50,37 @@ export async function assertOperatorIdentity(client, role) {
     && row.bounded_role === true, 'LIVE_MEDIA_IDENTITY_INVALID');
 }
 
-export async function assertNoOtherDatabaseSessions(client) {
+export async function assertNoOtherDatabaseSessions(client, observe = () => {}) {
   await client.query('SELECT pg_stat_clear_snapshot()');
   const { rows } = await client.query(`SELECT
     (SELECT count(*) FROM pg_catalog.pg_stat_activity
       WHERE datname=current_database() AND pid<>pg_backend_pid()) AS other_sessions,
     (SELECT count(*) FROM pg_catalog.pg_prepared_xacts WHERE database=current_database()) AS prepared_transactions,
     (SELECT count(*) FROM pg_catalog.pg_stat_activity
-      WHERE pid=pg_backend_pid() AND datname=current_database()) AS own_session`);
-  requireLiveMedia(rows.length === 1 && count(rows[0].other_sessions) === 0
-    && count(rows[0].prepared_transactions) === 0 && count(rows[0].own_session) === 1, 'LIVE_MEDIA_DATABASE_NOT_QUIESCENT');
+      WHERE pid=pg_backend_pid() AND datname=current_database()) AS own_session,
+    (SELECT count(*) FROM pg_catalog.pg_stat_activity WHERE datname=current_database()
+      AND pid<>pg_backend_pid() AND state='active') AS other_active,
+    (SELECT count(*) FROM pg_catalog.pg_stat_activity WHERE datname=current_database()
+      AND pid<>pg_backend_pid() AND state='idle') AS other_idle,
+    (SELECT count(*) FROM pg_catalog.pg_stat_activity WHERE datname=current_database()
+      AND pid<>pg_backend_pid() AND state IN ('idle in transaction','idle in transaction (aborted)')) AS other_in_transaction,
+    (SELECT count(*) FROM pg_catalog.pg_stat_activity WHERE datname=current_database()
+      AND pid<>pg_backend_pid() AND application_name='cm-live-media-operator') AS other_operator,
+    (SELECT count(*) FROM pg_catalog.pg_stat_activity WHERE datname=current_database()
+      AND pid<>pg_backend_pid() AND usename=current_user) AS other_same_role`);
+  requireLiveMedia(rows.length === 1, 'LIVE_MEDIA_DATABASE_NOT_QUIESCENT');
+  // Reconstruct fixed numeric fields only. Never forward database rows, session
+  // identifiers, application names, query text, credentials or provider errors.
+  const fields = ['other_sessions', 'prepared_transactions', 'own_session',
+    'other_active', 'other_idle', 'other_in_transaction', 'other_operator', 'other_same_role'];
+  const diagnostic = Object.fromEntries(fields.map((field) => [field, count(rows[0][field])]));
+  requireLiveMedia(['other_active', 'other_idle', 'other_in_transaction', 'other_operator', 'other_same_role']
+    .every((field) => diagnostic[field] <= diagnostic.other_sessions), 'LIVE_MEDIA_INVENTORY_INVALID');
+  requireLiveMedia(diagnostic.other_active + diagnostic.other_idle + diagnostic.other_in_transaction
+    <= diagnostic.other_sessions, 'LIVE_MEDIA_INVENTORY_INVALID');
+  observe(Object.freeze(diagnostic));
+  requireLiveMedia(diagnostic.other_sessions === 0 && diagnostic.prepared_transactions === 0
+    && diagnostic.own_session === 1, 'LIVE_MEDIA_DATABASE_NOT_QUIESCENT');
 }
 
 async function validateRoomReferences(client) {

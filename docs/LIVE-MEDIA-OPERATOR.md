@@ -174,6 +174,16 @@ hashes and approved resource IDs. No row IDs, object keys, URLs, SQL data, raw
 errors, provider headers, credentials or signed URLs are logged. An existing
 custody-only orphan does not prove a provider object exists and is not GET-read.
 
+When a database quiescence boundary is reached, `databaseQuiescence` contains
+only eight validated nonnegative integer counters: other sessions, prepared
+transactions, the own session, and other active, idle, in-transaction, operator
+application and same-role sessions. It retains the most recent observation,
+including a rejected boundary. Unknown or hidden states still count in all
+other sessions and are never exempted. No session IDs, application names, SQL,
+addresses or role names are emitted. This read-only diagnostic does not weaken
+the zero-other-session/zero-prepared-transaction/one-own-session guard, grant
+permissions, terminate sessions, retry a batch or refresh operation authority.
+
 Timeout, cancellation, malformed CLI output or nonzero exit after a batch starts
 leaves an **unknown mutation outcome**. Missing/incomplete artifacts are also
 unknown. Do not rerun or resume mutation automatically; keep services closed,
