@@ -83,8 +83,11 @@ export function createDemoPlatformAccessGate({
   }
   const expected = settings.mode === 'password' ? Buffer.from(settings.passwordHash, 'hex') : null;
   const failures = createPlatformRateLimiter({ max: 30, windowMs: 60_000, maxKeys: 1_000, clock });
+  const privateReads = new WeakSet();
   return Object.freeze({
+    hasPrivateReadAccess(request) { return privateReads.has(request); },
     handle(request, response) {
+      privateReads.delete(request);
       if (settings.mode === 'public') return false;
       const authorization = consumeAuthorization(request);
       try {
@@ -99,7 +102,10 @@ export function createDemoPlatformAccessGate({
         && request.headers['transfer-encoding'] === undefined
         && [undefined, '0'].includes(request.headers['content-length'])) return false;
       const password = passwordFromAuthorization(authorization);
-      if (password !== null && timingSafeEqual(digest(password), expected)) return false;
+      if (password !== null && timingSafeEqual(digest(password), expected)) {
+        privateReads.add(request);
+        return false;
+      }
       try {
         // Forwarded headers are not trusted; successful credentials do not consume this failure budget.
         failures.consume(request.socket?.remoteAddress || 'unknown');

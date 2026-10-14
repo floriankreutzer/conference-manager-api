@@ -56,4 +56,5 @@ browser gates before merging. Deploy the reviewed immutable commit, preserve the
 storage/traffic settings and verify: unauthenticated root and session reject; the correct password
 loads the Operations UI; wrong credentials reject; exact deploy readiness remains dependency-based.
 Record only non-secret commit/deployment IDs and test outcomes. Local tests do not prove live access.
-The private provider graph and actual email delivery are separate work and are not implemented here.
+The private provider graph is documented separately in DEMO-PROVIDER-USAGE.md.
+Actual email delivery remains unconfigured.
