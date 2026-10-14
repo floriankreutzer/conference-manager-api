@@ -10,10 +10,12 @@ import { startDemoMediaStorageRuntime } from './media-storage-runtime.js';
 import { loadDemoPlatformAccessConfig } from './platform-access-config.js';
 import { createDemoPlatformAccessGate } from './platform-access-gate.js';
 import { loadDemoProviderUsage } from './platform-provider-usage.js';
+import { loadDemoProductDelivery } from './platform-product-delivery.js';
 
 const config = loadDemoPlatformConfig(process.env);
 const platformAccess = loadDemoPlatformAccessConfig(process.env);
 const providerUsage = loadDemoProviderUsage(process.env, platformAccess);
+const productDelivery = loadDemoProductDelivery(process.env, platformAccess);
 const runtime = await startDemoEntrypointRuntime({
   env: process.env, config, surface: 'platform',
   boundary: { applySecurityHeaders: applyPlatformSecurityHeaders, assertRequestHost: assertPlatformRequestHost,
@@ -30,7 +32,7 @@ const runtime = await startDemoEntrypointRuntime({
     return startDemoMediaStorageRuntime({
       env: process.env, config, surface: 'platform',
       createComposition: (resetMediaObjectStorage) => createDemoPlatformComposition({
-        config, staticFileAdapter, metrics, resetMediaObjectStorage, trafficGate, accessGate, providerUsage,
+        config, staticFileAdapter, metrics, resetMediaObjectStorage, trafficGate, accessGate, providerUsage, productDelivery,
       }),
     });
   },
