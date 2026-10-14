@@ -2,20 +2,20 @@
 
 ## Status
 
-The SaaS 3.9 delivery path and application-source visibility cutover are implemented. Both application repositories are private; Website and Developer remain public. Protected post-private CI and the existing Hosted services have verified the approved delivery path. SaaS 3.9 issue #254 and milestone 12 are closed. The independent SaaS 3.6 gate #170 remains open and does not reopen the completed infrastructure/security scope. Dated release evidence remains bound to its exact tested/deployed pair.
+SaaS 3.9 issue #254 and milestone 12 retain their historical private-source delivery-path acceptance. Current visibility is a separate dated state: on 2026-10-14, the owner confirms temporary public application/API repositories while the included Actions allowance is exhausted, with private-source restoration planned for 2026-11-02. The owner's stated allowance/reset date is not an independently verified billing reset. Current and future candidates still require their own exact source, CI and deployment evidence; historical acceptance does not close the independent SaaS 3.6/3.8 gates.
 
 ## Repository boundary
 
-`conference-manager-api` remains private and remains the trusted backend and canonical source of API contracts. Public partner documentation belongs in `conference-manager-developer` and must contain only explicitly approved external artifacts.
+The intended application/API source boundary remains private. The temporary owner-authorized public interval is a cost-constrained execution exception, not a new public backend API publishing model or permission to disclose secrets, customer content, sensitive vulnerability details or private operational evidence. Track restoration and exact administration readback in application #309. Do not purchase Actions capacity or change spending controls implicitly.
 
-The backend source repository must never be made public merely to publish API documentation.
+Public partner contracts remain explicitly allowlisted artifacts owned by `conference-manager-developer`. The backend must not be made public merely to publish API documentation. The [shared test strategy](https://github.com/floriankreutzer/conference-manager-website/blob/main/docs/TEST-STRATEGY.md) now belongs in the public Website repository so unauthenticated Website contributors can follow the required test/evidence/retry policy after the source repositories return to private.
 
 ## Public API publication
 
-SaaS 3.9 issue #250 establishes deterministic publication of approved external API contracts from this private repository. The implementation uses the dedicated `Conference Manager API Publisher` GitHub App (App ID `5173007`) to mint short-lived installation tokens at workflow runtime. The App is installed only on `conference-manager-api` and `conference-manager-developer`; the private key is stored only as an Actions secret in this private repository.
+SaaS 3.9 issue #250 establishes deterministic publication of approved external API contracts from the canonical backend repository. The implementation uses the dedicated `Conference Manager API Publisher` GitHub App (App ID `5173007`) to mint short-lived installation tokens at workflow runtime. The App is installed only on `conference-manager-api` and `conference-manager-developer`; the private key is stored only in the backend repository Actions secret store.
 
 Required properties:
-- private backend source remains canonical;
+- backend source remains canonical under the intended private boundary and the explicitly dated exception above;
 - publication starts from an immutable source commit;
 - public material is explicitly allowlisted;
 - internal/private endpoints and schemas are excluded by design;

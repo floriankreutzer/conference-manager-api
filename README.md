@@ -2,7 +2,7 @@
 
 ## SaaS 3.9 publishing and Demo boundary
 
-This repository remains private and authoritative for trusted backend implementation and canonical API contracts. SaaS 3.9 provides a governed public Developer Portal and immutable authenticated Git-submodule delivery for the Hosted Demo. Both application-source repositories are private; Website and Developer remain public. Infrastructure/security issue #254 and milestone 12 are closed. The independent SaaS 3.6 release gate #170 remains open; unmerged frontend PR #279 is not final acceptance. See [SAAS-3.9-PUBLISHING-AND-DEMO-BOUNDARY.md](docs/SAAS-3.9-PUBLISHING-AND-DEMO-BOUNDARY.md).
+This repository is authoritative for trusted backend implementation and canonical API contracts. The intended application-source boundary remains private, but the owner explicitly authorizes temporary public application/API repositories until 2026-11-02 while the included Actions allowance is exhausted. This temporary visibility is not permission to publish credentials, customer data or private operational evidence. Website and Developer remain public; the shared test strategy is hosted publicly in Website so it stays accessible after the planned private-source restoration. SaaS 3.9 provides governed external contract publication and immutable authenticated Git-submodule Demo delivery. Its historical acceptance does not certify current visibility, later source changes or the independent SaaS 3.6/3.8 release gates. See [SAAS-3.9-PUBLISHING-AND-DEMO-BOUNDARY.md](docs/SAAS-3.9-PUBLISHING-AND-DEMO-BOUNDARY.md).
 
 Trusted production backend for the Conference Manager SaaS application.
 
