@@ -56,6 +56,7 @@ test('private configuration and logical retention reject unsupported access, aut
     [],
     '{',
     'x'.repeat(24_001),
+    JSON.stringify({ ...snapshot(), environment: 'production' }),
     JSON.stringify({ ...snapshot(), ownerEmail: 'private@example.invalid' }),
   ]) {
     assert.throws(() =>

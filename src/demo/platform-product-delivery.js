@@ -26,7 +26,7 @@ export function loadDemoProductDelivery(env, accessSettings) {
       throw new TypeError('DEMO_PRODUCT_DELIVERY_CONFIG_INVALID');
     try {
       snapshot = normalizeProductDeliverySnapshot(JSON.parse(raw));
-      if (snapshot.provenance.mode !== 'operator_extract')
+      if (snapshot.environment !== 'demo' || snapshot.provenance.mode !== 'operator_extract')
         throw new TypeError('SNAPSHOT_SOURCE_REQUIRED');
     } catch {
       throw new TypeError('DEMO_PRODUCT_DELIVERY_CONFIG_INVALID');

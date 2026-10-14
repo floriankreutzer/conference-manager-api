@@ -350,3 +350,36 @@ test('equal deployment timestamps do not make aggregate results depend on input 
   const reverse = compileProductDeliveryReport(input);
   assert.deepEqual(reverse.delivery, forward.delivery);
 });
+
+test('snapshot validation rejects metric-incompatible reasons and contradictory recovery coverage', () => {
+  const mutations = [
+    (v) => {
+      v.product[0].reason = 'empty_denominator';
+    },
+    (v) => {
+      v.delivery[0].buckets[0].metrics[1].reason = 'missing_start_clock';
+    },
+    (v) => {
+      v.delivery[0].buckets[0].metrics[2].reason = 'unresolved_recovery';
+    },
+    (v) => {
+      v.delivery[0].buckets[0].unresolvedRecoveries = 0;
+    },
+  ];
+  for (const mutate of mutations) {
+    const value = uncollectedProductDeliveryReport(Date.parse('2026-10-15T12:00:00.000Z'));
+    const copy = JSON.parse(JSON.stringify(value));
+    mutate(copy);
+    assert.throws(() => normalizeProductDeliverySnapshot(copy));
+  }
+  const complete = compileProductDeliveryReport(source());
+  const bad = JSON.parse(JSON.stringify(complete));
+  bad.delivery[0].buckets[0].metrics[2].reason = 'unresolved_recovery';
+  assert.throws(() => normalizeProductDeliverySnapshot(bad));
+  const nonempty = source();
+  nonempty.deployments = [deployment('known-healthy')];
+  const invalid = compileProductDeliveryReport(nonempty);
+  const altered = JSON.parse(JSON.stringify(invalid));
+  altered.delivery[1].buckets[0].metrics[2].reason = 'unresolved_recovery';
+  assert.throws(() => normalizeProductDeliverySnapshot(altered));
+});

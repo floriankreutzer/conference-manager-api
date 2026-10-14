@@ -29,15 +29,21 @@ export const FEEDBACK_CATEGORIES = Object.freeze([
 export const FEEDBACK_WORKFLOWS = Object.freeze(['onboarding', 'request', 'manager', 'recovery']);
 export const FEEDBACK_SENTIMENTS = Object.freeze(['positive', 'neutral', 'negative']);
 export const DAY_MS = 86_400_000;
-const REASONS = new Set([
-  'available',
-  'incomplete_source',
-  'missing_start_clock',
-  'empty_denominator',
-  'unresolved_recovery',
-  'missing_classification',
-  'not_configured',
-]);
+const NULL_REASONS = Object.freeze({
+  request_started: ['missing_start_clock'],
+  request_abandoned: ['missing_start_clock'],
+  time_to_submit: ['missing_start_clock'],
+  change_lead_time: ['incomplete_source', 'empty_denominator', 'missing_classification'],
+  deployment_frequency: ['incomplete_source'],
+  failed_deployment_recovery_time: [
+    'incomplete_source',
+    'empty_denominator',
+    'unresolved_recovery',
+    'missing_classification',
+  ],
+  change_failure_rate: ['incomplete_source', 'empty_denominator', 'missing_classification'],
+  deployment_rework_rate: ['incomplete_source', 'empty_denominator', 'missing_classification'],
+});
 
 export function requireProductCondition(condition) {
   if (!condition) throw new TypeError('PRODUCT_DELIVERY_INVALID');
@@ -85,9 +91,8 @@ function metrics(value, ids) {
     requireProductCondition(
       metric.id === expected.id &&
         metric.unit === expected.unit &&
-        REASONS.has(metric.reason) &&
         (metric.value === null
-          ? metric.reason !== 'available'
+          ? (NULL_REASONS[metric.id] || ['incomplete_source']).includes(metric.reason)
           : typeof metric.value === 'number' &&
             Number.isFinite(metric.value) &&
             metric.value >= 0 &&
@@ -181,6 +186,10 @@ export function normalizeProductDeliverySnapshot(value) {
         Array.isArray(component.buckets) &&
         component.buckets.length === 4,
     );
+    const coverageKnown = component.buckets[0].metrics?.[1]?.value !== null;
+    requireProductCondition(
+      component.buckets.every((bucket) => (bucket.metrics?.[1]?.value !== null) === coverageKnown),
+    );
     component.buckets.forEach((bucket, offset) => {
       exactProductObject(bucket, ['periodStart', 'periodEnd', 'metrics', 'unresolvedRecoveries']);
       requireProductCondition(
@@ -194,20 +203,57 @@ export function normalizeProductDeliverySnapshot(value) {
             bucket.unresolvedRecoveries >= 0 &&
             bucket.unresolvedRecoveries <= 2000),
       );
-      if (bucket.unresolvedRecoveries > 0)
-        requireProductCondition(bucket.metrics[2].value === null);
-      const deploymentCount = bucket.metrics[1].value;
-      if (deploymentCount === null)
+      const [lead, frequency, recovery, failure, rework] = bucket.metrics;
+      const deploymentCount = frequency.value;
+      const unresolved = bucket.unresolvedRecoveries;
+      if (deploymentCount === null) {
         requireProductCondition(
-          bucket.unresolvedRecoveries === null &&
-            bucket.metrics.every((item) => item.value === null),
+          unresolved === null &&
+            bucket.metrics.every(
+              (item) => item.value === null && item.reason === 'incomplete_source',
+            ),
         );
-      if (deploymentCount === 0)
+      } else if (deploymentCount === 0) {
         requireProductCondition(
-          [0, 2, 3, 4].every((index) => bucket.metrics[index].value === null),
+          unresolved === 0 &&
+            [lead, recovery, failure, rework].every(
+              (item) => item.value === null && item.reason === 'empty_denominator',
+            ),
         );
-      if (bucket.unresolvedRecoveries !== null && deploymentCount !== null) {
-        requireProductCondition(bucket.unresolvedRecoveries <= deploymentCount);
+      } else {
+        requireProductCondition(
+          bucket.metrics.every((item) => item.reason !== 'incomplete_source'),
+        );
+        for (const ratio of [failure, rework]) {
+          if (ratio.value !== null)
+            requireProductCondition(
+              Math.abs(ratio.value * deploymentCount - Math.round(ratio.value * deploymentCount)) <
+                1e-9,
+            );
+          else requireProductCondition(ratio.reason === 'missing_classification');
+        }
+        if (unresolved === null) {
+          requireProductCondition(
+            [lead, recovery, failure].every(
+              (item) => item.value === null && item.reason === 'missing_classification',
+            ),
+          );
+        } else {
+          requireProductCondition(
+            unresolved <= deploymentCount &&
+              failure.value !== null &&
+              failure.value * deploymentCount + 1e-9 >= unresolved,
+          );
+          if (unresolved > 0)
+            requireProductCondition(
+              recovery.value === null && recovery.reason === 'unresolved_recovery',
+            );
+          else if (failure.value === 0)
+            requireProductCondition(
+              recovery.value === null && recovery.reason === 'empty_denominator',
+            );
+          else requireProductCondition(recovery.value !== null);
+        }
       }
     });
   });
