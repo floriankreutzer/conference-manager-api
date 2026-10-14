@@ -216,6 +216,10 @@ Tenant-visible audit access must remain tenant-scoped. Platform/operator audit i
 
 Every code change requires appropriate regression and/or progression coverage.
 
+Use [the cross-repository test strategy](docs/TEST-STRATEGY.md) for test ownership, evidence,
+risk-based selection and flaky-test handling. It complements these instructions and the coding
+standards; it cannot waive required checks, security boundaries or the permanent Demo contract.
+
 New functionality requires progression tests. Changes to existing behavior require regression protection. Security-sensitive functionality requires negative/adversarial tests.
 
 Depending on scope, include:
