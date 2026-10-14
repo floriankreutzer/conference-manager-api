@@ -361,9 +361,17 @@ test('Live operator inventory verifies real PostgreSQL current and historical cu
     const other = new Client(options);
     await other.connect();
     try {
-      await assert.rejects(assertNoOtherDatabaseSessions(client), safeOperatorFailure);
+      let diagnostic;
+      const observe = (value) => { diagnostic = value; };
+      await assert.rejects(assertNoOtherDatabaseSessions(client, observe), safeOperatorFailure);
+      assert.equal(diagnostic.other_sessions, 1);
+      assert.equal(diagnostic.other_idle, 1);
+      assert.equal(diagnostic.other_same_role, 1);
+      assert.equal(diagnostic.own_session, 1);
       await other.query('BEGIN');
-      await assert.rejects(assertNoOtherDatabaseSessions(client), safeOperatorFailure);
+      await assert.rejects(assertNoOtherDatabaseSessions(client, observe), safeOperatorFailure);
+      assert.equal(diagnostic.other_sessions, 1);
+      assert.equal(diagnostic.other_in_transaction, 1);
       await other.query('ROLLBACK');
     } finally { await other.end(); }
     await assertNoOtherDatabaseSessions(client);
