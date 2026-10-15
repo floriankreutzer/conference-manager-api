@@ -102,6 +102,7 @@ test('isolated PostgreSQL 18 preserves create integrity under bounded unpaced an
       }
       // Measure owned reads separately from create timing and its exact SQL budget.
       // Paced create stress waves do not silently become a representative mixed workload.
+      let readEvidence = null;
       if (arrivalIntervalMs === 0) {
         const readBefore = readCounters();
         const reads = await measureRequestReads({ origin: config.publicOrigin, cookies,
@@ -116,11 +117,11 @@ test('isolated PostgreSQL 18 preserves create integrity under bounded unpaced an
         const readAfter = readCounters();
         const readDelta = Object.fromEntries(Object.keys(readBefore).map(key => [key, readAfter[key] - readBefore[key]]));
         assert.ok(readDelta.queries > 0 && readDelta.bytesRead > 0 && readDelta.bytesWritten > 0);
-        t.diagnostic(JSON.stringify({ schemaVersion: 1, environment: 'isolated-postgres18-loopback',
+        readEvidence = { schemaVersion: 1, environment: 'isolated-postgres18-loopback',
           workload: 'request-owned-read', fixtureUsers: target, tenants: 10, usersPerTenant: target / 10,
           poolMax: config.databasePoolMax, nodeVersion: process.version, postgresVersion: version,
           ...reads, postgresProtocol: readDelta, providerEgressMeasured: false,
-          productionCapacityProven: false, representativeActivityMixApproved: false }));
+          productionCapacityProven: false, representativeActivityMixApproved: false };
       }
       totalCreated += target;
       for (const [draft, token, status] of [
@@ -147,6 +148,7 @@ test('isolated PostgreSQL 18 preserves create integrity under bounded unpaced an
         await response.arrayBuffer(); assert.equal(response.status, status);
       }
       for (const tenantId of tenants) assert.equal(await persistence.auditRepository.verifyTenantChain(tenantId), true);
+      if (readEvidence) t.diagnostic(JSON.stringify(readEvidence));
       const sloLatency = result.scheduledLatencyMs ?? result.latencyMs;
       const warmSlo = { p95MaxMs: 1_000, p99MaxMs: 2_000, maxTechnicalErrorRate: 0.001,
         technicalErrorRate: 0, latencyBasis: arrivalIntervalMs ? 'scheduled-arrival-to-verified-body' : 'dispatch-to-verified-body',
