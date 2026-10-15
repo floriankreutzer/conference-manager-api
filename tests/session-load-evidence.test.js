@@ -69,6 +69,36 @@ test('room-page measurement fixes the route and page size, bounds context and re
     assert.equal(requests, 102);
   } finally { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
 });
+test('room continuation measurement accepts only a bounded cursor and preserves response verification', async () => {
+  const base = { origin: 'http://127.0.0.1:1234', cookies: [cookie], verify() {} };
+  for (const cursor of ['', null, 'a'.repeat(2049), 'safe&section=sites', 'https://example.com']) {
+    await assert.rejects(measureCatalogRoomReads({ ...base, cursor }), /LOAD_CURSOR_INVALID/);
+  }
+  await assert.rejects(measureCatalogRoomReads({ ...base, context: 'bounded', cursor: 'continuation' }), /LOAD_CURSOR_INVALID/);
+  let requests = 0;
+  const payload = JSON.stringify({ entries: [{ name: 'Synthetic final room' }], page: { complete: true, nextCursor: null } });
+  const server = createServer((req, res) => {
+    requests += 1;
+    assert.equal(req.method, 'GET');
+    assert.equal(req.url, '/api/v1/application/catalog?section=rooms&limit=5&cursor=continuation');
+    res.end(payload);
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const options = { ...base, origin: `http://127.0.0.1:${server.address().port}`, cursor: 'continuation' };
+    const result = await measureCatalogRoomReads({ ...options, cookies: Array(100).fill(cookie), verify(body) {
+      assert.equal(body.entries[0].name, 'Synthetic final room');
+      assert.deepEqual(body.page, { complete: true, nextCursor: null });
+    } });
+    assert.equal(result.requests, 100);
+    assert.equal(result.payloadBytes, 100 * Buffer.byteLength(payload));
+    await assert.rejects(measureCatalogRoomReads({ ...options, verify(body) {
+      assert.equal(body.entries[0].name, 'Synthetic foreign room');
+    } }), /^Error: LOAD_ACCEPTANCE_FAILED$/);
+    assert.equal(requests, 101);
+  } finally { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
+});
+
 test('load measurement accepts only bounded loopback session reads and never follows redirects', async () => {
   for (const origin of ['https://127.0.0.1:1234', 'http://localhost:1234', 'http://example.com:1234',
     'http://127.0.0.1:1234/other', 'http://user:password@127.0.0.1:1234', 'http://127.0.0.1:1234/?token=secret']) {
@@ -111,7 +141,8 @@ test('load measurement rejects incomplete, oversized, malformed and identity-inv
   try {
     const base = { origin: `http://127.0.0.1:${server.address().port}`, cookies: [cookie],
       deadlineMs: 100, verify() {} };
-    for (const measure of [measureSessionReads, (options) => measureCatalogRoomReads({ context: 'bounded', ...options })]) {
+    for (const measure of [measureSessionReads, (options) => measureCatalogRoomReads({ context: 'bounded', ...options }),
+      (options) => measureCatalogRoomReads({ cursor: 'continuation', ...options })]) {
       for (const nextMode of ['stall', 'oversize', 'malformed', 'identity']) {
         mode = nextMode;
         await assert.rejects(measure({ ...base,
