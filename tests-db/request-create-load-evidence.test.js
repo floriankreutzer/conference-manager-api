@@ -4,7 +4,7 @@ import test from 'node:test';
 import { loadConfig } from '../src/config.js';
 import { createPostgresPersistence } from '../src/persistence/postgres/index.js';
 import { migrateUp } from '../scripts/db-migrations.mjs';
-import { measureRequestCreates, measureSessionReads } from '../scripts/session-load-evidence.mjs';
+import { measureRequestCreates, measureSessionReads, measureRequestReads } from '../scripts/session-load-evidence.mjs';
 import { createSessionLoadRuntime } from '../scripts/support/session-load-runtime.mjs';
 import { instrumentLoadPool, seedLoadSessions } from './support/customer-load-fixtures.js';
 import { requestLoadDraft } from '../tests/support/request-load-draft.js';
@@ -100,6 +100,29 @@ test('isolated PostgreSQL 18 preserves create integrity under bounded unpaced an
         assert.equal(stored.requesterUserId, fixture.userId);
         assert.equal(await persistence.requestRepository.findByTenantIdAndId(tenants[(index + 1) % 10], row.id), null);
       }
+      // Measure owned reads separately from create timing and its exact SQL budget.
+      // Paced create stress waves do not silently become a representative mixed workload.
+      let readEvidence = null;
+      if (arrivalIntervalMs === 0) {
+        const readBefore = readCounters();
+        const reads = await measureRequestReads({ origin: config.publicOrigin, cookies,
+          requestIds: responses.map(response => response.id), verify(body, index) {
+            const actual = body.request; const expected = responses[index];
+            assert.equal(actual.id, expected.id); assert.equal(actual.status, expected.status);
+            assert.equal(actual.version, expected.version); assert.equal(actual.roomId, expected.roomId);
+            assert.deepEqual(actual.details, expected.details); assert.deepEqual(actual.pricing, expected.pricing);
+            assert.deepEqual(actual.allocations, expected.allocations);
+            assert.equal('tenantId' in actual, false); assert.equal('requesterUserId' in actual, false);
+          } });
+        const readAfter = readCounters();
+        const readDelta = Object.fromEntries(Object.keys(readBefore).map(key => [key, readAfter[key] - readBefore[key]]));
+        assert.ok(readDelta.queries > 0 && readDelta.bytesRead > 0 && readDelta.bytesWritten > 0);
+        readEvidence = { schemaVersion: 1, environment: 'isolated-postgres18-loopback',
+          workload: 'request-owned-read', fixtureUsers: target, tenants: 10, usersPerTenant: target / 10,
+          poolMax: config.databasePoolMax, nodeVersion: process.version, postgresVersion: version,
+          ...reads, postgresProtocol: readDelta, providerEgressMeasured: false,
+          productionCapacityProven: false, representativeActivityMixApproved: false };
+      }
       totalCreated += target;
       for (const [draft, token, status] of [
         [drafts[0], null, 403], [drafts[0], 'x'.repeat(43), 403],
@@ -125,6 +148,7 @@ test('isolated PostgreSQL 18 preserves create integrity under bounded unpaced an
         await response.arrayBuffer(); assert.equal(response.status, status);
       }
       for (const tenantId of tenants) assert.equal(await persistence.auditRepository.verifyTenantChain(tenantId), true);
+      if (readEvidence) t.diagnostic(JSON.stringify(readEvidence));
       const sloLatency = result.scheduledLatencyMs ?? result.latencyMs;
       const warmSlo = { p95MaxMs: 1_000, p99MaxMs: 2_000, maxTechnicalErrorRate: 0.001,
         technicalErrorRate: 0, latencyBasis: arrivalIntervalMs ? 'scheduled-arrival-to-verified-body' : 'dispatch-to-verified-body',
