@@ -487,6 +487,12 @@ outbox state and no application/domain module imports the database listener. See
 
 ## Optional daily connector feed
 
+[Protected source registers](OPERATIONS-SOURCE-REGISTERS.md) adds an independently
+gated Operations-only read composition and protected server-side operator CLI for
+manual compiler facts and feedback. Its fixed-key S3 adapter is an explicit second
+Operations storage boundary, separate from the read-only daily adapter and Tenant
+media/reset. No HTTP write method or Production/Customer persistence is added.
+
 [Daily private Operations metrics](DAILY-LIVE-METRICS.md) defines the default-OFF
 private-object feed. When enabled, it supplies both views without daily redeploys.
 The legacy environment snapshots above remain rollout fallback; their original

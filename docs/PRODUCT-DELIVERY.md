@@ -115,6 +115,11 @@ failures. Demo observations are labeled Demo and never presented as Production r
 
 ### Feedback and minimization
 
+[Protected Operations source registers](OPERATIONS-SOURCE-REGISTERS.md) implements
+the #319 Object Storage custody for normalized manual facts and minimized feedback.
+It retains this compiler and its source/completeness rules, conditional writes and
+independent provenance; a private local/export file is not the canonical register.
+
 The approved protected operator register is the source of truth; an unconfigured
 register remains explicitly unconfigured. Feedback input contains only opaque record
 identity, date, closed category/workflow/severity/sentiment/state. Customer free text,
