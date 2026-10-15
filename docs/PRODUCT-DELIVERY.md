@@ -149,6 +149,28 @@ collect new source events or contact providers.
 
 ## Acceptance boundaries
 
+### Immutable source and runtime pairing
+
+The hosted frontend Gitlink, both `DEMO_FRONTEND_REF` values in `render.yaml`
+and the literal frontend checkout in API CI must identify the same reviewed
+Application commit. CI independently resolves and compares those refs; the build
+also verifies the actual submodule checkout. The permanent three-customer/two-reset
+acceptance checkout remains a separate immutable contract, not a moving branch.
+
+Application CI pins the accepted Product/Delivery API foundation
+`b7b4e7fb8a0cd9c47063536aaaf4259101d19942`, whose source tree equals merged API
+`52924d9994f4ab08d8bce65b75a2c6153f5ba0c6`. That compiler/wire acceptance ref
+has a different purpose from this API release's hosted frontend pin. Keeping these
+roles explicit avoids circular cross-repository commit dependencies. A later
+runtime-packaging commit must preserve the accepted API contract and pass its own
+complete gates with the selected frontend.
+
+After deployment, verify both origins' actual build-bound deployment metadata,
+readiness and the private owner projection. Source pins, passed CI and signed
+source inventories alone do not prove that either live service serves that pair.
+
+### Functional and operational evidence
+
 Compiler tests exercise all five formulas, empty/missing sources, duplicate/wrong
 identities, first-success history, timestamp ties, cross-Tenant collisions, raw-content
 rejection and actual bounded CLI failure. Real HTTP negatives exercise the existing

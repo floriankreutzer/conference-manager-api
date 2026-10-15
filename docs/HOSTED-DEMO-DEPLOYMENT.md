@@ -1,12 +1,12 @@
-# Hosted Shared Demo Deployment — Render Free + Neon Free
+# Hosted Shared Demo Deployment — Render + external Neon
 
 ## Purpose and authority
 
-This runbook deploys the SaaS 3.7 Shared Demo Runtime on the accepted zero-cost provider-domain topology:
+This runbook describes provider packaging and first-time initialization for the Shared Demo Runtime:
 
 - Customer Demo: Render Free Web Service in Frankfurt;
 - Platform Admin Demo: separate Render Free Web Service in Frankfurt;
-- authoritative shared data: Neon Free PostgreSQL 18 in AWS `eu-central-1` / Frankfurt;
+- authoritative shared data: external Neon PostgreSQL 18 in AWS `eu-central-1` / Frankfurt;
 - public addresses: Render-managed `*.onrender.com` HTTPS origins;
 - no custom domain;
 - GitHub Pages remains only a static fail-closed compatibility/launcher surface.
@@ -14,6 +14,37 @@ This runbook deploys the SaaS 3.7 Shared Demo Runtime on the accepted zero-cost 
 This is a Demo-only deployment. It does not select a Production provider and does not replace Production identity, provider, penetration, restore or customer acceptance evidence.
 
 The canonical Shared Demo architecture and security contract remains `docs/SHARED-DEMO-RUNTIME.md`. This runbook adds only provider packaging, initial database setup and deployment operations.
+
+## Existing-service code releases
+
+The original Free-tier provisioning example and historical schema-upgrade sections
+below are not evidence of the current Neon account plan, included allowance or zero
+charges. Verify actual provider configuration and the protected operating record.
+References to protected branches/environments state required controls; this runbook
+does not independently attest their current enforcement.
+
+For a reviewed code-only release with no schema/seed/storage change:
+
+1. Accept the exact source and immutable counterparts through all required gates.
+2. Keep the two existing services, their separate roles/origins, selected plans,
+   traffic/access policy and disabled automatic deployment configuration.
+3. Align the frontend Gitlink, both Blueprint `DEMO_FRONTEND_REF` values and API CI's
+   literal frontend checkout in one reviewed change. Separately set that same ref
+   in each existing service's protected environment; a Git merge alone does not
+   prove provider configuration changed. Merge selected values without replacing
+   the complete environment or reading unrelated secrets.
+4. Deploy the accepted API Main commit to both services and verify the actual
+   provider-selected commit. Current Main requires canonical schema044 / Demo
+   overlay009 readiness. Initial database creation, migration and deterministic
+   reset are separate operations and are not part of this code-only procedure.
+5. Verify both complete deployment identity artifacts, dependency readiness,
+   selected delivered assets, the owner password boundary and Customer exclusion
+   of private Operations projections. Saved snapshot refresh is not source
+   collection; see [Provider usage](DEMO-PROVIDER-USAGE.md) and
+   [Product/Delivery](PRODUCT-DELIVERY.md).
+6. Retain exact source/signing/deployment/HTTP evidence and the actual acceptance
+   limits. Bounded HTTP checks do not establish full Hosted business/reset or
+   paired database/object recovery acceptance.
 
 ## Target topology
 
@@ -31,9 +62,9 @@ https://conference-manager-ops-demo.onrender.com
 
 The two services remain separate origins and security domains. They have different cookies, sessions, CSRF secrets and PostgreSQL runtime roles. They share only the canonical Demo database state and the stable Tenant-audit HMAC key required for the same Tenant audit chain.
 
-## Provider baseline
+## Historical first-time provisioning example
 
-The accepted Demo provider settings are:
+The original first-time Demo provider settings were:
 
 | Component | Setting |
 | --- | --- |
@@ -310,9 +341,9 @@ A cold start may delay the first page load. It must never cause fallback to brow
 
 ## Rollback and recovery
 
-A frontend-only rollback may redeploy an approved compatible frontend ref while the current API/schema remain in place. A backend rollback across migration 034 is not a simple prior-ref redeploy. The following historical authorization-epoch boundary is not a supported direct downgrade from current schema 42: every intervening populated migration guard and compatible release check must pass; prefer a forward fix.
+A frontend-only rollback may redeploy an approved compatible frontend ref while the current API/schema remain in place. A backend rollback across migration 034 is not a simple prior-ref redeploy. The following historical authorization-epoch boundary is not a supported direct downgrade from later schemas: every intervening populated migration guard and compatible release check must pass; prefer a forward fix. Current Main requires schema044 / overlay009 and the current storage-custody contract; the older schema042 procedure below is historical.
 
-Before crossing that boundary, quiesce both Demo origins because they share canonical schema readiness. Use only the protected migration owner to change canonical migration bookkeeping; migration 034 down must leave Customer revocations intact. The target backend, fixture and canonical schema must be one reviewed compatible set, and all Customer and Platform sessions must be re-established. On re-forward, quiesce again, apply the complete canonical sequence through current schema 042 including migration 034 before traffic, deploy the exact current pair and verify readiness plus old-cookie/fresh-session checks.
+Before crossing that boundary, quiesce both Demo origins because they share canonical schema readiness. Use only the protected migration owner to change canonical migration bookkeeping; migration 034 down must leave Customer revocations intact. The target backend, fixture and canonical schema must be one reviewed compatible set, and all Customer and Platform sessions must be re-established. In the historical schema042 re-forward procedure, quiesce again, apply the complete canonical sequence through that target including migration 034 before traffic, deploy the exact compatible pair and verify readiness plus old-cookie/fresh-session checks.
 
 For Demo data corruption or an invalid seed state, prefer the supported deterministic reset/reseed operation. If sentinel/schema integrity cannot be established, recreate the isolated Demo database and rerun the controlled initialization workflow. If the main-only initialization workflow cannot initialize the reviewed target contract, stop and forward-fix. Do not apply ad hoc repair SQL or grant a runtime role broader privileges.
 
@@ -344,7 +375,7 @@ Never record values. The expected names are:
 
 The migration credential must never be added to Render. Customer credentials must never be added to the Platform service and Platform/reset credentials must never be added to the Customer service.
 
-## Equipment composition rollout
+## Equipment composition rollout history
 
 Migration 035 adds exact Request composition v3 Equipment constraints to the existing Request,
 revision and booking-change JSON snapshots. Existing v1/v2 data is not rewritten. Create,
@@ -369,11 +400,13 @@ defined in [Request Attribution](REQUEST-ATTRIBUTION.md). Existing Tenant, role,
 object ownership and session/CSRF boundaries remain required for these reads and writes.
 
 
-## Schema 44 / overlay 9 candidate
+## Schema 44 / overlay 9 initial-upgrade procedure
 
-Quiesce both existing services before applying the complete canonical sequence through 044 and
+This is the separate initial schema-upgrade procedure, not a code-only redeploy.
+Current Main requires schema044 / overlay009; this procedure does not independently
+prove the state of any live database. Quiesce both existing services before applying the complete canonical sequence through 044 and
 Demo overlays through 009 with the protected migration identity. Run the supported deterministic
 reset, deploy the exact compatible pair and verify all release gates before serving traffic.
-This document does not claim the existing hosted schema 42 / overlay 7 has been upgraded.
+Earlier schema42 / overlay007 references describe historical upgrade/rollback boundaries.
 Projection outbox rollback requires quiesced writers and a successfully drained, empty outbox;
 poison rows must be investigated rather than deleted to bypass the migration guard.
