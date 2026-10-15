@@ -134,6 +134,8 @@ test('manual enrichments never replace known automatic facts or erase complete i
   auto.deployments[0].outcome = 'unknown'; auto.deployments[0].rework = null;
   auto.deployments[0].changes = [];
   const result = compileOperationsSources(auto, envelope('manual', manual()), envelope('feedback', feedback()), NOW);
+  assert.throws(() => compileOperationsSources({ ...auto, environment: 'production' },
+    envelope('manual', manual()), envelope('feedback', feedback()), NOW));
   assert.equal(result.snapshot.delivery[1].buckets[3].metrics[3].value, 0);
   assert.equal(result.snapshot.feedback.total, null);
   assert.equal(result.sources.length, 2);

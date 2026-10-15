@@ -56,6 +56,7 @@ export function normalizeOperationsSource(input, kind, now = Date.now(), { fresh
 // fill unknown facts, but cannot change any immutable or already classified fact.
 export function compileOperationsSources(automatic, manual = null, feedback = null, now = Date.now()) {
   requireSource(Number.isSafeInteger(now) && Buffer.byteLength(JSON.stringify(automatic)) <= OPERATIONS_SOURCE_MAX_BYTES);
+  requireSource(automatic?.environment === 'demo');
   compileProductDeliveryReport(automatic);
   requireSource(instant(automatic.observedAt) <= now && now - instant(automatic.observedAt) < DAY_MS);
   const merged = structuredClone(automatic);
