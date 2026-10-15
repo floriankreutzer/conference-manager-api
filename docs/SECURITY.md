@@ -244,6 +244,36 @@ The Dependency Policy gate enforces manifest and lock consistency, exact direct 
 
 GitHub-native security feature availability depends on repository/account entitlements. Repository-local required gates remain mandatory regardless of native feature availability.
 
+### Enforced Main merge policy
+
+The active repository ruleset `21254032` (`main-required-pr-ci`) targets exactly
+`refs/heads/main`. It requires a pull request, resolution of review conversations and
+strict checks against the current base. Its bypass list is empty; branch deletion and
+non-fast-forward updates are denied. Required approving reviews remain zero; this does
+not waive the repository's review and security obligations.
+
+All nine required check contexts are bound to GitHub Actions integration `15368`:
+
+- `quality`
+- `postgres-integration`
+- `gitleaks`
+- `dependency-policy`
+- `inventory`
+- `shared-demo-e2e (chromium, chromium-shared-demo, postgres)`
+- `shared-demo-e2e (webkit, webkit-shared-demo, postgres)`
+- `shared-demo-e2e (chromium, chromium-shared-demo, objects)`
+- `shared-demo-e2e (webkit, webkit-shared-demo, objects)`
+
+The release `attest` job runs after public Main integration and is skipped on pull
+requests; it is a separate release gate, not a required PR check. Renaming or replacing
+a required job must update this effective ruleset and documentation in the same reviewed
+change. Do not substitute similarly named statuses from another integration, add bypass
+actors or disable a gate to unblock a change. A successful workflow alone does not prove
+effective protection; independently inspect the saved policy and verify merge rejection
+with missing/failing checks, followed by a normal merge after all required checks pass.
+
+Tracking and dated operational verification: `floriankreutzer/conference-manager#296`.
+
 ## SaaS 3.6 authorization hardening regression matrix
 
 | Finding / contract | Fail-closed invariant | Executable evidence |
