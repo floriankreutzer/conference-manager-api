@@ -11,11 +11,15 @@ import { loadDemoPlatformAccessConfig } from './platform-access-config.js';
 import { createDemoPlatformAccessGate } from './platform-access-gate.js';
 import { loadDemoProviderUsage } from './platform-provider-usage.js';
 import { loadDemoProductDelivery } from './platform-product-delivery.js';
+import { loadDailyLiveStorageConfig } from './platform-live-config.js';
+import { createLiveMetricsStorage } from './platform-live-storage.js';
+import { createDailyLiveMetrics } from './platform-live-metrics.js';
 
 const config = loadDemoPlatformConfig(process.env);
 const platformAccess = loadDemoPlatformAccessConfig(process.env);
 const providerUsage = loadDemoProviderUsage(process.env, platformAccess);
 const productDelivery = loadDemoProductDelivery(process.env, platformAccess);
+const liveStorageConfig = loadDailyLiveStorageConfig(process.env, { config, access: platformAccess });
 const runtime = await startDemoEntrypointRuntime({
   env: process.env, config, surface: 'platform',
   boundary: { applySecurityHeaders: applyPlatformSecurityHeaders, assertRequestHost: assertPlatformRequestHost,
@@ -29,12 +33,18 @@ const runtime = await startDemoEntrypointRuntime({
       assertRouteKey: assertPlatformRouteKey,
       write: (line) => process.stdout.write(line),
     });
-    return startDemoMediaStorageRuntime({
+    const liveStorage = liveStorageConfig ? createLiveMetricsStorage(liveStorageConfig) : null;
+    const liveMetrics = liveStorage ? createDailyLiveMetrics({ storage: liveStorage }) : null;
+    let active;
+    try { active = await startDemoMediaStorageRuntime({
       env: process.env, config, surface: 'platform',
       createComposition: (resetMediaObjectStorage) => createDemoPlatformComposition({
-        config, staticFileAdapter, metrics, resetMediaObjectStorage, trafficGate, accessGate, providerUsage, productDelivery,
+        config, staticFileAdapter, metrics, resetMediaObjectStorage, trafficGate, accessGate, providerUsage, productDelivery, liveMetrics,
       }),
-    });
+    }); } catch (error) { liveStorage?.close(); throw error; }
+    return Object.freeze({ async stop() {
+      try { await active.stop(); } finally { liveStorage?.close(); }
+    } });
   },
 });
 

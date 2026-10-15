@@ -1,0 +1,743 @@
+{
+  "schemaVersion": 1,
+  "environment": "demo",
+  "observedAt": "2026-10-15T12:00:00.000Z",
+  "measurements": [
+    {
+      "id": "neon_transfer",
+      "value": null,
+      "observedAt": null,
+      "periodStart": null,
+      "periodEnd": null,
+      "sampleAt": null
+    },
+    {
+      "id": "render_customer_bandwidth",
+      "value": 0.5,
+      "observedAt": "2026-10-15T12:00:00.000Z",
+      "periodStart": "2026-10-14T12:00:00.000Z",
+      "periodEnd": "2026-10-15T12:00:00.000Z",
+      "sampleAt": "2026-10-15T11:00:00.000Z"
+    },
+    {
+      "id": "render_operations_bandwidth",
+      "value": null,
+      "observedAt": null,
+      "periodStart": null,
+      "periodEnd": null,
+      "sampleAt": null
+    },
+    {
+      "id": "render_customer_memory",
+      "value": null,
+      "observedAt": null,
+      "periodStart": null,
+      "periodEnd": null,
+      "sampleAt": null
+    },
+    {
+      "id": "render_operations_memory",
+      "value": null,
+      "observedAt": null,
+      "periodStart": null,
+      "periodEnd": null,
+      "sampleAt": null
+    },
+    {
+      "id": "resend_daily_sent",
+      "value": null,
+      "observedAt": null,
+      "periodStart": null,
+      "periodEnd": null,
+      "sampleAt": null
+    },
+    {
+      "id": "resend_daily_limit",
+      "value": null,
+      "observedAt": null,
+      "periodStart": null,
+      "periodEnd": null,
+      "sampleAt": null
+    },
+    {
+      "id": "resend_monthly_sent",
+      "value": 2,
+      "observedAt": "2026-10-15T12:00:00.000Z",
+      "periodStart": null,
+      "periodEnd": "2026-11-14T12:00:00.000Z",
+      "sampleAt": null
+    },
+    {
+      "id": "resend_monthly_limit",
+      "value": null,
+      "observedAt": null,
+      "periodStart": null,
+      "periodEnd": null,
+      "sampleAt": null
+    },
+    {
+      "id": "github_ci_total",
+      "value": null,
+      "observedAt": null,
+      "periodStart": null,
+      "periodEnd": null,
+      "sampleAt": null
+    },
+    {
+      "id": "github_ci_failed",
+      "value": null,
+      "observedAt": null,
+      "periodStart": null,
+      "periodEnd": null,
+      "sampleAt": null
+    },
+    {
+      "id": "tenants",
+      "value": null,
+      "observedAt": null,
+      "periodStart": null,
+      "periodEnd": null,
+      "sampleAt": null
+    },
+    {
+      "id": "requests",
+      "value": 23,
+      "observedAt": "2026-10-15T12:00:00.000Z",
+      "periodStart": null,
+      "periodEnd": null,
+      "sampleAt": null
+    },
+    {
+      "id": "requests_updated",
+      "value": null,
+      "observedAt": null,
+      "periodStart": null,
+      "periodEnd": null,
+      "sampleAt": null
+    },
+    {
+      "id": "request_revisions",
+      "value": null,
+      "observedAt": null,
+      "periodStart": null,
+      "periodEnd": null,
+      "sampleAt": null
+    },
+    {
+      "id": "diagnostic_events",
+      "value": null,
+      "observedAt": null,
+      "periodStart": null,
+      "periodEnd": null,
+      "sampleAt": null
+    }
+  ],
+  "providerSnapshot": null,
+  "productSnapshot": {
+    "schemaVersion": 1,
+    "environment": "demo",
+    "observedAt": "2026-10-15T12:00:00.000Z",
+    "periodStart": "2026-09-17T00:00:00.000Z",
+    "periodEnd": "2026-10-15T00:00:00.000Z",
+    "product": [
+      {
+        "id": "onboarding_started",
+        "unit": "count",
+        "value": null,
+        "reason": "incomplete_source"
+      },
+      {
+        "id": "onboarding_completed",
+        "unit": "count",
+        "value": null,
+        "reason": "incomplete_source"
+      },
+      {
+        "id": "request_started",
+        "unit": "count",
+        "value": null,
+        "reason": "missing_start_clock"
+      },
+      {
+        "id": "request_submitted",
+        "unit": "count",
+        "value": null,
+        "reason": "incomplete_source"
+      },
+      {
+        "id": "request_abandoned",
+        "unit": "count",
+        "value": null,
+        "reason": "missing_start_clock"
+      },
+      {
+        "id": "time_to_submit",
+        "unit": "milliseconds",
+        "value": null,
+        "reason": "missing_start_clock"
+      },
+      {
+        "id": "manager_decisions",
+        "unit": "count",
+        "value": null,
+        "reason": "incomplete_source"
+      },
+      {
+        "id": "manager_decision_time",
+        "unit": "milliseconds",
+        "value": null,
+        "reason": "incomplete_source"
+      },
+      {
+        "id": "transition_failures",
+        "unit": "count",
+        "value": null,
+        "reason": "incomplete_source"
+      },
+      {
+        "id": "recovery_completed",
+        "unit": "count",
+        "value": null,
+        "reason": "incomplete_source"
+      },
+      {
+        "id": "recovery_failed",
+        "unit": "count",
+        "value": null,
+        "reason": "incomplete_source"
+      },
+      {
+        "id": "recovery_failure_rate",
+        "unit": "ratio",
+        "value": null,
+        "reason": "incomplete_source"
+      }
+    ],
+    "feedback": {
+      "source": "not_configured",
+      "total": null,
+      "open": null,
+      "highSeverity": null,
+      "categories": [
+        {
+          "id": "usability",
+          "count": null
+        },
+        {
+          "id": "correctness",
+          "count": null
+        },
+        {
+          "id": "performance",
+          "count": null
+        },
+        {
+          "id": "accessibility",
+          "count": null
+        },
+        {
+          "id": "integration",
+          "count": null
+        }
+      ],
+      "workflows": [
+        {
+          "id": "onboarding",
+          "count": null
+        },
+        {
+          "id": "request",
+          "count": null
+        },
+        {
+          "id": "manager",
+          "count": null
+        },
+        {
+          "id": "recovery",
+          "count": null
+        }
+      ],
+      "sentiments": [
+        {
+          "id": "positive",
+          "count": null
+        },
+        {
+          "id": "neutral",
+          "count": null
+        },
+        {
+          "id": "negative",
+          "count": null
+        }
+      ]
+    },
+    "delivery": [
+      {
+        "component": "application",
+        "buckets": [
+          {
+            "periodStart": "2026-09-17T00:00:00.000Z",
+            "periodEnd": "2026-09-24T00:00:00.000Z",
+            "metrics": [
+              {
+                "id": "change_lead_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "deployment_frequency",
+                "unit": "count",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "failed_deployment_recovery_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "change_failure_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "deployment_rework_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "incomplete_source"
+              }
+            ],
+            "unresolvedRecoveries": null
+          },
+          {
+            "periodStart": "2026-09-24T00:00:00.000Z",
+            "periodEnd": "2026-10-01T00:00:00.000Z",
+            "metrics": [
+              {
+                "id": "change_lead_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "deployment_frequency",
+                "unit": "count",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "failed_deployment_recovery_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "change_failure_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "deployment_rework_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "incomplete_source"
+              }
+            ],
+            "unresolvedRecoveries": null
+          },
+          {
+            "periodStart": "2026-10-01T00:00:00.000Z",
+            "periodEnd": "2026-10-08T00:00:00.000Z",
+            "metrics": [
+              {
+                "id": "change_lead_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "deployment_frequency",
+                "unit": "count",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "failed_deployment_recovery_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "change_failure_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "deployment_rework_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "incomplete_source"
+              }
+            ],
+            "unresolvedRecoveries": null
+          },
+          {
+            "periodStart": "2026-10-08T00:00:00.000Z",
+            "periodEnd": "2026-10-15T00:00:00.000Z",
+            "metrics": [
+              {
+                "id": "change_lead_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "deployment_frequency",
+                "unit": "count",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "failed_deployment_recovery_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "change_failure_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "deployment_rework_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "incomplete_source"
+              }
+            ],
+            "unresolvedRecoveries": null
+          }
+        ]
+      },
+      {
+        "component": "api",
+        "buckets": [
+          {
+            "periodStart": "2026-09-17T00:00:00.000Z",
+            "periodEnd": "2026-09-24T00:00:00.000Z",
+            "metrics": [
+              {
+                "id": "change_lead_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "empty_denominator"
+              },
+              {
+                "id": "deployment_frequency",
+                "unit": "count",
+                "value": 0,
+                "reason": "available"
+              },
+              {
+                "id": "failed_deployment_recovery_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "empty_denominator"
+              },
+              {
+                "id": "change_failure_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "empty_denominator"
+              },
+              {
+                "id": "deployment_rework_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "empty_denominator"
+              }
+            ],
+            "unresolvedRecoveries": 0
+          },
+          {
+            "periodStart": "2026-09-24T00:00:00.000Z",
+            "periodEnd": "2026-10-01T00:00:00.000Z",
+            "metrics": [
+              {
+                "id": "change_lead_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "empty_denominator"
+              },
+              {
+                "id": "deployment_frequency",
+                "unit": "count",
+                "value": 0,
+                "reason": "available"
+              },
+              {
+                "id": "failed_deployment_recovery_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "empty_denominator"
+              },
+              {
+                "id": "change_failure_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "empty_denominator"
+              },
+              {
+                "id": "deployment_rework_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "empty_denominator"
+              }
+            ],
+            "unresolvedRecoveries": 0
+          },
+          {
+            "periodStart": "2026-10-01T00:00:00.000Z",
+            "periodEnd": "2026-10-08T00:00:00.000Z",
+            "metrics": [
+              {
+                "id": "change_lead_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "empty_denominator"
+              },
+              {
+                "id": "deployment_frequency",
+                "unit": "count",
+                "value": 0,
+                "reason": "available"
+              },
+              {
+                "id": "failed_deployment_recovery_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "empty_denominator"
+              },
+              {
+                "id": "change_failure_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "empty_denominator"
+              },
+              {
+                "id": "deployment_rework_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "empty_denominator"
+              }
+            ],
+            "unresolvedRecoveries": 0
+          },
+          {
+            "periodStart": "2026-10-08T00:00:00.000Z",
+            "periodEnd": "2026-10-15T00:00:00.000Z",
+            "metrics": [
+              {
+                "id": "change_lead_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "missing_classification"
+              },
+              {
+                "id": "deployment_frequency",
+                "unit": "count",
+                "value": 1,
+                "reason": "available"
+              },
+              {
+                "id": "failed_deployment_recovery_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "missing_classification"
+              },
+              {
+                "id": "change_failure_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "missing_classification"
+              },
+              {
+                "id": "deployment_rework_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "missing_classification"
+              }
+            ],
+            "unresolvedRecoveries": null
+          }
+        ]
+      },
+      {
+        "component": "website",
+        "buckets": [
+          {
+            "periodStart": "2026-09-17T00:00:00.000Z",
+            "periodEnd": "2026-09-24T00:00:00.000Z",
+            "metrics": [
+              {
+                "id": "change_lead_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "deployment_frequency",
+                "unit": "count",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "failed_deployment_recovery_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "change_failure_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "deployment_rework_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "incomplete_source"
+              }
+            ],
+            "unresolvedRecoveries": null
+          },
+          {
+            "periodStart": "2026-09-24T00:00:00.000Z",
+            "periodEnd": "2026-10-01T00:00:00.000Z",
+            "metrics": [
+              {
+                "id": "change_lead_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "deployment_frequency",
+                "unit": "count",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "failed_deployment_recovery_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "change_failure_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "deployment_rework_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "incomplete_source"
+              }
+            ],
+            "unresolvedRecoveries": null
+          },
+          {
+            "periodStart": "2026-10-01T00:00:00.000Z",
+            "periodEnd": "2026-10-08T00:00:00.000Z",
+            "metrics": [
+              {
+                "id": "change_lead_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "deployment_frequency",
+                "unit": "count",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "failed_deployment_recovery_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "change_failure_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "deployment_rework_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "incomplete_source"
+              }
+            ],
+            "unresolvedRecoveries": null
+          },
+          {
+            "periodStart": "2026-10-08T00:00:00.000Z",
+            "periodEnd": "2026-10-15T00:00:00.000Z",
+            "metrics": [
+              {
+                "id": "change_lead_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "deployment_frequency",
+                "unit": "count",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "failed_deployment_recovery_time",
+                "unit": "milliseconds",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "change_failure_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "incomplete_source"
+              },
+              {
+                "id": "deployment_rework_rate",
+                "unit": "ratio",
+                "value": null,
+                "reason": "incomplete_source"
+              }
+            ],
+            "unresolvedRecoveries": null
+          }
+        ]
+      }
+    ],
+    "provenance": {
+      "mode": "operator_extract",
+      "sourceDigest": "9b6bd0c3fa22a5febf757a162acffb21d56c4135691758d08276ebdde50f76a7",
+      "eventCount": 1
+    }
+  }
+}

@@ -156,7 +156,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager
-          ref: ac0cd04281700636743e508335cd20c2325098a2
+          ref: 0a92e58138499cd1090fab60f6f445196cac4449
           token: ${{ steps.source-token.outputs.token || github.token }}
           persist-credentials: false
           path: frontend
@@ -222,6 +222,9 @@ jobs:
           PY
       - name: Install browser engines
         working-directory: frontend
+        run: npx playwright install --with-deps "${{ matrix.browser }}"
+      - name: Install permanent acceptance browser engines
+        working-directory: acceptance
         run: npx playwright install --with-deps "${{ matrix.browser }}"
       - name: Add fixed Demo hosts
         run: echo "127.0.0.1 customer.demo.test platform.demo.test" | sudo tee -a /etc/hosts >/dev/null
