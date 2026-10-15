@@ -14,9 +14,10 @@ export function instrumentLoadPool(pool) {
     bytesWritten: [...clients].reduce((sum, c) => sum + c.connection.stream.bytesWritten, 0) });
 }
 
-export async function seedLoadSessions(pool, tenants, fixtures, target) {
+export async function seedLoadSessions(pool, tenants, fixtures, target, { roles = Object.values(TENANT_ROLE) } = {}) {
   const records = [];
-  const roles = Object.values(TENANT_ROLE);
+  if (!Array.isArray(roles) || roles.length < 1 || roles.length > 3 || new Set(roles).size !== roles.length
+    || roles.some(role => !Object.values(TENANT_ROLE).includes(role))) throw new Error('LOAD_FIXTURE_ROLES_INVALID');
   // Reuse canonical token generation/hash/security epoch without duplicating production crypto.
   // This repository captures generated fixture records; it does not simulate a provider login or its audit.
   const service = createSessionService({
