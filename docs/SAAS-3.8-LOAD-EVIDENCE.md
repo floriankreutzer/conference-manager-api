@@ -142,6 +142,43 @@ does not approve an activity mix, capacity/SLO, cold start, confirmation/provide
 cost, monthly invoice or topology comparison. The owner targets and the open #269/#270 boundaries below
 remain unchanged. Runtime API, schema, canonical Demo seed, dependencies and deployment pins are unchanged.
 
+## Fixed-arrival write sensitivity and warm objectives
+
+The owner-approved warm application objectives are p95 <= 1,000 ms, p99 <= 2,000 ms and technical
+error rate <= 0.1%. Cold starts remain separate with no approved cold threshold. These objectives
+do not approve a representative operation mix or an arrival rate.
+
+The same write test retains the original unpaced 100/1,000 cases and adds two 1,000-create waves:
+
+| Arrival interval | Offered requests/s | Sensitivity assumption | Concurrent HTTP clients |
+| --- | ---: | --- | ---: |
+| 15 ms | 66.667 | 1,000 active Users, one aggregate request every 15 seconds | 16 |
+| 5 ms | 200 | 1,000 active Users, one aggregate request every 5 seconds | 16 |
+
+Each is one finite all-create stress wave, not sustained monthly traffic or a representative mix.
+The four cases persist 3,100 Requests total in the disposable database. Every case independently
+retains the complete price, ownership, history, audit-chain, CSRF and adversarial checks above.
+Fresh runtimes/rate buckets, pre-timing session/CSRF reads and pool warmup remain unchanged.
+
+Optional `arrivalIntervalMs` is an integer 0–1,000; zero preserves the original unpaced result shape.
+The last planned arrival must precede the total deadline, otherwise validation fails before I/O.
+A monotonic schedule fixes arrival `i` at start + i times interval. Bounded workers wait for that
+arrival or dispatch late; they never drop overdue requests or reset the schedule after completion.
+`latencyMs` remains dispatch-to-verified-body. Paced diagnostics additionally report `scheduleLagMs`
+(planned arrival to dispatch), `scheduledLatencyMs` (planned arrival to verified body), interval and
+offered rate. Thus client backlog remains visible instead of hiding overload through slower arrivals.
+Abortable timers are drained with the workers; existing request, body, socket and deadline bounds apply.
+
+`warmSlo` compares the approved thresholds to scheduled latency for paced cases and dispatch latency
+for unpaced cases. Its zero technical error rate is emitted only after every operation and integrity
+check succeeds; failures publish no successful result. A numerical SLO miss is reported as `met: false`.
+It does not weaken functional checks or masquerade as performance acceptance because CI is green:
+shared-runner timing is evidence, not a deterministic functional CI threshold. Exact-commit results
+must retain candidate/Main distinctions. A local protocol fixture is not PostgreSQL evidence.
+
+No production capacity, provider egress, cold-start, invoice, topology or confirmed-booking claim follows.
+The warm SLO result applies only to that finite isolated scenario; #269/#270 remain open.
+
 ## Monthly workload model
 
 The owner's corrected initial targets (15 October 2026) are **100,000 business bookings per month

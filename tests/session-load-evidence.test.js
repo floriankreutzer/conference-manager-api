@@ -211,3 +211,66 @@ test('load measurement rejects incomplete, oversized, malformed and identity-inv
     }
   } finally { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
 });
+
+
+test('fixed arrivals retain backlog latency, exact read/write protocols and the unpaced result contract', async () => {
+  let requests = 0;
+  const server = createServer(async (req, res) => {
+    requests += 1;
+    assert.equal(req.headers.cookie, cookie);
+    if (req.method === 'POST') {
+      assert.equal(req.url, '/api/v1/application/requests');
+      assert.equal(req.headers['x-csrf-token'], csrfToken);
+      assert.equal(req.headers.origin, `http://127.0.0.1:${server.address().port}`);
+      const chunks = []; for await (const chunk of req) chunks.push(chunk);
+      assert.deepEqual(JSON.parse(Buffer.concat(chunks)), { schemaVersion: 3, request: requestLoadDraft() });
+      res.statusCode = 201;
+    } else { assert.equal(req.method, 'GET'); assert.equal(req.url, '/api/v1/session'); }
+    await new Promise(resolve => setTimeout(resolve, 30));
+    res.end('{"synthetic":true}');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const base = { origin: `http://127.0.0.1:${server.address().port}`, cookies: Array(6).fill(cookie),
+      concurrency: 1, arrivalIntervalMs: 5, verify(body) { assert.deepEqual(body, { synthetic: true }); } };
+    for (const measure of [measureSessionReads, options => measureRequestCreates({ ...options,
+      drafts: Array(6).fill(requestLoadDraft()), csrfTokens: Array(6).fill(csrfToken) })]) {
+      const before = requests;
+      const result = await measure(base);
+      assert.equal(requests - before, 6); assert.equal(result.requests, 6);
+      assert.equal(result.arrivalIntervalMs, 5); assert.equal(result.offeredRequestsPerSecond, 200);
+      assert.ok(result.scheduleLagMs.p95 > 80, 'Backlog must not reset the original arrival schedule');
+      assert.ok(result.scheduledLatencyMs.p95 > result.latencyMs.p95 + 80);
+    }
+    const paced = await measureSessionReads({ ...base, concurrency: 3, arrivalIntervalMs: 40,
+      cookies: [cookie, cookie, cookie] });
+    assert.equal(paced.requests, 3); assert.ok(paced.elapsedMs >= 80, 'Future arrivals must wait for their planned time');
+    const result = await measureSessionReads({ ...base, arrivalIntervalMs: 0, cookies: [cookie] });
+    for (const key of ['arrivalIntervalMs', 'offeredRequestsPerSecond', 'scheduledLatencyMs', 'scheduleLagMs']) {
+      assert.equal(key in result, false, 'Unpaced result shape must stay compatible');
+    }
+  } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+});
+
+test('invalid arrival bounds fail before I/O and a deadline abort drains scheduled workers without later sends', async () => {
+  let requests = 0;
+  const server = createServer((req, res) => { requests += 1; if (requests > 1) res.end('{}'); });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const base = { origin: `http://127.0.0.1:${server.address().port}`, cookies: [cookie, cookie, cookie],
+      deadlineMs: 150, verify() {} };
+    for (const arrivalIntervalMs of [-1, 0.5, NaN, Infinity, '5', 1001, 75]) {
+      await assert.rejects(measureSessionReads({ ...base, arrivalIntervalMs }), /^Error: LOAD_ARRIVAL_INVALID$/);
+    }
+    assert.equal(requests, 0);
+    await assert.rejects(measureSessionReads({ ...base, concurrency: 1, arrivalIntervalMs: 60 }),
+      /^Error: LOAD_ACCEPTANCE_FAILED$/);
+    assert.equal(requests, 1, 'An aborted backlog must not dispatch its remaining writes or reads');
+    // A verification failure aborts other workers while their future arrival timers are pending.
+    requests = 1;
+    await assert.rejects(measureSessionReads({ ...base, concurrency: 3, arrivalIntervalMs: 60,
+      verify() { throw new Error('PRIVATE_VERIFIER_DETAILS'); } }), /^Error: LOAD_ACCEPTANCE_FAILED$/);
+    await new Promise(resolve => setTimeout(resolve, 180));
+    assert.equal(requests, 2, 'Cancelled arrival timers must not send later requests');
+  } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+});

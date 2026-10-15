@@ -10,7 +10,7 @@ import { instrumentLoadPool, seedLoadSessions } from './support/customer-load-fi
 import { requestLoadDraft } from '../tests/support/request-load-draft.js';
 import { AUDIT_ACTION } from '../src/audit/event.js';
 
-test('isolated PostgreSQL 18 creates 100 and 1000 canonical requests with atomic owner, history and audit evidence', async (t) => {
+test('isolated PostgreSQL 18 preserves create integrity under bounded unpaced and fixed-arrival load', async (t) => {
   const databaseUrl = new URL(process.env.DATABASE_URL);
   assert.match(databaseUrl.pathname, /^\/conference_manager_test_[0-9]+_[0-9]+$/);
   assert.ok(['localhost', '127.0.0.1', '[::1]'].includes(databaseUrl.hostname));
@@ -43,7 +43,7 @@ test('isolated PostgreSQL 18 creates 100 and 1000 canonical requests with atomic
   }));
   const fixtures = []; let totalCreated = 0;
   const startsAt = new Date(Math.ceil(Date.now() / 86_400_000) * 86_400_000 + 7 * 86_400_000 + 9 * 3_600_000).toISOString();
-  for (const target of [100, 1000]) {
+  for (const [target, arrivalIntervalMs] of [[100, 0], [1000, 0], [1000, 15], [1000, 5]]) {
     await seedLoadSessions(persistence.pool, tenants, fixtures, target, { roles: ['employee'] });
     const runtime = createSessionLoadRuntime({ config, persistence: { ...persistence, close: async () => {} } });
     try {
@@ -53,13 +53,14 @@ test('isolated PostgreSQL 18 creates 100 and 1000 canonical requests with atomic
         assert.equal(body.user.id, fixtures[index].userId); assert.equal(body.tenant.id, fixtures[index].tenantId);
         assert.deepEqual(body.roles, ['employee']); csrfTokens[index] = body.csrfToken;
       } });
-      const drafts = fixtures.map((fixture, index) => requestLoadDraft({ title: `Synthetic ${target} request ${index}`,
+      const scenario = arrivalIntervalMs ? `${target}/${arrivalIntervalMs}` : String(target);
+      const drafts = fixtures.map((fixture, index) => requestLoadDraft({ title: `Synthetic ${scenario} request ${index}`,
         startsAt, configurationRevisions: revisions[tenants.indexOf(fixture.tenantId)] }));
       const clients = await Promise.all(Array.from({ length: config.databasePoolMax }, () => persistence.pool.connect()));
       try { await Promise.all(clients.map(client => client.query('SELECT 1'))); }
       finally { for (const client of clients) client.release(); }
       const responses = []; const ids = new Set(); const before = readCounters();
-      const result = await measureRequestCreates({ origin: config.publicOrigin, cookies, csrfTokens, drafts,
+      const result = await measureRequestCreates({ arrivalIntervalMs, origin: config.publicOrigin, cookies, csrfTokens, drafts,
         verify(body, index) {
           const request = body.request; const tenantIndex = tenants.indexOf(fixtures[index].tenantId);
           assert.equal(body.schemaVersion, 3); assert.equal(request.schemaVersion, 3); assert.equal(request.version, 1);
@@ -123,9 +124,14 @@ test('isolated PostgreSQL 18 creates 100 and 1000 canonical requests with atomic
         await response.arrayBuffer(); assert.equal(response.status, status);
       }
       for (const tenantId of tenants) assert.equal(await persistence.auditRepository.verifyTenantChain(tenantId), true);
+      const sloLatency = result.scheduledLatencyMs ?? result.latencyMs;
+      const warmSlo = { p95MaxMs: 1_000, p99MaxMs: 2_000, maxTechnicalErrorRate: 0.001,
+        technicalErrorRate: 0, latencyBasis: arrivalIntervalMs ? 'scheduled-arrival-to-verified-body' : 'dispatch-to-verified-body',
+        met: sloLatency.p95 <= 1_000 && sloLatency.p99 <= 2_000 };
+      // Integrity is a deterministic gate; shared-runner latency is reported honestly, not a flaky CI threshold.
       t.diagnostic(JSON.stringify({ schemaVersion: 1, environment: 'isolated-postgres18-loopback', workload: 'request-v3-create',
         fixtureUsers: target, tenants: 10, usersPerTenant: target / 10, poolMax: config.databasePoolMax,
-        nodeVersion: process.version, postgresVersion: version, ...result, postgresProtocol: delta,
+        nodeVersion: process.version, postgresVersion: version, ...result, warmSlo, postgresProtocol: delta,
         providerEgressMeasured: false, productionCapacityProven: false, representativeActivityMixApproved: false }));
     } finally { await runtime.stop(); }
   }

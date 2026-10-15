@@ -1,9 +1,12 @@
 import { Agent, request } from 'node:http';
 import { performance } from 'node:perf_hooks';
+import { setMaxListeners } from 'node:events';
+import { setTimeout as wait } from 'node:timers/promises';
 import { normalizeRequestCompositionDraft } from '../src/domain/request-composition.js';
 
 // Test-only protocol measurement: the destination and operation cannot be supplied remotely.
-async function measureRequests({ origin, cookies, verify, concurrency = 16, deadlineMs = 45_000 }, path, writes = null) {
+async function measureRequests({ origin, cookies, verify, concurrency = 16, deadlineMs = 45_000,
+  arrivalIntervalMs = 0 }, path, writes = null) {
   const url = new URL(origin);
   if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password
     || url.pathname !== '/' || url.search || url.hash || !url.port) throw new Error('LOAD_DESTINATION_INVALID');
@@ -11,16 +14,29 @@ async function measureRequests({ origin, cookies, verify, concurrency = 16, dead
     || cookies.some((cookie) => !/^cm_session=[A-Za-z0-9_-]{43}$/.test(cookie))) throw new Error('LOAD_COOKIES_INVALID');
   if (typeof verify !== 'function' || !Number.isInteger(concurrency) || concurrency < 1 || concurrency > 32
     || !Number.isInteger(deadlineMs) || deadlineMs < 100 || deadlineMs > 60_000) throw new Error('LOAD_BOUNDS_INVALID');
+  if (!Number.isInteger(arrivalIntervalMs) || arrivalIntervalMs < 0 || arrivalIntervalMs > 1_000
+    || (cookies.length - 1) * arrivalIntervalMs >= deadlineMs) throw new Error('LOAD_ARRIVAL_INVALID');
   const agent = new Agent({ keepAlive: true, maxSockets: concurrency });
   const started = performance.now();
   const latencies = [];
+  const scheduledLatencies = [];
+  const scheduleLags = [];
   let next = 0;
   let payloadBytes = 0;
   let requestPayloadBytes = 0;
   let failed = false;
   const controller = new AbortController();
+  // Only this private, bounded signal: HTTP cancellation and paced workers can temporarily overlap.
+  setMaxListeners(concurrency * 2 + 2, controller.signal);
   const timer = setTimeout(() => controller.abort(), deadlineMs);
   async function execute(index) {
+    const scheduledAt = started + index * arrivalIntervalMs;
+    if (arrivalIntervalMs) {
+      while (performance.now() < scheduledAt) {
+        await wait(Math.ceil(scheduledAt - performance.now()), undefined, { signal: controller.signal });
+      }
+    }
+    controller.signal.throwIfAborted();
     const at = performance.now();
     const payload = writes?.[index];
     const result = await new Promise((resolve, reject) => {
@@ -53,7 +69,12 @@ async function measureRequests({ origin, cookies, verify, concurrency = 16, dead
     verify(result.body, index);
     payloadBytes += result.bytes;
     requestPayloadBytes += payload ? Buffer.byteLength(payload.body) : 0;
-    latencies.push(performance.now() - at);
+    const completedAt = performance.now();
+    latencies.push(completedAt - at);
+    if (arrivalIntervalMs) {
+      scheduledLatencies.push(completedAt - scheduledAt);
+      scheduleLags.push(at - scheduledAt);
+    }
   }
   try {
     const workers = Array.from({ length: Math.min(concurrency, cookies.length) }, async () => {
@@ -66,13 +87,19 @@ async function measureRequests({ origin, cookies, verify, concurrency = 16, dead
     if (outcomes.some((outcome) => outcome.status === 'rejected') || latencies.length !== cookies.length) {
       throw new Error('LOAD_ACCEPTANCE_FAILED');
     }
-    latencies.sort((a, b) => a - b);
-    const percentile = (fraction) => Number(latencies[Math.ceil(latencies.length * fraction) - 1].toFixed(3));
+    function distribution(values) {
+      values.sort((a, b) => a - b);
+      const percentile = fraction => Number(values[Math.ceil(values.length * fraction) - 1].toFixed(3));
+      return { p50: percentile(0.5), p95: percentile(0.95), p99: percentile(0.99) };
+    }
     const elapsedMs = performance.now() - started;
     return Object.freeze({ requests: cookies.length, concurrency, payloadBytes,
       ...(writes ? { requestPayloadBytes } : {}),
       elapsedMs: Number(elapsedMs.toFixed(3)), requestsPerSecond: Number((cookies.length * 1_000 / elapsedMs).toFixed(3)),
-      latencyMs: { p50: percentile(0.5), p95: percentile(0.95), p99: percentile(0.99) } });
+      latencyMs: distribution(latencies),
+      ...(arrivalIntervalMs ? { arrivalIntervalMs,
+        offeredRequestsPerSecond: Number((1_000 / arrivalIntervalMs).toFixed(3)),
+        scheduledLatencyMs: distribution(scheduledLatencies), scheduleLagMs: distribution(scheduleLags) } : {}) });
   } finally { clearTimeout(timer); controller.abort(); agent.destroy(); }
 }
 
