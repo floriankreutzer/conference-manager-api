@@ -283,3 +283,30 @@ existing Pilot milestone: execute it last immediately before external Pilot rele
 final decision. This is unexecuted acceptance, not a recovery pass; source/CI/integrity requirements
 remain in force. Actual Pilot outcomes/feedback are tracked separately in #316 and external
 security-intake verification in #317. Neither transfer authorizes a new resource or billable test.
+
+## Owned Request-read baseline
+
+The existing create-load fixture additionally measures one owned Request read per User in the
+unpaced 100- and 1,000-User scenarios. All requests were actually created through the canonical v3
+HTTP route immediately beforehand; the separate read phase never contributes to create timing,
+its exact 18-query budget or fixed-arrival create sensitivity results. It uses the same isolated
+PostgreSQL 18 database, ten-Tenant colliding Room IDs, ten-connection pool and 16 HTTP clients.
+
+The measurement helper accepts at most 1,000 bounded canonical UUIDs and matching session cookies,
+fixes GET /api/v1/requests/{id}, and retains loopback-only routing, 8 KiB response bounds, five-second
+socket timeout, overall deadline, abort/drain, no redirects and no retries. Every response must
+match that User's actual created ID, status, version, Room, complete details, price and allocations,
+without internal Tenant/requester IDs. Existing owner success, foreign-Tenant concealment,
+same-Tenant other-Employee concealment, persisted history and all Tenant audit-chain checks remain.
+
+Diagnostics retain a separate request-owned-read record with completed operations, percentiles,
+HTTP body bytes and local PostgreSQL query/protocol counters. Native protocol tests additionally
+reject route-selected IDs, malformed/mismatched/oversized inputs, redirected/denied/oversized or
+malformed responses, wrong identity and stalled requests. A failed/partial phase emits no successful
+read aggregate. Exact successful PostgreSQL results are required before calling this measured.
+
+This adds a warm owned-read baseline only. It does not establish the four reads per booking's real
+status/size distribution, a mixed booking journey, 1,000 concurrent HTTP requests, cold behavior,
+provider-metered egress, complete monthly cost or target capacity. Availability, transitions,
+media/cache and background/worker/provider work retain their separate evidence requirements.
+No runtime API, schema, seed, dependency, deployment or security-limit change is introduced.
