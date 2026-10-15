@@ -242,7 +242,7 @@ business operations per month. Preserve the approved planning mix and separately
 source/traffic representativeness before capacity acceptance.
 For independently observed non-booking activity only, the alternative per-User model below requires
 monthly distinct active Users, not the simultaneous peak. Do not add it to booking-related counts
-unless overlap is excluded. It must not replace the approved 100,000 total bookings with a per-User quota.
+unless overlap is excluded. It must not replace the approved 10,000 total bookings with a per-User quota.
 For each fixed operation `o`, retain `requests_per_user_day(o)` and `active_days` as assumptions:
 
 `monthly_requests(o) = active_users × requests_per_user_day(o) × active_days`.
