@@ -216,6 +216,10 @@ Tenant-visible audit access must remain tenant-scoped. Platform/operator audit i
 
 Every code change requires appropriate regression and/or progression coverage.
 
+Use [the cross-repository test strategy](docs/TEST-STRATEGY.md) for test ownership, evidence,
+risk-based selection and flaky-test handling. It complements these instructions and the coding
+standards; it cannot waive required checks, security boundaries or the permanent Demo contract.
+
 New functionality requires progression tests. Changes to existing behavior require regression protection. Security-sensitive functionality requires negative/adversarial tests.
 
 Depending on scope, include:
@@ -334,3 +338,5 @@ Required reviews, security checks, regression/progression tests and release gate
 ## Documentation status integrity
 
 Reconcile current documentation with the exact merged implementation and named deployment evidence. Distinguish current main, unmerged pull requests, deployed immutable counterparts, dated test evidence and planned behavior. Keep historical failures and accepted scope limits explicitly historical. A closed milestone does not prove every later change passed its own gates.
+## Confluence documentation governance
+Before any Conference Manager Confluence create/edit/move/rename/restructure/archive work, read the authenticated internal Confluence pages `AGENT.md – Confluence Governance` and, before creating or materially restructuring documentation, `AGENT.1 – Documentation Standard & Page Templates`. Follow their page classes and milestone Overview → Requirements & Design → Audit & Acceptance Evidence pattern; keep current normative content separate from dated evidence; treat current repository `main` as authoritative for implemented code/runtime facts and explicitly reconcile Confluence rather than creating parallel implementation truth; preserve historical failures, waivers and superseded states as historical evidence; and never copy credentials, customer data, sensitive vulnerability/provider evidence, internal Confluence URLs, or unnecessary internal material into public repository files.

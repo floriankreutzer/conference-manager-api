@@ -213,7 +213,8 @@ async function selectedCatalogueWithClient(client, {
   catalogueRevision,
   capturedAt,
 }) {
-  const servicesResult = await client.query({
+  // ANY(empty array) cannot return or lock a row; retain full validation for every selected ID.
+  const servicesResult = draft.serviceIds.length === 0 ? { rows: [] } : await client.query({
     name: 'request-v2-authority-services',
     text: `
       SELECT
@@ -309,7 +310,7 @@ async function selectedCatalogueWithClient(client, {
 
   const directItemIds = draft.catering.itemQuantities.map((entry) => entry.itemId);
   const selectedItemIds = [...new Set([...directItemIds, ...includedItemIds])];
-  const itemsResult = await client.query({
+  const itemsResult = selectedItemIds.length === 0 ? { rows: [] } : await client.query({
     name: 'request-v2-authority-catering-items',
     text: `
       SELECT
@@ -342,7 +343,8 @@ async function selectedCatalogueWithClient(client, {
     values: [tenantId, selectedItemIds],
   });
 
-  const equipmentResult = await client.query({
+  const equipmentIds = draft.equipmentIds ?? [];
+  const equipmentResult = equipmentIds.length === 0 ? { rows: [] } : await client.query({
     name: 'request-v3-authority-equipment',
     text: `
       SELECT entry.id, entry.name, entry.description, entry.price_minor,
@@ -361,7 +363,7 @@ async function selectedCatalogueWithClient(client, {
       WHERE entry.tenant_id = $1 AND entry.id = ANY($2::varchar[])
       FOR SHARE OF entry
     `,
-    values: [tenantId, draft.equipmentIds ?? []],
+    values: [tenantId, equipmentIds],
   });
   const catalogue = normalizeTenantCatalogue({
     services: servicesResult.rows.map(frozenApplicability),

@@ -11,6 +11,8 @@ import {
 } from '../platform/http/security.js';
 import { createDemoStaticHandler } from './static-handler.js';
 import { observeResponsePayloadSafely } from '../observability/response-payload.js';
+import { handleDemoProviderUsage } from './http/platform-provider-usage-handler.js';
+import { handleDemoProductDelivery } from './http/platform-product-delivery-handler.js';
 
 const RESET_PATH = '/api/v1/platform/demo/reset';
 const LIVENESS_PATH = '/api/v1/platform/health/live';
@@ -71,7 +73,12 @@ export function createDemoPlatformHttpServer(options) {
     maxHeaderSize: 16_384,
     requireHostHeader: true,
   }, async (request, response) => {
+    if (options.accessGate?.handle(request, response)) return;
     if (options.trafficGate?.handle(request, response)) return;
+    if (handleDemoProviderUsage({ request, response, accessGate: options.accessGate,
+      providerUsage: options.providerUsage })) return;
+    if (handleDemoProductDelivery({ request, response, accessGate: options.accessGate,
+      productDelivery: options.productDelivery })) return;
     const path = requestPath(request, config.publicOrigin);
     if (path === LIVENESS_PATH || (request.method === 'POST' && path === RESET_PATH)) {
       await app(request, response);

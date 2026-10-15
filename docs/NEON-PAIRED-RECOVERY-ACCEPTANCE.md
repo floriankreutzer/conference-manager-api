@@ -428,14 +428,42 @@ not establish that real-provider execution succeeded.
 This prepared workflow is not an executed success, production cutover, FinOps
 completion, representative business load or permission to close SaaS 3.8.
 
-## CI image bootstrap evidence
+## Historical CI image bootstrap evidence — 9 October 2026
 
 Initial candidate CI run 37992999496 failed before database/browser test execution
 when Docker Hub rejected anonymous image pulls with its rate limit. That run
-remains failed evidence. Required PostgreSQL services now use Docker's official
-Amazon ECR Public repository, pinned to the same PostgreSQL 18.6 Alpine manifest:
+remains failed evidence. The 9 October successor switched required PostgreSQL services
+to Docker's official Amazon ECR Public repository, pinned to the same PostgreSQL 18.6 Alpine manifest:
 `sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873`.
 On 9 October both Docker Hub and ECR manifest GETs returned HTTP200 and identical
 SHA-256, including Linux amd64. No database version, health check, test, retry,
 deadline or paid registry account changes. All required checks must run again
 against the successor head; image-source verification is not database acceptance.
+
+
+## Current CI image source — 14 October 2026
+
+Required PostgreSQL services in `.github/workflows/ci.yml` and the manual
+`neon-browser-acceptance.yml` now pull from Docker Hub's official
+`docker.io/library/postgres` repository. PostgreSQL 18.6 Alpine and the exact
+manifest digest remain unchanged:
+`sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873`.
+
+Main CI 38641221273 failed before checkout when ECR returned
+`toomanyrequests: Data limit exceeded`; its single targeted retry failed at the
+same container initialization stage. Other Main jobs and the original source
+candidate CI 38638946711 passed. Neither failed attempt is relabeled as a pass.
+
+On 14 October, an anonymous GET of that immutable manifest from
+`registry-1.docker.io` returned HTTP 200. Both its content-digest header and the
+independently computed SHA-256 of all 10,293 response bytes matched the existing
+pin, including the Linux amd64 descriptor. GitHub's
+[documented Actions limits](https://docs.github.com/en/actions/reference/limits#docker-hubs-rate-limit-for-github-actions)
+exempt public Docker Hub pulls on GitHub-hosted runners from its pull rate limit.
+The earlier Docker Hub failure above remains historical evidence, not a current
+claim that ECR is the active source or that any registry can never fail.
+
+No database version, test, health check, deadline, retry, credential or paid-plan
+change is introduced. The manual Neon workflow is not executed by this source
+correction. Fresh candidate and successor Main CI/review remain independent gates;
+manifest identity verification alone is not PostgreSQL/browser/recovery acceptance.

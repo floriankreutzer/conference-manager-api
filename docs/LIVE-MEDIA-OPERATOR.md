@@ -112,6 +112,14 @@ A pre-outage `preflight` with null manifest is read-only and never mutation
 authority. It reads bounded metadata, validates every current and historical
 Room reference, hashes retained PostgreSQL bytes, and GET-verifies each existing
 published object revision. It reports `preflight_only`, even with zero assets.
+Floorplan references may resolve to a same-tenant, same-room asset in
+`tenant_room_media_assets` or to a catalogue asset with the same tenant,
+`owner_kind='room_plan'` and the exact room as `owner_id`. Catalogue room plans
+are not valid gallery references: every `mediaAssetIds` entry must resolve to
+the room-media table. These ownership rules apply to current rooms and every
+retained historical room, without changing their stored references or bytes.
+A floorplan that resolves to correctly owned assets in both tables is ambiguous
+and is rejected rather than silently selecting one asset kind.
 If no published object exists, `providerReads` is zero and
 `providerReadVerified` remains false: storage credentials and provider access
 have not been exercised. Do not claim complete operational acceptance from this
@@ -165,6 +173,16 @@ The sole uploaded file is `live-media-operator-result.json`: fixed enums, counts
 hashes and approved resource IDs. No row IDs, object keys, URLs, SQL data, raw
 errors, provider headers, credentials or signed URLs are logged. An existing
 custody-only orphan does not prove a provider object exists and is not GET-read.
+
+When a database quiescence boundary is reached, `databaseQuiescence` contains
+only eight validated nonnegative integer counters: other sessions, prepared
+transactions, the own session, and other active, idle, in-transaction, operator
+application and same-role sessions. It retains the most recent observation,
+including a rejected boundary. Unknown or hidden states still count in all
+other sessions and are never exempted. No session IDs, application names, SQL,
+addresses or role names are emitted. This read-only diagnostic does not weaken
+the zero-other-session/zero-prepared-transaction/one-own-session guard, grant
+permissions, terminate sessions, retry a batch or refresh operation authority.
 
 Timeout, cancellation, malformed CLI output or nonzero exit after a batch starts
 leaves an **unknown mutation outcome**. Missing/incomplete artifacts are also

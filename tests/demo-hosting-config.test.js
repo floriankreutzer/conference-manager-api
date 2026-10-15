@@ -154,7 +154,16 @@ test('Render Blueprint keeps the operational Demo free, separate, bounded, and m
   assert.match(workflow, /name: Prepare immutable hosted Demo browser artifacts/);
   assert.match(workflow, /DEMO_FRONTEND_REF="\$frontend_ref" npm run demo:hosted:prepare/);
   assert.match(workflow, /name: Resolve deployed immutable frontend ref/);
-  assert.match(workflow, /ref: \$\{\{ steps\.frontend_ref\.outputs\.ref \}\}/);
+  const frontendRefs = [...blueprint.matchAll(/key: DEMO_FRONTEND_REF\n\s+value: ([0-9a-f]{40})/g)]
+    .map((match) => match[1]);
+  assert.equal(frontendRefs.length, 2);
+  assert.equal(new Set(frontendRefs).size, 1);
+  const frontendCheckout = workflow.match(
+    /name: Checkout immutable frontend commit\n[\s\S]*?ref: ([0-9a-f]{40})\n/,
+  );
+  assert.equal(frontendCheckout?.[1], frontendRefs[0]);
+  assert.doesNotMatch(workflow, /ref: \$\{\{ steps\.frontend_ref\.outputs\.ref \}\}/);
+  assert.match(workflow, /FRONTEND_REF: \$\{\{ steps\.frontend_ref\.outputs\.ref \}\}/);
   assert.doesNotMatch(workflow, /ref: 8bef6173f9a6c660e1d0062c430b01e6b44075fc/);
 
   const initialize = await readFile(

@@ -81,7 +81,8 @@ try {
   report = await runLiveMediaOperation(operation, {
     now: Date.now, persist, processDeadline,
     identity: () => assertOperatorIdentity(client, operation.record.operatorRole),
-    quiescent: () => assertNoOtherDatabaseSessions(client), closed: assertLiveRuntimesClosed,
+    quiescent: () => assertNoOtherDatabaseSessions(client, (diagnostic) => { report.databaseQuiescence = diagnostic; }),
+    closed: assertLiveRuntimesClosed,
     inventory: () => readLiveMediaInventory(client), batch: () => batch(operation),
     get: (reference) => {
       storage ??= createNeonObjectStorage(operation.storage);

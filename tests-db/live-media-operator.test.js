@@ -14,8 +14,13 @@ const CURRENT_ASSET = '33333333-3333-4333-8333-333333333333';
 const HISTORICAL_ASSET = '44444444-4444-4444-8444-444444444abc';
 const CATALOGUE_ASSET = '55555555-5555-4555-8555-555555555555';
 const ORPHAN_ASSET = '66666666-6666-4666-8666-666666666666';
+const CURRENT_PLAN = '52000000-0000-4000-8000-000000000001';
+const HISTORICAL_PLAN = '52000000-0000-4000-8000-000000000abc';
 const IMAGE = Buffer.from('synthetic sanitized operator integration image');
 const DIGEST = createHash('sha256').update(IMAGE).digest('hex');
+const PLAN_IMAGE = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aS1sAAAAASUVORK5CYII=', 'base64');
+const PLAN_DIGEST = createHash('sha256').update(PLAN_IMAGE).digest('hex');
 
 function reference(assetId, kind = 'room') {
   return mediaObjectReference({ tenantId: TENANT, assetId, kind,
@@ -53,15 +58,31 @@ async function resetFixture(client) {
   }
   const catalogue = reference(CATALOGUE_ASSET, 'catalogue');
   await client.query(`INSERT INTO demo_catalogue_media_assets
-    (tenant_id,id,bytes,content_type,byte_length,content_sha256,object_key)
-    VALUES ($1,$2,$3,'image/webp',$4,$5,$6)`,
+    (tenant_id,id,owner_kind,owner_id,bytes,content_type,byte_length,content_sha256,object_key)
+    VALUES ($1,$2,'catering_item','catering-item',$3,'image/webp',$4,$5,$6)`,
   [TENANT, CATALOGUE_ASSET, IMAGE, IMAGE.length, Buffer.from(DIGEST, 'hex'), catalogue.key]);
   await insertCustody(client, catalogue);
 }
 
+async function resetCatalogueFloorplanFixture(client) {
+  await resetFixture(client);
+  for (const [assetId, roomId] of [[CURRENT_PLAN, 'room-active'], [HISTORICAL_PLAN, 'room-inactive']]) {
+    await client.query(`INSERT INTO demo_catalogue_media_assets
+      (tenant_id,id,owner_kind,owner_id,bytes,content_type,byte_length,content_sha256,object_key)
+      VALUES ($1,$2,'room_plan',$3,$4,'image/png',$5,$6,NULL)`,
+    [TENANT, assetId, roomId, PLAN_IMAGE, PLAN_IMAGE.length, Buffer.from(PLAN_DIGEST, 'hex')]);
+  }
+  await client.query('UPDATE rooms SET details=$1::jsonb WHERE id=$2',
+    [JSON.stringify({ floorplanAssetId: CURRENT_PLAN, mediaAssetIds: [CURRENT_ASSET] }), 'room-active']);
+  await setHistory(client, { rooms: [historicalRoom({
+    floorplanAssetId: HISTORICAL_PLAN, mediaAssetIds: [HISTORICAL_ASSET],
+  })] });
+}
+
 function safeOperatorFailure(error) {
   assert.match(error.message, /^LIVE_[A-Z_]+$/);
-  for (const value of [TENANT, FOREIGN, CURRENT_ASSET, HISTORICAL_ASSET, CATALOGUE_ASSET, DIGEST]) {
+  for (const value of [TENANT, FOREIGN, CURRENT_ASSET, HISTORICAL_ASSET, CATALOGUE_ASSET, DIGEST,
+    CURRENT_PLAN, HISTORICAL_PLAN, PLAN_DIGEST]) {
     assert.equal(error.message.includes(value), false);
   }
   return true;
@@ -89,6 +110,7 @@ test('Live operator inventory verifies real PostgreSQL current and historical cu
       room_id varchar(128) NOT NULL,bytes bytea,content_type varchar(16) NOT NULL,
       byte_length integer NOT NULL,content_sha256 bytea NOT NULL,object_key varchar(192));
     CREATE TABLE demo_catalogue_media_assets (tenant_id uuid NOT NULL,id uuid NOT NULL,
+      owner_kind varchar(20) NOT NULL,owner_id varchar(128) NOT NULL,
       bytes bytea,content_type varchar(16) NOT NULL,byte_length integer NOT NULL,
       content_sha256 bytea NOT NULL,object_key varchar(192));
     CREATE TABLE media_object_inventory (object_key varchar(192) PRIMARY KEY,tenant_id uuid NOT NULL,
@@ -135,6 +157,74 @@ test('Live operator inventory verifies real PostgreSQL current and historical cu
     assert.match(result.manifestSha256, /^[a-f0-9]{64}$/);
     assert.equal((await readLiveMediaInventory(client)).manifestSha256, result.manifestSha256);
   });
+
+  await t.test('accepts canonical current and historical PNG catalogue floorplans with Room gallery images', async () => {
+    await resetCatalogueFloorplanFixture(client);
+    const result = await readLiveMediaInventory(client);
+    assert.equal(result.room, 2);
+    assert.equal(result.catalogue, 3);
+    assert.equal(result.bytes, IMAGE.length * 3 + PLAN_IMAGE.length * 2);
+    assert.equal(result.postgresOnly, 4);
+    assert.equal(result.external, 1);
+    assert.equal(result.invalidPostgresBytes, 0);
+    assert.equal(result.otherCustody, 0);
+    for (const assetId of [CURRENT_PLAN, HISTORICAL_PLAN]) {
+      const plan = result.references.find(({ reference: item }) => item.assetId === assetId);
+      assert.equal(plan.reference.kind, 'catalogue');
+      assert.equal(plan.reference.contentType, 'image/png');
+      assert.equal(plan.reference.sha256, PLAN_DIGEST);
+      assert.equal(plan.bytesValid, true);
+    }
+  });
+
+  await t.test('joins uppercase historical catalogue floorplan UUIDs without dropping older custody', async () => {
+    await resetCatalogueFloorplanFixture(client);
+    await setHistory(client, { rooms: [historicalRoom({ floorplanAssetId: HISTORICAL_PLAN.toUpperCase() })] });
+    await client.query(`INSERT INTO tenant_location_revisions (tenant_id,revision,configuration)
+      VALUES ($1,2,$2::jsonb)`, [TENANT, JSON.stringify({ rooms: [historicalRoom({ floorplanAssetId: null })] })]);
+    assert.equal((await readLiveMediaInventory(client)).catalogue, 3);
+    await client.query('DELETE FROM demo_catalogue_media_assets WHERE id=$1', [HISTORICAL_PLAN]);
+    await assert.rejects(readLiveMediaInventory(client), safeOperatorFailure);
+  });
+
+  for (const [scope, assetId, roomId, wrongRoomId] of [
+    ['current', CURRENT_PLAN, 'room-active', 'room-inactive'],
+    ['historical', HISTORICAL_PLAN, 'room-inactive', 'room-active'],
+  ]) {
+    for (const [name, update, values] of [
+      ['missing', 'DELETE FROM demo_catalogue_media_assets WHERE id=$1', [assetId]],
+      ['foreign-tenant', 'UPDATE demo_catalogue_media_assets SET tenant_id=$1 WHERE id=$2', [FOREIGN, assetId]],
+      ['wrong Room owner', 'UPDATE demo_catalogue_media_assets SET owner_id=$1 WHERE id=$2', [wrongRoomId, assetId]],
+      ['wrong owner kind', 'UPDATE demo_catalogue_media_assets SET owner_kind=$1 WHERE id=$2', ['catering_item', assetId]],
+    ]) {
+      await t.test(`rejects ${name} ${scope} catalogue floorplans`, async () => {
+        await resetCatalogueFloorplanFixture(client);
+        await client.query(update, values);
+        await assert.rejects(readLiveMediaInventory(client), safeOperatorFailure);
+        assert.equal((await client.query('SELECT 1 AS ready')).rows[0].ready, 1);
+      });
+    }
+
+    await t.test(`rejects a catalogue plan used as a ${scope} gallery image`, async () => {
+      await resetCatalogueFloorplanFixture(client);
+      const details = { floorplanAssetId: null, mediaAssetIds: [assetId] };
+      if (scope === 'current') {
+        await client.query('UPDATE rooms SET details=$1::jsonb WHERE id=$2', [JSON.stringify(details), roomId]);
+      } else {
+        await setHistory(client, { rooms: [historicalRoom(details)] });
+      }
+      await assert.rejects(readLiveMediaInventory(client), safeOperatorFailure);
+    });
+
+    await t.test(`rejects ambiguous ${scope} floorplan identities in both asset stores`, async () => {
+      await resetCatalogueFloorplanFixture(client);
+      await client.query(`INSERT INTO tenant_room_media_assets
+        (tenant_id,id,room_id,bytes,content_type,byte_length,content_sha256,object_key)
+        VALUES ($1,$2,$3,$4,'image/webp',$5,$6,NULL)`,
+      [TENANT, assetId, roomId, IMAGE, IMAGE.length, Buffer.from(DIGEST, 'hex')]);
+      await assert.rejects(readLiveMediaInventory(client), safeOperatorFailure);
+    });
+  }
 
   await t.test('retains unreferenced upload custody without assuming its provider object exists', async () => {
     await resetFixture(client);
@@ -271,9 +361,17 @@ test('Live operator inventory verifies real PostgreSQL current and historical cu
     const other = new Client(options);
     await other.connect();
     try {
-      await assert.rejects(assertNoOtherDatabaseSessions(client), safeOperatorFailure);
+      let diagnostic;
+      const observe = (value) => { diagnostic = value; };
+      await assert.rejects(assertNoOtherDatabaseSessions(client, observe), safeOperatorFailure);
+      assert.equal(diagnostic.other_sessions, 1);
+      assert.equal(diagnostic.other_idle, 1);
+      assert.equal(diagnostic.other_same_role, 1);
+      assert.equal(diagnostic.own_session, 1);
       await other.query('BEGIN');
-      await assert.rejects(assertNoOtherDatabaseSessions(client), safeOperatorFailure);
+      await assert.rejects(assertNoOtherDatabaseSessions(client, observe), safeOperatorFailure);
+      assert.equal(diagnostic.other_sessions, 1);
+      assert.equal(diagnostic.other_in_transaction, 1);
       await other.query('ROLLBACK');
     } finally { await other.end(); }
     await assertNoOtherDatabaseSessions(client);

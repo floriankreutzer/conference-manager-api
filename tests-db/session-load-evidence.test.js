@@ -1,63 +1,12 @@
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import test from 'node:test';
-import { tenantAuthorizationSnapshot, TENANT_ROLE } from '../src/authorization/policy.js';
 import { loadConfig } from '../src/config.js';
-import { createSessionService } from '../src/identity/session-service.js';
 import { createPostgresPersistence } from '../src/persistence/postgres/index.js';
 import { migrateUp } from '../scripts/db-migrations.mjs';
 import { measureSessionReads } from '../scripts/session-load-evidence.mjs';
 import { createSessionLoadRuntime } from '../scripts/support/session-load-runtime.mjs';
-
-function instrument(pool) {
-  const clients = new Set();
-  let queries = 0;
-  pool.on('connect', (client) => {
-    clients.add(client);
-    const query = client.query;
-    client.query = function (...args) { queries += 1; return query.apply(this, args); };
-  });
-  return () => ({ queries, bytesRead: [...clients].reduce((sum, c) => sum + c.connection.stream.bytesRead, 0),
-    bytesWritten: [...clients].reduce((sum, c) => sum + c.connection.stream.bytesWritten, 0) });
-}
-
-async function seedSessions(pool, tenants, fixtures, target) {
-  const records = [];
-  const roles = Object.values(TENANT_ROLE);
-  // Reuse canonical token generation/hash/security epoch without duplicating production crypto.
-  // This repository captures generated fixture records; it does not simulate a provider login or its audit.
-  const service = createSessionService({
-    publicOrigin: 'http://127.0.0.1:3000', csrfSecret: randomBytes(32).toString('hex'),
-    auditService: { createActorEvent() { return {}; }, createEvent() { return {}; }, async record() {} },
-    repository: {
-      async resolveByTokenHash() { throw new Error('FIXTURE_RESOLUTION_NOT_ALLOWED'); },
-      async issue(record) { records.push(record); return { ...record, securityVersion: 1 }; },
-    },
-  });
-  for (let index = fixtures.length; index < target; index += 1) {
-    const identity = { tenantId: tenants[index % tenants.length], userId: randomUUID(), securityVersion: 1,
-      providerIdentity: { provider: 'microsoft_entra', reference: `synthetic-${index}` },
-      ...tenantAuthorizationSnapshot([roles[index % roles.length]]) };
-    const result = await service.issue(identity);
-    fixtures.push({ tenantId: identity.tenantId, userId: identity.userId,
-      roles: identity.roles, cookie: result.setCookie.split(';', 1)[0] });
-  }
-  for (let offset = 0; offset < records.length; offset += 500) {
-    const chunk = JSON.stringify(records.slice(offset, offset + 500));
-    await pool.query(`INSERT INTO users (tenant_id, id, display_name)
-      SELECT "tenantId", "userId", 'Synthetic load fixture'
-      FROM jsonb_to_recordset($1::jsonb) AS fixture("tenantId" uuid, "userId" uuid)`, [chunk]);
-    await pool.query(`INSERT INTO sessions (
-      id, tenant_id, user_id, token_hash, provider, provider_identity_reference,
-      roles, permissions, principal_version, issued_at, expires_at
-    ) SELECT id, "tenantId", "userId", "tokenHash", "providerIdentity"->>'provider',
-      "providerIdentity"->>'reference', ARRAY(SELECT jsonb_array_elements_text(roles)),
-      ARRAY(SELECT jsonb_array_elements_text(permissions)), "expectedSecurityVersion", "issuedAt", "expiresAt"
-      FROM jsonb_to_recordset($1::jsonb) AS fixture(id uuid, "tenantId" uuid, "userId" uuid,
-        "tokenHash" text, "providerIdentity" jsonb, roles jsonb, permissions jsonb,
-        "expectedSecurityVersion" bigint, "issuedAt" timestamptz, "expiresAt" timestamptz)`, [chunk]);
-  }
-}
+import { instrumentLoadPool, seedLoadSessions } from './support/customer-load-fixtures.js';
 
 test('isolated PostgreSQL 18 session reads measure 100, 1000 and 10000 actual active fixture users', async (t) => {
   const databaseUrl = new URL(process.env.DATABASE_URL);
@@ -71,7 +20,7 @@ test('isolated PostgreSQL 18 session reads measure 100, 1000 and 10000 actual ac
     AUDIT_HMAC_SECRET: randomBytes(32).toString('hex'), CSRF_SECRET: randomBytes(32).toString('hex') }), port: 0 };
   const persistence = createPostgresPersistence(config);
   t.after(() => persistence.close());
-  const readCounters = instrument(persistence.pool);
+  const readCounters = instrumentLoadPool(persistence.pool);
   await migrateUp(persistence.pool);
   const version = Number((await persistence.pool.query('SHOW server_version_num')).rows[0].server_version_num);
   assert.ok(version >= 180_000 && version < 190_000);
@@ -80,7 +29,7 @@ test('isolated PostgreSQL 18 session reads measure 100, 1000 and 10000 actual ac
     SELECT id, 'Synthetic load fixture', 'active' FROM unnest($1::uuid[]) AS id`, [tenants]);
   const fixtures = [];
   for (const target of [100, 1_000, 10_000]) {
-    await seedSessions(persistence.pool, tenants, fixtures, target);
+    await seedLoadSessions(persistence.pool, tenants, fixtures, target);
     const counts = await persistence.pool.query(`SELECT count(*)::int AS users,
       count(DISTINCT tenant_id)::int AS tenants FROM users WHERE active = TRUE`);
     assert.deepEqual(counts.rows[0], { users: target, tenants: 10 });

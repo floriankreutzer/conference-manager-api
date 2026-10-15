@@ -174,6 +174,50 @@ for (const file of ['src/demo/customer-server.js', 'src/demo/platform-server.js'
   }
 }
 
+const platformEntrypoint = await readFile('src/demo/platform-main.js', 'utf8');
+for (const required of ['loadDemoPlatformAccessConfig(process.env)', 'createDemoPlatformAccessGate', 'trafficGate, accessGate']) {
+  if (!platformEntrypoint.includes(required)) throw new Error('Platform Demo entrypoint lacks its access perimeter.');
+}
+const platformComposition = await readFile('src/demo/platform-composition.js', 'utf8');
+if (!platformComposition.includes('accessGate,') || !platformComposition.includes('accessGate = null')) {
+  throw new Error('Platform Demo composition must preserve access-gate injection.');
+}
+const platformServer = await readFile('src/demo/platform-server.js', 'utf8');
+const accessPosition = platformServer.indexOf('options.accessGate?.handle(request, response)');
+const trafficPosition = platformServer.indexOf('options.trafficGate?.handle(request, response)');
+if (accessPosition < 0 || trafficPosition < 0 || accessPosition >= trafficPosition) {
+  throw new Error('Platform Demo access perimeter must run before traffic, static and application handling.');
+}
+const providerPosition = platformServer.indexOf('handleDemoProviderUsage({ request, response');
+const staticPosition = platformServer.indexOf("if (staticHandler &&");
+if (providerPosition <= trafficPosition || providerPosition >= staticPosition
+  || !platformEntrypoint.includes('loadDemoProviderUsage(process.env, platformAccess)')
+  || !platformComposition.includes('providerUsage = null')) {
+  throw new Error('Private provider reporting must preserve explicit opt-in after both Demo gates.');
+}
+const privateHandler = await readFile('src/demo/http/platform-private-projection-handler.js', 'utf8');
+if (!privateHandler.includes('accessGate?.hasPrivateReadAccess(request) !== true')) {
+  throw new Error('Private projections require the request-bound password capability.');
+}
+for (const [name, projection] of [['provider-usage', 'providerUsage'], ['product-delivery', 'productDelivery']]) {
+  const source = await readFile(`src/demo/http/platform-${name}-handler.js`, 'utf8');
+  if (!source.includes("from './platform-private-projection-handler.js'")
+    || !source.includes(`projection: ${projection}`)) {
+    throw new Error('Private projection wrappers must retain the shared authorization boundary.');
+  }
+}
+const productPosition = platformServer.indexOf('handleDemoProductDelivery({ request, response');
+if (productPosition <= trafficPosition || productPosition >= staticPosition
+  || !platformEntrypoint.includes('loadDemoProductDelivery(process.env, platformAccess)')
+  || !platformComposition.includes('productDelivery = null')) {
+  throw new Error('Private Product/Delivery reporting must remain behind both Operations gates.');
+}
+for (const file of ['src/demo/customer-main.js', 'src/demo/customer-composition.js', 'src/platform-main.js']) {
+  if ((await readFile(file, 'utf8')).match(/providerUsage|productDelivery/)) {
+    throw new Error('Provider snapshots belong exclusively to the private Operations Demo.');
+  }
+}
+
 const blueprint = await readFile('render.yaml', 'utf8');
 for (const required of [
   'name: conference-manager-demo',

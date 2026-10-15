@@ -55,10 +55,183 @@ No partial result is published as success. The test runner's unchanged 120-secon
 applies. Native negative/protocol tests prove destination, cookie and bound rejection, exact body
 accounting and redirect denial. They do not substitute for the real PostgreSQL run.
 
+## Populated Room-page baseline
+
+`tests-db/catalog-load-evidence.test.js` adds a separate isolated PostgreSQL 18 workload at the
+same three User populations, ten Tenants, 16 HTTP clients and ten-connection pool. Each Tenant has
+one active Site and ten active priced Rooms. Room/Site IDs deliberately collide between Tenants;
+Room names and prices differ, so every response must match the caller Tenant's exact five Rooms,
+including capacity, equipment, media fields and price. All three canonical Customer roles use
+real canonical sessions. The fixture generation and SQL/protocol counters are shared with the
+unchanged session workload; neither duplicates session hashing or authorization policy.
+
+Before timing, the real repository supplies the configuration generation for each Tenant and the
+test warms pool connections. Each User then reads exactly one fixed first Room page through the
+complete production Customer HTTP composition. The helper permits only the loopback destination,
+five-entry Room route and bounded generation context. Existing 8 KiB, timeout, concurrency and
+abort/drain bounds remain unchanged. The response must be schema v2, contain the expected generation,
+have five entries and a nonempty continuation cursor, and report incomplete pagination. No
+production configuration, migration, Demo fixture, provider adapter or runtime behavior changes.
+
+The measured query count includes session/Tenant lookup and the canonical repeatable-read catalogue
+transaction (BEGIN, UTC setup, three context queries, Room query and COMMIT): nine calls per read.
+Diagnostics retain completed requests, percentiles, body bytes and local PostgreSQL protocol bytes,
+plus `representativeActivityMixApproved: false`. The normal disposable-database, PostgreSQL-version
+and unchanged 120-second per-file gates apply independently to both workloads. A failed or partial
+run cannot publish a successful population result.
+
+This is a populated read-operation baseline, not an approved monthly business mix, booking/write,
+pagination traversal, media download, worker, cold-start, real provider egress or alternative-topology
+measurement. Exact successful CI evidence must be retained before calling it measured. It does not
+close #269 or #270 or provide additional spending authorization.
+
+## Final Room-page continuation baseline
+
+The same isolated Room fixture additionally measures the final five Rooms for every User at each
+population. The first measured page supplies the actual continuation; all fixture responses must
+agree on that cursor before the final-page phase can start. The cursor is never fabricated from a
+Room ID or supplied as a destination. Its context/generation stays server-derived, and the fixed
+five-Room helper accepts exactly one bounded context or cursor, never both.
+
+A fresh HTTP runtime/rate bucket is used for each phase without increasing production limits.
+The final response must contain exactly Rooms 5–9 with the caller Tenant's distinct names/prices,
+all fields, the same configuration context, complete=true and nextCursor=null. Colliding IDs across
+Tenants therefore cannot pass through row-count-only assertions. Both phases independently retain
+nine-query, positive protocol-byte, complete-response and abort/deadline checks. Diagnostics identify
+first/final page and pageIndex, with 100/1,000/10,000 actual reads per phase, not concurrent Users.
+
+This adds warm continuation-read evidence only after a successful exact-commit PostgreSQL run.
+The two phases are separate batches, not a timed per-User end-to-end traversal; no combined journey
+percentile or cold-start, write, provider, representative mix or monthly billing claim follows.
+The session baseline, existing first-page assertions and unchanged 120-second file cap are retained.
+No runtime API, schema, seed, deployment, dependency or provider configuration is changed.
+
+## Canonical Request-create write baseline
+
+`tests-db/request-create-load-evidence.test.js` adds isolated 100- and 1,000-User Employee scenarios
+across ten synthetic Tenants, using the same ten-connection pool, 16 concurrent HTTP clients and
+PostgreSQL 18 disposable-database guard. Each User creates one actual schema-v3 Submitted Request
+through `POST /api/v1/application/requests`. This is request submission, not a confirmed booking or
+provider calendar write. The unchanged production composition and provider port that rejects every
+external operation are reused; no Hosted traffic, provider account or paid resource is used.
+
+Session reads obtain each actual server-issued CSRF token before timing. Pool warmup, synthetic
+fixture generation and canonical catalogue revision discovery are also outside the measured interval.
+Only the POST phase contributes to its p50/p95/p99, completed operations, throughput, request/response
+body bytes and local PostgreSQL query/protocol counters. The shared measurement engine retains the
+read baselines' loopback, 8 KiB response, 1–32 clients, five-second socket timeout, bounded scenario
+deadline, abort/drain and redirect-denial controls. Creates additionally permit at most 1,000 canonical
+v3 drafts, each at most 8 KiB after canonical normalization, and one bounded CSRF token per session.
+The HTTP method, route and expected 201 status are fixed. No write is retried. A failed campaign may
+have committed individual Requests inside its disposable database; it emits no successful aggregate
+and the unchanged runner destroys that database. There is no cross-campaign atomicity claim.
+
+All Tenant-local Room/Site IDs collide while Room prices differ. Every response must retain the exact
+User's title, schedule, configuration revisions, server price/allocation, version and public attribution,
+without internal owner/Tenant IDs. Outside timing, every created ID is matched to its persisted Tenant
+and requester, complete immutable history representation, same-actor audit and shared correlation.
+Canonical repository reads verify ownership and cross-Tenant absence. Missing/wrong CSRF, foreign-only
+Room, stale configuration and client price injection must fail without adding a Request, revision or
+creation audit. HTTP owner reads succeed; foreign-Tenant and same-Tenant other-Employee reads are
+concealed. All ten canonical audit chains must still verify. These checks are required before a
+scenario's aggregate is published. Protocol fixtures alone are not real PostgreSQL write evidence.
+
+The two populations produce 100 and 1,000 measured writes (1,100 persisted total), not 1,000 concurrent
+HTTP requests. This adds a warm write-operation baseline only after successful exact-commit CI; it
+does not approve an activity mix, capacity/SLO, cold start, confirmation/provider workflow, worker/media
+cost, monthly invoice or topology comparison. The owner targets and the open #269/#270 boundaries below
+remain unchanged. Runtime API, schema, canonical Demo seed, dependencies and deployment pins are unchanged.
+
+## Fixed-arrival write sensitivity and warm objectives
+
+The owner-approved warm application objectives are p95 <= 1,000 ms, p99 <= 2,000 ms and technical
+error rate <= 0.1%. Cold starts remain separate with no approved cold threshold. These objectives
+do not approve a representative operation mix or an arrival rate.
+
+The same write test retains the original unpaced 100/1,000 cases and adds two 1,000-create waves:
+
+| Arrival interval | Offered requests/s | Sensitivity assumption | Concurrent HTTP clients |
+| --- | ---: | --- | ---: |
+| 15 ms | 66.667 | 1,000 active Users, one aggregate request every 15 seconds | 16 |
+| 5 ms | 200 | 1,000 active Users, one aggregate request every 5 seconds | 16 |
+
+Each is one finite all-create stress wave, not sustained monthly traffic or a representative mix.
+The four cases persist 3,100 Requests total in the disposable database. Every case independently
+retains the complete price, ownership, history, audit-chain, CSRF and adversarial checks above.
+Fresh runtimes/rate buckets, pre-timing session/CSRF reads and pool warmup remain unchanged.
+
+Optional `arrivalIntervalMs` is an integer 0–1,000; zero preserves the original unpaced result shape.
+The last planned arrival must precede the total deadline, otherwise validation fails before I/O.
+A monotonic schedule fixes arrival `i` at start + i times interval. Bounded workers wait for that
+arrival or dispatch late; they never drop overdue requests or reset the schedule after completion.
+`latencyMs` remains dispatch-to-verified-body. Paced diagnostics additionally report `scheduleLagMs`
+(planned arrival to dispatch), `scheduledLatencyMs` (planned arrival to verified body), interval and
+offered rate. Thus client backlog remains visible instead of hiding overload through slower arrivals.
+Abortable timers are drained with the workers; existing request, body, socket and deadline bounds apply.
+
+`warmSlo` compares the approved thresholds to scheduled latency for paced cases and dispatch latency
+for unpaced cases. Its zero technical error rate is emitted only after every operation and integrity
+check succeeds; failures publish no successful result. A numerical SLO miss is reported as `met: false`.
+It does not weaken functional checks or masquerade as performance acceptance because CI is green:
+shared-runner timing is evidence, not a deterministic functional CI threshold. Exact-commit results
+must retain candidate/Main distinctions. A local protocol fixture is not PostgreSQL evidence.
+
+No production capacity, provider egress, cold-start, invoice, topology or confirmed-booking claim follows.
+The warm SLO result applies only to that finite isolated scenario; #269/#270 remain open.
+
+## Empty-selection SQL reduction
+
+The canonical composition resolver skips service, catering-item and Equipment queries only when
+that query's normalized ID set is empty. PostgreSQL `id = ANY(empty array)` cannot return or lock
+any rows, so the same empty result enters the existing catalogue validator and snapshot builder.
+Catering item IDs are the union of direct selections and package-included IDs: a selected package
+still resolves its included items even when there are no direct item quantities. Every nonempty
+selection retains its original Tenant predicate, parameters, row locks and authoritative validation.
+Tenant/User/revision, Room/Site/price, policy, allocation, history and audit checks remain unchanged.
+No cache, client authority, new query parallelism, schema or production limit is introduced.
+
+The simple no-extras create fixture now requires exactly 18 client SQL calls per successful request,
+compared with the historical 21-call baseline. All four existing unpaced/fixed-arrival cases retain
+their full integrity/security checks and now enforce that query budget. This is a deterministic
+three-roundtrip reduction; actual latency, protocol bytes and SLO outcomes require new exact-commit
+measurements. Earlier candidate/Main results remain historical and must not be relabeled optimized.
+A lower query count alone is neither an invoice saving nor proof that the 200 requests/s case passes.
+
 ## Monthly workload model
+
+The owner's corrected initial targets (15 October 2026) are **100,000 business bookings per month
+system-wide** and **approximately 1,000 simultaneously active Users system-wide**. These replace
+the earlier 100-bookings-per-User assumption, its one-million-booking example and the 10,000-active-User
+peak. The 10,000-User isolated fixture above remains historical test coverage, not the current peak target.
+Changing the peak population must not multiply the approved total monthly bookings.
+
+Run the dependency-free offline sensitivity planner with:
+
+```bash
+node scripts/booking-workload-plan.mjs docs/SAAS-3.8-WORKLOAD-EXAMPLE.json
+```
+
+The example retains those two owner targets. All operation counts per booking and the 5/15/60-second
+request cadences are illustrative sensitivity assumptions, not an approved observed business mix or SLO.
+For each fixed operation, monthly count equals total monthly bookings times its explicit coefficient.
+The example yields 1,600,000 booking-related HTTP operations. Independently, 1,000 active Users making
+one request each every 5/15/60 seconds imply 200/66.67/16.67 aggregate requests per second. The cadence
+covers aggregate requests across operations; do not multiply that peak rate by the per-booking count.
+Neither calculation estimates simultaneous in-flight requests, session durations, bursts, error rates,
+provider calls, background traffic or monthly distinct Users. These require separate evidence.
+
+The closed schema bounds seven fixed operation coefficients to integer 0–1,000, total monthly bookings
+to 1–1,000,000,000, peak active Users to 1–1,000,000 and one to ten unique integer cadences to 1–86,400
+seconds. Products remain safe integers. The CLI reads at most 16 KiB from a regular local file and emits
+only a fixed error on failure. It makes no HTTP, database, deployment or provider call. Reports always
+identify planning-only evidence, unapproved activity mix, no accepted capacity and unknown provider
+cost/background traffic. The planner complements the FinOps report; it does not calculate billing.
 
 An active-user population is not the same as simultaneously connected users, requests per second or
 business operations per month. Record an approved representative activity mix before extrapolating.
+For independently observed non-booking activity only, the alternative per-User model below requires
+monthly distinct active Users, not the simultaneous peak. Do not add it to booking-related counts
+unless overlap is excluded. It must not replace the approved 100,000 total bookings with a per-User quota.
 For each fixed operation `o`, retain `requests_per_user_day(o)` and `active_days` as assumptions:
 
 `monthly_requests(o) = active_users × requests_per_user_day(o) × active_days`.
