@@ -1,7 +1,7 @@
 import { createCustomerComposition } from '../../src/customer-composition.js';
 import { createLogger } from '../../src/logger.js';
 
-// Construct every production service while forbidding all external-provider work in this read baseline.
+// Construct every production service while forbidding all external-provider work in isolated load baselines.
 export function createSessionLoadRuntime({ config, persistence }) {
   const microsoft365Client = Object.freeze(Object.fromEntries([
     'lookupFreeBusy', 'verifyBasePermissions', 'adminConsentUrl', 'discoverRooms',

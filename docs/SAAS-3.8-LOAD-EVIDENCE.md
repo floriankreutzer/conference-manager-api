@@ -106,6 +106,42 @@ percentile or cold-start, write, provider, representative mix or monthly billing
 The session baseline, existing first-page assertions and unchanged 120-second file cap are retained.
 No runtime API, schema, seed, deployment, dependency or provider configuration is changed.
 
+## Canonical Request-create write baseline
+
+`tests-db/request-create-load-evidence.test.js` adds isolated 100- and 1,000-User Employee scenarios
+across ten synthetic Tenants, using the same ten-connection pool, 16 concurrent HTTP clients and
+PostgreSQL 18 disposable-database guard. Each User creates one actual schema-v3 Submitted Request
+through `POST /api/v1/application/requests`. This is request submission, not a confirmed booking or
+provider calendar write. The unchanged production composition and provider port that rejects every
+external operation are reused; no Hosted traffic, provider account or paid resource is used.
+
+Session reads obtain each actual server-issued CSRF token before timing. Pool warmup, synthetic
+fixture generation and canonical catalogue revision discovery are also outside the measured interval.
+Only the POST phase contributes to its p50/p95/p99, completed operations, throughput, request/response
+body bytes and local PostgreSQL query/protocol counters. The shared measurement engine retains the
+read baselines' loopback, 8 KiB response, 1–32 clients, five-second socket timeout, bounded scenario
+deadline, abort/drain and redirect-denial controls. Creates additionally permit at most 1,000 canonical
+v3 drafts, each at most 8 KiB after canonical normalization, and one bounded CSRF token per session.
+The HTTP method, route and expected 201 status are fixed. No write is retried. A failed campaign may
+have committed individual Requests inside its disposable database; it emits no successful aggregate
+and the unchanged runner destroys that database. There is no cross-campaign atomicity claim.
+
+All Tenant-local Room/Site IDs collide while Room prices differ. Every response must retain the exact
+User's title, schedule, configuration revisions, server price/allocation, version and public attribution,
+without internal owner/Tenant IDs. Outside timing, every created ID is matched to its persisted Tenant
+and requester, complete immutable history representation, same-actor audit and shared correlation.
+Canonical repository reads verify ownership and cross-Tenant absence. Missing/wrong CSRF, foreign-only
+Room, stale configuration and client price injection must fail without adding a Request, revision or
+creation audit. HTTP owner reads succeed; foreign-Tenant and same-Tenant other-Employee reads are
+concealed. All ten canonical audit chains must still verify. These checks are required before a
+scenario's aggregate is published. Protocol fixtures alone are not real PostgreSQL write evidence.
+
+The two populations produce 100 and 1,000 measured writes (1,100 persisted total), not 1,000 concurrent
+HTTP requests. This adds a warm write-operation baseline only after successful exact-commit CI; it
+does not approve an activity mix, capacity/SLO, cold start, confirmation/provider workflow, worker/media
+cost, monthly invoice or topology comparison. The owner targets and the open #269/#270 boundaries below
+remain unchanged. Runtime API, schema, canonical Demo seed, dependencies and deployment pins are unchanged.
+
 ## Monthly workload model
 
 The owner's corrected initial targets (15 October 2026) are **100,000 business bookings per month

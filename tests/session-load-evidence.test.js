@@ -2,13 +2,73 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { randomBytes, randomUUID } from 'node:crypto';
 import test from 'node:test';
-import { measureSessionReads, measureCatalogRoomReads } from '../scripts/session-load-evidence.mjs';
+import { measureSessionReads, measureCatalogRoomReads, measureRequestCreates } from '../scripts/session-load-evidence.mjs';
+import { requestLoadDraft } from './support/request-load-draft.js';
+import { seedLoadSessions } from '../tests-db/support/customer-load-fixtures.js';
 import { createSessionLoadRuntime } from '../scripts/support/session-load-runtime.mjs';
 import { loadConfig } from '../src/config.js';
 import { createPostgresPersistence } from '../src/persistence/postgres/index.js';
 import { tenantAuthorizationSnapshot, TENANT_ROLE } from '../src/authorization/policy.js';
 
 const cookie = `cm_session=${'a'.repeat(43)}`;
+const csrfToken = 'c'.repeat(43);
+
+test('create measurement validates bounded canonical input and fixture roles before any I/O', async () => {
+  const base = { origin: 'http://127.0.0.1:1234', cookies: [cookie], drafts: [requestLoadDraft()],
+    csrfTokens: [csrfToken], verify() {} };
+  for (const patch of [{ cookies: [] }, { cookies: Array(1001).fill(cookie) }, { drafts: [] }, { csrfTokens: [] },
+    { csrfTokens: ['private\r\nheader'] }, { drafts: [{ ...requestLoadDraft(), tenantId: 'foreign' }] },
+    { drafts: [{ ...requestLoadDraft(), specialRequirements: 'a'.repeat(2001) }] },
+    { drafts: [{ ...requestLoadDraft(), dietaryRequirements: 'ä'.repeat(2000), specialRequirements: 'ä'.repeat(2000) }] }]) {
+    await assert.rejects(measureRequestCreates({ ...base, ...patch }), /^Error: LOAD_WRITE_INPUT_INVALID$/);
+  }
+  for (const origin of ['http://example.com:1234', 'http://127.0.0.1:1234/other', 'https://127.0.0.1:1234']) {
+    await assert.rejects(measureRequestCreates({ ...base, origin }), /LOAD_DESTINATION_INVALID/);
+  }
+  for (const patch of [{ concurrency: 33 }, { deadlineMs: 60_001 }, { cookies: [`${cookie}; secret=x`] }]) {
+    await assert.rejects(measureRequestCreates({ ...base, ...patch }), /LOAD_(BOUNDS|COOKIES)_INVALID/);
+  }
+  for (const roles of [[], ['unknown'], ['employee', 'employee']]) {
+    await assert.rejects(seedLoadSessions({}, [], [], 1, { roles }), /LOAD_FIXTURE_ROLES_INVALID/);
+  }
+});
+
+test('create measurement fixes POST, origin, CSRF and schema and counts both payload directions without retries', async () => {
+  let mode = 'valid'; let requests = 0; let sentBytes = 0;
+  const responseBody = JSON.stringify({ created: 'synthetic' });
+  const server = createServer(async (req, res) => {
+    requests += 1;
+    assert.equal(req.method, 'POST'); assert.equal(req.url, '/api/v1/application/requests');
+    assert.equal(req.headers.origin, `http://127.0.0.1:${server.address().port}`);
+    assert.equal(req.headers['x-csrf-token'], csrfToken); assert.equal(req.headers.cookie, cookie);
+    assert.equal(req.headers['content-type'], 'application/json');
+    const chunks = []; for await (const chunk of req) chunks.push(chunk);
+    const input = Buffer.concat(chunks); sentBytes += input.length;
+    assert.equal(input.length, Number(req.headers['content-length']));
+    assert.deepEqual(JSON.parse(input), { schemaVersion: 3, request: requestLoadDraft() });
+    if (mode === 'stall') return;
+    if (mode === 'redirect') { res.writeHead(302, { Location: 'https://example.com' }); res.end(); return; }
+    res.statusCode = mode === 'wrong-status' ? 200 : 201;
+    res.end(mode === 'oversize' ? 'a'.repeat(8193) : mode === 'malformed' ? 'private' : responseBody);
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const base = { origin: `http://127.0.0.1:${server.address().port}`, cookies: [cookie],
+      drafts: [requestLoadDraft()], csrfTokens: [csrfToken], deadlineMs: 100,
+      verify(body) { assert.equal(body.created, 'synthetic'); } };
+    const result = await measureRequestCreates({ ...base, deadlineMs: 5000 });
+    assert.equal(result.requests, 1); assert.equal(result.payloadBytes, Buffer.byteLength(responseBody));
+    assert.equal(result.requestPayloadBytes, sentBytes);
+    for (const failure of ['redirect', 'wrong-status', 'oversize', 'malformed', 'stall', 'identity']) {
+      mode = failure;
+      const before = requests;
+      await assert.rejects(measureRequestCreates({ ...base, ...(mode === 'identity' ? {
+        verify() { throw new Error('PRIVATE_VERIFIER_DETAILS'); },
+      } : {}) }), /^Error: LOAD_ACCEPTANCE_FAILED$/);
+      assert.equal(requests, before + 1, 'Writes must never retry or follow redirects');
+    }
+  } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+});
 test('full session-load composition serves canonical HTTP with controlled repository ports and no provider or DB connection', async () => {
   const config = { ...loadConfig({ NODE_ENV: 'test', DATABASE_URL: 'postgresql://fixture@127.0.0.1:1/conference_manager_test_1_1',
     ENTRA_CLIENT_ID: randomUUID(), ENTRA_CLIENT_SECRET: randomBytes(32).toString('hex'),
