@@ -15,6 +15,8 @@ import {
   requireProductCondition as requireCondition,
 } from './product-delivery-contract.js';
 
+const MAX_DELIVERY_CHANGES = 2000;
+
 const PRODUCT_SOURCES = Object.freeze({
   onboarding_started: 'platform_audit',
   onboarding_completed: 'platform_audit',
@@ -93,7 +95,7 @@ function validateInput(input) {
     input.deployments.reduce(
       (sum, event) => sum + (Array.isArray(event?.changes) ? event.changes.length : 0),
       0,
-    ) <= 2000,
+    ) <= MAX_DELIVERY_CHANGES,
   );
   input.productEvents.forEach((event) => {
     exact(event, ['source', 'sourceId', 'kind', 'occurredAt', 'tenantId', 'targetId']);
@@ -129,7 +131,7 @@ function validateInput(input) {
         typeof event.artifactCommit === 'string' &&
         /^[a-f0-9]{40}$/.test(event.artifactCommit) &&
         Array.isArray(event.changes) &&
-        event.changes.length <= 100 &&
+        event.changes.length <= MAX_DELIVERY_CHANGES &&
         instant(event.deployedAt) >= start &&
         instant(event.deployedAt) < end &&
         ['healthy', 'impaired', 'unknown'].includes(event.outcome) &&

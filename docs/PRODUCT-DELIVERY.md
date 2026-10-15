@@ -49,7 +49,11 @@ over 28 complete days, ending at UTC midnight on the observation date. Completen
 is separate for product, feedback and each application/API/website delivery source.
 
 Limits are 2,000 product events, 2,000 deployment records, 2,000 total commit changes
-and 200 feedback records. Unknown properties, sources, kinds, duplicates, invalid
+and 200 feedback records. One deployment may contain up to the same 2,000-change total;
+there is no separate 100-change ceiling that would reject a real 194-commit rollout.
+The overall change/record ceilings and 256,000-byte CLI input bound remain independent;
+never truncate a commit batch, split one deployment into fake deployments or mark a partial
+change list complete to fit the limits. Unknown properties, sources, kinds, duplicates, invalid
 clocks and contradictory commit/first-success metadata fail compilation without
 printing source input or internal error details.
 
