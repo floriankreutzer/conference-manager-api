@@ -180,3 +180,10 @@ loader failure. Browser/locale/keyboard/reflow and exact counterpart CI remain r
 A protected feedback source, verified real-source extraction and actual Pilot outcomes
 must be recorded separately. An unknown-state UI or synthetic fixture is not real Pilot
 measurement, an automatic collector, Production identity, release acceptance or ISO certification.
+
+## Optional daily connector feed
+
+[Daily private Operations metrics](DAILY-LIVE-METRICS.md) defines the default-OFF
+private-object feed. When enabled, it supplies both views without daily redeploys.
+The legacy environment snapshots above remain rollout fallback; their original
+contracts and limitations still apply. Daily Demo stock is not Pilot outcomes.

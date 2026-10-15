@@ -40,3 +40,10 @@ guards preserve the entrypoint/composition/transport/capability boundaries.
 
 Published model source (checked 2026-10-14):
 https://neon.com/blog/more-data-transfer-on-paid-plans
+
+## Optional daily connector feed
+
+[Daily private Operations metrics](DAILY-LIVE-METRICS.md) defines the default-OFF
+private-object feed. When enabled, it supplies both views without daily redeploys.
+The legacy environment snapshots above remain rollout fallback; their original
+contracts and limitations still apply. Daily Demo stock is not Pilot outcomes.

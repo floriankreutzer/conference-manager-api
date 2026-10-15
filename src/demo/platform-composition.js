@@ -41,6 +41,7 @@ export function createDemoPlatformComposition({
   accessGate = null,
   providerUsage = null,
   productDelivery = null,
+  liveMetrics = null,
   metrics,
 } = {}) {
   if (!config) throw new TypeError('DEMO_CONFIG_REQUIRED');
@@ -105,6 +106,7 @@ export function createDemoPlatformComposition({
       accessGate,
       providerUsage,
       productDelivery,
+      liveMetrics,
     }),
     projectionRunGate: (work) => withDemoRuntimeSharedGate(selectedGatePool, work),
     routeModulesFactory({ platformSessionService }) {

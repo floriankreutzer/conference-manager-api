@@ -484,3 +484,10 @@ optional fixed-channel, empty-payload PostgreSQL LISTEN connection, not business
 poll cadence, and awaits pending subscription/release work on shutdown. No HTTP route writes
 outbox state and no application/domain module imports the database listener. See
 [Platform Projection Outbox](PLATFORM-PROJECTION-OUTBOX.md).
+
+## Optional daily connector feed
+
+[Daily private Operations metrics](DAILY-LIVE-METRICS.md) defines the default-OFF
+private-object feed. When enabled, it supplies both views without daily redeploys.
+The legacy environment snapshots above remain rollout fallback; their original
+contracts and limitations still apply. Daily Demo stock is not Pilot outcomes.

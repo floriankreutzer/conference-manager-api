@@ -13,6 +13,7 @@ import { createDemoStaticHandler } from './static-handler.js';
 import { observeResponsePayloadSafely } from '../observability/response-payload.js';
 import { handleDemoProviderUsage } from './http/platform-provider-usage-handler.js';
 import { handleDemoProductDelivery } from './http/platform-product-delivery-handler.js';
+import { handleDemoLiveMetrics } from './http/platform-live-metrics-handler.js';
 
 const RESET_PATH = '/api/v1/platform/demo/reset';
 const LIVENESS_PATH = '/api/v1/platform/health/live';
@@ -75,6 +76,8 @@ export function createDemoPlatformHttpServer(options) {
   }, async (request, response) => {
     if (options.accessGate?.handle(request, response)) return;
     if (options.trafficGate?.handle(request, response)) return;
+    if (await handleDemoLiveMetrics({ request, response, accessGate: options.accessGate,
+      liveMetrics: options.liveMetrics })) return;
     if (handleDemoProviderUsage({ request, response, accessGate: options.accessGate,
       providerUsage: options.providerUsage })) return;
     if (handleDemoProductDelivery({ request, response, accessGate: options.accessGate,

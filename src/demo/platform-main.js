@@ -11,11 +11,20 @@ import { loadDemoPlatformAccessConfig } from './platform-access-config.js';
 import { createDemoPlatformAccessGate } from './platform-access-gate.js';
 import { loadDemoProviderUsage } from './platform-provider-usage.js';
 import { loadDemoProductDelivery } from './platform-product-delivery.js';
+import { loadDemoMediaStorageConfig } from './media-storage-config.js';
+import { createLiveMetricsStorage } from './platform-live-storage.js';
+import { createDailyLiveMetrics } from './platform-live-metrics.js';
 
 const config = loadDemoPlatformConfig(process.env);
 const platformAccess = loadDemoPlatformAccessConfig(process.env);
 const providerUsage = loadDemoProviderUsage(process.env, platformAccess);
 const productDelivery = loadDemoProductDelivery(process.env, platformAccess);
+const liveEnabled = process.env.DEMO_LIVE_METRICS_ENABLED;
+if (![undefined, 'false', 'true'].includes(liveEnabled)
+  || (liveEnabled === 'true' && platformAccess.mode !== 'password')) throw new TypeError('LIVE_METRICS_CONFIG_INVALID');
+const liveStorageConfig = liveEnabled === 'true'
+  ? loadDemoMediaStorageConfig(process.env, { config, surface: 'platform' }).storage : null;
+if (liveEnabled === 'true' && !liveStorageConfig) throw new TypeError('LIVE_METRICS_NEON_REQUIRED');
 const runtime = await startDemoEntrypointRuntime({
   env: process.env, config, surface: 'platform',
   boundary: { applySecurityHeaders: applyPlatformSecurityHeaders, assertRequestHost: assertPlatformRequestHost,
@@ -29,12 +38,18 @@ const runtime = await startDemoEntrypointRuntime({
       assertRouteKey: assertPlatformRouteKey,
       write: (line) => process.stdout.write(line),
     });
-    return startDemoMediaStorageRuntime({
+    const liveStorage = liveStorageConfig ? createLiveMetricsStorage(liveStorageConfig) : null;
+    const liveMetrics = liveStorage ? createDailyLiveMetrics({ storage: liveStorage }) : null;
+    let active;
+    try { active = await startDemoMediaStorageRuntime({
       env: process.env, config, surface: 'platform',
       createComposition: (resetMediaObjectStorage) => createDemoPlatformComposition({
-        config, staticFileAdapter, metrics, resetMediaObjectStorage, trafficGate, accessGate, providerUsage, productDelivery,
+        config, staticFileAdapter, metrics, resetMediaObjectStorage, trafficGate, accessGate, providerUsage, productDelivery, liveMetrics,
       }),
-    });
+    }); } catch (error) { liveStorage?.close(); throw error; }
+    return Object.freeze({ async stop() {
+      try { await active.stop(); } finally { liveStorage?.close(); }
+    } });
   },
 });
 
