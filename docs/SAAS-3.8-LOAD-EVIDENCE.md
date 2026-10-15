@@ -179,6 +179,24 @@ must retain candidate/Main distinctions. A local protocol fixture is not Postgre
 No production capacity, provider egress, cold-start, invoice, topology or confirmed-booking claim follows.
 The warm SLO result applies only to that finite isolated scenario; #269/#270 remain open.
 
+## Empty-selection SQL reduction
+
+The canonical composition resolver skips service, catering-item and Equipment queries only when
+that query's normalized ID set is empty. PostgreSQL `id = ANY(empty array)` cannot return or lock
+any rows, so the same empty result enters the existing catalogue validator and snapshot builder.
+Catering item IDs are the union of direct selections and package-included IDs: a selected package
+still resolves its included items even when there are no direct item quantities. Every nonempty
+selection retains its original Tenant predicate, parameters, row locks and authoritative validation.
+Tenant/User/revision, Room/Site/price, policy, allocation, history and audit checks remain unchanged.
+No cache, client authority, new query parallelism, schema or production limit is introduced.
+
+The simple no-extras create fixture now requires exactly 18 client SQL calls per successful request,
+compared with the historical 21-call baseline. All four existing unpaced/fixed-arrival cases retain
+their full integrity/security checks and now enforce that query budget. This is a deterministic
+three-roundtrip reduction; actual latency, protocol bytes and SLO outcomes require new exact-commit
+measurements. Earlier candidate/Main results remain historical and must not be relabeled optimized.
+A lower query count alone is neither an invoice saving nor proof that the 200 requests/s case passes.
+
 ## Monthly workload model
 
 The owner's corrected initial targets (15 October 2026) are **100,000 business bookings per month

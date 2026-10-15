@@ -77,7 +77,8 @@ test('isolated PostgreSQL 18 preserves create integrity under bounded unpaced an
         } });
       const after = readCounters();
       const delta = Object.fromEntries(Object.keys(before).map(key => [key, after[key] - before[key]]));
-      assert.ok(delta.queries > target && delta.bytesRead > 0 && delta.bytesWritten > 0);
+      assert.equal(delta.queries, target * 18, 'Empty catalogue selections must avoid three SQL roundtrips per create');
+      assert.ok(delta.bytesRead > 0 && delta.bytesWritten > 0);
       const persisted = await persistence.pool.query(`SELECT r.tenant_id,r.id,r.requester_user_id,r.request_snapshot,
         h.record,h.operation,h.actor_user_id,a.actor_user_id AS audit_actor,a.correlation_id,h.correlation_id AS history_correlation
         FROM requests r JOIN request_revisions h ON h.tenant_id=r.tenant_id AND h.request_id=r.id AND h.request_version=1
