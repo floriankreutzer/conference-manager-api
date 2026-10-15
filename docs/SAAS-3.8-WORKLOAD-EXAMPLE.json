@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "monthlyBookings": 100000,
+  "monthlyBookings": 10000,
   "peakActiveUsers": 1000,
   "operationsPerBooking": {
     "session_read": 2,
@@ -11,5 +11,9 @@
     "request_transition": 2,
     "media_read": 3
   },
-  "requestCadencesSeconds": [5, 15, 60]
+  "requestCadencesSeconds": [
+    5,
+    15,
+    60
+  ]
 }

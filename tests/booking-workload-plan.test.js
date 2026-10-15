@@ -10,8 +10,13 @@ const fixture = JSON.parse(await readFile('docs/SAAS-3.8-WORKLOAD-EXAMPLE.json',
 
 test('booking plan keeps monthly volume independent of peak activity and reports unknown evidence', () => {
   const report = planBookingWorkload(fixture);
-  assert.equal(report.monthlyBookingRelatedOperations, 1_600_000);
-  assert.equal(report.monthlyOperations.request_create, 100_000);
+  assert.equal(report.monthlyBookings, 10_000);
+  assert.equal(report.peakActiveUsers, 1_000);
+  assert.equal(report.monthlyBookingRelatedOperations, 160_000);
+  assert.equal(report.monthlyOperations.request_create, 10_000);
+  assert.deepEqual(report.monthlyOperations, { session_read: 20_000, room_page_read: 20_000,
+    availability_lookup: 20_000, request_create: 10_000, request_read: 40_000,
+    request_transition: 20_000, media_read: 30_000 });
   assert.deepEqual(report.peakRequestSensitivity.map(row => row.aggregateRequestsPerSecond), [200, 1000 / 15, 1000 / 60]);
   assert.equal(report.evidenceKind, 'planning_only');
   assert.equal(report.capacityAccepted, false);

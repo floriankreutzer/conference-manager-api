@@ -199,11 +199,15 @@ A lower query count alone is neither an invoice saving nor proof that the 200 re
 
 ## Monthly workload model
 
-The owner's corrected initial targets (15 October 2026) are **100,000 business bookings per month
+The owner's corrected initial targets (15 October 2026) are **10,000 business bookings per month
 system-wide** and **approximately 1,000 simultaneously active Users system-wide**. These replace
 the earlier 100-bookings-per-User assumption, its one-million-booking example and the 10,000-active-User
 peak. The 10,000-User isolated fixture above remains historical test coverage, not the current peak target.
-Changing the peak population must not multiply the approved total monthly bookings.
+The earlier 100,000-booking monthly target is superseded for initial planning. The approved booking peak
+is 1,000 on a strong day and 200 in the busiest 15 minutes. This produces 3,200 booking-related
+HTTP operations across that interval under the 16-operation planning mix, an average of 3.556/s,
+not a uniform sub-window distribution or proved capacity. Changing the peak population must not
+multiply the approved total monthly bookings.
 
 Run the dependency-free offline sensitivity planner with:
 
@@ -211,10 +215,13 @@ Run the dependency-free offline sensitivity planner with:
 node scripts/booking-workload-plan.mjs docs/SAAS-3.8-WORKLOAD-EXAMPLE.json
 ```
 
-The example retains those two owner targets. All operation counts per booking and the 5/15/60-second
-request cadences are illustrative sensitivity assumptions, not an approved observed business mix or SLO.
+The example retains the current 10,000-booking monthly target and independently approved 1,000-active-User target.
+The owner approved the existing 16-operation-per-booking base mix for planning on 15 October 2026;
+this is not observed demand. The 5/15/60-second request cadences remain illustrative sensitivity
+assumptions, not an approved cadence or extra traffic to add to the booking mix. The proposed
+doubled-read scenario was not selected.
 For each fixed operation, monthly count equals total monthly bookings times its explicit coefficient.
-The example yields 1,600,000 booking-related HTTP operations. Independently, 1,000 active Users making
+The example yields 160,000 booking-related HTTP operations. Independently, 1,000 active Users making
 one request each every 5/15/60 seconds imply 200/66.67/16.67 aggregate requests per second. The cadence
 covers aggregate requests across operations; do not multiply that peak rate by the per-booking count.
 Neither calculation estimates simultaneous in-flight requests, session durations, bursts, error rates,
@@ -227,11 +234,15 @@ only a fixed error on failure. It makes no HTTP, database, deployment or provide
 identify planning-only evidence, unapproved activity mix, no accepted capacity and unknown provider
 cost/background traffic. The planner complements the FinOps report; it does not calculate billing.
 
+The generic offline planner cannot attest owner decisions: its unchanged `activityMixApproved: false`
+metadata is not a live governance status. The explicit planning approval above and #269/#270 are the
+authority for this example; it remains `planning_only`, with no observed demand, cost or capacity pass.
 An active-user population is not the same as simultaneously connected users, requests per second or
-business operations per month. Record an approved representative activity mix before extrapolating.
+business operations per month. Preserve the approved planning mix and separately verify its real
+source/traffic representativeness before capacity acceptance.
 For independently observed non-booking activity only, the alternative per-User model below requires
 monthly distinct active Users, not the simultaneous peak. Do not add it to booking-related counts
-unless overlap is excluded. It must not replace the approved 100,000 total bookings with a per-User quota.
+unless overlap is excluded. It must not replace the approved 10,000 total bookings with a per-User quota.
 For each fixed operation `o`, retain `requests_per_user_day(o)` and `active_days` as assumptions:
 
 `monthly_requests(o) = active_users × requests_per_user_day(o) × active_days`.
@@ -253,7 +264,7 @@ overlapping transfer boundaries or infer actual monthly compute/storage from loc
 | Media/CDN | Private Neon Object Storage custody and actual cache/egress needed | Identical object workflow and media integrity required | Identical object workflow and media integrity required |
 | Worker load | Outbox batch/queue/retry/reconciliation and CPU evidence needed | Same cadence and fault/recovery workload required | Same cadence and fault/recovery workload required |
 | Monthly cost | Actual plan generation, window and shared allowance needed | Compute, storage, backups, private egress and migration cost needed | Private access eligibility, connectivity fees and compute needed |
-| Recovery | Restore/reset under current private custody required | Same restore and rollback evidence required | Same restore and rollback evidence required |
+| Recovery | Full real-provider acceptance transferred to final pre-Pilot #318 | Same restore and rollback evidence required | Same restore and rollback evidence required |
 | Acceptance status | Isolated baseline only; provider measurements pending | Unprovisioned comparison candidate | Unprovisioned comparison candidate; eligibility unverified |
 
 This matrix is an evidence specification, not a finding that an alternative is viable, free, faster
@@ -264,5 +275,11 @@ measurements. Do not provision paid comparison infrastructure or migrate provide
 Select a topology only after comparing measured latency/error objectives, total attributable cost,
 data residency, private-network eligibility, backup/restore/rollback, tenant and session integrity,
 operational ownership, migration risk and remaining allowance. Record which criteria fail or remain
-unknown. SaaS 3.8 #269 and release #270 remain open until representative production/business workload,
-provider transfer, object/CDN and worker measurements and the same-workload comparisons are verified.
+unknown. SaaS 3.8 #269 and release #270 retain representative business workload, provider transfer,
+object/CDN and worker measurements, cost modeling and the current topology-comparison scope.
+Per-optimization monetary proof from #265–#267 is consolidated there; no invoice savings is implied.
+The owner transferred the full actual database/object recovery/rollback exercise to #318 in the
+existing Pilot milestone: execute it last immediately before external Pilot release and #73's
+final decision. This is unexecuted acceptance, not a recovery pass; source/CI/integrity requirements
+remain in force. Actual Pilot outcomes/feedback are tracked separately in #316 and external
+security-intake verification in #317. Neither transfer authorizes a new resource or billable test.
