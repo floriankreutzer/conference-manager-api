@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "monthlyBookings": 100000,
+  "peakActiveUsers": 1000,
+  "operationsPerBooking": {
+    "session_read": 2,
+    "room_page_read": 2,
+    "availability_lookup": 2,
+    "request_create": 1,
+    "request_read": 4,
+    "request_transition": 2,
+    "media_read": 3
+  },
+  "requestCadencesSeconds": [5, 15, 60]
+}

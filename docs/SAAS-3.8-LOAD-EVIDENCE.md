@@ -108,8 +108,39 @@ No runtime API, schema, seed, deployment, dependency or provider configuration i
 
 ## Monthly workload model
 
+The owner's corrected initial targets (15 October 2026) are **100,000 business bookings per month
+system-wide** and **approximately 1,000 simultaneously active Users system-wide**. These replace
+the earlier 100-bookings-per-User assumption, its one-million-booking example and the 10,000-active-User
+peak. The 10,000-User isolated fixture above remains historical test coverage, not the current peak target.
+Changing the peak population must not multiply the approved total monthly bookings.
+
+Run the dependency-free offline sensitivity planner with:
+
+```bash
+node scripts/booking-workload-plan.mjs docs/SAAS-3.8-WORKLOAD-EXAMPLE.json
+```
+
+The example retains those two owner targets. All operation counts per booking and the 5/15/60-second
+request cadences are illustrative sensitivity assumptions, not an approved observed business mix or SLO.
+For each fixed operation, monthly count equals total monthly bookings times its explicit coefficient.
+The example yields 1,600,000 booking-related HTTP operations. Independently, 1,000 active Users making
+one request each every 5/15/60 seconds imply 200/66.67/16.67 aggregate requests per second. The cadence
+covers aggregate requests across operations; do not multiply that peak rate by the per-booking count.
+Neither calculation estimates simultaneous in-flight requests, session durations, bursts, error rates,
+provider calls, background traffic or monthly distinct Users. These require separate evidence.
+
+The closed schema bounds seven fixed operation coefficients to integer 0–1,000, total monthly bookings
+to 1–1,000,000,000, peak active Users to 1–1,000,000 and one to ten unique integer cadences to 1–86,400
+seconds. Products remain safe integers. The CLI reads at most 16 KiB from a regular local file and emits
+only a fixed error on failure. It makes no HTTP, database, deployment or provider call. Reports always
+identify planning-only evidence, unapproved activity mix, no accepted capacity and unknown provider
+cost/background traffic. The planner complements the FinOps report; it does not calculate billing.
+
 An active-user population is not the same as simultaneously connected users, requests per second or
 business operations per month. Record an approved representative activity mix before extrapolating.
+For independently observed non-booking activity only, the alternative per-User model below requires
+monthly distinct active Users, not the simultaneous peak. Do not add it to booking-related counts
+unless overlap is excluded. It must not replace the approved 100,000 total bookings with a per-User quota.
 For each fixed operation `o`, retain `requests_per_user_day(o)` and `active_days` as assumptions:
 
 `monthly_requests(o) = active_users × requests_per_user_day(o) × active_days`.
