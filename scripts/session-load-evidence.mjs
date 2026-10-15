@@ -40,7 +40,7 @@ async function measureRequests({ origin, cookies, verify, concurrency = 16, dead
     const at = performance.now();
     const payload = writes?.[index];
     const result = await new Promise((resolve, reject) => {
-      const req = request(new URL(path, url), {
+      const req = request(new URL(Array.isArray(path) ? path[index] : path, url), {
         agent, signal: controller.signal, method: payload ? 'POST' : 'GET',
         headers: { Cookie: cookies[index], ...(payload ? {
           Origin: url.origin, 'Content-Type': 'application/json',
@@ -138,4 +138,15 @@ export async function measureRequestCreates({ drafts, csrfTokens, ...options }) 
     });
   } catch { throw new Error('LOAD_WRITE_INPUT_INVALID'); }
   return measureRequests(options, '/api/v1/application/requests', writes);
+}
+
+// Reads only canonical synthetic UUIDs on the fixed Request route; no caller-selected URL or method.
+export async function measureRequestReads({ requestIds, ...options }) {
+  if (!Array.isArray(options.cookies) || options.cookies.length < 1 || options.cookies.length > 1_000
+    || !Array.isArray(requestIds) || requestIds.length !== options.cookies.length
+    || requestIds.some(id => typeof id !== 'string'
+      || !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id))) {
+    throw new Error('LOAD_READ_INPUT_INVALID');
+  }
+  return measureRequests(options, requestIds.map(id => '/api/v1/requests/' + id));
 }
