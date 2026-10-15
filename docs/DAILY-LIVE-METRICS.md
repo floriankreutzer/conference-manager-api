@@ -20,7 +20,8 @@ requires owner-password mode and a separate branch-bound read-only storage crede
 Use `DEMO_LIVE_METRICS_BRANCH_ID`, `DEMO_LIVE_METRICS_ACCESS_KEY_ID` and
 `DEMO_LIVE_METRICS_SECRET_ACCESS_KEY`; the existing strict Neon/database/TLS/role
 validator is reused on an isolated map. These settings never change
-`DEMO_MEDIA_STORAGE` or the PostgreSQL media custody. Never reuse a write credential.
+`DEMO_MEDIA_STORAGE` or the PostgreSQL media custody. Never reuse a write credential. Configuration rejects aliases against every
+configured Customer/reset media credential value, even when media itself uses Neon.
 Only the Demo Operations entrypoint imports the concrete read-only S3 adapter.
 Customer and Production entrypoints cannot load it. Existing media custody, reset,
 Tenant, session, CSRF and audit contracts are unchanged. The new prefix is outside
@@ -61,7 +62,12 @@ The wire adds evaluation/freshness/source state and the two existing wire projec
 
 Measurements contain all fixed IDs in registry order, each with exactly `id`,
 `value`, `observedAt`, `periodStart`, `periodEnd`, `sampleAt`. Missing data has null
-value and all null clocks. A known value requires a genuine observation clock.
+value and all null clocks. A known value requires a genuine observation clock within 24 hours of report collection.
+Hourly/CI windows must be exactly the completed UTC-hour-aligned 24 hours preceding
+the source observation. Retained-today counts start at that observation day’s UTC
+midnight and end at the actual observation; a prior-day observation cannot be
+labelled today in a newer report. Provider/project windows must contain the source
+observation and remain bounded to 32 days; daily Resend resets use the UTC day.
 All clocks are exact UTC ISO milliseconds. Counts/bytes are safe nonnegative integers;
 MB permits finite nonnegative decimals. No arbitrary labels are supported.
 

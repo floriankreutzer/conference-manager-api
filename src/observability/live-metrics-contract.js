@@ -1,4 +1,4 @@
-import { exactProductObject, productInstant, requireProductCondition } from './product-delivery-contract.js';
+import { DAY_MS, exactProductObject, productInstant, requireProductCondition } from './product-delivery-contract.js';
 
 // Fixed dimensions only. Account, Tenant, user and resource identities never enter this report.
 export const LIVE_METRICS = Object.freeze({
@@ -34,8 +34,31 @@ export function normalizeLiveMeasurements(input, observedAt) {
         && row.value >= 0 && row.value <= Number.MAX_SAFE_INTEGER
         && (LIVE_METRICS[row.id][1] === 'megabytes' || Number.isSafeInteger(row.value))
         && productInstant(row.observedAt) <= observed
-        && observed - productInstant(row.observedAt) < 30 * 86_400_000);
+        && observed - productInstant(row.observedAt) < DAY_MS);
       const basis = LIVE_METRICS[row.id][2];
+      const sourceTime = productInstant(row.observedAt);
+      if (basis === 'hourly_sample' || basis === 'ci_window') {
+        const end = Math.floor(sourceTime / 3_600_000) * 3_600_000;
+        requireProductCondition(productInstant(row.periodEnd) === end
+          && productInstant(row.periodStart) === end - DAY_MS);
+      }
+      if (basis === 'retained_runtime_today') {
+        requireProductCondition(productInstant(row.periodStart) === Math.floor(sourceTime / DAY_MS) * DAY_MS
+          && productInstant(row.periodEnd) === sourceTime
+          && Math.floor(sourceTime / DAY_MS) === Math.floor(observed / DAY_MS));
+      }
+      if (basis === 'project_window' || basis === 'provider_window') {
+        const end = productInstant(row.periodEnd);
+        requireProductCondition(end > sourceTime && end - sourceTime <= 32 * DAY_MS);
+        if (row.periodStart !== null) {
+          requireProductCondition(end - productInstant(row.periodStart) <= 32 * DAY_MS);
+        }
+      }
+      if (row.id.startsWith('resend_daily_')) {
+        const start = Math.floor(sourceTime / DAY_MS) * DAY_MS;
+        requireProductCondition(productInstant(row.periodStart) === start
+          && [start + DAY_MS - 1, start + DAY_MS].includes(productInstant(row.periodEnd)));
+      }
       requireProductCondition(basis === 'hourly_sample'
         ? productInstant(row.sampleAt) <= productInstant(row.observedAt)
           && productInstant(row.sampleAt) >= productInstant(row.periodStart)

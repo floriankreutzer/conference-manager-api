@@ -220,3 +220,37 @@ test('independent metrics configuration preserves PostgreSQL media and rejects u
     assert.throws(() => loadDailyLiveStorageConfig({ ...enabled, ...change }, { config, access: { mode: 'password' } }));
   }
 });
+
+test('declared collection bases reject invented multi-year windows and displaced current-day counts', () => {
+  for (const id of ['github_ci_total', 'render_customer_bandwidth', 'requests_updated']) {
+    const source = dailyFixture();
+    const row = source.measurements.find((x) => x.id === id);
+    Object.assign(row, { value: 1, observedAt: ISO, periodEnd: ISO,
+      periodStart: id === 'requests_updated' ? '2026-10-15T00:00:00.000Z' : '2026-10-14T12:00:00.000Z',
+      sampleAt: id.startsWith('render_') ? '2026-10-15T11:00:00.000Z' : null });
+    assert.equal(normalizeDailyLiveSnapshot(source).measurements.find((x) => x.id === id).value, 1);
+    row.periodStart = '2020-01-01T00:00:00.000Z';
+    assert.throws(() => normalizeDailyLiveSnapshot(source));
+  }
+  const old = dailyFixture();
+  Object.assign(old.measurements.find((x) => x.id === 'requests_updated'), { value: 0,
+    observedAt: '2026-10-14T23:59:59.000Z', periodStart: '2026-10-14T00:00:00.000Z',
+    periodEnd: '2026-10-14T23:59:59.000Z' });
+  assert.throws(() => normalizeDailyLiveSnapshot(old));
+});
+
+test('metrics credentials cannot alias either existing media credential, including in active Neon mode', async () => {
+  const { loadDailyLiveStorageConfig } = await import('../src/demo/platform-live-config.js');
+  const { demoMediaStorageEnvironment, demoMediaStorageConfig } = await import('./support/demo-media-storage-environment.js');
+  const env = demoMediaStorageEnvironment('platform', 'neon');
+  const config = demoMediaStorageConfig(env, 'platform');
+  const metrics = { ...env, DEMO_LIVE_METRICS_ENABLED: 'true', DEMO_LIVE_METRICS_BRANCH_ID: 'br-demo-media-test',
+    DEMO_LIVE_METRICS_ACCESS_KEY_ID: 'synthetic-independent-reader',
+    DEMO_LIVE_METRICS_SECRET_ACCESS_KEY: 'synthetic-independent-reader-secret' };
+  assert.ok(loadDailyLiveStorageConfig(metrics, { config, access: { mode: 'password' } }));
+  for (const change of [
+    { DEMO_LIVE_METRICS_ACCESS_KEY_ID: env.DEMO_RESET_MEDIA_STORAGE_ACCESS_KEY_ID },
+    { DEMO_LIVE_METRICS_SECRET_ACCESS_KEY: env.DEMO_RESET_MEDIA_STORAGE_SECRET_ACCESS_KEY },
+    { DEMO_CUSTOMER_MEDIA_STORAGE_ACCESS_KEY_ID: metrics.DEMO_LIVE_METRICS_ACCESS_KEY_ID },
+  ]) assert.throws(() => loadDailyLiveStorageConfig({ ...metrics, ...change }, { config, access: { mode: 'password' } }), /ALIAS/);
+});
