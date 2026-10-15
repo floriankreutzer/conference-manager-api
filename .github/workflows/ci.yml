@@ -223,6 +223,9 @@ jobs:
       - name: Install browser engines
         working-directory: frontend
         run: npx playwright install --with-deps "${{ matrix.browser }}"
+      - name: Install permanent acceptance browser engines
+        working-directory: acceptance
+        run: npx playwright install --with-deps "${{ matrix.browser }}"
       - name: Add fixed Demo hosts
         run: echo "127.0.0.1 customer.demo.test platform.demo.test" | sudo tee -a /etc/hosts >/dev/null
       - name: Provision isolated Demo database roles

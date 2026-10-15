@@ -131,3 +131,8 @@ fixed measurement contracts and frontend normalization. Native tests cover secur
 coalescing, stale/last-good/expiry, clocks, MIME/size/encoding, malformed source and CLI
 bounds. Chromium/WebKit tests exercise real UI rendering, unknown outcomes, keyboard,
 locales and reflow, alongside unchanged permanent three-customer/two-reset acceptance.
+
+The served frontend and permanent acceptance contract retain independent immutable
+lockfiles. API CI installs each checkout's own browser engines before executing it;
+a tooling update must not leave the permanent progression/reset case unable to launch.
+Neither the accepted contract pin nor any scenario assertion is changed for this.
