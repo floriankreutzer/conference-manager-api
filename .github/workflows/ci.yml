@@ -156,7 +156,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager
-          ref: ac0cd04281700636743e508335cd20c2325098a2
+          ref: 9b363f10cfd6005d4fdd43f5dd5c50f55bca441f
           token: ${{ steps.source-token.outputs.token || github.token }}
           persist-credentials: false
           path: frontend

@@ -16,7 +16,11 @@ Use a short-lived presigned upload for this exact key; never publish its URL or 
 The daily upload does not redeploy Render. Initial activation is a separate deployment.
 
 `DEMO_LIVE_METRICS_ENABLED=true` is the optional, default-OFF server boundary. It
-requires owner-password mode and existing validated Neon storage configuration.
+requires owner-password mode and a separate branch-bound read-only storage credential.
+Use `DEMO_LIVE_METRICS_BRANCH_ID`, `DEMO_LIVE_METRICS_ACCESS_KEY_ID` and
+`DEMO_LIVE_METRICS_SECRET_ACCESS_KEY`; the existing strict Neon/database/TLS/role
+validator is reused on an isolated map. These settings never change
+`DEMO_MEDIA_STORAGE` or the PostgreSQL media custody. Never reuse a write credential.
 Only the Demo Operations entrypoint imports the concrete read-only S3 adapter.
 Customer and Production entrypoints cannot load it. Existing media custody, reset,
 Tenant, session, CSRF and audit contracts are unchanged. The new prefix is outside

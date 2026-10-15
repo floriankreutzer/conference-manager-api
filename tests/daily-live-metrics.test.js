@@ -199,3 +199,24 @@ test('concrete private reader stays exclusively in the Demo Operations compositi
     assert.ok(violations.some((x) => x.includes('live-metrics storage')));
   }
 });
+
+test('independent metrics configuration preserves PostgreSQL media and rejects unsafe owner/branch/secret settings', async () => {
+  const { loadDailyLiveStorageConfig } = await import('../src/demo/platform-live-config.js');
+  const { demoMediaStorageEnvironment, demoMediaStorageConfig } = await import('./support/demo-media-storage-environment.js');
+  const env = demoMediaStorageEnvironment('platform', 'postgres');
+  const config = demoMediaStorageConfig(env, 'platform');
+  assert.equal(loadDailyLiveStorageConfig(env, { config, access: { mode: 'password' } }), null);
+  const enabled = { ...env, DEMO_LIVE_METRICS_ENABLED: 'true', DEMO_LIVE_METRICS_BRANCH_ID: 'br-demo-media-test',
+    DEMO_LIVE_METRICS_ACCESS_KEY_ID: 'synthetic-metrics-reader',
+    DEMO_LIVE_METRICS_SECRET_ACCESS_KEY: 'synthetic-metrics-reader-secret' };
+  const before = JSON.stringify(enabled);
+  assert.equal(loadDailyLiveStorageConfig(enabled, { config, access: { mode: 'password' } }).bucket, 'conference-manager-media');
+  assert.equal(JSON.stringify(enabled), before);
+  assert.equal(enabled.DEMO_MEDIA_STORAGE, 'postgres');
+  assert.throws(() => loadDailyLiveStorageConfig(enabled, { config, access: { mode: 'public' } }));
+  for (const change of [{ DEMO_LIVE_METRICS_ENABLED: 'false' }, { DEMO_LIVE_METRICS_BRANCH_ID: '../other' },
+    { DEMO_LIVE_METRICS_ENDPOINT: 'https://untrusted.invalid' }, { DEMO_LIVE_METRICS_ENABLED: 'yes' },
+    { DEMO_LIVE_METRICS_SECRET_ACCESS_KEY: config.secrets.session }]) {
+    assert.throws(() => loadDailyLiveStorageConfig({ ...enabled, ...change }, { config, access: { mode: 'password' } }));
+  }
+});
