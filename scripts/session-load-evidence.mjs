@@ -72,7 +72,13 @@ export function measureSessionReads(options) {
 }
 
 // The caller can select only a bounded catalogue generation, never a destination, route or page size.
-export async function measureCatalogRoomReads({ context, ...options }) {
+export async function measureCatalogRoomReads({ context, cursor, ...options }) {
+  if (cursor !== undefined) {
+    if (context !== undefined || typeof cursor !== 'string' || !/^[A-Za-z0-9_-]{1,2048}$/.test(cursor)) {
+      throw new Error('LOAD_CURSOR_INVALID');
+    }
+    return measureReads(options, `/api/v1/application/catalog?section=rooms&limit=5&cursor=${cursor}`);
+  }
   if (typeof context !== 'string' || !/^[A-Za-z0-9_-]{1,2048}$/.test(context)) {
     throw new Error('LOAD_CONTEXT_INVALID');
   }

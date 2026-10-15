@@ -67,34 +67,44 @@ test('isolated PostgreSQL 18 populated room pages measure 100, 1000 and 10000 ac
     const counts = await persistence.pool.query(`SELECT count(*)::int AS users,
       count(DISTINCT tenant_id)::int AS tenants FROM users WHERE active = TRUE`);
     assert.deepEqual(counts.rows[0], { users: target, tenants: 10 });
-    const runtime = createSessionLoadRuntime({ config, persistence: { ...persistence, close: async () => {} } });
-    try {
-      const address = await runtime.start();
-      config.publicOrigin = `http://127.0.0.1:${address.port}`;
-      const clients = await Promise.all(Array.from({ length: config.databasePoolMax }, () => persistence.pool.connect()));
-      try { await Promise.all(clients.map((client) => client.query('SELECT 1'))); }
-      finally { for (const client of clients) client.release(); }
-      const before = readCounters();
-      const result = await measureCatalogRoomReads({ origin: config.publicOrigin, context: contexts[0],
-        cookies: fixtures.map((fixture) => fixture.cookie), verify(body, index) {
-          const tenantIndex = tenants.indexOf(fixtures[index].tenantId);
-          assert.equal(body.schemaVersion, 2);
-          assert.equal(body.section, 'rooms');
-          assert.equal(body.context, contexts[tenantIndex]);
-          assert.deepEqual(body.entries, Array.from({ length: 5 }, (_, roomIndex) => roomFixture(tenantIndex, roomIndex)));
-          assert.equal(body.page.limit, 5);
-          assert.equal(body.page.complete, false);
-          assert.match(body.page.nextCursor, /^[A-Za-z0-9_-]{1,2048}$/);
-        } });
-      const after = readCounters();
-      const delta = Object.fromEntries(Object.keys(before).map((key) => [key, after[key] - before[key]]));
-      assert.equal(delta.queries, target * 9, 'Session/Tenant reads plus the canonical repeatable-read page transaction');
-      assert.ok(delta.bytesRead > 0 && delta.bytesWritten > 0);
-      t.diagnostic(JSON.stringify({ schemaVersion: 1, environment: 'isolated-postgres18-loopback',
-        workload: 'populated-room-page-only', fixtureUsers: target, tenants: 10, usersPerTenant: target / 10,
-        roomsPerTenant: 10, returnedRoomsPerRead: 5, nodeVersion: process.version, postgresVersion: version,
-        poolMax: config.databasePoolMax, ...result, postgresProtocol: delta,
-        providerEgressMeasured: false, productionCapacityProven: false, representativeActivityMixApproved: false }));
-    } finally { await runtime.stop(); }
+    const continuationCursors = new Set();
+    for (const pageIndex of [0, 1]) {
+      const runtime = createSessionLoadRuntime({ config, persistence: { ...persistence, close: async () => {} } });
+      try {
+        const address = await runtime.start();
+        config.publicOrigin = `http://127.0.0.1:${address.port}`;
+        const clients = await Promise.all(Array.from({ length: config.databasePoolMax }, () => persistence.pool.connect()));
+        try { await Promise.all(clients.map((client) => client.query('SELECT 1'))); }
+        finally { for (const client of clients) client.release(); }
+        const before = readCounters();
+        const pageSelector = pageIndex === 0 ? { context: contexts[0] } : { cursor: [...continuationCursors][0] };
+        const result = await measureCatalogRoomReads({ origin: config.publicOrigin, ...pageSelector,
+          cookies: fixtures.map((fixture) => fixture.cookie), verify(body, index) {
+            const tenantIndex = tenants.indexOf(fixtures[index].tenantId);
+            assert.equal(body.schemaVersion, 2);
+            assert.equal(body.section, 'rooms');
+            assert.equal(body.context, contexts[tenantIndex]);
+            assert.deepEqual(body.entries, Array.from({ length: 5 },
+              (_, roomIndex) => roomFixture(tenantIndex, pageIndex * 5 + roomIndex)));
+            assert.equal(body.page.limit, 5);
+            assert.equal(body.page.complete, pageIndex === 1);
+            if (pageIndex === 0) {
+              assert.match(body.page.nextCursor, /^[A-Za-z0-9_-]{1,2048}$/);
+              continuationCursors.add(body.page.nextCursor);
+            } else assert.equal(body.page.nextCursor, null);
+          } });
+        const after = readCounters();
+        const delta = Object.fromEntries(Object.keys(before).map((key) => [key, after[key] - before[key]]));
+        assert.equal(delta.queries, target * 9, 'Session/Tenant reads plus the canonical repeatable-read page transaction');
+        assert.ok(delta.bytesRead > 0 && delta.bytesWritten > 0);
+        t.diagnostic(JSON.stringify({ schemaVersion: 1, environment: 'isolated-postgres18-loopback',
+          workload: pageIndex === 0 ? 'populated-room-first-page' : 'populated-room-final-page', pageIndex,
+          fixtureUsers: target, tenants: 10, usersPerTenant: target / 10,
+          roomsPerTenant: 10, returnedRoomsPerRead: 5, nodeVersion: process.version, postgresVersion: version,
+          poolMax: config.databasePoolMax, ...result, postgresProtocol: delta,
+          providerEgressMeasured: false, productionCapacityProven: false, representativeActivityMixApproved: false }));
+      } finally { await runtime.stop(); }
+      assert.equal(continuationCursors.size, 1, 'Actual identical fixture continuations are required before the next page');
+    }
   }
 });

@@ -85,6 +85,27 @@ pagination traversal, media download, worker, cold-start, real provider egress o
 measurement. Exact successful CI evidence must be retained before calling it measured. It does not
 close #269 or #270 or provide additional spending authorization.
 
+## Final Room-page continuation baseline
+
+The same isolated Room fixture additionally measures the final five Rooms for every User at each
+population. The first measured page supplies the actual continuation; all fixture responses must
+agree on that cursor before the final-page phase can start. The cursor is never fabricated from a
+Room ID or supplied as a destination. Its context/generation stays server-derived, and the fixed
+five-Room helper accepts exactly one bounded context or cursor, never both.
+
+A fresh HTTP runtime/rate bucket is used for each phase without increasing production limits.
+The final response must contain exactly Rooms 5–9 with the caller Tenant's distinct names/prices,
+all fields, the same configuration context, complete=true and nextCursor=null. Colliding IDs across
+Tenants therefore cannot pass through row-count-only assertions. Both phases independently retain
+nine-query, positive protocol-byte, complete-response and abort/deadline checks. Diagnostics identify
+first/final page and pageIndex, with 100/1,000/10,000 actual reads per phase, not concurrent Users.
+
+This adds warm continuation-read evidence only after a successful exact-commit PostgreSQL run.
+The two phases are separate batches, not a timed per-User end-to-end traversal; no combined journey
+percentile or cold-start, write, provider, representative mix or monthly billing claim follows.
+The session baseline, existing first-page assertions and unchanged 120-second file cap are retained.
+No runtime API, schema, seed, deployment, dependency or provider configuration is changed.
+
 ## Monthly workload model
 
 An active-user population is not the same as simultaneously connected users, requests per second or
