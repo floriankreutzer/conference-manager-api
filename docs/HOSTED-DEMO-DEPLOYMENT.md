@@ -410,3 +410,27 @@ reset, deploy the exact compatible pair and verify all release gates before serv
 Earlier schema42 / overlay007 references describe historical upgrade/rollback boundaries.
 Projection outbox rollback requires quiesced writers and a successfully drained, empty outbox;
 poison rows must be investigated rather than deleted to bypass the migration guard.
+
+## Protected source-register release (#319)
+
+The immutable frontend pin aligns the protected operator-source presentation with
+the fixed aggregate endpoint implemented by API PR175. This release adds no schema,
+seed, media-mode, account-plan or Customer authorization change. Accept application
+PR320 and this exact pinned artifact through all required checks before deployment;
+a candidate ref in this release change is not a claim that its gates have passed.
+
+Update both existing services' `DEMO_FRONTEND_REF` to the reviewed Gitlink value by
+merging that one setting. The Operations-only source projection additionally needs
+`DEMO_OPERATIONS_SOURCES_ENABLED=true` in its protected environment, with the
+already validated private owner/password and daily read-only storage configuration.
+Do not set the source flag or any Operations storage credential on Customer. No new
+provider credential is required for these reads. Keep automatic deployment off and
+verify the selected API/frontend deployment identities on both origins.
+
+The canonical objects and source clocks remain independent of the automatic daily
+feed. Do not overwrite them or advance completeness as part of deployment. Verify
+owner-authorized reads and anonymous/Customer denials without logging authorization
+headers or provider capabilities. Current source contracts, logical retention and
+Production restrictions remain in `OPERATIONS-SOURCE-REGISTERS.md`. Code merge,
+configured environment, provider deploy, authenticated display and scheduled source
+checks are separate acceptance claims.
