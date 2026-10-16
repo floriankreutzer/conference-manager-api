@@ -90,7 +90,7 @@ test('isolated PostgreSQL availability distinguishes local conflict from bound p
         const result = await measureRoomAvailability({ origin: config.publicOrigin, ...slot, csrfTokens: csrf,
           cookies: fixtures.map(x => x.cookie), verify(body, index) {
             const tenantIndex = tenants.indexOf(fixtures[index].tenantId);
-            assert.deepEqual(body, { availability: phase === 'local-conflict' ? { available: false, conflictCount: 1 }
+            assert.deepEqual(body, { schemaVersion: 1, availability: phase === 'local-conflict' ? { available: false, conflictCount: 1 }
               : { available: tenantIndex === 0, conflictCount: tenantIndex === 0 ? 0 : tenantIndex + 1 } });
           } });
         const after = counters();
@@ -125,6 +125,6 @@ test('isolated PostgreSQL availability distinguishes local conflict from bound p
         productionCapacityProven: false, representativeMixedReplay: false,
         warmSlo: { p95MaxMs: 1000, p99MaxMs: 2000, technicalErrorRate: 0,
           met: result.latencyMs.p95 <= 1000 && result.latencyMs.p99 <= 2000 } }));
-    } finally { await runtime.close(); }
+    } finally { await runtime.stop(); }
   }
 });

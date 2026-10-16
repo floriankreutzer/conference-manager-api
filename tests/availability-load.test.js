@@ -20,7 +20,7 @@ test('availability load rejects noncanonical slots, missing CSRF, oversized batc
 
 test('availability load fixes POST path/payload/CSRF and counts exact wire bytes; failures never retry or publish', async () => {
   let failure; let calls = 0; let inputBytes = 0;
-  const output = JSON.stringify({ availability: { available: true, conflictCount: 0 } });
+  const output = JSON.stringify({ schemaVersion: 1, availability: { available: true, conflictCount: 0 } });
   const server = createServer(async (req, res) => {
     calls += 1; assert.equal(req.method, 'POST'); assert.equal(req.url, '/api/v1/application/room-availability');
     assert.equal(req.headers.cookie, cookie); assert.equal(req.headers['x-csrf-token'], token);
