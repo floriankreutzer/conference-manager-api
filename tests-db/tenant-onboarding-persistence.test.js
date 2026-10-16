@@ -222,6 +222,7 @@ test('tenant onboarding is isolated, single-use, conflict-safe, concurrent and a
     'tenant.onboarding.invited',
   ]);
   assert.equal(JSON.stringify(auditA).includes(PROVIDER_TENANT_A), false);
+  assert.equal(auditA.find(entry => entry.action === 'tenant.identity.claimed').metadata.onboardingStarted, true);
 
   await assert.rejects(
     serviceA.beginInvitation({ invitationToken: 'A'.repeat(43) }),
@@ -291,6 +292,7 @@ test('tenant onboarding is isolated, single-use, conflict-safe, concurrent and a
     displayName: 'Tenant E',
     correlationId: CORR_E,
   });
+  await pool.query("UPDATE tenants SET status = 'onboarding' WHERE id = $1", [TENANT_E]);
   const inviteE = await serviceE.beginInvitation({ invitationToken: 'F'.repeat(43) });
   const preparedE1 = await serviceE.prepareClaim({
     invitationId: inviteE.invitationId,
@@ -317,6 +319,9 @@ test('tenant onboarding is isolated, single-use, conflict-safe, concurrent and a
     [TENANT_E],
   );
   assert.equal(activeE.rows[0].count, 1);
+  const auditE = await auditRepository.listByTenantId(TENANT_E, { limit: 10 });
+  assert.equal(auditE.find(entry => entry.action === 'tenant.identity.claimed').metadata.onboardingStarted, false);
+  assert.equal(await auditRepository.verifyTenantChain(TENANT_E), true);
 
   const serviceF = onboardingService({
     repository,

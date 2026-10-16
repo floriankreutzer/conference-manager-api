@@ -623,7 +623,12 @@ export function createPostgresTenantOnboardingRepository(pool, { auditRepository
           values: [row.tenant_id, confirmedAt],
         });
         if (tenant.rowCount !== 1) return null;
-        const audit = await auditRepository.appendWithClient(client, auditEvent);
+        // Derive first-entry attribution under the same locked Tenant transaction.
+        // A later claim while already onboarding must not invent a new start.
+        const audit = await auditRepository.appendWithClient(client, {
+          ...auditEvent,
+          metadata: { ...auditEvent.metadata, onboardingStarted: row.status === 'pending' },
+        });
         if (!audit) throw new Error('AUDIT_APPEND_FAILED');
         return Object.freeze({
           tenantId: row.tenant_id,

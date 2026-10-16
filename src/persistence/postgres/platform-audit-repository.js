@@ -112,7 +112,13 @@ function createSigners(secretValue) {
   });
 }
 
-function validatePage({ limit, beforeSequence }) {
+function validatePage({ limit, beforeSequence, from, to }) {
+  if ((from !== null || to !== null) && (typeof from !== 'string' || typeof to !== 'string'
+    || !Number.isFinite(Date.parse(from)) || !Number.isFinite(Date.parse(to))
+    || new Date(from).toISOString() !== from || new Date(to).toISOString() !== to
+    || Date.parse(from) >= Date.parse(to) || Date.parse(to) - Date.parse(from) > 90 * 86400000)) {
+    throw new PlatformAuditInputError('PLATFORM_AUDIT_WINDOW_INVALID');
+  }
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_PAGE_SIZE) {
     throw new PlatformAuditInputError('PLATFORM_AUDIT_PAGE_INVALID');
   }
@@ -298,8 +304,8 @@ export function createPostgresPlatformAuditRepository(pool, { hmacSecret } = {})
       return withPostgresTransaction(pool, (client) => appendWithClient(client, event, options));
     },
 
-    async listVerified({ limit = 50, beforeSequence = null, scope: scopeValue } = {}) {
-      validatePage({ limit, beforeSequence });
+    async listVerified({ limit = 50, beforeSequence = null, scope: scopeValue, from = null, to = null } = {}) {
+      validatePage({ limit, beforeSequence, from, to });
       const scope = validateScope(scopeValue);
       const page = await pool.query({
         name: 'platform-audit-page',
@@ -307,6 +313,8 @@ export function createPostgresPlatformAuditRepository(pool, { hmacSecret } = {})
           SELECT ${EVENT_COLUMNS}
           FROM platform_audit_events
           WHERE ($1::bigint IS NULL OR sequence < $1::bigint)
+            AND ($6::timestamptz IS NULL OR occurred_at >= $6::timestamptz)
+            AND ($7::timestamptz IS NULL OR occurred_at < $7::timestamptz)
             AND EXISTS (
               SELECT 1
               FROM platform_operators operator
@@ -331,7 +339,7 @@ export function createPostgresPlatformAuditRepository(pool, { hmacSecret } = {})
           ORDER BY sequence DESC
           LIMIT $2
         `,
-        values: [beforeSequence, limit, scope.operatorId, scope.securityVersion, scope.mode],
+        values: [beforeSequence, limit, scope.operatorId, scope.securityVersion, scope.mode, from, to],
       });
       if (page.rowCount === 0) return Object.freeze([]);
       const verificationBuckets = new Map();

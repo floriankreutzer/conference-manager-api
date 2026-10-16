@@ -103,6 +103,7 @@ export function createPlatformAuditService({
     principal: principalValue,
     limit,
     beforeSequence,
+    from, to,
     correlationId: providedCorrelationId,
     permission,
     action,
@@ -112,7 +113,7 @@ export function createPlatformAuditService({
       throw new PlatformAuthorizationError();
     }
     const scope = await tenantTargetPolicy.queryScope(principal);
-    const rows = await repository.listVerified({ limit, beforeSequence, scope });
+    const rows = await repository.listVerified({ limit, beforeSequence, scope, from, to });
     await repository.append(actorEvent({
       principal,
       action,
@@ -197,11 +198,12 @@ export function createPlatformAuditService({
       return repository.append(actorEvent(values, PLATFORM_AUDIT_OUTCOME.DENIED), options);
     },
 
-    async list({ principal: principalValue, limit, beforeSequence, correlationId: providedCorrelationId } = {}) {
+    async list({ principal: principalValue, limit, beforeSequence, from, to, correlationId: providedCorrelationId } = {}) {
       return queryAndRecord({
         principal: principalValue,
         limit,
         beforeSequence,
+        from, to,
         correlationId: providedCorrelationId,
         permission: PLATFORM_PERMISSION.AUDIT_READ,
         action: PLATFORM_AUDIT_ACTION.AUDIT_READ,
