@@ -412,6 +412,17 @@ test('PostgreSQL Platform identity, scope, session, break-glass, OIDC and audit 
   const verified = await auditRepository.listVerified({ limit: 100, scope: auditScope });
   assert.equal(verified[0].eventHash, undefined);
   assert.equal(verified[0].previousHash, undefined);
+  const latestInstant = verified[0].occurredAt;
+  const windowed = await auditRepository.listVerified({ limit: 100, scope: auditScope,
+    from: latestInstant, to: new Date(Date.parse(latestInstant) + 1).toISOString() });
+  assert.ok(windowed.length > 0);
+  assert.ok(windowed.every(row => row.occurredAt === latestInstant));
+  const emptyWindow = await auditRepository.listVerified({ limit: 100, scope: auditScope,
+    from: '2000-01-01T00:00:00.000Z', to: '2000-01-02T00:00:00.000Z' });
+  assert.deepEqual(emptyWindow, []);
+  await assert.rejects(auditRepository.listVerified({ limit: 100, scope: auditScope,
+    from: latestInstant, to: 'invalid' }), /PLATFORM_AUDIT_WINDOW_INVALID/);
+
 
   const latest = await pool.query(
     'SELECT sequence, metadata FROM platform_audit_events ORDER BY sequence DESC LIMIT 1',

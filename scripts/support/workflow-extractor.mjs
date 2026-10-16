@@ -5,6 +5,7 @@ import { isInternalUuid } from '../../src/domain/identifiers.js';
 import { isRequestId } from '../../src/domain/request.js';
 import { AUDIT_ACTION } from '../../src/audit/event.js';
 import { PLATFORM_AUDIT_ACTION } from '../../src/platform/audit/event.js';
+import { PLATFORM_OPERATION } from '../../src/platform/application/platform-operation-contract.js';
 import { PLATFORM_PERMISSION } from '../../src/platform/identity/policy.js';
 import { normalizePlatformPrincipal } from '../../src/platform/identity/principal.js';
 import { DAY_MS, productInstant } from '../../src/observability/product-delivery-contract.js';
@@ -13,6 +14,12 @@ import { OPERATIONS_SOURCE_MAX_BYTES } from '../../src/observability/operations-
 
 const DECISIONS = new Set(['Confirmed', 'Rejected', 'Change Requested']);
 const MAX_ROWS = 2000;
+const RECOVERY_OPERATIONS = new Set([
+  PLATFORM_OPERATION.RECOVER_LAST_TENANT_ADMIN, PLATFORM_OPERATION.INITIATE_MICROSOFT_RECONSENT,
+  PLATFORM_OPERATION.REPAIR_ROOM_MAPPING, PLATFORM_OPERATION.UNBIND_TENANT_IDENTITY,
+  PLATFORM_OPERATION.REVOKE_TENANT_SESSIONS, PLATFORM_OPERATION.REVOKE_USER_SESSIONS,
+  PLATFORM_OPERATION.RECOVERY_SUSPEND_TENANT, PLATFORM_OPERATION.RECOVERY_REACTIVATE_TENANT,
+]);
 const TENANT_ACTIONS = new Set([AUDIT_ACTION.REQUEST_CREATED, AUDIT_ACTION.REQUEST_TRANSITION,
   AUDIT_ACTION.REQUEST_TRANSITION_FAILED]);
 
@@ -107,40 +114,52 @@ export function createWorkflowExtractor({ tenantAuditQueryService, requestServic
     requireSource(isInternalUuid(principal.tenantId) && principal.tenantId === tenantContext.tenantId);
     const c = collection(); const tenantId = principal.tenantId;
     await c.verifyEpoch();
-    const decisions = []; let beforeId = null;
-    do {
-      const page = await c.read(() => tenantAuditQueryService.listEvents({ principal, tenantContext, correlationId,
-        limit: 100, beforeId, category: 'request',
-        from: new Date(c.start).toISOString(), to: new Date(c.end - 1).toISOString() }));
-      c.consume(page?.events, 100);
-      requireSource(page.window?.from === new Date(c.start).toISOString()
-        && page.window?.to === new Date(c.end - 1).toISOString());
-      let previous = beforeId;
-      for (const event of page.events) {
-        requireSource(typeof event.id === 'string' && /^[1-9]\d{0,18}$/.test(event.id)
-          && (previous === null || BigInt(event.id) < BigInt(previous))
-          && isInternalUuid(event.correlationId)
-          && ['success', 'failure', 'denied'].includes(event.outcome));
-        previous = event.id;
-        const at = productInstant(event.occurredAt); requireSource(at >= c.start && at < c.end);
-        if (!TENANT_ACTIONS.has(event.action)) continue;
-        requireSource(event.target?.type === 'request' && isRequestId(event.target.id));
-        const identity = [event.id, event.correlationId];
-        if (event.action === AUDIT_ACTION.REQUEST_CREATED && event.outcome === 'success') {
-          requireSource(event.change?.before === null && event.change?.after?.status === 'Submitted');
-          c.add('tenant_audit', identity, 'request_submitted', tenantId, event.target.id, event.occurredAt);
-        } else if (event.action === AUDIT_ACTION.REQUEST_TRANSITION && event.outcome === 'success') {
-          if (event.change?.after?.status === 'Submitted') {
-            requireSource(event.change?.before?.status === 'Change Requested');
+    const decisions = [];
+    for (const category of ['request', 'integration']) {
+      let beforeId = null;
+      do {
+        const page = await c.read(() => tenantAuditQueryService.listEvents({ principal, tenantContext, correlationId,
+          limit: 100, beforeId, category,
+          from: new Date(c.start).toISOString(), to: new Date(c.end - 1).toISOString() }));
+        c.consume(page?.events, 100);
+        requireSource(page.window?.from === new Date(c.start).toISOString()
+          && page.window?.to === new Date(c.end - 1).toISOString());
+        let previous = beforeId;
+        for (const event of page.events) {
+          requireSource(typeof event.id === 'string' && /^[1-9]\d{0,18}$/.test(event.id)
+            && (previous === null || BigInt(event.id) < BigInt(previous))
+            && isInternalUuid(event.correlationId)
+            && ['success', 'failure', 'denied'].includes(event.outcome));
+          previous = event.id;
+          const at = productInstant(event.occurredAt); requireSource(at >= c.start && at < c.end);
+          if (category === 'integration') {
+            if (event.action === AUDIT_ACTION.TENANT_IDENTITY_CLAIMED && event.outcome === 'success') {
+              requireSource(event.target?.type === 'tenant_identity' && event.target.id === tenantId
+                && event.change?.before === null && event.change?.after?.status === 'active');
+              c.add('tenant_audit', [event.id, event.correlationId], 'onboarding_started',
+                tenantId, tenantId, event.occurredAt);
+            }
+            continue;
+          }
+          if (!TENANT_ACTIONS.has(event.action)) continue;
+          requireSource(event.target?.type === 'request' && isRequestId(event.target.id));
+          const identity = [event.id, event.correlationId];
+          if (event.action === AUDIT_ACTION.REQUEST_CREATED && event.outcome === 'success') {
+            requireSource(event.change?.before === null && event.change?.after?.status === 'Submitted');
             c.add('tenant_audit', identity, 'request_submitted', tenantId, event.target.id, event.occurredAt);
-          } else if (DECISIONS.has(event.change?.after?.status)) decisions.push(event);
-        } else if (event.action === AUDIT_ACTION.REQUEST_TRANSITION_FAILED && event.outcome === 'failure') {
-          c.add('tenant_audit', identity, 'transition_failure', tenantId, event.target.id, event.occurredAt);
+          } else if (event.action === AUDIT_ACTION.REQUEST_TRANSITION && event.outcome === 'success') {
+            if (event.change?.after?.status === 'Submitted') {
+              requireSource(event.change?.before?.status === 'Change Requested');
+              c.add('tenant_audit', identity, 'request_submitted', tenantId, event.target.id, event.occurredAt);
+            } else if (DECISIONS.has(event.change?.after?.status)) decisions.push(event);
+          } else if (event.action === AUDIT_ACTION.REQUEST_TRANSITION_FAILED && event.outcome === 'failure') {
+            c.add('tenant_audit', identity, 'transition_failure', tenantId, event.target.id, event.occurredAt);
+          }
         }
-      }
-      requireSource(page.nextBeforeId === null || (page.events.length > 0 && page.nextBeforeId === previous));
-      beforeId = page.nextBeforeId;
-    } while (beforeId !== null);
+        requireSource(page.nextBeforeId === null || (page.events.length > 0 && page.nextBeforeId === previous));
+        beforeId = page.nextBeforeId;
+      } while (beforeId !== null);
+    }
 
     const histories = new Map();
     for (const event of decisions) {
@@ -186,7 +205,9 @@ export function createWorkflowExtractor({ tenantAuditQueryService, requestServic
     const c = collection(); let beforeSequence = null;
     await c.verifyEpoch();
     while (true) {
-      const rows = await c.read(() => platformAuditService.list({ ...values, limit: 100, beforeSequence }));
+      const rows = await c.read(() => platformAuditService.list({ principal,
+        correlationId: values.correlationId, limit: 100, beforeSequence,
+        from: new Date(c.start).toISOString(), to: new Date(c.end).toISOString() }));
       c.consume(rows, 100); if (rows.length === 0) break;
       let previous = beforeSequence ?? Infinity;
       for (const event of rows) {
@@ -198,9 +219,9 @@ export function createWorkflowExtractor({ tenantAuditQueryService, requestServic
         const before = event.previousState?.status; const after = event.newState?.status;
         let kind = null;
         if (event.action === PLATFORM_AUDIT_ACTION.TENANT_LIFECYCLE_CHANGED && event.outcome === 'success') {
-          if (before === 'pending' && after === 'onboarding') kind = 'onboarding_started';
           if (before === 'onboarding' && after === 'ready') kind = 'onboarding_completed';
-        } else if (event.action === PLATFORM_AUDIT_ACTION.RECOVERY_EXECUTED) {
+        } else if (event.action === PLATFORM_AUDIT_ACTION.RECOVERY_EXECUTED
+          && event.targetType === 'tenant_recovery' && RECOVERY_OPERATIONS.has(event.metadata?.operation)) {
           if (event.outcome === 'success') kind = 'recovery_completed';
           if (event.outcome === 'failure') kind = 'recovery_failed';
         }

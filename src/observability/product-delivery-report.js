@@ -18,7 +18,7 @@ import {
 const MAX_DELIVERY_CHANGES = 2000;
 
 const PRODUCT_SOURCES = Object.freeze({
-  onboarding_started: 'platform_audit',
+  onboarding_started: 'tenant_audit',
   onboarding_completed: 'platform_audit',
   request_submitted: 'tenant_audit',
   manager_decision: 'request_revision',

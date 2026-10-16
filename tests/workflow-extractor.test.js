@@ -34,7 +34,8 @@ function auditRow(patch = {}) {
 function fixture({ rows = [auditRow()], integrity = true, history, ...overrides } = {}) {
   const authorizationPolicy = createAuthorizationPolicy(); const harness = createAuditHarness({ authorizationPolicy });
   const tenantAuditQueryService = createTenantAuditQueryService({ authorizationPolicy,
-    queryRepository: { async listByTenantId({ tenantId }) { assert.equal(tenantId, TENANT); return rows; } },
+    queryRepository: { async listByTenantId({ tenantId, categoryActions }) { assert.equal(tenantId, TENANT);
+      return rows.filter(row => categoryActions.includes(row.action)); } },
     integrityRepository: { async verifyTenantChain(tenantId) { assert.equal(tenantId, TENANT); return integrity; } },
     auditService: harness.service, clock: () => NOW });
   const defaults = { tenantAuditQueryService, authorizationPolicy, sourceEpoch: 'database-reset-epoch-1',
@@ -100,18 +101,20 @@ test('resubmission/failure mapping excludes denial/cancellation; decisions requi
 
 test('platform extraction preserves separate authorization and excludes preview, denials and reactivation', async () => {
   const base = { sequence: 10, targetTenantId: TENANT, targetId: TENANT, correlationId: CORRELATION,
-    occurredAt: AT, outcome: 'success', action: 'platform.tenant.lifecycle.changed',
+    occurredAt: AT, outcome: 'success', targetType: 'tenant_recovery',
+    metadata: { operation: 'tenant.recovery.last_admin' }, action: 'platform.tenant.lifecycle.changed',
     previousState: { status: 'pending' }, newState: { status: 'onboarding' } };
   const rows = [base, { ...base, sequence: 9, previousState: { status: 'onboarding' }, newState: { status: 'ready' } },
     { ...base, sequence: 8, action: 'platform.recovery.executed' },
     { ...base, sequence: 7, action: 'platform.recovery.executed', outcome: 'failure' },
     { ...base, sequence: 6, action: 'platform.recovery.previewed' },
     { ...base, sequence: 5, action: 'platform.recovery.executed', outcome: 'denied' },
-    { ...base, sequence: 4, previousState: { status: 'suspended' }, newState: { status: 'active' } }];
+    { ...base, sequence: 4, action: 'platform.recovery.executed', targetType: 'tenant_metering',
+      metadata: { operation: 'metering_reconciliation' } },
+    { ...base, sequence: 3, previousState: { status: 'suspended' }, newState: { status: 'active' } }];
   const input = { principal: platformPrincipal(), correlationId: CORRELATION };
   const result = await fixture({ platformAuditService: { async list() { return rows; } } }).collectPlatform(input);
-  assert.deepEqual(result.productEvents.map(x => x.kind), ['onboarding_started', 'onboarding_completed',
-    'recovery_completed', 'recovery_failed']);
+  assert.deepEqual(result.productEvents.map(x => x.kind), ['onboarding_completed', 'recovery_completed', 'recovery_failed']);
   assert.equal(result.productComplete, false);
   await assert.rejects(fixture({ platformAuthorizationPolicy: { async authorize() { return false; } } })
     .collectPlatform(input), /WORKFLOW_EXTRACTION_FAILED/);
@@ -136,7 +139,8 @@ test('audit pagination advances exactly and source overflow or repeated cursors 
   let calls = 0;
   const projected = id => ({ id: String(id), action: 'request.transition_failed', outcome: 'failure',
     target: { type: 'request', id: REQUEST }, occurredAt: AT, correlationId: CORRELATION });
-  const page = async ({ beforeId, from, to }) => {
+  const page = async ({ beforeId, from, to, category }) => {
+    if (category === 'integration') return { events: [], nextBeforeId: null, window: { from, to } };
     calls += 1;
     assert.equal(beforeId, calls === 1 ? null : '2');
     return { events: calls === 1 ? [projected(3), projected(2)] : [projected(1)],
@@ -162,4 +166,23 @@ test('history anchors and unique manager-decision identities reject ambiguous or
   await assert.rejects(fixture({ rows, history }).collectTenant(values), /WORKFLOW_EXTRACTION_FAILED/);
   await assert.rejects(fixture({ rows: [rows[0], { ...rows[0], id: '4' }] }).collectTenant(values),
     /WORKFLOW_EXTRACTION_FAILED/);
+});
+
+test('real claim evidence supplies onboarding starts; synthetic Platform lifecycle entry cannot', async () => {
+  const result = await fixture({ rows: [auditRow({ action: 'tenant.identity.claimed',
+    targetType: 'tenant_identity', targetId: TENANT, newState: { provider: 'entra', status: 'active' } })] })
+    .collectTenant(values);
+  assert.deepEqual(result.productEvents.map(event => event.kind), ['onboarding_started']);
+});
+
+test('Platform source gets the bounded reporting window and the normalized authorization snapshot', async () => {
+  let calls = 0;
+  const input = { principal: platformPrincipal(), correlationId: CORRELATION };
+  const result = await fixture({ platformAuditService: { async list(query) {
+    calls += 1; assert.equal(query.from, '2026-09-18T00:00:00.000Z');
+    assert.equal(query.to, '2026-10-16T00:00:00.000Z');
+    assert.equal(Object.isFrozen(query.principal), true);
+    return [];
+  } } }).collectPlatform(input);
+  assert.equal(calls, 1); assert.deepEqual(result.productEvents, []);
 });

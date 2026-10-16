@@ -73,8 +73,10 @@ Successful request-created and Change Requested→Submitted audit events supply 
 facts; genuine transition failures exclude denials. Manager decisions require a unique
 matching immutable `transitioned` revision with Conference Manager role-at-action,
 Request identity, version, timestamp and terminal decision status. Cancellation/review
-start do not count as decisions. Platform mapping accepts pending→onboarding and
-onboarding→ready lifecycle events; reactivation is excluded. Only actual targeted
+start do not count as decisions. Onboarding starts come from verified Tenant `tenant.identity.claimed` integration audit evidence.
+Platform reads apply the same half-open window in the canonical verified repository query,
+so older retained history neither contributes facts nor consumes the page budget.
+Platform mapping accepts onboarding→ready lifecycle events; reactivation is excluded. Only allowlisted canonical `tenant_recovery` executions count; metering reconciliation and Demo reset are excluded. Only actual targeted
 recovery executions with success/failure count; previews, denials and unscoped/global
 events do not become per-Tenant outcomes.
 
@@ -125,7 +127,7 @@ in the projection or general telemetry labels.
 
 | Kind | Canonical source/context required before enabling completeness |
 | --- | --- |
-| onboarding_started/completed | Platform audit: verified first onboarding entry / initial completion; exclude invitation resends and later reactivation |
+| onboarding_started/completed | Tenant claim audit for start; Platform lifecycle audit for initial completion; exclude invitation resends and later reactivation |
 | request_submitted | Tenant audit: successful request.created or verified request_resubmit transition into Submitted |
 | manager_decision | Request revision: authoritative Conference Manager actor context and terminal Confirmed/Rejected/Change Requested decision; exclude review-start and Employee cancellation |
 | transition_failure | Tenant audit: actual failed workflow transition; do not infer task failure from unrelated HTTP/security errors |
