@@ -41,6 +41,10 @@ const database = loadDatabaseConfig({ ...process.env, DATABASE_URL: process.env.
 const settings = validateNeonStorageConfig({ endpoint: process.env.MEDIA_OPERATOR_ENDPOINT,
   region: process.env.MEDIA_OPERATOR_REGION, bucket: process.env.MEDIA_OPERATOR_BUCKET,
   accessKeyId: process.env.MEDIA_OPERATOR_ACCESS_KEY_ID, secretAccessKey: process.env.MEDIA_OPERATOR_SECRET_ACCESS_KEY });
+if (demoDiscard && (settings.endpoint !== `https://${LIVE_MEDIA_TARGET.branchId}.storage.c-5.eu-central-1.aws.neon.tech`
+  || settings.region !== LIVE_MEDIA_TARGET.region || settings.bucket !== LIVE_MEDIA_TARGET.bucket)) {
+  throw new Error('MEDIA_DEMO_COPY_DISCARD_STORAGE_TARGET_REQUIRED');
+}
 const restoreEvidenceSha256 = evidenceArgument?.match(evidencePattern)?.[1] || null;
 const pool = createPostgresPool({ mode, ...database, databasePoolMax: 2 });
 let storage;

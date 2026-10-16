@@ -188,4 +188,22 @@ test('Demo discard CLI requires its exact owner decision and fixed target withou
     assert.doesNotMatch(result.stderr, /private-credential|foreign\.example/);
     assert.equal(result.stdout, '');
   }
+  const operator = { NODE_ENV: 'production', DATABASE_SSL: 'verify-full',
+    MEDIA_MIGRATION_DATABASE_URL: `postgresql://cm_demo_migration:${'x'.repeat(32)}`
+      + '@ep-solitary-thunder-b1ydpuiq.c-5.eu-central-1.aws.neon.tech/conference_manager_demo_shared',
+    MEDIA_MIGRATION_DATABASE_ROLE: 'cm_demo_migration',
+    MEDIA_OPERATOR_ENDPOINT: 'https://br-summer-rice-b1f8voyp.storage.c-5.eu-central-1.aws.neon.tech',
+    MEDIA_OPERATOR_REGION: 'eu-central-1', MEDIA_OPERATOR_BUCKET: 'conference-manager-media',
+    MEDIA_OPERATOR_ACCESS_KEY_ID: 'synthetic-access-id', MEDIA_OPERATOR_SECRET_ACCESS_KEY: 'x'.repeat(32) };
+  for (const change of [
+    { MEDIA_OPERATOR_ENDPOINT: 'https://br-staging-example.storage.c-5.eu-central-1.aws.neon.tech' },
+    { MEDIA_OPERATOR_BUCKET: 'staging-media' },
+  ]) {
+    const result = spawnSync(process.execPath, [script.pathname, '--execute', 'discard-demo-copy', 'room',
+      '--demo-data-discard=saas38-pre-pilot-demo-only'], { encoding: 'utf8', env: { ...operator, ...change } });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /MEDIA_DEMO_COPY_DISCARD_STORAGE_TARGET_REQUIRED/);
+    assert.doesNotMatch(result.stderr, /br-staging-example|staging-media|x{32}/);
+    assert.equal(result.stdout, '');
+  }
 });
