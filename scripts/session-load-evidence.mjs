@@ -45,6 +45,7 @@ async function measureRequests({ origin, cookies, verify, concurrency = 16, dead
         headers: { Cookie: cookies[index], ...(payload ? {
           Origin: url.origin, 'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(payload.body), 'X-CSRF-Token': payload.csrfToken,
+          ...(payload.expectedVersion ? { 'If-Match': `"${payload.expectedVersion}"` } : {}),
         } : {}) },
       }, (response) => {
         const chunks = [];
@@ -57,7 +58,7 @@ async function measureRequests({ origin, cookies, verify, concurrency = 16, dead
         response.on('error', reject);
         response.on('end', () => {
           try {
-            if (response.statusCode !== (payload ? 201 : 200)) throw new Error('LOAD_STATUS_INVALID');
+            if (response.statusCode !== (payload?.expectedStatus ?? (payload ? 201 : 200))) throw new Error('LOAD_STATUS_INVALID');
             resolve({ body: JSON.parse(Buffer.concat(chunks).toString('utf8')), bytes });
           } catch { reject(new Error('LOAD_RESPONSE_INVALID')); }
         });
@@ -149,4 +150,23 @@ export async function measureRequestReads({ requestIds, ...options }) {
     throw new Error('LOAD_READ_INPUT_INVALID');
   }
   return measureRequests(options, requestIds.map(id => '/api/v1/requests/' + id));
+}
+
+// Two fixed synthetic manager phases only. No confirmation/provider work or retry.
+export async function measureRequestTransitions({ requestIds, csrfTokens, transition, ...options }) {
+  if (!['start_review', 'reject'].includes(transition)
+    || !Array.isArray(options.cookies) || options.cookies.length < 1 || options.cookies.length > 1_000
+    || !Array.isArray(requestIds) || requestIds.length !== options.cookies.length
+    || requestIds.some(id => typeof id !== 'string'
+      || !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id))
+    || new Set(requestIds).size !== requestIds.length
+    || !Array.isArray(csrfTokens) || csrfTokens.length !== requestIds.length
+    || csrfTokens.some(token => typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token))) {
+    throw new Error('LOAD_TRANSITION_INPUT_INVALID');
+  }
+  const body = JSON.stringify(transition === 'reject'
+    ? { transition, reason: 'Synthetic isolated load decision' } : { transition });
+  const writes = csrfTokens.map(csrfToken => ({ body, csrfToken, expectedStatus: 200,
+    expectedVersion: transition === 'start_review' ? 1 : 2 }));
+  return measureRequests(options, requestIds.map(id => `/api/v1/requests/${id}/transitions`), writes);
 }

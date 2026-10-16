@@ -256,6 +256,15 @@ overlapping transfer boundaries or infer actual monthly compute/storage from loc
 
 ## Same-workload topology evidence matrix
 
+Owner decision (16 October 2026): SaaS 3.8 acceptance covers the existing Render
+application + Neon database/object-storage topology. Its representative workload,
+security/integrity, provider-transfer and attributable cost requirements remain
+mandatory. Real alternative-topology measurements are transferred to the explicit
+open follow-up [application #321](https://github.com/floriankreutzer/conference-manager/issues/321),
+not claimed passed or required for SaaS 3.8 closure. The alternative columns below
+remain that follow-up's evidence specification. No new resources, plan change or
+migration is authorized by this decision.
+
 | Evidence | Current Render + Neon Frankfurt split | Render application + Render PostgreSQL in one region | Application with approved private access to Neon |
 | --- | --- | --- | --- |
 | Canonical security/workload | Same accepted API, schema, three roles and dataset required | Identical workload and checks required | Identical workload and checks required |
@@ -276,7 +285,8 @@ Select a topology only after comparing measured latency/error objectives, total 
 data residency, private-network eligibility, backup/restore/rollback, tenant and session integrity,
 operational ownership, migration risk and remaining allowance. Record which criteria fail or remain
 unknown. SaaS 3.8 #269 and release #270 retain representative business workload, provider transfer,
-object/CDN and worker measurements, cost modeling and the current topology-comparison scope.
+object/CDN and worker measurements and cost modeling for the existing topology.
+Actual alternative-topology measurements remain open under #321 as specified above.
 Per-optimization monetary proof from #265–#267 is consolidated there; no invoice savings is implied.
 The owner transferred the full actual database/object recovery/rollback exercise to #318 in the
 existing Pilot milestone: execute it last immediately before external Pilot release and #73's
@@ -310,3 +320,39 @@ status/size distribution, a mixed booking journey, 1,000 concurrent HTTP request
 provider-metered egress, complete monthly cost or target capacity. Availability, transitions,
 media/cache and background/worker/provider work retain their separate evidence requirements.
 No runtime API, schema, seed, dependency, deployment or security-limit change is introduced.
+
+## Manager transition baseline
+
+`tests-db/request-transition-load-evidence.test.js` creates 100 and 1,000 genuine
+Submitted Requests through the canonical v3 HTTP create path in its own isolated
+PostgreSQL 18 database. Ten synthetic Tenants have colliding Room/Site IDs, separate
+Employee sessions and one separately authenticated Conference Manager per Tenant.
+Fixture creation, session/CSRF acquisition and pool warmup are outside measured phases.
+
+Each phase uses the same 16 HTTP clients and ten-connection pool: first every
+Request transitions from version1 Submitted to version2 In Review, then every
+Request transitions to version3 Rejected. Strong If-Match versions, exact server
+commands, session cookies and CSRF execute through the complete Customer composition.
+Only these two fixed transitions are permitted by the measurement helper; confirmation
+and provider work are excluded. The existing loopback-only destination, at-most1,000
+operations, 8KiB body, five-second socket/45-second scenario deadlines, abort/drain,
+no redirects and no write retries remain enforced. The test file retains the existing
+120-second runner cap. It never targets Hosted data or allocates provider resources.
+
+Before publishing either phase's aggregate, all responses must match the Request,
+status/version, Room and immutable details without internal Tenant/requester fields.
+Database reconciliation requires exactly two corresponding transition revisions and
+audit events per Request, the correct Tenant/manager, immutable manager-role attribution,
+and matching correlations. All Tenant audit chains must verify. Employee and foreign-Tenant
+manager commands, missing CSRF and stale If-Match are checked independently. Both phase
+results are withheld until the complete scenario passes; individually committed writes
+in a failed scenario remain confined to the disposable test database.
+
+Diagnostics distinguish the phase and report percentiles, both HTTP payload directions,
+SQL calls and local PostgreSQL protocol bytes. Approved warm objectives are evaluated
+honestly as numerical results, not used as flaky shared-runner CI pass criteria.
+Exact successful PostgreSQL runs are required before calling this measured. Native
+protocol fixtures are only helper/security evidence. This is a sequential two-phase
+manager decision baseline, not a mixed booking journey, confirmed/provider booking,
+1,000 simultaneous requests, real egress/cost, cold-start or topology acceptance.
+Availability, media and worker evidence remain separately required under #269/#270.
