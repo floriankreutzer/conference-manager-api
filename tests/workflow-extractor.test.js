@@ -170,7 +170,10 @@ test('history anchors and unique manager-decision identities reject ambiguous or
 
 test('real claim evidence supplies onboarding starts; synthetic Platform lifecycle entry cannot', async () => {
   const result = await fixture({ rows: [auditRow({ action: 'tenant.identity.claimed',
-    targetType: 'tenant_identity', targetId: TENANT, newState: { provider: 'entra', status: 'active' } })] })
+    targetType: 'tenant_identity', targetId: TENANT, metadata: { onboardingStarted: true },
+    newState: { provider: 'entra', status: 'active' } }), auditRow({ id: '4', action: 'tenant.identity.claimed',
+    targetType: 'tenant_identity', targetId: TENANT, metadata: { onboardingStarted: false } }),
+    auditRow({ id: '3', action: 'tenant.identity.claimed', targetType: 'tenant_identity', targetId: TENANT })] })
     .collectTenant(values);
   assert.deepEqual(result.productEvents.map(event => event.kind), ['onboarding_started']);
 });

@@ -133,7 +133,8 @@ export function createWorkflowExtractor({ tenantAuditQueryService, requestServic
           previous = event.id;
           const at = productInstant(event.occurredAt); requireSource(at >= c.start && at < c.end);
           if (category === 'integration') {
-            if (event.action === AUDIT_ACTION.TENANT_IDENTITY_CLAIMED && event.outcome === 'success') {
+            if (event.action === AUDIT_ACTION.TENANT_IDENTITY_CLAIMED && event.outcome === 'success'
+              && event.change?.summary?.onboardingStarted === true) {
               requireSource(event.target?.type === 'tenant_identity' && event.target.id === tenantId
                 && event.change?.before === null && event.change?.after?.status === 'active');
               c.add('tenant_audit', [event.id, event.correlationId], 'onboarding_started',

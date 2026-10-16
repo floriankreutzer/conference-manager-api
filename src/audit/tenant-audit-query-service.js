@@ -54,6 +54,7 @@ const DEFAULT_WINDOW_MS = 30 * 24 * 60 * 60 * 1_000;
 const MAX_WINDOW_MS = 90 * 24 * 60 * 60 * 1_000;
 const MAX_FUTURE_SKEW_MS = 5 * 60 * 1_000;
 const SUMMARY_KEYS = new Set([
+  'onboardingStarted',
   'active',
   'activeCateringItemCount',
   'activeEquipmentCount',

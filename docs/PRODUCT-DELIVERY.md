@@ -73,7 +73,9 @@ Successful request-created and Change Requested→Submitted audit events supply 
 facts; genuine transition failures exclude denials. Manager decisions require a unique
 matching immutable `transitioned` revision with Conference Manager role-at-action,
 Request identity, version, timestamp and terminal decision status. Cancellation/review
-start do not count as decisions. Onboarding starts come from verified Tenant `tenant.identity.claimed` integration audit evidence.
+start do not count as decisions. Onboarding starts come from verified Tenant `tenant.identity.claimed` integration audit evidence with the first-entry flag derived atomically under the locked Tenant transaction.
+Repeated claims while already onboarding and historical claims without this attribution remain excluded;
+missing historical attribution cannot be represented as complete source coverage.
 Platform reads apply the same half-open window in the canonical verified repository query,
 so older retained history neither contributes facts nor consumes the page budget.
 Platform mapping accepts onboarding→ready lifecycle events; reactivation is excluded. Only allowlisted canonical `tenant_recovery` executions count; metering reconciliation and Demo reset are excluded. Only actual targeted
