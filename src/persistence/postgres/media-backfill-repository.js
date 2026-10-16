@@ -5,6 +5,23 @@ const PHASES = new Set(['copy', 'rollback', 'purge']);
 const TABLES = Object.freeze({ room: 'tenant_room_media_assets', catalogue: 'demo_catalogue_media_assets' });
 const MAX_BATCH = 10;
 
+async function assertDemoCopyDiscardAuthority(pool) {
+  const result = await pool.query({ name: 'media-demo-copy-discard-authority',
+    text: `SELECT current_database() AS database, current_user AS role,
+      (SELECT max(version) FROM public.schema_migrations) AS schema_version,
+      (SELECT max(version) FROM public.demo_schema_migrations) AS overlay_version,
+      (SELECT count(*) FROM public.demo_database_sentinel WHERE singleton=true
+        AND sentinel_key='conference-manager-shared-demo-v1' AND runtime_schema_version=1
+        AND database_name=current_database() AND customer_role='cm_demo_customer'
+        AND platform_role='cm_demo_platform' AND reset_role='cm_demo_reset') AS sentinel_count` });
+  const row = result.rows[0];
+  if (result.rows.length !== 1 || row.database !== 'conference_manager_demo_shared'
+    || row.role !== 'cm_demo_migration' || Number(row.schema_version) !== 44
+    || Number(row.overlay_version) !== 9 || Number(row.sentinel_count) !== 1) {
+    throw new TypeError('MEDIA_DEMO_COPY_DISCARD_AUTHORITY_REQUIRED');
+  }
+}
+
 function referenceFor(row, kind) {
   return mediaObjectReference({ tenantId: row.tenant_id, assetId: row.id, kind,
     contentType: row.content_type, byteLength: row.byte_length, sha256: row.content_sha256.toString('hex') });
@@ -21,17 +38,34 @@ function sameRevision(row, reference) {
 // digest; rollback restores and verifies bytes before clearing the pointer. Neither operation
 // deletes objects or immutable inventory custody.
 export function createPostgresMediaBackfillRepository(pool, { mediaObjects, includeDemoCatalogue = false } = {}) {
-  if (!pool?.query || !pool?.connect || !mediaObjects?.register || !mediaObjects?.putWithClient || !mediaObjects?.read
+  return createBackfillRepository(pool, { mediaObjects, includeDemoCatalogue });
+}
+
+// Owner-approved pre-Pilot Demo exception. This separate port cannot authorize a
+// Production purge, change pointers, publish objects or waive ordinary restore evidence.
+export function createPostgresDemoMediaCopyDiscardRepository(pool, { mediaObjects } = {}) {
+  const repository = createBackfillRepository(pool, { mediaObjects, includeDemoCatalogue: true, demoDiscard: true });
+  return Object.freeze({ discardBatch({ kind, limit = MAX_BATCH } = {}) {
+    return repository.runBatch({ phase: 'discard-demo-copy', kind, limit });
+  } });
+}
+
+function createBackfillRepository(pool, { mediaObjects, includeDemoCatalogue = false, demoDiscard = false } = {}) {
+  if (!pool?.query || !pool?.connect || typeof mediaObjects?.read !== 'function'
+    || (!demoDiscard && (!mediaObjects?.register || !mediaObjects?.putWithClient))
     || typeof includeDemoCatalogue !== 'boolean') throw new TypeError('MEDIA_BACKFILL_DEPENDENCIES_REQUIRED');
   return Object.freeze({
     async runBatch({ phase, kind, limit = MAX_BATCH, restoreEvidenceSha256 = null } = {}) {
-      if (!PHASES.has(phase) || !Object.hasOwn(TABLES, kind) || (kind === 'catalogue' && !includeDemoCatalogue)
+      if (!(demoDiscard ? phase === 'discard-demo-copy' : PHASES.has(phase))
+        || !Object.hasOwn(TABLES, kind) || (kind === 'catalogue' && !includeDemoCatalogue)
         || !Number.isSafeInteger(limit) || limit < 1 || limit > MAX_BATCH) throw new TypeError('MEDIA_BACKFILL_INPUT_INVALID');
       if (phase === 'purge' && (typeof restoreEvidenceSha256 !== 'string'
         || !/^[a-f0-9]{64}$/.test(restoreEvidenceSha256))) throw new TypeError('MEDIA_BACKFILL_RESTORE_EVIDENCE_REQUIRED');
+      if (demoDiscard) await assertDemoCopyDiscardAuthority(pool);
+      const dropsBytes = phase === 'purge' || demoDiscard;
       const table = TABLES[kind];
       const predicate = phase === 'copy' ? 'object_key IS NULL AND bytes IS NOT NULL'
-        : phase === 'purge' ? 'object_key IS NOT NULL AND bytes IS NOT NULL' : 'object_key IS NOT NULL';
+        : dropsBytes ? 'object_key IS NOT NULL AND bytes IS NOT NULL' : 'object_key IS NOT NULL';
       const deadline = Date.now() + 25000;
       const candidates = await pool.query({ name: `media-backfill-candidates-${phase}-${kind}`,
         text: `SELECT tenant_id,id,content_type,byte_length,content_sha256,object_key
@@ -62,11 +96,11 @@ export function createPostgresMediaBackfillRepository(pool, { mediaObjects, incl
           } else {
             if (row.object_key !== reference.key) throw new MediaObjectStorageError('MEDIA_STORAGE_INTEGRITY_FAILED');
             const restored = verifyMediaObjectBytes(await mediaObjects.read(reference, row.object_key), reference);
-            if (phase === 'purge') {
+            if (dropsBytes) {
               // Verify the retained database copy too. Evidence never substitutes for the
               // actual provider readback immediately before dropping authoritative bytes.
               verifyMediaObjectBytes(row.bytes, reference);
-              await client.query({ name: `media-backfill-purge-${kind}`,
+              await client.query({ name: `media-backfill-${phase}-${kind}`,
                 text: `UPDATE ${table} SET bytes = NULL WHERE tenant_id = $1 AND id = $2`,
                 values: [reference.tenantId, reference.assetId] });
             } else {

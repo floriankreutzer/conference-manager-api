@@ -331,6 +331,9 @@ accepted object-aware Platform reset path after Neon activation.
 Object activation does not authorize PostgreSQL blob purge, schema downgrade,
 reference-blind deletion or changes to the 30-day orphan-retention policy. Purge
 has its own evidence-digest contract and cannot be inferred from this runbook.
+The separate owner-approved pre-Pilot Demo retained-byte exception uses the bounded
+[Demo copy-discard procedure](PRIVATE-OBJECT-STORAGE.md#demo-only-retained-copy-discard).
+It does not authorize object deletion or establish the final pre-Pilot recovery gate.
 
 SaaS 3.8 telemetry, actual alert delivery, representative business/worker load and
 attributable cost results remain open after storage activation where not yet
