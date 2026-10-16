@@ -178,11 +178,15 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
       }
     }
     if (imports.some(({ specifier }) => specifier.startsWith('@aws-sdk/'))
-      && !['src/media/neon-object-storage.js', 'src/demo/platform-live-storage.js'].includes(file)) {
+      && !['src/media/neon-object-storage.js', 'src/demo/platform-live-storage.js',
+        'src/demo/platform-operations-source-storage.js'].includes(file)) {
       violations.push(violation(file, 'the object-storage SDK is restricted to the private storage adapter.'));
     }
     if (graph.get(file)?.includes('src/demo/platform-live-storage.js') && file !== 'src/demo/platform-main.js') {
       violations.push(violation(file, 'the read-only live-metrics storage adapter belongs only to the private Platform Demo entrypoint.'));
+    }
+    if (graph.get(file)?.includes('src/demo/platform-operations-source-storage.js') && file !== 'src/demo/platform-main.js') {
+      violations.push(violation(file, 'the protected Operations storage adapter belongs only to the Platform Demo entrypoint.'));
     }
     if (graph.get(file)?.includes('src/media/neon-object-storage.js')
       && !MEDIA_STORAGE_COMPOSITION_ROOTS.has(file)) {

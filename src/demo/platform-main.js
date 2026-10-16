@@ -14,12 +14,16 @@ import { loadDemoProductDelivery } from './platform-product-delivery.js';
 import { loadDailyLiveStorageConfig } from './platform-live-config.js';
 import { createLiveMetricsStorage } from './platform-live-storage.js';
 import { createDailyLiveMetrics } from './platform-live-metrics.js';
+import { createOperationsSourceStorage } from './platform-operations-source-storage.js';
+import { createOperationsSources, operationsSourcesEnabled } from './platform-operations-sources.js';
+import { createOperationsSourceProjection } from './platform-operations-source-projection.js';
 
 const config = loadDemoPlatformConfig(process.env);
 const platformAccess = loadDemoPlatformAccessConfig(process.env);
 const providerUsage = loadDemoProviderUsage(process.env, platformAccess);
 const productDelivery = loadDemoProductDelivery(process.env, platformAccess);
 const liveStorageConfig = loadDailyLiveStorageConfig(process.env, { config, access: platformAccess });
+const sourceStorageEnabled = operationsSourcesEnabled(process.env, liveStorageConfig);
 const runtime = await startDemoEntrypointRuntime({
   env: process.env, config, surface: 'platform',
   boundary: { applySecurityHeaders: applyPlatformSecurityHeaders, assertRequestHost: assertPlatformRequestHost,
@@ -35,15 +39,21 @@ const runtime = await startDemoEntrypointRuntime({
     });
     const liveStorage = liveStorageConfig ? createLiveMetricsStorage(liveStorageConfig) : null;
     const liveMetrics = liveStorage ? createDailyLiveMetrics({ storage: liveStorage }) : null;
+    const sourceStorage = sourceStorageEnabled
+      ? createOperationsSourceStorage(liveStorageConfig) : null;
+    const operationsSources = sourceStorage ? createOperationsSourceProjection({ sources: createOperationsSources({
+      storage: sourceStorage, operatorId: 'operations-owner',
+    }) }) : null;
     let active;
     try { active = await startDemoMediaStorageRuntime({
       env: process.env, config, surface: 'platform',
       createComposition: (resetMediaObjectStorage) => createDemoPlatformComposition({
-        config, staticFileAdapter, metrics, resetMediaObjectStorage, trafficGate, accessGate, providerUsage, productDelivery, liveMetrics,
+        config, staticFileAdapter, metrics, resetMediaObjectStorage, trafficGate, accessGate,
+        providerUsage, productDelivery, liveMetrics, operationsSources,
       }),
-    }); } catch (error) { liveStorage?.close(); throw error; }
+    }); } catch (error) { liveStorage?.close(); sourceStorage?.close(); throw error; }
     return Object.freeze({ async stop() {
-      try { await active.stop(); } finally { liveStorage?.close(); }
+      try { await active.stop(); } finally { liveStorage?.close(); sourceStorage?.close(); }
     } });
   },
 });

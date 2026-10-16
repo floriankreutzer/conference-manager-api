@@ -95,6 +95,11 @@ No SQL executes in the browser or new HTTP route.
 
 ## Product and delivery interpretation
 
+[Protected Operations sources](OPERATIONS-SOURCE-REGISTERS.md) defines separate
+manual-fact and feedback objects for #319. They never replace this automatic daily
+object, refresh its clocks or turn unavailable live collection into manual zeros.
+The optional protected source endpoint returns independently compiled aggregates.
+
 Daily Demo stock remains separate from Product Outcomes and structured Pilot Feedback.
 Do not set `productComplete` from count queries, diagnostic totals, seed or partial
 unverified audit reads. Real audit extraction must preserve complete-chain verification.
