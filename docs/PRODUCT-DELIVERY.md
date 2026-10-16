@@ -33,6 +33,61 @@ Source completeness must be established independently. A limited query, a reset
 fixture, an empty newly created register or the first observation in 28 days cannot
 establish complete historical coverage.
 
+### Bounded authenticated workflow extraction
+
+`scripts/support/workflow-extractor.mjs` is an operator composition port, not a
+Customer/Platform runtime import, browser ingestion API or automatic collector.
+It consumes the existing authenticated Tenant audit query, Request history and
+Platform audit services; it does not read database tables directly or accept JSON
+claims of verified integrity/actor/role. The caller must resolve genuine current
+server Principals through their existing session/identity boundaries. Constructing
+a Principal from a Demo selector is not Production authentication.
+
+Tenant extraction requires both existing Tenant audit-read and Request-manage
+capabilities, preserving their separate role ownership. Complete-chain verification,
+Tenant scoping, denial evidence and immutable history cursors remain owned by the
+canonical services. The Tenant UUID comes from the authorized Principal/context;
+no independent Tenant selector is accepted. Platform extraction separately normalizes
+and authorizes the Platform Principal before its independently verified/scoped audit
+service reads. Neither domain grants access to the other.
+
+The constructor requires a server-owned immutable source epoch and an authoritative
+readback port. Bind that epoch to the actual database instance/reset generation;
+never use a moving deployment label, browser value or operator-invented reset clock.
+Readback must match before and after collection, otherwise extraction fails. This
+detects a reset during pagination when the bound source advances its durable epoch.
+The epoch, environment, Tenant and immutable record identity enter hashed source IDs;
+actor identity, display names, arbitrary metadata and raw history never enter output.
+
+Collection derives the existing completed-28-day UTC window from its trusted clock.
+It admits one collection per instance, at most2,000 source rows in total,100decision
+Requests,100-row audit/10-row history pages and a maximum30-second result deadline.
+Nondecreasing clocks, strict descending audit IDs/revision versions, stable history
+anchors and advancing cursors are mandatory. It never truncates or publishes partial
+facts on denial, bad integrity, overflow, ambiguous decision history or changed epoch.
+Timeout does not claim cancellation of an admitted service/database operation; the
+existing dependency bounds still own cancellation, and another collection is rejected
+until all admitted reads settle. No source operation is retried.
+
+Successful request-created and Change Requested→Submitted audit events supply submission
+facts; genuine transition failures exclude denials. Manager decisions require a unique
+matching immutable `transitioned` revision with Conference Manager role-at-action,
+Request identity, version, timestamp and terminal decision status. Cancellation/review
+start do not count as decisions. Platform mapping accepts pending→onboarding and
+onboarding→ready lifecycle events; reactivation is excluded. Only actual targeted
+recovery executions with success/failure count; previews, denials and unscoped/global
+events do not become per-Tenant outcomes.
+
+The returned closed compiler input always retains `productComplete:false`, no deployment
+or feedback authority, and the original observation/window. A complete bounded query
+does not prove historical retention, all-Tenant coverage or that every workflow emits
+the required event. Existing compiler/conditional source-write contracts still own
+aggregation, fact reconciliation and custody; extraction performs no source write.
+Actual source-instance/session binding, collection operation and source-completeness
+acceptance for real Pilot data remain #316. Native and real PostgreSQL source tests
+must pass before accepting this technical extractor; it does not supply actual Pilot
+outcomes, a new recurring job or a Production metrics-access permission.
+
 The offline compiler reads at most 256,000 bytes from stdin:
 
 ```sh
