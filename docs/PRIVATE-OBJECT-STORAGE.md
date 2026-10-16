@@ -210,6 +210,37 @@ use a current database/object basis after cleanup. The ordinary 30-day orphan-ob
 retention rule and Production purge controls remain unchanged. Source/tests are
 preparation; dated execution and cleanup receipts belong in the milestone Audit.
 
+When the local operator cannot reach the database, the manual `Demo retained-copy
+discard` workflow provides the same CLI using the existing `CM_NEON_LIVE_OPERATOR_*`
+secrets. It is dispatch-only, restricted to the exact accepted current Main source,
+the owner actor/triggering actor and first attempt. It shares concurrency exclusion
+with the existing Live media operator. Ordinary debug/TLS overrides are rejected
+before secret allocation. No new credential or automatic schedule is introduced.
+
+Select one absolute UTC expiry, at most thirty minutes ahead, and retain it across
+the operation. Run `preflight` with `kind=none`, empty decision/manifest inputs and
+the exact Main SHA. It verifies actual Demo authority, complete current/historical
+references/custody, every current provider object and retained database integrity.
+Retain its bounded receipt and actual manifest digest. A normal provider outage,
+missing object, unknown metadata or exhausted time reserve fails this preflight.
+
+For each explicit `discard`, select `room` or `catalogue`, the same actual manifest
+and expiry, exact current Main SHA, and decision `saas38-pre-pilot-demo-only`. The
+workflow repeats the complete preflight, requires an unchanged manifest, then runs
+exactly one existing CLI batch with a ninety-second child limit. It independently
+re-reads and verifies all objects after that batch and checks unchanged metadata/
+custody plus the exact per-kind retained-copy count reduction. Unexpected output,
+count/content changes or expired execution cannot produce `batch_verified`.
+The internal execution budget is three minutes within the eight-minute job limit.
+
+An artifact retains only fixed status, source/run identity, observation/expiry,
+manifest digest, aggregate counts and the validated CLI receipt. It contains no
+Tenant/asset identities, bytes, URLs or credentials. A failed or ambiguous command
+is not retried; reconcile its retained state before a separately justified action.
+Independent zero-remainder reconciliation and authorized media/readiness checks
+are still needed after the final batch. A `preflight_verified` or `batch_verified`
+receipt does not itself claim the whole deletion or pre-Pilot recovery is complete.
+
 ## Dependency review
 
 The official S3 SDK is pinned to `3.1147.0` in manifest, lockfile and architecture policy.
