@@ -256,6 +256,15 @@ overlapping transfer boundaries or infer actual monthly compute/storage from loc
 
 ## Same-workload topology evidence matrix
 
+Owner decision (16 October 2026): SaaS 3.8 acceptance covers the existing Render
+application + Neon database/object-storage topology. Its representative workload,
+security/integrity, provider-transfer and attributable cost requirements remain
+mandatory. Real alternative-topology measurements are transferred to the explicit
+open follow-up [application #321](https://github.com/floriankreutzer/conference-manager/issues/321),
+not claimed passed or required for SaaS 3.8 closure. The alternative columns below
+remain that follow-up's evidence specification. No new resources, plan change or
+migration is authorized by this decision.
+
 | Evidence | Current Render + Neon Frankfurt split | Render application + Render PostgreSQL in one region | Application with approved private access to Neon |
 | --- | --- | --- | --- |
 | Canonical security/workload | Same accepted API, schema, three roles and dataset required | Identical workload and checks required | Identical workload and checks required |
@@ -276,7 +285,8 @@ Select a topology only after comparing measured latency/error objectives, total 
 data residency, private-network eligibility, backup/restore/rollback, tenant and session integrity,
 operational ownership, migration risk and remaining allowance. Record which criteria fail or remain
 unknown. SaaS 3.8 #269 and release #270 retain representative business workload, provider transfer,
-object/CDN and worker measurements, cost modeling and the current topology-comparison scope.
+object/CDN and worker measurements and cost modeling for the existing topology.
+Actual alternative-topology measurements remain open under #321 as specified above.
 Per-optimization monetary proof from #265–#267 is consolidated there; no invoice savings is implied.
 The owner transferred the full actual database/object recovery/rollback exercise to #318 in the
 existing Pilot milestone: execute it last immediately before external Pilot release and #73's

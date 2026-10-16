@@ -95,19 +95,31 @@ test('isolated PostgreSQL manager review/reject load preserves Tenant, versions,
       }
       assert.equal(await command(0, managers[0].cookie, managerTokens[0], 'reject', 2), 409);
       const rows = await persistence.pool.query(`SELECT r.tenant_id,r.id,r.request_version AS version,r.status,
-        h.request_version,h.operation,h.actor_user_id,h.actor_role_at_action,h.correlation_id,
-        a.actor_user_id AS audit_actor,a.correlation_id AS audit_correlation
+        h.request_version,h.operation,h.actor_user_id,h.actor_role_at_action,h.correlation_id,h.record,
+        a.actor_user_id AS audit_actor,a.correlation_id AS audit_correlation,
+        a.target_type,a.target_id,a.previous_state,a.new_state,a.outcome
         FROM requests r JOIN request_revisions h ON h.tenant_id=r.tenant_id AND h.request_id=r.id
-        JOIN audit_events a ON a.tenant_id=h.tenant_id AND a.correlation_id=h.correlation_id AND a.action=$2
+        JOIN audit_events a ON a.tenant_id=h.tenant_id AND a.correlation_id=h.correlation_id
+          AND a.target_id=h.request_id AND a.action=$2
         WHERE r.id=ANY($1::text[]) AND h.request_version IN (2,3)`, [responses.map(x => x.id), AUDIT_ACTION.REQUEST_TRANSITION]);
       assert.equal(rows.rowCount, target * 2);
+      assert.equal(new Set(rows.rows.map(row => `${row.id}:${row.request_version}`)).size, target * 2);
       const expected = new Map(responses.map((row, index) => [row.id, employees[index]]));
+      const originals = new Map(responses.map(row => [row.id, row]));
       for (const row of rows.rows) {
         const fixture = expected.get(row.id); const manager = managers[tenants.indexOf(fixture.tenantId)];
         assert.equal(row.tenant_id, fixture.tenantId); assert.equal(row.status, 'Rejected');
         assert.equal(Number(row.version), 3); assert.equal(row.operation, 'transitioned');
         assert.equal(row.actor_user_id, manager.userId); assert.equal(row.audit_actor, manager.userId);
         assert.equal(row.actor_role_at_action, 'conference_manager'); assert.equal(row.correlation_id, row.audit_correlation);
+        const reviewing = Number(row.request_version) === 2;
+        assert.ok([2, 3].includes(Number(row.request_version)));
+        assert.equal(row.target_type, 'request'); assert.equal(row.target_id, row.id); assert.equal(row.outcome, 'success');
+        assert.deepEqual(row.previous_state, { status: reviewing ? 'Submitted' : 'In Review' });
+        assert.deepEqual(row.new_state, { status: reviewing ? 'In Review' : 'Rejected' });
+        assert.equal(row.record.status, row.new_state.status); assert.equal(row.record.version, Number(row.request_version));
+        assert.deepEqual(row.record.details, originals.get(row.id).details);
+        assert.deepEqual(row.record.pricing, originals.get(row.id).pricing);
       }
       assert.equal(Number((await persistence.pool.query('SELECT count(*) AS count FROM requests')).rows[0].count), created);
       assert.equal(Number((await persistence.pool.query('SELECT count(*) AS count FROM request_revisions')).rows[0].count), created * 3);
