@@ -356,3 +356,29 @@ protocol fixtures are only helper/security evidence. This is a sequential two-ph
 manager decision baseline, not a mixed booking journey, confirmed/provider booking,
 1,000 simultaneous requests, real egress/cost, cold-start or topology acceptance.
 Availability, media and worker evidence remain separately required under #269/#270.
+
+## Bounded availability operation baseline (#269)
+
+The isolated PostgreSQL18 test `availability-load-evidence.test.js` exercises the
+canonical authenticated/CSRF-protected availability POST with100and1,000Employee
+sessions, ten Tenants and sixteen concurrent loopback clients. The same Room IDs
+collide across Tenants; distinct canonical Microsoft bindings, integrations and Room
+mailboxes feed the real provider factory. Only its external `lookupFreeBusy` boundary
+is a deterministic in-process fixture, with exact Tenant/reference/address/slot checks
+and different per-Tenant outcomes. All actual provider writes remain forbidden.
+
+Measure two independent warm phases: canonical provider-factory/health-persistence work
+with the external lookup simulated, and an existing local Submitted Request conflict
+which must make zero provider calls. Capture response/request-body bytes, local PG
+protocol traffic/queries and latency only after exact response, expected provider-call
+count, unchanged Request count, exact per-Tenant health persistence, cross-Tenant404,
+missing/wrong-CSRF403, injected-Tenant-selector400 and HMAC audit checks pass. Fixture
+creation, session/CSRF resolution and pool warmup are outside measured phases.
+
+These phases are not actual Graph latency/traffic/cost, a real-provider availability
+acceptance, a mixed sixteen-operation replay, cold-start evidence or current-topology
+capacity. Do not model all20,000monthly lookups as the cheaper local-conflict path or
+choose an unapproved provider/local-conflict traffic ratio. No actual measurement is
+claimed until the exact candidate's native PostgreSQL job succeeds; complete candidate
+and independent Main gates remain separate acceptance requirements. No live load,
+provider connection/credential, schema, seed, plan, quota or deployment changes.
