@@ -170,3 +170,20 @@ export async function measureRequestTransitions({ requestIds, csrfTokens, transi
     expectedVersion: transition === 'start_review' ? 1 : 2 }));
   return measureRequests(options, requestIds.map(id => `/api/v1/requests/${id}/transitions`), writes);
 }
+
+// A fixed existing Room and canonical UTC slot; no resubmission selector or arbitrary URL.
+export async function measureRoomAvailability({ startsAt, endsAt, csrfTokens, ...options }) {
+  const start = Date.parse(startsAt); const end = Date.parse(endsAt);
+  if (typeof startsAt !== 'string' || typeof endsAt !== 'string'
+    || !Number.isFinite(start) || !Number.isFinite(end)
+    || new Date(start).toISOString() !== startsAt || new Date(end).toISOString() !== endsAt
+    || end <= start || end - start > 86400000
+    || !Array.isArray(options.cookies) || options.cookies.length > 1000
+    || !Array.isArray(csrfTokens) || csrfTokens.length !== options.cookies.length
+    || csrfTokens.some(value => typeof value !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(value))) {
+    throw new Error('LOAD_AVAILABILITY_INVALID');
+  }
+  const body = JSON.stringify({ roomId: 'room', startsAt, endsAt });
+  return measureRequests(options, '/api/v1/application/room-availability',
+    csrfTokens.map(csrfToken => ({ csrfToken, body, expectedStatus: 200 })));
+}
