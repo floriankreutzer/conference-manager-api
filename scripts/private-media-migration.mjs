@@ -2,13 +2,19 @@ import { loadDatabaseConfig } from '../src/config.js';
 import { createNeonObjectStorage, validateNeonStorageConfig } from '../src/media/neon-object-storage.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
 import { createPostgresMediaObjectRepository } from '../src/persistence/postgres/media-object-repository.js';
-import { createPostgresMediaBackfillRepository } from '../src/persistence/postgres/media-backfill-repository.js';
+import { createPostgresMediaBackfillRepository,
+  createPostgresDemoMediaCopyDiscardRepository } from '../src/persistence/postgres/media-backfill-repository.js';
+import { LIVE_MEDIA_TARGET } from './support/live-media-operator-config.mjs';
+import { assertOperatorIdentity } from './support/live-media-operator-db.mjs';
 
 const [execute, phase, kind, evidenceArgument, ...extra] = process.argv.slice(2);
 const evidencePattern = /^--restore-evidence-sha256=([a-f0-9]{64})$/;
-if (execute !== '--execute' || !['copy', 'rollback', 'purge'].includes(phase)
+const demoDiscard = phase === 'discard-demo-copy';
+const demoDiscardDecision = '--demo-data-discard=saas38-pre-pilot-demo-only';
+if (execute !== '--execute' || !['copy', 'rollback', 'purge', 'discard-demo-copy'].includes(phase)
   || !['room', 'catalogue'].includes(kind) || extra.length
-  || (phase === 'purge' ? !evidencePattern.test(evidenceArgument || '') : evidenceArgument !== undefined)) {
+  || (demoDiscard ? evidenceArgument !== demoDiscardDecision
+    : phase === 'purge' ? !evidencePattern.test(evidenceArgument || '') : evidenceArgument !== undefined)) {
   throw new Error('MEDIA_MIGRATION_EXECUTE_CONTRACT_REQUIRED');
 }
 if (!process.env.MEDIA_MIGRATION_DATABASE_URL || !process.env.MEDIA_MIGRATION_DATABASE_ROLE
@@ -18,11 +24,27 @@ if (!process.env.MEDIA_MIGRATION_DATABASE_URL || !process.env.MEDIA_MIGRATION_DA
   || process.env.MEDIA_MIGRATION_DATABASE_ROLE === process.env.DEMO_PLATFORM_DATABASE_ROLE) {
   throw new Error('MEDIA_MIGRATION_SEPARATE_OPERATOR_IDENTITY_REQUIRED');
 }
+if (demoDiscard) {
+  let target;
+  try { target = new URL(process.env.MEDIA_MIGRATION_DATABASE_URL); }
+  catch { throw new Error('MEDIA_DEMO_COPY_DISCARD_TARGET_REQUIRED'); }
+  if (!['postgres:', 'postgresql:'].includes(target.protocol) || target.hostname !== LIVE_MEDIA_TARGET.databaseHost
+    || target.pathname !== '/' + LIVE_MEDIA_TARGET.databaseName
+    || target.username !== LIVE_MEDIA_TARGET.operatorRole
+    || process.env.MEDIA_MIGRATION_DATABASE_ROLE !== LIVE_MEDIA_TARGET.operatorRole
+    || (target.port && target.port !== '5432') || target.search || target.hash) {
+    throw new Error('MEDIA_DEMO_COPY_DISCARD_TARGET_REQUIRED');
+  }
+}
 const mode = process.env.NODE_ENV || 'production';
 const database = loadDatabaseConfig({ ...process.env, DATABASE_URL: process.env.MEDIA_MIGRATION_DATABASE_URL }, mode);
 const settings = validateNeonStorageConfig({ endpoint: process.env.MEDIA_OPERATOR_ENDPOINT,
   region: process.env.MEDIA_OPERATOR_REGION, bucket: process.env.MEDIA_OPERATOR_BUCKET,
   accessKeyId: process.env.MEDIA_OPERATOR_ACCESS_KEY_ID, secretAccessKey: process.env.MEDIA_OPERATOR_SECRET_ACCESS_KEY });
+if (demoDiscard && (settings.endpoint !== `https://${LIVE_MEDIA_TARGET.branchId}.storage.c-5.eu-central-1.aws.neon.tech`
+  || settings.region !== LIVE_MEDIA_TARGET.region || settings.bucket !== LIVE_MEDIA_TARGET.bucket)) {
+  throw new Error('MEDIA_DEMO_COPY_DISCARD_STORAGE_TARGET_REQUIRED');
+}
 const restoreEvidenceSha256 = evidenceArgument?.match(evidencePattern)?.[1] || null;
 const pool = createPostgresPool({ mode, ...database, databasePoolMax: 2 });
 let storage;
@@ -32,6 +54,7 @@ try {
     has_table_privilege(current_user, 'public.media_object_inventory', 'DELETE') AS maintenance_authority`);
   if (identity.rows[0]?.role !== process.env.MEDIA_MIGRATION_DATABASE_ROLE) throw new Error('MEDIA_MIGRATION_ROLE_MISMATCH');
   if (identity.rows[0]?.maintenance_authority !== true) throw new Error('MEDIA_MIGRATION_OPERATOR_PRIVILEGES_REQUIRED');
+  if (demoDiscard) await assertOperatorIdentity(pool, LIVE_MEDIA_TARGET.operatorRole);
   if (!await isPostgresSchemaReady(pool)) throw new Error('MEDIA_MIGRATION_SCHEMA_NOT_READY');
   if (kind === 'catalogue') {
     const overlay = await pool.query('SELECT max(version)::integer AS version FROM demo_schema_migrations');
@@ -39,12 +62,16 @@ try {
   }
   storage = createNeonObjectStorage(settings);
   const mediaObjects = createPostgresMediaObjectRepository(pool, { storage, includeDemoCatalogue: kind === 'catalogue' });
-  const repository = createPostgresMediaBackfillRepository(pool, { mediaObjects, includeDemoCatalogue: kind === 'catalogue' });
+  const repository = demoDiscard
+    ? createPostgresDemoMediaCopyDiscardRepository(pool, { mediaObjects })
+    : createPostgresMediaBackfillRepository(pool, { mediaObjects, includeDemoCatalogue: kind === 'catalogue' });
   // Exactly one bounded batch per invocation. Repeated commands are idempotent and operator-driven;
   // there is no unbounded drain loop, deployment hook or automatically scheduled migration.
-  const result = await repository.runBatch({ phase, kind, restoreEvidenceSha256 });
+  const result = demoDiscard ? await repository.discardBatch({ kind })
+    : await repository.runBatch({ phase, kind, restoreEvidenceSha256 });
   process.stdout.write(`${JSON.stringify({ status: result.hasMore ? 'incomplete' : 'completed',
-    ...result, restoreEvidenceSha256 })}\n`);
+    ...result, restoreEvidenceSha256,
+    ...(demoDiscard ? { demoDataDiscardDecision: 'saas38-pre-pilot-demo-only' } : {}) })}\n`);
 } catch (error) {
   const code = ['MEDIA_MIGRATION_ROLE_MISMATCH', 'MEDIA_MIGRATION_OPERATOR_PRIVILEGES_REQUIRED', 'MEDIA_MIGRATION_SCHEMA_NOT_READY',
     'MEDIA_MIGRATION_DEMO_SCHEMA_NOT_READY'].includes(error?.message) ? error.message : 'MEDIA_MIGRATION_FAILED';

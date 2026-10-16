@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { Client } from 'pg';
 import { loadDatabaseConfig } from '../src/config.js';
 import { mediaObjectReference } from '../src/media/object-storage-contract.js';
+import { createPostgresDemoMediaCopyDiscardRepository } from '../src/persistence/postgres/media-backfill-repository.js';
 import {
   readLiveMediaInventory, assertNoOtherDatabaseSessions, assertOperatorIdentity,
 } from '../scripts/support/live-media-operator-db.mjs';
@@ -138,6 +139,12 @@ test('Live operator inventory verifies real PostgreSQL current and historical cu
     await assert.rejects(assertOperatorIdentity(client, 'cm_demo_migration'), {
       message: 'LIVE_MEDIA_IDENTITY_INVALID', code: 'LIVE_MEDIA_IDENTITY_INVALID',
     });
+    const discard = createPostgresDemoMediaCopyDiscardRepository({
+      query: client.query.bind(client),
+      async connect() { throw new Error('UNEXPECTED_MUTATION_CONNECTION'); },
+    }, { mediaObjects: { async read() { throw new Error('UNEXPECTED_PROVIDER_ACCESS'); } } });
+    await assert.rejects(discard.discardBatch({ kind: 'room' }),
+      { message: 'MEDIA_DEMO_COPY_DISCARD_AUTHORITY_REQUIRED' });
   });
 
   await t.test('includes inactive historical-only Room bytes and all Catalogue metadata', async () => {

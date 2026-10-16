@@ -162,6 +162,85 @@ Rollback does not delete objects or retire custody. Schema downgrade remains gua
 explicit coordinated inventory/retention reconciliation is complete. The unchanged 30-day orphan
 policy and retained backups must govern that separate operation.
 
+### Demo-only retained-copy discard
+
+The owner's pre-Pilot Demo decision permits deletion of obsolete retained PostgreSQL
+media-byte copies without an additional retention period or a new restore exercise.
+The distinct `createPostgresDemoMediaCopyDiscardRepository` port implements only this
+exception. The ordinary backfill port still rejects this phase, and ordinary `purge`
+still requires its genuine coordinated restore-evidence digest.
+
+Use the existing protected migration identity and operator storage configuration:
+
+```sh
+node scripts/private-media-migration.mjs --execute discard-demo-copy room --demo-data-discard=saas38-pre-pilot-demo-only
+node scripts/private-media-migration.mjs --execute discard-demo-copy catalogue --demo-data-discard=saas38-pre-pilot-demo-only
+```
+
+The command confines the database URL to the existing live Demo endpoint/database
+and `cm_demo_migration` role. It verifies the actual bounded operator role, privileges,
+schema044, Demo overlay009 and canonical Demo sentinel before provider allocation.
+The separate repository repeats the exact Demo identity/schema/sentinel check before
+selecting candidates. It cannot be enabled through a browser, runtime flag, deployment
+hook or a forged restore hash.
+
+Each command handles at most ten object-backed assets with retained bytes, using
+the existing dispatch deadline, Tenant/asset row locks and revision rechecks. It
+reads and verifies the exact current provider object and independently verifies the
+retained database copy before clearing only `bytes`. It does not change object keys,
+metadata, current/historical references, canonical fixtures, inventory custody,
+Operations objects, audit records or backups. A concurrent reset/replacement/other
+operator causes the existing lock/revision protections to skip or reject the row;
+an incomplete batch is not complete-inventory evidence. No fallback to database
+bytes is introduced. The provider must remain available for normal object-mode reads.
+
+Before execution, retain a fresh complete metadata/reference/custody inventory and
+verify all selected object copies. After each explicit batch retain the minimized
+JSON receipt; independently reconcile zero eligible retained copies, unchanged
+manifest/references and provider bytes after both kinds complete. Verify normal
+authorized media reads and existing Customer/Operations readiness. Integrity or
+provider failures prevent that asset's update; an ambiguous database commit requires
+independent reconciliation before any retry. Previously committed assets remain
+discarded and require their verified objects for rollback. There is no automatic
+drain or retry loop.
+
+This exception does not establish full paired provider recovery or positive rollback
+acceptance. The final pre-Pilot recovery gate remains separately required and must
+use a current database/object basis after cleanup. The ordinary 30-day orphan-object
+retention rule and Production purge controls remain unchanged. Source/tests are
+preparation; dated execution and cleanup receipts belong in the milestone Audit.
+
+When the local operator cannot reach the database, the manual `Demo retained-copy
+discard` workflow provides the same CLI using the existing `CM_NEON_LIVE_OPERATOR_*`
+secrets. It is dispatch-only, restricted to the exact accepted current Main source,
+the owner actor/triggering actor and first attempt. It shares concurrency exclusion
+with the existing Live media operator. Ordinary debug/TLS overrides are rejected
+before secret allocation. No new credential or automatic schedule is introduced.
+
+Select one absolute UTC expiry, at most thirty minutes ahead, and retain it across
+the operation. Run `preflight` with `kind=none`, empty decision/manifest inputs and
+the exact Main SHA. It verifies actual Demo authority, complete current/historical
+references/custody, every current provider object and retained database integrity.
+Retain its bounded receipt and actual manifest digest. A normal provider outage,
+missing object, unknown metadata or exhausted time reserve fails this preflight.
+
+For each explicit `discard`, select `room` or `catalogue`, the same actual manifest
+and expiry, exact current Main SHA, and decision `saas38-pre-pilot-demo-only`. The
+workflow repeats the complete preflight, requires an unchanged manifest, then runs
+exactly one existing CLI batch with a ninety-second child limit. It independently
+re-reads and verifies all objects after that batch and checks unchanged metadata/
+custody plus the exact per-kind retained-copy count reduction. Unexpected output,
+count/content changes or expired execution cannot produce `batch_verified`.
+The internal execution budget is three minutes within the eight-minute job limit.
+
+An artifact retains only fixed status, source/run identity, observation/expiry,
+manifest digest, aggregate counts and the validated CLI receipt. It contains no
+Tenant/asset identities, bytes, URLs or credentials. A failed or ambiguous command
+is not retried; reconcile its retained state before a separately justified action.
+Independent zero-remainder reconciliation and authorized media/readiness checks
+are still needed after the final batch. A `preflight_verified` or `batch_verified`
+receipt does not itself claim the whole deletion or pre-Pilot recovery is complete.
+
 ## Dependency review
 
 The official S3 SDK is pinned to `3.1147.0` in manifest, lockfile and architecture policy.
