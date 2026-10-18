@@ -7,7 +7,7 @@ import { createPostgresPersistence } from '../src/persistence/postgres/index.js'
 import { createPostgresPlatformPersistence } from '../src/persistence/postgres/platform-index.js';
 import { createCustomerComposition } from '../src/customer-composition.js';
 import { createPlatformComposition } from '../src/platform-composition.js';
-import { targetLoopbackJson } from '../tests/support/target-load-http.js';
+import { targetLoopbackJson, targetLoopbackResponse } from '../tests/support/target-load-http.js';
 import { targetLoadEnvironment, RUN } from '../tests/support/target-load-environment.js';
 import { createBookingJourneyFixture } from './support/booking-journey-fixture.js';
 
@@ -60,6 +60,8 @@ test('target compositions run real PostgreSQL with separate restricted roles and
     'platform_microsoft_fleet_snapshots', 'platform_microsoft_fleet_capabilities']) {
     await pool.query(`GRANT SELECT,INSERT,UPDATE,DELETE ON public.${identifier(table)} TO ${identifier(platform)}`);
   }
+  await pool.query(`GRANT SELECT,INSERT ON public.platform_audit_events,public.platform_audit_checkpoints TO ${identifier(platform)}`);
+  await pool.query(`GRANT SELECT,UPDATE ON public.platform_audit_chain_state TO ${identifier(platform)}`);
   const originalUrl = new URL(process.env.DATABASE_URL); const servers = {}; const environments = {}; const scoped = {};
   const localConfig = (config, role) => {
     const url = new URL(originalUrl); url.username = role; url.password = '';
@@ -102,26 +104,26 @@ test('target compositions run real PostgreSQL with separate restricted roles and
     }
     runtimes.push(runtime);
   }
-  const origins = Object.fromEntries(Object.entries(servers).map(([surface, server]) =>
-    [surface, `http://127.0.0.1:${server.address().port}`]));
-  const employee = fixture.employees[0];
-  const session = await fetch(origins.customer + '/api/v1/session', { headers: { Cookie: employee.cookie } });
-  assert.equal(session.status, 200); const identity = await session.json();
+  const employee = fixture.employees[0]; const customerHost = new URL(environments.customer.LOAD_PUBLIC_ORIGIN).host;
+  const session = await targetLoopbackJson(servers.customer, '/api/v1/session', customerHost, { Cookie: employee.cookie });
+  assert.equal(session.status, 200); const identity = session.body;
   assert.equal(identity.user.id, employee.userId); assert.equal(identity.tenant.id, employee.tenantId);
   const path = `/api/v1/tenant/rooms/room/media/${fixture.images[0].assetId}`;
   const before = fixture.objectCounters().reads;
   for (const cookie of [undefined, fixture.employees[1].cookie]) {
-    const denied = await fetch(origins.customer + path, { headers: cookie ? { Cookie: cookie } : {} });
+    const denied = await targetLoopbackJson(servers.customer, path, customerHost, cookie ? { Cookie: cookie } : {});
     assert.equal(denied.status, cookie ? 404 : 401);
   }
   assert.equal(fixture.objectCounters().reads, before);
-  const image = await fetch(origins.customer + path, { headers: { Cookie: employee.cookie } });
+  const image = await targetLoopbackResponse(servers.customer, path, customerHost,
+    { headers: { Cookie: employee.cookie }, maxBytes: 2 * 1024 * 1024 });
   assert.equal(image.status, 200);
-  assert.equal(createHash('sha256').update(Buffer.from(await image.arrayBuffer())).digest('hex'), fixture.images[0].sha256);
+  assert.equal(createHash('sha256').update(image.body).digest('hex'), fixture.images[0].sha256);
   for (const surface of ['customer', 'platform']) {
-    const response = await fetch(origins[surface] + '/__load/observe',
-      { headers: { Authorization: `Bearer ${environments[surface].LOAD_OBSERVER_TOKEN}` } });
-    assert.equal(response.status, 200); const facts = await response.json();
+    const response = await targetLoopbackJson(servers[surface], '/__load/observe',
+      new URL(environments[surface].LOAD_PUBLIC_ORIGIN).host,
+      { Authorization: `Bearer ${environments[surface].LOAD_OBSERVER_TOKEN}` });
+    assert.equal(response.status, 200); const facts = response.body;
     assert.equal(facts.activity.workerFailures, 0); assert.equal(facts.surface, surface);
     if (surface === 'platform') assert.ok(facts.metricTotals.platform_projection_batches_total > 0);
     else {
@@ -136,13 +138,21 @@ test('target compositions run real PostgreSQL with separate restricted roles and
     await assert.rejects(scoped[surface].pool.query("UPDATE public.saas38_load_scope SET release_sha='invalid'"),
       error => error.code === '42501');
   }
-  const deniedCsrf = await fetch(origins.customer + '/api/v1/application/room-availability', { method: 'POST',
+  const deniedCsrf = await targetLoopbackResponse(servers.customer, '/api/v1/application/room-availability', customerHost,
+    { method: 'POST',
     headers: { Cookie: employee.cookie, Origin: environments.customer.LOAD_PUBLIC_ORIGIN, 'Content-Type': 'application/json' },
     body: '{}' });
   assert.equal(deniedCsrf.status, 403);
   const host = new URL(environments.platform.LOAD_PUBLIC_ORIGIN).host;
   const deniedCustomer = await targetLoopbackJson(servers.platform, '/api/v1/platform/session', host, { Cookie: employee.cookie });
   assert.equal(deniedCustomer.status, 401);
+  const deniedAudit = await pool.query(`SELECT action,outcome,operator_id,target_tenant_id,metadata
+    FROM public.platform_audit_events ORDER BY sequence`);
+  assert.equal(deniedAudit.rowCount, 1);
+  assert.equal(deniedAudit.rows[0].action, 'platform.authentication.failed');
+  assert.equal(deniedAudit.rows[0].outcome, 'failure');
+  assert.equal(deniedAudit.rows[0].operator_id, null); assert.equal(deniedAudit.rows[0].target_tenant_id, null);
+  assert.equal(deniedAudit.rows[0].metadata.reasonCode, 'customer_session_rejected');
   const login = await targetLoopbackJson(servers.platform, '/api/v1/platform/auth/microsoft/login', host);
   assert.equal(login.status, 503); assert.equal(login.body.error.code, 'PLATFORM_IDENTITY_UNAVAILABLE');
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_oidc_auth_transactions')).rows[0].count, 0);
