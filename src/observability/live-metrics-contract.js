@@ -5,8 +5,8 @@ export const LIVE_METRICS = Object.freeze({
   neon_transfer: ['providers', 'bytes', 'project_window'],
   render_customer_bandwidth: ['providers', 'megabytes', 'hourly_sample'],
   render_operations_bandwidth: ['providers', 'megabytes', 'hourly_sample'],
-  render_customer_memory: ['providers', 'bytes', 'hourly_sample'],
-  render_operations_memory: ['providers', 'bytes', 'hourly_sample'],
+  render_customer_memory: ['providers', 'bytes', 'provider_sample'],
+  render_operations_memory: ['providers', 'bytes', 'provider_sample'],
   resend_daily_sent: ['providers', 'count', 'provider_window'],
   resend_daily_limit: ['providers', 'count', 'provider_window'],
   resend_monthly_sent: ['providers', 'count', 'provider_window'],
@@ -42,6 +42,12 @@ export function normalizeLiveMeasurements(input, observedAt) {
         requireProductCondition(productInstant(row.periodEnd) === end
           && productInstant(row.periodStart) === end - DAY_MS);
       }
+      if (basis === 'provider_sample') {
+        const end = productInstant(row.periodEnd);
+        // Retain older hour-aligned reports while admitting a fine-grained current query.
+        requireProductCondition(end <= sourceTime && sourceTime - end < 3_600_000
+          && productInstant(row.periodStart) === end - DAY_MS);
+      }
       if (basis === 'retained_runtime_today') {
         requireProductCondition(productInstant(row.periodStart) === Math.floor(sourceTime / DAY_MS) * DAY_MS
           && productInstant(row.periodEnd) === sourceTime
@@ -59,7 +65,7 @@ export function normalizeLiveMeasurements(input, observedAt) {
         requireProductCondition(productInstant(row.periodStart) === start
           && [start + DAY_MS - 1, start + DAY_MS].includes(productInstant(row.periodEnd)));
       }
-      requireProductCondition(basis === 'hourly_sample'
+      requireProductCondition(basis === 'hourly_sample' || basis === 'provider_sample'
         ? productInstant(row.sampleAt) <= productInstant(row.observedAt)
           && productInstant(row.sampleAt) >= productInstant(row.periodStart)
           && productInstant(row.sampleAt) <= productInstant(row.periodEnd)

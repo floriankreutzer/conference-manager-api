@@ -1,0 +1,68 @@
+name: Migrate Hosted Demo Provider Metrics
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_main_sha:
+        description: Exact accepted API Main commit for the additive 045 / 011 migration
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosted-shared-demo-database-initialize
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: ${{ github.ref == 'refs/heads/main' && inputs.expected_main_sha == github.sha }}
+    environment:
+      name: hosted-demo-initialize
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NODE_ENV: test
+      DEMO_RUNTIME: shared-postgres-v1
+      DEMO_SEED_VERSION: saas-3.7-three-demo-customers-v1
+      DEMO_CUSTOMER_ORIGIN: https://conference-manager-demo.onrender.com
+      DEMO_PLATFORM_ORIGIN: https://conference-manager-ops-demo.onrender.com
+      DEMO_DATABASE_SSL: verify-full
+      DEMO_CUSTOMER_DATABASE_URL: ${{ secrets.HOSTED_DEMO_CUSTOMER_DATABASE_URL }}
+      DEMO_PLATFORM_DATABASE_URL: ${{ secrets.HOSTED_DEMO_PLATFORM_DATABASE_URL }}
+      DEMO_RESET_DATABASE_URL: ${{ secrets.HOSTED_DEMO_RESET_DATABASE_URL }}
+      DEMO_MIGRATION_DATABASE_URL: ${{ secrets.HOSTED_DEMO_MIGRATION_DATABASE_URL }}
+    steps:
+      - name: Require the exact reviewed Main ref
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" || "$GITHUB_SHA" != "$EXPECTED_MAIN_SHA" ]]; then
+            echo "Provider metrics migration requires the exact reviewed Main commit." >&2
+            exit 1
+          fi
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Generate migration-only parser secrets
+        shell: bash
+        run: |
+          for key in \
+            DEMO_CUSTOMER_SESSION_SECRET \
+            DEMO_CUSTOMER_CSRF_SECRET \
+            DEMO_PLATFORM_SESSION_SECRET \
+            DEMO_PLATFORM_CSRF_SECRET \
+            DEMO_TENANT_AUDIT_HMAC_SECRET; do
+            value="$(openssl rand -hex 32)"
+            echo "::add-mask::$value"
+            echo "$key=$value" >> "$GITHUB_ENV"
+          done
+      - name: Apply checked additive migrations and verify retained counts
+        run: node scripts/migrate-demo-provider-metrics.mjs

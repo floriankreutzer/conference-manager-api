@@ -7,7 +7,7 @@ import { createPostgresPlatformProjectionRepository } from '../src/persistence/p
 import { subscribePlatformProjectionNotifications } from '../src/persistence/postgres/platform-projection-notifications.js';
 import { DEMO_FIXTURE, DEMO_FIXTURE_CHECKSUM } from '../src/demo/fixture.js';
 import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
-import { migrateDemoUp } from '../scripts/demo-db-migrations.mjs';
+import { migrateDemoUp, rollbackLatestDemoMigration } from '../scripts/demo-db-migrations.mjs';
 
 const NORTHWIND = DEMO_FIXTURE.tenants[0].id;
 
@@ -127,12 +127,20 @@ test('outbox commits atomically, rebuilds current state, survives lost notificat
       [NORTHWIND]);
   }
   assert.equal((await restarted.consumeBatch()).poisonCount, 0);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Product-source overlay 011.
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Lifecycle grants overlay 010.
+  assert.equal(await rollbackLatest(pool), true); // Empty Request lifecycle schema 045.
   await assert.rejects(rollbackLatest(pool), /PLATFORM_PROJECTION_OUTBOX_ROLLBACK_REQUIRES_DRAIN/);
+  await migrateUp(pool); // Restore the current reset readiness contract after the 044 guard probe.
+  await migrateDemoUp(pool, { roles });
   await pool.query('DROP TRIGGER reject_outbox_projection_test ON platform_tenant_readiness_snapshots');
   await pool.query('DROP FUNCTION reject_outbox_projection_test()');
   await pool.query("UPDATE tenants SET display_name = 'Recovered committed source' WHERE id = $1", [NORTHWIND]);
   assert.equal((await restarted.consumeBatch()).refreshedCount, 1);
   assert.equal((await reset.reset(input)).checksum, DEMO_FIXTURE_CHECKSUM);
   assert.equal((await restarted.consumeBatch()).refreshedCount, 3);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty Request lifecycle schema 045.
   assert.equal(await rollbackLatest(pool), true);
 });

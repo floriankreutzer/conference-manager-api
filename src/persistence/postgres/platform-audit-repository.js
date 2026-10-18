@@ -12,6 +12,41 @@ export const PLATFORM_AUDIT_CHECKPOINT_INTERVAL = 32;
 const MAX_PAGE_SIZE = 100;
 const MAX_VERIFICATION_EVENTS = MAX_PAGE_SIZE * PLATFORM_AUDIT_CHECKPOINT_INTERVAL;
 
+// A pure integrity primitive shared by the scoped audit reader and the closed
+// Demo aggregate collector. No operator scope or read authority is created here.
+export function createPlatformAuditRowVerifier({ hmacSecret } = {}) {
+  const sign = createSigners(hmacSecret);
+  return (rows, checkpointRow = null) => {
+    let previousHash = null;
+    let expectedSequence = 1;
+    try {
+      if (checkpointRow) {
+        const checkpoint = {
+          eventCount: Number(checkpointRow.event_count),
+          terminalEventHash: checkpointRow.terminal_event_hash,
+          previousCheckpointHash: checkpointRow.previous_checkpoint_hash,
+          createdAt: instant(checkpointRow.created_at),
+        };
+        if (Number(checkpointRow.integrity_version) !== 1
+          || !secureEqual(checkpointRow.checkpoint_hash, sign.checkpoint(checkpoint))) return false;
+        previousHash = checkpoint.terminalEventHash;
+        expectedSequence = checkpoint.eventCount + 1;
+      }
+      if (rows.length > MAX_VERIFICATION_EVENTS) return false;
+      for (const row of rows) {
+        const stored = mapEventRow(row);
+        const event = normalizePlatformAuditEvent(stored);
+        if (stored.integrityVersion !== 1 || stored.sequence !== expectedSequence
+          || stored.previousHash !== previousHash
+          || !secureEqual(stored.eventHash, sign.event(event, stored.sequence, previousHash))) return false;
+        previousHash = stored.eventHash;
+        expectedSequence += 1;
+      }
+      return true;
+    } catch { return false; }
+  };
+}
+
 const EVENT_COLUMNS = `
   sequence,
   operator_id,
@@ -33,6 +68,7 @@ const EVENT_COLUMNS = `
   event_hash,
   integrity_version
 `;
+export { EVENT_COLUMNS as PLATFORM_AUDIT_EVENT_COLUMNS };
 
 function secureEqual(left, right) {
   if (typeof left !== 'string' || typeof right !== 'string') return false;
@@ -45,7 +81,7 @@ function instant(value) {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
-function mapEventRow(row) {
+export function mapEventRow(row) {
   if (!row) return null;
   return Object.freeze({
     sequence: Number(row.sequence),
@@ -158,6 +194,7 @@ export function createPostgresPlatformAuditRepository(pool, { hmacSecret } = {})
     throw new TypeError('POSTGRES_POOL_REQUIRED');
   }
   const sign = createSigners(hmacSecret);
+  const verifyRows = createPlatformAuditRowVerifier({ hmacSecret });
 
   async function appendWithClient(client, eventValue, { expectedTargetTenantId } = {}) {
     let event = normalizePlatformAuditEvent(eventValue);
@@ -257,44 +294,6 @@ export function createPostgresPlatformAuditRepository(pool, { hmacSecret } = {})
       values: [sequence, eventHash, terminalCheckpointHash],
     });
     return mapEventRow(inserted.rows[0]);
-  }
-
-  async function verifyRows(rows, checkpointRow) {
-    let previousHash = null;
-    let expectedSequence = 1;
-    if (checkpointRow) {
-      const checkpoint = {
-        eventCount: Number(checkpointRow.event_count),
-        terminalEventHash: checkpointRow.terminal_event_hash,
-        previousCheckpointHash: checkpointRow.previous_checkpoint_hash,
-        createdAt: instant(checkpointRow.created_at),
-      };
-      if (
-        Number(checkpointRow.integrity_version) !== 1
-        || !secureEqual(checkpointRow.checkpoint_hash, sign.checkpoint(checkpoint))
-      ) return false;
-      previousHash = checkpoint.terminalEventHash;
-      expectedSequence = checkpoint.eventCount + 1;
-    }
-    if (rows.length > MAX_VERIFICATION_EVENTS) return false;
-    for (const row of rows) {
-      let stored;
-      try {
-        stored = mapEventRow(row);
-        const event = normalizePlatformAuditEvent(stored);
-        if (
-          stored.integrityVersion !== 1
-          || stored.sequence !== expectedSequence
-          || stored.previousHash !== previousHash
-          || !secureEqual(stored.eventHash, sign.event(event, stored.sequence, previousHash))
-        ) return false;
-      } catch {
-        return false;
-      }
-      previousHash = stored.eventHash;
-      expectedSequence += 1;
-    }
-    return true;
   }
 
   return Object.freeze({

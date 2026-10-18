@@ -123,6 +123,14 @@ HTTP 201 with `{ "schemaVersion": 3, "request": <public Request> }`; the nested 
 has the accepted composition schema version (2 or 3), Request version 1 and persisted
 `requesterAttribution`.
 
+The exact outer create envelope also permits optional `workflowId`, an opaque UUID reserved through
+the separate [Request lifecycle contract](REQUEST-LIFECYCLE.md). It locates the authenticated
+Employee's server-owned start; it is never Request ownership, state or clock authority. The same
+transaction binds that ID to the first immutable Request revision and closes the start. Canonically
+identical retries replay that revision; different draft content conflicts. The draft shape, pricing,
+configuration revalidation and resubmission contract are unchanged. Existing callers that omit the
+reference remain supported and do not receive invented historical start times.
+
 Employees obtain selectable facts and all five freshness tokens from
 `GET /api/v1/application/catalog`. That endpoint reads the current drafting
 catalogue, the non-authoritative effective `bookingPolicy` snapshot, and

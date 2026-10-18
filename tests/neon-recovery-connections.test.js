@@ -44,7 +44,7 @@ function fixture({ env = environment(), connectError, closeError, queryHook, clo
         if (sql.startsWith('SELECT session_user')) return { rows: [{ login: role, role,
           database: 'conference_manager_demo_shared', read_only: 'on', observed_at: new Date(clock?.wall ?? now) }] };
         if (sql.startsWith('SELECT current_user')) return { rows: [{ role, database: 'conference_manager_demo_shared' }] };
-        if (sql.includes('max(version)')) return { rows: [{ runtime: 44, overlay: 9 }] };
+        if (sql.includes('max(version)')) return { rows: [{ runtime: 45, overlay: 11 }] };
         if (sql.includes('to_regclass')) return { rows: [{ marker: null }] };
         if (sql.includes('pg_catalog.pg_class')) return { rows: [{ kind: 'v', owner: 'cm_demo_migration' }] };
         if (sql.includes('FROM public.neon_recovery_acceptance')) return { rows: [{ ...marker }] };
@@ -99,7 +99,7 @@ test('DNS, TLS, authentication and permission failures stop on the first role an
 test('schema failure survives a separate cleanup error; cleanup-only failure is never counted as success', async () => {
   const closeError = Object.assign(new Error('hidden'), { code: 'ECONNRESET' });
   const f = fixture({ closeError, queryHook: ({ sql }) => sql.includes('max(version)')
-    ? { rows: [{ runtime: 43, overlay: 9 }] } : undefined });
+    ? { rows: [{ runtime: 43, overlay: 11 }] } : undefined });
   const report = await f.execute();
   assert.equal(report.failedStage, 'schema');
   assert.equal(report.code, 'NEON_RECOVERY_SCHEMA_INVALID');

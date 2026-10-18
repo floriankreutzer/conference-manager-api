@@ -15,7 +15,7 @@ import {
   seedDemoBusinessState,
 } from './demo-fixture-state.js';
 
-const PRODUCTION_SCHEMA_VERSION = 44;
+const PRODUCTION_SCHEMA_VERSION = 45;
 const CHECKSUM_PATTERN = /^[0-9a-f]{64}$/;
 const DATABASE_NAME_PATTERN = /^conference_manager_demo_[a-z0-9_]{1,48}$/;
 const DATABASE_ROLE_PATTERN = /^[a-z][a-z0-9_]{2,62}$/;
@@ -93,6 +93,7 @@ export const DEMO_RESET_TABLES = Object.freeze([
   'request_attribution_migration_state',
   'tenant_room_prices',
   'request_revisions',
+  'request_workflow_starts',
   'tenant_bulk_transfer_receipts',
   'tenant_room_media_assets',
   'platform_operators',
@@ -136,6 +137,7 @@ const EXPECTED_TABLES = Object.freeze([
   'schema_migrations',
   'demo_schema_migrations',
   'demo_database_sentinel',
+  'demo_product_source_epoch',
 ].sort());
 const TRUNCATE_SQL = `TRUNCATE TABLE ${DEMO_RESET_TABLES
   .map((table) => `public.${table}`)

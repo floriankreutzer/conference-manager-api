@@ -23,6 +23,7 @@ const META_TABLES = Object.freeze([
   'schema_migrations',
   'demo_schema_migrations',
   'demo_database_sentinel',
+  'demo_product_source_epoch',
   'media_object_inventory',
 ]);
 
@@ -36,7 +37,7 @@ function validSentinel(overrides = {}) {
     reset_role: 'demo_reset',
     current_database: 'conference_manager_demo_test',
     current_role: 'demo_reset',
-    production_schema_versions: Array.from({ length: 44 }, (_, index) => index + 1),
+    production_schema_versions: Array.from({ length: 45 }, (_, index) => index + 1),
     ...overrides,
   };
 }
@@ -256,6 +257,7 @@ test('reset is atomic, transaction-gated, reseeds deterministic state and return
   );
   const truncate = pool.queries.find(({ name }) => name === 'demo-reset-truncate').text;
   assert.doesNotMatch(truncate, /RESTART\s+IDENTITY/i);
+  assert.doesNotMatch(truncate, /demo_product_source_epoch/);
   assert.match(truncate, /public\.request_attribution_migration_state/);
   assert.equal(DEMO_RESET_TABLES.includes('request_attribution_migration_state'), true);
   const attributionState = pool.queries.find(

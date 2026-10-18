@@ -1,0 +1,95 @@
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, readdir, copyFile, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
+import { loadDatabaseConfig } from '../src/config.js';
+import { createPostgresPool } from '../src/persistence/postgres/pool.js';
+import { withDemoMetricsMigrationGate } from '../src/persistence/postgres/demo-metrics-migration-gate.js';
+import { DEMO_RUNTIME_ADVISORY_LOCK } from '../src/demo/runtime-contract.js';
+import { migrateUp } from '../scripts/db-migrations.mjs';
+import { migrateDemoUp } from '../scripts/demo-db-migrations.mjs';
+
+test('reviewed metrics upgrade preserves retained Demo data, excludes concurrent runtime and verifies migration identity', async (t) => {
+  const database = loadDatabaseConfig(process.env, 'test');
+  if (!database.databaseUrl) throw new Error('DATABASE_URL_REQUIRED_FOR_INTEGRATION_TEST');
+  const admin = createPostgresPool({ mode: 'test', ...database });
+  const name = `conference_manager_demo_metrics_${process.pid}`;
+  const roles = Object.fromEntries(['customer', 'platform', 'reset', 'migration'].map((surface) => [surface,
+    `cm_metrics_${surface}_${process.pid}`]));
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'cm-metrics-migrations-'));
+  let raw;
+  t.after(async () => {
+    try {
+      await raw?.end();
+      await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+      for (const role of Object.values(roles)) await admin.query(`DROP ROLE IF EXISTS "${role}"`);
+      await rm(directory, { recursive: true, force: true });
+    } finally { await admin.end(); }
+  });
+  for (const role of Object.values(roles)) await admin.query(`CREATE ROLE "${role}" NOLOGIN`);
+  await admin.query(`CREATE DATABASE "${name}" OWNER "${roles.migration}"`);
+  const url = new URL(database.databaseUrl); url.pathname = `/${name}`;
+  raw = createPostgresPool({ mode: 'test', ...database, databaseUrl: url.toString() });
+  const pool = { async connect() {
+    const client = await raw.connect();
+    await client.query(`SET ROLE "${roles.migration}"`);
+    return client;
+  } };
+  for (const [source, maximum] of [['migrations', 44], ['demo-migrations', 9]]) {
+    await mkdir(path.join(directory, source));
+    for (const filename of await readdir(source)) {
+      if (Number(filename.slice(0, 3)) <= maximum) await copyFile(path.join(source, filename), path.join(directory, source, filename));
+    }
+  }
+  await migrateUp(pool, path.join(directory, 'migrations'));
+  const runtimeRoles = { customer: roles.customer, platform: roles.platform, reset: roles.reset };
+  // The historical overlay runner required 044; apply its exact checked SQL through the canonical runner for this fixture.
+  // Demo-specific role settings and the separate ledger remain distinct.
+  const historical = await import('../scripts/db-migrations.mjs');
+  const overlays = await historical.loadMigrations(path.join(directory, 'demo-migrations'));
+  const setup = await pool.connect();
+  try {
+    await setup.query(`CREATE TABLE demo_schema_migrations (version integer PRIMARY KEY,
+      name varchar(128) NOT NULL, checksum char(64) NOT NULL, applied_at timestamptz NOT NULL DEFAULT clock_timestamp())`);
+    for (const migration of overlays) {
+      await setup.query('BEGIN');
+      for (const [surface, role] of Object.entries(runtimeRoles)) {
+        await setup.query('SELECT set_config($1, $2, true)', [`conference_manager.demo_${surface}_role`, role]);
+      }
+      await setup.query(migration.up);
+      await setup.query('INSERT INTO demo_schema_migrations(version, name, checksum) VALUES ($1, $2, $3)',
+        [migration.version, migration.name, migration.checksum]);
+      await setup.query('COMMIT');
+    }
+    await setup.query('INSERT INTO tenants (id, display_name, status) VALUES ($1, $2, $3)',
+      ['11111111-1111-4111-8111-111111111111', 'Synthetic retained migration tenant', 'pending']);
+  } finally { setup.release(); }
+  const expected = { ...roles, database: name };
+  let upgrades = 0;
+  const upgrade = async () => {
+    upgrades += 1;
+    const contender = await raw.connect();
+    try {
+      const locked = await contender.query('SELECT pg_try_advisory_lock_shared($1) AS acquired', [DEMO_RUNTIME_ADVISORY_LOCK]);
+      assert.equal(locked.rows[0].acquired, false);
+    } finally { contender.release(); }
+    await migrateUp(pool);
+    await migrateDemoUp(pool, { roles: runtimeRoles });
+  };
+  await assert.rejects(withDemoMetricsMigrationGate(pool, { ...expected, customer: 'cm_wrong_customer' }, upgrade), /PRECONDITIONS/);
+  assert.equal(upgrades, 0);
+  assert.deepEqual(await withDemoMetricsMigrationGate(pool, expected, upgrade), {
+    canonicalVersion: 45, demoVersion: 11, resetPerformed: false, retainedCountsMatch: true,
+  });
+  assert.equal(upgrades, 1);
+  assert.equal((await raw.query('SELECT count(*)::integer AS count FROM tenants')).rows[0].count, 1);
+  assert.equal((await withDemoMetricsMigrationGate(pool, expected, upgrade)).retainedCountsMatch, true);
+  assert.equal(upgrades, 2);
+  const releaseClient = await raw.connect();
+  try {
+    const releaseCheck = await releaseClient.query('SELECT pg_try_advisory_lock_shared($1) AS acquired', [DEMO_RUNTIME_ADVISORY_LOCK]);
+    assert.equal(releaseCheck.rows[0].acquired, true);
+    await releaseClient.query('SELECT pg_advisory_unlock_shared($1)', [DEMO_RUNTIME_ADVISORY_LOCK]);
+  } finally { releaseClient.release(); }
+});

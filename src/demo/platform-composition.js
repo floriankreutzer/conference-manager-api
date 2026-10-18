@@ -1,5 +1,6 @@
 import { createPostgresDemoPersonaRepository } from '../persistence/postgres/demo-persona-repository.js';
 import { createPostgresDemoResetRepository } from '../persistence/postgres/demo-reset-repository.js';
+import { createPostgresDemoProductRuntimeRepository } from '../persistence/postgres/demo-product-runtime-repository.js';
 import { createPostgresDemoRuntimeReadiness } from '../persistence/postgres/demo-runtime-readiness.js';
 import { withDemoRuntimeSharedGate } from '../persistence/postgres/demo-runtime-gate.js';
 import { createPostgresPlatformPersistence } from '../persistence/postgres/platform-index.js';
@@ -84,6 +85,15 @@ export function createDemoPlatformComposition({
     || selectedResetPool === selectedGatePool
   ) throw new TypeError('DEMO_PLATFORM_POOLS_MUST_BE_DISTINCT');
 
+  const selectedProductDelivery = productDelivery || createPostgresDemoProductRuntimeRepository({
+    pool: selectedPersistence.pool,
+    gatePool: selectedGatePool,
+    expectedDatabaseName: config.databaseTarget.database,
+    expectedRole: config.databases.platform.role,
+    tenantAuditHmacSecret: runtimeConfig.tenantAuditHmacSecret,
+    platformAuditHmacSecret: runtimeConfig.auditHmacSecret,
+  });
+
   const personaRepository = createPostgresDemoPersonaRepository({ pool: selectedPersistence.pool });
   const resetRepository = createPostgresDemoResetRepository({
     pool: selectedResetPool,
@@ -106,7 +116,7 @@ export function createDemoPlatformComposition({
       trafficGate,
       accessGate,
       providerUsage,
-      productDelivery,
+      productDelivery: selectedProductDelivery,
       liveMetrics,
       operationsSources,
     }),

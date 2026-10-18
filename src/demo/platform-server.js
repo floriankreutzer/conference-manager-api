@@ -84,7 +84,7 @@ export function createDemoPlatformHttpServer(options) {
       liveMetrics: options.liveMetrics })) return;
     if (handleDemoProviderUsage({ request, response, accessGate: options.accessGate,
       providerUsage: options.providerUsage })) return;
-    if (handleDemoProductDelivery({ request, response, accessGate: options.accessGate,
+    if (await handleDemoProductDelivery({ request, response, accessGate: options.accessGate,
       productDelivery: options.productDelivery })) return;
     const path = requestPath(request, config.publicOrigin);
     if (path === LIVENESS_PATH || (request.method === 'POST' && path === RESET_PATH)) {

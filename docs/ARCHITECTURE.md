@@ -159,7 +159,7 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
   semantic checksum; `src/persistence/postgres/demo-reset-repository.js` owns the sentinel-verified,
   exclusively locked, transactional reset/readback contract.
 - `scripts/demo-db-migrations.mjs` owns the independent checksum-protected Demo overlay migration
-  ledger after verifying the exact canonical schema `001..044`.
+  ledger after verifying the exact canonical schema `001..045`.
 - `scripts/platform-break-glass-grant.mjs` and `scripts/platform-recovery-fallback.mjs` are the only local privileged mutation wrappers. They accept credentials only through fixed descriptors and require live Platform sessions plus a dual-control, exact Tenant/permission-bound, one-use grant. The retired process-local Tenant-operator runtime and package entry point are prohibited.
 - `scripts/check-architecture.mjs` prevents architecture, migration and composition drift.
 - `scripts/check-security-baseline.mjs` prevents drift between the documented Pilot/Production security baseline and executable controls.
@@ -250,7 +250,7 @@ See `docs/AUDIT.md` for the normative event/integrity contract.
 
 Schema ownership lives in `migrations/`. Migrations are paired up/down files, numerically versioned, checksum protected and serialized by a PostgreSQL advisory lock.
 
-The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 44.
+The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 45.
 
 - Migration 001 establishes Tenant-owned product structures.
 - Migration 002 adds User security-version state and server-side sessions.
@@ -298,6 +298,7 @@ The application never auto-migrates at startup. Deployment automation runs migra
 - Migration 043 adds canonical private Room-object metadata and immutable durable upload intents. PostgreSQL delivery remains active until the separately accepted backfill/cutover.
 
 - Migration 044 atomically coalesces Platform projection invalidations per Tenant, with protected dispatch, bounded retries and an empty-queue rollback guard.
+- Migration 045 records content-free Request workflow starts and terminal submission/explicit abandonment, with immutable identity, Tenant/owner constraints and audit-atomic writes.
 
 Every migration that removes security/business evidence includes a fail-closed rollback guard.
 
@@ -331,8 +332,8 @@ listening. Its HTTP reset path performs the same bounded refresh after reset com
 returning success. Projection failure remains visible and is not represented as a rolled-back
 authoritative reset.
 
-The canonical schema now includes migrations `001..044`; the Demo-only overlay is independently tracked
-as `demo-migrations/001..009`. Neither application process auto-migrates or auto-seeds. See
+The canonical schema now includes migrations `001..045`; the Demo-only overlay is independently tracked
+as `demo-migrations/001..011`. Neither application process auto-migrates or auto-seeds. See
 `docs/SHARED-DEMO-RUNTIME.md` for provisioning and operations.
 
 ## Request composition architecture

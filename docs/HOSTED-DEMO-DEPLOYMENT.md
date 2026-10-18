@@ -34,8 +34,8 @@ For a reviewed code-only release with no schema/seed/storage change:
    prove provider configuration changed. Merge selected values without replacing
    the complete environment or reading unrelated secrets.
 4. Deploy the accepted API Main commit to both services and verify the actual
-   provider-selected commit. Current Main requires canonical schema044 / Demo
-   overlay009 readiness. Initial database creation, migration and deterministic
+   provider-selected commit. Current Main requires canonical schema045 / Demo
+   overlay011 readiness. Initial database creation, migration and deterministic
    reset are separate operations and are not part of this code-only procedure.
 5. Verify both complete deployment identity artifacts, dependency readiness,
    selected delivered assets, the owner password boundary and Customer exclusion
@@ -45,6 +45,45 @@ For a reviewed code-only release with no schema/seed/storage change:
 6. Retain exact source/signing/deployment/HTTP evidence and the actual acceptance
    limits. Bounded HTTP checks do not establish full Hosted business/reset or
    paired database/object recovery acceptance.
+
+## Additive Provider metrics upgrade (045 / 011)
+
+The request lifecycle and private runtime Product source require canonical migration
+045 and Demo overlays 010/011. This upgrade retains existing business and audit rows;
+it is separate from the initial deterministic-reset workflow.
+
+1. Accept the exact API/Application pair through the existing protected Main checks,
+   including PostgreSQL 18, all permanent three-customer/reset matrix rows and the
+   new lifecycle/aggregate/migration regressions.
+2. Run **Migrate Hosted Demo Provider Metrics** on Main with `expected_main_sha`
+   equal to that accepted immutable API commit. It reuses the existing
+   `hosted-demo-initialize` environment and its migration credential; no credential
+   is copied to Render or a new environment. All existing environment approvals
+   remain applicable. The workflow and command fail closed on any other source.
+3. The source-bounded command `scripts/migrate-demo-provider-metrics.mjs` validates
+   the existing Demo sentinel, database, separate role identities, migration-ledger
+   ownership and an exact existing 044/009 or resumable 045/009..011 state. An exclusive
+   existing Demo advisory lock prevents concurrent runtime/reset work while the
+   existing checksum-verified canonical and Demo migration runners execute. It does
+   not invoke reset/reseed, manual DDL repair, credential or plan changes.
+4. Require the successful 045/011 readback and unchanged retained Tenant, Request,
+   revision and audit row counts. Both runtime surfaces then need the reviewed new
+   build because they share strict schema readiness. Requests can be temporarily
+   unavailable during this coordinated schema/build transition; no old-build
+   readiness or zero-downtime claim is made.
+5. Deploy and verify the exact paired build identities and readiness on both existing
+   Render services. Verify a private v2 Product read with actual source coverage and
+   a new start/submit or explicitly discarded draft through the authorized UI.
+   Older clients remain compatible; missing historical start clocks remain unknown.
+6. Update the existing provider-watch task to use the reviewed normalizers, perform
+   one real collection, and require independent private-object byte readback before
+   claiming that the new daily provider/delivery observations are available.
+
+The migration command is intentionally limited to this source sequence. A later
+schema version requires its own reviewed operating procedure. A failed migration,
+source/identity mismatch, environment approval or runtime acceptance cannot be bypassed
+by ad hoc SQL, use of a runtime/reset credential as migration owner, or fabricated
+Product coverage. The existing reset workflow remains unchanged.
 
 ## Target topology
 
@@ -182,7 +221,7 @@ The workflow performs, in order:
 
 1. fail-closed verification that all four database URL secrets exist;
 2. locked dependency installation;
-3. canonical PostgreSQL migrations `001..044` through the migration role;
+3. canonical PostgreSQL migrations `001..045` through the migration role;
 4. Demo overlay migrations and least-privilege grants;
 5. deterministic reset/reseed with the fixed seed version and semantic checksum.
 
@@ -341,7 +380,7 @@ A cold start may delay the first page load. It must never cause fallback to brow
 
 ## Rollback and recovery
 
-A frontend-only rollback may redeploy an approved compatible frontend ref while the current API/schema remain in place. A backend rollback across migration 034 is not a simple prior-ref redeploy. The following historical authorization-epoch boundary is not a supported direct downgrade from later schemas: every intervening populated migration guard and compatible release check must pass; prefer a forward fix. Current Main requires schema044 / overlay009 and the current storage-custody contract; the older schema042 procedure below is historical.
+A frontend-only rollback may redeploy an approved compatible frontend ref while the current API/schema remain in place. A backend rollback across migration 034 is not a simple prior-ref redeploy. The following historical authorization-epoch boundary is not a supported direct downgrade from later schemas: every intervening populated migration guard and compatible release check must pass; prefer a forward fix. Current Main requires schema045 / overlay011 and the current storage-custody contract; the older schema042 procedure below is historical.
 
 Before crossing that boundary, quiesce both Demo origins because they share canonical schema readiness. Use only the protected migration owner to change canonical migration bookkeeping; migration 034 down must leave Customer revocations intact. The target backend, fixture and canonical schema must be one reviewed compatible set, and all Customer and Platform sessions must be re-established. In the historical schema042 re-forward procedure, quiesce again, apply the complete canonical sequence through that target including migration 034 before traffic, deploy the exact compatible pair and verify readiness plus old-cookie/fresh-session checks.
 
@@ -400,10 +439,11 @@ defined in [Request Attribution](REQUEST-ATTRIBUTION.md). Existing Tenant, role,
 object ownership and session/CSRF boundaries remain required for these reads and writes.
 
 
-## Schema 44 / overlay 9 initial-upgrade procedure
+## Historical schema 44 / overlay 9 initial-upgrade procedure
 
-This is the separate initial schema-upgrade procedure, not a code-only redeploy.
-Current Main requires schema044 / overlay009; this procedure does not independently
+This records the earlier initial schema-upgrade procedure. The current additive
+045 / 011 procedure is defined above and preserves the existing Demo dataset.
+The historical release required schema044 / overlay009; this procedure does not independently
 prove the state of any live database. Quiesce both existing services before applying the complete canonical sequence through 044 and
 Demo overlays through 009 with the protected migration identity. Run the supported deterministic
 reset, deploy the exact compatible pair and verify all release gates before serving traffic.

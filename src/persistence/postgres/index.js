@@ -19,6 +19,7 @@ import {
 } from './microsoft365-room-observation-repository.js';
 import { createPostgresOidcTransactionRepository } from './oidc-transaction-repository.js';
 import { createPostgresRequestRepository } from './request-repository.js';
+import { createPostgresRequestDraftWorkflowRepository } from './request-draft-workflow-repository.js';
 import { createPostgresSessionRepository } from './session-repository.js';
 import { createPostgresTenantLocationRepository } from './tenant-location-repository.js';
 import { createPostgresTenantOrganizationRepository } from './tenant-organization-repository.js';
@@ -44,6 +45,7 @@ export function createPostgresPersistence(config, { mediaObjectStorage = null, i
   });
   const calendarAuthorityGuard = createPostgresMicrosoft365CalendarAuthorityGuard();
   const applicationRepository = createPostgresApplicationRepository(pool, { auditRepository });
+  const requestWorkflowRepository = createPostgresRequestDraftWorkflowRepository(pool, { auditRepository });
   const tenantRepository = createPostgresTenantRepository(pool, { auditRepository });
   const bookingReferenceRepository = createPostgresBookingReferenceRepository(pool, { auditRepository });
   const bookingChangeRepository = createPostgresBookingChangeRepository(pool, { auditRepository });
@@ -82,6 +84,7 @@ export function createPostgresPersistence(config, { mediaObjectStorage = null, i
   return Object.freeze({
     pool,
     applicationRepository,
+    requestWorkflowRepository,
     auditRepository,
     bookingReferenceRepository,
     bookingChangeRepository,
