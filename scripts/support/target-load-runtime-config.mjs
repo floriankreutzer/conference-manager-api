@@ -45,7 +45,7 @@ export function loadTargetRuntimeConfig(env, now = Date.now()) {
       valid(probe && Object.keys(probe).length === 4
         && Object.keys(probe).every(key => ['tenantId', 'assetId', 'sha256', 'byteLength'].includes(key)));
       storageProbe = mediaObjectReference({ ...probe, kind: 'room', contentType: 'image/webp' });
-      storageConfig = createNeonBranchStorageConfig({ branch: env.LOAD_STORAGE_BRANCH,
+      storageConfig = createNeonBranchStorageConfig({ branch: env.LOAD_STORAGE_BRANCH, cluster: env.LOAD_STORAGE_CLUSTER,
         bucket: scope.storageBucket, accessKeyId: env.LOAD_STORAGE_ACCESS_KEY_ID,
         secretAccessKey: env.LOAD_STORAGE_SECRET_ACCESS_KEY });
       config = loadConfig({ NODE_ENV: 'production', HOST: '0.0.0.0', PORT: port,
@@ -58,6 +58,7 @@ export function loadTargetRuntimeConfig(env, now = Date.now()) {
         ENTRA_CLIENT_ID: randomUUID(), ENTRA_CLIENT_SECRET: secret(), OIDC_TRANSACTION_SECRET: secret() });
     } else {
       valid(env.LOAD_STORAGE_PROBE_JSON === undefined && env.LOAD_STORAGE_BRANCH === undefined
+        && env.LOAD_STORAGE_CLUSTER === undefined
         && env.LOAD_STORAGE_ACCESS_KEY_ID === undefined
         && env.LOAD_STORAGE_SECRET_ACCESS_KEY === undefined);
       const identityTenant = randomUUID();

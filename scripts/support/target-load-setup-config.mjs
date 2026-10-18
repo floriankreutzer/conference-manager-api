@@ -22,7 +22,7 @@ export function loadTargetSetupConfig(env, now = Date.now()) {
     const population = Number(populationValue);
     valid(typeof env.LOAD_CSRF_SECRET === 'string' && Buffer.byteLength(env.LOAD_CSRF_SECRET) >= 32);
     const database = new URL(scope.databaseUrl); database.search = '';
-    const storageConfig = createNeonBranchStorageConfig({ branch: env.LOAD_STORAGE_BRANCH,
+    const storageConfig = createNeonBranchStorageConfig({ branch: env.LOAD_STORAGE_BRANCH, cluster: env.LOAD_STORAGE_CLUSTER,
       bucket: scope.storageBucket, accessKeyId: env.LOAD_STORAGE_ACCESS_KEY_ID,
       secretAccessKey: env.LOAD_STORAGE_SECRET_ACCESS_KEY });
     const config = { ...loadConfig({ NODE_ENV: 'test', PUBLIC_ORIGIN: 'http://127.0.0.1:3000',

@@ -5,6 +5,14 @@ capacity acceptance. Accepted operation baselines remain in SAAS-3.8-LOAD-EVIDEN
 
 ## Scope and authority
 
+The installer and Customer may set `LOAD_STORAGE_CLUSTER` to the independently
+verified Frankfurt storage cluster string `5` or `7`; omission preserves `5` for
+existing callers. Read the actual storage hostname from provider-generated
+storage evidence, separately from the database hostname. Never infer one cluster
+from the other or supply an arbitrary endpoint. Platform rejects this storage
+setting. The pure provider configuration and architecture gate retain exactly one
+reviewed endpoint template, closed cluster choices, fixed region and TLS authority.
+
 The existing Render + Neon topology remains the target. The owner's total EUR10
 completion authorization does not establish unused budget, recurring-plan authority,
 actual monthly cost acceptance or permission to weaken any security/test gate.

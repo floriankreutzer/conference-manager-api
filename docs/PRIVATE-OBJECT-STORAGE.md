@@ -48,8 +48,16 @@ repository ownership/attachment checks must run before every storage call.
 ## Provider boundary
 
 Only a configured Frankfurt Neon branch endpoint of the form
-`https://br-….storage.c-5.eu-central-1.aws.neon.tech` is accepted. Bucket and credential
-formats are validated. The bucket must be provisioned as private and verified through the
+`https://br-….storage.c-5.eu-central-1.aws.neon.tech` or
+`https://br-….storage.c-7.eu-central-1.aws.neon.tech` is accepted by the shared
+validator, including operator migration callers. The pure provider helper permits
+only the exact cluster strings `5` and `7`; omission preserves `5` for existing
+callers. Read the actual storage hostname independently from provider storage
+evidence; do not infer it from the database cluster. No other cluster, region,
+authority, port, path or query is admitted. Target-only installer/Customer callers
+may supply the verified cluster through `LOAD_STORAGE_CLUSTER`; target Platform rejects
+that setting. Bucket and credential formats are validated. The bucket must be
+provisioned as private and verified through the
 provider control plane before activation. No browser credentials, public bucket, redirects,
 presigned browser URLs, SDK payloads or provider errors enter the API contract.
 

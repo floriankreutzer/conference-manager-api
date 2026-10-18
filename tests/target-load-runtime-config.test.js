@@ -18,6 +18,8 @@ test('target config uses canonical production contracts with verified TLS and se
   assert.notEqual(customer.config.databaseUrl, platform.config.databaseUrl);
   const representative = loadTargetRuntimeConfig({ ...env(), LOAD_RATE_PROFILE: 'representative1000' }, NOW);
   assert.equal(representative.config.rateLimitMax, 1000); assert.equal(representative.profile, 'representative1000');
+  assert.match(loadTargetRuntimeConfig({ ...env(), LOAD_STORAGE_CLUSTER: '7' }, NOW).storageConfig.endpoint,
+    /\.storage\.c-7\.eu-central-1\.aws\.neon\.tech$/);
 });
 
 test('target config rejects production aliases, swapped surface secrets, mutable builds and insecure destinations safely', () => {
@@ -29,10 +31,13 @@ test('target config rejects production aliases, swapped surface secrets, mutable
     { LOAD_RATE_PROFILE: 'unbounded' }, { LOAD_PUBLIC_ORIGIN: 'http://private.invalid' },
     { LOAD_STORAGE_PROBE_JSON: undefined }, { LOAD_STORAGE_PROBE_JSON: '{\"url\":\"https://private.invalid\"}' },
     { LOAD_CSRF_SECRET: undefined }, { LOAD_AUDIT_HMAC_SECRET: undefined },
+    { LOAD_STORAGE_CLUSTER: '6' }, { LOAD_STORAGE_CLUSTER: '7/redirect' },
     { LOAD_DATABASE_URL: env().LOAD_DATABASE_URL.replace('verify-full', 'require') }];
   for (const change of changes) assert.throws(() => loadTargetRuntimeConfig({ ...env(), ...change }, NOW),
     /^Error: LOAD_RUNTIME_CONFIG_INVALID$/);
   assert.throws(() => loadTargetRuntimeConfig({ ...env('platform'), LOAD_STORAGE_SECRET_ACCESS_KEY: 'private-storage-secret' }, NOW),
+    /^Error: LOAD_RUNTIME_CONFIG_INVALID$/);
+  assert.throws(() => loadTargetRuntimeConfig({ ...env('platform'), LOAD_STORAGE_CLUSTER: '7' }, NOW),
     /^Error: LOAD_RUNTIME_CONFIG_INVALID$/);
   assert.throws(() => loadTargetRuntimeConfig(env(), NOW + 60_000), /^Error: LOAD_RUNTIME_CONFIG_INVALID$/);
   const aliased = env('platform'); aliased.LOAD_TENANT_AUDIT_HMAC_SECRET = aliased.LOAD_AUDIT_HMAC_SECRET;

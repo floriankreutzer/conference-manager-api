@@ -1,6 +1,6 @@
 const EXISTING_URL_BOUNDARIES = new Set(['src/config.js', 'src/domain/site-guest-information.js']);
 const NEON_CONFIG_FILE = 'src/media/neon-storage-config.js';
-const NEON_ENDPOINT_TEMPLATE = 'https://${branch}.storage.c-5.eu-central-1.aws.neon.tech';
+const NEON_ENDPOINT_TEMPLATE = 'https://${branch}.storage.c-${cluster}.eu-central-1.aws.neon.tech';
 const PROVIDER_CONFIG_AUTHORITY = /\b(?:import|require|process|fetch|globalThis)\b|\b(?:request|connect|createConnection)\s*\(/;
 
 export function outboundConfigurationViolation(file, content) {
