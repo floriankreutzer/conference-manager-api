@@ -40,24 +40,28 @@ test('storage configuration rejects arbitrary destinations, credentials and malf
   for (const change of [{ endpoint: 'http://127.0.0.1' }, { endpoint: `${config.endpoint}/redirect` },
     { endpoint: `${config.endpoint}.evil.example` }, { endpoint: 'https://user:secret@br-test.storage.c-5.eu-central-1.aws.neon.tech' },
     { endpoint: `${config.endpoint}?token=secret` }, { region: 'us-east-1' }, { bucket: '../escape' },
-    { endpoint: config.endpoint.replace('c-5', 'c-6') },
+    { endpoint: config.endpoint.replace('c-5', 'c-0') },
     { endpoint: config.endpoint.replace('c-5', 'c-07') },
+    { endpoint: config.endpoint.replace('c-5', 'c-1234567') },
+    { endpoint: `${config.endpoint}\n` },
     { endpoint: config.endpoint.replace('eu-central-1', 'us-east-1') },
     { accessKeyId: 'short' }, { secretAccessKey: 'bad\nsecret-material' }]) {
     assert.throws(() => validateNeonStorageConfig({ ...config, ...change }), /CONFIG_INVALID/);
   }
 });
 
-test('reviewed Frankfurt cluster seven retains canonical SDK endpoint and retry controls', () => {
-  const endpoint = config.endpoint.replace('c-5', 'c-7'); let options;
-  const storage = createNeonObjectStorage({ ...config, endpoint }, { clientFactory(value) {
-    options = value; return { destroy() {} };
-  } });
-  try {
-    assert.equal(options.endpoint, endpoint); assert.equal(options.region, 'eu-central-1');
-    assert.equal(options.maxAttempts, 1); assert.equal(options.followRegionRedirects, false);
-    assert.equal(options.forcePathStyle, true);
-  } finally { storage.close(); }
+test('provider-assigned Frankfurt clusters retain canonical SDK endpoint and retry controls', () => {
+  for (const cluster of ['7', '8']) {
+    const endpoint = config.endpoint.replace('c-5', `c-${cluster}`); let options;
+    const storage = createNeonObjectStorage({ ...config, endpoint }, { clientFactory(value) {
+      options = value; return { destroy() {} };
+    } });
+    try {
+      assert.equal(options.endpoint, endpoint); assert.equal(options.region, 'eu-central-1');
+      assert.equal(options.maxAttempts, 1); assert.equal(options.followRegionRedirects, false);
+      assert.equal(options.forcePathStyle, true);
+    } finally { storage.close(); }
+  }
 });
 
 test('adapter pins SigV4 client, path style, deadlines, concurrency and no automatic retry', async () => {
@@ -146,9 +150,10 @@ test('parallel requests are bounded without an unbounded waiting queue', async (
 });
 
 test('real SDK signs only the fixed endpoint and neither follows redirects nor retries service failures', async () => {
-  for (const statusCode of [301, 302, 307, 503]) {
+  for (const [cluster, statusCode] of ['5', '8'].flatMap(cluster => [301, 302, 307, 503].map(status => [cluster, status]))) {
+    const providerConfig = { ...config, endpoint: config.endpoint.replace('c-5', `c-${cluster}`) };
     const calls = [];
-    const storage = createNeonObjectStorage(config, { clientFactory: (options) => new S3Client({ ...options,
+    const storage = createNeonObjectStorage(providerConfig, { clientFactory: (options) => new S3Client({ ...options,
       requestHandler: { destroy() {}, async handle(request) {
         calls.push(request);
         return { response: { statusCode, headers: { location: 'http://127.0.0.1/internal',
@@ -159,7 +164,7 @@ test('real SDK signs only the fixed endpoint and neither follows redirects nor r
     try {
       await assert.rejects(storage.get(reference), { code: 'MEDIA_STORAGE_UNAVAILABLE' });
       assert.equal(calls.length, 1);
-      assert.equal(calls[0].hostname, new URL(config.endpoint).hostname);
+      assert.equal(calls[0].hostname, new URL(providerConfig.endpoint).hostname);
       assert.equal(calls[0].protocol, 'https:');
       assert.equal(calls[0].path, `/${config.bucket}/${mediaObjectReference(reference).key}`);
       assert.match(calls[0].headers.authorization, /^AWS4-HMAC-SHA256 /);

@@ -19,10 +19,12 @@ test('installer config keeps privileged credentials local and binds fixed fixtur
   assert.equal(value.origins.customer, `https://cm-saas38-load-${RUN}-customer.onrender.com`);
   assert.match(loadTargetSetupConfig({ ...setupEnv(), LOAD_STORAGE_CLUSTER: '7' }, NOW).storageConfig.endpoint,
     /\.storage\.c-7\.eu-central-1\.aws\.neon\.tech$/);
+  assert.match(loadTargetSetupConfig({ ...setupEnv(), LOAD_STORAGE_CLUSTER: '8' }, NOW).storageConfig.endpoint,
+    /\.storage\.c-8\.eu-central-1\.aws\.neon\.tech$/);
   for (const change of [{ RENDER: 'true' }, { LOAD_FIXTURE_USERS: '1e3' }, { LOAD_FIXTURE_USERS: '100000' },
     { LOAD_CSRF_SECRET: undefined }, { LOAD_SERVICE_NAME: 'conference-manager-demo' },
     { LOAD_STORAGE_PROBE_JSON: 'private-prior-manifest' }, { DATABASE_URL: 'private-existing-database' },
-    { LOAD_STORAGE_CLUSTER: '6' }, { LOAD_STORAGE_CLUSTER: '7?query' }]) {
+    { LOAD_STORAGE_CLUSTER: '0' }, { LOAD_STORAGE_CLUSTER: '7?query' }]) {
     assert.throws(() => loadTargetSetupConfig({ ...setupEnv(), ...change }, NOW), /^Error: LOAD_SETUP_CONFIG_INVALID$/);
   }
 });
