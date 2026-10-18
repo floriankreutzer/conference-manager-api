@@ -113,6 +113,10 @@ test('installer owns a fresh database, grants restricted runtime custody and sup
     await assert.rejects(scoped[surface].pool.query('DELETE FROM public.platform_diagnostic_events'), error => error.code === '42501');
   }
   const publicOrigin = environments.customer.LOAD_PUBLIC_ORIGIN; const host = new URL(publicOrigin).host;
+  for (const table of ['audit_events', 'request_revisions', 'tenant_location_revisions', 'tenant_organization_revisions',
+    'tenant_catalogue_revisions', 'tenant_booking_policy_revisions', 'tenant_cost_allocation_revisions']) {
+    await assert.rejects(scoped.customer.pool.query(`DELETE FROM public.${identifier(table)}`), error => error.code === '42501');
+  }
   const exchange = async input => {
     input.signal.throwIfAborted(); const at = performance.now();
     const body = input.body === undefined ? null : JSON.stringify(input.body);

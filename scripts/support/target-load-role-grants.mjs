@@ -21,6 +21,8 @@ const PLATFORM_SOURCE_TABLES = Object.freeze(['tenants', 'tenant_identity_bindin
   'platform_sessions', 'platform_operators']);
 const PLATFORM_PROJECTION_TABLES = Object.freeze(['platform_projection_outbox', 'platform_tenant_readiness_snapshots',
   'platform_microsoft_fleet_snapshots', 'platform_microsoft_fleet_capabilities']);
+const APPEND_ONLY_CUSTOMER_TABLES = new Set(['audit_events', 'request_revisions', 'tenant_location_revisions',
+  'tenant_organization_revisions', 'tenant_catalogue_revisions', 'tenant_booking_policy_revisions', 'tenant_cost_allocation_revisions']);
 
 function valid(value) { if (!value) throw new Error('LOAD_ROLE_GRANTS_FAILED'); }
 function identifier(value) { valid(typeof value === 'string' && /^[a-z][a-z0-9_]*$/.test(value)); return `"${value}"`; }
@@ -68,7 +70,8 @@ export async function grantTargetLoadRoles(pool, values, { clock = Date.now } = 
       await query('REVOKE ALL ON SCHEMA public FROM PUBLIC');
       await query(`GRANT USAGE ON SCHEMA public TO ${customerRole},${platformRole}`);
       for (const table of CUSTOMER_TABLES) {
-        await query(`GRANT SELECT,INSERT,UPDATE,DELETE ON public.${identifier(table)} TO ${customerRole}`);
+        const privileges = APPEND_ONLY_CUSTOMER_TABLES.has(table) ? 'SELECT,INSERT' : 'SELECT,INSERT,UPDATE,DELETE';
+        await query(`GRANT ${privileges} ON public.${identifier(table)} TO ${customerRole}`);
       }
       await query(`GRANT SELECT,INSERT ON public.tenant_room_media_assets,public.media_object_inventory TO ${customerRole}`);
       await query(`GRANT UPDATE(object_key) ON public.media_object_inventory TO ${customerRole}`);
