@@ -72,6 +72,10 @@ export async function grantTargetLoadRoles(pool, values, { clock = Date.now } = 
       }
       await query(`GRANT SELECT,INSERT ON public.tenant_room_media_assets,public.media_object_inventory TO ${customerRole}`);
       await query(`GRANT UPDATE(object_key) ON public.media_object_inventory TO ${customerRole}`);
+      // Canonical audit projection triggers run with invoker privileges. Both
+      // domains may append minimized diagnostics but must never read/edit them.
+      await query(`GRANT INSERT ON public.platform_diagnostic_events TO ${customerRole},${platformRole}`);
+      await query(`GRANT USAGE ON SEQUENCE public.platform_diagnostic_events_id_seq TO ${customerRole},${platformRole}`);
       const sequences = await query(`SELECT sequence.relname AS name FROM pg_catalog.pg_class sequence
         JOIN pg_catalog.pg_depend dependency ON dependency.objid=sequence.oid
           AND dependency.classid='pg_catalog.pg_class'::pg_catalog.regclass
