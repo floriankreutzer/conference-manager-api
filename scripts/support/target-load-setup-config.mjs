@@ -1,3 +1,4 @@
+import { randomBytes, randomUUID } from 'node:crypto';
 import { loadConfig } from '../../src/config.js';
 import { createNeonBranchStorageConfig } from '../../src/media/neon-storage-config.js';
 import { loadTargetOrigin, loadTargetScope } from './target-load-guard.mjs';
@@ -24,6 +25,10 @@ export function loadTargetSetupConfig(env, now = Date.now()) {
     const config = { ...loadConfig({ NODE_ENV: 'test', PUBLIC_ORIGIN: 'http://127.0.0.1:3000',
       DATABASE_URL: database.toString(), DATABASE_SSL: 'verify-full', DATABASE_POOL_MAX: '2',
       CSRF_SECRET: env.LOAD_CSRF_SECRET, AUDIT_HMAC_SECRET: env.LOAD_AUDIT_HMAC_SECRET,
+      // Canonical onboarding composition requires a transaction secret even
+      // when no identity client exists. No real provider credential is installed.
+      ENTRA_CLIENT_ID: randomUUID(), ENTRA_CLIENT_SECRET: randomBytes(32).toString('base64url'),
+      OIDC_TRANSACTION_SECRET: randomBytes(32).toString('base64url'),
       SERVICE_VERSION: `saas38-load-${scope.runId}`, BUILD_ID: scope.releaseSha }), host: '127.0.0.1', port: 0 };
     const origins = Object.fromEntries(['customer', 'platform'].map(surface => [surface,
       loadTargetOrigin(`https://cm-saas38-load-${scope.runId}-${surface}.onrender.com`, scope.runId, surface)]));

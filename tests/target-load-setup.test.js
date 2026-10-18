@@ -12,6 +12,8 @@ test('installer config keeps privileged credentials local and binds fixed fixtur
   const value = loadTargetSetupConfig(setupEnv(), NOW);
   assert.equal(value.config.databaseSsl, 'verify-full'); assert.equal(value.config.databasePoolMax, 2);
   assert.equal(value.config.host, '127.0.0.1'); assert.equal(value.config.port, 0); assert.equal(value.population, 100);
+  assert.ok(Buffer.byteLength(value.config.oidcTransactionSecret) >= 32);
+  assert.notEqual(value.config.oidcTransactionSecret, loadTargetSetupConfig(setupEnv(), NOW).config.oidcTransactionSecret);
   assert.equal(new URL(value.config.databaseUrl).search, '');
   assert.equal(value.scope.databaseUser, `saas38_load_${RUN}_setup`);
   assert.equal(value.origins.customer, `https://cm-saas38-load-${RUN}-customer.onrender.com`);
