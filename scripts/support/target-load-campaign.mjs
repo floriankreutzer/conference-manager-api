@@ -12,16 +12,18 @@ function valid(value) { if (!value) throw new Error('LOAD_TARGET_CAMPAIGN_FAILED
 // Lag remains observable if a slow server prevents the intended open arrival rate.
 // This function has no database, setup, provider allocation or retry authority.
 export async function runTargetBookingCampaign({ values, manifest, transport, profile = 'target200', slotOffset = 0,
-  clock = Date.now, monotonic = performance.now.bind(performance), sleep = wait, journey = runBookingLoadJourney } = {}) {
-  const abort = new AbortController(); let timer;
+  clock = Date.now, monotonic = performance.now.bind(performance), sleep = wait, journey = runBookingLoadJourney, signal } = {}) {
+  const abort = new AbortController(); let timer; const cancel = () => abort.abort();
   try {
     const scope = loadTargetScope(values, clock()); const data = validateTargetLoadManifest(manifest, values, clock());
-    valid(Object.hasOwn(PROFILES, profile) && typeof transport?.exchange === 'function'
+    valid((signal === undefined || signal instanceof AbortSignal) && Object.hasOwn(PROFILES, profile)
+      && typeof transport?.exchange === 'function'
       && Number.isSafeInteger(slotOffset) && slotOffset >= 0 && slotOffset <= 100);
     const { count, intervalMs } = PROFILES[profile];
     valid(profile !== 'target200' || data.employees.length >= 1000);
     const deadlineMs = (count - 1) * intervalMs + 60_000;
     valid(clock() + deadlineMs < scope.expiresMs - 60_000);
+    signal?.throwIfAborted(); signal?.addEventListener('abort', cancel, { once: true });
     timer = setTimeout(() => abort.abort(), deadlineMs);
     const started = monotonic(); valid(Number.isFinite(started)); let previous = started;
     function elapsed() {
@@ -57,5 +59,5 @@ export async function runTargetBookingCampaign({ values, manifest, transport, pr
       retainedEmployees: data.employees.length, participatingEmployees: count, participatingManagers: 10,
       intendedArrivalIntervalMs: intervalMs, durationMs: elapsed(), results };
   } catch { abort.abort(); throw new Error('LOAD_TARGET_CAMPAIGN_FAILED'); }
-  finally { clearTimeout(timer); }
+  finally { clearTimeout(timer); if (signal instanceof AbortSignal) signal.removeEventListener('abort', cancel); }
 }

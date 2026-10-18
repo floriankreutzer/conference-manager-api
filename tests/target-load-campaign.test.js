@@ -54,3 +54,12 @@ test('a journey failure aborts admitted peers and stops new work without retryin
   } }), /^Error: LOAD_TARGET_CAMPAIGN_FAILED$/);
   assert.equal(started, 4); assert.equal(stopped, 3);
 });
+
+test('an already canceled combined workload cannot admit a booking or restart its write budget', async () => {
+  const f = await fixture(); const abort = new AbortController(); abort.abort();
+  await assert.rejects(runTargetBookingCampaign({ ...f.options, profile: 'sample10', signal: abort.signal }),
+    /^Error: LOAD_TARGET_CAMPAIGN_FAILED$/);
+  await assert.rejects(runTargetBookingCampaign({ ...f.options, profile: 'sample10', signal: {} }),
+    /^Error: LOAD_TARGET_CAMPAIGN_FAILED$/);
+  assert.equal(f.calls.length, 0);
+});

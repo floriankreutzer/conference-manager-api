@@ -11,6 +11,18 @@ actual monthly cost acceptance or permission to weaken any security/test gate.
 Verify attributable accrued usage and conservative additional bounds before allocating
 resources. Do not use or reset either existing Hosted Demo for this workload.
 
+The consolidated source candidate synchronizes the hosted frontend submodule,
+both immutable Blueprint frontend pins and the separate permanent acceptance pin
+to frontend Main `65d46db640aaeffff5b5b5c7776d1a0509afa4fa`. This retains the Provider
+insights accepted in frontend #322 and the Manager focus-race correction in #323;
+it does not weaken task counts, assertions, timeouts or reset coverage. Independent
+frontend Main acceptance and final API candidate/Main gates remain required.
+Merging the Blueprint pin can initiate the existing code-only Demo release: inspect
+actual selected deploy/source identities and avoid duplicate deployment. No data
+reset, schema/seed migration, plan/quota or existing credential change is part of
+that frontend synchronization. Existing Demo deployment verification is separate
+from the isolated synthetic workload.
+
 A separate empty storage authority boundary is mandatory: existing branch-scoped
 service credentials also authorize existing private Operations objects and must never
 be installed in a new test service. A fixed SDK bucket name alone does not constrain
@@ -201,12 +213,37 @@ invalidates the run; no resumed in-process calendar acceptance is inferred.
 
 The fixed sequence is ten bookings at one hundred retained Employees, growth and
 ten bookings at one thousand, growth to ten thousand, one separate one-thousand
-session read pulse, and the paced two-hundred-booking peak. Distinct Room slots
+session read pulse, and the paced two-hundred-booking peak with the explicitly
+modeled recurring-session window described below. Distinct Room slots
 preserve earlier confirmed bookings. Sixty-one-second quiet intervals separate the
 read pulse from preceding and following business traffic under the explicit global
 rate profile. The pulse makes one read per distinct session over sixty seconds;
 it is a separately labeled descriptive scenario, not an approved activity cadence
 or proof of one thousand simultaneously active users with concurrent bookings.
+
+The subsequent peak runs concurrently with a separately counted **3,000-read
+activity scenario** over the same one thousand verified Employee sessions. This
+declared modeling assumption uses a five-minute refresh cadence, a ten-minute
+rolling inactivity threshold and three closed one-thousand-read waves, each with
+200ms intended arrivals at offsets 0/300/600 seconds. The previous pulse provides
+initial identity/activity proof, conservatively at most 180 seconds old when the
+peak starts. Each wave must reverify all the same session/User/Tenant/role bindings
+within 230 seconds. Conservative initial/inter-wave/final bounds then prove rolling
+coverage throughout the entire intended 900-second peak without retaining or
+publishing per-user activity timestamps. Delays, wave duration and warm objectives
+remain actual measured values, not fabricated cadence success.
+
+This defines a reproducible **modeled** active-user scenario, not an approved
+universal business-activity definition or one thousand simultaneous HTTP requests.
+The evidence retains that distinction and leaves owner approval false. The existing
+sixteen booking operations remain unchanged. These additional three thousand reads
+are explicitly separate background activity, never multiplied by the booking
+coefficients or relabeled as part of that numerator. Twelve refresh workers reserve
+four of the transport's sixteen slots for the booking workers. Both operations share
+the same run journal, total attempt/body budgets, unchanged representative1000 rate
+profile and absolute expiry. Either side's failure cancels and drains its peer before
+cleanup or later probes; there is no retry. Whole-process peak deltas are explicitly
+marked as including this concurrent session work, not pure booking/worker cost.
 
 Each booking phase reconciles its exact simulated calendar and SDK read counts and
 bytes with the manifest. Fixed foreign/CSRF/stale-version probes must return

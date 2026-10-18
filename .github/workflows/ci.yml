@@ -156,7 +156,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager
-          ref: d33b702ac5d7fc8e341c953357fa44c68ce9eced
+          ref: 65d46db640aaeffff5b5b5c7776d1a0509afa4fa
           token: ${{ steps.source-token.outputs.token || github.token }}
           persist-credentials: false
           path: frontend
@@ -164,14 +164,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager
-          ref: cebb67396f93acc10c9f8a2e68ff5c77c4cad7f7
+          ref: 65d46db640aaeffff5b5b5c7776d1a0509afa4fa
           token: ${{ steps.source-token.outputs.token || github.token }}
           persist-credentials: false
           path: acceptance
       - name: Verify immutable frontend and acceptance refs
         env:
           FRONTEND_REF: ${{ steps.frontend_ref.outputs.ref }}
-          ACCEPTANCE_REF: cebb67396f93acc10c9f8a2e68ff5c77c4cad7f7
+          ACCEPTANCE_REF: 65d46db640aaeffff5b5b5c7776d1a0509afa4fa
         shell: bash
         run: |
           set -euo pipefail
@@ -189,7 +189,7 @@ jobs:
           node-version: '22'
       - name: Load verified immutable shared Demo acceptance dependencies
         env:
-          ACCEPTANCE_REF: cebb67396f93acc10c9f8a2e68ff5c77c4cad7f7
+          ACCEPTANCE_REF: 65d46db640aaeffff5b5b5c7776d1a0509afa4fa
         run: node acceptance/scripts/copy-shared-acceptance.mjs --source acceptance --target frontend --ref "$ACCEPTANCE_REF"
       - name: Install locked API dependencies
         working-directory: api

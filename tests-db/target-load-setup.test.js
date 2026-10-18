@@ -37,7 +37,8 @@ test('installer owns a fresh database, grants restricted runtime custody and sup
     try {
       for (const runtime of runtimes.reverse()) await runtime.stop();
       for (const reader of readers) await reader.end();
-      if (created) await admin.query(`DROP DATABASE ${identifier(database)} WITH (FORCE)`);
+      // Teardown must expose leaked custody rather than forcibly killing clients.
+      if (created) await admin.query(`DROP DATABASE ${identifier(database)}`);
       for (const role of createdRoles.reverse()) await admin.query(`DROP ROLE ${identifier(role)}`);
     } finally { await admin.end(); }
   });
@@ -186,10 +187,14 @@ test('installer owns a fresh database, grants restricted runtime custody and sup
     env: { ...env, LOAD_FIXTURE_USERS: String(population) }, manifest: current,
     persistenceFactory: (config, options) => createPostgresPersistence(localConfig(config, 'setup'), options),
   });
+  t.diagnostic('target growth: 100 to 1000');
   const thousand = await grow(manifest, 1000);
   assert.equal(thousand.employees.length, 1000); assert.deepEqual(thousand.employees.slice(0, 100), manifest.employees);
+  t.diagnostic('target growth: reject stale population');
   await assert.rejects(grow(manifest, 1000), /^Error: LOAD_TARGET_GROWTH_FAILED$/);
+  t.diagnostic('target growth: 1000 to 10000');
   const tenThousand = await grow(thousand, 10_000);
+  t.diagnostic('target growth: verify retained state');
   assert.equal(tenThousand.employees.length, 10_000); assert.deepEqual(tenThousand.managers, manifest.managers);
   assert.equal((await reader.query('SELECT count(*)::int AS count FROM users')).rows[0].count, 10_010);
   assert.equal((await reader.query('SELECT count(*)::int AS count FROM sessions')).rows[0].count, 10_010);

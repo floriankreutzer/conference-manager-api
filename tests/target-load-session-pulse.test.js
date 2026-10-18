@@ -34,3 +34,13 @@ test('a foreign session response aborts the pulse without further reads or priva
   } } }), /^Error: LOAD_TARGET_SESSION_PULSE_FAILED$/);
   assert.ok(reads >= 1 && reads <= 16);
 });
+
+test('active refresh uses the closed 200ms profile and parent cancellation prevents subsequent session traffic', async () => {
+  const f = await fixture(); const result = await runTargetSessionPulse({ ...f.options, profile: 'active200' });
+  assert.equal(result.profile, 'active200'); assert.equal(result.intendedArrivalIntervalMs, 200);
+  assert.equal(result.requests, 1000); assert.equal(f.seen.size, 1000);
+  const abort = new AbortController(); abort.abort();
+  await assert.rejects(runTargetSessionPulse({ ...f.options, signal: abort.signal }), /^Error: LOAD_TARGET_SESSION_PULSE_FAILED$/);
+  await assert.rejects(runTargetSessionPulse({ ...f.options, signal: {} }), /^Error: LOAD_TARGET_SESSION_PULSE_FAILED$/);
+  assert.equal(f.seen.size, 1000);
+});

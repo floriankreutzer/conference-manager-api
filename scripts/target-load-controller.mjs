@@ -8,6 +8,7 @@ import { createTargetLoadTransport } from './support/target-load-transport.mjs';
 import { runTargetBookingCampaign } from './support/target-load-campaign.mjs';
 import { growTargetLoadPopulation } from './support/target-load-growth.mjs';
 import { runTargetSessionPulse } from './support/target-load-session-pulse.mjs';
+import { runTargetActiveSessionWindow } from './support/target-load-active-window.mjs';
 import { reconcileTargetLoad } from './support/target-load-reconciliation.mjs';
 import { validateTargetObservation, targetObservationDelta, summarizeTargetCampaign }
   from './support/target-load-observations.mjs';
@@ -17,7 +18,8 @@ function valid(value) { if (!value) throw new Error('LOAD_TARGET_CONTROLLER_FAIL
 export async function runTargetLoadController({ env = process.env, clock = Date.now, sleep = wait,
   exit = code => process.exit(code), readManifest = readTargetLoadManifest, journalFactory = createTargetLoadJournal,
   transportFactory = createTargetLoadTransport, campaign = runTargetBookingCampaign,
-  grow = growTargetLoadPopulation, pulse = runTargetSessionPulse, reconcile = reconcileTargetLoad } = {}) {
+  grow = growTargetLoadPopulation, pulse = runTargetSessionPulse, reconcile = reconcileTargetLoad,
+  activeWindow = runTargetActiveSessionWindow } = {}) {
   let journal; let transport; let timer; let phase = 'configuration';
   try {
     const { values, scope } = loadTargetSetupConfig(env, clock());
@@ -46,10 +48,22 @@ export async function runTargetLoadController({ env = process.env, clock = Date.
       }
       return result;
     }
-    const campaigns = []; const measurements = [];
+    const campaigns = []; const measurements = []; let concurrentActiveSessions; let pulseStartedMs;
     async function bookings(profile, slotOffset) {
       const before = await observe();
-      const result = await campaign({ values, manifest: data, transport, profile, slotOffset, clock }); campaigns.push(result);
+      let result;
+      if (profile === 'target200') {
+        const abort = new AbortController(); const initialActivityAgeMs = clock() - pulseStartedMs;
+        const guarded = work => Promise.resolve().then(work).catch(error => { abort.abort(); throw error; });
+        const settled = await Promise.allSettled([
+          guarded(() => campaign({ values, manifest: data, transport, profile, slotOffset, clock, signal: abort.signal })),
+          guarded(() => activeWindow({ values, manifest: data, transport, clock, initialActivityAgeMs, signal: abort.signal })),
+        ]);
+        valid(settled.every(row => row.status === 'fulfilled'));
+        [result, concurrentActiveSessions] = settled.map(row => row.value);
+        valid(concurrentActiveSessions.fullModeledWindowCoverageMet === true);
+      } else result = await campaign({ values, manifest: data, transport, profile, slotOffset, clock });
+      campaigns.push(result);
       const after = await observe(); const delta = Object.fromEntries(['customer', 'platform']
         .map(surface => [surface, targetObservationDelta(before[surface], after[surface])]));
       const count = result.results.length; const calendar = delta.customer.simulatedCalendar;
@@ -58,14 +72,16 @@ export async function runTargetLoadController({ env = process.env, clock = Date.
         && delta.customer.activity.storageWrites === 0 && delta.customer.activity.storageDeletes === 0);
       const expectedBytes = result.results.reduce((sum, _row, index) => sum + data.images[index % 10].byteLength * 3, 0);
       valid(delta.customer.activity.storageReadBytes === expectedBytes);
-      measurements.push({ ...summarizeTargetCampaign(result), processes: delta });
+      measurements.push({ ...summarizeTargetCampaign(result), processes: delta,
+        processWindowIncludesModeledActiveSessions: profile === 'target200' });
     }
     phase = 'sample100'; await bookings('sample10', 0);
     phase = 'growth1000'; data = await grow({ env: { ...env, LOAD_FIXTURE_USERS: '1000' }, manifest: data, clock, exit });
     phase = 'sample1000'; await bookings('sample10', 1);
     phase = 'growth10000'; data = await grow({ env: { ...env, LOAD_FIXTURE_USERS: '10000' }, manifest: data, clock, exit });
     phase = 'separate_session_pulse'; await sleep(61_000);
-    const beforePulse = await observe(); const sessionPulse = await pulse({ values, manifest: data, transport, clock });
+    const beforePulse = await observe(); pulseStartedMs = clock();
+    const sessionPulse = await pulse({ values, manifest: data, transport, clock });
     const afterPulse = await observe(); const pulseDelta = targetObservationDelta(beforePulse.customer, afterPulse.customer);
     valid(Object.values(pulseDelta.simulatedCalendar).every(count => count === 0)
       && pulseDelta.activity.storageReads === 0 && pulseDelta.activity.storageWrites === 0);
@@ -93,9 +109,10 @@ export async function runTargetLoadController({ env = process.env, clock = Date.
       .map(surface => [surface, targetObservationDelta(identity[surface], final[surface])]));
     return { schemaVersion: 1, runId: scope.runId, releaseSha: scope.releaseSha,
       createdAt: scope.createdAt, controllerStartedAt, observedAt: new Date(clock()).toISOString(), expiresAt: scope.expiresAt,
-      firstProtectedProbes: firstProbes, measurements, separateSessionPulse: sessionPulse, negativeStatuses,
+      firstProtectedProbes: firstProbes, measurements, separateSessionPulse: sessionPulse, concurrentActiveSessions, negativeStatuses,
       integrity, processes, transportReservations: transport.snapshot(),
-      warmObjectivesMet: measurements.every(row => row.warmObjectivesMet) && sessionPulse.warmObjectivesMet === true,
+      warmObjectivesMet: measurements.every(row => row.warmObjectivesMet) && sessionPulse.warmObjectivesMet === true
+        && concurrentActiveSessions.warmObjectivesMet === true,
       pacedPeakCompletedWithinFifteenMinutes: measurements[2].completeWithinFifteenMinutes,
       thousandSimultaneouslyActiveUsersProven: false, actualMonthlyCostsMeasured: false,
       realGraphAcceptance: false, providerCleanupVerified: false, providerColdStateIndependentlyVerified: false };

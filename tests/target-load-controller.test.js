@@ -73,6 +73,10 @@ async function fixture() {
       await seedLoadSessions({ async query() {} }, data.tenants, data.employees, count, { roles: ['employee'] }); return data;
     },
     async pulse() { phases.push('pulse'); now += 60_000; return { distinctSessionsRead: 1000, warmObjectivesMet: true }; },
+    async activeWindow({ initialActivityAgeMs, signal }) {
+      phases.push('active-window'); assert.equal(initialActivityAgeMs, 121_000); assert.equal(signal.aborted, false);
+      return { distinctActiveSessions: 1000, fullModeledWindowCoverageMet: true, warmObjectivesMet: true };
+    },
     async reconcile({ campaigns }) { phases.push(campaigns.length ? 'reconcile-final' : 'reconcile-empty');
       return { confirmedBookings: campaigns.length ? 220 : 0 }; },
   };
@@ -83,11 +87,12 @@ async function fixture() {
 test('controller retains one run budget and closed phase order without inventing active-user, provider or monthly proof', async () => {
   const f = await fixture(); const result = await runTargetLoadController(f.options);
   assert.deepEqual(f.phases, ['journal', 'reconcile-empty', 'probe-customer', 'probe-platform', 'bookings-100',
-    'grow-1000', 'bookings-1000', 'grow-10000', 'pulse', 'bookings-10000', 'foreign_read', 'missing_csrf',
+    'grow-1000', 'bookings-1000', 'grow-10000', 'pulse', 'bookings-10000', 'active-window', 'foreign_read', 'missing_csrf',
     'stale_version', 'reconcile-final']);
   assert.equal(result.measurements.length, 3); assert.equal(result.integrity.confirmedBookings, 220);
   assert.deepEqual(result.negativeStatuses, [404, 403, 409]); assert.equal(result.warmObjectivesMet, true);
   assert.equal(result.pacedPeakCompletedWithinFifteenMinutes, true);
+  assert.equal(result.concurrentActiveSessions.distinctActiveSessions, 1000);
   for (const key of ['thousandSimultaneouslyActiveUsersProven', 'actualMonthlyCostsMeasured', 'realGraphAcceptance',
     'providerCleanupVerified', 'providerColdStateIndependentlyVerified']) assert.equal(result[key], false);
   assert.equal(JSON.stringify(result).includes('cm_session='), false);
@@ -99,5 +104,19 @@ test('controller failure drains owned transport/journal and prevents later popul
   await assert.rejects(runTargetLoadController(f.options), error => error.message === 'LOAD_TARGET_CONTROLLER_FAILED'
     && error.phase === 'sample100' && error.cause === undefined);
   assert.equal(f.phases.some(phase => phase.startsWith('grow-')), false);
+  assert.equal(f.closed(), 1); assert.equal(f.journalClosed(), 1);
+});
+
+test('concurrent activity failure aborts and drains booking peers before controller cleanup and later probes', async () => {
+  const f = await fixture(); const originalCampaign = f.options.campaign; let drained = false;
+  await assert.rejects(runTargetLoadController({ ...f.options,
+    async campaign(input) {
+      if (input.profile !== 'target200') return originalCampaign(input);
+      await new Promise(resolve => input.signal.addEventListener('abort', resolve, { once: true }));
+      drained = true; throw new Error('aborted');
+    },
+    activeWindow() { throw new Error('private-response'); },
+  }), error => error.message === 'LOAD_TARGET_CONTROLLER_FAILED' && error.phase === 'target200');
+  assert.equal(drained, true); assert.equal(f.phases.includes('foreign_read'), false);
   assert.equal(f.closed(), 1); assert.equal(f.journalClosed(), 1);
 });
