@@ -8,7 +8,8 @@ export function targetLoadEnvironment(surface = 'customer', runId = RUN) {
     LOAD_DATABASE_URL: `postgresql://saas38_load_${runId}_${surface}:synthetic-password@`
       + `ep-synthetic.c-5.eu-central-1.aws.neon.tech/saas38_load_${runId}?sslmode=verify-full`,
     LOAD_CSRF_SECRET: 'csrf-fixture-secret-at-least-thirty-two-bytes',
-    LOAD_AUDIT_HMAC_SECRET: 'audit-fixture-secret-at-least-thirty-two-bytes',
+    LOAD_AUDIT_HMAC_SECRET: surface === 'platform' ? 'platform-audit-fixture-secret-at-least-thirty-two-bytes'
+      : 'audit-fixture-secret-at-least-thirty-two-bytes',
     RENDER: 'true', RENDER_GIT_REPO_SLUG: 'floriankreutzer/conference-manager-api', RENDER_GIT_BRANCH: 'main',
     RENDER_GIT_COMMIT: SHA, RENDER_SERVICE_NAME: `cm-saas38-load-${runId}-${surface}` };
   if (surface === 'customer') Object.assign(value, { LOAD_STORAGE_BRANCH: 'br-synthetic-load-target',
