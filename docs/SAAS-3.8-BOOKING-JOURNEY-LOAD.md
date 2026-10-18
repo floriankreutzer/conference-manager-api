@@ -44,5 +44,14 @@ Worker SQL/dispatch counts do not isolate worker CPU in the shared test process.
 
 Cold starts, actual provider latency/SDK concurrency/egress, hosted process resources,
 the paced peak, independent active-User sensitivity and attributable monthly costs
-remain required execution work. No normal runtime, business schema, Demo seed,
-deployment, provider credential/resource, plan or quota is changed by this tooling.
+remain required execution work.
+
+The mixed replay exposed real Tenant/audit and cross-Request revision deadlocks.
+Persistence now takes the Tenant row before the audit chain and provider-reference
+locks; final confirmation uses the active-Tenant order already used by creation and
+ordinary transitions. A deterministic two-transaction regression checks concurrent
+standalone/business audit appends with the real HMAC chain. Existing confirmation /
+compensation races queue at the earlier Tenant lock and retain both outcome fences.
+An inactive-Tenant regression requires no Request, reference, revision or audit change.
+No retry, timeout relaxation, business schema, Demo seed, deployment, provider
+credential/resource, plan or quota change accompanies this correction.

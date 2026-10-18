@@ -57,11 +57,13 @@ Migration 004 makes `audit_events` append-only through a database trigger that r
 
 Events are additionally chained per internal Tenant:
 
-1. append obtains a transaction-scoped advisory lock for that Tenant;
+1. append first obtains a `FOR KEY SHARE` lock on the existing Tenant, then the transaction-scoped advisory lock for that Tenant;
 2. the previous event hash is loaded;
 3. a canonical event payload plus the previous hash is signed with HMAC-SHA-256;
 4. the new event stores `previous_hash`, `event_hash` and integrity version 1;
 5. read access verifies the complete Tenant chain before returning events.
+
+Taking the Tenant foreign-key lock before the chain lock prevents a standalone audit append from holding the chain while waiting for a business transaction that already locks the Tenant and must append its own event. The append remains audit-atomic and serialized per Tenant; no retry or weaker integrity rule is introduced.
 
 Canonical JSON recursively sorts object keys so PostgreSQL `jsonb` normalization cannot create false integrity failures.
 
