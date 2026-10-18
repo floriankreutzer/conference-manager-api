@@ -8,6 +8,7 @@ import { prepareTargetLoadSetup } from '../scripts/target-load-setup.mjs';
 import { startTargetLoadRuntime } from '../scripts/target-load-runtime.mjs';
 import { assertLoadDatabase, loadTargetScope } from '../scripts/support/target-load-guard.mjs';
 import { targetScopeValues } from '../scripts/support/target-load-runtime-config.mjs';
+import { growTargetLoadPopulation } from '../scripts/support/target-load-growth.mjs';
 import { mediaObjectReference, verifyMediaObjectBytes } from '../src/media/object-storage-contract.js';
 import { createPostgresPersistence } from '../src/persistence/postgres/index.js';
 import { createPostgresPlatformPersistence } from '../src/persistence/postgres/platform-index.js';
@@ -143,4 +144,17 @@ test('installer owns a fresh database, grants restricted runtime custody and sup
     new URL(environments.platform.LOAD_PUBLIC_ORIGIN).host, { Cookie: manifest.employees[0].cookie });
   assert.equal(denied.status, 401);
   assert.equal((await reader.query('SELECT count(*)::int AS count FROM platform_audit_events')).rows[0].count, 1);
+  const grow = (current, population) => growTargetLoadPopulation({
+    env: { ...env, LOAD_FIXTURE_USERS: String(population) }, manifest: current,
+    persistenceFactory: (config, options) => createPostgresPersistence(localConfig(config, 'setup'), options),
+  });
+  const thousand = await grow(manifest, 1000);
+  assert.equal(thousand.employees.length, 1000); assert.deepEqual(thousand.employees.slice(0, 100), manifest.employees);
+  await assert.rejects(grow(manifest, 1000), /^Error: LOAD_TARGET_GROWTH_FAILED$/);
+  const tenThousand = await grow(thousand, 10_000);
+  assert.equal(tenThousand.employees.length, 10_000); assert.deepEqual(tenThousand.managers, manifest.managers);
+  assert.equal((await reader.query('SELECT count(*)::int AS count FROM users')).rows[0].count, 10_010);
+  assert.equal((await reader.query('SELECT count(*)::int AS count FROM sessions')).rows[0].count, 10_010);
+  const retained = await reader.query('SELECT status,request_version FROM requests WHERE id=$1', [outcome.requestId]);
+  assert.equal(retained.rows[0].status, 'Confirmed'); assert.equal(Number(retained.rows[0].request_version), 3);
 });

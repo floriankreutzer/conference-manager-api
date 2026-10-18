@@ -133,8 +133,55 @@ one complete sixteen-operation booking, verifies Tenant HMAC chains and worker
 drain, and checks forbidden runtime schema/marker writes. Only the guarded local
 transport is substituted. Successful exact-head CI is required before accepting
 that evidence; no remote permission, TLS, provider cost or capacity claim follows.
-Population growth, privileged control-plane bootstrap and remote replay remain
-separate unfinished execution work.
+Privileged control-plane bootstrap and live execution remain unfinished work.
+
+## Bounded replay and population growth preparation
+
+The target-only replay modules retain the existing sixteen-operation choreography
+and shared canonical draft fixture. The closed `sample10` profile checks ten
+journeys; `target200` schedules two hundred starts 4,500 milliseconds apart with
+four journey workers. Queue delay is reported explicitly: worker backpressure must
+not be presented as successful open-arrival capacity. The target profile requires
+at least one thousand retained Employees but involves exactly two hundred Employees
+and ten Managers; it does not establish one thousand simultaneously active users.
+Distinct slot offsets prevent the three population stages from booking the same
+Tenant/room/time. No normal production route or rate configuration changes.
+
+Private manifests have a closed schema tied to the independent run/source/expiry,
+exact Render origins, ten Tenants, actor/session custody, fixed synthetic catalogue,
+media ownership and configuration revisions. File reads require the fixed path,
+an owned regular file with mode 0600, one link, no symlink, a five-megabyte limit
+and unchanged file metadata across reading. Tokens never enter public evidence.
+
+The HTTPS transport fixes destinations and routes, verifies TLS, rejects redirects
+and encodings, bounds headers/bodies and cancels each normal operation after five
+seconds without retry. A separate first protected probe allows at most sixty
+seconds once per surface before business traffic; this is not proof that the
+provider was actually cold or suspended. Transport concurrency is capped at sixteen.
+Before I/O, its exclusive per-run local journal durably reserves each attempt and
+the maximum response bytes. The journal accepts only fixed aggregate fields and
+caps ten thousand attempts and two billion reserved response bytes. Failed attempts
+consume reservations; an existing journal prevents a controller restart from
+receiving a fresh budget. This single-controller/host constraint is not a distributed
+or provider-enforced spending limit and cannot replace provider quotas or teardown.
+Three closed negative probes require foreign-object 404, missing-CSRF 403 and
+stale-version 409 without returning server error details. They are separately
+reserved traffic, outside the approved sixteen-operation performance numerator.
+
+Installer-only growth permits exactly 100 to 1,000 and 1,000 to 10,000 Employees.
+It validates the manifest and real database marker/privileges, serializes on the
+marker, reconciles exact population/session counts and bounded batches of canonical
+token hashes and active actor ownership, and inserts only additional sessions in
+one transaction. Existing cookies and Managers remain unchanged. A lost post-commit
+manifest cannot authorize duplicate growth: mismatched counts fail closed. Growth
+does not touch the SDK or provider control plane. New cookies remain private data.
+The extended fresh-owner PostgreSQL test must pass before accepting these real SQL
+growth contracts; native/mock tests alone are insufficient.
+
+These are composable preparation modules, not a completed operator campaign CLI or
+live target result. Observer snapshot reconciliation, final database/audit/worker
+acceptance, a separately described active-user cadence and provider cleanup still
+require the final controller and execution evidence.
 
 ## Verification and remaining execution
 
