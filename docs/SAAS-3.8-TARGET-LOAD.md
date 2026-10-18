@@ -1,6 +1,6 @@
 # Isolated target-load preparation
 
-Status: unmerged preparation for application #269/#270; no target deployment or
+Status: preparation for application #269/#270; no target deployment or
 capacity acceptance. Accepted operation baselines remain in SAAS-3.8-LOAD-EVIDENCE.md.
 
 ## Scope and authority

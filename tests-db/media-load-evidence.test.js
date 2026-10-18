@@ -25,8 +25,9 @@ test('object-backed media measures full and conditional delivery without claimin
       assets.set(reference.assetId, Buffer.from(bytes)); return reference.key;
     },
     async get(reference) {
-      assert.ok(objects.has(reference.key)); reads += 1; objectBytes += reference.byteLength;
-      return corrupt ? Buffer.from('corrupt') : Buffer.from(objects.get(reference.key));
+      assert.ok(objects.has(reference.key)); reads += 1;
+      const bytes = corrupt ? Buffer.from('corrupt') : Buffer.from(objects.get(reference.key));
+      objectBytes += bytes.length; return bytes;
     },
     async remove() { throw new Error('LOAD_STORAGE_DELETE_FORBIDDEN'); },
   };

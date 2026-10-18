@@ -1,6 +1,6 @@
 # Isolated object-backed media measurement
 
-Status: candidate measurement tooling for application #269/#270. Successful exact-source
+Scope: isolated measurement tooling for application #269/#270. Successful exact-source
 PostgreSQL and complete CI/browser evidence must be retained before numerical acceptance.
 This is separate from the target-host run described in SAAS-3.8-TARGET-LOAD.md.
 
