@@ -8,6 +8,7 @@ export const APPLICATION_ROUTES = Object.freeze({
   catalog: '/api/v1/application/catalog',
   siteInfo: '/api/v1/application/site-info',
   requests: '/api/v1/application/requests',
+  requestWorkflows: '/api/v1/application/request-workflows',
   requestReport: '/api/v1/application/reports/requests',
   roomAvailability: '/api/v1/application/room-availability',
   notifications: '/api/v1/application/notifications',
@@ -15,6 +16,8 @@ export const APPLICATION_ROUTES = Object.freeze({
 });
 
 const NOTIFICATION_PATH = /^\/api\/v1\/application\/notifications\/([0-9a-f-]{36})$/i;
+const REQUEST_WORKFLOW_ABANDON_PATH = /^\/api\/v1\/application\/request-workflows\/([0-9a-f-]{36})\/abandon$/i;
+const EMPTY_BODY_SCHEMA = Object.freeze({ required: Object.freeze({}), optional: Object.freeze({}) });
 const CATALOG_QUERY_KEYS = new Set(['section', 'limit', 'cursor', 'context']);
 const REQUEST_LIST_QUERY_KEYS = new Set(['limit', 'cursor']);
 const REQUEST_REPORT_QUERY_KEYS = new Set(['from', 'to', 'limit', 'cursor']);
@@ -36,7 +39,7 @@ const REQUEST_BODY_SCHEMA = Object.freeze({
     schemaVersion: isSupportedRequestCompositionSchemaVersion,
     request: (value) => value && typeof value === 'object' && !Array.isArray(value),
   }),
-  optional: Object.freeze({}),
+  optional: Object.freeze({ workflowId: isInternalUuid }),
 });
 const REQUEST_RESUBMISSION_BODY_SCHEMA = Object.freeze({
   required: Object.freeze({
@@ -158,6 +161,8 @@ export function applicationRouteKey(path) {
   if (path === APPLICATION_ROUTES.catalog) return 'application_catalog';
   if (path === APPLICATION_ROUTES.siteInfo) return 'application_site_info';
   if (path === APPLICATION_ROUTES.requests) return 'application_requests';
+  if (path === APPLICATION_ROUTES.requestWorkflows) return 'application_request_workflows';
+  if (REQUEST_WORKFLOW_ABANDON_PATH.test(path)) return 'application_request_workflow_abandon';
   if (path === APPLICATION_ROUTES.requestReport) return 'application_request_report';
   if (path === APPLICATION_ROUTES.roomAvailability) return 'application_room_availability';
   if (path === APPLICATION_ROUTES.notifications) return 'application_notifications';
@@ -220,6 +225,31 @@ export function createApplicationHttpHandler({
     }
     const common = { principal, tenantContext, correlationId: requestId };
 
+    if (path === APPLICATION_ROUTES.requestWorkflows || REQUEST_WORKFLOW_ABANDON_PATH.test(path)) {
+      if (request.method !== 'POST') throw new ApiError(405, 'METHOD_NOT_ALLOWED');
+      validateExactObject(
+        await readJsonObjectBody(request, { maxBytes: Math.min(maxBodyBytes, 1_024) }),
+        EMPTY_BODY_SCHEMA,
+      );
+      const starting = path === APPLICATION_ROUTES.requestWorkflows;
+      if (typeof service.startRequestWorkflow !== 'function'
+        || typeof service.abandonRequestWorkflow !== 'function') {
+        throw new ApiError(503, 'APPLICATION_SERVICE_UNAVAILABLE');
+      }
+      let workflow;
+      if (starting) {
+        const key = request.headers['idempotency-key'];
+        if (!isInternalUuid(key)) throw new ApiError(400, 'VALIDATION_FAILED');
+        workflow = await service.startRequestWorkflow({ ...common, idempotencyKey: key.toLowerCase() });
+      } else {
+        const workflowId = path.match(REQUEST_WORKFLOW_ABANDON_PATH)[1];
+        if (!isInternalUuid(workflowId)) throw new ApiError(404, 'NOT_FOUND');
+        workflow = await service.abandonRequestWorkflow({ ...common, workflowId: workflowId.toLowerCase() });
+      }
+      sendJson(response, 200, { workflow, requestId }, maxResponseBytes);
+      return 200;
+    }
+
     if (path === APPLICATION_ROUTES.profile) {
       if (request.method === 'GET') {
         sendJson(response, 200, { profile: await service.getProfile(common) }, maxResponseBytes);
@@ -275,6 +305,7 @@ export function createApplicationHttpHandler({
             ...common,
             schemaVersion: body.schemaVersion,
             requestDraft: body.request,
+            workflowId: body.workflowId,
           }),
           requestId,
         }, maxResponseBytes);

@@ -7,6 +7,8 @@ export const AUDIT_ACTION = Object.freeze({
   SESSION_ROTATED: 'session.rotated',
   AUTHENTICATION_FAILED: 'authentication.failed',
   AUTHORIZATION_DENIED: 'authorization.denied',
+  REQUEST_STARTED: 'request.started',
+  REQUEST_ABANDONED: 'request.abandoned',
   REQUEST_CREATED: 'request.created',
   REQUEST_TRANSITION: 'request.transition',
   REQUEST_TRANSITION_FAILED: 'request.transition_failed',

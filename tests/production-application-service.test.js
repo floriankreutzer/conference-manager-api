@@ -598,6 +598,54 @@ test('request creation rejects authority-shaped fields and derives identity/stat
   });
 });
 
+test('workflow submission binds its reserved ID, trusted owner epoch and normalized retry identity', async () => {
+  const { service, calls } = harness();
+  const workflowId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const input = {
+    principal: employee({ session: { securityVersion: 7 } }),
+    tenantContext: { tenantId: TENANT_A }, correlationId: CORRELATION_ID,
+    schemaVersion: 2, requestDraft: requestDraft(), workflowId: workflowId.toUpperCase(),
+  };
+  const created = await service.createRequest(input);
+  assert.equal(created.id, workflowId);
+  const first = calls.at(-1)[1];
+  assert.equal(first.requestId, workflowId);
+  assert.equal(first.workflowId, workflowId);
+  assert.equal(first.tenantId, TENANT_A);
+  assert.equal(first.requesterUserId, USER_A);
+  assert.equal(first.securityVersion, 7);
+  assert.equal(first.auditEvent.targetId, workflowId);
+  assert.match(first.submissionFingerprint, /^[0-9a-f]{64}$/);
+  assert.equal(JSON.stringify(first.auditEvent).includes(first.submissionFingerprint), false);
+  await service.createRequest({ ...input, requestDraft: requestDraft({ title: ' Planning session ' }) });
+  assert.equal(calls.at(-1)[1].submissionFingerprint, first.submissionFingerprint);
+  await service.createRequest({ ...input, requestDraft: requestDraft({ title: 'Changed content' }) });
+  assert.notEqual(calls.at(-1)[1].submissionFingerprint, first.submissionFingerprint);
+  const previousCalls = calls.length;
+  await assert.rejects(service.createRequest({ ...input, workflowId: '../foreign' }), AuthorizationInputError);
+  assert.equal(calls.length, previousCalls);
+});
+
+test('workflow replay returns the immutable public first revision and terminal conflicts fail closed', async () => {
+  const { service, requestRepository } = harness();
+  const firstRevision = toPublicRequest(storedRequest(REQUEST_ID, '2026-09-01T10:00:00.000Z', { status: 'Submitted' }));
+  const input = {
+    principal: employee({ session: { securityVersion: 7 } }),
+    tenantContext: { tenantId: TENANT_A }, correlationId: CORRELATION_ID,
+    schemaVersion: 2, requestDraft: requestDraft(), workflowId: REQUEST_ID,
+  };
+  requestRepository.createVersionedForTenant = async () => ({ status: 'replayed', publicRequest: firstRevision });
+  const replayed = await service.createRequest(input);
+  assert.deepEqual(replayed, firstRevision);
+  assert.equal(replayed.version, 1);
+  assert.equal(Object.hasOwn(replayed, 'tenantId'), false);
+  assert.equal(Object.hasOwn(replayed, 'requesterUserId'), false);
+  requestRepository.createVersionedForTenant = async () => ({ status: 'workflow_conflict' });
+  await assert.rejects(service.createRequest(input), RequestStateConflictError);
+  requestRepository.createVersionedForTenant = async () => null;
+  await assert.rejects(service.createRequest(input), (error) => error instanceof AuthorizationDeniedError && error.conceal === true);
+});
+
 test('request creation accepts only the canonical availability window contract', async () => {
   const valid = requestDraft({
     endsAt: '2026-09-02T10:00:00.000Z',

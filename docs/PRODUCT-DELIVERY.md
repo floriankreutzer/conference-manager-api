@@ -9,18 +9,100 @@ that the view or its data sources are deployed.
 The Operations Demo owns `GET /api/v1/platform/demo/product-delivery`. The existing
 request-bound owner-password capability and traffic gate run first. Customer roles,
 role headers, health access and caller-supplied Tenant selectors grant no access.
-The route is read-only, no-store, bounded to 64,000 response bytes and performs no
-database/provider query. Unsupported methods return 405; query/body input returns
+The route is read-only, no-store and bounded to 64,000 response bytes. Its Demo v2
+Product projection reads a closed, bounded database aggregate; it performs no
+provider request. Unsupported methods return 405; query/body input returns
 400; unavailable projections return a minimized 503. Public Demo mode has no private
 projection. Configuring a snapshot without the password perimeter fails startup.
 
 This temporary shared-owner boundary is not Production Platform identity/RBAC.
-Production composition and Customer composition do not load this adapter. Existing
-session, CSRF, Tenant, audit, migration and three-customer contracts remain unchanged.
+Production composition and Customer composition do not load this aggregate adapter.
+The existing session, CSRF, Tenant and audit authorization boundaries retain their
+ownership. The versioned migration and three-customer reset gates remain mandatory.
 
-## Collection baseline and trust
+## Runtime Product v2
 
-The initial implementation is an **operator snapshot**, not an automatic collector.
+`src/demo/platform-main.js` now binds the existing Product route through
+`createDemoPlatformComposition` to `createPostgresDemoProductRuntimeRepository`.
+The legacy environment snapshot still receives strict configuration validation;
+it is no longer the active Product source in this runtime composition. The v1
+loader, stored daily reports and offline compiler remain compatible consumers of
+the earlier contract.
+
+This is a deliberately closed Demo system aggregate behind the existing private
+owner capability. It accepts no Principal, Tenant selector, arbitrary query,
+external record or caller-supplied clock. It does not manufacture an operator or
+borrow a Tenant User's audit permissions. Its DB binding must match the current
+database, the recorded Demo Platform role and the shared-Demo sentinel. It reuses
+the already configured Tenant and Platform HMAC keys, without new credentials.
+
+Each GET takes the existing shared reset gate and a read-only Repeatable Read
+transaction. It verifies complete retained Tenant chains and the complete retained
+Platform sequence, signed checkpoints and terminal chain state. Shared verification
+primitives also serve the existing authenticated audit repositories. Source reads
+are capped at 100 Tenants and 2,000 retained audit rows in total; Tenant rows consume
+that fixed budget first. Revision attribution has a separate 2,000-row ceiling.
+SQL reads have a decreasing eight-second budget; connection and reset-gate bounds
+remain owned by the existing database configuration. Overflow is reported as
+`source_limit`, never as a silently truncated count. Per-source savepoints let a
+failed independent source remain unknown while verified sources still contribute.
+No long-lived result cache survives a source failure or Demo reset.
+
+Demo overlay 011 grants Ops only `SELECT` on
+`demo_product_request_revision_facts`. The view contains Tenant/Request keys,
+version, operation, capture time, role-at-action and status, excluding customer
+text, names, complete Request records and User identities. Ops gains no base-table
+access to `request_revisions` or `request_workflow_starts`. A manager decision must
+still match exactly one immutable revision and its verified Tenant audit event.
+
+The same overlay creates `demo_product_source_epoch`, outside the business reset
+inventory. An `AFTER TRUNCATE` audit-stream trigger advances this durable singleton
+inside the existing reset transaction. Runtime roles cannot update, truncate or
+invoke its controlled function. A failed reset rolls back the epoch with the data;
+the shared gate prevents combining observations from different reset generations.
+Only a digest of the epoch leaves the server. Its initial migration timestamp is
+an activation boundary, not the origin of historical events: verified older events
+inside the report window remain visible as an observed subset.
+
+The pure wire contract is `src/observability/product-runtime-contract.js`, with
+`schemaVersion:2`, `collectionMode:runtime_projection` and
+`provenance.mode:retained_runtime`. It contains only Product metrics and their
+coverage. `observedAt` is the database snapshot clock, `periodEnd` is that same
+instant, and `periodStart` is exactly 28 days earlier, including the current partial
+UTC day. Delivery and Feedback retain their own reports and clocks. A fresh
+runtime Product read cannot freshen their stored data.
+
+Each of the twelve ordered metrics has a parallel `productCoverage` entry with
+`id`, `state`, `reason`, `sourcePeriodStart` and `sourcePeriodEnd`. States are
+`complete`, `partial` and `not_collected`. Coverage dates describe the queried
+extent; only `complete` asserts continuous source coverage for that extent.
+Reasons are closed to `complete_window`, `retained_history`, `source_unavailable`,
+`source_limit`, `integrity_failure`, `missing_attribution` and `missing_start_clock`.
+
+| Metric group | Runtime evidence and coverage |
+| --- | --- |
+| Onboarding and submissions | Verified canonical Tenant claim / request-created / resubmission events and Platform onboarding-to-ready events. The whole queried window can be complete only when the durable source boundary predates it and retained verification succeeds. |
+| Starts and explicit abandonment | Server-side `request.started` and `request.abandoned` events, sharing the future Request UUID with the first successful submission. Counts stay partial because older/API clients may omit the explicit start operation; an unfinished request is never inferred to be abandoned. |
+| Time to submit | Median start-to-first-successful-create pairs for the same Tenant and Request. A resubmission cannot reuse the first start. Missing pairs keep an available subset explicitly partial with `missing_start_clock`; an empty cohort has no duration. |
+| Manager decisions and decision time | Unique immutable Conference Manager role-at-action evidence. Missing attribution limits this group alone. A submission can serve one decision; resubmission starts a new decision clock. Available paired subsets remain explicitly partial when other pairs are missing. |
+| Transition failures and recovery | Actual canonical failed transitions and allowlisted targeted Platform recovery executions. Previews, denials, global events and unrelated operations do not count. Recovery failure rate requires both outcome counts and a nonempty denominator. |
+
+A verified empty retained scope can yield a numeric zero with its explicit coverage;
+unavailable or unverified sources cannot. Missing group counts are null. A total
+Tenant-plus-Platform source failure returns the existing minimized 503 response,
+allowing the UI to label an older stored fallback separately. Raw events, actors,
+Tenant/Request identifiers and revision records never enter the response; only
+bounded metrics, reasons, timestamps and digests do.
+
+Native tests cover positive partial counts, subset durations, missing attribution,
+independent failures and the closed v2 wire contract. The PostgreSQL integration
+test uses real start/Request repositories and signed audit chains created before
+overlay installation, checks Ops grants, HMAC/checkpoint failures, row bounds,
+actual shared-lock waiting, trigger rollback, and the real three-customer reset.
+
+## Stored v1 baseline and operator extraction
+
+The v1 implementation is an **operator snapshot**, not an automatic collector.
 It does not create tracking events, replay sessions, read customer free text, fetch
 arbitrary URLs or introduce another analytics service. Missing sources remain
 unknown. In particular, client-only draft starts, abandonment and time-to-submit

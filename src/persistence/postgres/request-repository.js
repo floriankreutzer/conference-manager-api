@@ -32,6 +32,11 @@ import {
 import { isIanaTimeZone } from '../../domain/site-time-zone.js';
 import { normalizeActionAttribution } from '../../domain/request-attribution.js';
 import { withPostgresTransaction } from './transaction.js';
+import {
+  lockRequestDraftOwnerWithClient,
+  lockRequestDraftWorkflowWithClient,
+  submitRequestDraftWorkflowWithClient,
+} from './request-draft-workflow-repository.js';
 
 const REQUEST_COLUMNS = `
   tenant_id,
@@ -1031,8 +1036,35 @@ export function createPostgresRequestRepository(
       requestDraft,
       createdAt,
       auditEvent,
+      workflowId = null,
+      securityVersion,
+      submissionFingerprint,
     }) {
       return withPostgresTransaction(pool, async (client) => {
+        const workflowOwner = { tenantId, ownerUserId: requesterUserId, workflowId, securityVersion };
+        if (workflowId !== null) {
+          if (workflowId !== requestId || !/^[0-9a-f]{64}$/.test(submissionFingerprint ?? '')) {
+            throw new TypeError('REQUEST_WORKFLOW_SUBMISSION_INVALID');
+          }
+          if (!await lockRequestDraftOwnerWithClient(client, workflowOwner)) return { status: 'not_found' };
+          const workflow = await lockRequestDraftWorkflowWithClient(client, workflowOwner);
+          if (!workflow) return { status: 'not_found' };
+          if (workflow.status === 'submitted' && workflow.submission_fingerprint === submissionFingerprint) {
+            const replay = await client.query({
+              name: 'request-workflow-submission-replay',
+              text: `SELECT revision.record, request.requester_display_name, request.requester_user_id
+                FROM request_revisions revision JOIN requests request
+                  ON request.tenant_id = revision.tenant_id AND request.id = revision.request_id
+                WHERE revision.tenant_id = $1 AND revision.request_id = $2
+                  AND revision.request_version = 1 AND request.requester_user_id = $3`,
+              values: [tenantId, requestId, requesterUserId],
+            });
+            const row = replay.rows[0];
+            if (!row) throw new Error('REQUEST_WORKFLOW_REPLAY_INVALID');
+            return { status: 'replayed', publicRequest: publicRevisionRequest(row, tenantId) };
+          }
+          if (workflow.status !== 'started') return { status: 'workflow_conflict' };
+        }
         const capturedAt = createdAt.toISOString();
         const authority = await resolveCurrentRequestCompositionWithClient(client, {
           tenantId,
@@ -1089,6 +1121,11 @@ export function createPostgresRequestRepository(
         if (!request) throw new Error('REQUEST_CREATE_FAILED');
         await appendRequestRevisionWithClient(client, request, 'created', auditEvent, 'employee');
         await appendAudit(client, auditRepository, auditEvent);
+        if (workflowId !== null) {
+          await submitRequestDraftWorkflowWithClient(client, {
+            ...workflowOwner, changedAt: createdAt, submissionFingerprint,
+          });
+        }
         return Object.freeze({ status: 'created', request });
       });
     },

@@ -50,6 +50,7 @@ test('bounded backfill, idempotent copy, guarded purge and verified rollback pre
   assert.equal((await repository.runBatch({ phase: 'copy', kind: 'room' })).changed, 0);
   const projections = createPostgresPlatformProjectionRepository(pool);
   assert.deepEqual(await projections.consumeBatch(), { refreshedCount: 1, retryCount: 0, poisonCount: 0 });
+  assert.equal(await rollbackLatest(pool), true); // Empty Request lifecycle schema 045.
   assert.equal(await rollbackLatest(pool), true); // Drain and remove 044 before testing the 043 media guard.
   await assert.rejects(rollbackLatest(pool), /PRIVATE_MEDIA_OBJECTS_REQUIRE_VERIFIED_ROLLBACK/);
   await assert.rejects(repository.runBatch({ phase: 'purge', kind: 'room' }), /RESTORE_EVIDENCE_REQUIRED/);

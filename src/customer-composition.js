@@ -246,6 +246,7 @@ const productionApplicationService = persistence && auditService
   ? createProductionApplicationService({
     repository: persistence.applicationRepository,
     requestRepository: persistence.requestRepository,
+    requestWorkflowRepository: persistence.requestWorkflowRepository,
     authorizationPolicy,
     auditService,
     roomAvailabilityService,

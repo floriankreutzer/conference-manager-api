@@ -1,4 +1,5 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { createRequestDraftWorkflowService } from './request-draft-workflow-service.js';
 import {
   AUDIT_ACTION,
   AUDIT_OUTCOME,
@@ -16,7 +17,7 @@ import {
   normalizeRequestCompositionDraft,
 } from '../domain/request-composition.js';
 import { isSupportedCurrencyCode } from '../domain/money.js';
-import { isRequestId, toPublicRequest } from '../domain/request.js';
+import { isRequestId, normalizePublicRequest, toPublicRequest } from '../domain/request.js';
 import { normalizeAttributionSourceDisplayName } from '../domain/request-attribution.js';
 import { isIanaTimeZone } from '../domain/site-time-zone.js';
 import {
@@ -88,6 +89,7 @@ function profileAudit(auditService, { principal, tenantContext, correlationId, c
 export function createProductionApplicationService({
   repository,
   requestRepository,
+  requestWorkflowRepository = null,
   authorizationPolicy,
   auditService,
   roomAvailabilityService = null,
@@ -159,6 +161,9 @@ export function createProductionApplicationService({
   }
 
   return Object.freeze({
+    ...(requestWorkflowRepository ? createRequestDraftWorkflowService({
+      repository: requestWorkflowRepository, authorizationPolicy, auditService, clock, idFactory,
+    }) : {}),
     async getProfile({ principal, tenantContext, correlationId }) {
       requireCorrelationId(correlationId);
       authorizeRead(principal, tenantContext);
@@ -358,6 +363,7 @@ export function createProductionApplicationService({
       correlationId,
       schemaVersion,
       requestDraft,
+      workflowId = null,
     }) {
       requireCorrelationId(correlationId);
       authorizationPolicy.authorizeRequestCreate(principal, tenantContext);
@@ -365,7 +371,10 @@ export function createProductionApplicationService({
         throw new AuthorizationInputError('REQUEST_SCHEMA_VERSION_UNSUPPORTED');
       }
       const draft = normalizeRequestCompositionDraft(requestDraft, schemaVersion);
-      const requestId = idFactory();
+      if (workflowId !== null && !isInternalUuid(workflowId)) {
+        throw new AuthorizationInputError('REQUEST_WORKFLOW_INPUT_INVALID');
+      }
+      const requestId = workflowId?.toLowerCase() ?? idFactory();
       if (!isInternalUuid(requestId)) throw new TypeError('REQUEST_ID_FACTORY_INVALID');
       const createdAt = clockDate(clock);
       const auditEvent = auditService.createEvent({
@@ -390,8 +399,20 @@ export function createProductionApplicationService({
         requestDraft: draft,
         createdAt,
         auditEvent,
+        ...(workflowId === null ? {} : {
+          workflowId: requestId,
+          securityVersion: principal.session?.securityVersion,
+          submissionFingerprint: createHash('sha256').update(JSON.stringify({ schemaVersion, draft })).digest('hex'),
+        }),
       });
-      if (result?.status === 'configuration_conflict') throw new RequestStateConflictError();
+      if (['configuration_conflict', 'workflow_conflict'].includes(result?.status)) {
+        throw new RequestStateConflictError();
+      }
+      if (workflowId !== null && result?.status === 'replayed') {
+        return normalizePublicRequest(result.publicRequest, {
+          tenantId: tenantContext.tenantId, requesterUserId: principal.userId,
+        });
+      }
       if (result?.status !== 'created' || !result.request) {
         throw new AuthorizationDeniedError('RESOURCE_NOT_AVAILABLE', { conceal: true });
       }

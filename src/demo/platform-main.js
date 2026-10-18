@@ -21,7 +21,9 @@ import { createOperationsSourceProjection } from './platform-operations-source-p
 const config = loadDemoPlatformConfig(process.env);
 const platformAccess = loadDemoPlatformAccessConfig(process.env);
 const providerUsage = loadDemoProviderUsage(process.env, platformAccess);
-const productDelivery = loadDemoProductDelivery(process.env, platformAccess);
+// Keep strict validation of legacy deployment configuration. The active Product
+// route is composed from the verified runtime collector, with its own clock.
+loadDemoProductDelivery(process.env, platformAccess);
 const liveStorageConfig = loadDailyLiveStorageConfig(process.env, { config, access: platformAccess });
 const sourceStorageEnabled = operationsSourcesEnabled(process.env, liveStorageConfig);
 const runtime = await startDemoEntrypointRuntime({
@@ -49,7 +51,7 @@ const runtime = await startDemoEntrypointRuntime({
       env: process.env, config, surface: 'platform',
       createComposition: (resetMediaObjectStorage) => createDemoPlatformComposition({
         config, staticFileAdapter, metrics, resetMediaObjectStorage, trafficGate, accessGate,
-        providerUsage, productDelivery, liveMetrics, operationsSources,
+        providerUsage, liveMetrics, operationsSources,
       }),
     }); } catch (error) { liveStorage?.close(); sourceStorage?.close(); throw error; }
     return Object.freeze({ async stop() {

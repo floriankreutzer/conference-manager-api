@@ -9,6 +9,8 @@ const ROUTES = Object.freeze([
   ['application_catalog', 'GET'],
   ['application_site_info', 'GET'],
   ['application_requests', 'POST'],
+  ['application_request_workflows', 'POST'],
+  ['application_request_workflow_abandon', 'POST'],
   ['application_request_report', 'GET'],
   ['application_request_resubmission', 'POST'],
   ['application_room_availability', 'POST'],

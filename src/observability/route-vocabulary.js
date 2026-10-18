@@ -19,6 +19,8 @@ export const TELEMETRY_ROUTE_KEYS = Object.freeze([
   'application_catalog',
   'application_site_info',
   'application_requests',
+  'application_request_workflows',
+  'application_request_workflow_abandon',
   'application_request_report',
   'application_request_resubmission',
   'application_room_availability',

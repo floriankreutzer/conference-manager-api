@@ -24,7 +24,8 @@ const { Pool } = pg;
 // Schema 42 admits Equipment in the existing Tenant/actor-bound bulk receipt ledger.
 // Schema 43 adds private media metadata and immutable durable upload intents.
 // Schema 44 atomically records coalescing Platform projection invalidations.
-export const CURRENT_SCHEMA_VERSION = 44;
+// Schema 45 records content-free Request starts and explicit abandonment.
+export const CURRENT_SCHEMA_VERSION = 45;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

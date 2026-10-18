@@ -165,6 +165,8 @@ The current routes are:
 - `GET /api/v1/application/catalog`;
 - `GET /api/v1/application/site-info`;
 - `GET/POST /api/v1/application/requests`;
+- `POST /api/v1/application/request-workflows`;
+- `POST /api/v1/application/request-workflows/{workflowId}/abandon`;
 - `POST /api/v1/application/requests/{requestId}/resubmissions`;
 - `GET /api/v1/application/reports/requests`;
 - `POST /api/v1/application/room-availability`;
@@ -242,6 +244,24 @@ Tenant configuration in the write transaction. Both timestamps must equal their 
 `toISOString()` representation, the end must be later than the start, the interval must not exceed
 24 hours and total participants must be 1-500. Offset, local, non-canonical, longer or oversized
 Requests fail with HTTP 400 `VALIDATION_FAILED` before persistence.
+
+The create envelope additionally accepts optional `workflowId`, a UUID reserved by the authenticated
+Employee through `POST /api/v1/application/request-workflows`. The server revalidates the active
+Tenant, current User security version, ownership and `started` state in the Request transaction;
+the reserved workflow ID becomes the Request ID. An identical normalized first-submit retry returns
+the immutable first revision without creating another Request or audit event. A changed retry body
+or an abandoned workflow returns `409 REQUEST_STATE_CONFLICT`. Existing callers without
+`workflowId` retain their existing create contract and have no inferred pre-submit start time.
+
+Both lifecycle endpoints accept exactly `{}` with the normal authenticated Employee, active-Tenant
+and CSRF boundaries. Start requires a UUID `Idempotency-Key` header, scoped by server Tenant and
+owner; replay returns the same workflow and its current server state. Explicit abandon is idempotent
+for that owner and rejects a submitted workflow with `409 REQUEST_STATE_CONFLICT`. Success is HTTP
+200 with `{ schemaVersion: 1, workflow: { id, status, startedAt, endedAt }, requestId }`; `requestId`
+is the normal correlation ID, and `workflow.id` is the reserved Request ID. The lifecycle status is
+`started`, `submitted` or `abandoned`; only `started` has `endedAt: null`. Timestamps are canonical
+server UTC values. Unknown fields, client clocks/content/scope, query parameters and unsupported
+methods are rejected. See [Request lifecycle](REQUEST-LIFECYCLE.md) for exact semantics and recovery.
 
 `POST /api/v1/application/requests/{requestId}/resubmissions` accepts only
 `{ "schemaVersion": 2, "expectedVersion", "request": <complete-v2-draft> }`. It requires the

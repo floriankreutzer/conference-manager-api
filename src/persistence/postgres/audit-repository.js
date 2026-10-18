@@ -8,7 +8,7 @@ import {
 } from '../../audit/event.js';
 import { withPostgresTransaction } from './transaction.js';
 
-const AUDIT_COLUMNS = `
+export const AUDIT_COLUMNS = `
   id,
   tenant_id,
   actor_user_id,
@@ -34,7 +34,7 @@ function secureEqual(left, right) {
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function mapAuditRow(row) {
+export function mapAuditRow(row) {
   if (!row) return null;
   return Object.freeze({
     id: String(row.id),
@@ -72,6 +72,7 @@ export function createPostgresAuditRepository(pool, { hmacSecret } = {}) {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
   }
   const sign = createSigner(hmacSecret);
+  const verifyRows = createTenantAuditRowVerifier({ hmacSecret });
 
   async function appendWithClient(client, eventValue) {
     const event = normalizeAuditEvent(eventValue);
@@ -179,16 +180,31 @@ export function createPostgresAuditRepository(pool, { hmacSecret } = {}) {
         `,
         values: [tenantId],
       });
-      let previousHash = null;
-      for (const row of result.rows) {
+      return verifyRows(result.rows);
+    },
+  });
+}
+
+// Shared integrity primitive only. It neither queries data nor grants an audit
+// read capability; callers still own their established authorization boundary.
+export function createTenantAuditRowVerifier({ hmacSecret } = {}) {
+  const sign = createSigner(hmacSecret);
+  return (rows) => {
+    let previousHash = null;
+    let previousId = 0n;
+    let tenantId = null;
+    try {
+      for (const row of rows) {
         const stored = mapAuditRow(row);
         const event = normalizeAuditEvent(stored);
-        if (stored.integrityVersion !== 1 || stored.previousHash !== previousHash) return false;
-        const expected = sign(event, previousHash);
-        if (!secureEqual(stored.eventHash, expected)) return false;
+        if (stored.integrityVersion !== 1 || stored.previousHash !== previousHash
+          || BigInt(stored.id) <= previousId || (tenantId !== null && tenantId !== stored.tenantId)
+          || !secureEqual(stored.eventHash, sign(event, previousHash))) return false;
+        previousId = BigInt(stored.id);
+        tenantId = stored.tenantId;
         previousHash = stored.eventHash;
       }
       return true;
-    },
-  });
+    } catch { return false; }
+  };
 }
