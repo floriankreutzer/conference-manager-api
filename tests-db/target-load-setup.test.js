@@ -9,6 +9,7 @@ import { startTargetLoadRuntime } from '../scripts/target-load-runtime.mjs';
 import { assertLoadDatabase, loadTargetScope } from '../scripts/support/target-load-guard.mjs';
 import { targetScopeValues } from '../scripts/support/target-load-runtime-config.mjs';
 import { growTargetLoadPopulation } from '../scripts/support/target-load-growth.mjs';
+import { reconcileTargetLoad } from '../scripts/support/target-load-reconciliation.mjs';
 import { mediaObjectReference, verifyMediaObjectBytes } from '../src/media/object-storage-contract.js';
 import { createPostgresPersistence } from '../src/persistence/postgres/index.js';
 import { createPostgresPlatformPersistence } from '../src/persistence/postgres/platform-index.js';
@@ -117,6 +118,9 @@ test('installer owns a fresh database, grants restricted runtime custody and sup
     'tenant_catalogue_revisions', 'tenant_booking_policy_revisions', 'tenant_cost_allocation_revisions']) {
     await assert.rejects(scoped.customer.pool.query(`DELETE FROM public.${identifier(table)}`), error => error.code === '42501');
   }
+  const reconcile = (current, campaigns) => reconcileTargetLoad({ env, manifest: current, campaigns,
+    persistenceFactory: (config, options) => createPostgresPersistence(localConfig(config, 'setup'), options) });
+  assert.equal((await reconcile(manifest, [])).confirmedBookings, 0);
   const exchange = async input => {
     input.signal.throwIfAborted(); const at = performance.now();
     const body = input.body === undefined ? null : JSON.stringify(input.body);
@@ -175,4 +179,8 @@ test('installer owns a fresh database, grants restricted runtime custody and sup
   assert.equal((await reader.query('SELECT count(*)::int AS count FROM sessions')).rows[0].count, 10_010);
   const retained = await reader.query('SELECT status,request_version FROM requests WHERE id=$1', [outcome.requestId]);
   assert.equal(retained.rows[0].status, 'Confirmed'); assert.equal(Number(retained.rows[0].request_version), 3);
+  const integrity = await reconcile(tenThousand, [{ results: [{ requestId: outcome.requestId,
+    tenantId: manifest.tenants[0], actorUserId: manifest.managers[0].userId }] }]);
+  assert.equal(integrity.confirmedBookings, 1); assert.equal(integrity.requestRevisions, 3);
+  assert.equal(integrity.verifiedTenantAuditChains, 10); assert.equal(integrity.pendingProjectionWork, 0);
 });

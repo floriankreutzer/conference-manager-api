@@ -178,10 +178,61 @@ does not touch the SDK or provider control plane. New cookies remain private dat
 The extended fresh-owner PostgreSQL test must pass before accepting these real SQL
 growth contracts; native/mock tests alone are insufficient.
 
-These are composable preparation modules, not a completed operator campaign CLI or
-live target result. Observer snapshot reconciliation, final database/audit/worker
-acceptance, a separately described active-user cadence and provider cleanup still
-require the final controller and execution evidence.
+These source preparation modules do not establish a live target result. The
+controller below still requires final-head acceptance and actual operator/provider
+evidence before execution. Active-user cadence and provider cleanup remain separate.
+
+## One-shot local campaign controller
+
+`scripts/target-load-controller.mjs` is a local operator command using the existing
+private LOAD namespace and manifest. It requires at least twenty-five minutes
+remaining in the original lifetime, a starting population of exactly one hundred
+Employees, separate Customer/Platform processes on the explicit representative1000
+profile, and the exclusive run journal. It never allocates or deletes resources,
+changes quotas/plans, deploys services or renews expiry. Its hard deadline remains
+armed through local cleanup. The default production rate profile is unchanged.
+
+Before HTTP traffic, the read-only installer reconciliation requires zero Requests,
+references and revisions and verifies Tenant audit integrity and population custody.
+Two first protected probes retain source/boot/limit identity. Thereafter snapshots
+must have a closed aggregate schema, fresh clocks, monotonically increasing
+counters, unchanged boot/limits and zero worker/storage failures. A changed boot
+invalidates the run; no resumed in-process calendar acceptance is inferred.
+
+The fixed sequence is ten bookings at one hundred retained Employees, growth and
+ten bookings at one thousand, growth to ten thousand, one separate one-thousand
+session read pulse, and the paced two-hundred-booking peak. Distinct Room slots
+preserve earlier confirmed bookings. Sixty-one-second quiet intervals separate the
+read pulse from preceding and following business traffic under the explicit global
+rate profile. The pulse makes one read per distinct session over sixty seconds;
+it is a separately labeled descriptive scenario, not an approved activity cadence
+or proof of one thousand simultaneously active users with concurrent bookings.
+
+Each booking phase reconciles its exact simulated calendar and SDK read counts and
+bytes with the manifest. Fixed foreign/CSRF/stale-version probes must return
+404/403/409 without calendar/storage work. Final read-only SQL requires all 220
+Requests Confirmed at version3, exactly three revisions per Request, active
+fixture references, correct transition actor/correlation/price evidence, all ten
+Tenant HMAC chains, the exact retained population and a drained projection outbox.
+It waits at most thirty one-second drain observations and returns counts only.
+The fresh-owner PostgreSQL test covers both empty preflight and post-growth
+reconciliation against actual restricted-role booking state.
+
+The fixed mode-0600 evidence file is reserved exclusively before the controller
+starts. It contains allowlisted aggregates, exact-source/run/boot identity and
+original expiry, without cookies, Tenant/actor/Request IDs, SQL or provider
+credentials. Failed execution produces a failure record; missing evidence never
+becomes success. New growth cookies remain in controller memory, and neither a
+failed run nor its consumed journal may be resumed to obtain a fresh budget.
+
+Warm p95/p99 objectives are evaluated without modifying observed latency. Peak
+completion must independently fit inside fifteen minutes; scheduled arrivals alone
+are insufficient. CPU deltas cover each whole process, including observation
+overhead, not pure worker CPU. The first protected probe is not a verified cold
+state. Actual monthly costs, Graph acceptance, simultaneous active-user capacity
+and provider cleanup remain explicitly false/unproven in this machine evidence.
+Independent control-plane identity, actual provider metering and attributable cost
+modeling, owner cost acceptance and final recovery are still required.
 
 ## Verification and remaining execution
 
