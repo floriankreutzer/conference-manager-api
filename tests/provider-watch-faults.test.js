@@ -36,7 +36,7 @@ test('isolated warning model records acceptance and suppresses a repeated logica
   assert.equal(f.state.lookups, 1);
 });
 
-test('collector/read/write/readback faults never reach the send port', async () => {
+test('ledger read/write/readback faults never reach the send port', async () => {
   for (const fault of ['read', 'write', 'readback']) {
     const f = fixture();
     if (fault === 'read') f.ports.ledger.read = async () => { throw new Error('fixture-read-failed'); };
