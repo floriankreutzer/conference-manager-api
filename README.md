@@ -1,80 +1,38 @@
 # Conference Manager API
 
-## SaaS 3.9 publishing and Demo boundary
+Backend for Conference Manager, providing authenticated application services, customer-scoped booking workflows and PostgreSQL persistence.
 
-This repository is authoritative for trusted backend implementation and canonical API contracts. The intended application-source boundary remains private, but the owner explicitly authorizes temporary public application/API repositories until 2026-11-02 while the included Actions allowance is exhausted. This temporary visibility is not permission to publish credentials, customer data or private operational evidence. Website and Developer remain public; the shared test strategy is hosted publicly in Website so it stays accessible after the planned private-source restoration. SaaS 3.9 provides governed external contract publication and immutable authenticated Git-submodule Demo delivery. Its historical acceptance does not certify current visibility, later source changes or the independent SaaS 3.6/3.8 release gates. See [SAAS-3.9-PUBLISHING-AND-DEMO-BOUNDARY.md](docs/SAAS-3.9-PUBLISHING-AND-DEMO-BOUNDARY.md).
+## Responsibilities
 
-Trusted production backend for the Conference Manager SaaS application.
+- Authenticate users and enforce server-side roles and resource ownership.
+- Process conference requests, booking decisions and customer administration.
+- Integrate with supported identity and calendar services.
+- Persist application data and audit events.
 
-## Current Business bulk contract
+This is the application backend. Repository visibility does not publish every application endpoint as a supported partner API. The [source and publication boundary](docs/SAAS-3.9-PUBLISHING-AND-DEMO-BOUNDARY.md) defines the repository-access and approved-publication rules. Released integration documentation is maintained in [Conference Manager Developer](https://github.com/floriankreutzer/conference-manager-developer).
 
-Conference Manager owns Rooms, Services, Equipment and Catering business data; Tenant Admin
-retains technical provider/mapping and Cost Allocation authority. The existing strict settings
-API supports receipt-bound Equipment template/export/validate/apply alongside the other Catalogue
-types. Canonical schema 042 and Demo overlays 001..007 are required; application processes never
-migrate at startup. Human-facing CSV and named reference choices live in the paired frontend;
-the server retains Tenant/role/actor/CSRF/revision/hash authority. See [TENANT-BULK-TRANSFER.md](docs/TENANT-BULK-TRANSFER.md).
+Operator changes use the separate authenticated Platform HTTP boundary; the only local mutation fallback is the dual-control, grant-bound recovery wrapper. These existing authority boundaries also apply during development.
 
-## Scope
+## Requirements
 
-This repository owns the server-side trust boundary defined by `conference-manager/docs/SAAS-PRODUCTION-TOPOLOGY.md`. The browser remains untrusted.
+- Node.js 22 or later and npm.
+- A dedicated local PostgreSQL 18 instance for persistent development and database tests.
+- The matching [browser application](https://github.com/floriankreutzer/conference-manager) for end-to-end use.
 
-The SaaS 0 foundation through issue #57 now provides:
-
-- Node.js 22 native HTTP API with same-origin request hardening and secure error/health contracts;
-- canonical internal Tenant model and hard Tenant isolation;
-- PostgreSQL 18 authoritative persistence with versioned/checksummed migrations and Tenant-aware constraints;
-- parameterized repositories, explicit transactions and schema readiness;
-- provider-neutral trusted-identity/Internal-Principal contracts;
-- PostgreSQL-backed opaque server sessions using hash-only token persistence;
-- `HttpOnly`, narrow-path, SameSite session cookies with `Secure` enforced by HTTPS Pilot/Production deployment;
-- server-side session expiry, revocation and atomic rotation;
-- User `security_version` invalidation for stale privilege snapshots;
-- HMAC-derived session-bound CSRF tokens compatible with the frontend `X-CSRF-Token` contract;
-- authenticated session introspection and server-side logout;
-- deny-by-default Tenant RBAC for Employee, Conference Manager and Tenant Admin;
-- explicit separation of Platform Admin from the Tenant role model;
-- Employee Request ownership checks and concealed BOLA/IDOR failures;
-- Tenant-scoped Conference Manager Request access;
-- server-authorized Request workflow transitions with strong `If-Match` version and status concurrency;
-- PostgreSQL workflow status/reason constraints;
-- server-generated tenant audit/security events with explicit retention classes;
-- append-only PostgreSQL audit persistence plus per-Tenant HMAC-SHA-256 integrity chains;
-- atomic audit persistence for successful Request transitions and session issue/revoke/rotation;
-- Tenant Admin audit reads through explicit `tenant:audit:read` authorization and chain verification;
-- stable server-side Tenant capability IDs and fail-closed entitlement persistence;
-- explicit separation of Tenant entitlements from frontend/browser rollout feature flags;
-- effective capability evaluation requiring authorization plus entitlement, with optional server-side rollout disablement;
-- deny-by-default internal operator entitlement mutation with atomic `tenant.entitlement.changed` audit evidence;
-- provider-neutral availability, provisional/final reservation-validation and calendar create/update/cancel contracts;
-- Tenant-scoped opaque provider-reference persistence separated from Employee/Manager workflow semantics;
-- deterministic server-side calendar-create idempotency and explicit provider failure/retryability classification;
-- recovery semantics that prevent duplicate provider bookings when adapters honor the idempotency contract;
-- server-generated request correlation and fixed route-key structured operational logs;
-- bounded low-cardinality API/auth/authz/booking/integration/dependency metrics emitted as structured telemetry;
-- separate liveness, required-dependency readiness and optional-provider degradation semantics;
-- aggregate support health with validated service version/build/environment metadata;
-- no browser LocalStorage/sessionStorage authentication, authorization, entitlement or provider authority;
-- secret/PII-minimized operational logging and audit payloads;
-- a complete browser/edge/API/database/Entra/Graph production threat model with OWASP/CWE mapping;
-- a fail-closed Pilot/Production secure-configuration baseline for TLS, headers, cookies, CORS, database TLS, secrets and logging;
-- explicit SAST/SCA/dependency/secret controls and a live HTTP DAST smoke release gate;
-- a defined independent Pilot penetration-test scope and readiness exit criteria;
-- regression/progression/adversarial tests for HTTP, Tenant, persistence, session, authorization, audit, entitlement,
-  booking-integration, observability and production-security boundaries.
-
-The SaaS 1 repository implementation now includes the production Entra identity adapter, Tenant claiming and JIT provisioning, Tenant role administration, Microsoft 365 consent lifecycle, room discovery/mapping, Free/Busy, calendar synchronization, integration health, Tenant Pilot lifecycle, adversarial multi-Tenant gates, and controlled Pilot operations/readiness evidence. Real Microsoft, deployment, browser, restore, DAST, penetration-test, and operational evidence remains an external Pilot gate; see [PILOT-READINESS-RUNBOOK.md](docs/PILOT-READINESS-RUNBOOK.md). Calendar Write remains disabled unless the release also satisfies [EXCHANGE-APPLICATION-RBAC.md](docs/EXCHANGE-APPLICATION-RBAC.md).
-
-SaaS 3.5 adds an isolated Shared Demo Runtime with separate customer and Platform process entrypoints,
-one authoritative PostgreSQL state, deterministic simulated identity/Microsoft scenarios, and a
-sentinel/checksum/lock-protected reset. It reuses the canonical server application and authorization
-boundaries; Production cannot import or fall back to Demo behavior. See
-[SHARED-DEMO-RUNTIME.md](docs/SHARED-DEMO-RUNTIME.md).
-
-## Run locally
+## Local development
 
 ```bash
+git clone https://github.com/floriankreutzer/conference-manager-api.git
+cd conference-manager-api
+npm ci --ignore-scripts
 cp .env.example .env
+```
+
+Edit `.env` for your local environment before starting. Configure `DATABASE_URL` for a dedicated local database and supply independently generated `CSRF_SECRET` and `AUDIT_HMAC_SECRET` values, each containing 32–512 UTF-8 bytes without control characters. A persistent database requires a stable audit key. Keep `.env` untracked and use no production credentials or customer data.
+
+After reviewing your local configuration:
+
+```bash
 set -a
 . ./.env
 set +a
@@ -82,73 +40,20 @@ npm run db:migrate
 npm start
 ```
 
-A non-persistent development composition may leave `CSRF_SECRET` and `AUDIT_HMAC_SECRET` empty. Any runtime configured with `DATABASE_URL` must provide a stable `AUDIT_HMAC_SECRET` of at least 32 bytes so persisted audit chains remain verifiable across restarts. Pilot/Production additionally require an externally managed `CSRF_SECRET`, an HTTPS public origin, certificate-verifying database TLS, `SERVICE_VERSION` and `BUILD_ID`.
+The development template binds to `127.0.0.1:3000`. These commands apply migrations to the configured database; use a disposable development database. Deployment and operational recovery require separate controlled procedures.
 
-Do not rotate `AUDIT_HMAC_SECRET` as an ordinary configuration change. Key rotation requires a reviewed audit-integrity migration/checkpoint strategy because existing events were signed with the previous key.
+## Project layout
 
-The checked-in `.env.example` is a development template. Pilot/Production configuration and secrets must be supplied by protected deployment configuration according to [PRODUCTION-SECURE-CONFIGURATION.md](docs/PRODUCTION-SECURE-CONFIGURATION.md).
+| Directory | Responsibility |
+| --- | --- |
+| `src/` | HTTP, application, domain and infrastructure modules |
+| `migrations/` | Versioned database migrations |
+| `tests/` | Unit, HTTP and security tests |
+| `tests-db/` | PostgreSQL integration tests discovered by `npm run test:db` |
+| `scripts/` | Development and validation tools |
+| `docs/` | Technical contracts and contributor guidance |
 
-## Run the Shared Demo Runtime
-
-The Shared Demo uses a dedicated database named `conference_manager_demo_*`, canonical schema
-version `42`, Demo overlay version `7`, four distinct database roles and only `DEMO_*`
-configuration. After provisioning and applying canonical migrations, run:
-
-```bash
-npm run demo:db:migrate
-npm run demo:db:reset -- --confirm-seed-version=saas-3.7-three-demo-customers-v1
-npm run start:demo:customer
-npm run start:demo:platform
-```
-
-The two start commands are independent processes and must be routed through separate HTTPS origins.
-Do not supply Production/real-provider credentials. The complete configuration, provisioning,
-reset, validation and rollback contract is in [SHARED-DEMO-RUNTIME.md](docs/SHARED-DEMO-RUNTIME.md).
-
-## API foundation
-
-- `GET /api/v1/health/live` — process liveness only.
-- `GET /api/v1/health/ready` — required-dependency readiness aggregate including PostgreSQL/schema readiness when configured.
-- `GET /api/v1/health/status` — aggregate `ready`/`degraded`/`not_ready` state plus bounded support metadata; no dependency details.
-- `GET /api/v1/session` — resolves the server-side session/Tenant context and returns minimized presentation context plus a runtime CSRF token.
-- `DELETE /api/v1/session` — CSRF-protected server-side logout/revocation and cookie clearing.
-- `GET /api/v1/requests/{requestId}` — active-Tenant and object-authorized Request read.
-- `POST /api/v1/requests/{requestId}/transitions` — CSRF-protected, server-authorized Request workflow transition requiring a strong `If-Match` Request-version tag.
-- `GET/POST /api/v1/requests/{requestId}/booking-change` — read or create the single open confirmed-booking proposal.
-- `POST /api/v1/requests/{requestId}/booking-change/{changeId}/decision` — Conference Manager approve/reject decision with live revalidation.
-- `GET /api/v1/audit` — Tenant Admin audit read after Tenant authorization and integrity-chain verification.
-
-There is intentionally no browser-controlled session issuance, entitlement-administration, metrics or direct calendar-provider endpoint. The production Entra OIDC flow validates and maps provider identity server-side before issuing an opaque application session. Normal Platform/operator changes use the separate authenticated Platform HTTP boundary; the only local mutation fallback is the dual-control, grant-bound recovery wrapper. Production Request, availability and calendar synchronization remain composed behind the existing authenticated and object-authorized application use cases.
-
-See:
-
-- [API.md](docs/API.md)
-- [ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [AUDIT.md](docs/AUDIT.md)
-- [AUTHORIZATION.md](docs/AUTHORIZATION.md)
-- [BOOKING-INTEGRATION.md](docs/BOOKING-INTEGRATION.md)
-- [ENTITLEMENTS.md](docs/ENTITLEMENTS.md)
-- [ENTRA-AUTHENTICATION.md](docs/ENTRA-AUTHENTICATION.md)
-- [ENTRA-PILOT-VALIDATION.md](docs/ENTRA-PILOT-VALIDATION.md)
-- [EXCHANGE-APPLICATION-RBAC.md](docs/EXCHANGE-APPLICATION-RBAC.md)
-- [IDENTITY-SESSION.md](docs/IDENTITY-SESSION.md)
-- [MICROSOFT365-CALENDAR-WRITE.md](docs/MICROSOFT365-CALENDAR-WRITE.md)
-- [MICROSOFT365-CONNECTION.md](docs/MICROSOFT365-CONNECTION.md)
-- [MICROSOFT365-FREE-BUSY.md](docs/MICROSOFT365-FREE-BUSY.md)
-- [MICROSOFT365-INTEGRATION-HEALTH.md](docs/MICROSOFT365-INTEGRATION-HEALTH.md)
-- [MICROSOFT365-ROOM-DISCOVERY.md](docs/MICROSOFT365-ROOM-DISCOVERY.md)
-- [MICROSOFT365-ROOM-MAPPING.md](docs/MICROSOFT365-ROOM-MAPPING.md)
-- [OBSERVABILITY.md](docs/OBSERVABILITY.md)
-- [PERSISTENCE.md](docs/PERSISTENCE.md)
-- [PILOT-PENETRATION-TEST.md](docs/PILOT-PENETRATION-TEST.md)
-- [PILOT-READINESS-RUNBOOK.md](docs/PILOT-READINESS-RUNBOOK.md)
-- [PRODUCTION-SECURE-CONFIGURATION.md](docs/PRODUCTION-SECURE-CONFIGURATION.md)
-- [SECURITY.md](docs/SECURITY.md)
-- [SHARED-DEMO-RUNTIME.md](docs/SHARED-DEMO-RUNTIME.md)
-- [TENANCY.md](docs/TENANCY.md)
-- [THREAT-MODEL.md](docs/THREAT-MODEL.md)
-
-## Required validation
+## Validation
 
 ```bash
 npm run check
@@ -156,8 +61,16 @@ npm run audit
 npm run test:db
 ```
 
-`npm run check` includes the security-baseline architecture gate and the live HTTP DAST smoke gate in addition to the existing syntax, architecture, SAST-oriented static, dependency, secret, style, unit, regression, progression and adversarial checks.
+Database tests require a dedicated test database and the repository-defined configuration. Never point tests at production or shared customer databases. Cross-repository browser tests require the corresponding frontend and isolated test fixtures.
 
-CI performs locked installs without lifecycle scripts, high-severity audit, repository quality/security gates and PostgreSQL 18 integration tests. The separate Dependency Policy validates dependency/lock/license/lifecycle policy, and Gitleaks scans repository history.
+## Contributing
 
-GitHub-native Dependency Review is unavailable for this private user-owned repository without GitHub Code Security/Advanced Security. The repository-local Dependency Policy remains the enforced supply-chain review control unless equivalent native coverage becomes available.
+Start with [AGENTS.md](AGENTS.md) and the [coding standards](docs/CODING-STANDARDS.md). Preserve server-side authorization, customer isolation, data integrity and the existing test gates. Submit changes through the repository review process.
+
+## Security
+
+Do not publish credentials, customer payloads or sensitive diagnostics. Report suspected vulnerabilities privately using [SECURITY.md](SECURITY.md).
+
+## License
+
+No project-level license file is currently included. Refer to the corresponding notices for third-party assets and dependencies.
