@@ -1306,6 +1306,9 @@ export function createPostgresRequestRepository(
       auditEvent,
     }) {
       return withPostgresTransaction(pool, async (client) => {
+        if (!await lockRequestCompositionTenantWithClient(client, tenantId)) {
+          return Object.freeze({ status: 'state_conflict', request: null });
+        }
         const locked = await client.query({
           name: 'request-final-confirm-lock-request',
           text: `

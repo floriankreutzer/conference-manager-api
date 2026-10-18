@@ -75,17 +75,19 @@ export function createPostgresAuditRepository(pool, { hmacSecret } = {}) {
 
   async function appendWithClient(client, eventValue) {
     const event = normalizeAuditEvent(eventValue);
+    // Take the FK-compatible Tenant lock before the chain advisory lock. A business
+    // transaction may already hold the stronger Tenant lock before appending audit.
+    const tenant = await client.query({
+      name: 'audit-tenant-exists',
+      text: 'SELECT id FROM tenants WHERE id = $1 FOR KEY SHARE',
+      values: [event.tenantId],
+    });
+    if (tenant.rowCount !== 1) return null;
     await client.query({
       name: 'audit-lock-tenant-chain',
       text: 'SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))',
       values: [event.tenantId],
     });
-    const tenant = await client.query({
-      name: 'audit-tenant-exists',
-      text: 'SELECT id FROM tenants WHERE id = $1',
-      values: [event.tenantId],
-    });
-    if (tenant.rowCount !== 1) return null;
 
     const previous = await client.query({
       name: 'audit-previous-event-hash',

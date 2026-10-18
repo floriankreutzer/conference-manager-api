@@ -747,7 +747,7 @@ test('confirm-first lock order retains the active event and denies queued pre-co
 
   const referenceLocked = deferred();
   const releaseConfirmation = deferred();
-  const compensationOwnerQueryStarted = deferred();
+  const compensationTenantQueryStarted = deferred();
   const confirmPool = poolWithQueryHooks(pool, {
     after: {
       async 'calendar-authority-lock-active-booking-reference'() {
@@ -758,8 +758,8 @@ test('confirm-first lock order retains the active event and denies queued pre-co
   });
   const compensationPool = poolWithQueryHooks(pool, {
     before: {
-      'booking-reference-lock-compensatable-request'() {
-        compensationOwnerQueryStarted.resolve();
+      'booking-reference-tenant-order-lock'() {
+        compensationTenantQueryStarted.resolve();
       },
     },
   });
@@ -769,7 +769,7 @@ test('confirm-first lock order retains the active event and denies queued pre-co
   const confirming = confirm(confirmRepository, TENANT_A, REQUEST_A1);
   await referenceLocked.promise;
   const compensating = beginCompensation(compensationRepository);
-  await compensationOwnerQueryStarted.promise;
+  await compensationTenantQueryStarted.promise;
   releaseConfirmation.resolve();
 
   const confirmed = await confirming;
@@ -801,7 +801,7 @@ test('pre-confirm cleanup-first lock order owns the event before stale write-ena
 
   const compensationOwnerLocked = deferred();
   const releaseCompensation = deferred();
-  const confirmRequestQueryStarted = deferred();
+  const confirmTenantQueryStarted = deferred();
   const compensationPool = poolWithQueryHooks(pool, {
     after: {
       async 'booking-reference-lock-compensatable-request'() {
@@ -812,8 +812,8 @@ test('pre-confirm cleanup-first lock order owns the event before stale write-ena
   });
   const confirmPool = poolWithQueryHooks(pool, {
     before: {
-      'request-final-confirm-lock-request'() {
-        confirmRequestQueryStarted.resolve();
+      'request-v2-authority-tenant-order-lock'() {
+        confirmTenantQueryStarted.resolve();
       },
     },
   });
@@ -823,7 +823,7 @@ test('pre-confirm cleanup-first lock order owns the event before stale write-ena
   const compensating = beginCompensation(compensationRepository);
   await compensationOwnerLocked.promise;
   const confirming = confirm(confirmRepository, TENANT_A, REQUEST_A1);
-  await confirmRequestQueryStarted.promise;
+  await confirmTenantQueryStarted.promise;
   releaseCompensation.resolve();
 
   const compensation = await compensating;
@@ -1099,4 +1099,26 @@ test('calendar cleanup audit failure rolls back both confirmation and terminaliz
     [TENANT_A, REQUEST_A1],
   );
   assert.deepEqual(persisted.rows, [{ status: REQUEST_STATUS.IN_REVIEW, state: 'compensated' }]);
+});
+
+
+test('final confirmation rejects an inactive Tenant without Request, reference or audit mutation', async (t) => {
+  const pool = createPostgresPool(databaseConfig());
+  t.after(async () => { await clean(pool); await pool.end(); });
+  await migrateUp(pool); await clean(pool);
+  await seedTenant(pool, TENANT_A, USER_A);
+  await seedRequest(pool, TENANT_A, REQUEST_A1, USER_A);
+  let auditAppends = 0;
+  const repo = repository(pool, { async appendWithClient() { auditAppends += 1; return { id: 'unexpected' }; } });
+  await pool.query("UPDATE tenants SET status='suspended' WHERE id=$1", [TENANT_A]);
+  const result = await confirm(repo, TENANT_A, REQUEST_A1);
+  assert.equal(result.status, 'state_conflict'); assert.equal(result.request, null);
+  assert.equal(auditAppends, 0);
+  const persisted = await pool.query(`SELECT request.status,request.request_version,booking.state,
+    (SELECT count(*)::int FROM request_revisions WHERE tenant_id=$1) AS revision_count
+    FROM requests request JOIN booking_provider_references booking
+      ON booking.tenant_id=request.tenant_id AND booking.request_id=request.id
+    WHERE request.tenant_id=$1 AND request.id=$2`, [TENANT_A, REQUEST_A1]);
+  assert.deepEqual(persisted.rows.map(row => ({ ...row, request_version: Number(row.request_version) })),
+    [{ status: REQUEST_STATUS.IN_REVIEW, request_version: 1, state: 'active', revision_count: 0 }]);
 });

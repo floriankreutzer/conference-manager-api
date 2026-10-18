@@ -30,7 +30,11 @@ prove actual provider isolation or provide automatic resource deletion.
 
 Read-only database verification requires PostgreSQL18, exact database/current role,
 all seven explicit privilege/membership results false and one matching run/release/time
-marker. Missing privilege fields fail closed. Only the setup identity may accept an
+marker. Missing privilege fields fail closed.
+Runtime identities also require explicit negative database/schema/marker ownership,
+database/schema CREATE and table/column marker-mutation checks. Only the installer
+may retain this local ownership authority; no surface may retain elevated role attributes.
+Missing authority fields fail closed. Only the setup identity may accept an
 actually empty public schema before marker installation, using schema dependencies
 to include non-table objects. Catalog reads explicitly use `pg_catalog`; marker
 reads explicitly use `public`. Time is checked before and

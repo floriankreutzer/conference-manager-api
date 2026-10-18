@@ -36,6 +36,13 @@ function mapRow(row) {
 }
 
 async function lockReference(client, tenantId, requestId, integrationId) {
+  // Cleanup remains allowed for an inactive Tenant; this lock orders persistence,
+  // while the existing exact connection, Request and reference fences authorize it.
+  await client.query({
+    name: 'booking-reference-tenant-order-lock',
+    text: 'SELECT id FROM tenants WHERE id = $1 FOR KEY SHARE',
+    values: [tenantId],
+  });
   const key = `${tenantId}:${requestId}:${integrationId}`;
   await client.query({
     name: 'booking-reference-lock',
@@ -474,6 +481,7 @@ export function createPostgresBookingReferenceRepository(pool, { auditRepository
       auditEvent,
     }) {
       return withPostgresTransaction(pool, async (client) => {
+        await lockReference(client, tenantId, requestId, integrationId);
         const result = await client.query({
           name: 'booking-reference-touch',
           text: `
