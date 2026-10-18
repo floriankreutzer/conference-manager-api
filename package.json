@@ -55,6 +55,6 @@
     "sharp": "0.35.5"
   },
   "devDependencies": {
-    "es-module-lexer": "3.0.3"
+    "es-module-lexer": "3.0.4"
   }
 }
