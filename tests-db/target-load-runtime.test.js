@@ -7,6 +7,7 @@ import { createPostgresPersistence } from '../src/persistence/postgres/index.js'
 import { createPostgresPlatformPersistence } from '../src/persistence/postgres/platform-index.js';
 import { createCustomerComposition } from '../src/customer-composition.js';
 import { createPlatformComposition } from '../src/platform-composition.js';
+import { targetLoopbackJson } from '../tests/support/target-load-http.js';
 import { targetLoadEnvironment, RUN } from '../tests/support/target-load-environment.js';
 import { createBookingJourneyFixture } from './support/booking-journey-fixture.js';
 
@@ -73,7 +74,7 @@ test('target compositions run real PostgreSQL with separate restricted roles and
       env.LOAD_STORAGE_PROBE_JSON = JSON.stringify({ tenantId: fixture.tenants[0], ...fixture.images[0] });
     } else env.LOAD_TENANT_AUDIT_HMAC_SECRET = fixture.config.auditHmacSecret;
     environments[surface] = env;
-    const runtime = await startTargetLoadRuntime({ env,
+    const starting = startTargetLoadRuntime({ env,
       customerPersistence(config, options) {
         scoped.customer = createPostgresPersistence(localConfig(config, customer), options); return scoped.customer;
       },
@@ -95,6 +96,10 @@ test('target compositions run real PostgreSQL with separate restricted roles and
         servers.platform = result.process.server; return result;
       },
     });
+    let runtime;
+    try { runtime = await starting; } catch (error) {
+      t.diagnostic(JSON.stringify({ surface, phase: error.phase })); throw error;
+    }
     runtimes.push(runtime);
   }
   const origins = Object.fromEntries(Object.entries(servers).map(([surface, server]) =>
@@ -135,6 +140,10 @@ test('target compositions run real PostgreSQL with separate restricted roles and
     headers: { Cookie: employee.cookie, Origin: environments.customer.LOAD_PUBLIC_ORIGIN, 'Content-Type': 'application/json' },
     body: '{}' });
   assert.equal(deniedCsrf.status, 403);
-  const deniedCustomer = await fetch(origins.platform + '/api/v1/platform/session', { headers: { Cookie: employee.cookie } });
+  const host = new URL(environments.platform.LOAD_PUBLIC_ORIGIN).host;
+  const deniedCustomer = await targetLoopbackJson(servers.platform, '/api/v1/platform/session', host, { Cookie: employee.cookie });
   assert.equal(deniedCustomer.status, 401);
+  const login = await targetLoopbackJson(servers.platform, '/api/v1/platform/auth/microsoft/login', host);
+  assert.equal(login.status, 503); assert.equal(login.body.error.code, 'PLATFORM_IDENTITY_UNAVAILABLE');
+  assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_oidc_auth_transactions')).rows[0].count, 0);
 });

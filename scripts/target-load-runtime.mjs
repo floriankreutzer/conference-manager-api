@@ -9,6 +9,8 @@ import { createNeonObjectStorage } from '../src/media/neon-object-storage.js';
 import { createMetricsRegistry } from '../src/observability/metrics.js';
 import { createLogger } from '../src/logger.js';
 import { createHttpServer } from '../src/server.js';
+import { assertPlatformRouteKey } from '../src/platform/http/observability.js';
+import { createLoadPlatformAuthentication } from './support/target-load-identity.mjs';
 import { createPlatformHttpServer } from '../src/platform/server.js';
 import { assertLoadDatabase, loadTargetScope } from './support/target-load-guard.mjs';
 import { createTargetLoadCalendar } from './support/target-load-calendar.mjs';
@@ -61,7 +63,7 @@ export async function startTargetLoadRuntime({ env = process.env, clock = Date.n
   storageFactory = createNeonObjectStorage, customerComposition = createCustomerComposition,
   platformComposition = createPlatformComposition, verifyDatabase = assertLoadDatabase } = {}) {
   let settings; let boundary; let persistence; let storage; let composition; let hardExit;
-  let startPromise = Promise.resolve(); let stopPromise; let stopping = false;
+  let startPromise = Promise.resolve(); let stopPromise; let stopping = false; let phase = 'configuration';
   async function stop() {
     if (stopPromise) return stopPromise;
     stopping = true; boundary?.close();
@@ -80,7 +82,8 @@ export async function startTargetLoadRuntime({ env = process.env, clock = Date.n
   }
   try {
     settings = loadTargetRuntimeConfig(env, clock());
-    const metrics = createMetricsRegistry(); let calendar;
+    const metrics = createMetricsRegistry(settings.scope.surface === 'platform'
+      ? { assertRouteKey: assertPlatformRouteKey } : {}); let calendar;
     const counts = { workerFailures: 0, storageReads: 0, storageReadBytes: 0, storageWrites: 0,
       storageWriteBytes: 0, storageDeletes: 0, storageFailures: 0 };
     const simulated = { snapshot: () => calendar?.snapshot()
@@ -108,17 +111,23 @@ export async function startTargetLoadRuntime({ env = process.env, clock = Date.n
         },
       } };
     }
+    phase = 'database';
     await verifyDatabase(persistence.pool, settings.scope, { clock }); active();
     if (settings.scope.surface === 'customer') {
+      phase = 'fixture';
       const rows = await fixtureBindings(persistence.pool); active();
       valid(rows.some(row => row.tenant_id === settings.storageProbe.tenantId));
       calendar = createTargetLoadCalendar(new Map(rows.map(row => [row.reference, { address: row.address }])));
+      phase = 'storage';
       await storage.get(settings.storageProbe); active();
+      phase = 'composition';
       composition = customerComposition({ config: settings.config, persistence, microsoft365Client: calendar.client,
         entraClient: null, metrics, logger: createLogger({ write() {} }), shutdownTimeoutMs: 5000,
         httpServerFactory: options => { const server = createHttpServer(options); boundary.install(server); return server; } });
     } else {
+      phase = 'composition';
       composition = platformComposition({ config: settings.config, persistence, metrics, shutdownTimeoutMs: 5000,
+        authenticationFactory: createLoadPlatformAuthentication,
         projectionRunGate: async work => {
           active();
           try { const result = await work(); active(); return result; }
@@ -126,11 +135,13 @@ export async function startTargetLoadRuntime({ env = process.env, clock = Date.n
         },
         httpServerFactory: options => { const server = createPlatformHttpServer(options); boundary.install(server); return server; } });
     }
-    active(); startPromise = composition.start(); await startPromise; active();
+    active(); phase = 'start'; startPromise = composition.start(); await startPromise; active();
     return Object.freeze({ stop });
   } catch {
     try { await stop(); } catch { /* Only the fixed runtime failure crosses the entrypoint. */ }
-    throw new Error('LOAD_TARGET_RUNTIME_FAILED');
+    const error = new Error('LOAD_TARGET_RUNTIME_FAILED');
+    error.phase = phase;
+    throw error;
   }
 }
 

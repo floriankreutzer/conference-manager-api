@@ -65,12 +65,14 @@ configuration loader, which receives unchanged verified TLS separately.
 Customer storage uses the canonical bounded Neon SDK adapter, exact run bucket and
 a verified media probe belonging to one of the ten synthetic fixture Tenants.
 Database authority is checked before fixture/object reads. Ten distinct synthetic
-Microsoft bindings feed the existing explicit calendar fixture; no real identity or
-Graph client is created. Any persisted booking reference prevents startup because
+Microsoft bindings feed the existing explicit calendar fixture. Platform receives an
+explicit unavailable authentication service: login/callback cannot accept an identity,
+write an OIDC flow or issue a session. Customer retains its canonical unavailable
+identity handling. No real identity or Graph client is created. Any persisted booking reference prevents startup because
 a restarted in-process calendar cannot reconstruct its external events. Unexpected
 boot changes therefore invalidate a campaign; cold restarts must precede booking
 writes. Platform uses its normal projection worker and a separate four-connection
-pool. Worker/subscription failures are counted without logging their errors.
+pool and the canonical Platform route-metric validator. Worker/subscription failures are counted without logging their errors.
 
 The protected `GET /__load/observe` endpoint requires the run's independent Bearer
 credential and exposes only fixed aggregate metrics, process CPU/memory, boot/source

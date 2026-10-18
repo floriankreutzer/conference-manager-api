@@ -47,7 +47,8 @@ test('target runtime verifies authority before fixture/object I/O and composes o
       assert.ok(value.steps.indexOf('database-guard') < value.steps.indexOf('object-probe'));
       assert.equal(state.options.entraClient, null); assert.equal(typeof state.options.microsoft365Client.createCalendarEvent, 'function');
     } else {
-      assert.ok(!value.steps.includes('storage-constructor')); assert.equal(state.options.authenticationFactory, undefined);
+      assert.ok(!value.steps.includes('storage-constructor')); assert.equal(typeof state.options.authenticationFactory, 'function');
+      await assert.rejects(state.options.authenticationFactory().start(), error => error.statusCode === 503);
       let work = 0; assert.equal(await state.options.projectionRunGate(async () => { work += 1; return 'ok'; }), 'ok');
       assert.equal(work, 1);
     }
