@@ -80,11 +80,15 @@ async function verifyLoadDatabase(pool, scope, { allowEmpty, clock }) {
   const marker = await query("SELECT to_regclass('public.saas38_load_scope') AS marker");
   if (marker.rows[0]?.marker === null && allowEmpty) {
     valid(scope.surface === 'setup');
-    const tables = await query("SELECT count(*)::int AS count FROM pg_tables WHERE schemaname='public'");
-    valid(tables.rows[0].count === 0); return;
+    const objects = await query(`SELECT count(*)::int AS count FROM (
+      SELECT 1 FROM pg_class WHERE relnamespace='public'::regnamespace
+      UNION ALL SELECT 1 FROM pg_proc WHERE pronamespace='public'::regnamespace
+      UNION ALL SELECT 1 FROM pg_type WHERE typnamespace='public'::regnamespace
+    ) public_objects`);
+    valid(objects.rows[0].count === 0); return;
   }
   valid(marker.rows[0]?.marker !== null);
-  const target = await query('SELECT run_id,release_sha,created_at,expires_at FROM saas38_load_scope');
+  const target = await query('SELECT run_id,release_sha,created_at,expires_at FROM public.saas38_load_scope');
   valid(target.rowCount === 1 && target.rows[0].run_id === scope.runId && target.rows[0].release_sha === scope.releaseSha
     && target.rows[0].created_at.toISOString() === scope.createdAt && target.rows[0].expires_at.toISOString() === scope.expiresAt);
 }

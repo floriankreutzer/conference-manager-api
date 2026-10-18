@@ -53,6 +53,11 @@ private error redaction, Tenant-bound calendar inputs, immutable idempotency, ex
 UTC and hard event limits. Repository full check and audit remain mandatory before
 candidate review; complete required CI and independent Main checks remain separate.
 Mocked SQL results do not establish PostgreSQL/provider permission acceptance.
+The separate PostgreSQL integration test exercises actual role rights/membership,
+public-schema relations/types, run markers and a hostile search path in the runner's
+disposable loopback database. Retain its successful exact-candidate CI result before
+claiming this SQL-contract evidence; it does not verify Neon permissions or remote
+connection/control-plane isolation. Marker reads explicitly name the public schema.
 
 Before any actual run, complete and validate synthetic setup, Customer and Platform
 compositions, private media delivery and bounded worker observation, the coherent
