@@ -99,6 +99,41 @@ The normal runtime defaults and existing deployment are unchanged. CPU samples c
 the entire selected process, including observer/HTTP overhead; Platform process CPU
 is not an exact worker-only CPU measurement.
 
+## Local installer preparation
+
+`scripts/target-load-setup.mjs` is a local installer for an already provisioned,
+empty target database owned by its separate restricted setup role. It does not
+create provider resources, databases or roles. The Customer and Platform roles
+must already exist without elevated attributes, memberships, object ownership or
+previous table rights. Provider administrator credentials never enter this installer
+or either target service. SQL-created limited roles require independent Neon
+control-plane and catalog verification; Console/API-created roles normally inherit
+`neon_superuser` and are unsuitable runtime principals.
+
+The installer verifies empty-database authority before installing a fixed run marker,
+then applies canonical migrations and shares the existing synthetic booking seed:
+ten Tenants, one hundred rooms, ten Managers and exactly 100, 1,000 or 10,000
+Employees. Session generation uses the canonical session service; synthetic fixture
+issuance is not an identity-provider login. Ten private images pass through the
+owned loopback Manager/CSRF upload API. Runtime grants are explicit, surface-specific
+and preserve immutable media rows. A pre-existing marker prevents reseeding.
+
+The CLI reserves `/tmp/cm-saas38-load-RUN.json` exclusively with mode 0600 before
+database work. This private intermediate contains raw synthetic session cookies;
+never print, commit, publish or attach it to CI evidence. It contains no database
+passwords or provider keys. A failed installer removes its reserved file; partial
+database/object work remains within the marked target for controlled cleanup.
+Absolute expiry stays armed through setup and cleanup. This does not stop billing.
+
+An additional PostgreSQL test uses an actually fresh, installer-owned database and
+restricted SQL roles, exercises the installer, media custody, runtime grants and
+one complete sixteen-operation booking, verifies Tenant HMAC chains and worker
+drain, and checks forbidden runtime schema/marker writes. Only the guarded local
+transport is substituted. Successful exact-head CI is required before accepting
+that evidence; no remote permission, TLS, provider cost or capacity claim follows.
+Population growth, privileged control-plane bootstrap and remote replay remain
+separate unfinished execution work.
+
 ## Verification and remaining execution
 
 Native negative tests cover invalid destinations/roles/times/credentials, expiry
