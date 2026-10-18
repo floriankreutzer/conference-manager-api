@@ -9,7 +9,7 @@ Backend for Conference Manager, providing authenticated application services, cu
 - Integrate with supported identity and calendar services.
 - Persist application data and audit events.
 
-This is the application backend. Its presence in a public repository does not publish every application endpoint as a supported partner API. Released integration documentation is maintained in [Conference Manager Developer](https://github.com/floriankreutzer/conference-manager-developer).
+This is the application backend. Repository visibility does not publish every application endpoint as a supported partner API. The [source and publication boundary](docs/SAAS-3.9-PUBLISHING-AND-DEMO-BOUNDARY.md) defines the repository-access and approved-publication rules. Released integration documentation is maintained in [Conference Manager Developer](https://github.com/floriankreutzer/conference-manager-developer).
 
 Operator changes use the separate authenticated Platform HTTP boundary; the only local mutation fallback is the dual-control, grant-bound recovery wrapper. These existing authority boundaries also apply during development.
 
@@ -28,7 +28,7 @@ npm ci --ignore-scripts
 cp .env.example .env
 ```
 
-Edit `.env` for your local environment before starting. Configure `DATABASE_URL` for a dedicated local database and supply independently generated `CSRF_SECRET` and `AUDIT_HMAC_SECRET` values. A persistent database requires a stable audit key of at least 32 bytes. Keep `.env` untracked and use no production credentials or customer data.
+Edit `.env` for your local environment before starting. Configure `DATABASE_URL` for a dedicated local database and supply independently generated `CSRF_SECRET` and `AUDIT_HMAC_SECRET` values, each containing 32–512 UTF-8 bytes without control characters. A persistent database requires a stable audit key. Keep `.env` untracked and use no production credentials or customer data.
 
 After reviewing your local configuration:
 
@@ -48,7 +48,8 @@ The development template binds to `127.0.0.1:3000`. These commands apply migrati
 | --- | --- |
 | `src/` | HTTP, application, domain and infrastructure modules |
 | `migrations/` | Versioned database migrations |
-| `tests/` | Unit, HTTP, security and database tests |
+| `tests/` | Unit, HTTP and security tests |
+| `tests-db/` | PostgreSQL integration tests discovered by `npm run test:db` |
 | `scripts/` | Development and validation tools |
 | `docs/` | Technical contracts and contributor guidance |
 
