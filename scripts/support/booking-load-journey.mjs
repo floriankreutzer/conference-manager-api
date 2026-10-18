@@ -6,9 +6,10 @@ import { normalizeRequestCompositionDraft } from '../../src/domain/request-compo
 // One controlled sixteen-operation choreography. The injected transport owns fixed
 // destination verification, bounded I/O/cancellation and byte/latency observation.
 // This module supplies no network, provider, database or deployment authority.
-export async function runBookingLoadJourney({ exchange, employee, manager, context, draft, images, expectedRooms, signal }) {
+export async function runBookingLoadJourney(options) {
   let operation = 'input';
   try {
+    const { exchange, employee, manager, context, draft, images, expectedRooms, signal } = options;
     assert.equal(typeof exchange, 'function'); assert.ok(signal instanceof AbortSignal);
     assert.match(context, /^[A-Za-z0-9_-]{1,2048}$/);
     const actors = {};

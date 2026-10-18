@@ -1,10 +1,11 @@
 import { performance } from 'node:perf_hooks';
 import { isInternalUuid } from '../../src/domain/identifiers.js';
+import { normalizeRequestCompositionDraft } from '../../src/domain/request-composition.js';
 
 function valid(value) { if (!value) throw new Error('LOAD_BOOKING_TRANSPORT_INVALID'); }
 
 function validPath(kind, path) {
-  if (typeof path !== 'string') return false;
+  if (typeof path !== 'string' || path.length > 2304) return false;
   if (kind === 'session_read') return path === '/api/v1/session';
   if (kind === 'room_page_read') {
     return /^\/api\/v1\/application\/catalog\?section=rooms&limit=5&(?:context|cursor)=[A-Za-z0-9_-]{1,2048}$/.test(path);
@@ -26,8 +27,9 @@ export function createLoopbackBookingExchange(origin) {
     valid(url.protocol === 'http:' && url.hostname === '127.0.0.1' && url.port
       && !url.username && !url.password && url.pathname === '/' && !url.search && !url.hash);
   } catch { throw new Error('LOAD_BOOKING_TRANSPORT_INVALID'); }
-  return async function exchange({ kind, actor, path, method, cookie, csrfToken, body, expectedVersion, binary, signal }) {
+  return async function exchange(input) {
     try {
+      const { kind, actor, path, method, cookie, csrfToken, body, expectedVersion, binary, signal } = input;
       valid(validPath(kind, path) && ['employee', 'manager'].includes(actor));
       valid(typeof cookie === 'string' && /^cm_session=[A-Za-z0-9_-]{43}$/.test(cookie));
       valid(signal instanceof AbortSignal && typeof binary === 'boolean' && binary === (kind === 'media_read'));
@@ -36,8 +38,18 @@ export function createLoopbackBookingExchange(origin) {
       valid(write ? typeof csrfToken === 'string' && /^[A-Za-z0-9_-]{43}$/.test(csrfToken) && body !== undefined
         : body === undefined && csrfToken === undefined && expectedVersion === undefined);
       valid(kind === 'request_transition' ? [1, 2].includes(expectedVersion) : expectedVersion === undefined);
+      if (write) valid(body && typeof body === 'object' && !Array.isArray(body));
+      if (kind === 'request_transition') {
+        valid(Object.keys(body).length === 1 && body.transition === (expectedVersion === 1 ? 'start_review' : 'confirm'));
+      } else if (kind === 'availability_lookup') {
+        valid(Object.keys(body).length === 3 && body.roomId === 'room'
+          && typeof body.startsAt === 'string' && typeof body.endsAt === 'string');
+      } else if (kind === 'request_create') {
+        valid(Object.keys(body).length === 2 && body.schemaVersion === 3);
+        valid(normalizeRequestCompositionDraft(body.request, 3).roomId === 'room');
+      }
       const payload = write ? JSON.stringify(body) : undefined;
-      valid(payload === undefined || Buffer.byteLength(payload) <= 8192);
+      valid(write ? typeof payload === 'string' && Buffer.byteLength(payload) <= 8192 : payload === undefined);
       signal.throwIfAborted(); const at = performance.now();
       const response = await fetch(new URL(path, url), { method, redirect: 'error',
         signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]), body: payload,

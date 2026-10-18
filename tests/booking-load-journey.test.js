@@ -77,6 +77,7 @@ test('every dependency or response failure stops without retry, further writes o
 });
 
 test('invalid fixture scope fails before transport and cancellation after I/O cannot advance the journey', async () => {
+  for (const value of [undefined, null]) await assert.rejects(runBookingLoadJourney(value), /LOAD_BOOKING_JOURNEY_FAILED/);
   for (const patch of [{ context: '../escape' }, { images: [] }, { images: [{ ...image, byteLength: 2097153 }, image, image] },
     { manager: { ...options.manager, tenantId: requestId } }, { employee: { ...options.employee, cookie: 'bad' } }]) {
     const transport = model();

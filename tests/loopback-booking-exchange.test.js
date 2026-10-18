@@ -12,9 +12,16 @@ test('loopback choreography transport rejects destination, path, header and meth
     assert.throws(() => createLoopbackBookingExchange(origin), /^Error: LOAD_BOOKING_TRANSPORT_INVALID$/);
   }
   const exchange = createLoopbackBookingExchange('http://127.0.0.1:1');
+  for (const value of [undefined, null]) await assert.rejects(exchange(value), /^Error: LOAD_BOOKING_TRANSPORT_FAILED$/);
   for (const patch of [{ path: 'https://example.com' }, { path: '/api/v1/session?tenant=foreign' },
     { method: 'POST' }, { actor: 'platform' }, { cookie: input.cookie + '\r\nInjected: true' }, { binary: true }]) {
     await assert.rejects(exchange({ ...input, ...patch }), /^Error: LOAD_BOOKING_TRANSPORT_FAILED$/);
+  }
+  for (const body of [{ transition: 'cancel' }, { transition: 'confirm' },
+    { transition: 'start_review', tenantId: 'untrusted' }, null, () => {}]) {
+    await assert.rejects(exchange({ ...input, kind: 'request_transition', method: 'POST',
+      path: '/api/v1/requests/11111111-1111-4111-8111-111111111111/transitions',
+      csrfToken: 'b'.repeat(43), expectedVersion: 1, body }), /^Error: LOAD_BOOKING_TRANSPORT_FAILED$/);
   }
 });
 
