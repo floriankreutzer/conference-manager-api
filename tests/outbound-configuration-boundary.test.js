@@ -39,7 +39,11 @@ test('provider helper derives the fixed endpoint only after branch validation an
   assert.equal(Object.isFrozen(config), true);
   assert.equal(createNeonBranchStorageConfig({ ...input, cluster: '7' }).endpoint,
     'https://br-synthetic-provider-test.storage.c-7.eu-central-1.aws.neon.tech');
-  for (const cluster of ['6', '8', '05', '7/path', '7.evil.example', '7\n', '', null, 7, {}]) {
+  for (const cluster of ['8', '12', '999999']) {
+    assert.equal(createNeonBranchStorageConfig({ ...input, cluster }).endpoint,
+      `https://br-synthetic-provider-test.storage.c-${cluster}.eu-central-1.aws.neon.tech`);
+  }
+  for (const cluster of ['0', '05', '-1', '1.5', '1e3', '1234567', '7/path', '7.evil.example', '7\n', ' 8', '', null, 7, {}]) {
     assert.throws(() => createNeonBranchStorageConfig({ ...input, cluster }), /MEDIA_STORAGE_CLUSTER_INVALID/);
   }
   for (const branch of ['https://unapproved.invalid', 'br-safe/path', 'br-safe?query', 'br-safe\n', undefined]) {
