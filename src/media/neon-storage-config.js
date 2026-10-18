@@ -1,5 +1,6 @@
-const ENDPOINT = /^https:\/\/br-[a-z0-9-]+\.storage\.c-5\.eu-central-1\.aws\.neon\.tech$/;
+const ENDPOINT = /^https:\/\/br-[a-z0-9-]+\.storage\.c-(?:5|7)\.eu-central-1\.aws\.neon\.tech$/;
 const BRANCH = /^br-[a-z0-9-]{5,80}$/;
+const CLUSTERS = new Set(['5', '7']);
 
 export function validateNeonStorageBranchId(branch) {
   if (typeof branch !== 'string' || branch !== branch.trim() || !BRANCH.test(branch)) {
@@ -8,12 +9,13 @@ export function validateNeonStorageBranchId(branch) {
   return branch;
 }
 
-// Pure provider configuration: only a validated branch can vary the fixed Frankfurt
+// Pure provider configuration: only a validated branch and reviewed cluster vary the Frankfurt
 // storage destination. No SDK, environment access, credentials lookup or transport.
-export function createNeonBranchStorageConfig({ branch, bucket, accessKeyId, secretAccessKey } = {}) {
+export function createNeonBranchStorageConfig({ branch, cluster = '5', bucket, accessKeyId, secretAccessKey } = {}) {
   validateNeonStorageBranchId(branch);
+  if (!CLUSTERS.has(cluster)) throw new TypeError('MEDIA_STORAGE_CLUSTER_INVALID');
   return validateNeonStorageConfig({
-    endpoint: `https://${branch}.storage.c-5.eu-central-1.aws.neon.tech`,
+    endpoint: `https://${branch}.storage.c-${cluster}.eu-central-1.aws.neon.tech`,
     region: 'eu-central-1', bucket, accessKeyId, secretAccessKey,
   });
 }

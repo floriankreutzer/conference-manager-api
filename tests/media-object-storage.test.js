@@ -40,9 +40,24 @@ test('storage configuration rejects arbitrary destinations, credentials and malf
   for (const change of [{ endpoint: 'http://127.0.0.1' }, { endpoint: `${config.endpoint}/redirect` },
     { endpoint: `${config.endpoint}.evil.example` }, { endpoint: 'https://user:secret@br-test.storage.c-5.eu-central-1.aws.neon.tech' },
     { endpoint: `${config.endpoint}?token=secret` }, { region: 'us-east-1' }, { bucket: '../escape' },
+    { endpoint: config.endpoint.replace('c-5', 'c-6') },
+    { endpoint: config.endpoint.replace('c-5', 'c-07') },
+    { endpoint: config.endpoint.replace('eu-central-1', 'us-east-1') },
     { accessKeyId: 'short' }, { secretAccessKey: 'bad\nsecret-material' }]) {
     assert.throws(() => validateNeonStorageConfig({ ...config, ...change }), /CONFIG_INVALID/);
   }
+});
+
+test('reviewed Frankfurt cluster seven retains canonical SDK endpoint and retry controls', () => {
+  const endpoint = config.endpoint.replace('c-5', 'c-7'); let options;
+  const storage = createNeonObjectStorage({ ...config, endpoint }, { clientFactory(value) {
+    options = value; return { destroy() {} };
+  } });
+  try {
+    assert.equal(options.endpoint, endpoint); assert.equal(options.region, 'eu-central-1');
+    assert.equal(options.maxAttempts, 1); assert.equal(options.followRegionRedirects, false);
+    assert.equal(options.forcePathStyle, true);
+  } finally { storage.close(); }
 });
 
 test('adapter pins SigV4 client, path style, deadlines, concurrency and no automatic retry', async () => {
