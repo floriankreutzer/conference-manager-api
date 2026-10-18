@@ -3,10 +3,11 @@ import { performance } from 'node:perf_hooks';
 import { setMaxListeners } from 'node:events';
 import { setTimeout as wait } from 'node:timers/promises';
 import { normalizeRequestCompositionDraft } from '../src/domain/request-composition.js';
+import { isInternalUuid } from '../src/domain/identifiers.js';
 
 // Test-only protocol measurement: the destination and operation cannot be supplied remotely.
 async function measureRequests({ origin, cookies, verify, concurrency = 16, deadlineMs = 45_000,
-  arrivalIntervalMs = 0 }, path, writes = null) {
+  arrivalIntervalMs = 0 }, path, writes = null, mediaReads = null) {
   const url = new URL(origin);
   if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password
     || url.pathname !== '/' || url.search || url.hash || !url.port) throw new Error('LOAD_DESTINATION_INVALID');
@@ -39,10 +40,11 @@ async function measureRequests({ origin, cookies, verify, concurrency = 16, dead
     controller.signal.throwIfAborted();
     const at = performance.now();
     const payload = writes?.[index];
+    const media = mediaReads?.[index];
     const result = await new Promise((resolve, reject) => {
       const req = request(new URL(Array.isArray(path) ? path[index] : path, url), {
         agent, signal: controller.signal, method: payload ? 'POST' : 'GET',
-        headers: { Cookie: cookies[index], ...(payload ? {
+        headers: { Cookie: cookies[index], ...(media?.etag ? { 'If-None-Match': media.etag } : {}), ...(payload ? {
           Origin: url.origin, 'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(payload.body), 'X-CSRF-Token': payload.csrfToken,
           ...(payload.expectedVersion ? { 'If-Match': `"${payload.expectedVersion}"` } : {}),
@@ -52,14 +54,25 @@ async function measureRequests({ origin, cookies, verify, concurrency = 16, dead
         let bytes = 0;
         response.on('data', (chunk) => {
           bytes += chunk.length;
-          if (bytes > 8_192) response.destroy(new Error('LOAD_RESPONSE_TOO_LARGE'));
+          if (bytes > (media ? 2 * 1024 * 1024 : 8_192)) response.destroy(new Error('LOAD_RESPONSE_TOO_LARGE'));
           else chunks.push(chunk);
         });
         response.on('error', reject);
         response.on('end', () => {
           try {
-            if (response.statusCode !== (payload?.expectedStatus ?? (payload ? 201 : 200))) throw new Error('LOAD_STATUS_INVALID');
-            resolve({ body: JSON.parse(Buffer.concat(chunks).toString('utf8')), bytes });
+            if (response.statusCode !== (media?.etag ? 304 : payload?.expectedStatus ?? (payload ? 201 : 200))) {
+              throw new Error('LOAD_STATUS_INVALID');
+            }
+            if (media) {
+              if (!/^"[a-f0-9]{64}"$/.test(response.headers.etag ?? '')
+                || response.headers['cache-control'] !== 'private, no-cache, max-age=0, must-revalidate'
+                || response.headers.vary !== 'Cookie' || response.headers['x-content-type-options'] !== 'nosniff'
+                || (media.etag ? bytes !== 0 || response.headers.etag !== media.etag
+                  : bytes === 0 || response.headers['content-type'] !== 'image/webp')) {
+                throw new Error('LOAD_MEDIA_RESPONSE_INVALID');
+              }
+              resolve({ body: Buffer.concat(chunks), bytes, etag: response.headers.etag, status: response.statusCode });
+            } else resolve({ body: JSON.parse(Buffer.concat(chunks).toString('utf8')), bytes });
           } catch { reject(new Error('LOAD_RESPONSE_INVALID')); }
         });
       });
@@ -67,7 +80,7 @@ async function measureRequests({ origin, cookies, verify, concurrency = 16, dead
       req.setTimeout(5_000, () => req.destroy());
       req.end(payload?.body);
     });
-    verify(result.body, index);
+    verify(result.body, index, ...(media ? [{ etag: result.etag, status: result.status }] : []));
     payloadBytes += result.bytes;
     requestPayloadBytes += payload ? Buffer.byteLength(payload.body) : 0;
     const completedAt = performance.now();
@@ -106,6 +119,19 @@ async function measureRequests({ origin, cookies, verify, concurrency = 16, dead
 
 export function measureSessionReads(options) {
   return measureRequests(options, '/api/v1/session');
+}
+
+// Fixed attached Room image route only. Full bodies and conditional reuse are
+// independent phases; a browser 304 does not establish a saved provider read.
+export async function measureRoomMediaReads({ assetIds, etags, ...options }) {
+  if (!Array.isArray(options.cookies) || options.cookies.length < 1 || options.cookies.length > 1000
+    || !Array.isArray(assetIds) || assetIds.length !== options.cookies.length || assetIds.some(id => !isInternalUuid(id))
+    || (etags !== undefined && (!Array.isArray(etags) || etags.length !== assetIds.length
+      || etags.some(value => typeof value !== 'string' || !/^"[a-f0-9]{64}"$/.test(value))))) {
+    throw new Error('LOAD_MEDIA_INPUT_INVALID');
+  }
+  return measureRequests(options, assetIds.map(id => `/api/v1/tenant/rooms/room/media/${id}`), null,
+    assetIds.map((id, index) => ({ etag: etags?.[index] })));
 }
 
 // The caller can select only a bounded catalogue generation, never a destination, route or page size.
