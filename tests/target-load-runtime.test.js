@@ -13,7 +13,7 @@ function fixture(surface = 'customer', changes = {}) {
   const probe = JSON.parse(targetLoadEnvironment().LOAD_STORAGE_PROBE_JSON);
   const rows = Array.from({ length: 10 }, (_, index) => ({ tenant_id: index === 0 ? probe.tenantId : randomUUID(),
     reference: randomUUID(), address: `room${index}@synthetic.invalid` }));
-  const persistence = { pool: { async query(sql) {
+  const persistence = { pool: { on() {}, async query(sql) {
     steps.push('query');
     if (sql.includes('EXISTS')) return { rows: [{ present: false }], rowCount: 1 };
     return { rows, rowCount: rows.length };

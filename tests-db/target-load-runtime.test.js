@@ -125,6 +125,7 @@ test('target compositions run real PostgreSQL with separate restricted roles and
       { Authorization: `Bearer ${environments[surface].LOAD_OBSERVER_TOKEN}` });
     assert.equal(response.status, 200); const facts = response.body;
     assert.equal(facts.activity.workerFailures, 0); assert.equal(facts.surface, surface);
+    assert.ok(facts.postgres.queries > 0 && facts.postgres.bytesRead > 0 && facts.postgres.bytesWritten > 0);
     if (surface === 'platform') assert.ok(facts.metricTotals.platform_projection_batches_total > 0);
     else {
       assert.equal(facts.activity.storageReads, 2);

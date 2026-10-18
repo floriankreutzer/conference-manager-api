@@ -12,6 +12,7 @@ function snapshot(surface = 'customer') {
     startedAt: new Date(NOW - 500).toISOString(), observedAt: new Date(NOW).toISOString(), expiresAt: values.expiresAt,
     limits: { rateLimitMax: 1000, rateLimitWindowMs: 60_000, databasePoolMax: surface === 'customer' ? 10 : 4 },
     uptimeMs: 500, cpu: { userMicros: 1, systemMicros: 1 },
+    postgres: { queries: 1, bytesRead: 1, bytesWritten: 1 },
     memory: { rss: 1, heapUsed: 1, heapTotal: 1, external: 0, arrayBuffers: 0 },
     metricTotals: Object.fromEntries(['api_requests_total', 'api_response_payload_bytes_total',
       'api_response_payload_observations_total', 'authentication_failures_total', 'authorization_denials_total',
@@ -25,10 +26,11 @@ function snapshot(surface = 'customer') {
 test('observer reader rejects source, clock, secret fields, reset counters and changed boot/limit identity', () => {
   const before = validateTargetObservation(snapshot(), values, 'customer', NOW);
   const after = structuredClone(before); after.uptimeMs += 100; after.observedAt = new Date(NOW + 100).toISOString();
-  after.cpu.userMicros += 10; after.activity.storageReads += 3;
+  after.cpu.userMicros += 10; after.activity.storageReads += 3; after.postgres.queries += 2;
   const checked = validateTargetObservation(after, values, 'customer', NOW + 100);
   assert.equal(targetObservationDelta(before, checked).cpu.userMicros, 10);
   assert.equal(targetObservationDelta(before, checked).activity.storageReads, 3);
+  assert.equal(targetObservationDelta(before, checked).postgres.queries, 2);
   for (const mutate of [row => { row.cookie = 'private'; }, row => { row.metricTotals.labels = {}; },
     row => { row.runId = 'f'.repeat(16); }, row => { row.observedAt = new Date(NOW - 20_000).toISOString(); },
     row => { row.limits.databasePoolMax = 100; }, row => { row.activity.workerFailures = 1; }]) {
@@ -36,7 +38,7 @@ test('observer reader rejects source, clock, secret fields, reset counters and c
     assert.throws(() => validateTargetObservation(row, values, 'customer', NOW), /^Error: LOAD_TARGET_OBSERVATION_FAILED$/);
   }
   for (const mutate of [row => { row.bootId = randomUUID(); }, row => { row.cpu.userMicros = 0; },
-    row => { row.limits.rateLimitMax = 120; }]) {
+    row => { row.limits.rateLimitMax = 120; }, row => { row.postgres.bytesRead = 0; }]) {
     const row = structuredClone(after); mutate(row); assert.throws(() => targetObservationDelta(before, row));
   }
   const platform = snapshot('platform'); validateTargetObservation(platform, values, 'platform', NOW);

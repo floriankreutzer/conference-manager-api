@@ -96,6 +96,19 @@ The wrapper replaces the single canonical HTTP listener, so rejected
 observer requests cannot fall through into application handlers. Other requests
 retain all normal session, Tenant, CSRF, ownership, authorization and workflow checks.
 
+Each surface also reports attempted SQL-call counts and `pg` driver-stream
+read/write-byte counters through the shared bounded load meter. It preserves the
+driver's original query arguments, callback/Promise results and verified TLS.
+Closed clients are retired into aggregate totals instead of retaining them without
+bound; at most 64 client references can be observed concurrently. Invalid counters
+make observation unavailable. No SQL text, parameter, result, connection string or
+client identity enters the report. These are process/driver-stream observations,
+not independently measured encrypted-wire bytes or Neon invoice egress. Startup
+is outside campaign deltas; separate installer/growth/reconciliation connections
+are outside the two runtime meters. Platform counts include its worker and any
+Platform HTTP work in that window, rather than claiming exact worker-only cost.
+Independent provider usage retains its own measurement boundary.
+
 Admission ends ten seconds before the original absolute expiry; draining starts
 before asynchronous startup can extend the lifetime. A separate hard process exit
 remains armed through a wedged startup or shutdown. Expiry, backward/invalid clocks

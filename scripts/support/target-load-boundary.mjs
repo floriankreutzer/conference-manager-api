@@ -36,13 +36,14 @@ function respond(response, status, body = '') {
 // preserving the normal HTTP configuration and every business/session handler.
 // It never adds a second listener that could continue after an observer denial.
 export function createLoadRuntimeBoundary({ values, metrics, limits, calendar = null, clock = Date.now,
-  resources = () => ({ cpu: process.cpuUsage(), memory: process.memoryUsage() }), activity = null, bootId = randomUUID() } = {}) {
+  resources = () => ({ cpu: process.cpuUsage(), memory: process.memoryUsage() }), activity = null, bootId = randomUUID(),
+  postgres = () => ({ queries: 0, bytesRead: 0, bytesWritten: 0 }) } = {}) {
   try {
     const checkedMs = clock();
     const scope = loadTargetScope(values, checkedMs);
     const publicOrigin = `https://${values.serviceName}.onrender.com`;
     valid(scope.surface !== 'setup' && typeof metrics?.snapshot === 'function'
-      && typeof resources === 'function' && isInternalUuid(bootId));
+      && typeof resources === 'function' && typeof postgres === 'function' && isInternalUuid(bootId));
     valid(limits && ['rateLimitMax', 'rateLimitWindowMs', 'databasePoolMax'].every(key =>
       Number.isSafeInteger(limits[key]) && limits[key] > 0));
     const publicLimits = Object.freeze({ rateLimitMax: limits.rateLimitMax, rateLimitWindowMs: limits.rateLimitWindowMs,
@@ -67,6 +68,8 @@ export function createLoadRuntimeBoundary({ values, metrics, limits, calendar = 
         bootId, startedAt: new Date(startedMs).toISOString(), observedAt: new Date(previousMs).toISOString(),
         expiresAt: scope.expiresAt, limits: publicLimits, uptimeMs: previousMs - startedMs, cpu, memory,
         metricTotals: metricTotals(metrics) };
+      const database = postgres();
+      value.postgres = Object.fromEntries(['queries', 'bytesRead', 'bytesWritten'].map(key => [key, integer(database[key])]));
       if (calendar !== null) {
         const snapshot = calendar.snapshot();
         value.simulatedCalendar = Object.fromEntries(['availability', 'create', 'update', 'cancel', 'uniqueEvents']

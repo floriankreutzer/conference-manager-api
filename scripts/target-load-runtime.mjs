@@ -16,6 +16,7 @@ import { assertLoadDatabase, loadTargetScope } from './support/target-load-guard
 import { createTargetLoadCalendar } from './support/target-load-calendar.mjs';
 import { createLoadRuntimeBoundary } from './support/target-load-boundary.mjs';
 import { loadTargetRuntimeConfig } from './support/target-load-runtime-config.mjs';
+import { instrumentLoadPool } from './support/target-load-postgres-metrics.mjs';
 
 function valid(value) { if (!value) throw new Error('LOAD_TARGET_RUNTIME_FAILED'); }
 
@@ -82,6 +83,7 @@ export async function startTargetLoadRuntime({ env = process.env, clock = Date.n
   }
   try {
     settings = loadTargetRuntimeConfig(env, clock());
+    let postgres = () => ({ queries: 0, bytesRead: 0, bytesWritten: 0 });
     const metrics = createMetricsRegistry(settings.scope.surface === 'platform'
       ? { assertRouteKey: assertPlatformRouteKey } : {}); let calendar;
     const counts = { workerFailures: 0, storageReads: 0, storageReadBytes: 0, storageWrites: 0,
@@ -91,7 +93,7 @@ export async function startTargetLoadRuntime({ env = process.env, clock = Date.n
     boundary = createLoadRuntimeBoundary({ values: settings.values, metrics, clock, bootId: randomUUID(),
       limits: { rateLimitMax: settings.config.rateLimitMax, rateLimitWindowMs: settings.config.rateLimitWindowMs,
         databasePoolMax: settings.config.databasePoolMax },
-      activity: () => counts, calendar: settings.scope.surface === 'customer' ? simulated : null });
+      activity: () => counts, postgres: () => postgres(), calendar: settings.scope.surface === 'customer' ? simulated : null });
     // Both timers are rooted in first resource creation, including async setup.
     // Shutdown starts ten seconds early; a wedged shutdown cannot renew lifetime.
     hardExit = setTimeout(() => exit(1), Math.max(0, settings.scope.expiresMs - clock()));
@@ -111,6 +113,7 @@ export async function startTargetLoadRuntime({ env = process.env, clock = Date.n
         },
       } };
     }
+    postgres = instrumentLoadPool(persistence.pool);
     phase = 'database';
     await verifyDatabase(persistence.pool, settings.scope, { clock }); active();
     if (settings.scope.surface === 'customer') {

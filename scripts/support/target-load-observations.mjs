@@ -20,7 +20,7 @@ export function validateTargetObservation(value, values, surface, now = Date.now
   try {
     const scope = loadTargetScope(values, now); valid(['customer', 'platform'].includes(surface));
     const keys = ['schemaVersion', 'runId', 'surface', 'releaseSha', 'bootId', 'startedAt', 'observedAt', 'expiresAt',
-      'limits', 'uptimeMs', 'cpu', 'memory', 'metricTotals', 'activity'];
+      'limits', 'uptimeMs', 'cpu', 'memory', 'metricTotals', 'activity', 'postgres'];
     if (surface === 'customer') keys.push('simulatedCalendar'); fields(value, keys);
     valid(value.schemaVersion === 1 && value.runId === scope.runId && value.surface === surface
       && value.releaseSha === scope.releaseSha && value.expiresAt === scope.expiresAt && isInternalUuid(value.bootId));
@@ -35,6 +35,7 @@ export function validateTargetObservation(value, values, surface, now = Date.now
     counters(value.cpu, ['userMicros', 'systemMicros']);
     counters(value.memory, ['rss', 'heapUsed', 'heapTotal', 'external', 'arrayBuffers']);
     counters(value.metricTotals, METRICS); counters(value.activity, ACTIVITY);
+    counters(value.postgres, ['queries', 'bytesRead', 'bytesWritten']);
     valid(value.activity.workerFailures === 0 && value.activity.storageFailures === 0);
     if (surface === 'customer') counters(value.simulatedCalendar, CALENDAR);
     else valid(ACTIVITY.every(key => value.activity[key] === 0));
@@ -49,7 +50,7 @@ export function targetObservationDelta(before, after) {
       && JSON.stringify(before.limits) === JSON.stringify(after.limits) && after.uptimeMs >= before.uptimeMs);
     const result = { windowStart: before.observedAt, windowEnd: after.observedAt,
       elapsedMs: after.uptimeMs - before.uptimeMs };
-    for (const group of ['cpu', 'metricTotals', 'activity', ...(before.surface === 'customer' ? ['simulatedCalendar'] : [])]) {
+    for (const group of ['cpu', 'metricTotals', 'activity', 'postgres', ...(before.surface === 'customer' ? ['simulatedCalendar'] : [])]) {
       valid(Object.keys(before[group]).length === Object.keys(after[group]).length);
       result[group] = Object.fromEntries(Object.entries(before[group]).map(([key, value]) => {
         valid(Number.isSafeInteger(after[group][key]) && after[group][key] >= value);
