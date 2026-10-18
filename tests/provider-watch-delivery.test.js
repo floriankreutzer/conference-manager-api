@@ -308,6 +308,28 @@ test('native mailbox connector runs the same no-signal protocol without persiste
     } finally { child?.kill(); await rm(directory, { recursive: true, force: true }); }
   });
 
+test('closed stdout at request or completion emits only the fixed failure message', { timeout: 10_000 }, async () => {
+  for (const boundary of ['request', 'completion']) {
+    const child = spawn(process.execPath, ['scripts/provider-watch-delivery.mjs'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const exited = new Promise((resolve) => child.on('exit', resolve));
+    let stderr = '';
+    child.stderr.on('data', (chunk) => { stderr += chunk; }); child.stdin.on('error', () => {});
+    if (boundary === 'request') child.stdout.destroy();
+    else child.stdout.once('data', (chunk) => {
+      const request = JSON.parse(chunk.toString('utf8'));
+      assert.equal(request.operation, 'ledger.read');
+      child.stdout.destroy();
+      child.stdin.write(`${JSON.stringify({ id: request.id, ok: true, value: initial() })}\n`);
+    });
+    const timer = setTimeout(() => child.kill('SIGKILL'), 3000);
+    try {
+      child.stdin.write(`${JSON.stringify({ warning: null, policy: POLICY })}\n`);
+      assert.equal(await exited, 1);
+      assert.equal(stderr, 'PROVIDER_WATCH_FAILED\n');
+    } finally { clearTimeout(timer); child.kill(); }
+  }
+});
+
 test('mailbox refuses shared directories, readable files, symlinks and oversized private files', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'cm-mailbox-boundary-'));
   try {

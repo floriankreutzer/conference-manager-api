@@ -16,6 +16,7 @@ function fail() {
 }
 
 process.stdin.on('error', fail);
+process.stdout.on('error', fail);
 process.stdin.on('end', () => {
   ended = true;
   if (waiting) { waiting.reject(new Error('CLOSED')); waiting = null; }
