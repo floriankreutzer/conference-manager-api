@@ -106,5 +106,5 @@ export async function createBookingJourneyFixture(t) {
       revisions: page.configurationRevisions, policyVersionId: page.bookingPolicy.policyVersionId }) };
   }));
   return { config, persistence, tenants, managers, employees, managerTokens, calendar, configurations,
-    images, expectedRooms, counters, postgresVersion, objectCounters: () => ({ reads: objectReads, bytes: objectBytes }) };
+    images, expectedRooms, storage, counters, postgresVersion, objectCounters: () => ({ reads: objectReads, bytes: objectBytes }) };
 }

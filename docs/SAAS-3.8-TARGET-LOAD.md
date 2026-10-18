@@ -52,14 +52,68 @@ audit and provider-health behavior must remain active in any eventual compositio
 Update/cancel/discovery/consent operations are forbidden. These helper modules are
 not imported by any normal Customer, Platform or Demo runtime entrypoint.
 
+## Target-only runtime composition
+
+`scripts/target-load-runtime.mjs` composes the existing Customer or Platform
+application using separate limited PostgreSQL principals. It is never imported by
+normal entrypoints. The target namespace rejects normal Demo/Customer/Platform
+connection and identity variables; Render repository, Main branch, service name and
+actual commit must equal the independently configured run binding. The validated
+single `sslmode=verify-full` query is removed only before calling the canonical
+configuration loader, which receives unchanged verified TLS separately.
+
+Customer storage uses the canonical bounded Neon SDK adapter, exact run bucket and
+a verified media probe belonging to one of the ten synthetic fixture Tenants.
+Database authority is checked before fixture/object reads. Ten distinct synthetic
+Microsoft bindings feed the existing explicit calendar fixture; no real identity or
+Graph client is created. Any persisted booking reference prevents startup because
+a restarted in-process calendar cannot reconstruct its external events. Unexpected
+boot changes therefore invalidate a campaign; cold restarts must precede booking
+writes. Platform uses its normal projection worker and a separate four-connection
+pool. Worker/subscription failures are counted without logging their errors.
+
+The protected `GET /__load/observe` endpoint requires the run's independent Bearer
+credential and exposes only fixed aggregate metrics, process CPU/memory, boot/source
+identity, fixture-call counts and bounded storage activity. It never publishes
+metric labels, cookies, SQL details or credentials. Requests use existing security
+headers. The wrapper replaces the single canonical HTTP listener, so rejected
+observer requests cannot fall through into application handlers. Other requests
+retain all normal session, Tenant, CSRF, ownership, authorization and workflow checks.
+
+Admission ends ten seconds before the original absolute expiry; draining starts
+before asynchronous startup can extend the lifetime. A separate hard process exit
+remains armed through a wedged startup or shutdown. Expiry, backward/invalid clocks
+and explicit close permanently reject further admission. This stops process work,
+not provider billing or resource custody; independent quotas and cleanup remain
+required. Per process, SDK calls are capped at 10,000, requested read bodies at
+2,000,000,000 bytes and write bodies at 20,000,000 bytes; failed attempts consume
+these bounds. These are process bounds, not durable billing counters across restarts.
+The future driver must bound total campaigns/restarts independently.
+
+The default target profile retains 120 requests per minute. The explicitly named
+`representative1000` profile configures 1,000 requests per minute for the isolated
+workload only; it is not proof of capacity under the canonical 120-request profile.
+The normal runtime defaults and existing deployment are unchanged. CPU samples cover
+the entire selected process, including observer/HTTP overhead; Platform process CPU
+is not an exact worker-only CPU measurement.
+
 ## Verification and remaining execution
 
 Native negative tests cover invalid destinations/roles/times/credentials, expiry
 across awaited queries, incomplete privilege results, setup-only empty databases,
-private error redaction, Tenant-bound calendar inputs, immutable idempotency, exact
+private error redaction, target-only configuration, protected aggregate observation,
+no observer fall-through, irreversible admission closure, asynchronous startup expiry,
+a real hard-exit timer during wedged shutdown, concurrent SDK budget reservation,
+Tenant-bound calendar inputs, immutable idempotency, exact
 UTC and hard event limits. Repository full check and audit remain mandatory before
 candidate review; complete required CI and independent Main checks remain separate.
 Mocked SQL results do not establish PostgreSQL/provider permission acceptance.
+The additional runtime PostgreSQL test composes both canonical surfaces against
+separate restricted loopback roles, exercises real marker/privilege SQL, private
+media integrity, cross-Tenant/CSRF/Customer-to-Platform denial, actual projection
+work and direct database privilege negatives. It explicitly substitutes the
+disposable local database name and transport only at the test dependency seam;
+it does not establish remote Neon identity, TLS or credential isolation.
 The separate PostgreSQL integration test exercises actual role rights/membership,
 public-schema relations/types, run markers and a hostile search path in the runner's
 disposable loopback database. Retain its successful exact-candidate CI result before
