@@ -55,3 +55,16 @@ compensation races queue at the earlier Tenant lock and retain both outcome fenc
 An inactive-Tenant regression requires no Request, reference, revision or audit change.
 No retry, timeout relaxation, business schema, Demo seed, deployment, provider
 credential/resource, plan or quota change accompanies this correction.
+
+
+The automatic API browser matrix binds permanent acceptance to frontend
+`cebb67396f93acc10c9f8a2e68ff5c77c4cad7f7`, which already merged the bounded
+image-render synchronization correction. Main run `39112586771` at API
+`6b48e2055ed4d613dfc6e6513abb92ce56da56e7` failed WebKit/PostgreSQL because
+the older helper synchronously counted zero images after a completed upload.
+That historical failure remains a failure. The required positive count now polls
+within the existing assertion deadline before retaining every image visibility,
+load, alt-text and byte-integrity assertion. The six copied shared-runtime contract
+files and complete three-customer/two-reset scenarios remain intact; the served
+frontend remains its separately verified immutable ref. Fresh complete matrix
+results are required for this new binding.
