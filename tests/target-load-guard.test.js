@@ -41,7 +41,7 @@ test('remote load target refuses wrong origins, Demo database, elevated roles an
   }
   const base = [
     { rows: [{ database: scope.databaseName, actor: scope.databaseUser, version: 180006 }] },
-    { rowCount: 1, rows: [{ rolsuper: false, rolcreaterole: false, rolcreatedb: false, rolbypassrls: false,
+    { rowCount: 1, rows: [{ rolsuper: false, rolcreaterole: false, rolcreatedb: false, rolbypassrls: false, rolreplication: false,
       managed_superuser: false, role_membership: false }] },
     { rows: [{ marker: 'saas38_load_scope' }] },
     { rowCount: 1, rows: [{ run_id: runId, release_sha: values.releaseSha,
@@ -93,7 +93,7 @@ test('database guard rechecks expiry across I/O and hides private dependency err
   let calls = 0; let clock = now;
   const identity = { rows: [{ database: scope.databaseName, actor: scope.databaseUser, version: 180006 }] };
   const rights = { rowCount: 1, rows: [{ rolsuper: false, rolcreaterole: false, rolcreatedb: false,
-    rolbypassrls: false, managed_superuser: false, role_membership: false }] };
+    rolbypassrls: false, rolreplication: false, managed_superuser: false, role_membership: false }] };
   const expiredDuringQuery = { async query() { calls += 1; clock = scope.expiresMs; return identity; } };
   await assert.rejects(assertLoadDatabase(expiredDuringQuery, scope, { clock: () => clock }),
     /^Error: LOAD_TARGET_SCOPE_INVALID$/);
@@ -123,7 +123,7 @@ test('only the setup identity can accept an actually empty target database', asy
     let calls = 0;
     const responses = [
       { rows: [{ database: scope.databaseName, actor: scope.databaseUser, version: 180006 }] },
-      { rowCount: 1, rows: [{ rolsuper: false, rolcreaterole: false, rolcreatedb: false, rolbypassrls: false,
+      { rowCount: 1, rows: [{ rolsuper: false, rolcreaterole: false, rolcreatedb: false, rolbypassrls: false, rolreplication: false,
         managed_superuser: false, role_membership: false }] },
       { rows: [{ marker: null }] }, { rows: [{ count }] },
     ];
@@ -137,4 +137,12 @@ test('only the setup identity can accept an actually empty target database', asy
     index === 0 ? '-'.repeat(36) : randomUUID(), { address: `room${index}@synthetic.invalid` },
   ]));
   assert.throws(() => createTargetLoadCalendar(invalidBindings), /^Error: LOAD_CALENDAR_BINDINGS_INVALID$/);
+  const duplicateAddresses = new Map(Array.from({ length: 10 }, () => [randomUUID(), { address: 'room0@synthetic.invalid' }]));
+  assert.throws(() => createTargetLoadCalendar(duplicateAddresses), /^Error: LOAD_CALENDAR_BINDINGS_INVALID$/);
+  const reference = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const duplicateIdentifiers = new Map(Array.from({ length: 10 }, (_, index) => [
+    index < 2 ? (index === 0 ? reference : reference.toUpperCase()) : randomUUID(),
+    { address: `room${index}@synthetic.invalid` },
+  ]));
+  assert.throws(() => createTargetLoadCalendar(duplicateIdentifiers), /^Error: LOAD_CALENDAR_BINDINGS_INVALID$/);
 });

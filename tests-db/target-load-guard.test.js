@@ -47,6 +47,12 @@ test('target SQL guard verifies actual PostgreSQL identity, privileges, membersh
   await admin.query("CREATE TYPE public.unexpected_load_type AS ENUM ('unexpected')");
   await assert.rejects(verify(scoped, scope, { allowEmpty: true }));
   await admin.query('DROP TYPE public.unexpected_load_type');
+  await admin.query('CREATE SEQUENCE public.unexpected_load_sequence');
+  await assert.rejects(verify(scoped, scope, { allowEmpty: true }));
+  await admin.query('DROP SEQUENCE public.unexpected_load_sequence');
+  await admin.query('CREATE COLLATION public.unexpected_load_collation FROM pg_catalog."C"');
+  await assert.rejects(verify(scoped, scope, { allowEmpty: true }));
+  await admin.query('DROP COLLATION public.unexpected_load_collation');
   await admin.query(`CREATE TABLE public.saas38_load_scope
     (run_id text NOT NULL,release_sha text NOT NULL,created_at timestamptz NOT NULL,expires_at timestamptz NOT NULL)`);
   await admin.query(`GRANT USAGE ON SCHEMA public TO "${role}"`);
@@ -60,6 +66,10 @@ test('target SQL guard verifies actual PostgreSQL identity, privileges, membersh
   await admin.query(`GRANT "${inherited}" TO "${role}"`);
   await assert.rejects(verify(), /^Error: LOAD_TARGET_SCOPE_INVALID$/);
   await admin.query(`REVOKE "${inherited}" FROM "${role}"`);
+  await verify();
+  await admin.query(`ALTER ROLE "${role}" REPLICATION`);
+  await assert.rejects(verify(), /^Error: LOAD_TARGET_SCOPE_INVALID$/);
+  await admin.query(`ALTER ROLE "${role}" NOREPLICATION`);
   await verify();
   await admin.query('CREATE SCHEMA guard_shadow');
   await admin.query('CREATE TABLE guard_shadow.saas38_load_scope (LIKE public.saas38_load_scope)');

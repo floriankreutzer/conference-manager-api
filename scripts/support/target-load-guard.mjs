@@ -65,26 +65,25 @@ async function verifyLoadDatabase(pool, scope, { allowEmpty, clock }) {
     lifetime();
     return result;
   }
-  const identity = await query(`SELECT current_database() AS database,current_user AS actor,
-    current_setting('server_version_num')::int AS version`);
+  const identity = await query(`SELECT pg_catalog.current_database() AS database,current_user AS actor,
+    pg_catalog.current_setting('server_version_num')::int AS version`);
   const row = identity.rows[0];
   valid(row?.database === scope.databaseName && row.actor === scope.databaseUser && row.version >= 180000 && row.version < 190000);
-  const rights = await query(`SELECT rolsuper,rolcreaterole,rolcreatedb,rolbypassrls,
-    EXISTS(SELECT 1 FROM pg_roles managed WHERE managed.rolname='neon_superuser'
-      AND pg_has_role(current_user,managed.oid,'MEMBER')) AS managed_superuser,
-    EXISTS(SELECT 1 FROM pg_auth_members membership
-      WHERE membership.member=(SELECT oid FROM pg_roles WHERE rolname=current_user)) AS role_membership
-    FROM pg_roles WHERE rolname=current_user`);
-  valid(rights.rowCount === 1 && ['rolsuper', 'rolcreaterole', 'rolcreatedb', 'rolbypassrls', 'managed_superuser', 'role_membership']
+  const rights = await query(`SELECT rolsuper,rolcreaterole,rolcreatedb,rolbypassrls,rolreplication,
+    EXISTS(SELECT 1 FROM pg_catalog.pg_roles managed WHERE managed.rolname='neon_superuser'
+      AND pg_catalog.pg_has_role(current_user,managed.oid,'MEMBER')) AS managed_superuser,
+    EXISTS(SELECT 1 FROM pg_catalog.pg_auth_members membership
+      WHERE membership.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user)) AS role_membership
+    FROM pg_catalog.pg_roles WHERE rolname=current_user`);
+  valid(rights.rowCount === 1
+    && ['rolsuper', 'rolcreaterole', 'rolcreatedb', 'rolbypassrls', 'rolreplication', 'managed_superuser', 'role_membership']
     .every(key => rights.rows[0][key] === false));
-  const marker = await query("SELECT to_regclass('public.saas38_load_scope') AS marker");
+  const marker = await query("SELECT pg_catalog.to_regclass('public.saas38_load_scope') AS marker");
   if (marker.rows[0]?.marker === null && allowEmpty) {
     valid(scope.surface === 'setup');
-    const objects = await query(`SELECT count(*)::int AS count FROM (
-      SELECT 1 FROM pg_class WHERE relnamespace='public'::regnamespace
-      UNION ALL SELECT 1 FROM pg_proc WHERE pronamespace='public'::regnamespace
-      UNION ALL SELECT 1 FROM pg_type WHERE typnamespace='public'::regnamespace
-    ) public_objects`);
+    const objects = await query(`SELECT pg_catalog.count(*)::int AS count FROM pg_catalog.pg_depend
+      WHERE refclassid='pg_catalog.pg_namespace'::pg_catalog.regclass
+        AND refobjid='public'::pg_catalog.regnamespace`);
     valid(objects.rows[0].count === 0); return;
   }
   valid(marker.rows[0]?.marker !== null);

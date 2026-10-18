@@ -29,16 +29,19 @@ failure paths, and must not be renewed on restart. These configuration guards do
 prove actual provider isolation or provide automatic resource deletion.
 
 Read-only database verification requires PostgreSQL18, exact database/current role,
-all six explicit privilege/membership results false and one matching run/release/time
+all seven explicit privilege/membership results false and one matching run/release/time
 marker. Missing privilege fields fail closed. Only the setup identity may accept an
-actually empty public schema before marker installation. Time is checked before and
+actually empty public schema before marker installation, using schema dependencies
+to include non-table objects. Catalog reads explicitly use `pg_catalog`; marker
+reads explicitly use `public`. Time is checked before and
 after every asynchronous query, so an expired result cannot authorize subsequent
 setup/runtime work. A hung dependency is not canceled by this guard; the composed
 pool's bounded timeouts remain required. All failures expose one fixed safe error,
 without PostgreSQL connection/schema details.
 
 `scripts/support/target-load-calendar.mjs` is an explicit in-process external boundary,
-not Microsoft acceptance. It binds ten canonical UUID/resource pairs, validates UTC
+not Microsoft acceptance. It binds ten distinct UUID/resource pairs, rejects repeated
+addresses and UUID case aliases, validates UTC
 intervals, preserves immutable idempotency and caps retained events at1,000. Real
 application/repository authorization, entitlements, local conflicts, version/history,
 audit and provider-health behavior must remain active in any eventual composition.

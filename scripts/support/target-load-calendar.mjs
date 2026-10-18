@@ -12,6 +12,10 @@ export function createTargetLoadCalendar(bindings) {
     }
     return [reference, Object.freeze({ address: record.address })];
   }));
+  if (new Set([...bindings.values()].map(record => record.address)).size !== 10
+    || new Set([...bindings.keys()].map(reference => reference.toLowerCase())).size !== 10) {
+    throw new Error('LOAD_CALENDAR_BINDINGS_INVALID');
+  }
   const events = new Map(); const calls = { availability: 0, create: 0, update: 0, cancel: 0 };
   function binding(tenantReference, resourceAddress) {
     const record = bindings.get(tenantReference);
