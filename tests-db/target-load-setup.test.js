@@ -108,6 +108,8 @@ test('installer owns a fresh database, grants restricted runtime custody and sup
     await assert.rejects(scoped[surface].pool.query('CREATE TABLE public.unexpected_load_table(id int)'), error => error.code === '42501');
     await assert.rejects(scoped[surface].pool.query("UPDATE public.saas38_load_scope SET release_sha='invalid'"),
       error => error.code === '42501');
+    await assert.rejects(scoped[surface].pool.query('SELECT * FROM public.platform_diagnostic_events'), error => error.code === '42501');
+    await assert.rejects(scoped[surface].pool.query('DELETE FROM public.platform_diagnostic_events'), error => error.code === '42501');
   }
   const publicOrigin = environments.customer.LOAD_PUBLIC_ORIGIN; const host = new URL(publicOrigin).host;
   const exchange = async input => {
@@ -131,6 +133,12 @@ test('installer owns a fresh database, grants restricted runtime custody and sup
   assert.equal(outcome.observations.length, 16);
   const request = await reader.query('SELECT status,request_version FROM requests WHERE id=$1', [outcome.requestId]);
   assert.equal(request.rows[0].status, 'Confirmed'); assert.equal(Number(request.rows[0].request_version), 3);
+  const diagnostics = await reader.query(`SELECT count(DISTINCT diagnostic.id)::int AS count
+    FROM public.platform_diagnostic_events diagnostic JOIN public.audit_events audit
+      ON audit.tenant_id=diagnostic.tenant_id AND audit.correlation_id=diagnostic.correlation_id
+        AND audit.action=diagnostic.action AND audit.target_type=diagnostic.target_type
+    WHERE audit.target_type='request' AND audit.target_id=$1 AND diagnostic.source='tenant_audit'`, [outcome.requestId]);
+  assert.equal(diagnostics.rows[0].count, 3);
   const audit = createPostgresAuditRepository(reader, { hmacSecret: env.LOAD_AUDIT_HMAC_SECRET });
   for (const tenantId of manifest.tenants) assert.equal(await audit.verifyTenantChain(tenantId), true);
   let pending;
