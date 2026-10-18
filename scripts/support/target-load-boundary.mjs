@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { applySecurityHeaders } from '../../src/security.js';
+import { applySecurityHeaders, assertRequestHost } from '../../src/security.js';
 import { isInternalUuid } from '../../src/domain/identifiers.js';
 import { loadObserverAuthorized, loadTargetScope } from './target-load-guard.mjs';
 
@@ -40,6 +40,7 @@ export function createLoadRuntimeBoundary({ values, metrics, limits, calendar = 
   try {
     const checkedMs = clock();
     const scope = loadTargetScope(values, checkedMs);
+    const publicOrigin = `https://${values.serviceName}.onrender.com`;
     valid(scope.surface !== 'setup' && typeof metrics?.snapshot === 'function'
       && typeof resources === 'function' && isInternalUuid(bootId));
     valid(limits && ['rateLimitMax', 'rateLimitWindowMs', 'databasePoolMax'].every(key =>
@@ -88,6 +89,12 @@ export function createLoadRuntimeBoundary({ values, metrics, limits, calendar = 
         server.on('request', (request, response) => {
           if (!admitted()) { respond(response, 503); return; }
           if (typeof request.url === 'string' && request.url.startsWith('/__load')) {
+            try {
+              const hostCount = request.rawHeaders.reduce((count, name, index) =>
+                count + (index % 2 === 0 && name.toLowerCase() === 'host' ? 1 : 0), 0);
+              valid(hostCount === 1);
+              assertRequestHost(request.headers, publicOrigin);
+            } catch { respond(response, 404); return; }
             const authorizationCount = request.rawHeaders.reduce((count, name, index) =>
               count + (index % 2 === 0 && name.toLowerCase() === 'authorization' ? 1 : 0), 0);
             if (request.url !== OBSERVER_PATH || request.method !== 'GET' || authorizationCount !== 1

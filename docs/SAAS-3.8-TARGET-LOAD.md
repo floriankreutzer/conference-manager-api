@@ -78,7 +78,9 @@ The protected `GET /__load/observe` endpoint requires the run's independent Bear
 credential and exposes only fixed aggregate metrics, process CPU/memory, boot/source
 identity, fixture-call counts and bounded storage activity. It never publishes
 metric labels, cookies, SQL details or credentials. Requests use existing security
-headers. The wrapper replaces the single canonical HTTP listener, so rejected
+headers and the canonical public-origin Host check; missing or duplicate Host
+headers and aliases cannot retrieve observer data even with its credential.
+The wrapper replaces the single canonical HTTP listener, so rejected
 observer requests cannot fall through into application handlers. Other requests
 retain all normal session, Tenant, CSRF, ownership, authorization and workflow checks.
 
