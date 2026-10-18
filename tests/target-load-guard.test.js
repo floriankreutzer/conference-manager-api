@@ -44,20 +44,28 @@ test('remote load target refuses wrong origins, Demo database, elevated roles an
     { rowCount: 1, rows: [{ rolsuper: false, rolcreaterole: false, rolcreatedb: false, rolbypassrls: false, rolreplication: false,
       managed_superuser: false, role_membership: false }] },
     { rows: [{ marker: 'saas38_load_scope' }] },
+    { rowCount: 1, rows: [{ database_owner: false, schema_owner: false, marker_owner: false, database_create: false,
+      schema_create: false, marker_mutation: false, marker_column_mutation: false }] },
     { rowCount: 1, rows: [{ run_id: runId, release_sha: values.releaseSha,
       created_at: new Date(now), expires_at: new Date(now + 7200000) }] },
   ];
   async function verify(responses) {
     let call = 0;
     await assertLoadDatabase({ async query() { return responses[call++]; } }, scope, { clock: () => now });
-    assert.equal(call, 4);
+    assert.equal(call, 5);
   }
   await verify(base);
   for (const key of Object.keys(base[1].rows[0])) {
     const changed = structuredClone(base); changed[1].rows[0][key] = true;
     await assert.rejects(() => verify(changed));
   }
-  const changed = structuredClone(base); changed[3].rows[0].run_id = 'ffffffffffffffff';
+  for (const key of Object.keys(base[3].rows[0])) {
+    for (const value of [true, null, undefined]) {
+      const changed = structuredClone(base); changed[3].rows[0][key] = value;
+      await assert.rejects(() => verify(changed));
+    }
+  }
+  const changed = structuredClone(base); changed[4].rows[0].run_id = 'ffffffffffffffff';
   await assert.rejects(() => verify(changed));
 });
 

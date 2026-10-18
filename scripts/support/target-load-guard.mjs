@@ -86,7 +86,22 @@ async function verifyLoadDatabase(pool, scope, { allowEmpty, clock }) {
         AND refobjid='public'::pg_catalog.regnamespace`);
     valid(objects.rows[0].count === 0); return;
   }
-  valid(marker.rows[0]?.marker !== null);
+  valid(typeof marker.rows[0]?.marker === 'string');
+  const authority = await query(`SELECT
+    pg_catalog.pg_has_role(current_user,database.datdba,'MEMBER') AS database_owner,
+    pg_catalog.pg_has_role(current_user,namespace.nspowner,'MEMBER') AS schema_owner,
+    pg_catalog.pg_has_role(current_user,marker.relowner,'MEMBER') AS marker_owner,
+    pg_catalog.has_database_privilege(current_user,database.oid,'CREATE') AS database_create,
+    pg_catalog.has_schema_privilege(current_user,namespace.oid,'CREATE') AS schema_create,
+    pg_catalog.has_table_privilege(current_user,marker.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS marker_mutation,
+    pg_catalog.has_any_column_privilege(current_user,marker.oid,'INSERT,UPDATE,REFERENCES') AS marker_column_mutation
+    FROM pg_catalog.pg_database database CROSS JOIN pg_catalog.pg_namespace namespace
+    JOIN pg_catalog.pg_class marker ON marker.relnamespace=namespace.oid
+      AND marker.relname='saas38_load_scope' AND marker.relkind='r'
+    WHERE database.datname=pg_catalog.current_database() AND namespace.nspname='public'`);
+  valid(authority.rowCount === 1
+    && ['database_owner', 'schema_owner', 'marker_owner', 'database_create', 'schema_create', 'marker_mutation', 'marker_column_mutation']
+      .every(key => typeof authority.rows[0][key] === 'boolean' && (scope.surface === 'setup' || authority.rows[0][key] === false)));
   const target = await query('SELECT run_id,release_sha,created_at,expires_at FROM public.saas38_load_scope');
   valid(target.rowCount === 1 && target.rows[0].run_id === scope.runId && target.rows[0].release_sha === scope.releaseSha
     && target.rows[0].created_at.toISOString() === scope.createdAt && target.rows[0].expires_at.toISOString() === scope.expiresAt);

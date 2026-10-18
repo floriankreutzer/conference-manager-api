@@ -36,7 +36,8 @@ test('target SQL guard verifies actual PostgreSQL identity, privileges, membersh
   const scope = Object.freeze({ surface: 'setup', runId, releaseSha: 'a'.repeat(40),
     databaseName: url.pathname.slice(1), databaseUser: role,
     createdAt: new Date(now).toISOString(), expiresAt: new Date(now + 60000).toISOString(), expiresMs: now + 60000 });
-  const verify = (client = scoped, value = scope, options = {}) =>
+  let selectedScope = scope;
+  const verify = (client = scoped, value = selectedScope, options = {}) =>
     assertLoadDatabase(client, value, { clock: () => now, ...options });
   await verify(scoped, scope, { allowEmpty: true });
   await assert.rejects(verify(), /^Error: LOAD_TARGET_SCOPE_INVALID$/);
@@ -59,8 +60,10 @@ test('target SQL guard verifies actual PostgreSQL identity, privileges, membersh
   await admin.query(`GRANT SELECT ON public.saas38_load_scope TO "${role}"`);
   const marker = [runId, scope.releaseSha, scope.createdAt, scope.expiresAt];
   await admin.query('INSERT INTO public.saas38_load_scope VALUES($1,$2,$3,$4)', marker);
+  selectedScope = Object.freeze({ ...scope, surface: 'customer' });
   await verify();
   const adminIdentity = await admin.query('SELECT current_user AS actor');
+  const adminActor = adminIdentity.rows[0].actor; assert.match(adminActor, /^[a-z_][a-z0-9_]*$/);
   await assert.rejects(verify(admin, { ...scope, databaseUser: adminIdentity.rows[0].actor }));
   await assert.rejects(verify(scoped, { ...scope, databaseName: 'wrong_database' }));
   await admin.query(`GRANT "${inherited}" TO "${role}"`);
@@ -71,6 +74,40 @@ test('target SQL guard verifies actual PostgreSQL identity, privileges, membersh
   await assert.rejects(verify(), /^Error: LOAD_TARGET_SCOPE_INVALID$/);
   await admin.query(`ALTER ROLE "${role}" NOREPLICATION`);
   await verify();
+  for (const privilege of ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) {
+    await admin.query(`GRANT ${privilege} ON public.saas38_load_scope TO "${role}"`);
+    await assert.rejects(verify(), /^Error: LOAD_TARGET_SCOPE_INVALID$/);
+    await admin.query(`REVOKE ${privilege} ON public.saas38_load_scope FROM "${role}"`);
+    await verify();
+  }
+  await admin.query(`GRANT UPDATE(run_id) ON public.saas38_load_scope TO "${role}"`);
+  await assert.rejects(verify(), /^Error: LOAD_TARGET_SCOPE_INVALID$/);
+  await admin.query(`REVOKE UPDATE(run_id) ON public.saas38_load_scope FROM "${role}"`);
+  await admin.query(`ALTER TABLE public.saas38_load_scope OWNER TO "${role}"`);
+  await assert.rejects(verify(), /^Error: LOAD_TARGET_SCOPE_INVALID$/);
+  await verify(scoped, scope); // The installer may own its marker; runtime identities may not.
+  await admin.query(`ALTER TABLE public.saas38_load_scope OWNER TO "${adminActor}"`);
+  await admin.query(`GRANT SELECT ON public.saas38_load_scope TO "${role}"`);
+  await verify();
+  const schemaOwner = (await admin.query("SELECT pg_get_userbyid(nspowner) AS actor FROM pg_namespace WHERE nspname='public'"))
+    .rows[0].actor; assert.match(schemaOwner, /^[a-z_][a-z0-9_]*$/);
+  await admin.query(`ALTER SCHEMA public OWNER TO "${role}"`);
+  await assert.rejects(verify(), /^Error: LOAD_TARGET_SCOPE_INVALID$/);
+  await admin.query(`ALTER SCHEMA public OWNER TO "${schemaOwner}"`);
+  await admin.query(`REVOKE ALL ON SCHEMA public FROM "${role}"`);
+  await admin.query(`GRANT USAGE ON SCHEMA public TO "${role}"`);
+  await verify();
+  const name = url.pathname.slice(1);
+  await admin.query(`ALTER DATABASE "${name}" OWNER TO "${role}"`);
+  await assert.rejects(verify(), /^Error: LOAD_TARGET_SCOPE_INVALID$/);
+  await admin.query(`ALTER DATABASE "${name}" OWNER TO "${adminActor}"`);
+  await verify();
+  for (const target of [`SCHEMA public`, `DATABASE "${name}"`]) {
+    await admin.query(`GRANT CREATE ON ${target} TO "${role}"`);
+    await assert.rejects(verify(), /^Error: LOAD_TARGET_SCOPE_INVALID$/);
+    await admin.query(`REVOKE CREATE ON ${target} FROM "${role}"`);
+    await verify();
+  }
   await admin.query('CREATE SCHEMA guard_shadow');
   await admin.query('CREATE TABLE guard_shadow.saas38_load_scope (LIKE public.saas38_load_scope)');
   await admin.query(`GRANT USAGE ON SCHEMA guard_shadow TO "${role}"`);

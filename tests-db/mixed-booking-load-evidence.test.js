@@ -20,7 +20,7 @@ test('coherent confirmed-booking replay retains exact sixteen-operation mix with
   await measureSessionReads({ origin: config.publicOrigin, cookies: employees.map(x => x.cookie), verify(body, index) {
     assert.equal(body.user.id, employees[index].userId); assert.equal(body.tenant.id, employees[index].tenantId);
   } });
-  const workerPool = createPostgresPool({ ...config, databasePoolMax: 4 });
+  const workerPool = createPostgresPool({ ...config, databasePoolMax: 4, applicationName: 'conference-manager-platform-api' });
   const workerCounters = instrumentLoadPool(workerPool); const workerResults = []; let workerErrors = 0;
   const worker = createPlatformProjectionWorker({ repository: createPostgresPlatformProjectionRepository(workerPool),
     onError() { workerErrors += 1; }, onResult(result) {
@@ -50,12 +50,20 @@ test('coherent confirmed-booking replay retains exact sixteen-operation mix with
             configurationRevisions: configurations[tenantIndex].revisions }) });
       } catch (error) {
         if (failures.length < 16 && ['input', 'session_read', 'room_page_read', 'media_read', 'availability_lookup',
-          'request_create', 'request_read', 'request_transition'].includes(error.operation)) failures.push(error.operation);
+          'request_create', 'request_read', 'request_transition'].includes(error.operation)) {
+          failures.push({ operation: error.operation, step: error.step, statusCode: error.statusCode, publicCode: error.publicCode });
+        }
         controller.abort(); throw new Error('MIXED_BOOKING_ACCEPTANCE_FAILED');
       }
     }
   }));
-  if (failures.length) t.diagnostic(JSON.stringify({ rejectedOperations: failures }));
+  if (failures.length) {
+    const reasons = await persistence.pool.query(`SELECT metadata->>'reasonCode' AS reason,count(*)::int AS count
+      FROM audit_events WHERE metadata ? 'reasonCode' GROUP BY metadata->>'reasonCode' LIMIT 20`);
+    const references = await persistence.pool.query('SELECT state,count(*)::int AS count FROM booking_provider_references GROUP BY state');
+    t.diagnostic(JSON.stringify({ rejectedOperations: failures, simulatedCalendar: calendar.snapshot(),
+      canonicalFailureReasons: reasons.rows, referenceStates: references.rows }));
+  }
   assert.ok(clientsCompleted.every(row => row.status === 'fulfilled'));
   assert.equal(outcomes.length, 200); assert.ok(outcomes.every(Boolean));
   const journeyElapsedMs = performance.now() - started;

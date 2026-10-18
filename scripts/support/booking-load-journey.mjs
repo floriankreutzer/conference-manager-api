@@ -3,11 +3,16 @@ import { createHash } from 'node:crypto';
 import { isInternalUuid } from '../../src/domain/identifiers.js';
 import { normalizeRequestCompositionDraft } from '../../src/domain/request-composition.js';
 
+const DIAGNOSTIC_CODES = new Set(['FINAL_ROOM_CALENDAR_WRITE_UNAVAILABLE', 'FINAL_ROOM_PROVIDER_UNAVAILABLE',
+  'FINAL_ROOM_ENTITLEMENT_UNAVAILABLE', 'ROOM_AVAILABILITY_CONFLICT', 'VALIDATION_FAILED', 'FORBIDDEN',
+  'RESOURCE_NOT_AVAILABLE', 'AUTHENTICATION_REQUIRED', 'CONFLICT', 'REQUEST_VERSION_CONFLICT',
+  'REQUEST_STATE_CONFLICT', 'ENTITLEMENT_DENIED', 'AUDIT_INTEGRITY_FAILED']);
+
 // One controlled sixteen-operation choreography. The injected transport owns fixed
 // destination verification, bounded I/O/cancellation and byte/latency observation.
 // This module supplies no network, provider, database or deployment authority.
 export async function runBookingLoadJourney(options) {
-  let operation = 'input';
+  let operation = 'input'; let step = 'input'; let statusCode = 0; let publicCode = 'none';
   try {
     const { exchange, employee, manager, context, draft, images, expectedRooms, signal } = options;
     assert.equal(typeof exchange, 'function'); assert.ok(signal instanceof AbortSignal);
@@ -35,11 +40,14 @@ export async function runBookingLoadJourney(options) {
     const observations = []; const csrf = {};
     async function perform(kind, actor, path, body, expectedVersion, binary = false) {
       operation = kind;
+      step = kind === 'request_transition' ? body.transition : kind; statusCode = 0; publicCode = 'none';
       signal.throwIfAborted();
       const result = await exchange({ kind, actor, path, method: body === undefined ? 'GET' : 'POST',
         cookie: actors[actor].cookie, ...(body === undefined ? {} : { body, csrfToken: csrf[actor], expectedVersion }),
         binary, signal });
       signal.throwIfAborted();
+      if (Number.isInteger(result.status) && result.status >= 100 && result.status <= 599) statusCode = result.status;
+      if (DIAGNOSTIC_CODES.has(result.body?.error?.code)) publicCode = result.body.error.code;
       assert.equal(result.status, kind === 'request_create' ? 201 : 200);
       assert.ok(Number.isSafeInteger(result.payloadBytes) && result.payloadBytes >= 0
         && result.payloadBytes <= (binary ? 2097152 : 8192));
@@ -104,6 +112,7 @@ export async function runBookingLoadJourney(options) {
     assert.equal(observations.length, 16);
     return Object.freeze({ requestId: created.id, observations: Object.freeze(observations) });
   } catch {
-    const error = new Error('LOAD_BOOKING_JOURNEY_FAILED'); error.operation = operation; throw error;
+    const error = new Error('LOAD_BOOKING_JOURNEY_FAILED');
+    Object.assign(error, { operation, step, statusCode, publicCode }); throw error;
   }
 }

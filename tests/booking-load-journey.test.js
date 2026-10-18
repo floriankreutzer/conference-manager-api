@@ -17,7 +17,7 @@ const options = { employee: { tenantId, userId: '44444444-4444-4444-8444-4444444
   manager: { tenantId, userId: '55555555-5555-4555-8555-555555555555', cookie: `cm_session=${'b'.repeat(43)}` },
   context: 'context', draft: requestLoadDraft(), images: [image, image, image], expectedRooms };
 
-function model({ failAt, abort, corruptAt } = {}) {
+function model({ failAt, abort, corruptAt, errorCode } = {}) {
   const calls = []; let status = 'Submitted'; let version = 1; let pages = 0;
   const record = () => ({ id: requestId, status, version, roomId: 'room', details: { title: 'Controlled' },
     pricing: { totalMinor: 1000 }, allocations: [] });
@@ -45,7 +45,10 @@ function model({ failAt, abort, corruptAt } = {}) {
     const result = { status: input.kind === 'request_create' ? 201 : 200, body,
       payloadBytes: Buffer.isBuffer(body) ? body.length : Buffer.byteLength(JSON.stringify(body)),
       requestPayloadBytes: input.body === undefined ? 0 : Buffer.byteLength(JSON.stringify(input.body)), latencyMs: 1 };
-    if (calls.length === corruptAt) result.status = 503;
+    if (calls.length === corruptAt) {
+      result.status = 503;
+      if (errorCode) result.body = { error: { code: errorCode, detail: 'private provider details' } };
+    }
     if (calls.length === 1) abort?.abort();
     return result;
   } };
@@ -61,6 +64,18 @@ test('booking choreography executes exactly the approved mix and preserves actor
   assert.equal(transport.calls.filter(x => x.method === 'POST').length, 5);
   assert.equal(transport.calls[3].path, '/api/v1/application/catalog?section=rooms&limit=5&cursor=cursor');
   assert.ok(Object.isFrozen(result.observations));
+});
+
+test('failure diagnostics retain only fixed operation/step/status and explicitly allowed public codes', async () => {
+  for (const code of ['FINAL_ROOM_CALENDAR_WRITE_UNAVAILABLE', 'PRIVATE_PROVIDER_TOKEN']) {
+    const transport = model({ corruptAt: 1, errorCode: code });
+    await assert.rejects(runBookingLoadJourney({ ...options, exchange: transport.exchange,
+      signal: new AbortController().signal }), error => {
+      assert.equal(error.operation, 'session_read'); assert.equal(error.step, 'session_read'); assert.equal(error.statusCode, 503);
+      assert.equal(error.publicCode, code.startsWith('FINAL_ROOM') ? code : 'none');
+      assert.equal(error.cause, undefined); assert.equal(JSON.stringify(error).includes('private provider'), false); return true;
+    });
+  }
 });
 
 test('every dependency or response failure stops without retry, further writes or private error details', async () => {
