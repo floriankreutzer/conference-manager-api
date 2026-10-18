@@ -75,3 +75,8 @@ identity. No actual Render usage/quota or complete monthly application-egress co
 Native tests verify these evaluator boundaries and safe HTML/CLI output. A generated offline dashboard
 does not prove a deployed collector/dashboard, alert delivery, production benchmark or invoice.
 Those operational acceptance items remain open in #263 and the SaaS 3.8 release gate.
+
+The [connector delivery protocol](PROVIDER-WATCH-DELIVERY.md) defines the single executable
+pending/receipt runner and its native connector IPC adapter. Its tests execute that runner and
+the actual CLI. Active automation binding and actual provider fault acceptance remain separate
+from source and fixture evidence; the offline FinOps evaluator itself still sends no messages.

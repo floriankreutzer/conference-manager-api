@@ -164,6 +164,10 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
 - `scripts/check-architecture.mjs` prevents architecture, migration and composition drift.
 - `scripts/check-security-baseline.mjs` prevents drift between the documented Pilot/Production security baseline and executable controls.
 - `scripts/security-dast.mjs` exercises the real HTTP server in isolated Test mode.
+- `scripts/support/provider-watch-delivery.mjs` owns operator warning delivery through injected
+  ledger/transport ports; `scripts/provider-watch-delivery.mjs` exposes the same runner to native
+  connector tools over bounded private JSON-lines IPC. It is separate from Customer/Platform HTTP
+  and has no account credentials or network adapter. See `docs/PROVIDER-WATCH-DELIVERY.md`.
 - `docs/ENTRA-AUTHENTICATION.md` defines the Entra authentication and Tenant-claiming contract.
 - `docs/MICROSOFT365-CONNECTION.md` defines the Microsoft 365 connection lifecycle and provider trust boundary.
 - `docs/TENANT-SETTINGS-CONTRACTS.md` defines the bounded SaaS 2 aggregate versioning, concurrency, history and rollback contract without creating a generic settings owner.
