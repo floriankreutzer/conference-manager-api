@@ -137,8 +137,14 @@ test('installer owns a fresh database, grants restricted runtime custody and sup
     FROM public.platform_diagnostic_events diagnostic JOIN public.audit_events audit
       ON audit.tenant_id=diagnostic.tenant_id AND audit.correlation_id=diagnostic.correlation_id
         AND audit.action=diagnostic.action AND audit.target_type=diagnostic.target_type
+        AND audit.occurred_at=diagnostic.occurred_at AND audit.outcome=diagnostic.outcome
     WHERE audit.target_type='request' AND audit.target_id=$1 AND diagnostic.source='tenant_audit'`, [outcome.requestId]);
-  assert.equal(diagnostics.rows[0].count, 3);
+  const requestAudit = await reader.query(`SELECT count(*)::int AS count FROM public.audit_events
+    WHERE target_type='request' AND target_id=$1`, [outcome.requestId]);
+  // Reads also produce canonical audit events. Prove complete projection of the
+  // actual request audit, rather than confuse three revisions with event count.
+  assert.ok(requestAudit.rows[0].count >= 3);
+  assert.equal(diagnostics.rows[0].count, requestAudit.rows[0].count);
   const audit = createPostgresAuditRepository(reader, { hmacSecret: env.LOAD_AUDIT_HMAC_SECRET });
   for (const tenantId of manifest.tenants) assert.equal(await audit.verifyTenantChain(tenantId), true);
   let pending;
