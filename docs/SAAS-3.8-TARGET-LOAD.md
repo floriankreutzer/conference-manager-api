@@ -33,7 +33,7 @@ all seven explicit privilege/membership results false and one matching run/relea
 marker. Missing privilege fields fail closed.
 Runtime identities also require explicit negative database/schema/marker ownership,
 database/schema CREATE and table/column marker-mutation checks. Only the installer
-may retain this local ownership authority; no surface may retain elevated role attributes.
+may retain this setup ownership authority; no surface may retain elevated role attributes.
 Missing authority fields fail closed. Only the setup identity may accept an
 actually empty public schema before marker installation, using schema dependencies
 to include non-table objects. Catalog reads explicitly use `pg_catalog`; marker
@@ -235,6 +235,72 @@ Independent control-plane identity, actual provider metering and attributable co
 modeling, owner cost acceptance and final recovery are still required.
 
 ## Verification and remaining execution
+
+### Optional isolated Render execution host
+
+The local workspace cannot assume direct DNS/TCP access to Neon or the target
+services. `scripts/target-load-operator.mjs` supplies an explicit, temporary
+execution-host mode on a **third, separately named Free web service**, not a paid
+worker or a production topology change. No provider resource is allocated by this
+source. Final-head native, PostgreSQL, browser, review and independent Main gates,
+private budget/isolation evidence and a feasible suspend/cleanup path remain
+mandatory before creating it. Do not upgrade a suspended Free service automatically.
+
+`LOAD_OPERATOR_MODE=render-one-shot-v1` is the only installer exception to local
+execution. It validates the real Render repository, Main branch, immutable actual
+commit, web-service type, exact `cm-saas38-load-RUN-operator` name, external HTTPS
+origin/hostname, original run scope and a distinct 43-character operator Bearer
+token. It never strips `RENDER` or changes database TLS. Normal Customer/Platform
+target entrypoints explicitly reject this mode and token. Existing Demo and
+production entrypoints, credentials, plans, deployments and source pins are outside
+this execution host's responsibility.
+
+Only the restricted SQL-created installer role for the new empty target database
+enters the operator. It must have no elevated attributes, role memberships or
+authority over any existing project. Neither a Neon API/root credential nor either
+runtime password is installed there. The original maximum two-hour lifetime begins
+at resource creation, includes deployment/setup/waiting and is not renewed on
+restart. At least fifty-five minutes must remain at operator startup.
+
+After one canonical setup, the operator retains the synthetic manifest only in
+memory and creates the installer-owned temporary
+`public.saas38_load_operator_gate` relation. Runtime roles have no grants on it.
+It publishes fixed `waiting` status, then polls every five seconds for at most
+forty-five minutes, preserving twenty-six minutes for the existing campaign. Before
+release, independently verify both new services' actual deploy/source identity,
+Free plan, endpoints, limited SQL roles, exact private bucket/credential authority,
+media probe, original expiry and representative1000 profile. The separate provider
+SQL control plane may then update only the matching unexpired run/release gate's
+`ready` flag. No HTTP request can release the gate, mutate data, submit workload
+parameters, execute SQL or allocate resources. The marker blocks reseeding after
+restart, including loss of the ephemeral journal/manifest. Unexpected restarts
+invalidate this one-shot run; no automatic retry or new budget is allowed.
+
+The public exact-Host `GET /__load/health` returns fixed liveness only. Protected
+exact-Host `GET /__load/status` reports a fixed phase and, after completion, the
+controller's minimized aggregate evidence, bounded at 65,536 bytes. No cookies,
+database URLs, provider keys, raw errors or manifest are returned. It uses the
+existing production security headers, no-store caching, method/body/header bounds,
+five-second HTTP timeouts, sixteen connections and 120 status attempts per minute.
+Status reads are legitimate observation of the running experiment, not evidence of
+active-user capacity. A failure remains fixed `failed`; a completed measurement
+whose objectives are false remains measured with those false outcomes. The
+process stays observable until explicit suspension or original expiry. Its hard
+exit stays armed through asynchronous setup, campaign and shutdown.
+
+The extended fresh-owner PostgreSQL test must prove the explicit operator setup
+path, actual gate release through setup custody, Customer denial of gate read/write,
+canonical booking, 100→1,000→10,000 growth and final reconciliation. Native tests
+prove configuration negatives, exact Host/auth/method/body/expiry handling, fixed
+failure output and one-shot phase/cookie custody. These are source/CI contracts,
+not a hosted Render/Neon run or invoiced cost proof.
+
+Before expiry, retain the protected aggregate result privately, read attributable
+provider usage, suspend **all three newly marked services**, revoke the new object
+credential and suspend the new database endpoint. Never suspend an existing Demo
+or raise paid capacity. Resource deletion follows the provider's separate
+confirmation requirements after evidence retention. Process expiry does not stop
+storage billing; verify provider state independently even after failed execution.
 
 Native negative tests cover invalid destinations/roles/times/credentials, expiry
 across awaited queries, incomplete privilege results, setup-only empty databases,

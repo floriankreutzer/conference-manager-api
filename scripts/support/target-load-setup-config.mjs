@@ -3,12 +3,15 @@ import { loadConfig } from '../../src/config.js';
 import { createNeonBranchStorageConfig } from '../../src/media/neon-storage-config.js';
 import { loadTargetOrigin, loadTargetScope } from './target-load-guard.mjs';
 import { targetScopeValues } from './target-load-runtime-config.mjs';
+import { loadTargetOperatorConfig } from './target-load-operator-config.mjs';
 
 function valid(value) { if (!value) throw new Error('LOAD_SETUP_CONFIG_INVALID'); }
 
 export function loadTargetSetupConfig(env, now = Date.now()) {
   try {
-    valid(env && typeof env === 'object' && !Array.isArray(env) && env.RENDER !== 'true');
+    valid(env && typeof env === 'object' && !Array.isArray(env));
+    if (env.LOAD_OPERATOR_MODE !== undefined) loadTargetOperatorConfig(env, now);
+    else valid(env.RENDER !== 'true' && env.LOAD_OPERATOR_TOKEN === undefined);
     const forbidden = /^(?:DEMO_|PLATFORM_|ENTRA_|MICROSOFT365_|OIDC_|CSRF_SECRET$|AUDIT_HMAC_SECRET$|DATABASE_URL$)/;
     valid(Object.keys(env).every(key => !forbidden.test(key)));
     const values = targetScopeValues(env); const scope = loadTargetScope(values, now);

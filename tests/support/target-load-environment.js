@@ -31,3 +31,12 @@ export function targetLoadSetupEnvironment(runId = RUN, now = NOW) {
   }
   return env;
 }
+
+export function targetLoadOperatorEnvironment(runId = RUN, now = NOW) {
+  const env = targetLoadSetupEnvironment(runId, now); const name = `cm-saas38-load-${runId}-operator`;
+  return { ...env, LOAD_EXPIRES_AT: new Date(now + 7_199_000).toISOString(),
+    LOAD_OPERATOR_MODE: 'render-one-shot-v1', LOAD_OPERATOR_TOKEN: 'o'.repeat(43), RENDER: 'true',
+    RENDER_GIT_REPO_SLUG: 'floriankreutzer/conference-manager-api', RENDER_GIT_BRANCH: 'main', RENDER_GIT_COMMIT: SHA,
+    RENDER_SERVICE_TYPE: 'web', RENDER_SERVICE_NAME: name, RENDER_EXTERNAL_HOSTNAME: `${name}.onrender.com`,
+    RENDER_EXTERNAL_URL: `https://${name}.onrender.com` };
+}

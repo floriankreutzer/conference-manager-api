@@ -10,6 +10,7 @@ import { assertLoadDatabase, loadTargetScope } from '../scripts/support/target-l
 import { targetScopeValues } from '../scripts/support/target-load-runtime-config.mjs';
 import { growTargetLoadPopulation } from '../scripts/support/target-load-growth.mjs';
 import { reconcileTargetLoad } from '../scripts/support/target-load-reconciliation.mjs';
+import { awaitTargetOperatorRelease } from '../scripts/support/target-load-operator-gate.mjs';
 import { mediaObjectReference, verifyMediaObjectBytes } from '../src/media/object-storage-contract.js';
 import { createPostgresPersistence } from '../src/persistence/postgres/index.js';
 import { createPostgresPlatformPersistence } from '../src/persistence/postgres/platform-index.js';
@@ -18,7 +19,7 @@ import { createCustomerComposition } from '../src/customer-composition.js';
 import { createPlatformComposition } from '../src/platform-composition.js';
 import { runBookingLoadJourney } from '../scripts/support/booking-load-journey.mjs';
 import { requestLoadDraft } from '../tests/support/request-load-draft.js';
-import { targetLoadEnvironment, targetLoadSetupEnvironment } from '../tests/support/target-load-environment.js';
+import { targetLoadEnvironment, targetLoadOperatorEnvironment } from '../tests/support/target-load-environment.js';
 import { targetLoopbackResponse, targetLoopbackJson } from '../tests/support/target-load-http.js';
 
 function identifier(value) { assert.match(value, /^[a-z][a-z0-9_]*$/); return `"${value}"`; }
@@ -66,13 +67,28 @@ test('installer owns a fresh database, grants restricted runtime custody and sup
       close() { closed = true; },
     };
   };
-  const env = targetLoadSetupEnvironment(runId, Date.now());
+  const env = targetLoadOperatorEnvironment(runId, Date.now());
   // The real installer/name/role/privilege SQL is preserved. Only the connection
   // transport is replaced with the runner's guarded disposable loopback database.
   const manifest = await prepareTargetLoadSetup({ env, storageFactory,
     persistenceFactory: (config, options) => createPostgresPersistence(localConfig(config, 'setup'), options) });
   assert.equal(manifest.employees.length, 100); assert.equal(manifest.managers.length, 10); assert.equal(objects.size, 10);
   const reader = new Pool({ connectionString: localUrl('setup'), max: 2, statement_timeout: 5000 }); readers.push(reader);
+  await awaitTargetOperatorRelease({ env,
+    persistenceFactory: config => createPostgresPersistence(localConfig(config, 'setup')),
+    async prepared() {
+      const denied = new Client({ connectionString: localUrl('customer'), statement_timeout: 5000 });
+      await denied.connect();
+      try {
+        await assert.rejects(denied.query('SELECT * FROM public.saas38_load_operator_gate'), error => error.code === '42501');
+        await assert.rejects(denied.query('UPDATE public.saas38_load_operator_gate SET ready=true'), error => error.code === '42501');
+      } finally { await denied.end(); }
+      const released = await reader.query(`UPDATE public.saas38_load_operator_gate SET ready=true
+        WHERE run_id=$1 AND release_sha=$2 AND expires_at=$3 AND ready=false`,
+      [env.LOAD_RUN_ID, env.LOAD_RELEASE_SHA, env.LOAD_EXPIRES_AT]);
+      assert.equal(released.rowCount, 1);
+    },
+  });
   const counts = await reader.query(`SELECT (SELECT count(*)::int FROM users) AS users,
     (SELECT count(*)::int FROM rooms) AS rooms,(SELECT count(*)::int FROM requests) AS requests,
     (SELECT count(*)::int FROM tenant_room_media_assets WHERE bytes IS NULL AND object_key IS NOT NULL) AS media`);

@@ -20,6 +20,7 @@ export function targetScopeValues(env) {
 export function loadTargetRuntimeConfig(env, now = Date.now()) {
   try {
     valid(env && typeof env === 'object' && !Array.isArray(env));
+    valid(env.LOAD_OPERATOR_MODE === undefined && env.LOAD_OPERATOR_TOKEN === undefined);
     const forbidden = /^(?:DEMO_|PLATFORM_|ENTRA_|MICROSOFT365_|OIDC_|CSRF_SECRET$|AUDIT_HMAC_SECRET$|DATABASE_URL$)/;
     valid(Object.keys(env).every(key => !forbidden.test(key)));
     const values = targetScopeValues(env); const scope = loadTargetScope(values, now);
