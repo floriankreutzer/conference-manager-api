@@ -75,3 +75,36 @@ identity. No actual Render usage/quota or complete monthly application-egress co
 Native tests verify these evaluator boundaries and safe HTML/CLI output. A generated offline dashboard
 does not prove a deployed collector/dashboard, alert delivery, production benchmark or invoice.
 Those operational acceptance items remain open in #263 and the SaaS 3.8 release gate.
+
+## Isolated warning-delivery fault exercise
+
+Run `node --test tests/provider-watch-faults.test.js` for a network-free, synthetic
+acceptance model of the existing connector watch's pending/receipt protocol.
+`scripts/provider-watch-delivery-model.mjs` is operator test support, not a runtime
+mail service or a replacement for the actual connector automation. It is not imported
+by Customer, Platform, daily collection or the FinOps evaluator. No provider credentials,
+recipient, email body, environment configuration or account adapter is accepted.
+
+The fixture uses a separate temporary ledger and provider-receipt file. Two subprocesses
+deliberately exit after simulated provider acceptance and after durable receipt recording;
+fresh processes then reconcile the same key and digest. The fixture provider retains one
+receipt for the logical send. These are actual local process failures against durable local
+files, not actual Resend failures or an interruption of the hosted automation.
+
+Coverage includes failed ledger reads/writes/readback, unknown send result, receipt lookup
+failure, final ledger write failure, the exact 24-hour uncertain-retry boundary including
+expiry during asynchronous persistence, mismatched pending key/payload/receipt, malformed
+state, future/rollback clocks and accepted/failed/bounced/delayed delivery classification.
+Existing receipt IDs are reconciled without resending even after the retry window. A known
+accepted send suppresses a new warning regardless of later delivery failure. Unknown outcomes
+remain pending; an uncertain old attempt requires operator reconciliation rather than replay.
+
+The model assumes a serialized runner and a fixture provider that retains idempotency receipts.
+Its bounded 50-receipt fixture ledger fails closed when full; it never evicts suppression
+evidence to admit a new event. This is a fixture bound, not the live watch retention policy.
+It does not establish distributed locking, provider retention guarantees, crash-safe filesystem
+power-loss durability, real delivery, real API timeout semantics or live automation adoption.
+The model's reduced state intentionally excludes the private watch's full machine ledger;
+never upload its state to that ledger or migrate real pending/delivery records with this tool.
+Actual connector/provider failure and invoice acceptance therefore remain separate in #263.
+No live alert thresholds, recipients, scheduled task, real ledger, Demo state or plans change.
