@@ -36,15 +36,18 @@ Send one initial JSON line with exactly `warning` and `policy`. Policy has exact
 Warning is `null` when there is no new validated signal or when resuming an existing pending
 attempt. Otherwise it has exactly `idempotencyKey`, `payload`, `acknowledgements`. Payload is
 exactly `{from,to:[address],subject,text}`, matching policy and with at most16,384 text characters.
-There are no HTML, CC/BCC, attachments, arbitrary headers, URLs or credentials in this interface.
+There are no HTML, CC/BCC, attachments, arbitrary headers, provider-URL selectors or credentials in this interface.
 The existing collector owns source validation, threshold evaluation and deterministic logical key
 selection; this module does not add a competing collector or change source limits.
 
-Each acknowledgement has exactly `source` (`neon`, `resend.daily` or `resend.monthly`), `windowEnd`
-(original canonical UTC provider period end/reset time) and sorted unique `thresholds` from
+Each acknowledgement has exactly `source` (`neon`, `resend.daily` or `resend.monthly`), `windowStart`,
+`windowEnd` and sorted unique `thresholds` from
 50/70/85/95. Supply the validated new real levels only. The pending event binds these facts as well
-as the exact payload. New reservations require matching current ledger windows. At finalization,
-only still-matching windows are acknowledged, so recovery cannot pollute a subsequent period.
+as the exact payload. Neon requires both original canonical UTC period boundaries. For Resend,
+windowStart is null because the retained quota contract identifies windows by resetAt, not an
+invented billing start; windowEnd is the original canonical UTC resetAt. New reservations require
+matching current ledger windows. At finalization, only still-matching windows are acknowledged,
+including a changed Neon start with an unchanged end, so recovery cannot pollute another period.
 
 For each output `{id,operation,args}`, perform ONLY the corresponding approved native action,
 then reply on stdin with exactly `{id,ok:true,value}` using the same ID. A failed/uncertain native

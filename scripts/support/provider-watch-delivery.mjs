@@ -42,13 +42,15 @@ function event(value, policy) {
   requireValid(Array.isArray(value.acknowledgements) && value.acknowledgements.length > 0 && value.acknowledgements.length <= 3);
   const sources = new Set();
   normalized.acknowledgements = value.acknowledgements.map((item) => {
-    exact(item, ['source', 'windowEnd', 'thresholds']); instant(item.windowEnd);
+    exact(item, ['source', 'windowStart', 'windowEnd', 'thresholds']); instant(item.windowEnd);
     requireValid(['neon', 'resend.daily', 'resend.monthly'].includes(item.source) && !sources.has(item.source));
+    if (item.source === 'neon') requireValid(instant(item.windowStart) < instant(item.windowEnd));
+    else requireValid(item.windowStart === null);
     sources.add(item.source);
     requireValid(Array.isArray(item.thresholds) && item.thresholds.length > 0 && item.thresholds.length <= 4
       && item.thresholds.every((level, index) => THRESHOLDS.includes(level)
         && (index === 0 || level > item.thresholds[index - 1])));
-    return { source: item.source, windowEnd: item.windowEnd, thresholds: [...item.thresholds] };
+    return { source: item.source, windowStart: item.windowStart, windowEnd: item.windowEnd, thresholds: [...item.thresholds] };
   });
   return normalized;
 }
@@ -82,10 +84,12 @@ function validateState(value, policy) {
 function acknowledge(state, pending, requireCurrentWindow = false) {
   for (const item of pending.event.acknowledgements) {
     const target = item.source === 'neon' ? state.neon : state.resend?.[item.source.split('.')[1]];
+    const windowStart = item.source === 'neon' ? target?.periodStart : null;
     const windowEnd = item.source === 'neon' ? target?.periodEnd : target?.resetAt;
-    if (requireCurrentWindow) requireValid(windowEnd === item.windowEnd);
+    const sameWindow = windowStart === item.windowStart && windowEnd === item.windowEnd;
+    if (requireCurrentWindow) requireValid(sameWindow);
     // A recovered old-window receipt must never mark thresholds in a new window.
-    if (windowEnd !== item.windowEnd) continue;
+    if (!sameWindow) continue;
     requireValid(Array.isArray(target.reportedThresholds)
       && target.reportedThresholds.every((level) => THRESHOLDS.includes(level)));
     target.reportedThresholds = [...new Set([...target.reportedThresholds, ...item.thresholds])].sort((a, b) => a - b);

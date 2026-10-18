@@ -11,13 +11,14 @@ import { runProviderWatchDelivery } from '../scripts/support/provider-watch-deli
 import { createProviderWatchMailbox } from '../scripts/support/provider-watch-mailbox.mjs';
 
 const NOW = Date.parse('2026-10-18T12:00:00.000Z');
+const START = '2026-10-03T00:00:00.000Z';
 const END = '2026-11-01T00:00:00.000Z';
 const POLICY = { from: 'Watch <sender@example.test>', to: 'owner@example.test', subject: 'Usage warning' };
 const WARNING = { idempotencyKey: 'fixture-warning-95',
   payload: { from: POLICY.from, to: [POLICY.to], subject: POLICY.subject, text: 'Synthetic usage warning.' },
-  acknowledgements: [{ source: 'neon', windowEnd: END, thresholds: [50, 70, 85, 95] }] };
+  acknowledgements: [{ source: 'neon', windowStart: START, windowEnd: END, thresholds: [50, 70, 85, 95] }] };
 const initial = () => ({ schemaVersion: 1, pending: null, deliveries: [],
-  neon: { periodEnd: END, reportedThresholds: [] }, history: [{ original: 'unchanged' }], lastError: null });
+  neon: { periodStart: START, periodEnd: END, reportedThresholds: [] }, history: [{ original: 'unchanged' }], lastError: null });
 
 function fixture() {
   const state = { stored: initial(), time: NOW, sends: 0, lookups: 0, status: 'delivered' };
@@ -173,6 +174,16 @@ test('recovery does not acknowledge thresholds in a later source window', async 
   const f = fixture(); f.ports.transport.lookup = async () => { throw new Error('uncertain'); };
   await assert.rejects(f.run());
   f.state.stored.neon.periodEnd = '2026-12-01T00:00:00.000Z';
+  f.ports.warning = null; f.ports.transport.lookup = async (sendId) => ({ sendId, status: 'delivered' });
+  await f.run(); assert.deepEqual(f.state.stored.neon.reportedThresholds, []);
+});
+
+test('recovery distinguishes Neon windows with the same end but different starts', async () => {
+  const f = fixture();
+  f.state.stored.neon.periodStart = '2026-10-03T00:00:00.000Z';
+  f.ports.transport.lookup = async () => { throw new Error('uncertain'); };
+  await assert.rejects(f.run());
+  f.state.stored.neon.periodStart = '2026-10-04T00:00:00.000Z';
   f.ports.warning = null; f.ports.transport.lookup = async (sendId) => ({ sendId, status: 'delivered' });
   await f.run(); assert.deepEqual(f.state.stored.neon.reportedThresholds, []);
 });
