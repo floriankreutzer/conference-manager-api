@@ -1,4 +1,30 @@
-# Provider catalogue publication — unpublished preparation
+# Provider catalogue publication custody and Manager interface
+
+## Current accepted foundation and candidate interface
+
+API#230 merged asbe04a087bb64316969dddb20db6541db6ee87ffb, canonical055/Demo021.
+Exact candidatec59196fa / tree0c7b6247 passed all nine required checks: complete
+CI39325694885 quality/PostgreSQL18.6/four permanent Chromium+WebKit x objects+
+PostgreSQL matrices, and secret/dependency/source gates. Actual SQL publication,
+full300/100/20 empty-assignment capacity, source custody, every role/function
+privilege, replay/CAS/audit rollback/history/retirement/reset and the complete
+legacy suite passed. Three failed preparation runs below remain historical.
+The accepted foundation had no HTTP publication caller. Source UI#358 separately
+merged as287b4f13 after all eight current-head checks,482 full browser cases,
+shared roles/Tenant/CSRF, actual200% Chromium zoom and both three-customer/two-reset
+cases. Neither source acceptance changes deployed immutable counterparts.
+
+This branch adds default-off Manager publication/rejection HTTP and bounded
+review context/history. Complete local1646 native+Customer DAST+17Platform,
+focused17 and lint/style checks passed; the actual new cookie/SQL read/POST and
+400-binding tests are prepared. All exact-head PostgreSQL/browser/security gates
+remain required before HTTP acceptance. No publication browser form, Employee
+filter, availability, automatic ordering, provider qualification or release is
+accepted by this candidate. Historical preparation statements below are retained
+as dated evidence; this section defines current accepted versus candidate scope.
+
+## Historical preparation and dated evidence
+
 
 Work in progress for application#233, dependent on source intake054/Demo020.
 Draft055/Demo021 publication SQL, exact readiness and role/reset integration
@@ -169,3 +195,47 @@ all old ledger entries and every runtime/migration invariant remain unchanged.
 This third failed run stays retained. Documentation now distinguishes the55/21
 candidate readiness from accepted main54/20. The next exact head must pass the
 entire suite and all browser/security gates; no partial run substitutes for it.
+
+
+## Separate unpublished HTTP/read preparation
+
+Branch feat/saas4-catalogue-publication-http normally follows the current
+publication foundation candidate. It adds Catalogue Manager read context and
+justified immutable review history, current publication bindings with a strict
+publication-version/keyset cursor, and explicit POST review. Trusted Principal /
+active-Tenant/cookie/CSRF guards remain the first boundary. Requests cannot select
+Tenant/provider/actor authority. GET forbids bodies and duplicate/foreign queries;
+unsupported writes require CSRF before405. All body/response and runtime budgets
+remain bounded. The original17 telemetry keys remain plus two fixed review keys.
+Composition stays under the existing default-off configuration flag, outside Demo.
+
+The read adapter uses a single RR snapshot, scoped explicit SQL and the existing
+assignment reader. It reads at most six bindings or21 historical metadata rows;
+private configuration/actor/session/commands/source prices are not returned.
+The service validates every row, continuity, counters, scope and hidden shapes
+before exposing at most five bindings /20 history records. UTF-8 byte packing
+can shorten pages without false EOF or empty nonfinal pages. Disabled or stale
+connections retain history without acquiring review authority. Justification is
+visible only to the authorized Manager; audit remains minimized separately.
+
+Seventeen focused HTTP/read/default-off/runtime/telemetry cases passed, including
+all original runtime and17-route metrics protection extended to19 fixed keys.
+Seven read cases cover role/Tenant denial, corrupt sixth row/private fields,
+publication-stale cursor, continuous21/20 history, UTF-8 packing across all rows,
+unknown/empty state and bounded failure when even one entry cannot fit. Five
+transport cases cover scope/CSRF-before405, exact body/query schemas, MIME and
+encoding/byte bounds, unavailable service and exact routing. Lint/style pass after
+retained long-line corrections. No dependency, retry, timeout or capacity changed.
+
+Actual PostgreSQL/cookie tests are extended, but have not executed on this branch:
+context/history bindings, Admin/Employee/foreign/anonymous/revoked cases, Origin /
+CSRF, explicit review and replay, and all400 full-capacity bindings through scoped
+five-entry HTTP pages. Foundation SQL proof is not HTTP acceptance. The complete
+new candidate and all mandatory paired/security gates remain outstanding. No
+Manager browser publication form, Employee publication filter, availability or
+SaaS4 release is claimed by this preparation.
+
+The complete local HTTP candidate check subsequently passed1646 native tests,
+Customer live HTTP DAST and all17 Platform HTTP security cases. The HTTP runtime implementation remained unchanged; the foundation's ledger/documentation corrections were normally
+integrated, retaining the HTTP work and every failure record. Actual new HTTP /
+PostgreSQL and exact-head remote acceptance remain outstanding.

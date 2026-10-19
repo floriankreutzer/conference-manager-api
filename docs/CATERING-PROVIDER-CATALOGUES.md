@@ -276,3 +276,19 @@ Publication is separate unpublished055/Demo021 preparation, documented in
 CATERING-CATALOGUE-PUBLICATION.md. Source acceptance does not imply publication,
 Employee offers, availability, automatic ordering, supplier qualification or
 SaaS4/release acceptance. The source receipt implementation remains unchanged.
+
+
+## Accepted custody and source UI; separate review interface
+
+API#230 custody merged asbe04a087, exact055/Demo021, after candidatec59196fa
+passed full PostgreSQL18.6, all six CI39325694885 jobs and security/source gates.
+The source receipt/runtime contract remains unchanged. Frontend#358 merged
+as287b4f13 after candidate4f69cec5 passed all eight required checks, including
+241 Chromium+241 WebKit cases, shared roles/Tenant/CSRF, separate actual200% zoom
+and both complete three-customer/two-reset cases. This supersedes prior source-UI
+pending checkpoints. No deployment was performed or deployed ref changed.
+
+The next default-off Manager publication HTTP/read candidate builds on accepted
+055/021 and complete local1646+DAST+17Platform evidence, with actual cookie/SQL /
+400-binding acceptance still pending. Its browser form, Employee eligibility,
+availability and broader catalogue/SaaS4 release remain separate required work.

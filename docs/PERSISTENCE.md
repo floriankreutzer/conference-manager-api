@@ -1,8 +1,9 @@
 # PostgreSQL Persistence
 
-Candidate runtime readiness is055/Demo021 in this branch; accepted source main
-remains054/Demo020 until the publication candidate passes every required gate.
-No deployment or publication runtime activation is implied.
+Current custody readiness is055/Demo021, accepted in API#230 mainbe04a087.
+This branch adds a default-off Manager review HTTP interface without changing
+that qualified schema or any deployed immutable counterpart. HTTP qualification
+remains separate from accepted storage and from deployment/release.
 
 ## Decision
 
@@ -171,7 +172,7 @@ The all-role Tenant presentation contract reuses the current Organization row an
 `organization_revision`. Its managed-brand policy maps one fixed reference to a code-shipped preset
 and therefore introduces no upload metadata, asset table, external object reference or migration.
 
-Migration 039 introduced schema version 39; the candidate exact runtime readiness version is 55. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
+Migration 039 introduced schema version 39; the current exact runtime readiness version is 55. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
 
 No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
 
@@ -367,7 +368,7 @@ distinct.
 
 The canonical `migrations/` stream remains the source of the business schema and must contain the
 exact applied sequence `001..055`. The independent `demo-migrations/` stream has its own
-`demo_schema_migrations` ledger, checksum and advisory lock; candidate Demo overlay version `021`
+`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `021`
 installs the immutable database sentinel, provider/persona reference tables, minimized views and
 role grants, private Room/Catering media and create/attach lifecycle support. Overlay 004 grants only `INSERT` and `TRUNCATE` on the canonical attribution
 migration-state singleton to the reset role; customer and Platform roles receive no access. The
@@ -632,13 +633,14 @@ and all four permanent paired browser/storage matrices; that supersedes the
 historical pending checkpoint above.
 
 
-Draft migration055/Demo021 adds immutable explicit Manager catalogue reviews and
+Migration055/Demo021 adds immutable explicit Manager catalogue reviews and
 separate review/publication heads. Publication composes existing canonical and
 assignment writes with review and three audit completions in one same-client
 transaction; rejection retains earlier published state. All observed revisions,
 source content, explicit selling prices, same-provider components/variants,
 ownership and unrelated retained content are fenced. No source or order is
-backfilled. The candidate advances exact readiness/reset inventories to55/21,
-including all three FK-owning tables and private nonexecutable guards. It remains
-uncomposed and unqualified until actual PostgreSQL and all required exact-head
-gates pass. See CATERING-CATALOGUE-PUBLICATION.md for evidence and remaining scope.
+backfilled. Exact readiness/reset inventories include all three FK-owning tables
+and private nonexecutable guards. API#230 qualified custody on PostgreSQL18.6 and
+all nine current-head checks. The default-off HTTP/read interface prepared here
+requires its own actual cookie/database and complete paired/security acceptance.
+See CATERING-CATALOGUE-PUBLICATION.md for retained evidence and remaining scope.
