@@ -174,11 +174,13 @@ test('Catering configuration commits scoped revisions and audit atomically and f
   assert.deepEqual(identities, identities.slice().sort());
   assert.deepEqual((await repository.listCurrent({ tenantId: otherTenant })).items, []);
   assert.equal(await auditRepository.verifyTenantChain(tenantId), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty Catering order schema 048.
   assert.equal(await rollbackLatest(pool), true); // Empty Catering assignment schema 047.
   await assert.rejects(rollbackLatest(pool), /CATERING_CONFIGURATION_ROLLBACK_REQUIRES_REVIEW/);
   assert.equal(await isPostgresSchemaReady(pool), false);
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty Catering order schema 048.
   assert.equal(await rollbackLatest(pool), true); // Empty Catering assignment schema 047.
   await pool.query('TRUNCATE catering_integration_configuration_revisions,catering_integration_configurations');
   await rollbackLatest(pool);

@@ -31,6 +31,9 @@ const COMPOSITION_FILES = new Set([
   'src/app.js',
   'src/platform-composition.js',
   'src/platform-main.js',
+  'src/customer-composition.js',
+  'src/catering-configuration-composition.js',
+  'src/catering-order-composition.js',
 ]);
 const PROVIDER_NEUTRAL_INTEGRATION_MODULES = new Set([
   'src/integrations/booking-reference.js',

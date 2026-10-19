@@ -77,6 +77,7 @@ test('Room bytes are Tenant-owned, attachment-bound, active-scoped and rollback 
   assert.equal((await pool.query(`SELECT count(*)::integer AS count FROM tenant_room_media_assets
     WHERE tenant_id = $1`, [TENANT_A])).rows[0].count, 1);
   assert.equal((await createPostgresPlatformProjectionRepository(pool).consumeBatch({ limit: 100 })).retryCount, 0);
+  assert.equal(await rollbackLatest(pool), true); // Empty Catering order schema 048.
   assert.equal(await rollbackLatest(pool), true); // Empty Catering assignment schema 047.
   assert.equal(await rollbackLatest(pool), true); // Empty Catering configuration schema 046.
   assert.equal(await rollbackLatest(pool), true); // schema 045 has no Request workflow history here

@@ -171,7 +171,7 @@ export async function runNeonRecoveryConnections({ env, clientFactory,
         validateIdentity(await query(IDENTITY_SQL), database.role, settings);
         stage = 'schema';
         const versions = await query(SCHEMA_SQL);
-        if (versions.rows.length !== 1 || versions.rows[0]?.runtime !== 47 || versions.rows[0]?.overlay !== 13) {
+        if (versions.rows.length !== 1 || versions.rows[0]?.runtime !== 48 || versions.rows[0]?.overlay !== 14) {
           throw new Error('NEON_RECOVERY_SCHEMA_INVALID');
         }
         stage = 'marker';

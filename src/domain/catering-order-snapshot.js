@@ -24,8 +24,10 @@ function sameEntry(snapshot, canonical) {
 // All inputs are independently loaded by an authorized use case. This pure
 // projection neither authenticates a caller nor releases/enqueues an order.
 export function createCateringOrderSnapshots({ request: requestValue, assignmentRevision,
-  ownership, canonicalCatalogue, connections, orderIdFactory, positionIdFactory } = {}) {
+  ownership, canonicalCatalogue, connections, orderIdFactory, positionIdFactory, orderVersion = 1, onlyIntegrationId = null } = {}) {
   if (!Number.isSafeInteger(assignmentRevision) || assignmentRevision < 1 || assignmentRevision >= Number.MAX_SAFE_INTEGER
+    || !Number.isSafeInteger(orderVersion) || orderVersion < 1 || orderVersion >= Number.MAX_SAFE_INTEGER
+    || (onlyIntegrationId !== null && !isInternalUuid(onlyIntegrationId))
     || typeof orderIdFactory !== 'function' || typeof positionIdFactory !== 'function') invalid();
   const request = normalizeRequest(requestValue);
   if (request.status !== REQUEST_STATUS.CONFIRMED || request.snapshot === null) invalid();
@@ -50,9 +52,7 @@ export function createCateringOrderSnapshots({ request: requestValue, assignment
     const integrationId = owners.get(`${kind}:${entry.id}`);
     if (!integrationId) invalid();
     if (!groups.has(integrationId)) groups.set(integrationId, []);
-    const positionId = allocate(positionIdFactory, { tenantId: request.tenantId, requestId: request.id,
-      requestVersion: request.version, integrationId, kind, entryId: entry.id });
-    groups.get(integrationId).push({ positionId, kind, entryId: entry.id, name: entry.name,
+    groups.get(integrationId).push({ kind, entryId: entry.id, name: entry.name,
       description: entry.description, quantity, unitPrice: entry.price, conferenceLineTotalMinor: lineTotalMinor, packageDetails });
   }
   const catering = request.snapshot.pricing.catering;
@@ -82,15 +82,22 @@ export function createCateringOrderSnapshots({ request: requestValue, assignment
   const expectedTotal = catering.items.reduce((sum, entry) => sum + entry.lineTotalMinor, selectedPackage?.lineTotalMinor ?? 0);
   if (!Number.isSafeInteger(expectedTotal) || expectedTotal !== request.snapshot.pricing.breakdown.cateringItemsMinor
     + request.snapshot.pricing.breakdown.cateringPackageMinor) invalid();
-  let total = 0;
-  let positionCount = 0;
-  const orders = [...groups].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([integrationId, positions]) => {
+  const allPositions = [...groups.values()].flat();
+  const total = allPositions.reduce((sum, position) => sum + position.conferenceLineTotalMinor, 0);
+  if (total !== expectedTotal || allPositions.length > CATERING_MAX_ORDER_POSITIONS) invalid();
+  const selectedIntegration = onlyIntegrationId?.toLowerCase() ?? null;
+  if (selectedIntegration !== null && !groups.has(selectedIntegration)) invalid();
+  const orders = [...groups].filter(([integrationId]) => selectedIntegration === null || integrationId === selectedIntegration)
+    .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([integrationId, sourcePositions]) => {
+    const positions = sourcePositions.map((position) => ({ ...position,
+      positionId: allocate(positionIdFactory, { tenantId: request.tenantId, requestId: request.id,
+        requestVersion: request.version, orderVersion, integrationId, kind: position.kind, entryId: position.entryId }),
+    }));
     const orderId = allocate(orderIdFactory, { tenantId: request.tenantId, requestId: request.id,
-      requestVersion: request.version, integrationId });
+      requestVersion: request.version, orderVersion, integrationId });
     const amountMinor = positions.reduce((sum, entry) => sum + entry.conferenceLineTotalMinor, 0);
     const conferencePrice = normalizeCateringOrderTotal({ amountMinor, currency: request.snapshot.pricing.currency });
-    total += amountMinor; positionCount += positions.length;
-    return { schemaVersion: 1, tenantId: request.tenantId, integrationId, orderId, orderVersion: 1,
+    return { schemaVersion: 1, tenantId: request.tenantId, integrationId, orderId, orderVersion,
       requestId: request.id, requestVersion: request.version, assignmentRevision, catalogueRevision,
       sourceCapturedAt: request.snapshot.capturedAt, startsAt: request.startsAt, endsAt: request.endsAt,
       room: { id: request.roomId, siteId: request.snapshot.pricing.room.siteId, name: request.snapshot.pricing.room.name },
@@ -99,6 +106,5 @@ export function createCateringOrderSnapshots({ request: requestValue, assignment
       specialRequirements: request.snapshot.details.specialRequirements,
       positions, conferencePrice, providerCost: null };
   });
-  if (total !== expectedTotal || positionCount > CATERING_MAX_ORDER_POSITIONS) invalid();
   return frozenCopy(orders);
 }

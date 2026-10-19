@@ -16,7 +16,7 @@ const PATH = `/api/v1/integrations/catering/${id(3)}/configuration`;
 
 test('server feature configuration defaults off and admits only exact boolean rollout values', () => {
   assert.equal(cateringConfigurationEnabled(), false);
-  assert.deepEqual(loadConfig({ NODE_ENV: 'test' }).featureFlags, { 'catering.configuration': false });
+  assert.deepEqual(loadConfig({ NODE_ENV: 'test' }).featureFlags, { 'catering.configuration': false, 'catering.orders': false });
   for (const value of ['true', 'false']) {
     const flags = loadFeatureFlags({ CATERING_CONFIGURATION_ENABLED: value });
     assert.equal(cateringConfigurationEnabled(flags), value === 'true');

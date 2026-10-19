@@ -27,6 +27,9 @@ export const AUDIT_ACTION = Object.freeze({
   INTEGRATION_ADMIN_CONSENT_CHANGED: 'integration.admin_consent.changed',
   INTEGRATION_VERIFIED: 'integration.verified',
   CALENDAR_OPERATION: 'calendar.operation',
+  CATERING_ORDER_PREPARED: 'catering.order.prepared',
+  CATERING_ORDER_QUOTED: 'catering.order.quoted',
+  CATERING_ORDER_DECIDED: 'catering.order.decided',
   AUDIT_READ: 'audit.read',
 });
 
