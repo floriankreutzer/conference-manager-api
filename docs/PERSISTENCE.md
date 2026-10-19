@@ -167,7 +167,7 @@ The all-role Tenant presentation contract reuses the current Organization row an
 `organization_revision`. Its managed-brand policy maps one fixed reference to a code-shipped preset
 and therefore introduces no upload metadata, asset table, external object reference or migration.
 
-Migration 039 introduced schema version 39; the current exact runtime readiness version is 53. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
+Migration 039 introduced schema version 39; the current exact runtime readiness version is 54. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
 
 No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
 
@@ -350,7 +350,7 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 53.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 54.
 
 ## Shared Demo persistence
 
@@ -362,7 +362,7 @@ reset/seed capability and migration ownership. All four URLs must resolve to the
 distinct.
 
 The canonical `migrations/` stream remains the source of the business schema and must contain the
-exact applied sequence `001..053`. The independent `demo-migrations/` stream has its own
+exact applied sequence `001..054`. The independent `demo-migrations/` stream has its own
 `demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `019`
 installs the immutable database sentinel, provider/persona reference tables, minimized views and
 role grants, private Room/Catering media and create/attach lifecycle support. Overlay 004 grants only `INSERT` and `TRUNCATE` on the canonical attribution
@@ -611,3 +611,16 @@ The existing delivery feature gate controls both routes; existing orders receive
 manual facts. Customer can append facts and advance heads, Platform has no table access,
 and Reset can truncate both in the existing atomic explicit inventory. Demo overlay016
 grants only these privileges. Rollback refuses facts, heads or either new audit action.
+
+
+Migration054 records immutable Tenant/connection-scoped supplier catalogue source
+receipts and a monotonic source head. Catalogue-only Manager/session/epoch,
+current configuration/source CAS, exact command replay, database receipt time and
+minimal HMAC-audit completion are fenced. Source content and supplier costs do
+not publish offers, set selling prices, establish availability or authorize an
+order. Demo020 grants Customer append/head advancement, denies Platform access
+and admits only bounded reset privileges on both new FK-owning tables. Runtime
+and Demo readiness advance to exact054/020; missing/future ledgers and historical
+incompatible pairs fail closed. Installation/reset creates no source, supplier
+connection, publication or order. See CATERING-PROVIDER-CATALOGUES.md for actual
+qualification status; SQL and paired CI are still pending at this checkpoint.
