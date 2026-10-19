@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createPlatformPasskeyLifecycleService } from '../src/platform/identity/passkey-lifecycle-service.js';
+import { PlatformIdentityError } from '../src/platform/identity/errors.js';
 import { permissionsForPlatformRoles } from '../src/platform/identity/policy.js';
 
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -17,7 +18,7 @@ const credential = Buffer.alloc(32, 1).toString('base64url');
 
 function fixture() {
   let expectedHash; let current = principal; let denied = false;
-  const calls = { starts: [], issue: [], revoke: [], modes: [], resolve: 0 };
+  const calls = { starts: [], issue: [], revoke: [], modes: [], lists: [], resolve: 0 };
   async function execute(input, mutation, mode) {
     assert.equal(input.operationHash, expectedHash);
     calls.modes.push(mode);
@@ -31,6 +32,7 @@ function fixture() {
       async executeStepUp(input, mutation) { return execute(input, mutation, 'rotate'); },
       async executeCredentialLifecycle(input, mutation) { return execute(input, mutation, 'logout'); },
     }, repository: {
+      async listActive(value) { calls.lists.push(value); return []; },
       async issueAdditional(value) { calls.issue.push(value); return denied ? null : { grant: { grantId: ID, token: 'opaque' } }; },
       async revokeCredential(value) { calls.revoke.push(value); return denied ? null : { status: 'credential_revoked' }; },
     } });
@@ -73,4 +75,19 @@ test('repository denial never becomes an operation result and remains inside the
   await assert.rejects(f.service.issueAdditional(request()), /LIFECYCLE_REJECTED/);
   await f.service.startRevocation(principal, credential);
   await assert.rejects(f.service.revoke({ ...request(), credentialId: credential }), /LIFECYCLE_REJECTED/);
+});
+
+test('a session revoked between HTTP guard and lifecycle resolution yields a bounded denial before keys or proof work', async () => {
+  for (const missing of [null, undefined]) {
+    const f = fixture(); f.setCurrent(missing);
+    for (const invoke of [() => f.service.list({}), () => f.service.issueAdditional(request()),
+      () => f.service.beginAddition(request(), () => assert.fail('NO_GRANT_ALLOWED')),
+      () => f.service.revoke({ ...request(), credentialId: credential }),
+      () => f.service.startAddition(missing), () => f.service.startRevocation(missing, credential)]) {
+      await assert.rejects(invoke, error => error instanceof PlatformIdentityError
+        && error.code === 'PLATFORM_PASSKEY_LIFECYCLE_REJECTED');
+    }
+    assert.equal(f.calls.starts.length, 0); assert.equal(f.calls.modes.length, 0);
+    assert.equal(f.calls.issue.length, 0); assert.equal(f.calls.revoke.length, 0); assert.equal(f.calls.lists.length, 0);
+  }
 });

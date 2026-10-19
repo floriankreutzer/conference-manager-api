@@ -5,6 +5,7 @@ import { createPlatformHttpServer } from '../src/platform/server.js';
 import { platformPasskeyRoutes } from '../src/platform/http/passkey-routes.js';
 import { platformPasskeyAuthenticationRoutes } from '../src/platform/http/passkey-authentication-routes.js';
 import { permissionsForPlatformRoles } from '../src/platform/identity/policy.js';
+import { createPlatformPasskeyLifecycleService } from '../src/platform/identity/passkey-lifecycle-service.js';
 import { PlatformIdentityError } from '../src/platform/identity/errors.js';
 import { serializePlatformEntraTransactionCookie,
   serializeClearedPlatformEntraTransactionCookie } from '../src/platform/identity/entra-transaction-cookie.js';
@@ -91,7 +92,8 @@ async function fixture(t, mode = 'application_passkey') {
       outgoing.on('error', reject); if (payload !== null) outgoing.write(payload); outgoing.end();
     });
   }
-  return { request, calls, audit, authenticated, setAuth: value => { authResult = value; }, setOidc: value => { oidcResult = value; },
+  return { request, calls, audit, authenticated, passkeys, setAuth: value => { authResult = value; },
+    setOidc: value => { oidcResult = value; },
     setKeys: value => { keys = value; }, fail: () => { failure = true; } };
 }
 const preauth = { Cookie: authCookie.split(';')[0], 'X-CSRF-Token': state };
@@ -172,4 +174,29 @@ test('authentication failure has a fixed error, bounded audit reason, no raw nat
   for (let n = 0; n < 29; n++) assert.equal((await f.request(`${BASE}/configuration`)).status, 200);
   assert.equal((await f.request(`${BASE}/configuration`)).status, 429);
   assert.equal((await f.request('/api/v1/platform/unclaimed')).status, 404);
+});
+
+test('managed session loss after the HTTP guard is a fixed audited403 for key listing, addition and revocation', async t => {
+  const f = await fixture(t); let effects = 0;
+  const never = async () => { effects++; throw new Error('UNEXPECTED_PROOF_OR_KEY_ACCESS'); };
+  const lifecycle = createPlatformPasskeyLifecycleService({ environment: 'int', securityEpoch: 8,
+    sessionService: { async resolvePrincipal() { return null; } },
+    authService: { startStepUp: never, executeStepUp: never, executeCredentialLifecycle: never },
+    repository: { listActive: never, issueAdditional: never, revokeCredential: never } });
+  Object.assign(f.passkeys, { listKeys: request => lifecycle.list(request),
+    completeAddition: value => lifecycle.beginAddition(value, never), completeRevocation: value => lifecycle.revoke(value) });
+  for (const [path, settings] of [[`${BASE}/manage/keys`, { headers: managed }],
+    [`${BASE}/manage/addition/complete`, { method: 'POST', body: { state, response: {} }, headers: managed }],
+    [`${BASE}/manage/revocation/complete`,
+      { method: 'POST', body: { state, response: {}, credentialId: browser }, headers: managed }]]) {
+    const response = await f.request(path, settings);
+    assert.equal(response.status, 403); assert.equal(response.body.error.code, 'PLATFORM_PASSKEY_REJECTED');
+    assert.equal(response.headers['set-cookie'], undefined);
+    assert.doesNotMatch(response.raw, /TypeError|UNEXPECTED_PROOF_OR_KEY_ACCESS|operatorId|cookie|signature/);
+  }
+  assert.equal(effects, 0); assert.equal(f.audit.length, 3);
+  for (const event of f.audit) {
+    assert.equal(event.targetType, 'platform_passkey_operation');
+    assert.deepEqual(event.metadata, { reasonCode: 'passkey_rejected' });
+  }
 });

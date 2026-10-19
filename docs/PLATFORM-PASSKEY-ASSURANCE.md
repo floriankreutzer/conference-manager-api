@@ -422,3 +422,17 @@ no environment has been activated by this change. Rollback must fail closed or
 advance the epoch and revoke affected authority; it must never restore primary-only
 or superseded sessions. Populated key/grant migrations cannot be rolled back to
 recover access; use the independently audited owner recovery procedure instead.
+
+## Revoked-session review correction
+
+Review of exact integration8e0fedf identified a race after the HTTP principal guard:
+if a session was revoked before lifecycle re-resolution, normalizing a missing
+principal produced an internal TypeError. The follow-up explicitly rejects null/
+undefined re-resolution with the bounded Platform identity error before key reads,
+signature work, grant callbacks or mutations. Managed key-list denials now receive
+the same minimized denial audit as management POSTs; preauthentication polling
+keeps its prior behavior. No successful path, permission, session or key policy is
+weakened. Deterministic lifecycle and actual HTTP tests cover listing, addition and
+revocation interleavings with fixed403, no cookie, no private cause, three minimized
+managed denial events and no verifier/repository effect. The initial style failure
+was an overlong fixture-return line, wrapped without changing assertions.
