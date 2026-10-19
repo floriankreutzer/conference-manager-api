@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHttpServer } from '../src/server.js';
+import { createAuthorizationPolicy } from '../src/authorization/policy.js';
+import { createAuditHarness } from './support/audit-harness.js';
 import { loadConfig } from '../src/config.js';
 import { cateringDeliveryEnabled, cateringOrdersEnabled, loadFeatureFlags } from '../src/feature-flags.js';
 import { createCateringDeliveryRouteModules } from '../src/catering-delivery-composition.js';
@@ -27,4 +30,20 @@ test('disabled delivery does not touch persistence or activate history; enabled 
   const featureFlags = loadFeatureFlags({ CATERING_ORDERS_ENABLED: 'true', CATERING_DELIVERY_ENABLED: 'true' });
   assert.throws(() => createCateringDeliveryRouteModules({ config: { featureFlags } }), /PERSISTENCE_REQUIRED/);
   assert.throws(() => createCateringDeliveryRouteModules({ config: { featureFlags, demoRuntime: true } }), /DEMO_NOT_SUPPORTED/);
+});
+
+
+test('enabled delivery composes through the real server flat runtime bounds before persistence I/O', () => {
+  const config = loadConfig({ NODE_ENV: 'test', PUBLIC_ORIGIN: 'http://localhost:3000',
+    CATERING_ORDERS_ENABLED: 'true', CATERING_DELIVERY_ENABLED: 'true' });
+  const authorizationPolicy = createAuthorizationPolicy();
+  const audit = createAuditHarness({ authorizationPolicy });
+  let reads = 0;
+  const pool = { async query() { reads++; throw new Error('UNEXPECTED_PERSISTENCE'); },
+    async connect() { reads++; throw new Error('UNEXPECTED_PERSISTENCE'); } };
+  const modules = createCateringDeliveryRouteModules({ config, authorizationPolicy, auditService: audit.service,
+    persistence: { pool, auditRepository: { async appendWithClient() { throw new Error('UNEXPECTED_AUDIT'); } } } });
+  const server = createHttpServer({ config, authorizationPolicy, auditService: audit.service, additionalRouteModules: modules,
+    logger: { requestCompleted() {}, healthEvaluated() {}, securityOutcome() {}, unhandledError() {} } });
+  assert.equal(server.listening, false); assert.equal(reads, 0);
 });

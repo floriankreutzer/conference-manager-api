@@ -72,6 +72,6 @@ export function createCateringDeliveryRouteModule(service) {
   return defineRouteModule({ id: 'catering-delivery-jobs', routeKey: cateringDeliveryRouteKey,
     createHandler(runtime) {
       return createCateringDeliveryHttpHandler({ service, principalGuard: runtime?.principalGuard, tenantGuard: runtime?.tenantGuard,
-        maxBodyBytes: runtime?.config?.maxBodyBytes, maxResponseBytes: runtime?.config?.maxResponseBytes });
+        maxBodyBytes: runtime?.maxBodyBytes, maxResponseBytes: runtime?.maxResponseBytes });
     } });
 }
