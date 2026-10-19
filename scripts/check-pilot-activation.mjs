@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 55;/.test(pool)) {
-  throw new Error('Pilot activation requires current schema including Platform passkey enrollment version 55.');
+if (!/export const CURRENT_SCHEMA_VERSION = 56;/.test(pool)) {
+  throw new Error('Pilot activation requires current schema including Platform passkey enrollment version 56.');
 }
 
 const service = await readFile('src/application/tenant-pilot-service.js', 'utf8');

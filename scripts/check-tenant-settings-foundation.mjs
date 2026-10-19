@@ -50,8 +50,8 @@ if (/repository|SELECT|UPDATE|INSERT INTO|DELETE FROM/i.test(revision)) {
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 55;/.test(pool)) {
-  throw new Error('Runtime schema readiness must include current schema including Platform passkey enrollment version 55.');
+if (!/export const CURRENT_SCHEMA_VERSION = 56;/.test(pool)) {
+  throw new Error('Runtime schema readiness must include current schema including Platform passkey enrollment version 56.');
 }
 
 const migration = await readFile('migrations/020_tenant_settings_revisions.up.sql', 'utf8');

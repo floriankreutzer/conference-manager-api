@@ -168,3 +168,8 @@ export function createPostgresCateringCatalogueAssignmentRepository(pool, { regi
     },
   });
 }
+
+
+// Same-client compositions must already hold the Tenant write lock or a stable
+// snapshot. The ordinary repository read contract remains REPEATABLE READ.
+export { current as readCateringCatalogueAssignmentsWithClient };

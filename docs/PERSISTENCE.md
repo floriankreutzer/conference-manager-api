@@ -1,5 +1,10 @@
 # PostgreSQL Persistence
 
+Current custody readiness is055/Demo021, accepted in API#230 mainbe04a087.
+This branch adds a default-off Manager review HTTP interface without changing
+that qualified schema or any deployed immutable counterpart. HTTP qualification
+remains separate from accepted storage and from deployment/release.
+
 ## Decision
 
 Conference Manager uses PostgreSQL 18 as the relational production persistence platform. The pinned `pg` driver is used directly so SQL, Tenant predicates, transaction boundaries, constraints and migrations remain explicit and reviewable.
@@ -623,13 +628,28 @@ and admits only bounded reset privileges on both new FK-owning tables. Runtime
 and Demo readiness advance to exact054/020; missing/future ledgers and historical
 incompatible pairs fail closed. Installation/reset creates no source, supplier
 connection, publication or order. See CATERING-PROVIDER-CATALOGUES.md for actual
-qualification status; SQL and paired CI are still pending at this checkpoint.
+qualification status. API#229 accepted054/020 after complete PostgreSQL18.6
+and all four permanent paired browser/storage matrices; that supersedes the
+historical pending checkpoint above.
 
 
-Migration055 adds independently authorized Platform passkey enrollment, after the
-retained supplier catalogue custody migration054. Demo021 grants only TRUNCATE on
-the enrollment tables to the isolated reset role; Demo020 supplier catalogue grants
-remain intact. The combined candidate requires exact055/021 readiness and retains
-populated rollback refusal, foreign-identity denial, audit atomicity and all three
-canonical Demo progressions/resets. See `PLATFORM-PASSKEY-ASSURANCE.md`; runtime CA
-selection and the deployment security epoch remain unchanged in this candidate.
+Migration055/Demo021 adds immutable explicit Manager catalogue reviews and
+separate review/publication heads. Publication composes existing canonical and
+assignment writes with review and three audit completions in one same-client
+transaction; rejection retains earlier published state. All observed revisions,
+source content, explicit selling prices, same-provider components/variants,
+ownership and unrelated retained content are fenced. No source or order is
+backfilled. Exact readiness/reset inventories include all three FK-owning tables
+and private nonexecutable guards. API#230 qualified custody on PostgreSQL18.6 and
+all nine current-head checks. The default-off HTTP/read interface prepared here
+requires its own actual cookie/database and complete paired/security acceptance.
+See CATERING-CATALOGUE-PUBLICATION.md for retained evidence and remaining scope.
+
+
+Unreleased migration056 adds independently authorized Platform passkey enrollment
+after the retained catalogue publication055. Demo022 grants only isolated reset
+TRUNCATE; publication021 and supplier020 grants remain intact. This candidate
+requires exact056/022 readiness and all paired regression/security evidence.
+The former unmerged055/021 enrollment numbering was superseded during main
+integration; no accepted publication migration or checksum was rewritten.
+See PLATFORM-PASSKEY-ASSURANCE.md. CA mode and the security epoch remain unchanged.
