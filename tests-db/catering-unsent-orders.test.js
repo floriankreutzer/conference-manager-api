@@ -50,8 +50,9 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
   await migrateUp(pool); await migrateDemoUp(pool, { roles });
   assert.equal(await isPostgresSchemaReady(pool), true);
   await rollbackLatestDemoMigration(pool, { roles }); // Passkey reset grants019.
+  await rollbackLatestDemoMigration(pool, { roles }); // Unsent grants018 while canonical053 is still ready.
   assert.equal(await rollbackLatest(pool), true); // Empty passkey storage053.
-  await rollbackLatestDemoMigration(pool, { roles }); assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty unsent storage052.
   await migrateUp(pool); await migrateDemoUp(pool, { roles });
   const manualRegistry = createCateringConfigurationRegistry(); let currentRegistry = manualRegistry;
   const registry = { get: (providerId) => currentRegistry.get(providerId) };
@@ -298,7 +299,8 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
   assert.equal((await reset.reset({ fixture: DEMO_FIXTURE, checksum: DEMO_FIXTURE_CHECKSUM })).checksum, DEMO_FIXTURE_CHECKSUM);
   assert.equal((await pool.query('SELECT count(*)::integer AS n FROM catering_order_withdrawals')).rows[0].n, 0);
   assert.equal((await pool.query('SELECT count(*)::integer AS n FROM catering_unsent_replacements')).rows[0].n, 0);
-  await rollbackLatestDemoMigration(pool, { roles }); await rollbackLatest(pool); //019/053.
-  await rollbackLatestDemoMigration(pool, { roles }); await rollbackLatest(pool); //018/052.
+  await rollbackLatestDemoMigration(pool, { roles }); //019 before changing canonical readiness.
+  await rollbackLatestDemoMigration(pool, { roles }); //018 before changing canonical readiness.
+  await rollbackLatest(pool); await rollbackLatest(pool); // Empty053 and052.
   await migrateUp(pool); await migrateDemoUp(pool, { roles }); assert.equal(await isPostgresSchemaReady(pool), true);
 });
