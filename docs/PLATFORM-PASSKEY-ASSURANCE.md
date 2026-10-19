@@ -406,3 +406,12 @@ PostgreSQL18.6/WASM preflight applied all56 migrations, verified empty056 down a
 rollback restoration; it does not qualify native pools, concurrency, TLS, Demo
 roles, complete paired browsers or required GitHub checks. Full final validation
 and native/paired current-head acceptance remain required for the integrated tree.
+
+
+The first native integrated enrollment PostgreSQL job failed in the retained
+Demo004 upgrade test because an explicit overlay-version expectation still said21
+while the ledger contained22. Its full ledger list and upgrade readback now retain
+all overlays through22 (Customer descendants extend through23). Four other explicit
+current-schema assertions were advanced to the exact integrated version as well;
+the historical schema21/33/etc. rollback expectations are unchanged. This is a test
+contract correction, not a waived failure, and requires fresh current-head checks.
