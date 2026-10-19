@@ -26,56 +26,47 @@ checks remain the authority.
 
 ## Baseline and rollout
 
-The seed wire-contract identifier remains `saas-3.7-three-demo-customers-v1`;
-its schema and migration inventory have not changed. This corrective **content
-revision changes the canonical semantic checksum**, which is bound to an
-immutable runtime commit by hosted acceptance:
+The seed wire-contract identifier remains `saas-3.7-three-demo-customers-v1`.
+The current semantic checksum is defined by the source fixture and its tests.
+Historical previous/corrected checksum comparisons and rollout execution details
+are retained in internal release evidence; they do not replace the current
+source-defined reset and immutable acceptance bindings.
 
-- Previous content: `2a15426e761f6efb78409394888d6799e3f00c7e13500d8b937d1d0cece579f6`.
-- Corrected content: `7e22005f1e9689fbea4ccfc75084f5f3d224fe10e60a6af23c1cb600f2b70014`.
-
-Deploy mutually compatible Customer/Platform builds, then execute the normal
-privileged Demo reset and verify the corrected checksum twice. A deployment
-alone does not rewrite previously seeded provider-health rows. Never manually
-edit database rows, sentinel, checksum or grants to hide a failed reset. Old
-SaaS 3.6/3.7 evidence remains historical and cannot authorize the corrected
-candidate. The synthetic external directory is immutable code configuration;
-reset removes its imported local mappings through the existing reset inventory.
+Use mutually compatible Customer/Platform builds and the supported privileged
+Demo reset, verifying the canonical checksum through both complete reset cycles.
+A deployment alone does not rewrite previously seeded provider-health rows.
+Never manually edit database rows, sentinel, checksum or grants to hide a failed
+reset. Historical acceptance cannot authorize a changed candidate. The synthetic
+external directory is immutable code configuration; reset removes its imported
+local mappings through the existing reset inventory.
 
 ## Verification
 
-`tests/saas37-onboarding-provider-inventory.test.js` reproduced both blocked
-progressions before correction and verifies tenant separation, immutable
-candidates, unchanged empty Fabrikam baseline and retained degradation failure
-behavior. Existing fixture/provider tests continue to cover their original
-contracts except for the explicitly corrected Northwind baseline expectation.
-Run the full API quality, audit and PostgreSQL gates and cross-repository
+`tests/saas37-onboarding-provider-inventory.test.js` protects Tenant separation,
+immutable provider candidates, the empty Fabrikam baseline and retained degraded
+provider failure behavior. Existing fixture/provider tests remain mandatory.
+Run the full API quality, audit and PostgreSQL gates and the cross-repository
 scenario browser suite; retain exact source/runtime refs and actual results.
 
 ## Public Room descriptions
 
-The complete visible scenario exposed that the application catalogue omitted
-existing Room descriptions. Its public projection now includes only the bounded,
-nullable description when the stored details explicitly contain it. The existing
-tenant-scoped catalogue read and authorization remain unchanged. No provider or
-private settings fields are added, and legacy presentation shapes remain valid.
-Invalid stored text becomes null; frontend envelope validation and safe text DOM
-rendering are covered independently. Projection bounds and the real ten-room
-preview journey protect this correction. No schema or seed checksum change.
+The public catalogue projection includes only the bounded, nullable Room description
+when stored details explicitly contain it. The existing Tenant-scoped catalogue
+read and authorization remain unchanged. No provider or private settings fields
+are added, and legacy presentation shapes remain valid. Invalid stored text becomes
+null; frontend envelope validation and safe text DOM rendering remain required.
+Projection bounds and the real ten-room preview journey protect this contract.
+This correction does not change the schema or seed checksum.
 
-## Milestone metadata completion
+## Historical completion and acceptance-source binding
 
-The one-time `complete-saas37-milestone.yml` workflow was retired on 14 October
-2026 after independent GitHub metadata readback confirmed milestone 1 closed,
-with zero open issues. Its historical implementation remains in Git history;
-removal does not retire the permanent three-customer/two-reset CI contract.
+The original milestone metadata readback and earlier WebKit reload-race correction
+are retained in internal release evidence, including the failed run. Workflow
+retirement does not retire the permanent three-customer/two-reset CI contract.
 Any future milestone administration requires a fresh issue/evidence review.
 
-The API CI retains the deployed immutable frontend artifact selected from
-`render.yaml`. Its shared-Demo test file is read from immutable acceptance source
-`3818da326ec6a09e0bc2c72916df1ed97b280bf0`, which explicitly waits for the new
-document after a persona/context reload. Only that test file is replaced; no
-application module, dependency or static asset is taken from the acceptance
-source. This corrects a WebKit test race where an unfinished reload replaced
-edited fields before save. Expected branding, persistence and security assertions
-remain mandatory. The original failed run is retained in PR #96's evidence.
+Current CI owns the immutable served frontend and acceptance-source bindings.
+A separately selected acceptance test file does not authorize taking application
+modules, dependencies or static assets from that test source. Persona/context
+reload handling must preserve branding, persistence and all security assertions;
+historical successful runs do not certify a changed candidate.
