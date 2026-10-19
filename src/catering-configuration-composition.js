@@ -1,3 +1,8 @@
+import { createCateringCatalogueAssignmentService } from './application/catering-catalogue-assignment-service.js';
+import { createCateringCatalogueAssignmentRouteModule } from './http/catering-catalogue-assignments.js';
+import {
+  createPostgresCateringCatalogueAssignmentRepository,
+} from './persistence/postgres/catering-catalogue-assignment-repository.js';
 import { createCateringConfigurationService } from './application/catering-configuration-service.js';
 import { cateringConfigurationEnabled } from './feature-flags.js';
 import { defineRouteModule } from './http/route-module.js';
@@ -16,6 +21,11 @@ export function createCateringConfigurationRouteModules({ config, persistence, a
     registry, auditRepository: persistence.auditRepository,
   });
   const service = createCateringConfigurationService({ repository, registry, authorizationPolicy, auditService });
+  const assignmentRepository = createPostgresCateringCatalogueAssignmentRepository(persistence.pool, {
+    registry, auditRepository: persistence.auditRepository,
+  });
+  const assignmentService = createCateringCatalogueAssignmentService({ repository: assignmentRepository,
+    authorizationPolicy, auditService });
   return Object.freeze([defineRouteModule({
     id: 'catering-configuration', routeKey: cateringConfigurationRouteKey,
     createHandler(runtime) {
@@ -24,5 +34,5 @@ export function createCateringConfigurationRouteModules({ config, persistence, a
         maxBodyBytes: runtime?.maxBodyBytes, maxResponseBytes: runtime?.maxResponseBytes,
       });
     },
-  })]);
+  }), createCateringCatalogueAssignmentRouteModule(assignmentService)]);
 }

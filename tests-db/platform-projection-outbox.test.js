@@ -57,11 +57,20 @@ test('outbox commits atomically, rebuilds current state, survives lost notificat
     has_table_privilege($1, 'catering_integration_configurations', 'UPDATE') AS catering_config_write,
     has_table_privilege($1, 'catering_integration_configuration_revisions', 'UPDATE') AS catering_history_update,
     has_table_privilege($2, 'catering_integration_configurations', 'SELECT') AS platform_catering_read,
-    has_table_privilege($3, 'catering_integration_configuration_revisions', 'TRUNCATE') AS reset_catering_truncate`,
+    has_table_privilege($3, 'catering_integration_configuration_revisions', 'TRUNCATE') AS reset_catering_truncate,
+    has_table_privilege($1, 'catering_catalogue_assignment_heads', 'UPDATE') AS assignment_head_write,
+    has_table_privilege($1, 'catering_catalogue_assignment_entries', 'INSERT') AS assignment_entry_insert,
+    has_table_privilege($1, 'catering_catalogue_assignment_revisions', 'UPDATE') AS assignment_history_update,
+    has_table_privilege($1, 'catering_catalogue_assignment_seals', 'INSERT') AS assignment_seal_insert,
+    has_table_privilege($2, 'catering_catalogue_assignment_heads', 'SELECT') AS platform_assignment_read,
+    has_table_privilege($3, 'catering_catalogue_assignment_seals', 'TRUNCATE') AS reset_assignment_truncate,
+    has_function_privilege($1, 'verify_catering_catalogue_assignment_revision()', 'EXECUTE') AS direct_assignment_seal`,
   [roles.customer, roles.platform, roles.reset]);
   assert.deepEqual(permissions.rows[0], {
     customer_read: false, customer_write: false, direct_execute: false, worker_ack: true,
     catering_config_write: true, catering_history_update: false, platform_catering_read: false, reset_catering_truncate: true,
+    assignment_head_write: true, assignment_entry_insert: true, assignment_history_update: false,
+    assignment_seal_insert: false, platform_assignment_read: false, reset_assignment_truncate: true, direct_assignment_seal: false,
   });
   const sources = await pool.query(`SELECT count(*)::integer AS count FROM pg_trigger
     WHERE tgfoid = 'enqueue_platform_projection_invalidation()'::regprocedure AND NOT tgisinternal`);
@@ -133,9 +142,11 @@ test('outbox commits atomically, rebuilds current state, survives lost notificat
       [NORTHWIND]);
   }
   assert.equal((await restarted.consumeBatch()).poisonCount, 0);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catering assignment grants overlay 013.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catering grants overlay 012.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Product-source overlay 011.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Lifecycle grants overlay 010.
+  assert.equal(await rollbackLatest(pool), true); // Empty Catering assignment schema 047.
   assert.equal(await rollbackLatest(pool), true); // Empty Catering configuration schema 046.
   assert.equal(await rollbackLatest(pool), true); // Empty Request lifecycle schema 045.
   await assert.rejects(rollbackLatest(pool), /PLATFORM_PROJECTION_OUTBOX_ROLLBACK_REQUIRES_DRAIN/);
@@ -149,8 +160,9 @@ test('outbox commits atomically, rebuilds current state, survives lost notificat
   const setup = await pool.connect();
   try {
     await setup.query('BEGIN');
+    await setup.query(`SET LOCAL ROLE "${roles.customer}"`);
     await setup.query(`INSERT INTO integrations (tenant_id,id,provider,provider_reference,status)
-      VALUES ($1,$2,'reference_catering','synthetic-reset-catering','pending')`, [NORTHWIND, cateringIntegration]);
+      VALUES ($1,$2,'manual_catering','synthetic-reset-catering','configured')`, [NORTHWIND, cateringIntegration]);
     await setup.query(`INSERT INTO catering_integration_configurations (tenant_id,integration_id,revision,initial_order_mode,
       catalogue_mode,availability_mode,order_mode,update_mode,cancel_mode,status_mode,created_at,updated_at,updated_by_user_id)
       SELECT tenant_id,$2,1,'manager_review','manual','manual','manual','manual','manual','manual',
@@ -159,16 +171,49 @@ test('outbox commits atomically, rebuilds current state, survives lost notificat
     await setup.query(`INSERT INTO catering_integration_configuration_revisions SELECT configuration.*, $3::uuid
       FROM catering_integration_configurations configuration WHERE tenant_id=$1 AND integration_id=$2`,
     [NORTHWIND, cateringIntegration, 'c0000000-0000-4000-8000-000000000098']);
+    const canonical = (await setup.query(`SELECT tenant.catalog_revision, catalogue.snapshot,
+      (SELECT id FROM users WHERE tenant_id=$1 ORDER BY id LIMIT 1) AS actor_user_id FROM tenants tenant
+      JOIN tenant_catalogue_revisions catalogue ON catalogue.tenant_id=tenant.id AND catalogue.revision=tenant.catalog_revision
+      WHERE tenant.id=$1`, [NORTHWIND])).rows[0];
+    const ownership = [
+      ...canonical.snapshot.cateringItems.map((entry) => ({ kind: 'item', id: entry.id })),
+      ...canonical.snapshot.cateringPackages.map((entry) => ({ kind: 'package', id: entry.id })),
+    ];
+    await setup.query(`INSERT INTO catering_catalogue_assignment_revisions
+      (tenant_id,revision,catalogue_revision,entry_count,changed_at,changed_by_user_id,correlation_id)
+      VALUES ($1,1,$2,$3,transaction_timestamp(),$4,$5)`,
+    [NORTHWIND, canonical.catalog_revision, ownership.length, canonical.actor_user_id, 'c0000000-0000-4000-8000-000000000097']);
+    await setup.query(`INSERT INTO catering_catalogue_assignment_entries (tenant_id,revision,kind,entry_id,integration_id)
+      SELECT $1,1,kind,entry_id,$2 FROM unnest($3::text[],$4::text[]) entries(kind,entry_id)`,
+    [NORTHWIND, cateringIntegration, ownership.map((entry) => entry.kind), ownership.map((entry) => entry.id)]);
+    await setup.query('INSERT INTO catering_catalogue_assignment_heads (tenant_id,revision) VALUES ($1,1)', [NORTHWIND]);
     await setup.query('COMMIT');
+    for (const [sql, code] of [
+      ["INSERT INTO catering_catalogue_assignment_seals (tenant_id,revision) VALUES ($1,1)", '42501'],
+      [`INSERT INTO catering_catalogue_assignment_entries (tenant_id,revision,kind,entry_id,integration_id)
+        VALUES ($1,1,'item','late-append','${cateringIntegration}')`, '55000'],
+    ]) {
+      await setup.query('BEGIN');
+      await setup.query(`SET LOCAL ROLE "${roles.customer}"`);
+      await assert.rejects(setup.query(sql, [NORTHWIND]), (error) => error.code === code);
+      await setup.query('ROLLBACK');
+    }
   } finally { setup.release(); }
   assert.equal((await pool.query('SELECT count(*)::integer AS count FROM catering_integration_configurations')).rows[0].count, 1);
+  assert.equal((await pool.query('SELECT count(*)::integer AS count FROM catering_catalogue_assignment_seals')).rows[0].count, 1);
   assert.equal((await reset.reset(input)).checksum, DEMO_FIXTURE_CHECKSUM);
+  for (const table of ['catering_catalogue_assignment_heads', 'catering_catalogue_assignment_entries',
+    'catering_catalogue_assignment_seals', 'catering_catalogue_assignment_revisions']) {
+    assert.equal((await pool.query(`SELECT count(*)::integer AS count FROM ${table}`)).rows[0].count, 0);
+  }
   assert.equal((await pool.query('SELECT count(*)::integer AS count FROM catering_integration_configurations')).rows[0].count, 0);
   assert.equal((await pool.query('SELECT count(*)::integer AS count FROM catering_integration_configuration_revisions')).rows[0].count, 0);
   assert.equal((await restarted.consumeBatch()).refreshedCount, 3);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catering assignment grants overlay 013.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catering grants overlay 012.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty Catering assignment schema 047.
   assert.equal(await rollbackLatest(pool), true); // Empty Catering configuration schema 046.
   assert.equal(await rollbackLatest(pool), true); // Empty Request lifecycle schema 045.
   assert.equal(await rollbackLatest(pool), true);

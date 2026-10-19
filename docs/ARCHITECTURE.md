@@ -126,6 +126,10 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
   default-off server feature flag, with a source-defined manual-only registry and PostgreSQL/audit.
   Its PostgreSQL adapter owns typed revision/history/audit transactions and live actor/session fencing.
   Neither component activates a provider, exposes credentials or dispatches orders.
+- `src/domain/catering-catalogue-assignments.js` owns canonical item/package connection invariants.
+  Its Manager application service and PostgreSQL adapter own version-specific assignment/history/audit
+  and live session fencing; the default-off composition injects the separate bounded Manager routes.
+  This does not publish provider offers, expose technical credentials or dispatch orders.
 - `src/integrations/booking-reference.js` owns the opaque provider-reference persistence model.
 - `src/application/booking-integration-service.js` coordinates authorized and entitled availability, reservation validation and idempotent calendar operations without provider-specific types.
 - `src/persistence/postgres/pool.js` owns bounded PostgreSQL pooling, TLS policy and exact schema readiness.
@@ -166,7 +170,7 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
   semantic checksum; `src/persistence/postgres/demo-reset-repository.js` owns the sentinel-verified,
   exclusively locked, transactional reset/readback contract.
 - `scripts/demo-db-migrations.mjs` owns the independent checksum-protected Demo overlay migration
-  ledger after verifying the exact canonical schema `001..045`.
+  ledger after verifying the exact canonical schema `001..047`.
 - `scripts/platform-break-glass-grant.mjs` and `scripts/platform-recovery-fallback.mjs` are the only local privileged mutation wrappers. They accept credentials only through fixed descriptors and require live Platform sessions plus a dual-control, exact Tenant/permission-bound, one-use grant. The retired process-local Tenant-operator runtime and package entry point are prohibited.
 - `scripts/check-architecture.mjs` prevents architecture, migration and composition drift.
 - `scripts/check-security-baseline.mjs` prevents drift between the documented Pilot/Production security baseline and executable controls.
@@ -261,7 +265,7 @@ See `docs/AUDIT.md` for the normative event/integrity contract.
 
 Schema ownership lives in `migrations/`. Migrations are paired up/down files, numerically versioned, checksum protected and serialized by a PostgreSQL advisory lock.
 
-The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 45.
+The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 47.
 
 - Migration 001 establishes Tenant-owned product structures.
 - Migration 002 adds User security-version state and server-side sessions.

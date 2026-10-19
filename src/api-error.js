@@ -1,3 +1,4 @@
+import { CateringCatalogueAssignmentConflictError } from './application/catering-catalogue-assignment-errors.js';
 import {
   Microsoft365ConnectionConflictError,
   Microsoft365ConnectionInputError,
@@ -100,6 +101,9 @@ export function asApiError(error) {
   if (error instanceof EntitlementDeniedError) return new ApiError(403, 'ENTITLEMENT_ACCESS_DENIED');
   if (error instanceof OnboardingConflictError) return new ApiError(409, 'ONBOARDING_CONFLICT');
   if (error instanceof TenantUserRoleConflictError) return new ApiError(409, error.code);
+  if (error instanceof CateringCatalogueAssignmentConflictError) {
+    return new ApiError(409, error.code, { currentRevision: error.currentRevision });
+  }
   if (error instanceof TenantSettingsConflictError) {
     return new ApiError(409, error.code, { currentRevision: error.currentRevision });
   }
