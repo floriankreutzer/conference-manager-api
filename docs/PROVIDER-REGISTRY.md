@@ -44,8 +44,10 @@ authorizes replay. Decisions are not timers, durable jobs, authorization or evid
 There is no automatic fallback to manual delivery, since the original order could still be effective.
 The worker must persist transitions and preserve Tenant/Integration/order/version scope before use.
 
-Remaining #133 work includes capability-specific CateringProvider ports, generic lifecycle/health,
-Tenant-scoped configuration and credential contracts, durable execution/reconciliation design,
+The companion [Catering contract](CATERING-PROVIDER-CONTRACT.md) defines capability-specific method,
+receipt, configuration-value and review-requirement contracts in this candidate. Remaining #133 work
+includes generic lifecycle/health, Tenant-scoped configuration persistence and credential contracts,
+durable execution/reconciliation design,
 adapter conformance and a non-Microsoft reference implementation. Unknown-outcome writes must
 reconcile before retry; metadata registration does not deliver this behavior. No migration, seed,
 HTTP/OpenAPI endpoint, external order, supplier selection or deployed acceptance is introduced here.
@@ -53,7 +55,9 @@ HTTP/OpenAPI endpoint, external order, supplier selection or deployed acceptance
 Maintainability assessment (#300): keep this responsibility separate from the existing calendar
 contract, Microsoft adapter and booking orchestration. Reuse native ESM and the current syntax,
 static/security, architecture and style gates; no dependency or bulk formatting is introduced by
-this foundation. A general lint/format tooling decision for both repositories is still outstanding.
+this foundation. API #203/#204 separately introduced the locked Biome correctness gate and retained
+style validation, including native ESM and CRLF coverage. Frontend #333 tracks the corresponding
+application work. Tool adoption does not establish provider behavior or complete #300 by itself.
 
 Validation: `node --test tests/provider-registry*.test.js tests/integration-delivery-policy.test.js`,
 `npm run check`, `npm run audit` and the
