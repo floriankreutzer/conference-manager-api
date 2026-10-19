@@ -128,6 +128,52 @@ test('Catering configuration commits scoped revisions and audit atomically and f
   await assert.rejects(pool.query(`UPDATE catering_integration_configurations SET revision=revision+1,updated_by_user_id=$3
     WHERE tenant_id=$1 AND integration_id=$2`, [tenantId, integrationId, otherActor]), (error) => error.code === '23503');
   await assert.rejects(pool.query('DELETE FROM catering_integration_configuration_revisions'), /APPEND_ONLY/);
+  // A fresh authoritative version-2 session is needed after the security-version denial above.
+  await pool.query(`INSERT INTO sessions (id,tenant_id,user_id,token_hash,provider,provider_identity_reference,
+    roles,permissions,principal_version,issued_at,expires_at)
+    VALUES ($1,$2,$3,$4,'reference_identity','synthetic-admin',ARRAY['tenant_admin'],
+      ARRAY['tenant:integrations:manage'],2,clock_timestamp(),clock_timestamp()+interval '1 day')`,
+  [id(12), tenantId, actorUserId, 'b'.repeat(64)]);
+  function creation(objectId, commandId = id(13), overrides = {}) {
+    return command(0, {
+      integrationId: objectId, commandId, sessionId: id(12), expectedSecurityVersion: 2,
+      auditEventFor({ revision }) {
+        return { ...command(0).auditEventFor({ revision }), targetId: objectId,
+          metadata: { operation: 'catering_configuration_create' } };
+      }, ...overrides,
+    });
+  }
+  const created = await Promise.all([repository.create(creation(id(10))), repository.create(creation(id(11)))]);
+  assert.equal(created[0].status, 'updated');
+  assert.equal(created[1].status, 'updated');
+  assert.equal(created[0].current.integrationId, created[1].current.integrationId);
+  assert.equal(created.filter((value) => value.replayed === true).length, 1);
+  const createdId = created[0].current.integrationId;
+  assert.equal((await pool.query('SELECT count(*)::integer AS count FROM integrations WHERE tenant_id=$1', [tenantId])).rows[0].count, 2);
+  assert.equal((await repository.create(creation(id(14), id(13), {
+    configuration: configuration('after_conference_approval'),
+  }))).status, 'conflict');
+  assert.equal((await pool.query('SELECT status FROM integrations WHERE tenant_id=$1 AND id=$2', [tenantId, createdId])).rows[0].status,
+    'configured');
+  await assert.rejects(failedAudit.create(creation(id(15), id(16))), /SYNTHETIC_AUDIT_FAILURE/);
+  assert.equal((await pool.query('SELECT id FROM integrations WHERE tenant_id=$1 AND id=$2', [tenantId, id(15)])).rowCount, 0);
+  await pool.query('UPDATE sessions SET revoked_at=clock_timestamp() WHERE id=$1', [id(12)]);
+  assert.equal((await repository.create(creation(id(15), id(16)))).status, 'not_authorized');
+  await pool.query('UPDATE sessions SET revoked_at=NULL WHERE id=$1', [id(12)]);
+  for (let index = 20; index < 41; index += 1) {
+    assert.equal((await repository.create(creation(id(index), id(index + 100)))).status, 'updated');
+  }
+  const firstPage = await repository.listCurrent({ tenantId });
+  assert.equal(firstPage.items.length, 20);
+  assert.equal(firstPage.nextAfterIntegrationId, firstPage.items.at(-1).integrationId);
+  const secondPage = await restarted.listCurrent({ tenantId, afterIntegrationId: firstPage.nextAfterIntegrationId });
+  assert.equal(secondPage.items.length, 3);
+  assert.equal(secondPage.nextAfterIntegrationId, null);
+  const identities = [...firstPage.items, ...secondPage.items].map((value) => value.integrationId);
+  assert.equal(new Set(identities).size, 23);
+  assert.deepEqual(identities, identities.slice().sort());
+  assert.deepEqual((await repository.listCurrent({ tenantId: otherTenant })).items, []);
+  assert.equal(await auditRepository.verifyTenantChain(tenantId), true);
   await assert.rejects(rollbackLatest(pool), /CATERING_CONFIGURATION_ROLLBACK_REQUIRES_REVIEW/);
   assert.equal(await isPostgresSchemaReady(pool), true);
   await pool.query('TRUNCATE catering_integration_configuration_revisions,catering_integration_configurations');
