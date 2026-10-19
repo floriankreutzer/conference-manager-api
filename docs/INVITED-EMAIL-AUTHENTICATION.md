@@ -195,7 +195,7 @@ The first local style check found overlong test lines; they were wrapped unchang
 ## Storage draft — not qualified or active
 
 The local unreleased056 SQL draft follows the separately reviewed enrollment055
-chain. It has not run in PostgreSQL. Readiness, Demo overlay/reset inventory and historical
+chain. It has not run against the required native PostgreSQL server. Readiness, Demo overlay/reset inventory and historical
 rollback integration are now staged for056/022, together with the repository draft;
 there is no HTTP/runtime composition and this is not a deployable migration candidate.
 It defines environment-specific encrypted mailbox custody, Tenant/mailbox/User
@@ -251,3 +251,39 @@ canonical three-customer seed is unchanged. Metrics upgrade guards retain the ol
 versions and advance the future-version negative. Focused native Demo/reset/media
 checks passed32 cases. PostgreSQL, all cross-repository browser/reset gates and
 real INT identity-preserving reset remain independently required.
+
+
+## Audit context review correction
+
+The invitation service projects only Principal, verified Tenant context and
+correlation into the production audit factory. Extra caller context cannot replace
+its derived Tenant or actor. A mismatched Principal/context retains the original
+authorization error and writes no Tenant audit against unverified ownership.
+Permission/lifecycle and persistence denials within verified scope still require
+minimized audit evidence; audit persistence failure remains fail-closed.
+Regression cases use the actual AuditService through its existing test harness,
+including hostile top-level actor/Tenant overrides, foreign context, and valid-scope
+denial. This does not activate invitation HTTP or delivery composition.
+
+
+## Local SQL preflight correction and limits
+
+A scratch-only PGlite0.5.10 engine reports PostgreSQL18.6/WASM. Applying the actual
+migration chain exposed PostgreSQL's regular-expression repetition-bound limit in
+the envelope check. The draft now independently enforces character length2..43691
+and the canonical alphabet, retaining the full maximum and oversize rejection.
+No production dependency or lockfile was changed.
+
+Memberships must start pending. Deferred acceptance additionally requires a matching
+accepted invitation, newly provisioned active User, exact initial invited roles,
+mailbox identity binding and same-correlation User-provisioned Tenant audit. Direct
+populated insertion or unsupported pending-to-accepted writes are rejected.
+Actual PostgreSQL integration cases cover these guards and envelope boundaries.
+
+Ten local sequential SQL/service preflight checks passed: all56 canonical up
+migrations, empty056 down, envelope bounds, encrypted atomic issue/list, replay,
+changed intent/early resend, revoke/stale revision, audit integrity, populated-down
+refusal and unsupported acceptance. This is partial SQL/transaction evidence only;
+it does not qualify native server pools, concurrent operations, TLS, Demo role
+privileges, full database integration or Chromium/WebKit/reset acceptance. Those
+checks and real INT identity-preserving reset remain open.

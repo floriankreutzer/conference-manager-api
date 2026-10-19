@@ -64,29 +64,32 @@ export function createCustomerInvitationService({ repository, authorizationPolic
         throw new AuthorizationDeniedError('RESOURCE_NOT_AVAILABLE', { conceal: true });
       }
     } catch (error) {
-      if (error instanceof AuthorizationDeniedError) await auditService.recordAuthorizationDenied({
+      // A mismatched context is not verified audit ownership. Preserve the concealed
+      // denial without appending an event to either unverified Tenant context.
+      if (error instanceof AuthorizationDeniedError && principal?.tenantId === tenantContext?.tenantId
+        && isInternalUuid(principal?.tenantId) && isInternalUuid(principal?.userId)) await auditService.recordAuthorizationDenied({
         principal, tenantContext, correlationId, targetType: 'endpoint', targetId: 'customer_invitations', metadata: { operation },
       });
       throw error;
     }
     return { tenantId: tenantContext.tenantId, environment, principal, correlationId };
   }
-  async function repositoryCall(context, operation, targetId, work) {
+  async function repositoryCall({ principal, tenantContext, correlationId }, operation, targetId, work) {
     try { return await work(); }
     catch (error) {
       if (error instanceof AuthorizationDeniedError) await auditService.recordAuthorizationDenied({
-        ...context, targetType: targetId ? 'customer_invitation' : 'endpoint',
+        principal, tenantContext, correlationId, targetType: targetId ? 'customer_invitation' : 'endpoint',
         targetId: targetId || 'customer_invitations', metadata: { operation },
       });
       throw error;
     }
   }
-  function auditEventFor(context, operation) {
+  function auditEventFor({ principal, tenantContext, correlationId }, operation) {
     return ({ invitationId, nextRevision, occurredAt }) => {
       uuid(invitationId); revision(nextRevision);
       if (typeof occurredAt !== 'string' || !Number.isFinite(Date.parse(occurredAt))
         || new Date(occurredAt).toISOString() !== occurredAt) invalidResult();
-      return auditService.createEvent({ ...context, action: AUDIT_ACTION.TENANT_ONBOARDING_INVITED,
+      return auditService.createEvent({ principal, tenantContext, correlationId, action: AUDIT_ACTION.TENANT_ONBOARDING_INVITED,
         targetType: 'customer_invitation', targetId: invitationId, occurredAt,
         outcome: AUDIT_OUTCOME.SUCCESS, retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
         previousState: null, newState: { revision: nextRevision }, metadata: { operation },

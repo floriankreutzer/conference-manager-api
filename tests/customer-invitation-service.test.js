@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createAuditHarness } from './support/audit-harness.js';
+import { AuthorizationDeniedError } from '../src/authorization/errors.js';
 import { createCustomerInvitationService } from '../src/application/customer-invitation-service.js';
 import { createAuthorizationPolicy, tenantAuthorizationSnapshot } from '../src/authorization/policy.js';
 
@@ -12,7 +14,7 @@ function context(extra = {}) {
 const intent = (extra = {}) => ({ recipient: 'person@example.com', roles: ['tenant_admin'], locale: 'de', ...extra });
 const row = (extra = {}) => ({ tenantId: id(1), environment: 'int', id: id(10), revision: 1, ...intent(),
   state: 'pending', expiresAt: '2026-10-26T12:00:00.000Z', delivery: 'queued', ...extra });
-function fixture(overrides = {}) {
+function fixture(overrides = {}, auditService = null) {
   const calls = [], audits = [], denied = [];
   const repository = {
     async list(input) { calls.push(input); return [row()]; },
@@ -31,7 +33,7 @@ function fixture(overrides = {}) {
     ...overrides,
   };
   const service = createCustomerInvitationService({ repository, authorizationPolicy: createAuthorizationPolicy(), environment: 'int',
-    auditService: { createEvent: (value) => value, async recordAuthorizationDenied(value) { denied.push(value); } } });
+    auditService: auditService || { createEvent: (value) => value, async recordAuthorizationDenied(value) { denied.push(value); } } });
   return { service, calls, audits, denied };
 }
 
@@ -65,7 +67,7 @@ test('Customer Admin permission and same-Tenant context are required before repo
       () => f.service.reissue(context(extra), { invitationId: id(10), expectedRevision: 1 }),
       () => f.service.revoke(context(extra), { invitationId: id(10), expectedRevision: 1 })]) await assert.rejects(invoke);
   }
-  assert.equal(f.calls.length, 0); assert.equal(f.denied.length, 28);
+  assert.equal(f.calls.length, 0); assert.equal(f.denied.length, 24); // Four foreign-context denials have no verified audit scope.
 });
 
 test('invalid commands, revision, pagination and browser Tenant fields do not reach persistence', async () => {
@@ -146,4 +148,37 @@ test('object and session authority lost inside persistence is denied with minimi
     assert.equal(f.denied[0].targetId, ['list','issueBatch'].includes(method) ? 'customer_invitations' : id(10));
     assert.doesNotMatch(JSON.stringify(f.denied),/person@example.com|recipient|code|token|secret/);
   }
+});
+
+
+test('real audit service derives invitation authority only from authenticated context', async () => {
+  const audit = createAuditHarness();
+  const f = fixture({}, audit.service);
+  const supplied = context({ tenantId: id(90), actorUserId: id(91),
+    metadata: { recipient: 'private@example.com' }, previousState: { forged: true } });
+  await f.service.issueBatch(supplied, { commandId: id(50), invitations: [intent()] });
+  const event = f.audits[0];
+  assert.equal(event.tenantId, id(1)); assert.equal(event.actorUserId, id(2));
+  assert.deepEqual(event.metadata, { operation: 'issue' });
+  assert.equal(event.previousState, null);
+  await f.service.reissue(supplied, { invitationId: id(10), expectedRevision: 1 });
+  assert.equal(f.audits[1].tenantId, id(1)); assert.equal(f.audits[1].actorUserId, id(2));
+});
+
+test('real audit service preserves foreign-context denial without foreign evidence', async () => {
+  const audit = createAuditHarness(); const f = fixture({}, audit.service);
+  const foreign = context({ tenantContext: { tenantId: id(9), status: 'onboarding' } });
+  for (const invoke of [() => f.service.list(foreign),
+    () => f.service.issueBatch(foreign, { commandId: id(50), invitations: [intent()] }),
+    () => f.service.reissue(foreign, { invitationId: id(10), expectedRevision: 1 }),
+    () => f.service.revoke(foreign, { invitationId: id(10), expectedRevision: 1 })]) {
+    await assert.rejects(invoke, error => error instanceof AuthorizationDeniedError
+      && error.code === 'TENANT_SCOPE_INVALID' && error.conceal === false);
+  }
+  assert.equal(f.calls.length, 0); assert.equal(audit.events.length, 0);
+  await assert.rejects(f.service.list(context({ principal: { ...context().principal,
+    ...tenantAuthorizationSnapshot(['employee']) }, tenantId: id(90), actorUserId: id(91) })), AuthorizationDeniedError);
+  assert.equal(audit.events.length, 1);
+  assert.equal(audit.events[0].tenantId, id(1)); assert.equal(audit.events[0].actorUserId, id(2));
+  assert.equal(audit.events[0].outcome, 'denied');
 });

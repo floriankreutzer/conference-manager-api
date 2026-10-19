@@ -21,3 +21,4 @@ DROP FUNCTION verify_customer_invitation_audit();
 DROP FUNCTION guard_customer_access_custody();
 DROP FUNCTION customer_access_envelope_valid(jsonb);
 DROP FUNCTION customer_invitation_receipt_valid(jsonb);
+DROP FUNCTION verify_customer_membership_acceptance();

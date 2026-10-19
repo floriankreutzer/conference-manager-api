@@ -70,6 +70,16 @@ test('Customer invitation custody is scoped, encrypted, audit-atomic, single-com
     assert.doesNotMatch(JSON.stringify(custody.rows), /Invited\+pilot@example\.com|Second@example\.com|recipient"|00001234/);
     assert.equal(await auditRepository.verifyTenantChain(id(1)),true);
   });
+  await t.test('SQL envelope validation accepts the full cryptographic bound and rejects malformed or excessive custody', async () => {
+    const envelope = cipher.seal(Buffer.alloc(32768,4),{ environment: 'int',mailboxId: id(60),recordId: id(61),
+      purpose: 'mailbox_code',tenantId: null });
+    const valid = async value => (await pool.query('SELECT customer_access_envelope_valid($1::jsonb) AS valid',
+      [JSON.stringify(value)])).rows[0].valid;
+    assert.equal(await valid(envelope),true);
+    for (const extra of [{ ciphertext: 'a'.repeat(43692) },{ ciphertext: '@' },{ nonce: 'short' },{ tag: null },{ private: true }]) {
+      assert.equal(await valid({ ...envelope,...extra }),false);
+    }
+  });
   await t.test('concurrent exact replay emits no second delivery/audit and changed intent cannot reuse the command', async () => {
     const before = await counts(); const repeated = await Promise.all([service.issueBatch(a,command),service.issueBatch(a,command)]);
     assert.deepEqual(repeated,[issued,issued]); assert.deepEqual(await counts(),before);
@@ -125,6 +135,14 @@ test('Customer invitation custody is scoped, encrypted, audit-atomic, single-com
       SELECT environment,tenant_id,$1,actor_user_id,command_hash,jsonb_set(result,'{0,recipient}',$2::jsonb),created_at
       FROM customer_access_commands WHERE id=$3`,[id(99),JSON.stringify('Private@example.com'),id(10)]),
     error => error.code==='23514');
+    const membership = (await pool.query('SELECT id,mailbox_id FROM customer_access_memberships WHERE tenant_id=$1 LIMIT 1',
+      [id(1)])).rows[0];
+    await assert.rejects(pool.query(`INSERT INTO customer_access_memberships
+      (environment,tenant_id,id,mailbox_id,user_id,accepted_at) VALUES('int',$1,$2,$3,$4,clock_timestamp())`,
+    [id(1),id(70),membership.mailbox_id,id(2)]),/CUSTOMER_MEMBERSHIP_MUST_BEGIN_PENDING/);
+    await assert.rejects(pool.query(`UPDATE customer_access_memberships SET user_id=$1,accepted_at=clock_timestamp()
+      WHERE environment='int' AND tenant_id=$2 AND id=$3`,[id(2),id(1),membership.id]),/CUSTOMER_MEMBERSHIP_ACCEPTANCE_REQUIRED/);
+    assert.equal((await pool.query('SELECT user_id FROM customer_access_memberships WHERE id=$1',[membership.id])).rows[0].user_id,null);
     await assert.rejects(rollbackLatest(pool), /CUSTOMER_ACCESS_REQUIRES_VERIFIED_RECOVERY/);
   });
 });

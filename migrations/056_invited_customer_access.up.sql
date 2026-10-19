@@ -10,7 +10,8 @@ LANGUAGE sql IMMUTABLE SET search_path=pg_catalog AS $$
     AND jsonb_typeof(value->'keyId')='string' AND value->>'keyId' ~ '^[a-z][a-z0-9_]{1,31}$'
     AND jsonb_typeof(value->'nonce')='string' AND value->>'nonce' ~ '^[A-Za-z0-9_-]{16}$'
     AND jsonb_typeof(value->'tag')='string' AND value->>'tag' ~ '^[A-Za-z0-9_-]{22}$'
-    AND jsonb_typeof(value->'ciphertext')='string' AND value->>'ciphertext' ~ '^[A-Za-z0-9_-]{2,43691}$'
+    AND jsonb_typeof(value->'ciphertext')='string' AND char_length(value->>'ciphertext') BETWEEN 2 AND 43691
+    AND value->>'ciphertext' ~ '^[A-Za-z0-9_-]+$'
     END
 $$;
 REVOKE ALL ON FUNCTION customer_access_envelope_valid(jsonb) FROM PUBLIC;
@@ -187,6 +188,12 @@ CREATE FUNCTION guard_customer_access_custody() RETURNS trigger
 LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$
 DECLARE allowed text[];
 BEGIN
+  IF TG_OP='INSERT' THEN
+    IF TG_TABLE_NAME<>'customer_access_memberships' OR NEW.user_id IS NOT NULL OR NEW.accepted_at IS NOT NULL THEN
+      RAISE EXCEPTION 'CUSTOMER_MEMBERSHIP_MUST_BEGIN_PENDING' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+  END IF;
   IF TG_OP='DELETE' THEN
     RAISE EXCEPTION 'CUSTOMER_ACCESS_REQUIRES_VERIFIED_RETENTION' USING ERRCODE='55000';
   END IF;
@@ -231,7 +238,7 @@ REVOKE ALL ON FUNCTION guard_customer_access_custody() FROM PUBLIC;
 
 CREATE TRIGGER customer_mailbox_custody_guard BEFORE UPDATE OR DELETE ON customer_access_mailboxes
   FOR EACH ROW EXECUTE FUNCTION guard_customer_access_custody();
-CREATE TRIGGER customer_membership_custody_guard BEFORE UPDATE OR DELETE ON customer_access_memberships
+CREATE TRIGGER customer_membership_custody_guard BEFORE INSERT OR UPDATE OR DELETE ON customer_access_memberships
   FOR EACH ROW EXECUTE FUNCTION guard_customer_access_custody();
 CREATE TRIGGER customer_invitation_custody_guard BEFORE UPDATE OR DELETE ON customer_member_invitations
   FOR EACH ROW EXECUTE FUNCTION guard_customer_access_custody();
@@ -268,3 +275,31 @@ END $$;
 REVOKE ALL ON FUNCTION verify_customer_invitation_audit() FROM PUBLIC;
 CREATE CONSTRAINT TRIGGER customer_invitation_audit_required AFTER INSERT OR UPDATE ON customer_member_invitations
   DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION verify_customer_invitation_audit();
+
+CREATE FUNCTION verify_customer_membership_acceptance() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$
+BEGIN
+  IF NEW.user_id IS NULL THEN RETURN NULL; END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.customer_member_invitations invitation
+    JOIN public.users member ON member.tenant_id=invitation.tenant_id AND member.id=NEW.user_id
+    JOIN public.user_identity_bindings identity ON identity.tenant_id=member.tenant_id AND identity.user_id=member.id
+      AND identity.provider='email_code' AND identity.provider_tenant_reference=NEW.environment
+      AND identity.provider_user_reference=NEW.mailbox_id::text
+    JOIN public.audit_events accepted ON accepted.tenant_id=invitation.tenant_id AND accepted.id=invitation.last_audit_event_id
+    WHERE invitation.environment=NEW.environment AND invitation.tenant_id=NEW.tenant_id
+      AND invitation.membership_id=NEW.id AND invitation.mailbox_id=NEW.mailbox_id
+      AND invitation.accepted_at=NEW.accepted_at AND invitation.revoked_at IS NULL
+      AND member.active=true AND member.security_version=1 AND member.created_at>=NEW.created_at
+      AND invitation.elevated_roles=COALESCE((SELECT array_agg(role ORDER BY CASE role
+        WHEN 'conference_manager' THEN 1 WHEN 'tenant_admin' THEN 2 ELSE 99 END)
+        FROM public.tenant_user_roles WHERE tenant_id=NEW.tenant_id AND user_id=NEW.user_id),ARRAY[]::varchar[])
+      AND EXISTS(SELECT 1 FROM public.audit_events provisioned WHERE provisioned.tenant_id=NEW.tenant_id
+        AND provisioned.action='tenant.user.provisioned' AND provisioned.target_type='user'
+        AND provisioned.target_id=NEW.user_id::text AND provisioned.outcome='success'
+        AND provisioned.metadata->>'provider'='email_code' AND provisioned.correlation_id=accepted.correlation_id))
+  THEN RAISE EXCEPTION 'CUSTOMER_MEMBERSHIP_ACCEPTANCE_REQUIRED' USING ERRCODE='23514'; END IF;
+  RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION verify_customer_membership_acceptance() FROM PUBLIC;
+CREATE CONSTRAINT TRIGGER customer_membership_acceptance_required AFTER INSERT OR UPDATE ON customer_access_memberships
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION verify_customer_membership_acceptance();
