@@ -62,26 +62,11 @@ The evidence file therefore proves the deployed build identity; it does not repl
 
 ## Accepted SaaS 3.8 hosted baseline — 9 October 2026
 
-[Hosted Demo Acceptance #497](https://github.com/floriankreutzer/conference-manager/actions/runs/37946740113),
-attempt 1, completed successfully. The downloaded `hosted-demo-acceptance-evidence` artifact
-`11625658932` binds these independently observed identities:
+This is a historical acceptance checkpoint, not the identity or acceptance of the
+currently deployed pair. Its complete runtime/frontend identities, run/artifact
+references, outcomes and scope limits are retained in internal release evidence.
 
-| Evidence | Value |
-| --- | --- |
-| Acceptance source | `ee541cdb1f2c9c5605421a6f48968ac773fd05f9` |
-| Both served API runtimes | `356459004dbede11cc3cd17a93d4e6cf515d410b` |
-| Both immutable served frontends | `5d5102b4f9842ec704ff26441ebe96719324ddb0` |
-| Customer service | `conference-manager-demo` |
-| Platform service | `conference-manager-ops-demo` |
-| Acceptance start | `2026-10-09T14:47:54.000Z` |
-| Identity stable before/after | `true` |
-| Cleanup repeatable | `true` |
-| Canonical seed | `saas-3.7-three-demo-customers-v1` |
-| Semantic checksum | `7e22005f1e9689fbea4ccfc75084f5f3d224fe10e60a6af23c1cb600f2b70014` |
-
-The job passed readiness, pre/post deployment identity, the complete shared role/Tenant/CSRF
-journey, all three canonical customer workflows in Chromium and WebKit, two canonical reset
-cycles and final cleanup. Scenario evidence is retained in artifact `11625614088`.
-This is current hosted acceptance in PostgreSQL media mode. It does not attest real-provider
-object-mode cutover, coordinated restore or complete SaaS 3.8 operational/load/cost closure.
-Earlier failed/cancelled attempts remain historical failures/cancellations.
+That checkpoint did not establish real-provider object-mode cutover, coordinated
+restore or complete operational/load/cost acceptance. Historical failed or
+cancelled attempts remain historical failures or cancellations. The build-bound
+identity and acceptance contract above remains mandatory for each new candidate.
