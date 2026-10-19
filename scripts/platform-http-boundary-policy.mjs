@@ -20,6 +20,7 @@ const PLATFORM_COMPOSITION = new Set([
 const PLATFORM_HTTP_IDENTITY_CONTRACTS = new Set([
   'src/platform/identity/entra-transaction-cookie.js',
   'src/platform/identity/passkey-auth-cookie.js',
+  'src/platform/identity/passkey-operation-cookie.js',
   'src/platform/identity/passkey-enrollment-cookie.js',
   'src/platform/identity/session-cookie.js',
   'src/platform/identity/entra-authorization-url.js',

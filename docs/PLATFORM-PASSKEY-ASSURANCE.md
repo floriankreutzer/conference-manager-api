@@ -364,3 +364,55 @@ Public errors and durable denial reasons exclude native/provider payloads. These
 HTTP port tests do not substitute for real PostgreSQL, browser/device or deployed
 cutover acceptance. Generic business operation step-up, production composition,
 native DE/EN UI and owner authenticator verification remain open.
+
+## Composition and exact-operation candidate — not deployed
+
+A follow-up candidate introduces the protected `PLATFORM_ASSURANCE_MODE` selector.
+Its default remains `conditional_access`, with the existing strict contexts and
+identity path. Unknown modes fail closed. `passkey_setup` and `application_passkey`
+require a known DEV/INT/PROD environment, an explicit security epoch of at least2,
+a separate32–512-byte transaction secret, no CA contexts and fixed300-second primary
+OIDC freshness/transaction lifetime. Reusing Platform or Customer identity/session/
+audit secret material is rejected. These requirements are rechecked by composition.
+An epoch is deployment authority, never a browser or tenant setting.
+
+Setup composes the primary/pending and enrollment HTTP ports but its HTTP session
+resolver always returns unauthenticated, including for an old CA session. Its
+internal temporary session port exists only for audited second-key setup. Active
+mode explicitly requires two keys before login and its HTTP resolver accepts only
+application-passkey assurance; primary-only or old CA contexts cannot become an
+active Platform principal. No offline issuer is imported by either composition.
+
+Sensitive existing route families are decorated, without a generic command/action
+endpoint. The first exact request validates the current Platform session and CSRF
+and returns428 with a fresh native assertion challenge. The server hashes canonical
+bounded request body, exact method/path/query, idempotency header, current session,
+operator/version, environment and epoch. Read-only sensitive diagnostic correlation
+and audit export also require CSRF for this deliberate proof exchange.
+
+Retry uses the same request and `X-Platform-Passkey-Proof`, a bounded canonical
+base64url JSON object containing only state/native response. The separate transient
+`cm_platform_operation_tx` cookie uses `/api/v1/platform` so it reaches that exact
+business route; it is Secure, HttpOnly, Strict,120 seconds, and never sufficient
+without the live session, CSRF, signature and stored operation hash. Login and
+enrollment retain their separate narrower cookies. No reusable elevated cookie
+or principal is returned.
+
+Inside the signature transaction, an instance-private, one-use proof context may
+supply the strong principal to exactly that internal request. Existing positive
+body schemas, role/target checks, idempotency and concrete services still execute.
+The temporary request carries only the validated body and idempotency contract;
+client cookies, identity headers or arbitrary outbound URLs are not forwarded.
+Its bounded JSON response is buffered until proof consumption, counter, business
+writes, audit and ordinary MFA session issuance commit. A mutation/audit/commit
+failure cannot send business success before rollback. Changed body/target/query/
+idempotency/session, clone/reuse of proof context and replay are rejected.
+
+This is an unmerged implementation candidate, not INT activation evidence.
+Native operation-proof transport/presentation, authenticated key-management UI,
+exact-head database/browser gates, real owner enrollment/recovery rehearsal and
+reviewed live epoch cutover remain required. DEV and PROD are prepared in code;
+no environment has been activated by this change. Rollback must fail closed or
+advance the epoch and revoke affected authority; it must never restore primary-only
+or superseded sessions. Populated key/grant migrations cannot be rolled back to
+recover access; use the independently audited owner recovery procedure instead.
