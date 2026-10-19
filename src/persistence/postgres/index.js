@@ -1,3 +1,4 @@
+import { cateringConfigurationEnabled } from '../../feature-flags.js';
 import {
   createPostgresPool,
   isPostgresSchemaReady,
@@ -35,7 +36,10 @@ import { createPostgresTenantBulkTransferRepository } from './tenant-bulk-transf
 import { createPostgresRoomMediaRepository } from './room-media-repository.js';
 import { createPostgresMediaObjectRepository } from './media-object-repository.js';
 
-export function createPostgresPersistence(config, { mediaObjectStorage = null, includeDemoCatalogue = false } = {}) {
+export function createPostgresPersistence(config, { mediaObjectStorage = null, includeDemoCatalogue = false,
+  cateringRegistry = null } = {}) {
+  const requirePublishedCatering=cateringConfigurationEnabled(config.featureFlags);
+  if (requirePublishedCatering && typeof cateringRegistry?.get !== 'function') throw new TypeError('CATERING_REGISTRY_REQUIRED');
   const pool = createPostgresPool(config);
   const mediaObjectRepository = mediaObjectStorage
     ? createPostgresMediaObjectRepository(pool, { storage: mediaObjectStorage, includeDemoCatalogue })
@@ -44,11 +48,13 @@ export function createPostgresPersistence(config, { mediaObjectStorage = null, i
     hmacSecret: config.auditHmacSecret,
   });
   const calendarAuthorityGuard = createPostgresMicrosoft365CalendarAuthorityGuard();
-  const applicationRepository = createPostgresApplicationRepository(pool, { auditRepository });
+  const applicationRepository = createPostgresApplicationRepository(pool, { auditRepository,requirePublishedCatering,cateringRegistry });
   const requestWorkflowRepository = createPostgresRequestDraftWorkflowRepository(pool, { auditRepository });
   const tenantRepository = createPostgresTenantRepository(pool, { auditRepository });
   const bookingReferenceRepository = createPostgresBookingReferenceRepository(pool, { auditRepository });
-  const bookingChangeRepository = createPostgresBookingChangeRepository(pool, { auditRepository });
+  const bookingChangeRepository = createPostgresBookingChangeRepository(pool, {
+    auditRepository,requirePublishedCatering,cateringRegistry,
+  });
   const entitlementRepository = createPostgresEntitlementRepository(pool, { auditRepository });
   const jitUserRepository = createPostgresJitUserRepository(pool, { auditRepository });
   const microsoft365CapabilityHealthRepository = createPostgresMicrosoft365CapabilityHealthRepository(pool);
@@ -60,6 +66,7 @@ export function createPostgresPersistence(config, { mediaObjectStorage = null, i
   const requestRepository = createPostgresRequestRepository(pool, {
     auditRepository,
     calendarAuthorityGuard,
+    requirePublishedCatering,cateringRegistry,
   });
   const tenantAuditQueryRepository = createPostgresTenantAuditQueryRepository(pool);
   const tenantBookingPolicyRepository = createPostgresTenantBookingPolicyRepository(pool, {
