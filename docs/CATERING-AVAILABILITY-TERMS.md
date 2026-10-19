@@ -1,8 +1,14 @@
 # Supplier availability and business terms — isolated value preparation
 
-Stacked on Employee publication candidate API#237 head74e1af19, not accepted
-availability/runtime source. Current accepted API main is564ffd32 (canonical055/
-Demo021). No new flag, migration, runtime composition or provider call is added.
+This branch normally incorporates accepted API main834e8d1b92ada2527a719cc66430a009bb6caed6
+(Employee publication#237, canonical055/Demo021). That exact candidate74e1af19
+passed all nine required checks, complete PostgreSQL18.6 actual Employee/query/
+lock-fence proof and all four permanent paired browser/storage cases in
+CI39334251224 before normal merge. Frontend publication#360 is accepted ascf48df19
+after all eight checks and522 complete browser cases. This branch adds isolated
+value preparation only; no availability flag, migration, runtime or provider call
+is activated. The first value-only complete local check passed1684 native cases,
+Customer HTTP DAST and17 Platform HTTP before the request-scope refinement below.
 
 A pure terms policy reuses the existing closed nullable supplier-term normalizer.
 Initial and changed orders need known lead time, known minimum order value and a
@@ -35,15 +41,18 @@ SaaS4 acceptance is claimed by this checkpoint.
 
 ## Request-bound availability values
 
-A separate pure query/response boundary now binds configuration/publication/
-published-source revisions, source version, actual site/room, UTC slot,
-participant count and exact source position quantities. It preserves the existing
+A separate pure query/response boundary now binds an independently supplied
+Request identity/version, configuration/publication/published-source revisions,
+source version, actual site/room, UTC slot, participant count, relevant dietary/
+delivery requirements and exact source position quantities. It preserves the existing
 100-direct-item plus one package request capacity (500 package participants,
 1000 item units); it does not narrow the independent300/100/20 source catalogue.
 Opaque query/position identities bind replies. A private SHA-256 context digest
 includes independent Tenant/provider scope and every meaningful query value,
 while regenerated transport IDs or reordered equivalent positions do not change
-business context. Fingerprints do not replace authorization or query ownership.
+business context. Different Request identities/versions, provider scope or
+requirements change it. Fingerprints do not replace authorization or query
+ownership; Request scope comes from trusted persistence, not provider JSON.
 
 Every response must cover every expected position exactly once with an explicit
 available/unavailable/unknown status. Partial, duplicated, swapped or extra
@@ -54,7 +63,7 @@ earlier of provider validity and observed-time plus that bound, so a late receip
 cannot refresh old facts. Missing validity stays unknown. Expiry is exclusive;
 future provider observation is invalid and server time before receipt cannot
 make an observation available. Revised configuration/publication/published source
-invalidates the observation. A later unreviewed catalogue receipt alone has no
+or current Request version invalidates the observation. A later unreviewed catalogue receipt alone has no
 role in this published basis. Factual terms/status do not authorize a quote,
 publication, reservation or order and cannot alter confirmed orders.
 
@@ -65,3 +74,9 @@ and replay/out-of-order fences, scoped receipt provenance/credential/Manager
 attestation, expiry/read projections, final confirmation authority and all
 PostgreSQL/browser acceptance are still required. No availability activation or
 supplier protocol/access/qualification is claimed here.
+
+The current request-scope refinement passed the same26 native cases and all
+lint/style908 checks. Its final complete check is running. Parallel unmerged
+Platform/invitation PRs currently propose next migration numbers, so availability
+DDL will be registered against the then-current accepted migration ledger; no
+conflicting number, schema gap or relaxed readiness/grant/reset check is introduced.

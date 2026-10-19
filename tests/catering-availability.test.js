@@ -3,19 +3,19 @@ import test from 'node:test';
 import { normalizeCateringAvailabilityQuery as query,normalizeCateringAvailabilityObservation as observation,
   evaluateCateringAvailability as evaluate } from '../src/domain/catering-availability.js';
 const id=n=>`e0000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
-const scope={tenantId:id(1),integrationId:id(3)};
+const scope={tenantId:id(1),integrationId:id(3),requestId:'request-a',requestVersion:1};
 const position=(n,kind='item')=>({positionId:id(100+n),kind,sourceId:`supplier-${kind}-${n}`,
   variantId:kind === 'package' ? 'supplier-standard' : null,quantity:kind === 'package' ? 3 : 2});
 const input=()=>({schemaVersion:1,queryId:id(10),configurationRevision:2,publicationRevision:1,sourceRevision:1,sourceVersion:null,
   siteId:'site-a',roomId:'room-a',startsAt:'2026-10-20T12:00:00.000Z',endsAt:'2026-10-20T13:00:00.000Z',participantCount:3,
-  positions:[position(0),position(1,'package')]});
+  dietaryRequirements:null,specialRequirements:null,positions:[position(0),position(1,'package')]});
 const terms=()=>({minimumLeadTimeMinutes:120,minimumOrderValue:null,changeCutoffMinutes:null,cancelCutoffMinutes:0});
 const reply=(request=input())=>({schemaVersion:1,queryId:request.queryId,availabilityVersion:'synthetic-observation-1',
   observedAt:'2026-10-19T12:00:00.000Z',validUntil:'2026-10-19T12:30:00.000Z',
   positions:request.positions.map(({positionId})=>({positionId,status:'available'})),terms:terms()});
 const expected=(overrides={})=>({...scope,query:input(),receivedAt:'2026-10-19T12:00:01.000Z',maximumAgeMs:300000,...overrides});
 const current=(overrides={})=>({...expected(),configurationRevision:2,publicationRevision:1,publishedSourceRevision:1,
-  now:'2026-10-19T12:01:00.000Z',...overrides});
+  now:'2026-10-19T12:01:00.000Z',currentRequestVersion:1,...overrides});
 test('query scope, slot, published basis and exact quantities are immutable and canonicalized for a private context fingerprint',()=>{
   const raw=input(); const value=query(raw,scope); const reordered={...raw,queryId:id(11),positions:[...raw.positions].reverse()
     .map((entry,n)=>({...entry,positionId:id(200+n)}))};
@@ -23,11 +23,14 @@ test('query scope, slot, published basis and exact quantities are immutable and 
   assert.match(value.queryFingerprint,/^[0-9a-f]{64}$/); assert.equal(Object.isFrozen(value.positions[0]),true);
   for (const change of [{roomId:'room-b'},{participantCount:4,positions:[position(0)]},
     {startsAt:'2026-10-20T11:00:00.000Z'},{publicationRevision:2},{sourceRevision:2},{configurationRevision:3},
-    {positions:[{...position(0),quantity:3},position(1,'package')]}]) {
+    {positions:[{...position(0),quantity:3},position(1,'package')]},{dietaryRequirements:'Synthetic changed meal requirement'},
+    {specialRequirements:'Synthetic changed delivery requirement'}]) {
     assert.notEqual(query({...raw,...change},scope).queryFingerprint,value.queryFingerprint);
   }
   assert.notEqual(query(raw,{...scope,tenantId:id(2)}).queryFingerprint,value.queryFingerprint);
   assert.notEqual(query(raw,{...scope,integrationId:id(4)}).queryFingerprint,value.queryFingerprint);
+  assert.notEqual(query(raw,{...scope,requestId:'request-b'}).queryFingerprint,value.queryFingerprint);
+  assert.notEqual(query(raw,{...scope,requestVersion:2}).queryFingerprint,value.queryFingerprint);
   raw.positions[0].quantity=99; assert.equal(value.positions[0].quantity,2);
 });
 test('provider response echoes every exact query position and server freshness caps cannot be extended by provider expiry',()=>{
@@ -46,7 +49,7 @@ test('expiry is exclusive, late receipt cannot refresh old facts and unknown val
   assert.deepEqual(evaluate(raw,current({now:'2026-10-19T12:00:00.999Z'})).reasons,['availability_time_unverified']);
 });
 test('new configuration/publication/published source invalidates availability while an unreviewed later receipt has no authority here',()=>{
-  for (const change of [{configurationRevision:3},{publicationRevision:2},{publishedSourceRevision:2}]) {
+  for (const change of [{currentRequestVersion:2},{configurationRevision:3},{publicationRevision:2},{publishedSourceRevision:2}]) {
     assert.deepEqual(evaluate(reply(),current(change)).reasons,['availability_basis_changed']);
   }
   assert.equal(evaluate(reply(),current()).available,true);
@@ -77,7 +80,7 @@ test('query preserves existing100-direct-plus-one-package capacity, including500
   raw.positions.push(position(300)); assert.throws(()=>query(raw,scope));
 });
 test('ambiguous shapes, duplicate source/position identities, invalid variants/quantities and forged timing fail closed',()=>{
-  for (const change of [{tenantId:id(2)},{sourceRevision:0},{positions:[]},{positions:Array(1)},
+  for (const change of [{tenantId:id(2)},{requestId:'foreign'},{sourceRevision:0},{positions:[]},{positions:Array(1)},
     {positions:[position(0),position(0)]},{positions:[position(0),{...position(0),positionId:id(777)}]},
     {positions:[{...position(0),variantId:'foreign'}]},{positions:[{...position(1,'package'),variantId:null}]},
     {positions:[{...position(1,'package'),quantity:4}]},{positions:[{...position(0),quantity:0}]},

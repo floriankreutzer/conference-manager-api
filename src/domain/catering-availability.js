@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
 import { isInternalUuid } from './identifiers.js';
+import { isRequestId,isRequestVersion } from './request.js';
 import { REQUEST_MAX_PARTICIPANTS } from './request-composition.js';
 import { CATERING_MAX_ORDER_POSITIONS } from './catering-order-limits.js';
 import { normalizeCateringProviderTerms } from './catering-provider-catalogue.js';
 
 export const CATERING_MAX_AVAILABILITY_AGE_MS=3600000;
 const QUERY_KEYS=['schemaVersion','queryId','configurationRevision','publicationRevision','sourceRevision','sourceVersion',
-  'siteId','roomId','startsAt','endsAt','participantCount','positions'];
+  'siteId','roomId','startsAt','endsAt','participantCount','dietaryRequirements','specialRequirements','positions'];
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const STATUSES=new Set(['available','unavailable','unknown']);
 function invalid() { throw new TypeError('CATERING_AVAILABILITY_VALUE_INVALID'); }
@@ -33,11 +34,11 @@ function id(value) { if (typeof value !== 'string' || !ID.test(value)) invalid()
 function integer(value,minimum=1,maximum=Number.MAX_SAFE_INTEGER-1) {
   if (!Number.isSafeInteger(value) || value<minimum || value>maximum) invalid(); return value;
 }
-function text(value) {
+function text(value,maximum=160) {
   if (value === null) return null;
   if (typeof value !== 'string' || !value.isWellFormed()
     || /[<>\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(value)) invalid();
-  const normalized=value.trim().normalize('NFC'); if (!normalized.length || normalized.length>160) invalid(); return normalized;
+  const normalized=value.trim().normalize('NFC'); if (!normalized.length || normalized.length>maximum) invalid(); return normalized;
 }
 function instant(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)) invalid();
@@ -55,7 +56,10 @@ function fingerprint(query,scope) {
 // Query values only. Current publication/ownership and the exact slot/quantities
 // must be independently resolved by the authorized use case before this boundary.
 export function normalizeCateringAvailabilityQuery(value,scope) {
-  record(scope,['tenantId','integrationId']); const tenantId=uuid(scope.tenantId); const integrationId=uuid(scope.integrationId);
+  record(scope,['tenantId','integrationId','requestId','requestVersion']);
+  const tenantId=uuid(scope.tenantId); const integrationId=uuid(scope.integrationId);
+  if (!isRequestId(scope.requestId) || !isRequestVersion(scope.requestVersion)) invalid();
+  const requestScope={tenantId,integrationId,requestId:scope.requestId,requestVersion:scope.requestVersion};
   record(value,QUERY_KEYS); if (value.schemaVersion !== 1) invalid();
   const startsAt=instant(value.startsAt); const endsAt=instant(value.endsAt); if (endsAt<=startsAt) invalid();
   const participantCount=integer(value.participantCount,0,REQUEST_MAX_PARTICIPANTS);
@@ -75,16 +79,19 @@ export function normalizeCateringAvailabilityQuery(value,scope) {
   const query=Object.freeze({schemaVersion:1,queryId:uuid(value.queryId),configurationRevision:integer(value.configurationRevision),
     publicationRevision:integer(value.publicationRevision),sourceRevision:integer(value.sourceRevision),
     sourceVersion:text(value.sourceVersion),
-    siteId:id(value.siteId),roomId:id(value.roomId),startsAt,endsAt,participantCount,positions:Object.freeze(positions)});
-  return Object.freeze({tenantId,integrationId,...query,queryFingerprint:fingerprint(query,{tenantId,integrationId})});
+    siteId:id(value.siteId),roomId:id(value.roomId),startsAt,endsAt,participantCount,
+    dietaryRequirements:text(value.dietaryRequirements,2000),specialRequirements:text(value.specialRequirements,2000),
+    positions:Object.freeze(positions)});
+  return Object.freeze({...requestScope,...query,queryFingerprint:fingerprint(query,requestScope)});
 }
 
 // A provider echoes only the immutable query/position identities and factual
 // statuses/terms. Revision, receipt clock, Tenant and freshness policy are server
 // evidence; they cannot be supplied by this response or turn it into a reservation.
 export function normalizeCateringAvailabilityObservation(value,expected) {
-  record(expected,['tenantId','integrationId','query','receivedAt','maximumAgeMs']);
-  const query=normalizeCateringAvailabilityQuery(expected.query,{tenantId:expected.tenantId,integrationId:expected.integrationId});
+  record(expected,['tenantId','integrationId','requestId','requestVersion','query','receivedAt','maximumAgeMs']);
+  const query=normalizeCateringAvailabilityQuery(expected.query,{tenantId:expected.tenantId,integrationId:expected.integrationId,
+    requestId:expected.requestId,requestVersion:expected.requestVersion});
   const receivedAt=instant(expected.receivedAt); const maximumAgeMs=integer(expected.maximumAgeMs,1,CATERING_MAX_AVAILABILITY_AGE_MS);
   record(value,['schemaVersion','queryId','availabilityVersion','observedAt','validUntil','positions','terms']);
   if (value.schemaVersion !== 1 || uuid(value.queryId) !== query.queryId) invalid();
@@ -102,7 +109,8 @@ export function normalizeCateringAvailabilityObservation(value,expected) {
   const validUntil=providerValidUntil === null ? null
     : new Date(Math.min(Date.parse(providerValidUntil),Date.parse(observedAt)+maximumAgeMs)).toISOString();
   return Object.freeze({schemaVersion:1,tenantId:query.tenantId,integrationId:query.integrationId,queryId:query.queryId,
-    queryFingerprint:query.queryFingerprint,configurationRevision:query.configurationRevision,publicationRevision:query.publicationRevision,
+    requestId:query.requestId,requestVersion:query.requestVersion,queryFingerprint:query.queryFingerprint,
+    configurationRevision:query.configurationRevision,publicationRevision:query.publicationRevision,
     sourceRevision:query.sourceRevision,availabilityVersion:text(value.availabilityVersion),
     observedAt,receivedAt,providerValidUntil,validUntil,
     positions:Object.freeze(query.positions.map(position=>byId.get(position.positionId))),
@@ -112,12 +120,14 @@ export function normalizeCateringAvailabilityObservation(value,expected) {
 // Necessary factual freshness only. Every use repeats current basis and timing;
 // this value is advisory and cannot release an order or mutate a confirmed one.
 export function evaluateCateringAvailability(value,expected) {
-  record(expected,['tenantId','integrationId','query','receivedAt','maximumAgeMs',
+  record(expected,['tenantId','integrationId','requestId','requestVersion','query','receivedAt','maximumAgeMs','currentRequestVersion',
     'configurationRevision','publicationRevision','publishedSourceRevision','now']);
   const observation=normalizeCateringAvailabilityObservation(value,{tenantId:expected.tenantId,integrationId:expected.integrationId,
+    requestId:expected.requestId,requestVersion:expected.requestVersion,
     query:expected.query,receivedAt:expected.receivedAt,maximumAgeMs:expected.maximumAgeMs});
   const now=instant(expected.now); const reasons=[];
-  if (integer(expected.configurationRevision) !== observation.configurationRevision
+  if (integer(expected.currentRequestVersion) !== observation.requestVersion
+    || integer(expected.configurationRevision) !== observation.configurationRevision
     || integer(expected.publicationRevision) !== observation.publicationRevision
     || integer(expected.publishedSourceRevision) !== observation.sourceRevision) reasons.push('availability_basis_changed');
   if (now<observation.receivedAt) reasons.push('availability_time_unverified');
