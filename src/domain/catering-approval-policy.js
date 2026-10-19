@@ -1,5 +1,5 @@
 import { isInternalUuid } from './identifiers.js';
-import { normalizeMoney } from './money.js';
+import { normalizeCateringOrderTotal } from './catering-order-money.js';
 
 export const CATERING_INITIAL_ORDER_MODE = Object.freeze({
   AFTER_CONFERENCE_APPROVAL: 'after_conference_approval',
@@ -31,7 +31,7 @@ function exactRecord(value, keys) {
 
 function cost(value) {
   exactRecord(value, ['amountMinor', 'currency']);
-  return normalizeMoney(value);
+  return normalizeCateringOrderTotal(value);
 }
 
 function positiveVersion(value) {

@@ -200,6 +200,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 44, name: 'platform_projection_outbox' },
       { version: 45, name: 'request_workflow_starts' },
       { version: 46, name: 'catering_integration_configuration' },
+      { version: 47, name: 'catering_catalogue_assignments' },
     ]);
   });
 
