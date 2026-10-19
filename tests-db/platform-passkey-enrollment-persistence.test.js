@@ -1,0 +1,197 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import test from 'node:test';
+import { loadDatabaseConfig } from '../src/config.js';
+import { createPostgresPool } from '../src/persistence/postgres/pool.js';
+import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { createPostgresPlatformAuditRepository } from '../src/persistence/postgres/platform-audit-repository.js';
+import { createPostgresPlatformPasskeyGrantIssuer } from '../src/persistence/postgres/platform-passkey-grant-issuer.js';
+import { createPostgresPlatformPasskeyEnrollmentRepository } from '../src/persistence/postgres/platform-passkey-enrollment-repository.js';
+import { createPlatformPasskeyEnrollmentService } from '../src/platform/identity/passkey-enrollment-service.js';
+import { createPlatformPasskeyVerifier } from '../src/platform/identity/passkey-verifier.js';
+import { createPostgresPlatformPasskeyAuthRepository } from '../src/persistence/postgres/platform-passkey-auth-repository.js';
+import { createPostgresPlatformSessionRepository } from '../src/persistence/postgres/platform-session-repository.js';
+import { createPlatformSessionService } from '../src/platform/identity/session-service.js';
+import { createPlatformPasskeyAuthService } from '../src/platform/identity/passkey-auth-service.js';
+import { createPlatformPasskeyLifecycleService } from '../src/platform/identity/passkey-lifecycle-service.js';
+import { readPlatformPasskeyTransactionCookie } from '../src/platform/identity/passkey-auth-cookie.js';
+import { platformPasskeyFixture } from '../tests/support/platform-passkey-fixture.js';
+
+test('independently granted enrollment stages public keys and atomically requires real possession before activation', async t => {
+  const database = loadDatabaseConfig(process.env, 'test');
+  if (!database.databaseUrl) throw new Error('DATABASE_URL_REQUIRED_FOR_INTEGRATION_TEST');
+  const pool = createPostgresPool({ mode: 'test', ...database });
+  t.after(() => pool.end());
+  await migrateUp(pool);
+  const role = (await pool.query('SELECT session_user AS role')).rows[0].role;
+  const auditRepository = createPostgresPlatformAuditRepository(pool, { hmacSecret: 'a'.repeat(48) });
+  const issuer = createPostgresPlatformPasskeyGrantIssuer(pool, { auditRepository, expectedOfflineRole: role });
+  const verifier = createPlatformPasskeyVerifier({ publicOrigin: 'https://ops-int.example.com', environment: 'int' });
+  const repository = createPostgresPlatformPasskeyEnrollmentRepository(pool, { auditRepository });
+  async function setup() {
+    const operatorId = randomUUID(); const directory = randomUUID(); const subject = randomUUID();
+    await pool.query(`INSERT INTO platform_operators
+      (id,provider,provider_tenant_reference,provider_subject_reference,roles,scope_mode)
+      VALUES ($1,'microsoft_entra_platform',$2,$3,ARRAY['platform_security_admin'],'all')`, [operatorId,directory,subject]);
+    const providerIdentity = { provider: 'microsoft_entra_platform', tenantReference: directory, subjectReference: subject };
+    const request = { operatorId, operatorSecurityVersion: 1, providerIdentity, environment: 'int', securityEpoch: 8,
+      kind: 'bootstrap', approvalReference: 'CM-INT-OWNER-001', ttlSeconds: 600, correlationId: randomUUID() };
+    const primaryOperatorService = { async resolve() {
+      const row = (await pool.query('SELECT security_version FROM platform_operators WHERE id = $1', [operatorId])).rows[0];
+      return { operatorId, securityVersion: Number(row.security_version), providerIdentity };
+    } };
+    function service(port = repository) { return createPlatformPasskeyEnrollmentService({ repository: port, primaryOperatorService,
+      verifier, environment: 'int', securityEpoch: 8 }); }
+    async function start(grant, port = repository) {
+      const started = await service(port).start({ assertion: 'verified-primary-port-fixture', grant, correlationId: randomUUID() });
+      return { ...started, cookie: started.setCookie.split(';')[0].split('=')[1], service: service(port) };
+    }
+    const count = async () => (await pool.query('SELECT count(*)::int AS n FROM platform_passkey_credentials WHERE operator_id=$1',
+      [operatorId])).rows[0].n;
+    return { operatorId, request, service, start, count, primaryOperatorService };
+  }
+  function input(started, key, purpose, changes = {}) {
+    const response = key.response(purpose, { ...changes, client: { challenge: started.options.challenge, ...changes.client } });
+    if (purpose !== 'create') response.response.userHandle = started.userHandle;
+    return { cookie: started.cookie, state: started.state, response };
+  }
+  async function stage(f, issued, key, port = repository) {
+    const started = await f.start(issued.grant, port);
+    const registered = await started.service.register(input(started, key, 'create'));
+    return { ...started, ...registered, userHandle: started.options.user.id };
+  }
+
+  await t.test('no grant or Microsoft-only authority can enroll; registration alone cannot create a credential', async () => {
+    const f = await setup(); const key = platformPasskeyFixture({ operatorId: f.operatorId });
+    await assert.rejects(f.start({ grantId: randomUUID(), token: verifier.createChallenge() }), /ENROLLMENT_REJECTED/);
+    const issued = await issuer.issueOffline(f.request);
+    assert.equal(issued.operatorSecurityVersion, 1);
+    const started = await stage(f, issued, key);
+    assert.equal(started.status, 'possession_required');
+    assert.equal(await f.count(), 0);
+    const row = (await pool.query('SELECT token_hash,consumed_at FROM platform_passkey_enrollment_grants WHERE id=$1',
+      [issued.grant.grantId])).rows[0];
+    assert.equal(row.consumed_at, null);
+    assert.notEqual(row.token_hash, issued.grant.token);
+    const proof = input(started, key, 'get');
+    const results = await Promise.allSettled([started.service.complete(proof), started.service.complete(proof)]);
+    assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
+    assert.equal(await f.count(), 1);
+    const current = (await pool.query('SELECT security_version FROM platform_operators WHERE id=$1', [f.operatorId])).rows[0];
+    assert.equal(Number(current.security_version), 2);
+    const grantRow = (await pool.query('SELECT consumed_at FROM platform_passkey_enrollment_grants WHERE id=$1',
+      [issued.grant.grantId])).rows[0];
+    assert.ok(grantRow.consumed_at);
+    await assert.rejects(issuer.issueOffline({ ...f.request, operatorSecurityVersion: 2 }), /OFFLINE_ISSUANCE_REJECTED/);
+  });
+
+  await t.test('wrong browser cannot burn another ceremony; invalid proof commits a bounded attempt and denial audit', async () => {
+    const f = await setup(); const key = platformPasskeyFixture({ operatorId: f.operatorId });
+    const issued = await issuer.issueOffline(f.request); const started = await stage(f, issued, key);
+    const wrong = input(started, key, 'get', { client: { origin: 'https://foreign.example.com' } });
+    const foreignCookie = `${verifier.createChallenge()}.${verifier.createChallenge()}`;
+    await assert.rejects(started.service.complete({ ...wrong, cookie: foreignCookie }), /ENROLLMENT_REJECTED/);
+    const attempts = async () => (await pool.query(`SELECT possession_attempts
+      FROM platform_passkey_enrollment_transactions WHERE grant_id=$1`,
+      [issued.grant.grantId])).rows[0].possession_attempts;
+    assert.equal(await attempts(), 0);
+    for (let n = 0; n < 5; n++) await assert.rejects(started.service.complete(wrong), /ENROLLMENT_REJECTED/);
+    assert.equal(await attempts(), 5);
+    assert.equal(await f.count(), 0);
+    await assert.rejects(started.service.complete(input(started, key, 'get')), /ENROLLMENT_REJECTED/);
+    assert.equal(await attempts(), 5);
+    const denied = await pool.query(`SELECT count(*)::int AS n FROM platform_audit_events
+      WHERE target_type='platform_passkey_enrollment' AND outcome='denied'`);
+    assert.equal(denied.rows[0].n, 5);
+  });
+
+  await t.test('audit failure rolls back grant redemption, possession attempt, key insertion and managed operator version', async () => {
+    const f = await setup(); const key = platformPasskeyFixture({ operatorId: f.operatorId });
+    const issued = await issuer.issueOffline(f.request);
+    const failing = createPostgresPlatformPasskeyEnrollmentRepository(pool,
+      { auditRepository: { async appendWithClient() { throw new Error('SYNTHETIC_AUDIT_UNAVAILABLE'); } } });
+    const started = await stage(f, issued, key, failing); const proof = input(started, key, 'get');
+    await assert.rejects(started.service.complete(proof), /SYNTHETIC_AUDIT_UNAVAILABLE/);
+    assert.equal(await f.count(), 0);
+    const row = (await pool.query(`SELECT t.possession_attempts,t.consumed_at,g.consumed_at AS grant_consumed,o.security_version
+      FROM platform_passkey_enrollment_transactions t JOIN platform_passkey_enrollment_grants g ON g.id=t.grant_id
+      JOIN platform_operators o ON o.id=g.operator_id WHERE g.id=$1`, [issued.grant.grantId])).rows[0];
+    assert.equal(row.possession_attempts, 0); assert.equal(row.consumed_at, null); assert.equal(row.grant_consumed, null);
+    assert.equal(Number(row.security_version), 1);
+    assert.equal((await f.service().complete(proof)).status, 'credential_enrolled');
+  });
+
+  await t.test('independent recovery permanently revokes old keys and supersedes all previous version authority', async () => {
+    const f = await setup(); const firstKey = platformPasskeyFixture({ operatorId: f.operatorId });
+    const first = await issuer.issueOffline(f.request); const original = await stage(f, first, firstKey);
+    await original.service.complete(input(original, firstKey, 'get', { counter: 0 }));
+    const recovery = await issuer.issueOffline({ ...f.request, kind: 'recovery', operatorSecurityVersion: 2 });
+    assert.equal(recovery.operatorSecurityVersion, 4, 'key revocation and final recovery grant each fence prior authority');
+    const revoked = await pool.query('SELECT revoked_at FROM platform_passkey_credentials WHERE operator_id=$1', [f.operatorId]);
+    assert.ok(revoked.rows[0].revoked_at);
+    const replacement = platformPasskeyFixture({ operatorId: f.operatorId });
+    const next = await stage(f, recovery, replacement);
+    assert.equal(next.userHandle, original.userHandle, 'the operator handle remains stable across recovery');
+    await next.service.complete(input(next, replacement, 'get', { counter: 0 }));
+    assert.equal(await f.count(), 2);
+    await assert.rejects(pool.query(`UPDATE platform_passkey_credentials SET revoked_at=NULL
+      WHERE operator_id=$1 AND revoked_at IS NOT NULL`,
+      [f.operatorId]), /IMMUTABLE/);
+    await assert.rejects(rollbackLatest(pool), /PLATFORM_PASSKEY_ENROLLMENT_REQUIRES_VERIFIED_RECOVERY/);
+  });
+
+  await t.test('an exact real step-up adds a second key; revocation logs out and the last key remains protected', async () => {
+    const f = await setup(); const firstKey = platformPasskeyFixture({ operatorId: f.operatorId });
+    const bootstrap = await issuer.issueOffline(f.request); const initial = await stage(f, bootstrap, firstKey);
+    await initial.service.complete(input(initial, firstKey, 'get'));
+    const sessions = createPlatformSessionService({ repository: createPostgresPlatformSessionRepository(pool, { auditRepository }),
+      publicOrigin: 'https://ops-int.example.com', csrfSecret: 'c'.repeat(48), securityEpoch: 8 });
+    const authService = createPlatformPasskeyAuthService({
+      repository: createPostgresPlatformPasskeyAuthRepository(pool, { verifier, auditRepository }),
+      primaryOperatorService: f.primaryOperatorService, verifier, sessionService: sessions,
+      environment: 'int', securityEpoch: 8, transactionSecret: 't'.repeat(48) });
+    const lifecycle = createPlatformPasskeyLifecycleService({ authService, sessionService: sessions, repository,
+      environment: 'int', securityEpoch: 8 });
+    function signed(started, key, counter) {
+      const response = key.response('get', { counter, client: { challenge: started.options.challenge } });
+      response.response.userHandle = initial.userHandle;
+      return { state: started.state, response,
+        cookie: readPlatformPasskeyTransactionCookie({ cookie: started.setCookie.split(';')[0] }) };
+    }
+    async function login(key, counter) {
+      const started = await authService.startLogin('verified-primary-port-fixture');
+      return authService.complete(signed(started, key, counter));
+    }
+    const loggedIn = await login(firstKey, 2);
+    await assert.rejects(repository.issueAdditional({ principal: loggedIn.principal, environment: 'int', securityEpoch: 8,
+      correlationId: randomUUID() }), /ENROLLMENT_RECORD_INVALID/);
+    const addition = await lifecycle.startAddition(loggedIn.principal);
+    const additional = await lifecycle.issueAdditional({ ...signed(addition, firstKey, 3),
+      request: { headers: { cookie: loggedIn.setCookies[0].split(';')[0] } } });
+    assert.equal(additional.status, 'operation_completed');
+    assert.equal(additional.principal.assurance.level, 'mfa');
+    const secondKey = platformPasskeyFixture({ operatorId: f.operatorId });
+    const next = await stage(f, additional.result, secondKey);
+    assert.equal(next.userHandle, initial.userHandle);
+    await next.service.complete(input(next, secondKey, 'get'));
+    assert.equal(await f.count(), 2);
+    const session = await login(secondKey, 2);
+    const revocation = await lifecycle.startRevocation(session.principal, firstKey.credential.id);
+    const revoked = await lifecycle.revoke({ ...signed(revocation, secondKey, 3), credentialId: firstKey.credential.id,
+      request: { headers: { cookie: session.setCookies[0].split(';')[0] } } });
+    assert.equal(revoked.status, 'reauthentication_required');
+    assert.equal(Object.hasOwn(revoked, 'principal'), false);
+    assert.match(revoked.setCookies[0], /Max-Age=0/);
+    assert.equal(await sessions.resolvePrincipal({ headers: { cookie: session.setCookies[0].split(';')[0] } }), null);
+    const remaining = await login(secondKey, 4);
+    const last = await lifecycle.startRevocation(remaining.principal, secondKey.credential.id);
+    await assert.rejects(lifecycle.revoke({ ...signed(last, secondKey, 5), credentialId: secondKey.credential.id,
+      request: { headers: { cookie: remaining.setCookies[0].split(';')[0] } } }), /LIFECYCLE_REJECTED/);
+    const key = (await pool.query('SELECT revoked_at,signature_counter FROM platform_passkey_credentials WHERE credential_id=$1',
+      [secondKey.credential.id])).rows[0];
+    assert.equal(key.revoked_at, null); assert.equal(Number(key.signature_counter), 4);
+    assert.ok(await sessions.resolvePrincipal({ headers: { cookie: remaining.setCookies[0].split(';')[0] } }));
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM platform_sessions
+      WHERE operator_id=$1 AND assurance_level='step_up' AND revoked_at IS NULL`, [f.operatorId])).rows[0].n, 0);
+  });
+});

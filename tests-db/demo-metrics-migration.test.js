@@ -80,7 +80,7 @@ test('reviewed metrics upgrade preserves retained Demo data, excludes concurrent
   await assert.rejects(withDemoMetricsMigrationGate(pool, { ...expected, customer: 'cm_wrong_customer' }, upgrade), /PRECONDITIONS/);
   assert.equal(upgrades, 0);
   assert.deepEqual(await withDemoMetricsMigrationGate(pool, expected, upgrade), {
-    canonicalVersion: 53, demoVersion: 19, resetPerformed: false, retainedCountsMatch: true,
+    canonicalVersion: 54, demoVersion: 20, resetPerformed: false, retainedCountsMatch: true,
   });
   assert.equal(upgrades, 1);
   assert.equal((await raw.query('SELECT count(*)::integer AS count FROM tenants')).rows[0].count, 1);

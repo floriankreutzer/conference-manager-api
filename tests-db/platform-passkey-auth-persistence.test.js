@@ -278,7 +278,9 @@ test('durable Platform passkey authentication is bounded, single-use, audited an
       [other.credentialRecordId]), /IMMUTABLE/);
     await assert.rejects(pool.query('UPDATE platform_passkey_credentials SET operator_id = $1 WHERE id = $2',
       [f.operatorId, other.credentialRecordId]), /IMMUTABLE/);
+    assert.equal(await rollbackLatest(pool), true); // Empty enrollment054 above populated credential053.
     await assert.rejects(rollbackLatest(pool), /PLATFORM_PASSKEY_STORAGE_REQUIRES_VERIFIED_RECOVERY/);
+    await migrateUp(pool);
     assert.equal(await isPostgresSchemaReady(pool), true);
   });
 });

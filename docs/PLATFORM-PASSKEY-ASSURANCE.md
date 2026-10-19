@@ -210,3 +210,104 @@ It does not mint a Microsoft acrs claim or derive any privilege from browser dat
 No normal HTTP route or runtime configuration exposes this service yet. OIDC
 pending-flow routing, independent enrollment/recovery, DE/EN UI and epoch-safe
 activation remain required; no real owner/device evidence is implied by fixtures.
+
+## Enrollment grant policy and application port — inactive
+
+The enrollment grant policy binds a random 256-bit one-use capability to the exact
+internal operator/security version, verified Microsoft directory/object identity,
+deployment environment, security epoch and random grant ID. Persistence receives
+only its domain-separated SHA-256 hash. A structural grant record is not issuance
+authority. Bootstrap/recovery require an independent offline issuer and bounded
+approval reference, with no primary-session substitute. Additional-key grants
+require an existing strongly verified session and a maximum five-minute lifetime;
+offline grants are bounded to fifteen minutes. The unactivated durable repository
+below implements database-clock expiry, issuance authorization, one-use redemption
+and atomic audit. Its new PostgreSQL integration evidence remains pending.
+
+The inactive enrollment application service resolves the opaque Microsoft-primary
+assertion, accepts only a grant ID/token from the browser and supplies all identity
+and deployment authority itself. Separate independent 256-bit state/browser values
+are hashed under an enrollment-only environment/epoch namespace. The existing
+narrow-path Secure/HttpOnly/SameSite=Strict passkey transaction cookie is reused;
+starting enrollment replaces a pending login ceremony in that browser. The two
+namespaces cannot redeem each other's records. Raw grant/browser tokens are never
+sent to the repository. Ceremony lifetime is 120 seconds; browser state must echo
+the cookie state on every mutation. Routes must additionally enforce exact Origin,
+request/content bounds, abuse limits and the applicable CSRF policy.
+
+Registration stages only a public candidate key after real SDK validation. A fresh
+distinct challenge then requires a signed UV-required assertion from that candidate
+key before the repository may atomically consume the grant, insert the active key,
+invalidate older operator authority and append audit evidence. A forged `none`
+attestation cannot activate a key without private-key possession. Enrollment has
+no session-issuance port and returns only `credential_enrolled`; a new complete
+Microsoft/passkey login is required afterwards.
+
+The application-port tests use real synthetic P-256 signatures for both stages,
+wrong challenges/origins, missing UV, foreign keys, browser/state/environment/epoch
+mix-ups, expiry and replay. Their in-memory repository is a port fixture, not
+PostgreSQL evidence. The new durable enrollment/lifecycle implementation below
+still requires its own complete database/browser CI. HTTP composition, native UI,
+deployment configuration and real device acceptance remain incomplete. No
+enrollment or recovery is exposed by the current runtime.
+
+## Durable enrollment and lifecycle candidate — not composed
+
+Unmerged migration054 stores immutable, exact-identity grant records and one
+browser-bound registration/possession ceremony per grant. Only hashes of opaque
+grant/browser values, random challenges/handles and public candidate keys are
+stored. Database expiry bounds both phases, each with at most five attempts;
+wrong browser/state/deployment authority cannot consume another ceremony's budget.
+The registration candidate remains inactive until a separate real signature is
+verified. Grant redemption, credential insertion, operator-version invalidation
+and minimized HMAC-chain audit commit together. Required audit failure rolls all
+of them back. Concurrent completion can succeed once, including zero-counter keys.
+
+The operator is locked before grant/ceremony/credential authority. Existing
+operator handles are reused across additions/recovery; inconsistent legacy handles
+fail closed. First bootstrap requires no credential history in that environment.
+The SQL grant trigger independently checks exact active operator/provider identity,
+current version and issuance authority. Grant identity, capability hash, approval,
+issuer, expiry and session bindings cannot change, and used/revoked grants cannot
+be restored or deleted. Staged candidates and consumed ceremonies are immutable.
+
+Offline bootstrap/recovery requires the authenticated SQL login, effective role,
+configured offline role and actual grant-table catalog owner to agree. The offline
+issuer is forbidden from HTTP, normal runtime and both Demo dependency graphs.
+`scripts/platform-passkey-offline-grant.mjs` currently accepts only pilot/INT and
+the explicitly configured security epoch. It requires a separate protected owner
+connection to the same database as the Platform runtime, a different SQL username,
+verified TLS and bounded single-connection/timeouts. DEV/PROD remain prepared only.
+Runtime credentials must never own the grant table or carry offline-owner access.
+
+The CLI reads bounded JSON exclusively from descriptor3, validates the private
+descriptor4 before connecting, checks exact schema readiness and prints the opaque
+grant exclusively to descriptor4. Ordinary output contains only receipt metadata;
+errors contain fixed codes. No token may enter command arguments, URLs, ordinary
+logs, email or browser storage. If final descriptor delivery fails after commit,
+the protected owner must reissue: issuance revokes older outstanding grants and
+records the replacement; it must not pretend an unread token was delivered.
+
+Offline recovery revokes all old keys, sessions and outstanding grants, then adds
+a final managed security-version increment even if historical keys were already
+revoked. It never reactivates an old key or restores old sessions. An audit-only
+`offline_owner` marker identifies this independent owner action with empty actor
+roles/permissions and the exact passkey-grant target. It cannot satisfy any trusted
+Platform identity/session schema or authorize business operations. Recovery has
+no email-code or Microsoft-primary-only bypass.
+
+Additional-key issuance requires a live, current, application-passkey step-up
+session, one to four existing active keys and an exact server-computed addition
+operation. Its temporary strong cookie never leaves the verification transaction.
+The returned session has ordinary MFA; the short-lived grant still requires fresh
+Microsoft identity before registration. Revocation binds the exact owned active
+key and requires another active key to remain. It invalidates old operator/session
+authority, revokes outstanding grants and finishes with cleared session/transaction
+cookies and a fresh-login requirement. It never issues an obsolete-version session.
+
+Candidate schema readiness is exact054/020. Demo overlay020 grants only TRUNCATE
+on the two new tables to the sentinel-checked reset role; neither synthetic runtime
+gets enrollment privileges. Historical rollback probes explicitly drain020/054
+before their retained019/053 and older guards. Populated054 or retained offline
+audit evidence prevents rollback and requires reviewed recovery. The synthetic
+seed checksum, production security epoch and current live CA mode are unchanged.

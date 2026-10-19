@@ -4,6 +4,7 @@ import { normalizePlatformPrincipal, normalizeTrustedPlatformIdentity } from './
 import { permissionsForPlatformRoles } from './policy.js';
 import { PlatformIdentityError } from './errors.js';
 import { serializePlatformPasskeyTransactionCookie, clearPlatformPasskeyTransactionCookie } from './passkey-auth-cookie.js';
+import { serializeClearedPlatformSessionCookie } from './session-cookie.js';
 
 const OPAQUE = /^[A-Za-z0-9_-]{43}$/;
 const HASH = /^[0-9a-f]{64}$/;
@@ -57,7 +58,7 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
     return Object.freeze({ status: 'passkey_required', state, options: authenticationOptions,
       setCookie: serializePlatformPasskeyTransactionCookie(`${state}.${browser(state)}`, TTL_SECONDS) });
   }
-  async function finish({ cookie, state, response, request } = {}, operationHash, mutation) {
+  async function finish({ cookie, state, response, request } = {}, operationHash, mutation, invalidateSession = false) {
     const { state: expectedState, ...lookup } = locator(cookie);
     if (state !== expectedState) reject();
     const pending = await repository.findPending(lookup);
@@ -84,12 +85,15 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
       const result = await mutation(Object.freeze({ principal: temporary.principal, operationHash }));
       if (result === null || result === undefined) throw new Error('PLATFORM_PASSKEY_MUTATION_REQUIRED');
       if (!await sessionService.revoke(temporary.principal, { correlationId: proof.correlationId })) reject();
+      if (invalidateSession) return { result, issued: null };
       const normalIdentity = normalizeTrustedPlatformIdentity({ ...identity,
         assurance: { ...identity.assurance, level: 'mfa' } });
       return { result, issued: await sessionService.issue(normalIdentity, { correlationId: proof.correlationId }) };
     });
     if (!verified) reject();
     const { issued } = verified;
+    if (!issued && invalidateSession) return Object.freeze({ status: 'reauthentication_required', result: verified.result,
+      setCookies: Object.freeze([serializeClearedPlatformSessionCookie({ secure: true }), clearPlatformPasskeyTransactionCookie()]) });
     return Object.freeze({ status: mutation ? 'operation_completed' : 'authenticated',
       ...(mutation ? { result: verified.result } : {}), principal: issued.principal, csrfToken: issued.csrfToken,
       setCookies: Object.freeze([issued.setCookie, clearPlatformPasskeyTransactionCookie()]) });
@@ -118,6 +122,10 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
     async executeStepUp(input, mutation) {
       if (typeof mutation !== 'function' || !HASH.test(input?.operationHash || '')) reject();
       return finish(input, input.operationHash, mutation);
+    },
+    async executeCredentialLifecycle(input, mutation) {
+      if (typeof mutation !== 'function' || !HASH.test(input?.operationHash || '')) reject();
+      return finish(input, input.operationHash, mutation, true);
     },
   });
 }

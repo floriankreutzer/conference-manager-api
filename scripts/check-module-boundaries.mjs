@@ -32,6 +32,11 @@ const REAL_PRODUCTION_IDENTITY_AND_PROVIDER_MODULES = new Set([
   'src/platform/identity/entra-client.js',
   'src/platform/identity/primary-operator-service.js',
   'src/platform/identity/passkey-auth-service.js',
+  'src/platform/identity/passkey-enrollment-service.js',
+  'src/platform/identity/passkey-lifecycle-service.js',
+  'src/platform/identity/passkey-enrollment-grant.js',
+  'src/persistence/postgres/platform-passkey-grant-issuer.js',
+  'src/persistence/postgres/platform-passkey-enrollment-repository.js',
   'src/platform/identity/passkey-verifier.js',
   'src/persistence/postgres/platform-passkey-auth-repository.js',
   'src/platform/identity/entra-auth-service.js',
@@ -181,6 +186,13 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
 
   for (const [file, source] of sources) {
     const imports = moduleImports(source);
+    if (PRODUCTION_COMPOSITION_ROOTS.has(file) || isInside(file, 'src/http') || isInside(file, 'src/platform/http')
+      || isInside(file, 'src/demo')) {
+      const offlineIssuer = firstReachablePath(graph, file,
+        dependency => dependency === 'src/persistence/postgres/platform-passkey-grant-issuer.js');
+      if (offlineIssuer) violations.push(violation(file,
+        `HTTP, runtime and Demo code must not reach offline passkey issuance (${offlineIssuer.join(' -> ')}).`));
+    }
     if (imports.some(({ specifier }) => specifier.startsWith('@simplewebauthn/'))
       && file !== 'src/platform/identity/passkey-verifier.js') {
       violations.push(violation(file, 'the WebAuthn SDK is restricted to the private Platform passkey verifier.'));
@@ -193,7 +205,11 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
       const passkeyPath = firstReachablePath(graph, file,
         (dependency) => dependency === 'src/platform/identity/passkey-verifier.js'
           || dependency === 'src/persistence/postgres/platform-passkey-auth-repository.js'
-          || dependency === 'src/platform/identity/passkey-auth-service.js');
+          || dependency === 'src/platform/identity/passkey-auth-service.js'
+          || dependency === 'src/platform/identity/passkey-enrollment-service.js'
+          || dependency === 'src/platform/identity/passkey-lifecycle-service.js'
+          || dependency === 'src/persistence/postgres/platform-passkey-enrollment-repository.js'
+          || dependency === 'src/platform/identity/passkey-enrollment-grant.js');
       if (passkeyPath) violations.push(violation(file,
         `Demo runtime must not reach real Platform passkey verification (${passkeyPath.join(' -> ')}).`));
     }

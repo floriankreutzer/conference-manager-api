@@ -153,6 +153,26 @@ test('step-up requires the exact still-current session and operation, then rotat
   await assert.rejects(f.service.startStepUp(principal(), { operationHash: 'browser-operation' }), /REJECTED/);
 });
 
+test('credential lifecycle finishes its verified operation with logout and never issues an obsolete-version session', async () => {
+  const f = fixture(); const operationHash = 'c'.repeat(64);
+  const started = await f.service.startStepUp(principal(), { operationHash });
+  const input = { cookie: cookie(started), state: started.state, response: { valid: true }, request: {}, operationHash };
+  const completed = await f.service.executeCredentialLifecycle(input, async context => {
+    assert.equal(context.principal.assurance.level, 'step_up');
+    assert.equal(context.operationHash, operationHash);
+    return { status: 'credential_revoked' };
+  });
+  assert.equal(completed.status, 'reauthentication_required');
+  assert.deepEqual(completed.result, { status: 'credential_revoked' });
+  assert.equal(Object.hasOwn(completed, 'principal'), false);
+  assert.equal(Object.hasOwn(completed, 'csrfToken'), false);
+  assert.match(completed.setCookies[0], /cm_platform_session=;.*Secure; Max-Age=0/);
+  assert.equal(f.calls.issue.length, 0);
+  assert.equal(f.calls.rotate.length, 1);
+  assert.equal(f.calls.revoke.length, 1);
+  await assert.rejects(f.service.executeCredentialLifecycle(input, () => true), /AUTHENTICATION_REJECTED/);
+});
+
 test('passkey cookies reject duplicates and overlong/malformed values and never expose an ambient Domain', () => {
   const value = `${'S'.repeat(43)}.${'B'.repeat(43)}`;
   const header = serializePlatformPasskeyTransactionCookie(value);
