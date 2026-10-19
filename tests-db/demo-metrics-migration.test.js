@@ -80,41 +80,50 @@ test('reviewed metrics upgrade preserves retained Demo data, excludes concurrent
   await assert.rejects(withDemoMetricsMigrationGate(pool, { ...expected, customer: 'cm_wrong_customer' }, upgrade), /PRECONDITIONS/);
   assert.equal(upgrades, 0);
   assert.deepEqual(await withDemoMetricsMigrationGate(pool, expected, upgrade), {
-    canonicalVersion: 56, demoVersion: 22, resetPerformed: false, retainedCountsMatch: true,
+    canonicalVersion: 57, demoVersion: 23, resetPerformed: false, retainedCountsMatch: true,
   });
   assert.equal(upgrades, 1);
   assert.equal((await raw.query('SELECT count(*)::integer AS count FROM tenants')).rows[0].count, 1);
   assert.equal((await withDemoMetricsMigrationGate(pool, expected, upgrade)).retainedCountsMatch, true);
   assert.equal(upgrades, 2);
-  for (const [table, version] of [['schema_migrations', 57], ['demo_schema_migrations', 23]]) {
+  for (const [table, version] of [['schema_migrations', 58], ['demo_schema_migrations', 24]]) {
     await raw.query(`INSERT INTO ${table}(version,name,checksum) VALUES ($1,'synthetic_future_schema',repeat('a',64))`, [version]);
     try {
       await assert.rejects(withDemoMetricsMigrationGate(pool, expected, upgrade), /PRECONDITIONS/);
       assert.equal(upgrades, 2);
     } finally { await raw.query(`DELETE FROM ${table} WHERE version=$1`, [version]); }
   }
-  const latest = (await raw.query('DELETE FROM schema_migrations WHERE version=56 RETURNING *')).rows[0];
-  try {
-    await assert.rejects(withDemoMetricsMigrationGate(pool,expected,upgrade),/PRECONDITIONS/);
-    assert.equal(upgrades,2); // Canonical055 must not admit Customer overlay022.
-  } finally {
-    await raw.query('INSERT INTO schema_migrations(version,name,checksum,applied_at) VALUES ($1,$2,$3,$4)',
-      [latest.version,latest.name,latest.checksum,latest.applied_at]);
-  }
-  const retainedLatest = (await raw.query('DELETE FROM schema_migrations WHERE version=56 RETURNING *')).rows[0];
-  const retainedOverlay = (await raw.query('DELETE FROM demo_schema_migrations WHERE version=22 RETURNING *')).rows[0];
+  const customer = (await raw.query('DELETE FROM schema_migrations WHERE version=57 RETURNING *')).rows[0];
+  await assert.rejects(withDemoMetricsMigrationGate(pool,expected,upgrade),/PRECONDITIONS/); // Retained056 cannot admit023.
+  const customerOverlay = (await raw.query('DELETE FROM demo_schema_migrations WHERE version=23 RETURNING *')).rows[0];
+  const enrollment = (await raw.query('DELETE FROM schema_migrations WHERE version=56 RETURNING *')).rows[0];
+  await assert.rejects(withDemoMetricsMigrationGate(pool,expected,upgrade),/PRECONDITIONS/); // Retained055 cannot admit022.
+  const enrollmentOverlay = (await raw.query('DELETE FROM demo_schema_migrations WHERE version=22 RETURNING *')).rows[0];
   const removed = (await raw.query('DELETE FROM schema_migrations WHERE version=55 RETURNING *')).rows[0];
   try {
     // A contiguous054 ledger must not admit the future021 grants, even with retained tables.
     await assert.rejects(withDemoMetricsMigrationGate(pool,expected,upgrade),/PRECONDITIONS/);
     assert.equal(upgrades,2);
+    const previous = (await raw.query('DELETE FROM schema_migrations WHERE version=54 RETURNING *')).rows[0];
+    const overlay = (await raw.query('DELETE FROM demo_schema_migrations WHERE version=21 RETURNING *')).rows[0];
+    try {
+      // Retain the independently accepted053/020 incompatibility negative as well.
+      await assert.rejects(withDemoMetricsMigrationGate(pool,expected,upgrade),/PRECONDITIONS/);
+      assert.equal(upgrades,2);
+    } finally {
+      await raw.query('INSERT INTO schema_migrations(version,name,checksum,applied_at) VALUES ($1,$2,$3,$4)',
+        [previous.version,previous.name,previous.checksum,previous.applied_at]);
+      await raw.query('INSERT INTO demo_schema_migrations(version,name,checksum,applied_at) VALUES ($1,$2,$3,$4)',
+        [overlay.version,overlay.name,overlay.checksum,overlay.applied_at]);
+    }
   } finally {
     await raw.query('INSERT INTO schema_migrations(version,name,checksum,applied_at) VALUES ($1,$2,$3,$4)',
       [removed.version,removed.name,removed.checksum,removed.applied_at]);
-    await raw.query('INSERT INTO schema_migrations(version,name,checksum,applied_at) VALUES ($1,$2,$3,$4)',
-      [retainedLatest.version,retainedLatest.name,retainedLatest.checksum,retainedLatest.applied_at]);
-    await raw.query('INSERT INTO demo_schema_migrations(version,name,checksum,applied_at) VALUES ($1,$2,$3,$4)',
-      [retainedOverlay.version,retainedOverlay.name,retainedOverlay.checksum,retainedOverlay.applied_at]);
+    for (const [table,row] of [['schema_migrations',enrollment],['demo_schema_migrations',enrollmentOverlay],
+      ['schema_migrations',customer],['demo_schema_migrations',customerOverlay]]) {
+      await raw.query(`INSERT INTO ${table}(version,name,checksum,applied_at) VALUES ($1,$2,$3,$4)`,
+        [row.version,row.name,row.checksum,row.applied_at]);
+    }
   }
   const releaseClient = await raw.connect();
   try {

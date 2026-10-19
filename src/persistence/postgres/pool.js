@@ -29,9 +29,10 @@ const { Pool } = pg;
 // Schema 52 adds local unsent withdrawal and immutable first-delivery routing.
 // Schema 53 stores inactive Platform passkey credentials and browser-bound authentication ceremonies.
 // Schema 54 records immutable provider catalogue sources without publishing offers.
-// Schema 55 stores independently authorized two-stage Platform passkey enrollment.
-// Schema 56 stores invited Customer membership, encrypted delivery and mailbox-proof custody.
-export const CURRENT_SCHEMA_VERSION = 56;
+// Schema 55 records atomic explicit Manager catalogue reviews and publication.
+// Schema 56 stores independently authorized two-stage Platform passkey enrollment.
+// Schema 57 stores invited Customer membership, encrypted delivery and mailbox proof.
+export const CURRENT_SCHEMA_VERSION = 57;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

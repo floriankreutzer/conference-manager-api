@@ -233,8 +233,9 @@ test('Demo runtime Product reads verified existing events through minimal Ops gr
     assert.equal(metric(result, 'onboarding_completed').value, 0);
     assert.equal(metric(result, 'time_to_submit').value, null);
     assert.equal(coverage(result, 'request_submitted').state, 'partial');
-    assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Customer022 before historical grants.
-    assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Enrollment reset grants021 before historical overlays.
+    assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Customer023 before retained enrollment022.
+    assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Enrollment grants022 before retained publication021.
+    assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Publication grants021 before source grants020.
     assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Catalogue source grants020.
     assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Platform passkey reset grants019 before schema053.
     assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Unsent grants018 before schema052.

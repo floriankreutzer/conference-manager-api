@@ -174,8 +174,9 @@ test('Catering configuration commits scoped revisions and audit atomically and f
   assert.deepEqual(identities, identities.slice().sort());
   assert.deepEqual((await repository.listCurrent({ tenantId: otherTenant })).items, []);
   assert.equal(await auditRepository.verifyTenantChain(tenantId), true);
-  assert.equal(await rollbackLatest(pool), true); // Empty Customer056 before historical guards.
-  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema055 before historical rollback guards.
+  assert.equal(await rollbackLatest(pool),true); // Empty Customer057 before retained enrollment056.
+  assert.equal(await rollbackLatest(pool),true); // Empty enrollment056 before retained publication055.
+  assert.equal(await rollbackLatest(pool), true); // Empty publication schema055 before original054/older guard.
   assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue source schema054.
   assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
@@ -188,8 +189,9 @@ test('Catering configuration commits scoped revisions and audit atomically and f
   assert.equal(await isPostgresSchemaReady(pool), false);
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
-  assert.equal(await rollbackLatest(pool), true); // Empty Customer056 before historical guards.
-  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema055 before historical rollback guards.
+  assert.equal(await rollbackLatest(pool),true); // Empty Customer057 before retained enrollment056.
+  assert.equal(await rollbackLatest(pool),true); // Empty enrollment056 before retained publication055.
+  assert.equal(await rollbackLatest(pool), true); // Empty publication schema055 before original054/older guard.
   assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue source schema054.
   assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.

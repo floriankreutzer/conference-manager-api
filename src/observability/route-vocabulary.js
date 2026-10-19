@@ -64,6 +64,8 @@ export const TELEMETRY_ROUTE_KEYS = Object.freeze([
   'catering_provider_catalogue_connections',
   'catering_provider_catalogues',
   'catering_provider_catalogue_details',
+  'catering_catalogue_review',
+  'catering_catalogue_reviews',
   'catering_catalogue_assignments',
   'catering_catalogue_connections',
   'catering_order_collection',

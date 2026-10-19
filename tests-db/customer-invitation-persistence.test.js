@@ -21,8 +21,8 @@ test('Customer invitation custody is scoped, encrypted, audit-atomic, single-com
   if (!database.databaseUrl) throw new Error('DATABASE_URL_REQUIRED_FOR_INTEGRATION_TEST');
   const pool = createPostgresPool({ mode: 'test', ...database });
   t.after(() => pool.end());
-  await migrateUp(pool); assert.equal(await isPostgresSchemaReady(pool, 56), true);
-  assert.equal(await rollbackLatest(pool), true); // Empty056; retain all earlier migration history.
+  await migrateUp(pool); assert.equal(await isPostgresSchemaReady(pool, 57), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty057; retain all earlier migration history.
   await migrateUp(pool); await migrateUp(pool);
   const authorizationPolicy = createAuthorizationPolicy();
   const auditRepository = createPostgresAuditRepository(pool, { hmacSecret: 'a'.repeat(48) });

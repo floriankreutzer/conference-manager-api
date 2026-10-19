@@ -287,3 +287,30 @@ refusal and unsupported acceptance. This is partial SQL/transaction evidence onl
 it does not qualify native server pools, concurrent operations, TLS, Demo role
 privileges, full database integration or Chromium/WebKit/reset acceptance. Those
 checks and real INT identity-preserving reset remain open.
+
+
+## Current main integration and superseded draft numbering
+
+Accepted publication055/Demo021 remains unchanged. Integrated unreleased Platform
+enrollment now occupies056/Demo022; invited Customer custody is057/Demo023. Earlier
+056/022 Customer preflight checkpoints above describe only the former unmerged
+candidate. Current exact readiness, reset inventory, media/recovery tools and
+upgrade guards require057/023. Historical publication055, catalogue054, passkey053
+and older rollback/role-denial probes remain; empty newer layers are drained before
+each original probe and restored before current runtime/reset checks. Incompatible
+056/023,055/022,054/021,053/020 and future058/024 guards remain explicit.
+
+The integration unions both fixed Customer-invitation conflict and publication
+error contracts. Audit context projection corrections and membership acceptance
+evidence guards are retained. Seventy-six focused invitation/Demo/reset/media/
+recovery checks passed. Full current-tree native database, paired browser/security
+qualification and real INT identity-preserving reset remain open. No migration,
+mail, provider login or Customer admission has been activated.
+
+The integrated057/023 custody tree passed the final full local repository check,
+including both HTTP security gates, and all76 focused invitation/Demo/reset/media/
+recovery cases. Ten scratch-only sequential SQL/service checks passed against the
+integrated57-migration chain, including encrypted issue/replay, wrong-scope/version
+refusal, audit integrity, acceptance evidence guards and populated-down refusal.
+These results do not substitute for native server concurrency/role/TLS or required
+paired browser/reset CI. Earlier failed/pending candidate evidence remains above.
