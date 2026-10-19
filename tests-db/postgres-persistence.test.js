@@ -199,6 +199,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 43, name: 'private_media_metadata' },
       { version: 44, name: 'platform_projection_outbox' },
       { version: 45, name: 'request_workflow_starts' },
+      { version: 46, name: 'catering_integration_configuration' },
     ]);
   });
 
