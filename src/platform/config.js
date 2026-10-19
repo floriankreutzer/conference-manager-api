@@ -1,3 +1,5 @@
+import { resolveDeploymentEnvironment } from '../deployment-environment.js';
+
 const MODES = new Set(['development', 'test', 'pilot', 'production']);
 const HTTP_MODES = new Set([...MODES, 'demo']);
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -173,6 +175,12 @@ function rejectAlias(platformValue, customerValue, code) {
 export function loadPlatformConfig(env) {
   if (!env || typeof env !== 'object' || Array.isArray(env)) fail('PLATFORM_ENV_REQUIRED');
   const mode = parseMode(env);
+  let deploymentEnvironment;
+  try {
+    deploymentEnvironment = resolveDeploymentEnvironment(env.DEPLOYMENT_ENVIRONMENT, mode);
+  } catch (error) {
+    fail(error.message);
+  }
   const productionLike = mode === 'pilot' || mode === 'production';
   const publicOrigin = parseOrigin(env.PLATFORM_PUBLIC_ORIGIN);
   const anyIdentityConfiguration = Boolean(
@@ -262,6 +270,7 @@ export function loadPlatformConfig(env) {
   const supportFallback = mode === 'development' || mode === 'test';
   return Object.freeze({
     mode,
+    deploymentEnvironment,
     identityMode: 'microsoft_entra',
     serviceVersion: parseIdentifier(
       env.PLATFORM_SERVICE_VERSION,
