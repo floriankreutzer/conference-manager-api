@@ -260,3 +260,19 @@ Initial metadata-style long lines were corrected. Full PostgreSQL18, all four
 permanent browser/storage matrices and remote security/source gates remain
 required on the published exact head. No source/catalogue or SaaS4 completion,
 provider qualification, deployment or release is implied by this checkpoint.
+
+
+## Accepted source custody; separate publication preparation
+
+API#229 merged as5bbe97b82dc95589e73a380b6217d40418e18275 after candidateaf77aab /
+tree6df8d03 passed all six CI39317290187 jobs, full PostgreSQL18.6, all four
+permanent Chromium/WebKit x PostgreSQL/objects matrices and security/source
+checks. Actual restricted-role source receipt, cookie/CSRF/Tenant/session,
+concurrency, immutable completion, retained rollback and reset proof passed.
+This supersedes earlier source-pending checkpoints. Frontend#358 pinsaf77 and
+has fresh751 native/15 targeted WebKit proof; complete paired CI remains pending.
+
+Publication is separate unpublished055/Demo021 preparation, documented in
+CATERING-CATALOGUE-PUBLICATION.md. Source acceptance does not imply publication,
+Employee offers, availability, automatic ordering, supplier qualification or
+SaaS4/release acceptance. The source receipt implementation remains unchanged.

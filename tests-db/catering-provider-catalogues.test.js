@@ -43,7 +43,10 @@ test('actual Customer source fences authority, preserves reviewed state, enforce
     pool = createPostgresPool({ mode: 'test', ...database, databaseUrl: url.toString(), databasePoolMax: 6 });
     await migrateUp(pool); await migrateDemoUp(pool, { roles });
     assert.equal(await isPostgresSchemaReady(pool),true);
-    await rollbackLatestDemoMigration(pool,{ roles }); assert.equal(await rollbackLatest(pool),true);
+    await rollbackLatestDemoMigration(pool,{ roles }); // Publication grants021 while canonical055 is ready.
+    await rollbackLatestDemoMigration(pool,{ roles }); // Original source grants020 before either schema rollback.
+    assert.equal(await rollbackLatest(pool),true); // Empty055.
+    assert.equal(await rollbackLatest(pool),true); // Original054.
     await migrateUp(pool); await migrateDemoUp(pool,{ roles });
     function rolePool(role) {
       const scoped = { async connect() {
@@ -224,7 +227,9 @@ test('actual Customer source fences authority, preserves reviewed state, enforce
       [fixture.tenantId,manager.principal.session.id]);
     assert.equal((await request(manager)).status,401);
     await assert.rejects(receive(command(22,3)),(error) => error.code === 'PRINCIPAL_NOT_AUTHORIZED');
+    await rollbackLatestDemoMigration(pool,{ roles }); assert.equal(await rollbackLatest(pool),true); // Empty055/021.
     await assert.rejects(rollbackLatest(pool),/CATERING_PROVIDER_CATALOGUE_ROLLBACK_REQUIRES_REVIEW/);
+    await migrateUp(pool); await migrateDemoUp(pool,{ roles });
     const reset = createPostgresDemoResetRepository({ pool: rolePool(roles.reset),
       expectedDatabaseName: name,expectedResetRole: roles.reset });
     assert.equal((await reset.reset({ fixture: DEMO_FIXTURE,checksum: DEMO_FIXTURE_CHECKSUM })).checksum,DEMO_FIXTURE_CHECKSUM);
@@ -235,7 +240,9 @@ test('actual Customer source fences authority, preserves reviewed state, enforce
       tenantContext: { tenantId: persona.tenantId },correlationId: id(90),action: 'catering.catalogue.received',
       targetType: 'integration',targetId: fixture.integrationId,outcome: 'success',retentionClass: 'business',
       previousState: { revision: 0 },newState: { revision: 1 },metadata: { operation: 'synthetic_audit_only_rollback_probe' } });
+    await rollbackLatestDemoMigration(pool,{ roles }); assert.equal(await rollbackLatest(pool),true); // Empty055/021.
     await assert.rejects(rollbackLatest(pool),/CATERING_PROVIDER_CATALOGUE_ROLLBACK_REQUIRES_REVIEW/);
+    await migrateUp(pool); await migrateDemoUp(pool,{ roles });
     assert.equal((await pool.query('SELECT count(*)::integer AS count FROM catering_provider_catalogue_revisions')).rows[0].count,0);
     assert.equal((await reset.reset({ fixture: DEMO_FIXTURE,checksum: DEMO_FIXTURE_CHECKSUM })).checksum,DEMO_FIXTURE_CHECKSUM);
   });

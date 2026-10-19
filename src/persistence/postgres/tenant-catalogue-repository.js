@@ -625,3 +625,8 @@ export function createPostgresTenantCatalogueRepository(pool, { auditRepository 
     },
   });
 }
+
+
+// For a same-client composition that already holds the Tenant write lock (or
+// equivalent consistent snapshot). Ordinary readers retain loadCurrent's RR.
+export { loadCurrentWithClient as loadTenantCatalogueWithClient };
