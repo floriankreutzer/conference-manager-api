@@ -1,10 +1,11 @@
 # Unsent order withdrawal and replacement
 
-Work in progress on `feat/saas4-catering-unsent-orders`, based on merged API #220
-at main6530407eb94fb66acfb680aa3c755659a6dc3f2d. This file is a branch implementation contract, not
-accepted main, executed PostgreSQL evidence or a release claim. Canonical052 and
-Demo018 are composed with readiness/inventories. Replacement routing is implemented
-on this branch; PostgreSQL execution and cross-repository acceptance remain open.
+Implementation contract building on merged API #220 at
+main6530407eb94fb66acfb680aa3c755659a6dc3f2d. Canonical052 and Demo018 compose the
+readiness/inventory and replacement-routing extension. Dated validation and final
+immutable acceptance evidence are maintained in PR#221; source implementation,
+merged acceptance and deployment are separate facts. No release or live supplier
+qualification is implied by this contract.
 
 ## Local withdrawal
 
@@ -46,7 +47,13 @@ Platform HTTP security tests; dependency audit found zero vulnerabilities. The f
 full run retained a missing derived-field fixture failure, corrected by supplying the
 actual initial delivery field and adding positive/negative projection tests. An
 interrupted execution-environment recovery run is not acceptance evidence.
-Actual052 PostgreSQL execution and required CI/browser acceptance remain pending.
+The actual052 Customer/Platform/Reset progression passed on5e6c305d6b8d1012cd6a6ec4f1b65e7ebdebca97
+in PostgreSQL18.6 job118200238471. That full suite stopped afterwards in the existing
+051 rollback probe because it revoked an overlay after dropping052 readiness.
+The probe now revokes both overlays before canonical rollback, preserving its
+original assertions and the runner's exact-readiness requirement. The earlier
+delivery cleanup FK failure in job118196325273 is retained; cleanup explicitly
+includes the new empty referencing tables. Complete exact-head CI remains required.
 The real-role test covers concurrent/replayed withdrawal, raw SQL denial, audit rollback,
 manual replacement confirmation, synthetic API place/read reconciliation, historical
 immutability, scoped HTTP/session/CSRF and populated/audit-only/empty rollback plus reset.
