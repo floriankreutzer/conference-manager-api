@@ -24,6 +24,7 @@ CREATE TABLE catering_delivery_jobs (
   reconciliation_attempts integer NOT NULL CHECK (reconciliation_attempts BETWEEN 0 AND 10),
   last_observation bigint,
   lease_id uuid,
+  lease_manual boolean NOT NULL DEFAULT false,
   lease_expires_at timestamptz,
   available_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
@@ -40,6 +41,7 @@ CREATE TABLE catering_delivery_jobs (
   FOREIGN KEY (tenant_id,created_by_user_id) REFERENCES users(tenant_id,id) ON DELETE RESTRICT,
   CHECK ((status IN ('leased','dispatching','reconciling'))=(lease_id IS NOT NULL AND lease_expires_at IS NOT NULL)),
   CHECK ((lease_id IS NULL)=(lease_expires_at IS NULL)),
+  CHECK (NOT lease_manual OR status='reconciling'),
   CHECK (status NOT IN ('queued','retry_wait') OR available_at IS NOT NULL),
   CHECK (status NOT IN ('dispatching','reconciling','reconciliation_required','succeeded','failed') OR dispatch_attempts>0),
   CHECK (status NOT IN ('queued','retry_wait') OR dispatch_attempts<3),
@@ -61,7 +63,7 @@ CREATE TABLE catering_delivery_observations (
   sequence bigint NOT NULL CHECK (sequence BETWEEN 1 AND 9007199254740990),
   attempt integer NOT NULL,
   lease_id uuid NOT NULL,
-  kind varchar(16) NOT NULL CHECK (kind IN ('dispatch','reconcile','recovery')),
+  kind varchar(16) NOT NULL CHECK (kind IN ('dispatch','reconcile','manual_reconcile','recovery')),
   outcome varchar(16) NOT NULL CHECK (outcome IN ('not_sent','rejected','unknown','transmitted')),
   retryable boolean NOT NULL DEFAULT false,
   failure_code varchar(32) NOT NULL CHECK (failure_code IN ('none','timeout','throttled','unavailable',
@@ -114,9 +116,9 @@ BEGIN
     WHEN 'deferred' THEN NEW.status='queued'
     ELSE false END;
   IF NOT allowed OR NEW.dispatch_attempts<>OLD.dispatch_attempts
-      +CASE WHEN OLD.status='leased' AND NEW.status='dispatching' THEN 1 ELSE 0 END
+      +(CASE WHEN OLD.status='leased' AND NEW.status='dispatching' THEN 1 ELSE 0 END)
     OR NEW.reconciliation_attempts<>OLD.reconciliation_attempts
-      +CASE WHEN OLD.status='reconciliation_required' AND NEW.status='reconciling' THEN 1 ELSE 0 END
+      +(CASE WHEN OLD.status='reconciliation_required' AND NEW.status='reconciling' AND NOT NEW.lease_manual THEN 1 ELSE 0 END)
     OR (NEW.last_observation IS DISTINCT FROM OLD.last_observation
       AND NEW.last_observation IS DISTINCT FROM coalesce(OLD.last_observation,0)+1)
     OR (NEW.status='dispatching' AND NEW.lease_id IS DISTINCT FROM OLD.lease_id) THEN
@@ -203,7 +205,9 @@ BEGIN
   IF job.lease_id IS DISTINCT FROM NEW.lease_id OR NEW.attempt<>job.dispatch_attempts
     OR NEW.sequence<>coalesce(job.last_observation,0)+1
     OR (NEW.kind='dispatch' AND (job.status<>'dispatching' OR job.lease_expires_at<=clock_timestamp()))
-    OR (NEW.kind='reconcile' AND (job.status<>'reconciling' OR job.lease_expires_at<=clock_timestamp()))
+    OR (NEW.kind='reconcile' AND (job.status<>'reconciling' OR job.lease_manual OR job.lease_expires_at<=clock_timestamp()))
+    OR (NEW.kind='manual_reconcile' AND (job.status<>'reconciling' OR NOT job.lease_manual
+      OR job.lease_expires_at<=clock_timestamp()))
     OR (NEW.kind='recovery' AND (job.status NOT IN ('dispatching','reconciling') OR job.lease_expires_at>clock_timestamp())) THEN
     RAISE EXCEPTION 'CATERING_DELIVERY_OBSERVATION_LEASE_INVALID' USING ERRCODE='23514';
   END IF;

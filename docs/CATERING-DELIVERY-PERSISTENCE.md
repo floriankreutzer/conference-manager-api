@@ -42,7 +42,9 @@ dispatch lease can record unknown recovery; it cannot record a late ordinary suc
 reconciliation uses a different live lease, and stale worker responses cannot overwrite it. Factual
 observations remain recordable after business authority expires: they describe already-authorized
 external work and must not be discarded or cause a new write. New dispatch still requires current
-authority. Automatic reconciliation exhaustion retains unknown state for authorized follow-up.
+authority. Automatic reconciliation exhaustion retains unknown state. A distinct manual read lease can
+record follow-up without resetting that budget or replaying a write. Its authenticated Manager
+command and audit boundary remain required next; this schema does not expose such a command.
 
 Normalized receipts contain exactly Order ID/version and the complete bounded position set, with
 only pending/confirmed/rejected/substitution-proposed outcomes. Tenant-owned position identity,

@@ -116,7 +116,7 @@ test('delivery schema fences actual Customer leases, immutable attempts and exac
       kind === 'recovery' ? 'lease_expired' : outcome === 'transmitted' ? 'none' : 'unknown',
       receipt === null ? null : JSON.stringify(receipt),id(90),retryable]);
     await client.query(`UPDATE catering_delivery_jobs SET revision=revision+1,status=$3,last_observation=$4,
-      lease_id=NULL,lease_expires_at=NULL,available_at=CASE WHEN $3='retry_wait' THEN clock_timestamp() ELSE NULL END,
+      lease_id=NULL,lease_manual=false,lease_expires_at=NULL,available_at=CASE WHEN $3='retry_wait' THEN clock_timestamp() ELSE NULL END,
       updated_at=clock_timestamp() WHERE tenant_id=$1 AND id=$2`,
     [tenantId,selectedJob,status,sequence]);
   }
@@ -178,6 +178,19 @@ test('delivery schema fences actual Customer leases, immutable attempts and exac
     updated_at=clock_timestamp() WHERE tenant_id=$1 AND id=$2`, [tenantId,retryJob,id(2400)])), (error) => error.code === '23514');
   assert.equal((await row(retryJob)).status, 'reconciliation_required');
   assert.equal((await row(retryJob)).available_at, null);
+  // An explicitly authorized future manual-read command can retain a separate
+  // lease without resetting the exhausted automatic budget or replaying writes.
+  await customer((client) => client.query(`UPDATE catering_delivery_jobs SET revision=revision+1,status='reconciling',
+    lease_id=$3,lease_manual=true,lease_expires_at=clock_timestamp()+interval '30 seconds',updated_at=clock_timestamp()
+    WHERE tenant_id=$1 AND id=$2`, [tenantId,retryJob,id(2401)]));
+  const manualReceipt = { orderId: retryOrder.order.orderId, orderVersion: 1,
+    positions: retryOrder.order.positions.map((position) => ({ positionId: position.positionId, outcome: 'confirmed' })) };
+  await customer((client) => observation(client, { token: id(2401), kind: 'manual_reconcile', selectedJob: retryJob,
+    outcome: 'transmitted', receipt: manualReceipt, status: 'succeeded' }));
+  assert.equal((await row(retryJob)).reconciliation_attempts, 10);
+  assert.equal((await row(retryJob)).dispatch_attempts, 3);
+  assert.equal((await row(retryJob)).status, 'succeeded');
+
   const permanentOrder = await fixture.createApprovedOrder(3);
   const permanentJob = id(1003);
   await customer(async (client) => {

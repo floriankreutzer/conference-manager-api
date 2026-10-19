@@ -22,10 +22,10 @@ import { cateringId as id, cateringOrderFixture } from '../../tests/support/cate
 export async function createCateringDeliveryFixture(pool) {
   const authorizationPolicy = createAuthorizationPolicy();
   const registry = createCateringConfigurationRegistry();
-  const auditRepository = createPostgresAuditRepository(pool, { hmacSecret: 'synthetic-delivery-fixture-audit-key-32-bytes' });
+  const auditRepository = createPostgresAuditRepository(pool, { hmacSecret: 'a'.repeat(32) });
   const auditService = createAuditService({ repository: auditRepository, authorizationPolicy });
   const sessionService = createSessionService({ repository: createPostgresSessionRepository(pool, { auditRepository }),
-    auditService, publicOrigin: 'http://localhost:3000', csrfSecret: 'synthetic-delivery-fixture-csrf-key-32-bytes' });
+    auditService, publicOrigin: 'http://localhost:3000', csrfSecret: 'c'.repeat(32) });
   await pool.query("INSERT INTO tenants(id,display_name,status) VALUES ($1,'Synthetic Delivery Tenant','active')", [id(1)]);
   for (const user of [2,20,30]) await pool.query("INSERT INTO users(tenant_id,id,display_name) VALUES ($1,$2,'Synthetic User')",
     [id(1), id(user)]);
