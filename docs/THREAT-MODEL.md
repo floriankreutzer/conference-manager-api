@@ -208,6 +208,16 @@ Tracking: #64-#70.
 
 ## Residual risks and explicit non-claims
 
+The inactive Platform passkey adapter verifies bounded WebAuthn registration and
+signed assertions with mandatory user verification, exact RP/origin/challenge,
+operator/environment-bound credential input and safe fixed errors. No-attestation
+preflight excludes certificate/metadata lookups. A registration response is not
+private-key-possession evidence or a session. Zero counters require durable
+one-use challenges; the adapter provides neither replay persistence nor enrollment
+authority. Bootstrap, recovery, atomic credential/session/audit persistence,
+browser UI and an epoch-safe cutover remain required before replacing the current
+Microsoft Conditional Access composition. See `PLATFORM-PASSKEY-ASSURANCE.md`.
+
 1. The in-process limiter is defense-in-depth, not a cluster-wide quota. Pilot/Production must provide shared edge abuse control and evidence it is active.
 2. The audit HMAC chain detects modification and reordering while the key remains protected but does not independently prove completeness after privileged suffix deletion or stale backup restoration. External anchoring/WORM retention is a deployment/governance decision.
 3. Repository tests do not prove that a real Microsoft application registration, customer consent, Exchange Application RBAC policy or secret rotation is configured correctly. Those are explicit external acceptance gates.
