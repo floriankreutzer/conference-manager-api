@@ -230,6 +230,17 @@ test('durable Platform passkey authentication is bounded, single-use, audited an
 
   await t.test('credential capacity and database constraints preserve ownership and monotonic counters', async () => {
     const f = await setup();
+    for (const [credentialId, publicKey] of [
+      ['', f.fixture.credential.publicKey], ['invalid=encoding', f.fixture.credential.publicKey],
+      ['a'.repeat(1367), f.fixture.credential.publicKey], [hash(), ''],
+      [hash(), 'invalid=encoding'], [hash(), 'a'.repeat(513)],
+    ]) {
+      await assert.rejects(pool.query(`INSERT INTO platform_passkey_credentials
+        (id,operator_id,environment,credential_id,public_key,user_handle,signature_counter,backup_eligible,backed_up)
+        VALUES ($1,$2,'int',$3,$4,$5,0,false,false)`,
+      [randomUUID(), f.operatorId, credentialId, publicKey, f.fixture.userHandle]),
+      error => ['23514', '22001'].includes(error.code));
+    }
     for (let i = 0; i < 4; i += 1) {
       const key = platformPasskeyFixture({ operatorId: f.operatorId });
       await pool.query(`INSERT INTO platform_passkey_credentials
