@@ -109,3 +109,13 @@ test('receipt position bound is inclusive at one hundred distinct internal posit
   const value = { orderId: ORDER_ID, orderVersion: 2, positions: ids.map((positionId) => ({ positionId, outcome: 'confirmed' })) };
   assert.equal(normalizeCateringReceipt(value, { ...expected(), positionIds: ids }).counts.confirmed, 100);
 });
+
+test('full Request capacity permits 101 commercial positions and rejects 102 distinct positions', () => {
+  const ids = Array.from({ length: 102 }, (_, i) => `20000000-0000-4000-8000-${(i + 1).toString(16).padStart(12, '0')}`);
+  const value = (positionIds) => ({ orderId: ORDER_ID, orderVersion: 2,
+    positions: positionIds.map((positionId) => ({ positionId, outcome: 'pending' })) });
+  const allowed = ids.slice(0, 101);
+  assert.equal(normalizeCateringReceipt(value(allowed), { ...expected(), positionIds: allowed }).counts.pending, 101);
+  assert.throws(() => normalizeCateringReceipt(value(ids), { ...expected(), positionIds: ids }), /RECEIPT_INVALID/);
+  assert.throws(() => normalizeCateringReceipt(value(allowed), { ...expected(), positionIds: ids }), /RECEIPT_INVALID/);
+});

@@ -1,4 +1,5 @@
 import { isInternalUuid } from '../domain/identifiers.js';
+import { CATERING_MAX_ORDER_POSITIONS } from '../domain/catering-order-limits.js';
 import { normalizeProviderDescriptor } from './provider-registry.js';
 
 const CATERING_METHODS = Object.freeze({
@@ -10,7 +11,6 @@ const CATERING_METHODS = Object.freeze({
   'catering.status': 'readOrderStatus',
 });
 const POSITION_OUTCOMES = new Set(['pending', 'confirmed', 'rejected', 'substitution_proposed']);
-const MAX_POSITIONS = 100;
 
 function invalidReceipt() {
   throw new TypeError('CATERING_RECEIPT_INVALID');
@@ -29,7 +29,8 @@ function exactRecord(value, keys) {
 
 function positionArray(value) {
   if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype
-    || value.length < 1 || value.length > MAX_POSITIONS || Reflect.ownKeys(value).length !== value.length + 1) invalidReceipt();
+    || value.length < 1 || value.length > CATERING_MAX_ORDER_POSITIONS
+    || Reflect.ownKeys(value).length !== value.length + 1) invalidReceipt();
   for (let index = 0; index < value.length; index += 1) {
     const property = Object.getOwnPropertyDescriptor(value, String(index));
     if (!property || !property.enumerable || !Object.hasOwn(property, 'value')) invalidReceipt();
