@@ -94,8 +94,12 @@ export function createCateringVersionService({ repository, authorizationPolicy, 
           providerCost: normalizeCateringOrderTotal(value.basis.providerCost) });
       }
       const allowed = array(value.allowedOperations, 3).map((operation) => {
-        if (!['change','cancel','exception'].includes(operation) || !basis || !request || basis.status !== 'confirmed'
-          || !['confirmed','rejected','failed'].includes(current.status)
+        if (!['change','cancel','exception'].includes(operation) || !request) invalid();
+        if (basis === null) {
+          if (operation !== 'change' || current.status !== 'withdrawn' || request.status !== 'Confirmed' || assignment === 0) invalid();
+          return operation;
+        }
+        if (basis.status !== 'confirmed' || !['confirmed','rejected','failed','withdrawn'].includes(current.status)
           || (current.status === 'confirmed' && basis.orderVersion !== current.orderVersion)
           || (operation !== 'cancel' && request.status !== 'Confirmed')
           || (operation === 'change' && (request.version === basis.requestVersion || assignment === 0))
@@ -129,17 +133,22 @@ export function createCateringVersionService({ repository, authorizationPolicy, 
       const saved = await repository.propose({ ...authorized, ...command, sessionId: uuid(session.id),
         expectedSecurityVersion: session.securityVersion,
         auditEventFor(values) {
+          const firstDelivery = values.deliveryOperation !== undefined;
           if (values.orderId !== command.orderId || values.orderVersion !== command.expectedOrderVersion + 1
             || values.priorOrderVersion !== command.expectedOrderVersion || values.priorStateRevision !== command.expectedStateRevision
             || values.requestVersion !== command.expectedRequestVersion || values.operation !== command.operation) invalid();
           if (count(values.basisOrderVersion) > command.expectedOrderVersion
             || count(values.sourceRequestVersion) > command.expectedRequestVersion
             || (command.operation !== 'cancel' && values.sourceRequestVersion !== command.expectedRequestVersion)) invalid();
-          return auditService.createEvent({ ...authorized, action: AUDIT_ACTION.CATERING_ORDER_VERSION_PROPOSED,
+          if (firstDelivery && (values.deliveryOperation !== 'initial' || command.operation !== 'change'
+            || values.basisOrderVersion !== command.expectedOrderVersion)) invalid();
+          return auditService.createEvent({ ...authorized, action: firstDelivery
+            ? AUDIT_ACTION.CATERING_ORDER_UNSENT_REPLACED : AUDIT_ACTION.CATERING_ORDER_VERSION_PROPOSED,
             targetType: 'catering_order', targetId: command.orderId, outcome: 'success', retentionClass: 'business',
             previousState: { version: command.expectedOrderVersion, revision: command.expectedStateRevision },
             newState: { version: values.orderVersion, revision: 1, status: 'pending_quote' },
             metadata: { operation: 'catering_version_propose', versionOperation: values.operation,
+              ...(firstDelivery ? { deliveryOperation: 'initial' } : {}),
               requestVersion: values.requestVersion, basisOrderVersion: values.basisOrderVersion,
               sourceRequestVersion: values.sourceRequestVersion } });
         } });

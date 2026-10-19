@@ -37,6 +37,8 @@ export const AUDIT_ACTION = Object.freeze({
   CATERING_DELIVERY_DEFERRED: 'catering.delivery.deferred',
   CATERING_DELIVERY_RECOVERED: 'catering.delivery.recovered',
   CATERING_ORDER_VERSION_PROPOSED: 'catering.order.version_proposed',
+  CATERING_ORDER_WITHDRAWN: 'catering.order.withdrawn',
+  CATERING_ORDER_UNSENT_REPLACED: 'catering.order.unsent_replaced',
   CATERING_MANUAL_TRANSMITTED: 'catering.manual.transmitted',
   CATERING_MANUAL_RECEIPT: 'catering.manual.receipt',
   AUDIT_READ: 'audit.read',

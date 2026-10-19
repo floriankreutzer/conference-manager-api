@@ -117,11 +117,14 @@ export function createCateringOrderService({ repository, registry, authorization
     throw new CateringOrderConflictError(codes[value.status], value.currentRevision ?? null);
   }
   function publicView(value, tenantId, orderId) {
-    record(value, ['tenantId','snapshot','providerId','configurationRevision','operation','state','quote','decision']);
+    const extended = value !== null && typeof value === 'object' && Object.hasOwn(value, 'deliveryOperation');
+    record(value, ['tenantId','snapshot','providerId','configurationRevision','operation','state','quote','decision',
+      ...(extended ? ['deliveryOperation'] : [])]);
     if (value.tenantId !== tenantId || registry.get(value.providerId).id !== value.providerId) invalid();
     const normalized = normalizeCateringOrderSnapshot(value.snapshot, { tenantId, orderId });
     const { tenantId: _tenantId, ...snapshot } = normalized;
     capabilityForCateringOrderOperation(value.operation);
+    if (extended && (value.deliveryOperation !== 'initial' || value.operation !== 'change' || snapshot.orderVersion < 2)) invalid();
     record(value.state, ['revision','status','updatedAt']);
     if (!isCateringOrderStatus(value.state.status)) invalid();
     let quote = null;
@@ -142,7 +145,8 @@ export function createCateringOrderService({ repository, registry, authorization
       decision = Object.freeze({ sequence: counter(value.decision.sequence), decision: value.decision.decision,
         quoteRevision: quote.revision, cost });
     }
-    return Object.freeze({ schemaVersion: 1, order: Object.freeze(snapshot), providerId: value.providerId,
+    return Object.freeze({ schemaVersion: extended ? 2 : 1, order: Object.freeze(snapshot), providerId: value.providerId,
+      ...(extended ? { deliveryOperation: value.deliveryOperation } : {}),
       configurationRevision: counter(value.configurationRevision), operation: value.operation,
       state: Object.freeze({ revision: counter(value.state.revision), status: value.state.status,
         updatedAt: instant(value.state.updatedAt) }),
