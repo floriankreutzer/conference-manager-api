@@ -143,7 +143,8 @@ with the success audit and injected session mutation in the same PostgreSQL
 transaction. Existing session repositories reuse this transaction. Audit/session
 failure rolls all changes back; concurrent redemption can succeed only once,
 including for authenticators whose signature counter stays zero. Returned proof
-context contains no cookie, role or browser-selected authority.
+context contains a locked server-owned operator snapshot for the internal session
+mutation, never browser-selected authority or a cookie.
 
 The current repository has no registration, revocation or recovery endpoint and is
 not imported by the Platform composition. Synthetic signed fixtures and repository
@@ -175,3 +176,37 @@ it cannot satisfy the existing trusted Platform identity schema. No raw Microsof
 token is returned or persisted. No runtime configuration selects this factory yet.
 OIDC state/browser transaction composition, independently authorized enrollment,
 passkey completion, recovery, native DE/EN UI and epoch cutover remain required.
+
+## Passkey authentication application service — not routed
+
+The uncomposed passkey application service resolves the one-use Microsoft-primary
+assertion before starting a login ceremony. Only active stored credentials for the
+current operator/version/environment become UV-required browser options. A
+Microsoft-only result never calls session issuance; missing credentials require the
+separate independently authorized enrollment path rather than implicit registration.
+
+A dedicated narrow-path, Secure, HttpOnly, SameSite=Strict cookie binds the public
+state to an environment/epoch-separated HMAC. Only the authenticated initiating
+browser can retrieve pending options or complete the ceremony. The completion
+body must echo the exact returned state. Cookie duplicates, changed signatures,
+wrong epochs and stale database records fail closed. Cookie presence is not proof
+of login and does not replace exact-Origin, CSRF and abuse controls in the pending
+HTTP routes.
+
+On a verified repository assertion, the service constructs the canonical trusted
+identity from the locked current operator snapshot, with explicitly application
+passkey assurance. It issues the opaque audited session through the existing
+session service inside the same transaction and clears the pre-authentication
+cookie. Sensitive step-up binds the live current session and server-computed
+operation hash and requires both again at execution. It creates a temporary strong
+session only inside the verification transaction, invokes exactly the injected
+server-owned mutation, revokes that temporary session and returns a fresh normal
+MFA session. The temporary cookie never leaves the server. A generic completion
+cannot redeem a step-up ceremony and no reusable strong-session cookie can authorize
+a different operation. The mutation port must use the same PostgreSQL transaction
+and is not an outbound-provider execution port; callback/audit failure rolls back
+redemption, counters, business writes and all session changes together.
+It does not mint a Microsoft acrs claim or derive any privilege from browser data.
+No normal HTTP route or runtime configuration exposes this service yet. OIDC
+pending-flow routing, independent enrollment/recovery, DE/EN UI and epoch-safe
+activation remain required; no real owner/device evidence is implied by fixtures.

@@ -10,7 +10,8 @@ const record = () => ({ id: ID, operatorId: ID, operatorSecurityVersion: 1, envi
 
 test('invalid passkey creation authority and unknown fields fail before acquiring a database connection', async () => {
   let connections = 0;
-  const repository = createPostgresPlatformPasskeyAuthRepository({ async connect() { connections += 1; throw new Error('DB'); } },
+  const repository = createPostgresPlatformPasskeyAuthRepository({ async connect() { connections += 1; throw new Error('DB'); },
+      query() { throw new Error('DB'); } },
     { auditRepository: { appendWithClient() {} }, verifier: { verifyAuthentication() {} } });
   for (const change of [{ operatorId: 'foreign' }, { operatorSecurityVersion: 0 }, { environment: 'demo' }, { securityEpoch: 0 },
     { purpose: 'register' }, { expectedSessionId: ID }, { operationHash: 'a'.repeat(64) }, { roles: ['platform_security_admin'] },
@@ -24,7 +25,8 @@ test('invalid passkey creation authority and unknown fields fail before acquirin
 
 test('passkey authentication requires exact binding and mandatory transactional session mutation', async () => {
   let connections = 0;
-  const repository = createPostgresPlatformPasskeyAuthRepository({ async connect() { connections += 1; throw new Error('DB'); } },
+  const repository = createPostgresPlatformPasskeyAuthRepository({ async connect() { connections += 1; throw new Error('DB'); },
+      query() { throw new Error('DB'); } },
     { auditRepository: { appendWithClient() {} }, verifier: { verifyAuthentication() {} } });
   const { id, correlationId, ttlSeconds, challenge, ...request } = record();
   for (const value of [{ ...request, response: {}, userId: ID }, { ...request, response: {}, securityEpoch: -1 },

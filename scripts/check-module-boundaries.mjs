@@ -30,6 +30,7 @@ const REAL_PRODUCTION_IDENTITY_AND_PROVIDER_MODULES = new Set([
   'src/platform-production-authentication.js',
   'src/platform/identity/entra-client.js',
   'src/platform/identity/primary-operator-service.js',
+  'src/platform/identity/passkey-auth-service.js',
   'src/platform/identity/passkey-verifier.js',
   'src/persistence/postgres/platform-passkey-auth-repository.js',
   'src/platform/identity/entra-auth-service.js',
@@ -182,7 +183,8 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
         `Demo runtime must not reach real Microsoft primary identity (${primaryPath.join(' -> ')}).`));
       const passkeyPath = firstReachablePath(graph, file,
         (dependency) => dependency === 'src/platform/identity/passkey-verifier.js'
-          || dependency === 'src/persistence/postgres/platform-passkey-auth-repository.js');
+          || dependency === 'src/persistence/postgres/platform-passkey-auth-repository.js'
+          || dependency === 'src/platform/identity/passkey-auth-service.js');
       if (passkeyPath) violations.push(violation(file,
         `Demo runtime must not reach real Platform passkey verification (${passkeyPath.join(' -> ')}).`));
     }

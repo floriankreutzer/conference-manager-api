@@ -37,7 +37,8 @@ const BINDING_FIELDS = ['operatorId', 'operatorSecurityVersion', 'environment', 
 async function lockAuthority(client, value) {
   const result = await client.query({
     name: 'platform-passkey-operator-lock',
-    text: `SELECT id, roles, security_version FROM platform_operators
+    text: `SELECT id, roles, security_version, scope_mode, provider, provider_tenant_reference,
+      provider_subject_reference FROM platform_operators
       WHERE id = $1 AND status = 'active' AND security_version = $2 FOR SHARE`,
     values: [value.operatorId, value.operatorSecurityVersion],
   });
@@ -76,11 +77,57 @@ function auditEvent(operator, ceremony, verified) {
 }
 
 export function createPostgresPlatformPasskeyAuthRepository(pool, { auditRepository, verifier } = {}) {
-  if (!pool || typeof pool.connect !== 'function') throw new TypeError('POSTGRES_POOL_REQUIRED');
+  if (!pool || typeof pool.connect !== 'function' || typeof pool.query !== 'function') {
+    throw new TypeError('POSTGRES_POOL_REQUIRED');
+  }
   if (typeof auditRepository?.appendWithClient !== 'function') throw new TypeError('PLATFORM_AUDIT_REPOSITORY_REQUIRED');
   if (typeof verifier?.verifyAuthentication !== 'function') throw new TypeError('PLATFORM_PASSKEY_VERIFIER_REQUIRED');
 
   return Object.freeze({
+    async listActiveCredentialIds(value) {
+      exact(value, ['operatorId', 'operatorSecurityVersion', 'environment']);
+      if (!isInternalUuid(value.operatorId) || !ENVIRONMENTS.has(value.environment)
+        || !Number.isSafeInteger(value.operatorSecurityVersion) || value.operatorSecurityVersion < 1) {
+        throw new TypeError('PLATFORM_PASSKEY_BINDING_INVALID');
+      }
+      const result = await pool.query({ name: 'platform-passkey-active-ids',
+        text: `SELECT c.credential_id FROM platform_passkey_credentials c
+          JOIN platform_operators o ON o.id = c.operator_id
+          WHERE o.id = $1 AND o.security_version = $2 AND o.status = 'active'
+            AND c.environment = $3 AND c.revoked_at IS NULL ORDER BY c.id LIMIT 6`,
+        values: [value.operatorId, value.operatorSecurityVersion, value.environment] });
+      const ids = result.rows.map(row => row.credential_id);
+      if (ids.length > 5 || ids.some(id => typeof id !== 'string' || id.length > 1366
+        || !/^[A-Za-z0-9_-]+$/.test(id) || Buffer.from(id, 'base64url').toString('base64url') !== id)) {
+        throw new Error('PLATFORM_PASSKEY_PERSISTED_CREDENTIAL_INVALID');
+      }
+      return Object.freeze(ids);
+    },
+
+    async findPending(value) {
+      exact(value, ['stateHash', 'browserHash', 'environment', 'securityEpoch']);
+      if (!HASH.test(value.stateHash || '') || !HASH.test(value.browserHash || '')
+        || !ENVIRONMENTS.has(value.environment) || !Number.isSafeInteger(value.securityEpoch) || value.securityEpoch < 1) {
+        throw new TypeError('PLATFORM_PASSKEY_BINDING_INVALID');
+      }
+      const result = await pool.query({ name: 'platform-passkey-pending-binding',
+        text: `SELECT operator_id,operator_security_version,purpose,expected_session_id,
+          operation_hash,challenge,correlation_id FROM platform_passkey_auth_transactions
+          WHERE state_hash = $1 AND browser_hash = $2 AND environment = $3 AND security_epoch = $4
+            AND consumed_at IS NULL AND attempts < 5 AND expires_at > clock_timestamp()`,
+        values: [value.stateHash, value.browserHash, value.environment, value.securityEpoch] });
+      const row = result.rows[0];
+      if (!row) return null;
+      const record = { operatorId: row.operator_id, operatorSecurityVersion: Number(row.operator_security_version),
+        environment: value.environment, securityEpoch: value.securityEpoch, purpose: row.purpose,
+        expectedSessionId: row.expected_session_id, operationHash: row.operation_hash };
+      binding(record);
+      if (!bytes(row.challenge, 32) || !isInternalUuid(row.correlation_id)) {
+        throw new Error('PLATFORM_PASSKEY_PERSISTED_TRANSACTION_INVALID');
+      }
+      return Object.freeze({ ...record, challenge: row.challenge, correlationId: row.correlation_id });
+    },
+
     async create(value) {
       exact(value, [...BINDING_FIELDS, 'id', 'stateHash', 'browserHash', 'challenge', 'correlationId', 'ttlSeconds']);
       binding(value);
@@ -188,6 +235,9 @@ export function createPostgresPlatformPasskeyAuthRepository(pool, { auditReposit
         // A failed audit/session write rolls back redemption and counter together.
         const result = await onVerified(Object.freeze({ operatorId: operator.id,
           securityVersion: Number(operator.security_version), purpose: ceremony.purpose,
+          roles: Object.freeze([...operator.roles]), scopeMode: operator.scope_mode,
+          providerIdentity: Object.freeze({ provider: operator.provider,
+            tenantReference: operator.provider_tenant_reference, subjectReference: operator.provider_subject_reference }),
           expectedSessionId: value.expectedSessionId, operationHash: value.operationHash,
           authenticatedAt: consumed.rows[0].consumed_at.toISOString(), correlationId: ceremony.correlation_id }));
         if (result === null || result === undefined) throw new Error('PLATFORM_PASSKEY_MUTATION_REQUIRED');

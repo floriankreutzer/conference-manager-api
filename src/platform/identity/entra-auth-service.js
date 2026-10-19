@@ -69,11 +69,12 @@ function code(value) {
   return value;
 }
 
-export function createPlatformEntraAuthService({
+function createAuthService({
   repository,
   entraClient,
   identityService,
   sessionService,
+  passkeyAuthService,
   auditService,
   transactionSecret,
   publicOrigin,
@@ -83,7 +84,7 @@ export function createPlatformEntraAuthService({
   transactionTtlSeconds = DEFAULT_TTL_SECONDS,
   randomToken = () => randomBytes(32).toString('base64url'),
   idFactory = () => randomUUID(),
-} = {}) {
+} = {}, primaryOnly = false) {
   if (!repository || typeof repository.create !== 'function' || typeof repository.consume !== 'function') {
     throw new TypeError('PLATFORM_OIDC_TRANSACTION_REPOSITORY_REQUIRED');
   }
@@ -92,33 +93,38 @@ export function createPlatformEntraAuthService({
     || typeof entraClient.authorizationUrl !== 'function'
     || typeof entraClient.redeemAuthorizationCode !== 'function'
   ) throw new TypeError('PLATFORM_ENTRA_CLIENT_REQUIRED');
-  if (!identityService || typeof identityService.verify !== 'function') {
+  if (!primaryOnly && (!identityService || typeof identityService.verify !== 'function')) {
     throw new TypeError('PLATFORM_IDENTITY_SERVICE_REQUIRED');
   }
-  if (
+  if (!primaryOnly && (
     !sessionService
     || typeof sessionService.issue !== 'function'
     || typeof sessionService.rotate !== 'function'
     || typeof sessionService.resolvePrincipal !== 'function'
-  ) throw new TypeError('PLATFORM_SESSION_SERVICE_REQUIRED');
+  )) throw new TypeError('PLATFORM_SESSION_SERVICE_REQUIRED');
   if (
     !auditService
     || typeof auditService.createUnmappedAuthenticationFailure !== 'function'
-    || typeof auditService.createDeniedEvent !== 'function'
+    || (!primaryOnly && typeof auditService.createDeniedEvent !== 'function')
     || typeof auditService.record !== 'function'
   ) throw new TypeError('PLATFORM_AUDIT_SERVICE_REQUIRED');
   exactHttpsOrigin(publicOrigin);
   if (!Number.isSafeInteger(securityEpoch) || securityEpoch < 1) {
     throw new TypeError('PLATFORM_SESSION_EPOCH_INVALID');
   }
-  if (!Number.isSafeInteger(transactionTtlSeconds) || transactionTtlSeconds < 120 || transactionTtlSeconds > 600) {
+  if (!Number.isSafeInteger(transactionTtlSeconds) || transactionTtlSeconds < 120 || transactionTtlSeconds > (primaryOnly ? 300 : 600)) {
     throw new TypeError('PLATFORM_OIDC_TTL_INVALID');
   }
-  if (
+  if (!primaryOnly && (
     typeof mfaAuthenticationContext !== 'string'
     || typeof stepUpAuthenticationContext !== 'string'
     || mfaAuthenticationContext === stepUpAuthenticationContext
-  ) throw new TypeError('PLATFORM_OIDC_AUTHENTICATION_CONTEXT_INVALID');
+  )) throw new TypeError('PLATFORM_OIDC_AUTHENTICATION_CONTEXT_INVALID');
+  if (primaryOnly && (typeof entraClient.verifyPrimary !== 'function'
+    || typeof passkeyAuthService?.startLogin !== 'function'
+    || mfaAuthenticationContext !== undefined || stepUpAuthenticationContext !== undefined)) {
+    throw new TypeError('PLATFORM_PRIMARY_FLOW_CONFIGURATION_INVALID');
+  }
   const secret = Buffer.from(transactionSecret || '', 'utf8');
   if (secret.byteLength < 32 || secret.byteLength > 512) {
     throw new TypeError('PLATFORM_OIDC_TRANSACTION_SECRET_INVALID');
@@ -144,15 +150,16 @@ export function createPlatformEntraAuthService({
 
   return Object.freeze({
     async start({ purpose = 'login', principal: principalValue = null, correlationId } = {}) {
-      if (!['login', 'step_up'].includes(purpose)) throw new TypeError('PLATFORM_OIDC_PURPOSE_INVALID');
+      if ((primaryOnly && purpose !== 'login') || !['login', 'step_up'].includes(purpose)) {
+        throw new TypeError('PLATFORM_OIDC_PURPOSE_INVALID');
+      }
       let principal = null;
       if (purpose === 'step_up') principal = normalizePlatformPrincipal(principalValue);
       if (purpose === 'login' && principalValue !== null) throw new TypeError('PLATFORM_OIDC_LOGIN_PRINCIPAL_FORBIDDEN');
       const state = opaque(randomToken(), 'PLATFORM_OIDC_STATE_FACTORY_INVALID');
       const nonce = opaque(randomToken(), 'PLATFORM_OIDC_NONCE_FACTORY_INVALID');
-      const authenticationContext = purpose === 'step_up'
-        ? stepUpAuthenticationContext
-        : mfaAuthenticationContext;
+      const authenticationContext = primaryOnly ? 'cm:pk:primary:v1'
+        : purpose === 'step_up' ? stepUpAuthenticationContext : mfaAuthenticationContext;
       const flowCorrelationId = correlationId === undefined ? idFactory() : correlationId;
       if (!isInternalUuid(flowCorrelationId)) throw new TypeError('PLATFORM_OIDC_CORRELATION_ID_INVALID');
       await repository.create({
@@ -172,7 +179,7 @@ export function createPlatformEntraAuthService({
         state,
         nonce,
         codeChallenge: createHash('sha256').update(verifier, 'ascii').digest('base64url'),
-        authenticationContext,
+        ...(!primaryOnly ? { authenticationContext } : {}),
       });
       return Object.freeze({
         authorizationUrl,
@@ -208,6 +215,11 @@ export function createPlatformEntraAuthService({
         throw new PlatformIdentityError('PLATFORM_OIDC_STATE_INVALID');
       }
       const flowCorrelationId = transaction.correlationId;
+      if (primaryOnly && (transaction.purpose !== 'login'
+        || transaction.authenticationContext !== 'cm:pk:primary:v1')) {
+        await recordFailure('state_invalid', flowCorrelationId);
+        throw new PlatformIdentityError('PLATFORM_PRIMARY_TRANSACTION_INVALID');
+      }
       if (providerError !== null) {
         if (
           codeValue !== undefined
@@ -227,11 +239,24 @@ export function createPlatformEntraAuthService({
           code: code(codeValue),
           codeVerifier: verifier,
           expectedNonceHash: transaction.nonceHash,
-          authenticationContext: transaction.authenticationContext,
+          ...(!primaryOnly ? { authenticationContext: transaction.authenticationContext } : {}),
         });
       } catch (error) {
         await recordFailure('provider_redeem_failed', flowCorrelationId);
         throw error;
+      }
+      if (primaryOnly) {
+        try {
+          const pending = await passkeyAuthService.startLogin(assertion, { correlationId: flowCorrelationId });
+          if (pending?.status !== 'passkey_required' || pending.principal !== undefined
+            || pending.csrfToken !== undefined || pending.setCookies !== undefined) {
+            throw new PlatformIdentityError('PLATFORM_PRIMARY_PENDING_RESULT_INVALID');
+          }
+          return pending;
+        } catch (error) {
+          await recordFailure('assertion_rejected', flowCorrelationId);
+          throw error;
+        }
       }
       const identity = await identityService.verify(assertion, { correlationId: flowCorrelationId });
       let issued;
@@ -274,4 +299,14 @@ export function createPlatformEntraAuthService({
 
     provider: PLATFORM_ENTRA_PROVIDER,
   });
+}
+
+export function createPlatformEntraAuthService(configuration) {
+  return createAuthService(configuration);
+}
+
+// No primary-only session can be issued: completion delegates only to the
+// independently verified passkey ceremony and never the legacy identity mapper.
+export function createPlatformEntraPrimaryAuthService(configuration = {}) {
+  return createAuthService({ transactionTtlSeconds: 300, ...configuration }, true);
 }

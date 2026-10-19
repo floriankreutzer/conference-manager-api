@@ -10,6 +10,9 @@ import { createPlatformSessionService } from '../src/platform/identity/session-s
 import { permissionsForPlatformRoles } from '../src/platform/identity/policy.js';
 import { createPlatformPasskeyVerifier } from '../src/platform/identity/passkey-verifier.js';
 import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
+import { createPlatformPasskeyAuthService } from '../src/platform/identity/passkey-auth-service.js';
+import { readPlatformPasskeyTransactionCookie } from '../src/platform/identity/passkey-auth-cookie.js';
 import { platformPasskeyFixture } from '../tests/support/platform-passkey-fixture.js';
 
 const roles = ['platform_security_admin'];
@@ -89,6 +92,62 @@ test('durable Platform passkey authentication is bounded, single-use, audited an
     assert.ok((await f.state()).consumed_at);
     assert.equal((await pool.query("SELECT count(*)::int AS count FROM platform_audit_events WHERE target_id = $1",
       [f.record.id])).rows[0].count, 1);
+  });
+
+  await t.test('application login composes pending Microsoft identity, durable options, real signature and actual session', async () => {
+    const f = await setup();
+    const primaryOperatorService = { async resolve(assertion) {
+      assert.equal(assertion, 'synthetic-verified-primary');
+      return { operatorId: f.operatorId, securityVersion: 2, primaryAuthenticatedAt: new Date().toISOString() };
+    } };
+    const service = createPlatformPasskeyAuthService({ repository, primaryOperatorService, verifier, sessionService: sessions,
+      environment: 'int', securityEpoch: 7, transactionSecret: 'p'.repeat(48) });
+    const started = await service.startLogin('synthetic-verified-primary');
+    assert.equal(started.status, 'passkey_required');
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM platform_sessions WHERE operator_id = $1',
+      [f.operatorId])).rows[0].n, 0);
+    const cookie = readPlatformPasskeyTransactionCookie({ cookie: started.setCookie.split(';')[0] });
+    const options = await service.authenticationOptions(cookie);
+    assert.equal(options.options.challenge, started.options.challenge);
+    const response = f.fixture.response('get', { client: { challenge: options.options.challenge } });
+    const completed = await service.complete({ cookie, state: options.state, response });
+    assert.equal(completed.status, 'authenticated');
+    assert.equal(completed.principal.operatorId, f.operatorId);
+    assert.equal(completed.principal.assurance.authenticationContext, 'cm:pk:v1');
+    assert.equal(completed.setCookies.length, 2);
+    await assert.rejects(service.complete({ cookie, state: options.state, response }), /AUTHENTICATION_REJECTED/);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM platform_sessions WHERE operator_id = $1',
+      [f.operatorId])).rows[0].n, 1);
+    await pool.query('CREATE TABLE passkey_test_mutations (id uuid PRIMARY KEY)');
+    const operationHash = hash();
+    const step = await service.startStepUp(completed.principal, { operationHash });
+    const stepCookie = readPlatformPasskeyTransactionCookie({ cookie: step.setCookie.split(';')[0] });
+    const stepResponse = f.fixture.response('get', { counter: 2, client: { challenge: step.options.challenge } });
+    const input = { cookie: stepCookie, state: step.state, response: stepResponse, operationHash,
+      request: { headers: { cookie: completed.setCookies[0].split(';')[0] } } };
+    const mutationId = randomUUID();
+    await assert.rejects(service.executeStepUp(input, () => withPostgresTransaction(pool, async client => {
+      await client.query('INSERT INTO passkey_test_mutations VALUES ($1)', [mutationId]);
+      throw new Error('EXPECTED_BUSINESS_MUTATION_FAILURE');
+    })), /EXPECTED_BUSINESS_MUTATION_FAILURE/);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM passkey_test_mutations')).rows[0].n, 0);
+    assert.equal((await sessions.resolvePrincipal(input.request)).operatorId, f.operatorId);
+    const executed = await service.executeStepUp(input, context => withPostgresTransaction(pool, async client => {
+      assert.equal(context.principal.assurance.level, 'step_up');
+      assert.equal(context.operationHash, operationHash);
+      await client.query('INSERT INTO passkey_test_mutations VALUES ($1)', [mutationId]);
+      return { changed: true };
+    }));
+    assert.equal(executed.status, 'operation_completed');
+    assert.equal(executed.principal.assurance.level, 'mfa');
+    assert.equal(await sessions.resolvePrincipal(input.request), null);
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM platform_sessions WHERE operator_id=$1
+      AND revoked_at IS NULL AND assurance_level='step_up'`, [f.operatorId])).rows[0].n, 0);
+    await assert.rejects(service.executeStepUp(input, () => true), /AUTHENTICATION_REJECTED/);
+    assert.deepEqual(await repository.listActiveCredentialIds({ operatorId: randomUUID(),
+      operatorSecurityVersion: 2, environment: 'int' }), []);
+    assert.deepEqual(await repository.listActiveCredentialIds({ operatorId: f.operatorId,
+      operatorSecurityVersion: 2, environment: 'prod' }), []);
   });
 
   await t.test('wrong browser, owner, epoch, environment, purpose and security version do not consume a legitimate attempt', async () => {
