@@ -210,9 +210,10 @@ test('delivery schema fences actual Customer leases, immutable attempts and exac
     outcome: 'not_sent', retryable: false, status: 'failed' }));
   assert.equal((await row(permanentJob)).status, 'failed');
   assert.equal((await row(permanentJob)).dispatch_attempts, 1);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Revoke overlay016 before recreating its tables.
   assert.equal(await rollbackLatest(pool), true); // Empty manual facts schema050.
   await assert.rejects(rollbackLatest(pool), /CATERING_DELIVERY_ROLLBACK_REQUIRES_REVIEW/);
-  await migrateUp(pool);
+  await migrateUp(pool); await migrateDemoUp(pool, { roles });
   assert.equal(await isPostgresSchemaReady(pool), true);
   await customer(async (client) => {
     assert.deepEqual((await client.query('SELECT * FROM catering_delivery_jobs WHERE tenant_id=$1', [id(99)])).rows, []);
@@ -222,9 +223,10 @@ test('delivery schema fences actual Customer leases, immutable attempts and exac
     outcome: 'success', retentionClass: 'business', metadata: { operation: 'catering_delivery_enqueue' } });
   await customer((client) => fixture.auditRepository.appendWithClient(client, event));
   await pool.query('TRUNCATE catering_delivery_observations,catering_delivery_attempts,catering_delivery_jobs');
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Revoke overlay016 before recreating its tables.
   assert.equal(await rollbackLatest(pool), true); // Empty manual facts schema050.
   await assert.rejects(rollbackLatest(pool), /CATERING_DELIVERY_ROLLBACK_REQUIRES_REVIEW/);
-  await migrateUp(pool);
+  await migrateUp(pool); await migrateDemoUp(pool, { roles });
   assert.equal(await fixture.auditRepository.verifyTenantChain(tenantId), true);
   const resetOrder = await fixture.createApprovedOrder(1);
   await customer(async (client) => {
