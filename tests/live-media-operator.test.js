@@ -316,7 +316,7 @@ test('SQL identity requires exact role/schema/sentinel and every individual muta
   const grants = ['inventory_select', 'inventory_insert', 'inventory_update', 'inventory_delete',
     'room_select', 'room_update', 'catalogue_select', 'catalogue_update'];
   const row = { database: LIVE_MEDIA_TARGET.databaseName, role: LIVE_MEDIA_TARGET.operatorRole,
-    schema_version: 55, overlay_version: 21, sentinel_count: '1', bounded_role: true,
+    schema_version: 56, overlay_version: 22, sentinel_count: '1', bounded_role: true,
     ...Object.fromEntries(grants.map((key) => [key, true])) };
   let query;
   const client = (result) => ({ query: async (sql) => { query = sql; return { rows: result }; } });

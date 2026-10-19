@@ -32,9 +32,10 @@ test('durable Platform passkey authentication is bounded, single-use, audited an
   await migrateUp(pool);
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
-  assert.equal(await rollbackLatest(pool), true); // Empty enrollment055.
-  assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue054.
-  assert.equal(await rollbackLatest(pool), true); // Retained empty credential053 rollback.
+  assert.equal(await rollbackLatest(pool),true); // Empty enrollment056 before retained publication055.
+  assert.equal(await rollbackLatest(pool), true); // Empty publication schema055 before original054/older guard.
+  assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue source schema054.
+  assert.equal(await rollbackLatest(pool), true);
   await migrateUp(pool);
   const verifier = createPlatformPasskeyVerifier({ publicOrigin: 'https://ops-int.example.com', environment: 'int' });
   const auditRepository = createPostgresPlatformAuditRepository(pool, { hmacSecret: 'a'.repeat(48) });
@@ -361,7 +362,8 @@ test('durable Platform passkey authentication is bounded, single-use, audited an
       [other.credentialRecordId]), /IMMUTABLE/);
     await assert.rejects(pool.query('UPDATE platform_passkey_credentials SET operator_id = $1 WHERE id = $2',
       [f.operatorId, other.credentialRecordId]), /IMMUTABLE/);
-    assert.equal(await rollbackLatest(pool), true); // Empty enrollment055 before provider catalogue054.
+    assert.equal(await rollbackLatest(pool),true); // Empty enrollment056 before retained publication055.
+    assert.equal(await rollbackLatest(pool), true); // Empty publication schema055 before original054/older guard.
     assert.equal(await rollbackLatest(pool), true); // Empty054 before the retained053 populated guard.
     await assert.rejects(rollbackLatest(pool), /PLATFORM_PASSKEY_STORAGE_REQUIRES_VERIFIED_RECOVERY/);
     await migrateUp(pool); // Restore current055 readiness without changing retained Platform credentials.

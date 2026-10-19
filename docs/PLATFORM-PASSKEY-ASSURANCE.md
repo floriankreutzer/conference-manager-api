@@ -436,3 +436,25 @@ weakened. Deterministic lifecycle and actual HTTP tests cover listing, addition 
 revocation interleavings with fixed403, no cookie, no private cause, three minimized
 managed denial events and no verifier/repository effect. The initial style failure
 was an overlong fixture-return line, wrapped without changing assertions.
+
+
+## Current main integration after publication custody
+
+The unmerged enrollment candidate now follows accepted publication055/Demo021
+as056/Demo022. Earlier dated055/021 enrollment checkpoints above are historical
+candidate numbering and do not describe current deployable schema authority.
+Accepted publication files/checksums remain unchanged. Exact readiness, Demo reset
+inventory, upgrade guards, media tools and historical rollback tests require the
+combined056/022 chain. Original publication055, catalogue054 and credential053
+rollback and role-denial assertions remain present; this integration needs its own
+full current-tree local, native database and paired browser/security qualification.
+No live grant, key, assurance-mode change or INT activation has occurred.
+
+During this integration, the initial focused reset suite exposed a retained055
+sentinel constant after the stream had advanced to056. The reset inventory now
+requires056, preserving the original sentinel and rollback assertions. The final
+66 focused Demo/reset/media/recovery tests passed. A separate scratch-only
+PostgreSQL18.6/WASM preflight applied all56 migrations, verified empty056 down and
+rollback restoration; it does not qualify native pools, concurrency, TLS, Demo
+roles, complete paired browsers or required GitHub checks. Full final validation
+and native/paired current-head acceptance remain required for the integrated tree.

@@ -1,3 +1,10 @@
+import { createCateringCataloguePublicationService } from './application/catering-catalogue-publication-service.js';
+import { createCateringCataloguePublicationReadService } from './application/catering-catalogue-publication-read-service.js';
+import { createCateringCataloguePublicationRouteModule } from './http/catering-catalogue-publication.js';
+import { createPostgresCateringCataloguePublicationRepository
+} from './persistence/postgres/catering-catalogue-publication-repository.js';
+import { createPostgresCateringCataloguePublicationReadRepository
+} from './persistence/postgres/catering-catalogue-publication-read-repository.js';
 import { createCateringProviderCatalogueService } from './application/catering-provider-catalogue-service.js';
 import { createCateringProviderCatalogueRouteModule } from './http/catering-provider-catalogues.js';
 import { createPostgresCateringProviderCatalogueRepository } from './persistence/postgres/catering-provider-catalogue-repository.js';
@@ -38,6 +45,12 @@ export function createCateringConfigurationRouteModules({ config, persistence, a
   const providerCatalogueService = createCateringProviderCatalogueService({ registry, authorizationPolicy, auditService,
     maxResponseBytes: config.maxResponseBytes, repository: createPostgresCateringProviderCatalogueRepository(persistence.pool,
       { registry, auditRepository: persistence.auditRepository }) });
+  const publicationService = createCateringCataloguePublicationService({ authorizationPolicy,auditService,
+    repository: createPostgresCateringCataloguePublicationRepository(persistence.pool,
+      { registry,auditRepository: persistence.auditRepository }) });
+  const publicationReadService = createCateringCataloguePublicationReadService({ registry,authorizationPolicy,auditService,
+    maxResponseBytes: config.maxResponseBytes,
+    repository: createPostgresCateringCataloguePublicationReadRepository(persistence.pool,{ registry }) });
   return Object.freeze([defineRouteModule({
     id: 'catering-configuration', routeKey: cateringConfigurationRouteKey,
     createHandler(runtime) {
@@ -47,5 +60,6 @@ export function createCateringConfigurationRouteModules({ config, persistence, a
       });
     },
   }), createCateringCatalogueAssignmentRouteModule(assignmentService), createCateringOperationalHealthRouteModule(healthService),
-  createCateringProviderCatalogueRouteModule(providerCatalogueService)]);
+  createCateringProviderCatalogueRouteModule(providerCatalogueService),
+  createCateringCataloguePublicationRouteModule(publicationService,publicationReadService)]);
 }
