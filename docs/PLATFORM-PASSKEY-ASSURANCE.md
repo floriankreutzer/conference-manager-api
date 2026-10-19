@@ -148,7 +148,30 @@ context contains no cookie, role or browser-selected authority.
 The current repository has no registration, revocation or recovery endpoint and is
 not imported by the Platform composition. Synthetic signed fixtures and repository
 checks do not prove owner device enrollment or deployed INT behavior. Schema
-readiness advances to exact053/018; the Demo receives no privileges on these real
-Platform tables. Historical schema rollback tests explicitly drain the empty053
+readiness advances to exact053/019; Customer/Platform Demo roles receive no privileges on these real
+Platform tables. Demo overlay019 grants only TRUNCATE to the separate reset role
+so the sentinel-checked full reset includes their foreign keys without exposing
+keys or enabling enrollment/authentication in the synthetic Demo. Historical schema rollback tests explicitly drain the empty053
 migration before exercising their original guards. Populated053 rollback fails
 closed and requires a reviewed recovery/cutover plan; the current epoch is unchanged.
+
+## Microsoft primary identity port — inactive until full composition
+
+The separate `createPlatformEntraPrimaryClient` factory retains the same fixed
+Microsoft authority, confidential code/PKCE exchange, nonce, exact issuer/audience,
+operator directory, stable object subject and token-time checks. It requests
+`openid profile`, essential `auth_time` and a bounded 60–300 second `max_age`.
+It requests no Conditional Access context or offline grant and does not interpret
+provider roles, groups, email or incidental MFA claims as application authority.
+The existing factory and HTTP redirect validator continue to require their exact
+CA contexts; they cannot accept a primary-only result.
+
+Primary assertions are opaque, instance-bound, expiring and one-use. The factory
+exposes `verifyPrimary`, never the assurance verifier's `verify` method. The
+pending operator service accepts only the exact active provisioned provider
+identity, returns operator/version/provider/fresh-primary-time binding and audits
+resolution failures. Its output has no roles, permissions, assurance or session;
+it cannot satisfy the existing trusted Platform identity schema. No raw Microsoft
+token is returned or persisted. No runtime configuration selects this factory yet.
+OIDC state/browser transaction composition, independently authorized enrollment,
+passkey completion, recovery, native DE/EN UI and epoch cutover remain required.

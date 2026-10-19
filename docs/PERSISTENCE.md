@@ -363,7 +363,7 @@ distinct.
 
 The canonical `migrations/` stream remains the source of the business schema and must contain the
 exact applied sequence `001..053`. The independent `demo-migrations/` stream has its own
-`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `018`
+`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `019`
 installs the immutable database sentinel, provider/persona reference tables, minimized views and
 role grants, private Room/Catering media and create/attach lifecycle support. Overlay 004 grants only `INSERT` and `TRUNCATE` on the canonical attribution
 migration-state singleton to the reset role; customer and Platform roles receive no access. The

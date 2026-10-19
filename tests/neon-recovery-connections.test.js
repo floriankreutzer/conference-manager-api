@@ -44,7 +44,7 @@ function fixture({ env = environment(), connectError, closeError, queryHook, clo
         if (sql.startsWith('SELECT session_user')) return { rows: [{ login: role, role,
           database: 'conference_manager_demo_shared', read_only: 'on', observed_at: new Date(clock?.wall ?? now) }] };
         if (sql.startsWith('SELECT current_user')) return { rows: [{ role, database: 'conference_manager_demo_shared' }] };
-        if (sql.includes('max(version)')) return { rows: [{ runtime: 53, overlay: 18 }] };
+        if (sql.includes('max(version)')) return { rows: [{ runtime: 53, overlay: 19 }] };
         if (sql.includes('to_regclass')) return { rows: [{ marker: null }] };
         if (sql.includes('pg_catalog.pg_class')) return { rows: [{ kind: 'v', owner: 'cm_demo_migration' }] };
         if (sql.includes('FROM public.neon_recovery_acceptance')) return { rows: [{ ...marker }] };

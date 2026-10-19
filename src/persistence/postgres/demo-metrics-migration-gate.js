@@ -25,7 +25,7 @@ async function state(client, expected) {
     || row.actual_role !== expected.migration || row.canonical_owner !== expected.migration || row.demo_owner !== expected.migration
     || row.customer_role !== expected.customer || row.platform_role !== expected.platform || row.reset_role !== expected.reset
     || ![44, 45, 46, 47, 48, 49, 50, 51, 52, 53].some((version) => sequence(row.canonical_versions, version))
-    || ![9, 10, 11, 12, 13, 14, 15, 16, 17, 18].some((version) => sequence(row.demo_versions, version))
+    || ![9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19].some((version) => sequence(row.demo_versions, version))
     || (row.canonical_versions.length === 44 && row.demo_versions.length !== 9)
     || (row.canonical_versions.length === 45 && row.demo_versions.length > 11)
     || (row.canonical_versions.length === 46 && row.demo_versions.length > 12)
@@ -33,6 +33,7 @@ async function state(client, expected) {
     || (row.canonical_versions.length === 48 && row.demo_versions.length > 14)
     || (row.canonical_versions.length === 49 && row.demo_versions.length > 15)
     || (row.canonical_versions.length === 50 && row.demo_versions.length > 16)
+    || (row.canonical_versions.length === 52 && row.demo_versions.length > 18)
     || (row.canonical_versions.length === 51 && row.demo_versions.length > 17)) {
     throw new Error('DEMO_METRICS_MIGRATION_PRECONDITIONS_FAILED');
   }
@@ -57,7 +58,7 @@ export async function withDemoMetricsMigrationGate(pool, expected, upgrade) {
     const before = await state(client, expected);
     await upgrade();
     const after = await state(client, expected);
-    if (after.canonicalVersion !== 53 || after.demoVersion !== 18
+    if (after.canonicalVersion !== 53 || after.demoVersion !== 19
       || after.retained.some((count, index) => count !== before.retained[index])) {
       throw new Error('DEMO_METRICS_MIGRATION_READBACK_FAILED');
     }

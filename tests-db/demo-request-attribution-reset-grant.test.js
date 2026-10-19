@@ -113,7 +113,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
 
   await migrateUp(pool);
   await createRoles(pool);
-  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 18);
+  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 19);
 
   await t.test('fresh install records all Demo overlays and permits the real reset sequence', async () => {
     await migrateDemoUp(pool, { roles: ROLES });
@@ -136,7 +136,16 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
       { version: 16, name: 'catering_manual_delivery_privileges', checksum_length: 64 },
       { version: 17, name: 'catering_version_proposal_privileges', checksum_length: 64 },
       { version: 18, name: 'catering_unsent_order_privileges', checksum_length: 64 },
+      { version: 19, name: 'platform_passkey_reset_privileges', checksum_length: 64 },
     ]);
+    for (const table of ['platform_passkey_credentials', 'platform_passkey_auth_transactions']) {
+      for (const [surface, role] of Object.entries(ROLES)) {
+        for (const privilege of ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) {
+          const grant = await pool.query('SELECT has_table_privilege($1, $2, $3) AS permitted', [role, table, privilege]);
+          assert.equal(grant.rows[0].permitted, surface === 'reset' && privilege === 'TRUNCATE');
+        }
+      }
+    }
     assert.deepEqual(await privileges(pool, ROLES.reset), {
       insert_allowed: true,
       truncate_allowed: true,

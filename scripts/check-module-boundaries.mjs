@@ -29,6 +29,7 @@ const REAL_PRODUCTION_IDENTITY_AND_PROVIDER_MODULES = new Set([
   'src/integrations/microsoft365-calendar-provider.js',
   'src/platform-production-authentication.js',
   'src/platform/identity/entra-client.js',
+  'src/platform/identity/primary-operator-service.js',
   'src/platform/identity/passkey-verifier.js',
   'src/persistence/postgres/platform-passkey-auth-repository.js',
   'src/platform/identity/entra-auth-service.js',
@@ -175,6 +176,10 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
       violations.push(violation(file, 'the WebAuthn SDK is restricted to the private Platform passkey verifier.'));
     }
     if (isInside(file, 'src/demo')) {
+      const primaryPath = firstReachablePath(graph, file,
+        (dependency) => dependency === 'src/platform/identity/primary-operator-service.js');
+      if (primaryPath) violations.push(violation(file,
+        `Demo runtime must not reach real Microsoft primary identity (${primaryPath.join(' -> ')}).`));
       const passkeyPath = firstReachablePath(graph, file,
         (dependency) => dependency === 'src/platform/identity/passkey-verifier.js'
           || dependency === 'src/persistence/postgres/platform-passkey-auth-repository.js');

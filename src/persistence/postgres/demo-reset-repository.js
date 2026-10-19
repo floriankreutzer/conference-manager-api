@@ -122,6 +122,8 @@ export const DEMO_RESET_TABLES = Object.freeze([
   'platform_operator_tenant_scopes',
   'platform_sessions',
   'platform_oidc_auth_transactions',
+  'platform_passkey_auth_transactions',
+  'platform_passkey_credentials',
   'platform_break_glass_grants',
   'platform_break_glass_alert_outbox',
   'platform_security_alert_outbox',
