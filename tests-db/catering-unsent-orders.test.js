@@ -49,7 +49,10 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
   pool = createPostgresPool({ mode: 'test', ...database, databaseUrl: url.toString(), databasePoolMax: 6 });
   await migrateUp(pool); await migrateDemoUp(pool, { roles });
   assert.equal(await isPostgresSchemaReady(pool), true);
-  await rollbackLatestDemoMigration(pool, { roles }); assert.equal(await rollbackLatest(pool), true);
+  await rollbackLatestDemoMigration(pool, { roles }); // Passkey reset grants019.
+  await rollbackLatestDemoMigration(pool, { roles }); // Unsent grants018 while canonical053 is still ready.
+  assert.equal(await rollbackLatest(pool), true); // Empty passkey storage053.
+  assert.equal(await rollbackLatest(pool), true); // Empty unsent storage052.
   await migrateUp(pool); await migrateDemoUp(pool, { roles });
   const manualRegistry = createCateringConfigurationRegistry(); let currentRegistry = manualRegistry;
   const registry = { get: (providerId) => currentRegistry.get(providerId) };
@@ -276,6 +279,8 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
     await assert.rejects(customer.query(sql), (error) => error.code === '42501');
     await assert.rejects(pool.query(sql), /CATERING_ORDER_HISTORY_APPEND_ONLY/);
   }
+  await rollbackLatestDemoMigration(pool, { roles }); // Remove grants019 before empty053.
+  assert.equal(await rollbackLatest(pool), true); // Exercise the unchanged052 rollback guard below.
   await assert.rejects(rollbackLatest(pool), /CATERING_UNSENT_ROLLBACK_REQUIRES_REVIEW/);
   await pool.query(`TRUNCATE catering_unsent_replacements,catering_order_withdrawals,catering_version_proposals,
     catering_manual_delivery_heads,
@@ -283,6 +288,7 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
     catering_order_version_states,catering_order_decisions,catering_order_quotes,catering_order_heads,catering_order_version_seals,
     catering_order_positions,catering_order_versions,catering_orders`);
   await assert.rejects(rollbackLatest(pool), /CATERING_UNSENT_ROLLBACK_REQUIRES_REVIEW/);
+  await migrateUp(pool); await migrateDemoUp(pool, { roles }); // Restore exact053/019 before runtime/reset.
   const resetSource = await fixture.createPreparedOrder(100); await withdrawals.withdraw(command(resetSource));
   assert.equal((await pool.query('SELECT count(*)::integer AS n FROM catering_order_withdrawals')).rows[0].n, 1);
   await pool.query('UPDATE sessions SET revoked_at=clock_timestamp() WHERE tenant_id=$1 AND id=$2',
@@ -293,6 +299,8 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
   assert.equal((await reset.reset({ fixture: DEMO_FIXTURE, checksum: DEMO_FIXTURE_CHECKSUM })).checksum, DEMO_FIXTURE_CHECKSUM);
   assert.equal((await pool.query('SELECT count(*)::integer AS n FROM catering_order_withdrawals')).rows[0].n, 0);
   assert.equal((await pool.query('SELECT count(*)::integer AS n FROM catering_unsent_replacements')).rows[0].n, 0);
-  await rollbackLatestDemoMigration(pool, { roles }); await rollbackLatest(pool);
+  await rollbackLatestDemoMigration(pool, { roles }); //019 before changing canonical readiness.
+  await rollbackLatestDemoMigration(pool, { roles }); //018 before changing canonical readiness.
+  await rollbackLatest(pool); await rollbackLatest(pool); // Empty053 and052.
   await migrateUp(pool); await migrateDemoUp(pool, { roles }); assert.equal(await isPostgresSchemaReady(pool), true);
 });

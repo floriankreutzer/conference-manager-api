@@ -71,6 +71,17 @@ function exactClaims(value, authenticationContext) {
     && acrs.values[0] === authenticationContext;
 }
 
+function exactPrimaryClaims(value) {
+  if (typeof value !== 'string' || value.length > 4096) return false;
+  try {
+    const claims = JSON.parse(value);
+    return claims && Object.keys(claims).join(',') === 'id_token'
+      && claims.id_token && Object.keys(claims.id_token).join(',') === 'auth_time'
+      && claims.id_token.auth_time && Object.keys(claims.id_token.auth_time).join(',') === 'essential'
+      && claims.id_token.auth_time.essential === true;
+  } catch { return false; }
+}
+
 function exactScopes(value) {
   if (typeof value !== 'string') return false;
   const scopes = value.split(' ').filter(Boolean);
@@ -83,7 +94,7 @@ function exactOrOpaque(actual, expected) {
   return OPAQUE_PATTERN.test(actual || '') && (expected === undefined || actual === expected);
 }
 
-export function validatePlatformEntraAuthorizationUrl(value, {
+function validateAuthorizationUrl(value, {
   authority,
   clientId,
   redirectUri,
@@ -92,7 +103,7 @@ export function validatePlatformEntraAuthorizationUrl(value, {
   expectedState,
   expectedNonce,
   expectedCodeChallenge,
-} = {}) {
+} = {}, primaryOnly = false) {
   let parsed;
   let expectedAuthority;
   try {
@@ -114,10 +125,11 @@ export function validatePlatformEntraAuthorizationUrl(value, {
     || typeof clientId !== 'string'
     || !GUID_PATTERN.test(clientId)
     || typeof redirectUri !== 'string'
-    || typeof authenticationContext !== 'string'
+    || (primaryOnly ? authenticationContext !== undefined : typeof authenticationContext !== 'string')
     || !Number.isSafeInteger(authenticationMaxAgeSeconds)
     || authenticationMaxAgeSeconds < 0
-    || authenticationMaxAgeSeconds > 1_800
+    || authenticationMaxAgeSeconds > (primaryOnly ? 300 : 1_800)
+    || (primaryOnly && authenticationMaxAgeSeconds < 60)
   ) invalid();
   const keys = [...parsed.searchParams.keys()];
   if (
@@ -140,7 +152,8 @@ export function validatePlatformEntraAuthorizationUrl(value, {
     || !exactOrOpaque(parsed.searchParams.get('nonce'), expectedNonce)
     || !exactOrOpaque(parsed.searchParams.get('code_challenge'), expectedCodeChallenge)
     || !exactScopes(parsed.searchParams.get('scope'))
-    || !exactClaims(parsed.searchParams.get('claims'), authenticationContext)
+    || !(primaryOnly ? exactPrimaryClaims(parsed.searchParams.get('claims'))
+      : exactClaims(parsed.searchParams.get('claims'), authenticationContext))
     || ![null, '1'].includes(parsed.searchParams.get('client_info'))
     || (clientRequestId !== null && !GUID_PATTERN.test(clientRequestId))
     || ![null, 'true'].includes(returnClientRequestId)
@@ -151,4 +164,12 @@ export function validatePlatformEntraAuthorizationUrl(value, {
     || (version !== null && !VERSION_PATTERN.test(version))
   ) invalid();
   return parsed.toString();
+}
+
+export function validatePlatformEntraAuthorizationUrl(value, contract) {
+  return validateAuthorizationUrl(value, contract);
+}
+
+export function validatePlatformEntraPrimaryAuthorizationUrl(value, contract) {
+  return validateAuthorizationUrl(value, contract, true);
 }

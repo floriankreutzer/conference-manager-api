@@ -10,7 +10,7 @@ the preceding plan to rely exclusively on Conditional Access contexts.
 Root `AGENTS.md` and the existing Platform authorization/session/audit contracts
 remain authoritative. The approved replacement is staged work, not an active
 login mode. Current compositions still enforce the existing Microsoft MFA and
-step-up contexts. This slice adds only an uncomposed cryptographic adapter;
+step-up contexts. This branch adds an uncomposed cryptographic adapter and durable authentication repository;
 neither configuration nor token validation accepts weaker assurance.
 
 ## Target trust flow — not yet composed
@@ -87,8 +87,8 @@ real signed protocol fixtures, not business authorization.
 
 ## Required work before activation
 
-- Versioned PostgreSQL credential/ceremony/bootstrap-grant persistence; atomic
-  single-use redemption, counter updates, expiry, attempt/rate limits and audits.
+- Independently authorized bootstrap-grant persistence and credential lifecycle/recovery services.
+  The authentication persistence described below does not authorize enrollment.
 - Bind every ceremony to environment, operator, purpose, initiating browser,
   exact active credential and current security version; additionally bind step-up
   to the current session and sensitive operation. Browser timeout is not expiry.
@@ -108,3 +108,105 @@ real signed protocol fixtures, not business authorization.
 
 References: https://simplewebauthn.dev/docs/packages/server and
 https://www.w3.org/TR/webauthn-3/.
+
+## Durable authentication repository — inactive until composition
+
+Migration053 adds separate Platform credential and authentication-ceremony tables.
+Only public keys, public credential identifiers, random handles, counters and backup
+flags are stored for credentials. No private key, raw session token or browser
+secret is stored. Credential identity/public key/owner/environment are immutable;
+revocation cannot be undone, counters cannot decrease and history cannot be deleted.
+A database trigger serializes enrollment capacity at five active keys per operator
+and environment. Adding or revoking a credential increments the existing operator
+security version, invalidating older sessions and pending ceremonies. Runtime
+lifecycle services must lock the operator before credentials and supply separate
+strong enrollment authority; there is deliberately no enrollment HTTP route here.
+
+`platform-passkey-auth-repository.js` creates database-clock ceremonies lasting
+60–300 seconds, bound to the initiating browser hash, exact operator/security
+version, environment, security epoch and purpose. Step-up also binds the current
+session and a server-computed operation hash. Primary Microsoft identity validation
+must happen before a future composition calls this port. Creating a record alone
+is not evidence of Microsoft authentication and grants no application authority.
+
+Creation is serialized per operator with a fixed-namespace advisory lock. Five
+unexpired records, including exhausted and completed ones, bound the number of
+ceremonies within their server-chosen 60–300 second lifetime. Each ceremony permits five verification attempts.
+Wrong browser or authority bindings cannot burn another browser's attempt budget.
+This bound supplements, and does not replace, HTTP/IP abuse controls at activation.
+
+Authentication locks current operator/session authority, the ceremony and the
+operator-owned credential. Real SDK signature verification runs against the locked
+counter. An invalid assertion commits the attempt and minimized denial audit.
+Success rechecks expiry and authority, consumes the ceremony and updates the counter
+with the success audit and injected session mutation in the same PostgreSQL
+transaction. Existing session repositories reuse this transaction. Audit/session
+failure rolls all changes back; concurrent redemption can succeed only once,
+including for authenticators whose signature counter stays zero. Returned proof
+context contains a locked server-owned operator snapshot for the internal session
+mutation, never browser-selected authority or a cookie.
+
+The current repository has no registration, revocation or recovery endpoint and is
+not imported by the Platform composition. Synthetic signed fixtures and repository
+checks do not prove owner device enrollment or deployed INT behavior. Schema
+readiness advances to exact053/019; Customer/Platform Demo roles receive no privileges on these real
+Platform tables. Demo overlay019 grants only TRUNCATE to the separate reset role
+so the sentinel-checked full reset includes their foreign keys without exposing
+keys or enabling enrollment/authentication in the synthetic Demo. Historical schema rollback tests explicitly drain the empty053
+migration before exercising their original guards. Populated053 rollback fails
+closed and requires a reviewed recovery/cutover plan; the current epoch is unchanged.
+
+## Microsoft primary identity port — inactive until full composition
+
+The separate `createPlatformEntraPrimaryClient` factory retains the same fixed
+Microsoft authority, confidential code/PKCE exchange, nonce, exact issuer/audience,
+operator directory, stable object subject and token-time checks. It requests
+`openid profile`, essential `auth_time` and a bounded 60–300 second `max_age`.
+It requests no Conditional Access context or offline grant and does not interpret
+provider roles, groups, email or incidental MFA claims as application authority.
+The existing factory and HTTP redirect validator continue to require their exact
+CA contexts; they cannot accept a primary-only result.
+
+Primary assertions are opaque, instance-bound, expiring and one-use. The factory
+exposes `verifyPrimary`, never the assurance verifier's `verify` method. The
+pending operator service accepts only the exact active provisioned provider
+identity, returns operator/version/provider/fresh-primary-time binding and audits
+resolution failures. Its output has no roles, permissions, assurance or session;
+it cannot satisfy the existing trusted Platform identity schema. No raw Microsoft
+token is returned or persisted. No runtime configuration selects this factory yet.
+OIDC state/browser transaction composition, independently authorized enrollment,
+passkey completion, recovery, native DE/EN UI and epoch cutover remain required.
+
+## Passkey authentication application service — not routed
+
+The uncomposed passkey application service resolves the one-use Microsoft-primary
+assertion before starting a login ceremony. Only active stored credentials for the
+current operator/version/environment become UV-required browser options. A
+Microsoft-only result never calls session issuance; missing credentials require the
+separate independently authorized enrollment path rather than implicit registration.
+
+A dedicated narrow-path, Secure, HttpOnly, SameSite=Strict cookie binds the public
+state to an environment/epoch-separated HMAC. Only the authenticated initiating
+browser can retrieve pending options or complete the ceremony. The completion
+body must echo the exact returned state. Cookie duplicates, changed signatures,
+wrong epochs and stale database records fail closed. Cookie presence is not proof
+of login and does not replace exact-Origin, CSRF and abuse controls in the pending
+HTTP routes.
+
+On a verified repository assertion, the service constructs the canonical trusted
+identity from the locked current operator snapshot, with explicitly application
+passkey assurance. It issues the opaque audited session through the existing
+session service inside the same transaction and clears the pre-authentication
+cookie. Sensitive step-up binds the live current session and server-computed
+operation hash and requires both again at execution. It creates a temporary strong
+session only inside the verification transaction, invokes exactly the injected
+server-owned mutation, revokes that temporary session and returns a fresh normal
+MFA session. The temporary cookie never leaves the server. A generic completion
+cannot redeem a step-up ceremony and no reusable strong-session cookie can authorize
+a different operation. The mutation port must use the same PostgreSQL transaction
+and is not an outbound-provider execution port; callback/audit failure rolls back
+redemption, counters, business writes and all session changes together.
+It does not mint a Microsoft acrs claim or derive any privilege from browser data.
+No normal HTTP route or runtime configuration exposes this service yet. OIDC
+pending-flow routing, independent enrollment/recovery, DE/EN UI and epoch-safe
+activation remain required; no real owner/device evidence is implied by fixtures.

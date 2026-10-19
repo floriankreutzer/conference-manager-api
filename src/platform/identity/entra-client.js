@@ -5,6 +5,7 @@ import { canonicalizePlatformEntraSdkUrl } from './entra-sdk-authorization-url.j
 import {
   PLATFORM_ENTRA_SCOPES,
   validatePlatformEntraAuthorizationUrl,
+  validatePlatformEntraPrimaryAuthorizationUrl,
 } from './entra-authorization-url.js';
 
 export const PLATFORM_ENTRA_PROVIDER = 'microsoft_entra_platform';
@@ -85,12 +86,11 @@ function fixedPublicOrigin(value) {
   return parsed.origin;
 }
 
-function validateClaims(claims, {
+function validateTokenIdentity(claims, {
   clientId,
   tenantReference,
   authority,
   expectedNonceHash,
-  requestedAuthenticationContext,
   requestedAuthenticationMaxAgeSeconds,
   clock,
 }) {
@@ -120,23 +120,20 @@ function validateClaims(claims, {
     fail('PLATFORM_ENTRA_NOT_YET_VALID');
   }
   if (claims.ver !== '2.0') fail('PLATFORM_ENTRA_TOKEN_VERSION_INVALID');
-  if (
-    !Array.isArray(claims.acrs)
-    || claims.acrs.length !== 1
-    || claims.acrs[0] !== requestedAuthenticationContext
-  ) fail('PLATFORM_ASSURANCE_CONTEXT_REJECTED');
   return Object.freeze({
-    provider: PLATFORM_ENTRA_PROVIDER,
-    issuer,
-    audience: clientId,
-    tenantReference,
-    subjectReference,
-    authenticationContext: requestedAuthenticationContext,
+    provider: PLATFORM_ENTRA_PROVIDER, issuer, audience: clientId, tenantReference, subjectReference,
     authenticatedAt: new Date(claims.auth_time * 1000).toISOString(),
   });
 }
 
-export function createPlatformEntraClient({
+function validateClaims(claims, contract) {
+  const identity = validateTokenIdentity(claims, contract);
+  if (!Array.isArray(claims.acrs) || claims.acrs.length !== 1
+    || claims.acrs[0] !== contract.requestedAuthenticationContext) fail('PLATFORM_ASSURANCE_CONTEXT_REJECTED');
+  return Object.freeze({ ...identity, authenticationContext: contract.requestedAuthenticationContext });
+}
+
+function createClient({
   clientId,
   clientSecret,
   tenantReference: tenantValue,
@@ -148,26 +145,30 @@ export function createPlatformEntraClient({
   authenticationMaxAgeSeconds = 15 * 60,
   clock = () => Date.now(),
   application,
-} = {}) {
+} = {}, primaryOnly = false) {
   const tenantReference = requireGuid(tenantValue, 'PLATFORM_ENTRA_TENANT_INVALID');
   if (!GUID_PATTERN.test(clientId || '')) throw new TypeError('PLATFORM_ENTRA_CLIENT_ID_INVALID');
   const normalizedClientId = clientId.toLowerCase();
-  if (typeof clientSecret !== 'string' || clientSecret.length < 32) {
+  if (typeof clientSecret !== 'string' || clientSecret.length < 32 || (primaryOnly && clientSecret.length > 512)) {
     throw new TypeError('PLATFORM_ENTRA_CLIENT_SECRET_INVALID');
   }
   const authority = fixedAuthority(authorityValue, tenantReference);
   const platformOrigin = fixedPublicOrigin(publicOrigin);
   const redirectUri = fixedRedirect(redirectValue, platformOrigin);
-  if (
+  if (!primaryOnly && (
     typeof mfaAuthenticationContext !== 'string'
     || typeof stepUpAuthenticationContext !== 'string'
     || mfaAuthenticationContext === stepUpAuthenticationContext
-  ) throw new TypeError('PLATFORM_ENTRA_AUTHENTICATION_CONTEXT_INVALID');
+  )) throw new TypeError('PLATFORM_ENTRA_AUTHENTICATION_CONTEXT_INVALID');
   if (
     !Number.isSafeInteger(authenticationMaxAgeSeconds)
     || authenticationMaxAgeSeconds < 60
-    || authenticationMaxAgeSeconds > 1_800
+    || authenticationMaxAgeSeconds > (primaryOnly ? 300 : 1_800)
   ) throw new TypeError('PLATFORM_AUTHENTICATION_MAX_AGE_INVALID');
+  if (primaryOnly && (mfaAuthenticationContext !== undefined || stepUpAuthenticationContext !== undefined)) {
+    throw new TypeError('PLATFORM_PRIMARY_CONTEXT_CONFIGURATION_FORBIDDEN');
+  }
+  const primaryAssertions = new WeakMap();
   const contexts = new Set([mfaAuthenticationContext, stepUpAuthenticationContext]);
   const msal = application || new ConfidentialClientApplication({
     auth: { clientId: normalizedClientId, authority: authority.toString(), clientSecret },
@@ -186,12 +187,32 @@ export function createPlatformEntraClient({
     return value === stepUpAuthenticationContext ? 0 : authenticationMaxAgeSeconds;
   }
 
+  const primaryVerifier = {
+    async verifyPrimary(assertion) {
+      const verified = assertion && primaryAssertions.get(assertion);
+      if (!verified) fail('PLATFORM_PRIMARY_ASSERTION_NOT_VERIFIED');
+      primaryAssertions.delete(assertion);
+      if (verified.expiresAt <= clock()
+        || Date.parse(verified.identity.authenticatedAt) < clock() - (authenticationMaxAgeSeconds + 60) * 1000) {
+        fail('PLATFORM_PRIMARY_ASSERTION_EXPIRED');
+      }
+      return verified.identity;
+    },
+  };
+  const assuranceVerifier = {
+    async verify(assertion) {
+      if (!assertion || assertion[VERIFIED_ASSERTION] !== true) fail('PLATFORM_ASSERTION_NOT_VERIFIED');
+      return Object.freeze({ verified: true, claims: assertion.claims });
+    },
+  };
   return Object.freeze({
     async authorizationUrl({ state, nonce, codeChallenge, authenticationContext }) {
-      const requested = context(authenticationContext);
-      const requestedMaxAge = maxAge(requested);
+      if (primaryOnly && authenticationContext !== undefined) fail('PLATFORM_PRIMARY_CONTEXT_FORBIDDEN');
+      const requested = primaryOnly ? undefined : context(authenticationContext);
+      const requestedMaxAge = primaryOnly ? authenticationMaxAgeSeconds : maxAge(requested);
       try {
-        const claims = JSON.stringify({ id_token: { acrs: { essential: true, values: [requested] } } });
+        const claims = JSON.stringify({ id_token: primaryOnly
+          ? { auth_time: { essential: true } } : { acrs: { essential: true, values: [requested] } } });
         const value = await msal.getAuthCodeUrl({
           scopes: PLATFORM_ENTRA_SCOPES,
           redirectUri,
@@ -205,7 +226,8 @@ export function createPlatformEntraClient({
           extraQueryParameters: { max_age: String(requestedMaxAge) },
           claims,
         });
-        return validatePlatformEntraAuthorizationUrl(canonicalizePlatformEntraSdkUrl(value), {
+        const validateUrl = primaryOnly ? validatePlatformEntraPrimaryAuthorizationUrl : validatePlatformEntraAuthorizationUrl;
+        return validateUrl(canonicalizePlatformEntraSdkUrl(value), {
           authority: authority.toString(),
           clientId: normalizedClientId,
           redirectUri,
@@ -230,8 +252,12 @@ export function createPlatformEntraClient({
       expectedNonceHash,
       authenticationContext,
     }) {
-      const requested = context(authenticationContext);
-      const requestedMaxAge = maxAge(requested);
+      if (primaryOnly && authenticationContext !== undefined) fail('PLATFORM_PRIMARY_CONTEXT_FORBIDDEN');
+      const requested = primaryOnly ? undefined : context(authenticationContext);
+      const requestedMaxAge = primaryOnly ? authenticationMaxAgeSeconds : maxAge(requested);
+      if (primaryOnly && (typeof code !== 'string' || !/^[A-Za-z0-9._~-]{1,4096}$/.test(code)
+        || typeof codeVerifier !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(codeVerifier)
+        || !/^[0-9a-f]{64}$/.test(expectedNonceHash || ''))) fail('PLATFORM_PRIMARY_CODE_INPUT_INVALID');
       let result;
       try {
         result = await msal.acquireTokenByCode({
@@ -243,7 +269,8 @@ export function createPlatformEntraClient({
       } catch {
         fail('PLATFORM_ENTRA_CODE_REDEMPTION_FAILED');
       }
-      const claims = validateClaims(result?.idTokenClaims, {
+      const validate = primaryOnly ? validateTokenIdentity : validateClaims;
+      const claims = validate(result?.idTokenClaims, {
         clientId: normalizedClientId,
         tenantReference,
         authority,
@@ -252,14 +279,28 @@ export function createPlatformEntraClient({
         requestedAuthenticationMaxAgeSeconds: requestedMaxAge,
         clock,
       });
+      if (primaryOnly) {
+        if (result.idTokenClaims.exp > Math.floor(clock() / 1000) + 86400
+          || result.idTokenClaims.iat < 0 || result.idTokenClaims.auth_time < 0
+          || result.idTokenClaims.exp <= result.idTokenClaims.iat
+          || result.idTokenClaims.auth_time > result.idTokenClaims.iat + 60) fail('PLATFORM_ENTRA_TOKEN_TIME_INVALID');
+        const assertion = Object.freeze({ status: 'primary_verified' });
+        primaryAssertions.set(assertion, { identity: claims, expiresAt: result.idTokenClaims.exp * 1000 });
+        return assertion;
+      }
       return Object.freeze({ [VERIFIED_ASSERTION]: true, claims });
     },
 
-    async verify(assertion) {
-      if (!assertion || assertion[VERIFIED_ASSERTION] !== true) {
-        fail('PLATFORM_ASSERTION_NOT_VERIFIED');
-      }
-      return Object.freeze({ verified: true, claims: assertion.claims });
-    },
+    ...(primaryOnly ? primaryVerifier : assuranceVerifier),
   });
+}
+
+export function createPlatformEntraClient(configuration) {
+  return createClient(configuration);
+}
+
+// Deliberately exposes verifyPrimary rather than the assurance verifier contract.
+// The result cannot satisfy the existing Platform identity/session model.
+export function createPlatformEntraPrimaryClient(configuration = {}) {
+  return createClient({ authenticationMaxAgeSeconds: 300, ...configuration }, true);
 }
