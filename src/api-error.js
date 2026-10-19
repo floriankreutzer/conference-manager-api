@@ -1,4 +1,5 @@
 import { CateringCatalogueAssignmentConflictError } from './application/catering-catalogue-assignment-errors.js';
+import { CateringOrderConflictError, CateringOrderInputError } from './application/catering-order-errors.js';
 import {
   Microsoft365ConnectionConflictError,
   Microsoft365ConnectionInputError,
@@ -94,6 +95,7 @@ export function asApiError(error) {
     || error instanceof TenantBookingPolicyInputError
     || error instanceof TenantCostAllocationInputError
     || error instanceof RequestCompositionInputError
+    || error instanceof CateringOrderInputError
   ) {
     return new ApiError(400, 'VALIDATION_FAILED');
   }
@@ -103,6 +105,9 @@ export function asApiError(error) {
   if (error instanceof TenantUserRoleConflictError) return new ApiError(409, error.code);
   if (error instanceof CateringCatalogueAssignmentConflictError) {
     return new ApiError(409, error.code, { currentRevision: error.currentRevision });
+  }
+  if (error instanceof CateringOrderConflictError) {
+    return new ApiError(409, error.code, error.currentRevision === null ? null : { currentRevision: error.currentRevision });
   }
   if (error instanceof TenantSettingsConflictError) {
     return new ApiError(409, error.code, { currentRevision: error.currentRevision });

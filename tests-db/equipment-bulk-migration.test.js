@@ -17,6 +17,7 @@ test('Equipment receipt migration preserves Tenant/actor constraints and blocks 
   const pool = createPostgresPool({ mode: 'test', ...database });
   t.after(() => pool.end());
   await migrateUp(pool);
+  assert.equal(await rollbackLatest(pool), true); // Empty Catering order schema 048.
   assert.equal(await rollbackLatest(pool), true); // Empty Catering assignment schema 047.
   assert.equal(await rollbackLatest(pool), true); // Empty Catering configuration schema 046.
   assert.equal(await rollbackLatest(pool), true); // Empty Request lifecycle schema 045
@@ -36,6 +37,7 @@ test('Equipment receipt migration preserves Tenant/actor constraints and blocks 
   await assert.rejects(repository.create({ ...input, id: FOREIGN, actorUserId: FOREIGN }),
     (error) => error.code === '23503');
   assert.equal((await createPostgresPlatformProjectionRepository(pool).consumeBatch({ limit: 100 })).retryCount, 0);
+  assert.equal(await rollbackLatest(pool), true); // Empty Catering order schema 048.
   assert.equal(await rollbackLatest(pool), true); // Empty Catering assignment schema 047.
   assert.equal(await rollbackLatest(pool), true); // Empty Catering configuration schema 046.
   assert.equal(await rollbackLatest(pool), true); // Empty Request lifecycle schema 045

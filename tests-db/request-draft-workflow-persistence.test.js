@@ -170,6 +170,7 @@ test('Request lifecycle is tenant/owner scoped, concurrent, idempotent and audit
       "UPDATE request_workflow_starts SET status = 'started', ended_at = NULL WHERE tenant_id = $1 AND id = $2",
       `UPDATE request_workflow_starts SET owner_user_id = '${COLLEAGUE}' WHERE tenant_id = $1 AND id = $2`,
     ]) await assert.rejects(pool.query(sql, [TENANT, id]), (error) => error.code === '23514');
+    assert.equal(await rollbackLatest(pool), true); // Empty Catering order schema 048.
     assert.equal(await rollbackLatest(pool), true); // Empty Catering assignment schema 047.
     assert.equal(await rollbackLatest(pool), true); // Empty Catering configuration schema 046.
     await assert.rejects(rollbackLatest(pool), /REQUEST_WORKFLOW_ROLLBACK_REQUIRES_EMPTY_HISTORY/);

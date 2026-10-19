@@ -42,6 +42,7 @@ import { createPostgresPersistence } from './persistence/postgres/index.js';
 import { createHttpServer } from './server.js';
 import { shutdownCustomerRuntime } from './customer-shutdown.js';
 import { createCateringConfigurationRouteModules } from './catering-configuration-composition.js';
+import { createCateringOrderRouteModules } from './catering-order-composition.js';
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -370,6 +371,7 @@ if (!Array.isArray(selectedAdditionalRouteModules)) {
 const cateringConfigurationRouteModules = createCateringConfigurationRouteModules({
   config, persistence, authorizationPolicy, auditService,
 });
+const cateringOrderRouteModules = createCateringOrderRouteModules({ config, persistence, authorizationPolicy, auditService });
 const server = httpServerFactory({
   config,
   persistence,
@@ -395,7 +397,7 @@ const server = httpServerFactory({
   tenantUserAdministrationService,
   tenantUserLifecycleService,
   microsoft365ConnectionService: microsoft365Service,
-  additionalRouteModules: [...selectedAdditionalRouteModules, ...cateringConfigurationRouteModules],
+  additionalRouteModules: [...selectedAdditionalRouteModules, ...cateringConfigurationRouteModules, ...cateringOrderRouteModules],
   loadTenant: persistence?.loadTenant,
   readinessChecks: persistence?.readinessChecks || [],
 });

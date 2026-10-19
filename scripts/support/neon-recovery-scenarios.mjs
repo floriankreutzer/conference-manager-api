@@ -176,7 +176,7 @@ export async function verifyRecoveryBaseline({ client, storage, assertActive = (
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     const versions = await client.query(`SELECT (SELECT max(version) FROM public.schema_migrations) AS runtime,
       (SELECT max(version) FROM public.demo_schema_migrations) AS overlay`);
-    if (versions.rows[0]?.runtime !== 47 || versions.rows[0]?.overlay !== 13) throw new Error('NEON_RECOVERY_SCHEMA_INVALID');
+    if (versions.rows[0]?.runtime !== 48 || versions.rows[0]?.overlay !== 14) throw new Error('NEON_RECOVERY_SCHEMA_INVALID');
     const state = await readRestoredMediaReferences(client);
     assertActive();
     await verifyRestoredProviderBytes(storage, state.references);
