@@ -38,6 +38,7 @@ This endpoint edits only already-authorized initialized configuration. It grants
 approval, credential, entitlement or provider-network authority. Disabling the flag removes the
 route without modifying persisted rows/history. No jobs, timers or outbound calls are started.
 
-Admin setup/list/create UI, actual credential custody/lifecycle/health, manual delivery, qualified
+The default-off collection setup/list/create contract is described in [Catering setup](CATERING-SETUP.md).
+Admin UI, actual credential custody/lifecycle/health, manual delivery, qualified
 API adapters, current source OpenAPI and release-bound publication remain required follow-up work.
 No external Developer documentation is published by this default-off component.

@@ -96,8 +96,8 @@ test('composed HTTP uses actual opaque session/CSRF guards and Tenant-scoped Pos
   const pool = {
     async query(query) {
       state.reads.push(query.values);
-      assert.equal(query.name, 'catering-configuration-read');
-      return { rows: query.values[0] === id(1) && query.values[1] === id(3) ? [{
+      assert.ok(['catering-configuration-read', 'catering-configuration-list'].includes(query.name));
+      return { rows: query.values[0] === id(1) && (query.name === 'catering-configuration-list' || query.values[1] === id(3)) ? [{
         tenant_id: id(1), integration_id: id(3), provider: 'manual_catering', revision: 1,
         initial_order_mode: 'manager_review', catalogue_mode: 'manual', availability_mode: 'manual',
         order_mode: 'manual', update_mode: 'manual', cancel_mode: 'manual', status_mode: 'manual',
@@ -124,15 +124,28 @@ test('composed HTTP uses actual opaque session/CSRF guards and Tenant-scoped Pos
   assert.equal((await request(port, foreign)).status, 404);
   assert.equal((await request(port, manager)).status, 403);
   assert.equal(state.reads.length, 2);
+  const collection = '/api/v1/integrations/catering';
+  const listed = await request(port, { ...admin, path: collection });
+  assert.equal(listed.status, 200);
+  assert.equal(listed.body.connections[0].integrationId, id(3));
+  assert.deepEqual(state.reads.at(-1), [id(1), null]);
+  const empty = await request(port, { ...foreign, path: collection });
+  assert.equal(empty.status, 200);
+  assert.deepEqual(empty.body.connections, []);
+  assert.equal((await request(port, { ...manager, path: collection })).status, 403);
   const body = JSON.stringify({ schemaVersion: 1, expectedRevision: 1,
     configuration: { initialOrderMode: 'manager_review', capabilities: { 'catering.order': 'manual' } } });
   for (const overrides of [{ csrf: undefined }, { csrf: 'x'.repeat(43) }, { csrf: foreign.csrf }, { origin: 'https://foreign.invalid' }]) {
     assert.equal((await request(port, { ...admin, method: 'PUT', body, ...overrides })).status, 403);
+    assert.equal((await request(port, { ...admin, path: collection, method: 'POST', body: '{}', ...overrides })).status, 403);
   }
   // A genuine session-bound token reaches positive-schema validation, without a persistence mutation.
   const invalid = await request(port, { ...admin, method: 'PUT', body: '{"tenantId":"untrusted"}' });
   assert.equal(invalid.status, 400);
   assert.equal(invalid.body.error.code, 'VALIDATION_FAILED');
+  const invalidCreate = await request(port, { ...admin, path: collection, method: 'POST', body: '{}' });
+  assert.equal(invalidCreate.status, 400);
+  assert.equal(invalidCreate.body.error.code, 'VALIDATION_FAILED');
   assert.equal(state.connections, 0);
   state.revoked = true;
   assert.equal((await request(port, admin)).status, 401);
@@ -146,4 +159,5 @@ test('default-off Customer HTTP does not expose the configuration route', async 
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
   assert.equal((await request(server.address().port)).status, 404);
+  assert.equal((await request(server.address().port, { path: '/api/v1/integrations/catering' })).status, 404);
 });

@@ -72,12 +72,13 @@ export function createPostgresCateringConfigurationRepository(pool, { registry, 
   if (!registry || typeof registry.get !== 'function') throw new TypeError('PROVIDER_REGISTRY_REQUIRED');
   if (!auditRepository || typeof auditRepository.appendWithClient !== 'function') throw new TypeError('AUDIT_REPOSITORY_REQUIRED');
 
-  async function write(value, initialize) {
+  async function write(value, initialize, createIntegration = false) {
     const input = {
       ...value, tenantId: uuid(value?.tenantId), integrationId: uuid(value?.integrationId),
       actorUserId: uuid(value?.actorUserId), sessionId: uuid(value?.sessionId), correlationId: uuid(value?.correlationId),
     };
     counter(input.expectedSecurityVersion);
+    const commandId = createIntegration ? uuid(value?.commandId) : null;
     if (initialize && input.expectedRevision !== 0) throw new TypeError('CATERING_CONFIGURATION_VERSION_INVALID');
     const expected = initialize ? 0 : counter(input.expectedRevision);
     const revision = initialize ? 1 : counter(expected + 1);
@@ -87,6 +88,36 @@ export function createPostgresCateringConfigurationRepository(pool, { registry, 
     const modes = MODES.map((mode) => configuration.capabilities[`catering.${mode}`]);
     return withPostgresTransaction(pool, async (client) => {
       if (!await lockActor(client, input)) return Object.freeze({ status: 'not_authorized' });
+      if (createIntegration) {
+        const reference = `catering_setup:${input.actorUserId}:${commandId}`;
+        const inserted = await client.query({
+          name: 'catering-configuration-create-integration',
+          text: `INSERT INTO integrations (tenant_id,id,provider,provider_reference,status,created_at,updated_at)
+            VALUES ($1,$2,$3,$4,'configured',$5,$5)
+            ON CONFLICT (tenant_id,provider,provider_reference) DO NOTHING RETURNING id`,
+          values: [input.tenantId, input.integrationId, input.providerId, reference, input.changedAt],
+        });
+        if (inserted.rowCount === 0) {
+          const existing = await client.query({
+            name: 'catering-configuration-create-replay',
+            text: `SELECT id FROM integrations WHERE tenant_id=$1 AND provider=$2 AND provider_reference=$3 FOR UPDATE`,
+            values: [input.tenantId, input.providerId, reference],
+          });
+          const first = existing.rows[0] ? await client.query({
+            name: 'catering-configuration-create-replay-snapshot',
+            text: `SELECT history.*, integration.provider FROM catering_integration_configuration_revisions history
+              JOIN integrations integration ON integration.tenant_id=history.tenant_id AND integration.id=history.integration_id
+              WHERE history.tenant_id=$1 AND history.integration_id=$2 AND history.revision=1`,
+            values: [input.tenantId, existing.rows[0].id],
+          }) : null;
+          const original = record(first?.rows[0], registry);
+          if (!original) throw new Error('CATERING_CONFIGURATION_CREATE_RECEIPT_INVALID');
+          if (JSON.stringify(original.configuration) !== JSON.stringify({
+            initialOrderMode: configuration.initialOrderMode, capabilities: configuration.capabilities,
+          })) return Object.freeze({ status: 'conflict', currentRevision: 1 });
+          return Object.freeze({ status: 'updated', replayed: true, current: original });
+        }
+      }
       const integration = await client.query({
         name: 'catering-configuration-integration-lock',
         text: 'SELECT provider FROM integrations WHERE tenant_id = $1 AND id = $2 AND provider = $3 FOR UPDATE',
@@ -129,7 +160,8 @@ export function createPostgresCateringConfigurationRepository(pool, { registry, 
         || event.outcome !== 'success' || event.retentionClass !== 'administrative'
         || event.newState?.revision !== revision || event.previousState?.revision !== expected
         || JSON.stringify(event.metadata) !== JSON.stringify({
-          operation: initialize ? 'catering_configuration_initialize' : 'catering_configuration_update',
+          operation: createIntegration ? 'catering_configuration_create'
+            : initialize ? 'catering_configuration_initialize' : 'catering_configuration_update',
         })) {
         throw new Error('CATERING_CONFIGURATION_AUDIT_SCOPE_INVALID');
       }
@@ -142,6 +174,21 @@ export function createPostgresCateringConfigurationRepository(pool, { registry, 
     async loadCurrent({ tenantId, integrationId }) {
       return load(pool, uuid(tenantId), uuid(integrationId), registry);
     },
+    async listCurrent({ tenantId, afterIntegrationId = null }) {
+      const tenant = uuid(tenantId);
+      const after = afterIntegrationId === null ? null : uuid(afterIntegrationId);
+      const page = await pool.query({
+        name: 'catering-configuration-list',
+        text: `SELECT configuration.*, integration.provider FROM catering_integration_configurations configuration
+          JOIN integrations integration ON integration.tenant_id=configuration.tenant_id AND integration.id=configuration.integration_id
+          WHERE configuration.tenant_id=$1 AND ($2::uuid IS NULL OR configuration.integration_id > $2::uuid)
+          ORDER BY configuration.integration_id LIMIT 21`,
+        values: [tenant, after],
+      });
+      return Object.freeze({ items: Object.freeze(page.rows.slice(0, 20).map((row) => record(row, registry))),
+        nextAfterIntegrationId: page.rows.length > 20 ? page.rows[19].integration_id : null });
+    },
+    create: (value) => write(value, true, true),
     initialize: (value) => write(value, true),
     update: (value) => write(value, false),
   });

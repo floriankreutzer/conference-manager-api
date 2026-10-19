@@ -24,7 +24,8 @@ and minimized scoped audit append commit together. An audit failure or wrong aud
 the transaction. Restarted reads use committed rows; no in-memory business authority is introduced.
 
 initialize is an internal setup port for an independently created/authorized existing Integration;
-it requires explicit revision zero and the same live actor/session fence. It does not create a
+it requires explicit revision zero and the same live actor/session fence. The separate atomic create
+port and bounded scoped list/replay contract are described in [Catering setup](CATERING-SETUP.md). It does not create a
 provider connection or establish provider verification. update requires the exact existing revision.
 The read port still requires its authorized application/transport caller; passing a UUID to the
 repository is not authentication. The service rejects mismatched/altered repository results.
