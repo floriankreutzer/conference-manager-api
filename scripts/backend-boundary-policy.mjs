@@ -34,6 +34,7 @@ const PROVIDER_NEUTRAL_INTEGRATION_MODULES = new Set([
   'src/integrations/errors.js',
   'src/integrations/provider-registry.js',
   'src/integrations/delivery-policy.js',
+  'src/integrations/catering-contract.js',
 ]);
 const TENANT_READINESS_POLICY_FILE = 'src/tenancy/tenant-readiness-policy.js';
 const PLATFORM_PROJECTION_REPOSITORY_FILE = 'src/persistence/postgres/platform-projection-repository.js';
@@ -117,6 +118,12 @@ export function backendSaas2BoundaryViolations(sourceEntries) {
   for (const [rawFile, rawSource] of sources) {
     const file = normalized(rawFile);
     const source = String(rawSource);
+    if (file === 'src/integrations/catering-contract.js'
+      && (moduleImports(source).some(({ specifier, dynamic }) => dynamic
+        || !['../domain/identifiers.js', './provider-registry.js'].includes(specifier))
+        || /\bfetch\s*\(|\b(?:process|globalThis)\b/.test(source))) {
+      violations.push(violation(file, 'catering contracts may depend only on neutral registration and internal identifiers.'));
+    }
     if (['src/integrations/provider-registry.js', 'src/integrations/delivery-policy.js'].includes(file)
       && (moduleImports(source).length > 0 || /\bfetch\s*\(|\b(?:process|globalThis)\b/.test(source))) {
       violations.push(violation(file, 'provider foundation must remain an import-free, network-free policy/metadata contract.'));
