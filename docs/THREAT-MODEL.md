@@ -208,6 +208,15 @@ Tracking: #64-#70.
 
 ## Residual risks and explicit non-claims
 
+The invited-email foundation is an inactive adapter/cryptographic slice, not a
+completed authentication boundary. Its recipient/code/header validation,
+fixed Resend destination, disabled redirects, bounded response/deadline,
+secret-minimized failures and context-bound HMAC proofs have focused tests.
+Durable attempt/resend limits, membership/recipient proof, expiry, atomic
+redemption, CSRF/browser cookies and audit-atomic session issuance remain
+activation blockers. An accepted mail receipt is never delivered-mail or
+authentication evidence. See `INVITED-EMAIL-AUTHENTICATION.md`.
+
 The inactive Platform passkey adapter verifies bounded WebAuthn registration and
 signed assertions with mandatory user verification, exact RP/origin/challenge,
 operator/environment-bound credential input and safe fixed errors. No-attestation

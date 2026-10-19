@@ -5,6 +5,7 @@ import { resolveDeploymentEnvironment } from './deployment-environment.js';
 export const APPROVED_OUTBOUND_ORIGINS = Object.freeze({
   microsoftIdentity: 'https://login.microsoftonline.com',
   microsoftGraph: 'https://graph.microsoft.com',
+  transactionalEmail: 'https://api.resend.com',
 });
 
 const MODES = new Set(['development', 'test', 'pilot', 'production']);

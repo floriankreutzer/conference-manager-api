@@ -70,6 +70,10 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
 
 ## Module responsibilities
 
+- The uncomposed invited-email foundation owns conservative recipient validation,
+  environment/Tenant/User/challenge-bound code proofs and a fixed-destination Resend
+  delivery port. It introduces no active login endpoint, persistence or membership
+  authority. See `INVITED-EMAIL-AUTHENTICATION.md` for owners and activation gates.
 - `src/config.js` owns runtime, database, Entra, Microsoft 365, session and audit-secret configuration with fail-closed Pilot/Production validation.
 - `src/api-error.js` owns safe public error classification, including authorization concealment, audit-integrity failures, Tenant settings revision conflicts, Request composition failures and Microsoft 365 lifecycle errors.
 - `src/domain/identifiers.js` owns stable internal UUID validation.
