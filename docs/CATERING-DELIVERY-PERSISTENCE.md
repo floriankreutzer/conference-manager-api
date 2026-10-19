@@ -4,7 +4,7 @@
 
 Canonical migration 049 and Demo overlay 015 define scoped delivery job, immutable dispatch-intent and immutable
 observation tables. Runtime readiness, operator wrappers, migration inventories and reset require
-exact 49/15. Installation and reset enqueue or dispatch no orders and change no existing order data.
+exact 50/16 after the manual-fact custody extension. Installation and reset enqueue or dispatch no orders and change no existing order data.
 The worker from INTEGRATION-JOB-WORKER.md remains uncomposed; no delivery HTTP command, repository
 processor, provider factory, credential lookup or external delivery is introduced by this schema.
 Those application/runtime boundaries remain mandatory next work. No binding delivery window or

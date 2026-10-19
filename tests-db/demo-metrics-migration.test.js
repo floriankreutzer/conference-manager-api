@@ -80,12 +80,19 @@ test('reviewed metrics upgrade preserves retained Demo data, excludes concurrent
   await assert.rejects(withDemoMetricsMigrationGate(pool, { ...expected, customer: 'cm_wrong_customer' }, upgrade), /PRECONDITIONS/);
   assert.equal(upgrades, 0);
   assert.deepEqual(await withDemoMetricsMigrationGate(pool, expected, upgrade), {
-    canonicalVersion: 49, demoVersion: 15, resetPerformed: false, retainedCountsMatch: true,
+    canonicalVersion: 50, demoVersion: 16, resetPerformed: false, retainedCountsMatch: true,
   });
   assert.equal(upgrades, 1);
   assert.equal((await raw.query('SELECT count(*)::integer AS count FROM tenants')).rows[0].count, 1);
   assert.equal((await withDemoMetricsMigrationGate(pool, expected, upgrade)).retainedCountsMatch, true);
   assert.equal(upgrades, 2);
+  for (const [table, version] of [['schema_migrations', 51], ['demo_schema_migrations', 17]]) {
+    await raw.query(`INSERT INTO ${table}(version,name,checksum) VALUES ($1,'synthetic_future_schema',repeat('a',64))`, [version]);
+    try {
+      await assert.rejects(withDemoMetricsMigrationGate(pool, expected, upgrade), /PRECONDITIONS/);
+      assert.equal(upgrades, 2);
+    } finally { await raw.query(`DELETE FROM ${table} WHERE version=$1`, [version]); }
+  }
   const releaseClient = await raw.connect();
   try {
     const releaseCheck = await releaseClient.query('SELECT pg_try_advisory_lock_shared($1) AS acquired', [DEMO_RUNTIME_ADVISORY_LOCK]);

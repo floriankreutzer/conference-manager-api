@@ -167,7 +167,7 @@ The all-role Tenant presentation contract reuses the current Organization row an
 `organization_revision`. Its managed-brand policy maps one fixed reference to a code-shipped preset
 and therefore introduces no upload metadata, asset table, external object reference or migration.
 
-Migration 039 introduced schema version 39; the current exact runtime readiness version is 49. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
+Migration 039 introduced schema version 39; the current exact runtime readiness version is 50. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
 
 No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
 
@@ -329,7 +329,7 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 49.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 50.
 
 ## Shared Demo persistence
 
@@ -341,8 +341,8 @@ reset/seed capability and migration ownership. All four URLs must resolve to the
 distinct.
 
 The canonical `migrations/` stream remains the source of the business schema and must contain the
-exact applied sequence `001..049`. The independent `demo-migrations/` stream has its own
-`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `015`
+exact applied sequence `001..050`. The independent `demo-migrations/` stream has its own
+`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `016`
 installs the immutable database sentinel, provider/persona reference tables, minimized views and
 role grants, private Room/Catering media and create/attach lifecycle support. Overlay 004 grants only `INSERT` and `TRUNCATE` on the canonical attribution
 migration-state singleton to the reset role; customer and Platform roles receive no access. The
@@ -584,3 +584,9 @@ object custody. A coordinated object/database rollback must restore and verify b
 pointers; objects/inventory must be reconciled explicitly before schema downgrade. No runtime
 automigration, storage activation, maintenance schedule or backfill is introduced by this schema
 foundation. See PRIVATE-OBJECT-STORAGE.md for the remaining acceptance and deployment gates.
+
+Migration050 adds immutable manual transmission/receipt facts and their consecutive heads.
+The existing delivery feature gate controls both routes; existing orders receive no inferred
+manual facts. Customer can append facts and advance heads, Platform has no table access,
+and Reset can truncate both in the existing atomic explicit inventory. Demo overlay016
+grants only these privileges. Rollback refuses facts, heads or either new audit action.
