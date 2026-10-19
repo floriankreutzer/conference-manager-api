@@ -14,12 +14,17 @@ test('runtime dependency approval rejects version drift, ranges, missing and ext
   try {
     const missing = { ...manifest.dependencies };
     delete missing['@azure/msal-node'];
+    const missingPasskey = { ...manifest.dependencies };
+    delete missingPasskey['@simplewebauthn/server'];
     for (const dependencies of [
       { ...manifest.dependencies, '@azure/msal-node': '7.0.1' },
       { ...manifest.dependencies, '@aws-sdk/client-s3': '3.1148.0' },
       { ...manifest.dependencies, '@azure/msal-node': '^7.1.0' },
+      { ...manifest.dependencies, '@simplewebauthn/server': '14.0.2' },
+      { ...manifest.dependencies, '@simplewebauthn/server': '^14.0.3' },
       { ...manifest.dependencies, unreviewed: '1.0.0' },
       missing,
+      missingPasskey,
     ]) {
       await writeFile(path.join(directory, 'package.json'), JSON.stringify({ dependencies }));
       const result = spawnSync(process.execPath, [gate], {
