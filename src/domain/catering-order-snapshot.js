@@ -25,7 +25,11 @@ export function createCateringOrderSnapshots({ request: requestValue, assignment
   const request = normalizeRequest(requestValue);
   if (request.status !== REQUEST_STATUS.CONFIRMED || request.snapshot === null) invalid();
   const catalogueRevision=request.snapshot.configurationRevisions.catalogue;
-  const selection=createCateringRequestCommercialSelection({request,ownership,canonicalCatalogue,connections});
+  let selection;
+  try { selection=createCateringRequestCommercialSelection({request,ownership,canonicalCatalogue,connections}); } catch (error) {
+    if (error instanceof TypeError && error.message === 'CATERING_REQUEST_COMMERCIAL_SELECTION_INVALID') invalid();
+    throw error;
+  }
   const groups=new Map(selection.map(({integrationId,positions})=>[integrationId,positions]));
   const ids = new Set();
   function allocate(factory, context) {

@@ -159,4 +159,14 @@ configuration/publication authority still matches it or that a legacy Request
 has such evidence. Durable captured-source custody and the locked transaction
 must prove those facts; no timestamp inference, current-ID-only substitution or
 fabricated historical supplier binding is permitted. No runtime is activated.
-The complete repository gates are repeated after this shared-policy refactor.
+The complete post-refactor local check passed1706 native cases, Customer HTTP
+DAST and17 Platform HTTP; npm audit found0 vulnerabilities. Candidate6747eeef
+CI39340056468 quality/full PostgreSQL passed, while the permanent matrices were
+still running when self-review found an error-contract regression: the factored
+commercial-selection error no longer matched the exact legacy order error caught
+by persisted version proposals. The order wrapper now translates that one private
+selection error back to CATERING_ORDER_SNAPSHOT_INVALID. A dedicated regression
+asserts the exact original error for changed product price, variant and components.
+All original five tests remain unchanged; six order cases pass. The corrected
+candidate must repeat full local and all exact-head CI checks; prior candidate
+results/history remain retained and are not acceptance for the corrected source.

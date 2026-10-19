@@ -4,8 +4,11 @@
 
 Accepted API main remains834e8d1b92ada2527a719cc66430a009bb6caed6,
 canonical055/Demo021. Availability foundation PR#239 is independently pending at
-6747eeefac2b7bc2329f5a49ea85c4885059ac30; its complete local1706 native,
-Customer HTTP DAST and17 Platform HTTP checks pass, audit0. All exact-head CI
+corrected83168ef985221ce323f02a28dc01d5e0ee91c1ea. Predecessor6747eeef
+passed complete local1706 native, Customer HTTP DAST and17 Platform HTTP, audit0,
+and full CI PostgreSQL. Self-review found an exact legacy order-error contract
+regression;83168ef9 restores that contract and adds a dedicated regression. Its
+complete corrected local and all exact-head CI checks are required before acceptance. All exact-head CI
 PostgreSQL/permanent paired browser/security checks must finish before acceptance.
 This follow-on branch adds a pure source-evidence value contract only. It creates
 no table, migration, runtime, route, provider call or automatic order.
@@ -123,8 +126,13 @@ locks and atomic persistence. Neither this projection nor a hash supplies those
 independent authorities. No availability, confirmation or order is released.
 
 Four additional revalidation progression/negative cases pass together with the
-ten capture cases, seven availability planner cases and five unchanged order
-cases26/26. The successful unrelated-revision case also exercises the actual
+ten capture cases, seven availability planner cases and six order regression
+cases27/27. The successful unrelated-revision case also exercises the actual
 source query planner with the original Submitted Request and newer publication/
 source revisions. The complete repository gates are being repeated for this
 follow-on comparison; no database/runtime activation is claimed.
+
+The source branch normally merges the corrected availability/order foundation83168ef9.
+Its private commercial-selection error is translated by the order wrapper back
+to the exact legacy order error used by persisted version-proposal fallback.
+No required check or historical candidate status is relabeled by that merge.
