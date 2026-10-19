@@ -228,7 +228,8 @@ test('delivery schema fences actual Customer leases, immutable attempts and exac
     targetType: 'catering_order', targetId: orderId, previousState: { status: 'released' }, newState: { status: 'queued' },
     outcome: 'success', retentionClass: 'business', metadata: { operation: 'catering_delivery_enqueue' } });
   await customer((client) => fixture.auditRepository.appendWithClient(client, event));
-  await pool.query('TRUNCATE catering_delivery_observations,catering_delivery_attempts,catering_delivery_jobs');
+  await pool.query(`TRUNCATE catering_unsent_replacements,catering_order_withdrawals,
+    catering_delivery_observations,catering_delivery_attempts,catering_delivery_jobs`);
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Unsent grants018 before schema052.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Version grants overlay017.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Revoke overlay016 before recreating its tables.
