@@ -125,5 +125,38 @@ receipts, role/ownership scope, all five stale basis fences, exact replay, forge
 private receipts, missing factories, unknown source capability, corrupted clocks,
 closed input/getter rejection and no retries. These are port-contract tests; they
 do not prove PostgreSQL atomicity, live sessions, HTTP/CSRF or browser acceptance.
-The complete repository check is being executed for this uncomposed increment.
+The complete local repository check passed1699 native cases, Customer HTTP DAST
+and17 Platform HTTP cases for this uncomposed increment. Lint/style passed911 files.
 Durable SQL/read/HTTP/UI and captured Request-to-source provenance remain open.
+
+## Saved commercial selection and source query planning
+
+Order snapshot creation and availability query planning now share one pure
+commercial-selection policy. It validates a real saved Request against the exact
+historical canonical product/variant/component contents and complete same-Tenant
+ownership; same IDs with changed names, descriptions, prices or package components
+cannot pass. The order wrapper retains its independent Confirmed-state guard and
+all five existing order-snapshot regression cases pass unchanged. The shared
+selection itself grants no workflow/status authority and allocates no identities.
+A preconfirmation availability query therefore uses the actual Submitted Request,
+without manufacturing a Confirmed Request or preparing an order.
+
+The separate private query planner maps only those verified commercial positions
+to positively validated captured provider/source bindings. It requires one scoped
+provider context per selected connection and each selected package variant and
+included component to be bound. It allocates unique server query/position UUIDs
+and retains the exact saved Request slot, room/site, version, participant count,
+requirements and quantities. Included package selections remain descriptive
+package detail rather than duplicate inventory quantities. Supplier payload
+projection exposes source product/variant IDs and factual query fields only;
+customer prices, cost allocations, requester identity and order identities are
+excluded. The full101-position/300-component capacities remain supported.
+
+Seven new planner/selection progression and negative cases plus the five unchanged
+order cases pass12/12. This planner cannot independently prove that persistence
+loaded genuine Request-captured publication/source evidence, that current
+configuration/publication authority still matches it or that a legacy Request
+has such evidence. Durable captured-source custody and the locked transaction
+must prove those facts; no timestamp inference, current-ID-only substitution or
+fabricated historical supplier binding is permitted. No runtime is activated.
+The complete repository gates are repeated after this shared-policy refactor.
