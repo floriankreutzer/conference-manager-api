@@ -123,3 +123,23 @@ has not executed locally. Initial metadata/DB-test long-line failures are retain
 and corrected without assertion changes. Remote exact-head gates remain pending.
 This foundation remains uncomposed: no publication HTTP caller, Employee offer
 projection, availability, automatic order authority, live supplier or deployment.
+
+
+## First exact-head PostgreSQL run and retained failure
+
+Candidate4abae961 / tree8f2fe254 passed quality and all security/source gates.
+Actual Customer publication proof passed20:53:42UTC in PostgreSQL18.6, including
+both nested-write/final-audit rollback, tampered-price rejection, concurrent
+replay/CAS, rejection/history/retirement, authority, minimized audit, populated /
+audit-only rollback and reset. The separate empty-assignment full300/100/20
+subcase passed as well. These are actual SQL results, not complete suite acceptance.
+
+CI39322674133 PostgreSQL job118301072056 subsequently failed at20:54:36 in the
+original source054 case: its new initial rollback removed055 before invoking the
+second Demo rollback. The unchanged Demo runner correctly requires complete
+current055 readiness for every overlay rollback and rejected that order with
+DEMO_MIGRATION_PRODUCTION_SCHEMA_NOT_READY. The test now drains021 and020 first,
+then empty055 and054. No production readiness check, original source assertion,
+DDL checksum, permission, retry, deadline or budget was relaxed. All full-suite
+and browser/security gates must rerun on the corrected immutable head. The failed
+run remains failed and is retained as evidence; it is not a passing DB suite.

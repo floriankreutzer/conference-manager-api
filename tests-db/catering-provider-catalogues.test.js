@@ -43,8 +43,10 @@ test('actual Customer source fences authority, preserves reviewed state, enforce
     pool = createPostgresPool({ mode: 'test', ...database, databaseUrl: url.toString(), databasePoolMax: 6 });
     await migrateUp(pool); await migrateDemoUp(pool, { roles });
     assert.equal(await isPostgresSchemaReady(pool),true);
-    await rollbackLatestDemoMigration(pool,{ roles }); assert.equal(await rollbackLatest(pool),true); // Empty055/021.
-    await rollbackLatestDemoMigration(pool,{ roles }); assert.equal(await rollbackLatest(pool),true); // Original054/020.
+    await rollbackLatestDemoMigration(pool,{ roles }); // Publication grants021 while canonical055 is ready.
+    await rollbackLatestDemoMigration(pool,{ roles }); // Original source grants020 before either schema rollback.
+    assert.equal(await rollbackLatest(pool),true); // Empty055.
+    assert.equal(await rollbackLatest(pool),true); // Original054.
     await migrateUp(pool); await migrateDemoUp(pool,{ roles });
     function rolePool(role) {
       const scoped = { async connect() {
