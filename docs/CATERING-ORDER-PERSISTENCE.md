@@ -66,7 +66,8 @@ Customer roles can insert immutable business history and update guarded heads/st
 update/delete history or insert seals. Two narrow fixed-search-path security-definer triggers own
 position sealing/completeness checks; direct execution is revoked. Platform receives no order access.
 Reset receives SELECT/TRUNCATE for the eight order tables and preserves the canonical three-customer
-semantic checksum. Migration down locks all eight tables and refuses any populated history; use a
+semantic checksum. Migration down locks all eight tables and the audit table and refuses any order history or retained
+order audit actions before restoring the previous exact action allowlist; use a
 reviewed forward fix or restore decision for populated environments.
 
 No credentials, supplier URLs, requester identity, raw provider payloads or session tokens are exposed

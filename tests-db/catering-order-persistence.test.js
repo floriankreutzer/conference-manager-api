@@ -37,6 +37,10 @@ test('Catering orders retain scoped historical source, atomic quotes/decisions a
   t.after(() => pool.end());
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await isPostgresSchemaReady(pool), false);
+  await migrateUp(pool);
+  assert.equal(await isPostgresSchemaReady(pool), true);
   const authorizationPolicy = createAuthorizationPolicy();
   const registry = createCateringConfigurationRegistry();
   const auditRepository = createPostgresAuditRepository(pool, { hmacSecret: 'synthetic-catering-orders-audit-key-32-bytes' });
@@ -314,8 +318,7 @@ test('Catering orders retain scoped historical source, atomic quotes/decisions a
   assert.equal(await isPostgresSchemaReady(pool), true);
   await pool.query(`TRUNCATE catering_order_version_states,catering_order_decisions,catering_order_quotes,catering_order_heads,
     catering_order_version_seals,catering_order_positions,catering_order_versions,catering_orders`);
-  assert.equal(await rollbackLatest(pool), true);
-  assert.equal(await isPostgresSchemaReady(pool), false);
-  await migrateUp(pool);
+  await assert.rejects(rollbackLatest(pool), /CATERING_ORDER_AUDIT_ROLLBACK_REQUIRES_REVIEW/);
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await auditRepository.verifyTenantChain(id(1)), true);
 });

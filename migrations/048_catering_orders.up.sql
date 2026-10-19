@@ -343,3 +343,18 @@ REVOKE ALL ON TABLE catering_orders,catering_order_versions,catering_order_posit
 REVOKE ALL ON FUNCTION reject_catering_order_history_mutation(),guard_catering_order_head(),guard_catering_order_position(),
   verify_catering_order_version(),guard_catering_order_version_state(),verify_catering_order_review_heads(),
   verify_catering_order_presence() FROM PUBLIC;
+
+ALTER TABLE audit_events DROP CONSTRAINT audit_events_action_valid;
+ALTER TABLE audit_events ADD CONSTRAINT audit_events_action_valid CHECK (
+  action IN (
+    'catering.order.prepared', 'catering.order.quoted', 'catering.order.decided',
+    'session.issued', 'session.revoked', 'session.rotated', 'authentication.failed',
+    'authorization.denied', 'request.started', 'request.abandoned', 'request.created',
+    'request.transition', 'request.transition_failed', 'request.booking_change',
+    'tenant.configuration.changed', 'tenant.user_permissions.changed',
+    'tenant.entitlement.changed', 'tenant.lifecycle.changed', 'tenant.onboarding.invited',
+    'tenant.identity.claimed', 'tenant.identity.unbound', 'tenant.user.provisioned',
+    'tenant.user.profile_updated', 'integration.connected', 'integration.disconnected',
+    'integration.admin_consent.changed', 'integration.verified', 'calendar.operation', 'audit.read'
+  )
+);
