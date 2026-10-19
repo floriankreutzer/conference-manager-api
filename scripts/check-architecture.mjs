@@ -18,6 +18,7 @@ const runtimeDependencies = packageJson.dependencies || {};
 const approvedRuntimeDependencies = {
   '@aws-sdk/client-s3': '3.1152.0',
   '@azure/msal-node': '7.1.0',
+  '@simplewebauthn/server': '14.0.3',
   pg: '8.23.1',
   sharp: '0.35.5',
 };
@@ -29,7 +30,7 @@ const runtimeEnvironmentAuthority = new Set([
   'src/demo/platform-main.js',
 ]);
 if (JSON.stringify(runtimeDependencies) !== JSON.stringify(approvedRuntimeDependencies)) {
-  throw new Error('Runtime dependencies must remain exactly the reviewed PostgreSQL, identity, image and object-storage adapters.');
+  throw new Error('Runtime dependencies must remain exactly the reviewed PostgreSQL, identity, passkey, image and storage adapters.');
 }
 
 const files = await sourceFiles('src');

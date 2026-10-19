@@ -29,6 +29,7 @@ const REAL_PRODUCTION_IDENTITY_AND_PROVIDER_MODULES = new Set([
   'src/integrations/microsoft365-calendar-provider.js',
   'src/platform-production-authentication.js',
   'src/platform/identity/entra-client.js',
+  'src/platform/identity/passkey-verifier.js',
   'src/platform/identity/entra-auth-service.js',
   'src/platform/identity/claim-policy.js',
   'src/platform/identity/identity-service.js',
@@ -168,6 +169,16 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
 
   for (const [file, source] of sources) {
     const imports = moduleImports(source);
+    if (imports.some(({ specifier }) => specifier.startsWith('@simplewebauthn/'))
+      && file !== 'src/platform/identity/passkey-verifier.js') {
+      violations.push(violation(file, 'the WebAuthn SDK is restricted to the private Platform passkey verifier.'));
+    }
+    if (isInside(file, 'src/demo')) {
+      const passkeyPath = firstReachablePath(graph, file,
+        (dependency) => dependency === 'src/platform/identity/passkey-verifier.js');
+      if (passkeyPath) violations.push(violation(file,
+        `Demo runtime must not reach real Platform passkey verification (${passkeyPath.join(' -> ')}).`));
+    }
     if (DEMO_CLOSED_BOOTSTRAP_MODULES.has(file)) {
       const activePath = firstReachablePath(graph, file, (dependency) => !DEMO_CLOSED_BOOTSTRAP_MODULES.has(dependency));
       const externalImport = imports.some(({ specifier }) => !specifier.startsWith('.')
