@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import test from 'node:test';
 import { createCateringCataloguePublicationService } from '../src/application/catering-catalogue-publication-service.js';
 import { createCateringProviderCatalogueService } from '../src/application/catering-provider-catalogue-service.js';
 import { createAuthorizationPolicy } from '../src/authorization/policy.js';
-import { loadDatabaseConfig } from '../src/config.js';
+import { loadConfig,loadDatabaseConfig } from '../src/config.js';
+import { createCateringConfigurationRouteModules } from '../src/catering-configuration-composition.js';
+import { createPostgresTenantRepository } from '../src/persistence/postgres/tenant-repository.js';
+import { createHttpServer } from '../src/server.js';
 import { createPostgresCateringCataloguePublicationRepository
 } from '../src/persistence/postgres/catering-catalogue-publication-repository.js';
 import { createPostgresCateringProviderCatalogueRepository } from '../src/persistence/postgres/catering-provider-catalogue-repository.js';
@@ -164,6 +168,51 @@ test('actual Customer publication atomically fences reviewed content, ownership,
     assert.equal(current.catalogue.cateringItems.find((x) => x.id === 'reviewed-coffee').price.amountMinor,700);
     assert.equal(current.catalogue.cateringItems.find((x) => x.id === 'reviewed-coffee').name,source().items[0].name);
     assert.equal(JSON.stringify((await fixture.orders.load({ ...fixture.context(),orderId: prepared.order.orderId })).order),orderBefore);
+    const origin = 'http://localhost:3000';
+    const config = loadConfig({ NODE_ENV: 'test',PUBLIC_ORIGIN: origin,CATERING_CONFIGURATION_ENABLED: 'true' });
+    const modules = createCateringConfigurationRouteModules({ config,...application,
+      persistence: { pool: customer,auditRepository: fixture.auditRepository } });
+    const tenants = createPostgresTenantRepository(pool);
+    const server = createHttpServer({ config,...application,additionalRouteModules: modules,sessionService: fixture.sessionService,
+      loadTenant: (tenantId) => tenants.findById(tenantId),
+      logger: { requestCompleted() {},healthEvaluated() {},securityOutcome() {},unhandledError() {} } });
+    await new Promise((resolve) => server.listen(0,'127.0.0.1',resolve));
+    t.after(() => new Promise((resolve,reject) => server.close((error) => error ? reject(error) : resolve())));
+    const root = `/api/v1/tenant/catering/provider-catalogues/${fixture.integrationId}`;
+    function request(actor,{ suffix = '/review',method = 'GET',command: bodyValue,csrf = null,requestOrigin = origin } = {}) {
+      return new Promise((resolve,reject) => {
+        const body = bodyValue === undefined ? undefined : JSON.stringify(bodyValue);
+        const outgoing = http.request({ hostname: '127.0.0.1',port: server.address().port,path: root+suffix,method,
+          headers: { Host: new URL(origin).host,Origin: requestOrigin,
+            ...(actor ? { Cookie: actor.setCookie.split(';',1)[0] } : {}),...(csrf ? { 'X-CSRF-Token': csrf } : {}),
+            ...(body ? { 'Content-Type': 'application/json','Content-Length': Buffer.byteLength(body) } : {}) } },(response) => {
+          const chunks = []; response.on('data',(chunk) => chunks.push(chunk));
+          response.on('end',() => resolve({ status: response.statusCode,body: JSON.parse(Buffer.concat(chunks).toString('utf8')) }));
+        });
+        outgoing.setTimeout(5000,() => outgoing.destroy(new Error('TEST_HTTP_TIMEOUT')));
+        outgoing.on('error',reject); outgoing.end(body);
+      });
+    }
+    assert.equal((await request()).status,401); assert.equal((await request(fixture.admin)).status,403);
+    assert.equal((await request(foreign)).status,404);
+    const employee = await fixture.sessionService.issue({ tenantId: fixture.tenantId,userId: id(2),roles: ['employee'],
+      permissions: [],securityVersion: 1,providerIdentity: { provider: 'test_identity',reference: 'synthetic-review-employee' } },
+    { correlationId: id(90) });
+    assert.equal((await request(employee)).status,403);
+    const observed = await request(manager); assert.equal(observed.status,200);
+    assert.equal(observed.body.canReview,true); assert.equal(observed.body.reviewRevision,1);
+    assert.equal(observed.body.publicationRevision,1); assert.equal(observed.body.catalogueRevision,3);
+    assert.equal(observed.body.assignmentRevision,2); assert.equal(observed.body.bindings.length,2);
+    assert.doesNotMatch(JSON.stringify(observed.body),/actorUserId|providerPrice|justification|sessionId|tenantId/);
+    const history = await request(manager,{ suffix: '/reviews' }); assert.equal(history.status,200);
+    assert.equal(history.body.revisions.length,1); assert.equal(history.body.revisions[0].decision,'published');
+    assert.equal(history.body.revisions[0].justification,first.justification);
+    assert.equal((await request(manager,{ suffix: '/review?tenantId=foreign' })).status,400);
+    assert.equal((await request(manager,{ suffix: '/review?afterKind=item&afterEntryId=a' })).status,400);
+    assert.equal((await request(manager,{ suffix: '/review?publicationRevision=0' })).status,409);
+    assert.equal((await request(manager,{ method: 'POST',command: first })).status,403);
+    assert.equal((await request(manager,{ method: 'POST',command: first,csrf: manager.csrfToken,
+      requestOrigin: 'https://foreign.invalid' })).status,403);
     await receive(1);
     const next = intent({ expectedReviewRevision: 1,expectedSourceRevision: 2,expectedCatalogueRevision: 3,
       expectedAssignmentRevision: 2,expectedPublicationRevision: 1 });
@@ -194,9 +243,18 @@ test('actual Customer publication atomically fences reviewed content, ownership,
     const minimized = await pool.query(`SELECT previous_state,new_state,metadata FROM audit_events
       WHERE action IN ('catering.catalogue.published','catering.catalogue.rejected')`);
     assert.doesNotMatch(JSON.stringify(minimized.rows),/justification|source-coffee|providerPrice|1200|700/);
+    const finalIntent = intent({ expectedReviewRevision: 3,expectedSourceRevision: 2,expectedCatalogueRevision: 4,
+      expectedAssignmentRevision: 3,expectedPublicationRevision: 2,decision: 'rejected',items: [],packages: [] });
+    const savedHttp = await request(manager,{ method: 'POST',command: finalIntent,csrf: manager.csrfToken });
+    assert.equal(savedHttp.status,200); assert.equal(savedHttp.body.reviewRevision,4); assert.equal(savedHttp.body.publicationRevision,2);
+    assert.equal((await request(manager,{ method: 'POST',command: finalIntent,csrf: manager.csrfToken })).body.replayed,true);
+    const newest = await request(manager,{ suffix: '/reviews' }); assert.equal(newest.status,200);
+    assert.deepEqual(newest.body.revisions.map((x) => x.revision),[4,3,2,1]);
+    assert.equal(newest.body.revisions[0].decision,'rejected');
     await pool.query('UPDATE sessions SET revoked_at=clock_timestamp() WHERE tenant_id=$1 AND id=$2',
       [fixture.tenantId,manager.principal.session.id]);
     await assert.rejects(review(first),(error) => error.code === 'PRINCIPAL_NOT_AUTHORIZED');
+    assert.equal((await request(manager)).status,401);
     await assert.rejects(rollbackLatest(pool),/CATERING_CATALOGUE_PUBLICATION_ROLLBACK_REQUIRES_REVIEW/);
     const reset = createPostgresDemoResetRepository({ pool: rolePool(roles.reset),
       expectedDatabaseName: name,expectedResetRole: roles.reset });
@@ -240,6 +298,18 @@ test('actual Customer publication atomically fences reviewed content, ownership,
       assert.equal(full.catalogue.cateringItems.length,300); assert.equal(full.catalogue.cateringPackages.length,100);
       assert.equal(full.catalogue.cateringPackages.every((x) => x.variants.length === 20),true);
       assert.equal(await empty.auditRepository.verifyTenantChain(empty.tenantId),true);
+      let afterBinding = null; const allBindings = [];
+      do {
+        const query = afterBinding === null ? ''
+          : `?afterKind=${afterBinding.kind}&afterEntryId=${afterBinding.entryId}&publicationRevision=1`;
+        const response = await request(empty.manager,{ suffix: '/review'+query }); assert.equal(response.status,200);
+        assert.equal(response.body.sourceRevision,1); assert.equal(response.body.assignmentRevision,1);
+        assert.equal(response.body.bindings.length>0 && response.body.bindings.length<=5,true);
+        allBindings.push(...response.body.bindings.map((x) => `${x.kind}:${x.entryId}`));
+        afterBinding=response.body.nextAfterBinding;
+      } while (afterBinding !== null);
+      assert.equal(allBindings.length,400); assert.equal(new Set(allBindings).size,400);
+
       assert.equal((await reset.reset({ fixture: DEMO_FIXTURE,checksum: DEMO_FIXTURE_CHECKSUM })).checksum,DEMO_FIXTURE_CHECKSUM);
     });
   });

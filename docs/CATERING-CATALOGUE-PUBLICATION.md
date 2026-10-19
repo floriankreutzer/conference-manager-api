@@ -156,3 +156,42 @@ are unchanged. A broader source scan found no other current54/20 constants;
 historical ledgers and genuine20-entry product/history limits remain intact.
 This second failure remains retained and is not suite acceptance. The next head
 must execute every required database, browser and security gate again.
+
+
+## Separate unpublished HTTP/read preparation
+
+Branch feat/saas4-catalogue-publication-http normally follows the current
+publication foundation candidate. It adds Catalogue Manager read context and
+justified immutable review history, current publication bindings with a strict
+publication-version/keyset cursor, and explicit POST review. Trusted Principal /
+active-Tenant/cookie/CSRF guards remain the first boundary. Requests cannot select
+Tenant/provider/actor authority. GET forbids bodies and duplicate/foreign queries;
+unsupported writes require CSRF before405. All body/response and runtime budgets
+remain bounded. The original17 telemetry keys remain plus two fixed review keys.
+Composition stays under the existing default-off configuration flag, outside Demo.
+
+The read adapter uses a single RR snapshot, scoped explicit SQL and the existing
+assignment reader. It reads at most six bindings or21 historical metadata rows;
+private configuration/actor/session/commands/source prices are not returned.
+The service validates every row, continuity, counters, scope and hidden shapes
+before exposing at most five bindings /20 history records. UTF-8 byte packing
+can shorten pages without false EOF or empty nonfinal pages. Disabled or stale
+connections retain history without acquiring review authority. Justification is
+visible only to the authorized Manager; audit remains minimized separately.
+
+Seventeen focused HTTP/read/default-off/runtime/telemetry cases passed, including
+all original runtime and17-route metrics protection extended to19 fixed keys.
+Seven read cases cover role/Tenant denial, corrupt sixth row/private fields,
+publication-stale cursor, continuous21/20 history, UTF-8 packing across all rows,
+unknown/empty state and bounded failure when even one entry cannot fit. Five
+transport cases cover scope/CSRF-before405, exact body/query schemas, MIME and
+encoding/byte bounds, unavailable service and exact routing. Lint/style pass after
+retained long-line corrections. No dependency, retry, timeout or capacity changed.
+
+Actual PostgreSQL/cookie tests are extended, but have not executed on this branch:
+context/history bindings, Admin/Employee/foreign/anonymous/revoked cases, Origin /
+CSRF, explicit review and replay, and all400 full-capacity bindings through scoped
+five-entry HTTP pages. Foundation SQL proof is not HTTP acceptance. The complete
+new candidate and all mandatory paired/security gates remain outstanding. No
+Manager browser publication form, Employee publication filter, availability or
+SaaS4 release is claimed by this preparation.
