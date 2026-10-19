@@ -24,6 +24,12 @@ test('registry cannot become a provider SDK, network, runtime or dynamic plugin 
     "fetch('https://untrusted.invalid');",
     'const env = process.env;',
     'const transport = globalThis.fetch;',
+    "global.fetch('https://untrusted.invalid');",
+    "new WebSocket('wss://untrusted.invalid');",
+    'const transport = fetch;',
+    'const factory = Function;',
+    'const evaluate = eval;',
+    "new EventSource('https://untrusted.invalid');",
   ]) {
     for (const file of [CONTRACT, 'src/integrations/delivery-policy.js']) {
       assert.ok(backendSaas2BoundaryViolations({ [file]: source }).some((item) => item.includes('metadata contract')));

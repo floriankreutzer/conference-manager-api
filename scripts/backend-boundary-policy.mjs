@@ -13,6 +13,10 @@ const GENERIC_DUMPING_GROUNDS = new Set([
   'helpers',
   'utils',
 ]);
+const FOUNDATION_RUNTIME_AUTHORITY = new RegExp([
+  '\\b(?:fetch|WebSocket|EventSource|XMLHttpRequest|WebTransport|Worker|SharedWorker',
+  '|navigator|global|globalThis|process|require|eval|Function)\\b',
+].join(''));
 const GENERIC_SETTINGS_MODULES = new Set([
   'settings-service.js',
   'settings-repository.js',
@@ -121,11 +125,11 @@ export function backendSaas2BoundaryViolations(sourceEntries) {
     if (file === 'src/integrations/catering-contract.js'
       && (moduleImports(source).some(({ specifier, dynamic }) => dynamic
         || !['../domain/identifiers.js', './provider-registry.js'].includes(specifier))
-        || /\bfetch\s*\(|\b(?:process|globalThis)\b/.test(source))) {
+        || FOUNDATION_RUNTIME_AUTHORITY.test(source))) {
       violations.push(violation(file, 'catering contracts may depend only on neutral registration and internal identifiers.'));
     }
     if (['src/integrations/provider-registry.js', 'src/integrations/delivery-policy.js'].includes(file)
-      && (moduleImports(source).length > 0 || /\bfetch\s*\(|\b(?:process|globalThis)\b/.test(source))) {
+      && (moduleImports(source).length > 0 || FOUNDATION_RUNTIME_AUTHORITY.test(source))) {
       violations.push(violation(file, 'provider foundation must remain an import-free, network-free policy/metadata contract.'));
     }
     const genericSegment = pathSegments(file)

@@ -1843,7 +1843,6 @@ const fixture = {
       costCenters: [],
       requests: [],
       catalogueMedia: [],
-      catalogueMedia: [],
       roomMedia: [],
       providerSimulation: {
         provider: 'demo_microsoft365',

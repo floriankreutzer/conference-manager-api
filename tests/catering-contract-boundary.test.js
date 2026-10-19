@@ -17,6 +17,7 @@ test('catering response validation cannot acquire SDK, transport, persistence or
   for (const source of [
     "import sdk from '@azure/msal-node';", "import './microsoft365-client.js';",
     "import('../domain/identifiers.js');", "fetch('https://untrusted.invalid');", 'const environment = process.env;',
+    "global.fetch('https://untrusted.invalid');", "new WebSocket('wss://untrusted.invalid');", 'const transport = fetch;',
   ]) {
     assert.ok(backendSaas2BoundaryViolations({ [CONTRACT]: source })
       .some((v) => v.includes('neutral registration and internal identifiers')));
