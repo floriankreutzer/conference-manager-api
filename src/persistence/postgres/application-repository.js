@@ -1,3 +1,4 @@
+import { readCateringPublishedOffersWithClient } from './catering-published-offers.js';
 import { publicApplicationRoom } from '../../domain/application-room-presentation.js';
 import { selectEffectiveTenantBookingPolicy } from '../../domain/tenant-booking-policies.js';
 import { withPostgresTransaction } from './transaction.js';
@@ -168,7 +169,11 @@ async function loadCatalogPageContext(client, tenantId) {
   });
 }
 
-export function createPostgresApplicationRepository(pool, { auditRepository } = {}) {
+export function createPostgresApplicationRepository(pool, {
+  auditRepository,requirePublishedCatering = false,cateringRegistry = null,
+} = {}) {
+  if (typeof requirePublishedCatering !== 'boolean') throw new TypeError('CATERING_PUBLICATION_POLICY_REQUIRED');
+  if (requirePublishedCatering && typeof cateringRegistry?.get !== 'function') throw new TypeError('CATERING_REGISTRY_REQUIRED');
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
   }
@@ -369,8 +374,12 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
           `,
           values: [tenantId],
         });
+        const publication = requirePublishedCatering ? await readCateringPublishedOffersWithClient(client,{
+          tenantId,registry:cateringRegistry,catalogueRevision: Number(revisions.rows[0].catalog_revision),
+        }) : null;
         const variantsByPackage = new Map();
         for (const variant of variants.rows) {
+          if (publication && !publication.allowsPackage(variant.package_id,variant.id)) continue;
           const entries = variantsByPackage.get(variant.package_id) ?? [];
           entries.push(variant);
           variantsByPackage.set(variant.package_id, entries);
@@ -387,10 +396,11 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
           sites: Object.freeze(sites.rows.map(publicSite)),
           rooms: Object.freeze(rooms.rows.map(publicRoom)),
           services: Object.freeze(services.rows.map(publicApplicability)),
-          cateringPackages: Object.freeze(packages.rows.map((row) => (
+          cateringPackages: Object.freeze(packages.rows.filter((row) => !publication
+            || publication.packages.some((entry) => entry.entryId === row.id)).map((row) => (
             publicPackage(row, variantsByPackage)
           ))),
-          cateringItems: Object.freeze(items.rows.map(publicApplicability)),
+          cateringItems: Object.freeze(items.rows.filter((row) => !publication || publication.allowsItem(row.id)).map(publicApplicability)),
           bookingPolicy: publicBookingPolicy(bookingPolicy.rows[0]),
           costAllocation: Object.freeze({
             allocationRequired: costAllocation.rows[0].allocation_required,
@@ -423,6 +433,10 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
           return Object.freeze({ status: 'stale' });
         }
 
+        const publication = requirePublishedCatering && ['cateringPackages','cateringItems'].includes(section)
+          ? await readCateringPublishedOffersWithClient(client,{
+            tenantId,registry:cateringRegistry,catalogueRevision: context.configurationRevisions.catalogue,
+          }) : null;
         let rows;
         if (section === 'sites') {
           rows = await client.query({
@@ -524,7 +538,7 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
           });
         } else if (section === 'cateringPackages') {
           rows = await client.query({
-            name: 'application-catalogue-page-packages',
+            name: publication ? 'application-catalogue-page-packages-published' : 'application-catalogue-page-packages',
             text: `
               SELECT catering_package.id, catering_package.name,
                 catering_package.description, catering_package.active,
@@ -554,6 +568,7 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
               FROM catering_packages catering_package
               WHERE catering_package.tenant_id = $1
                 AND catering_package.active = TRUE
+                ${publication ? 'AND catering_package.id = ANY($4::varchar[])' : ''}
                 AND EXISTS (
                   SELECT 1
                   FROM catering_package_variants variant
@@ -575,11 +590,11 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
               ORDER BY catering_package.id
               LIMIT $3
             `,
-            values: [tenantId, afterId, limit],
+            values: [tenantId, afterId, limit,...(publication ? [publication.packages.map((entry) => entry.entryId)] : [])],
           });
         } else if (section === 'cateringItems') {
           rows = await client.query({
-            name: 'application-catalogue-page-items',
+            name: publication ? 'application-catalogue-page-items-published' : 'application-catalogue-page-items',
             text: `
               SELECT item.id, item.name, item.description, item.active, item.sort_order,
                 item.price_minor, item.currency,
@@ -600,11 +615,12 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
               FROM catering_items item
               WHERE item.tenant_id = $1
                 AND item.active = TRUE
+                ${publication ? 'AND item.id = ANY($4::varchar[])' : ''}
                 AND ($2::varchar IS NULL OR item.id > $2)
               ORDER BY item.id
               LIMIT $3
             `,
-            values: [tenantId, afterId, limit],
+            values: [tenantId, afterId, limit,...(publication ? [publication.itemIds] : [])],
           });
         } else {
           rows = await client.query({
@@ -647,6 +663,7 @@ export function createPostgresApplicationRepository(pool, { auditRepository } = 
             });
           const variantsByPackage = new Map();
           for (const variant of variants.rows) {
+            if (publication && !publication.allowsPackage(variant.package_id,variant.id)) continue;
             const current = variantsByPackage.get(variant.package_id) ?? [];
             current.push(variant);
             variantsByPackage.set(variant.package_id, current);
