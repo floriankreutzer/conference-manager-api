@@ -85,3 +85,80 @@ by loading configuration or creating a proof. No provider SDK/dependency,
 schema, stored role, existing login or session contract changes in this slice.
 The module architecture gate also rejects imports of the real delivery adapter
 from either synthetic Demo composition.
+
+## Unreleased Customer invitation application boundary
+
+The uncomposed `authorization/customer-invitation-policy.js` validates a closed
+command UUID and one through20 distinct recipient intents. It reuses the canonical
+Customer authorization snapshot: Employee is the implicit baseline; only existing
+Conference Manager/Tenant Admin roles are assignable. Platform roles, invented
+Tenant Operator roles, permissions, caller-selected Tenant/User/provider identity,
+expiry and acceptance are rejected. Domain casing is normalized; local casing,
+plus and dot aliases remain distinct. Hidden/symbol/accessor/prototype-bearing or
+sparse input is rejected without evaluating accessors. Returned values are copied
+and frozen. Validation establishes intent only, never membership or authority.
+
+The uncomposed `application/customer-invitation-service.js` provides Customer
+Tenant Admin list, bounded batch issue, exact object/revision reissue and revoke
+ports. It uses `tenant:users:manage` plus same-Tenant current Principal context and
+rejects suspended/archived/unknown lifecycle states before repository access.
+The separate Platform onboarding boundary must use its own current authority; no
+Customer Principal is promoted or supplied with Platform permissions.
+
+The repository contract carries environment, current Principal, server-resolved
+Tenant, correlation, the command UUID and bounded immutable intent. It must lock
+and revalidate live Tenant/User/session/version/role authority, then atomically
+persist all invitations, stable encrypted delivery records and required audit.
+Exact command replay must return its original result; a changed body/actor/scope
+under that command must conflict. Reissue/revoke require the exact current revision
+and an eligible unaccepted invitation. Reissue queues a new delivery and expiry;
+revocation prevents queued dispatch and pending acceptance. Neither operation
+re-enables a disabled User or changes an accepted User's roles. Existing role
+administration/lifecycle and last-admin protections remain their sole owners.
+
+The service validates every projected row against the expected Tenant/environment
+and a closed metadata schema. Listing is at most100 in strictly increasing UUID
+order; duplicate, foreign, private, malformed or stale-result rows fail closed.
+Issue requires one matching pending revision1/queued receipt per requested intent.
+Mutation receipts must match the exact object and next revision. Audit callbacks
+contain invitation ID/revision/operation only, never recipient, code or tokens.
+Delivery `accepted` means provider acceptance; no `delivered` state is fabricated.
+
+Ten focused native progression/negative cases passed. The first local style check
+found overlong test lines, which were wrapped without changing assertions. These
+are application/port tests, not real transaction, mail receipt, HTTP/CSRF, replay,
+concurrency or activation evidence. No repository, schema, worker, Customer route
+or entrypoint currently composes these ports. Durable implementation, Platform
+creation, invited-only authentication/account linking and browser UI remain open.
+
+## Unreleased mailbox-proof separation
+
+An email login must work before an unauthenticated browser can safely know its
+Tenant memberships. The candidate therefore separates mailbox ownership from
+Tenant admission. A stable server-side mailbox identity has no application roles,
+Tenant authority or Microsoft identity. `createEmailMailboxProofFactory` binds an
+eight-digit code and initiating-browser verifier to that internal mailbox UUID,
+challenge UUID, deployment and an independent `email-mailbox-code:v1` HMAC domain.
+It shares the existing cryptographic implementation without inventing Tenant/User
+IDs. The original three-ID factory and its `email-code:v1` HMAC remain compatible.
+Both reject unknown, hidden, accessor and prototype-bearing context shapes.
+
+Only a subsequent authoritative transaction may resolve live eligible invitations/
+memberships for the verified mailbox, recheck Tenant lifecycle/User activity and
+security versions, accept the stored invitation roles once and issue the existing
+Tenant-scoped session. With several organizations, an authenticated pending choice
+must select from server-loaded eligible membership references; the browser never
+chooses independent Tenant authority. A mailbox proof is insufficient to link a
+Microsoft identity; explicit authenticated linking must prove both authorities.
+No shared mailbox/global proof may change an existing User's roles or revive a
+locally disabled User. Shared recipient-level budgets must survive challenge
+replacement/resend. Enumeration-resistant request responses must disclose neither
+mailbox existence nor organization names before proof.
+
+The new `mailboxSignInCode` DE/EN plain-text template contains no organization or
+membership data. It reuses code formatting, explicit UTC expiry, browser-only use,
+non-production labels and the bounded Resend contract. Four additional focused
+cases verify mailbox scope/purpose, legacy HMAC compatibility, malformed context
+and mailbox template/transport behavior. Durable mailbox custody, expiry/attempts,
+HTTP/CSRF/choice/session consumption and actual mail receipt are still open; these
+primitives and templates remain uncomposed and send no mail by themselves.
