@@ -1,4 +1,5 @@
 import { CateringVersionInputError, CateringVersionConflictError } from './application/catering-version-errors.js';
+import { CateringWithdrawalInputError, CateringWithdrawalConflictError } from './application/catering-withdrawal-errors.js';
 import { CateringDeliveryInputError, CateringDeliveryConflictError } from './application/catering-delivery-errors.js';
 import { CateringManualInputError, CateringManualConflictError } from './application/catering-manual-errors.js';
 import { CateringCatalogueAssignmentConflictError } from './application/catering-catalogue-assignment-errors.js';
@@ -100,6 +101,7 @@ export function asApiError(error) {
     || error instanceof RequestCompositionInputError
     || error instanceof CateringDeliveryInputError
     || error instanceof CateringVersionInputError
+    || error instanceof CateringWithdrawalInputError
     || error instanceof CateringManualInputError
     || error instanceof CateringOrderInputError
   ) {
@@ -114,6 +116,7 @@ export function asApiError(error) {
   }
   if (error instanceof CateringDeliveryConflictError) return new ApiError(409, error.code);
   if (error instanceof CateringVersionConflictError) return new ApiError(409, error.code);
+  if (error instanceof CateringWithdrawalConflictError) return new ApiError(409, error.code);
   if (error instanceof CateringManualConflictError) return new ApiError(409, error.code);
   if (error instanceof CateringOrderConflictError) {
     return new ApiError(409, error.code, error.currentRevision === null ? null : { currentRevision: error.currentRevision });

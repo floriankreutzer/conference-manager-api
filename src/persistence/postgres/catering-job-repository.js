@@ -43,12 +43,14 @@ export function createPostgresCateringJobRepository(pool, {
     const expected = normalizeCateringDeliveryJob(input.job, { tenantId, jobId });
     if (!await tenantLock(client, tenantId)) return null;
     const rows = await client.query(`SELECT *,lease_expires_at>clock_timestamp() AS lease_live
+      ,catering_order_delivery_operation(tenant_id,order_id,order_version) AS delivery_operation
       FROM catering_delivery_jobs WHERE tenant_id=$1 AND id=$2 FOR UPDATE`, [tenantId,jobId]);
     if (rows.rowCount !== 1) return null;
     const row = rows.rows[0];
     if (!row.lease_live || row.lease_id !== leaseId || row.status !== status || Number(row.order_version) !== input.job.orderVersion
       || row.order_id !== input.job.orderId || row.integration_id !== input.job.integrationId || row.operation !== input.job.operation
       || row.provider_id !== input.providerId || Number(row.quote_revision) !== input.job.quoteRevision
+      || row.delivery_operation !== (input.deliveryOperation ?? input.job.operation)
       || Number(row.decision_sequence) !== input.job.decisionSequence) return null;
     const expectedRevision = expected.revision + (status === 'dispatching' ? 1 : 0);
     if (Number(row.revision) !== expectedRevision || (status === 'dispatching' && row.dispatch_attempts !== input.attempt)
@@ -57,13 +59,14 @@ export function createPostgresCateringJobRepository(pool, {
   }
   async function currentMode(client, row, reading = false) {
     const configured = await client.query(`SELECT CASE WHEN $4::boolean THEN configuration.status_mode ELSE
-      CASE $3::text WHEN 'initial' THEN configuration.order_mode WHEN 'cancel' THEN configuration.cancel_mode
+      CASE catering_order_delivery_operation($1,$3,$6::bigint) WHEN 'initial' THEN configuration.order_mode
+        WHEN 'cancel' THEN configuration.cancel_mode
         ELSE configuration.update_mode END END AS mode FROM catering_integration_configurations configuration
       JOIN integrations integration ON integration.tenant_id=configuration.tenant_id AND integration.id=configuration.integration_id
       JOIN tenants tenant ON tenant.id=integration.tenant_id AND tenant.status='active'
       WHERE configuration.tenant_id=$1 AND configuration.integration_id=$2 AND integration.provider=$5
         AND integration.status IN ('configured','active')`,
-    [row.tenant_id,row.integration_id,row.operation,reading,row.provider_id]);
+    [row.tenant_id,row.integration_id,row.order_id,reading,row.provider_id,Number(row.order_version)]);
     const mode = configured.rows[0]?.mode ?? 'unsupported';
     if (!['api','manual','unsupported'].includes(mode)) throw new TypeError('CATERING_JOB_MODE_INVALID');
     return mode;
@@ -176,6 +179,7 @@ export function createPostgresCateringJobRepository(pool, {
         [row.tenant_id,row.id,reconciling ? 'reconciling' : 'leased',token,reconciling ? 1 : 0,leaseMs]);
         await audit(client, row, 'catering.delivery.claimed', row.status, reconciling ? 'reconciling' : 'leased');
         return Object.freeze({ kind: reconciling ? 'reconcile' : 'dispatch', job: projection(updated.rows[0]), leaseId: token,
+          ...(source.deliveryOperation === undefined ? {} : { deliveryOperation: source.deliveryOperation }),
           providerId: descriptor.id, mode, snapshot: source.snapshot,
           quote: Object.freeze({ revision: source.quote.revision, cost: source.quote.cost }) });
       });

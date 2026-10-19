@@ -108,7 +108,7 @@ export function createPostgresCateringManualDeliveryRepository(pool, { registry,
           const configuration = await client.query(`SELECT CASE $4::text WHEN 'initial' THEN order_mode WHEN 'cancel' THEN cancel_mode
             ELSE update_mode END AS mode FROM catering_integration_configuration_revisions
             WHERE tenant_id=$1 AND integration_id=$2 AND revision=$3`,
-          [input.tenantId,view.snapshot.integrationId,view.configurationRevision,view.operation]);
+          [input.tenantId,view.snapshot.integrationId,view.configurationRevision,view.deliveryOperation ?? view.operation]);
           if (configuration.rows[0]?.mode !== 'manual') return result('manual_source_unavailable');
           const sequence = await head(client, input.tenantId, input.orderId, input.expectedOrderVersion) + 1;
           if (sequence >= Number.MAX_SAFE_INTEGER) return result('manual_source_unavailable');

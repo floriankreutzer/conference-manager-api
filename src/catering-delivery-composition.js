@@ -1,4 +1,7 @@
 import { createCateringVersionService } from './application/catering-version-service.js';
+import { createCateringWithdrawalService } from './application/catering-withdrawal-service.js';
+import { createCateringWithdrawalRouteModule } from './http/catering-order-withdrawal.js';
+import { createPostgresCateringWithdrawalRepository } from './persistence/postgres/catering-withdrawal-repository.js';
 import { createCateringVersionRouteModule } from './http/catering-order-versions.js';
 import { createPostgresCateringVersionRepository } from './persistence/postgres/catering-version-repository.js';
 import { createCateringDeliveryService } from './application/catering-delivery-service.js';
@@ -22,6 +25,9 @@ export function createCateringDeliveryRouteModules({ config, persistence, author
   const manualService = createCateringManualDeliveryService({ repository: manualRepository, authorizationPolicy, auditService });
   const versions = createPostgresCateringVersionRepository(persistence.pool, { registry, auditRepository: persistence.auditRepository });
   const versionService = createCateringVersionService({ repository: versions, authorizationPolicy, auditService });
+  const withdrawals = createPostgresCateringWithdrawalRepository(persistence.pool,
+    { registry, auditRepository: persistence.auditRepository });
+  const withdrawalService = createCateringWithdrawalService({ repository: withdrawals, authorizationPolicy, auditService });
   return Object.freeze([createCateringDeliveryRouteModule(service), createCateringManualDeliveryRouteModule(manualService),
-    createCateringVersionRouteModule(versionService)]);
+    createCateringVersionRouteModule(versionService), createCateringWithdrawalRouteModule(withdrawalService)]);
 }

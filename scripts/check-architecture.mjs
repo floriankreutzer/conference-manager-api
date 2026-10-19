@@ -555,8 +555,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 51;/.test(pool)) {
-  throw new Error('Runtime schema readiness must include current schema including Catering version proposal custody version 51.');
+if (!/export const CURRENT_SCHEMA_VERSION = 52;/.test(pool)) {
+  throw new Error('Runtime schema readiness must include current schema including Catering unsent order custody version 52.');
 }
 const retentionPrivilegeMigration = await readFile(
   'migrations/041_room_media_retention_privileges.up.sql',

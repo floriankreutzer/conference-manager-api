@@ -12,6 +12,25 @@ const basis = (extra = {}) => ({ operation: 'change', headVersion: 1, headStatus
   effective: { orderVersion: 1, status: 'confirmed' }, currentRequestVersion: 2, currentRequestStatus: 'Confirmed',
   effectiveRequestVersion: 1, effectiveAssignmentRevision: 1, ...extra });
 
+test('an attested withdrawn order without supplier commitment restarts as a reviewed first physical order', () => {
+  for (const currentRequestVersion of [1,2]) {
+    const plan = cateringVersionProposalBasis(basis({ effective: null, headStatus: 'withdrawn', currentRequestVersion }));
+    assert.equal(plan.eligible, true); assert.equal(plan.deliveryOperation, 'initial');
+    assert.equal(plan.basisOrderVersion, 1); assert.equal(plan.nextOrderVersion, 2);
+    assert.equal(plan.sourceRequestVersion, currentRequestVersion);
+  }
+  for (const extra of [{ operation: 'cancel' }, { operation: 'exception' }, { currentRequestStatus: 'Cancelled' },
+    ...['pending_quote','rejected','failed','transmitted','partially_confirmed','reconciliation_required']
+      .map((headStatus) => ({ headStatus }))]) {
+    assert.equal(cateringVersionProposalBasis(basis({ effective: null, headStatus: 'withdrawn', ...extra })).eligible, false);
+  }
+  assert.throws(() => cateringVersionProposalBasis(basis({ effective: null, headStatus: 'withdrawn',
+    effectiveRequestVersion: 3 })), /INVALID/);
+  const retained = cateringVersionProposalBasis(basis({ headVersion: 2, headStatus: 'withdrawn' }));
+  assert.equal(retained.basisOrderVersion, 1); assert.equal(retained.nextOrderVersion, 3);
+  assert.equal(Object.hasOwn(retained, 'deliveryOperation'), false);
+});
+
 test('version proposals require explicit bounded justification and exact immutable source CAS', () => {
   const value = normalizeCateringVersionCommand(command(), { orderId: id(5) });
   assert.equal(Object.isFrozen(value), true); assert.equal(value.orderId, id(5));
