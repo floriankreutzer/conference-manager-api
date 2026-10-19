@@ -208,6 +208,15 @@ Tracking: #64-#70.
 
 ## Residual risks and explicit non-claims
 
+The invited-email foundation is an inactive adapter/cryptographic slice, not a
+completed authentication boundary. Its recipient/code/header validation,
+fixed Resend destination, disabled redirects, bounded response/deadline,
+secret-minimized failures and context-bound HMAC proofs have focused tests.
+Durable attempt/resend limits, membership/recipient proof, expiry, atomic
+redemption, CSRF/browser cookies and audit-atomic session issuance remain
+activation blockers. An accepted mail receipt is never delivered-mail or
+authentication evidence. See `INVITED-EMAIL-AUTHENTICATION.md`.
+
 1. The in-process limiter is defense-in-depth, not a cluster-wide quota. Pilot/Production must provide shared edge abuse control and evidence it is active.
 2. The audit HMAC chain detects modification and reordering while the key remains protected but does not independently prove completeness after privileged suffix deletion or stale backup restoration. External anchoring/WORM retention is a deployment/governance decision.
 3. Repository tests do not prove that a real Microsoft application registration, customer consent, Exchange Application RBAC policy or secret rotation is configured correctly. Those are explicit external acceptance gates.

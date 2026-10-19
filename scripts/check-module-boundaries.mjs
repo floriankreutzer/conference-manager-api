@@ -26,6 +26,7 @@ const REAL_PRODUCTION_IDENTITY_AND_PROVIDER_MODULES = new Set([
   'src/identity/provider-identity-resolver.js',
   'src/identity/jit-user-service.js',
   'src/integrations/microsoft365-client.js',
+  'src/integrations/resend-email-client.js',
   'src/integrations/microsoft365-calendar-provider.js',
   'src/platform-production-authentication.js',
   'src/platform/identity/entra-client.js',
