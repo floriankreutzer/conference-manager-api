@@ -17,7 +17,7 @@ foreign keys bind the exact historical order/operation, connection and Manager d
 The original order-state revision, source identity, creator and correlation cannot change. Mutable
 job state uses positive compare-and-swap revisions; dispatch attempts are limited to 3 and automatic
 reconciliation admissions to 10. Terminal evidence is retained. Due times and lease times are stored
-as timestamptz; future repositories must derive them from database time, not browser clocks.
+as timestamptz; repositories derive them from database time, not browser clocks.
 
 Enqueue requires a current queued order state immediately after the retained source revision and
 the exact approved decision/quote, active Tenant/decider/security version, current eligible connection

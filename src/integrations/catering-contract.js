@@ -85,3 +85,21 @@ export function normalizeCateringReceipt(value, expected) {
     counts: Object.freeze(counts),
   });
 }
+
+const DELIVERY_FAILURE_CODES = new Set(['timeout','throttled','unavailable','authorization','validation','response_invalid','unknown']);
+const DELIVERY_FAILURE_OUTCOMES = new Set(['not_sent','rejected','unknown']);
+
+// Only a trusted adapter may assert that a write was demonstrably not sent.
+// Arbitrary exceptions always mean unknown outcome to the application.
+export class CateringDeliveryError extends Error {
+  constructor(code, { outcome = 'unknown', retryable = false, retryAfterMs = null } = {}) {
+    if (!DELIVERY_FAILURE_CODES.has(code) || !DELIVERY_FAILURE_OUTCOMES.has(outcome) || typeof retryable !== 'boolean'
+      || (retryable && outcome !== 'not_sent') || (retryAfterMs !== null
+        && (!Number.isSafeInteger(retryAfterMs) || retryAfterMs < 0 || retryAfterMs > 300000))) {
+      throw new TypeError('CATERING_DELIVERY_CLASSIFICATION_INVALID');
+    }
+    super('CATERING_PROVIDER_DELIVERY_UNAVAILABLE');
+    this.name = 'CateringDeliveryError'; this.code = code; this.outcome = outcome;
+    this.retryable = retryable; this.retryAfterMs = retryAfterMs; Object.freeze(this);
+  }
+}

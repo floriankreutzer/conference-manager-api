@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { isInternalUuid } from '../../domain/identifiers.js';
-import { normalizeCateringDeliveryJob } from '../../domain/catering-delivery-job.js';
+import { cateringDeliveryJobFromRow as projection } from './catering-delivery-row.js';
 import { readCateringOrderWithClient } from './catering-order-source.js';
 import { lockCateringManager } from './catering-manager-session.js';
 import { withPostgresTransaction } from './transaction.js';
@@ -13,15 +13,6 @@ function uuid(value) {
 function counter(value, maximum = Number.MAX_SAFE_INTEGER - 1) {
   if (!Number.isSafeInteger(value) || value < 1 || value > maximum) throw new TypeError('CATERING_DELIVERY_COUNTER_INVALID');
   return value;
-}
-function projection(row, tenantId, jobId = null) {
-  return normalizeCateringDeliveryJob({ tenantId: row.tenant_id, jobId: row.id, integrationId: row.integration_id,
-    orderId: row.order_id, orderVersion: Number(row.order_version), operation: row.operation,
-    revision: Number(row.revision), status: row.status, dispatchAttempts: row.dispatch_attempts,
-    automaticReconciliationAttempts: row.reconciliation_attempts, quoteRevision: Number(row.quote_revision),
-    decisionSequence: Number(row.decision_sequence), originStateRevision: Number(row.origin_state_revision),
-    createdAt: row.created_at.toISOString(), updatedAt: row.updated_at.toISOString(),
-    availableAt: row.available_at?.toISOString() ?? null }, { tenantId, jobId });
 }
 
 export function createPostgresCateringDeliveryRepository(pool, { registry, auditRepository, idFactory = randomUUID } = {}) {

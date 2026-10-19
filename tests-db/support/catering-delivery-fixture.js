@@ -19,9 +19,8 @@ import { cateringId as id, cateringOrderFixture } from '../../tests/support/cate
 
 // Real application/session/audit preparation. Only the future Confirmed Request
 // is controlled SQL test setup; no supplier, calendar or live order is created.
-export async function createCateringDeliveryFixture(pool) {
+export async function createCateringDeliveryFixture(pool, { registry = createCateringConfigurationRegistry(), extraCount = 0 } = {}) {
   const authorizationPolicy = createAuthorizationPolicy();
-  const registry = createCateringConfigurationRegistry();
   const auditRepository = createPostgresAuditRepository(pool, { hmacSecret: 'a'.repeat(32) });
   const auditService = createAuditService({ repository: auditRepository, authorizationPolicy });
   const sessionService = createSessionService({ repository: createPostgresSessionRepository(pool, { auditRepository }),
@@ -42,11 +41,13 @@ export async function createCateringDeliveryFixture(pool) {
   await pool.query(`INSERT INTO integrations(tenant_id,id,provider,provider_reference,status)
     VALUES ($1,$2,'manual_catering','synthetic-delivery-source','configured')`, [id(1), id(3)]);
   const configuration = createPostgresCateringConfigurationRepository(pool, { registry, auditRepository });
-  function configurationCommand(expectedRevision, enabled = true) {
+  function configurationCommand(expectedRevision, enabled = true, mode = 'manual') {
     return { tenantId: id(1), integrationId: id(3), providerId: 'manual_catering',
       actorUserId: id(30), sessionId: admin.principal.session.id, expectedSecurityVersion: 1,
       expectedRevision, changedAt: new Date(), correlationId: id(90),
-      configuration: { initialOrderMode: 'manager_review', capabilities: enabled ? { 'catering.order': 'manual' } : {} },
+      configuration: { initialOrderMode: 'manager_review', capabilities: enabled ? {
+        'catering.order': mode, ...(mode === 'api' ? { 'catering.status': 'api' } : {}),
+      } : {} },
       auditEventFor({ revision }) { return auditService.createEvent({ ...context(admin), action: 'tenant.configuration.changed',
         targetType: 'integration', targetId: id(3), previousState: { revision: expectedRevision }, newState: { revision },
         outcome: 'success', retentionClass: 'administrative', metadata: {
@@ -56,13 +57,13 @@ export async function createCateringDeliveryFixture(pool) {
   }
   await configuration.initialize(configurationCommand(0));
   let configurationRevision = 1;
-  async function setOrderCapability(enabled) {
-    const saved = await configuration.update(configurationCommand(configurationRevision, enabled));
+  async function setOrderCapability(enabled, mode = 'manual') {
+    const saved = await configuration.update(configurationCommand(configurationRevision, enabled, mode));
     if (saved.status !== 'updated') throw new Error('SYNTHETIC_CONFIGURATION_UPDATE_FAILED');
     configurationRevision++;
   }
   const source = (sequence) => cateringOrderFixture({ requestVersion: 1, catalogueRevision: 2,
-    extraCount: 0, includedSelection: false, capturedAt: new Date(Date.now() - 3600000).toISOString(),
+    extraCount, includedSelection: false, capturedAt: new Date(Date.now() - 3600000).toISOString(),
     startsAt: new Date(Date.now() + 172800000 + sequence * 7200000).toISOString() });
   const catalogue = createTenantCatalogueService({ authorizationPolicy, auditService,
     repository: createPostgresTenantCatalogueRepository(pool, { auditRepository }) });
@@ -73,7 +74,7 @@ export async function createCateringDeliveryFixture(pool) {
     assignments: source(0).ownership.assignments });
   const orders = createCateringOrderService({ authorizationPolicy, auditService, registry,
     repository: createPostgresCateringOrderRepository(pool, { registry, auditRepository }) });
-  async function createApprovedOrder(sequence = 0) {
+  async function createApprovedOrder(sequence = 0, { quoteExpiresAt = new Date(Date.now() + 3600000).toISOString() } = {}) {
     const request = { ...source(sequence).request, id: `request-delivery-${sequence}` };
     const event = auditService.createEvent({ principal: { tenantId: id(1), userId: id(2) },
       tenantContext: { tenantId: id(1), status: 'active' }, correlationId: id(90), action: 'request.created',
@@ -95,7 +96,7 @@ export async function createCateringDeliveryFixture(pool) {
       expectedRequestVersion: 1, expectedAssignmentRevision: 1 });
     const orderId = prepared.orders[0].orderId;
     await orders.recordQuote({ ...context(), schemaVersion: 1, orderId, expectedStateRevision: 1, expectedQuoteRevision: 0,
-      cost: { amountMinor: 1200, currency: 'EUR' }, expiresAt: new Date(Date.now() + 3600000).toISOString() });
+      cost: { amountMinor: 1200, currency: 'EUR' }, expiresAt: quoteExpiresAt });
     return orders.decide({ ...context(), schemaVersion: 1, orderId, expectedStateRevision: 2, expectedQuoteRevision: 1,
       decision: 'approved' });
   }
