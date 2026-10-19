@@ -167,7 +167,7 @@ The all-role Tenant presentation contract reuses the current Organization row an
 `organization_revision`. Its managed-brand policy maps one fixed reference to a code-shipped preset
 and therefore introduces no upload metadata, asset table, external object reference or migration.
 
-Migration 039 introduced schema version 39; the current exact runtime readiness version is 51. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
+Migration 039 introduced schema version 39; the current exact runtime readiness version is 52. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
 
 No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
 
@@ -194,6 +194,15 @@ Migration051 and Demo overlay017 add reviewed proposals over confirmed supplier 
 distinguish retained commercial source from current conference cancellation evidence. Historical
 versions stay immutable, and proposals require fresh quote/decision evidence before delivery.
 Populated or audit-only version history blocks rollback. See [reviewed versions](CATERING-VERSION-PROPOSALS.md).
+
+Migration052 and Demo overlay018 add append-only local withdrawal evidence and immutable
+first-physical-delivery routing for reviewed replacements of unsent drafts. A withdrawn
+version is frozen; any prior supplier commitment remains effective. Withdrawal never
+sends a supplier cancellation. New versions require a new exact supplier quote and Manager
+decision. Zero dispatch intent/observation/lease and explicit no-manual-transmission
+attestation are required before local withdrawal. Evidence, state, safe job supersession
+and minimized audit commit atomically; populated or audit-only rollback requires review.
+See [unsent orders](CATERING-UNSENT-ORDERS.md) for the branch acceptance status and limits.
 
 ## Tenant integrity
 
@@ -335,7 +344,7 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 51.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 52.
 
 ## Shared Demo persistence
 
@@ -347,8 +356,8 @@ reset/seed capability and migration ownership. All four URLs must resolve to the
 distinct.
 
 The canonical `migrations/` stream remains the source of the business schema and must contain the
-exact applied sequence `001..051`. The independent `demo-migrations/` stream has its own
-`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `017`
+exact applied sequence `001..052`. The independent `demo-migrations/` stream has its own
+`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `018`
 installs the immutable database sentinel, provider/persona reference tables, minimized views and
 role grants, private Room/Catering media and create/attach lifecycle support. Overlay 004 grants only `INSERT` and `TRUNCATE` on the canonical attribution
 migration-state singleton to the reset role; customer and Platform roles receive no access. The

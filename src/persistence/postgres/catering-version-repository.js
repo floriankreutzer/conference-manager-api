@@ -101,6 +101,9 @@ export function createPostgresCateringVersionRepository(pool, { registry, auditR
             snapshot.positions.map((line) => line.kind),snapshot.positions.map((line) => line.entryId)]);
           await client.query(`INSERT INTO catering_order_version_states(tenant_id,order_id,version,revision,status,updated_at)
             VALUES ($1,$2,$3,1,'pending_quote',clock_timestamp())`, [input.tenantId,input.orderId,plan.nextOrderVersion]);
+          if (plan.deliveryOperation === 'initial') await client.query(`INSERT INTO catering_unsent_replacements
+            (tenant_id,order_id,order_version,prior_order_version,prior_state_revision) VALUES ($1,$2,$3,$4,$5)`,
+          [input.tenantId,input.orderId,plan.nextOrderVersion,input.expectedOrderVersion,input.expectedStateRevision]);
           const inserted = await client.query(`INSERT INTO catering_version_proposals
             (tenant_id,order_id,order_version,prior_order_version,prior_state_revision,basis_order_version,command_id,operation,
               request_id,request_evidence_version,request_evidence_status,source_request_version,assignment_revision,configuration_revision,
@@ -118,9 +121,12 @@ export function createPostgresCateringVersionRepository(pool, { registry, auditR
           const event = input.auditEventFor({ orderId: input.orderId, orderVersion: plan.nextOrderVersion,
             priorOrderVersion: input.expectedOrderVersion, priorStateRevision: input.expectedStateRevision,
             basisOrderVersion: plan.basisOrderVersion, requestVersion: plan.requestEvidenceVersion,
-            sourceRequestVersion: plan.sourceRequestVersion, operation: input.operation });
+            sourceRequestVersion: plan.sourceRequestVersion, operation: input.operation,
+            ...(plan.deliveryOperation === 'initial' ? { deliveryOperation: 'initial' } : {}) });
+          const expectedAction = plan.deliveryOperation === 'initial'
+            ? 'catering.order.unsent_replaced' : 'catering.order.version_proposed';
           if (event?.tenantId !== input.tenantId || event.actorUserId !== input.actorUserId || event.targetType !== 'catering_order'
-            || event.targetId !== input.orderId || event.action !== 'catering.order.version_proposed'
+            || event.targetId !== input.orderId || event.action !== expectedAction
             || event.correlationId !== input.correlationId || event.outcome !== 'success' || event.retentionClass !== 'business') {
             throw new TypeError('CATERING_VERSION_AUDIT_SCOPE_INVALID');
           }
@@ -131,7 +137,8 @@ export function createPostgresCateringVersionRepository(pool, { registry, auditR
         });
       } catch (error) {
         if (error?.code === '23514' && ['CATERING_VERSION_SOURCE_INVALID','CATERING_VERSION_CONFIRMED_BASIS_REQUIRED',
-          'CATERING_VERSION_CHANGE_SOURCE_INVALID','CATERING_VERSION_RETAINED_SOURCE_INVALID'].includes(error.message)) {
+          'CATERING_VERSION_CHANGE_SOURCE_INVALID','CATERING_VERSION_RETAINED_SOURCE_INVALID',
+          'CATERING_UNSENT_SOURCE_INVALID'].includes(error.message)) {
           return result('source_unavailable');
         }
         throw error;

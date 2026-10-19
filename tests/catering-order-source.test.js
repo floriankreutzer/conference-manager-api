@@ -14,7 +14,7 @@ function fixture() {
     requester_display_name: input.request.requesterAttribution.displayName };
   const detail = { tenant_id: snapshot.tenantId, order_id: snapshot.orderId, version: '1',
     request_id: snapshot.requestId, request_version: String(snapshot.requestVersion), integration_id: snapshot.integrationId,
-    assignment_revision: '3', catalogue_revision: '4', configuration_revision: '1', operation: 'initial',
+    assignment_revision: '3', catalogue_revision: '4', configuration_revision: '1', operation: 'initial', delivery_operation: 'initial',
     provider: 'manual_catering', position_count: snapshot.positions.length,
     conference_total_minor: String(snapshot.conferencePrice.amountMinor), currency: 'EUR', state_revision: '1',
     status: 'pending_quote', state_updated_at: new Date('2026-10-19T10:00:00.000Z'), quote_revision: null,
@@ -52,6 +52,20 @@ test('persisted order detail reconstructs exact immutable source and identities 
   assert.equal(Object.hasOwn(result.snapshot, 'requesterAttribution'), false);
   assert.equal(Object.hasOwn(result.snapshot, 'requesterUserId'), false);
   assert.ok(f.queries.every((query) => query.text.includes('tenant_id=$1')));
+});
+
+test('immutable SQL delivery evidence projects only an explicit first physical replacement mapping', async () => {
+  const f = fixture(); f.detail.version = '2'; f.detail.operation = 'change';
+  const view = await readCateringOrderWithClient(f.client, { tenantId: f.snapshot.tenantId, orderId: f.snapshot.orderId,
+    registry: createCateringConfigurationRegistry() });
+  assert.equal(view.operation, 'change'); assert.equal(view.deliveryOperation, 'initial');
+  assert.equal(view.snapshot.orderVersion, 2);
+  for (const extra of [{ version: '1' }, { operation: 'cancel' }, { delivery_operation: null },
+    { delivery_operation: 'unknown' }, { operation: 'initial', delivery_operation: 'change' }]) {
+    Object.assign(f.detail, { version: '2', operation: 'change', delivery_operation: 'initial' }, extra);
+    await assert.rejects(readCateringOrderWithClient(f.client, { tenantId: f.snapshot.tenantId, orderId: f.snapshot.orderId,
+      registry: createCateringConfigurationRegistry() }), /INVALID/);
+  }
 });
 
 test('metadata/source scope, version, position identity and historical price corruption fail closed', async () => {

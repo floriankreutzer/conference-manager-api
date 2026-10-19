@@ -66,6 +66,7 @@ export async function readCateringOrderWithClient(client, { tenantId, orderId, v
   if (version !== null) positive(version);
   const result = await client.query({ name: lock ? 'catering-order-detail-lock' : 'catering-order-detail-read',
     text: `SELECT history.*,integration.provider,state.revision AS state_revision,state.status,
+      catering_order_delivery_operation(history.tenant_id,history.order_id,history.version) AS delivery_operation,
       state.updated_at AS state_updated_at,state.quote_revision,state.decision_sequence,
       quote.amount_minor AS quote_amount_minor,quote.currency AS quote_currency,quote.expires_at,
       decision.decision,decision.quote_revision AS decision_quote_revision,
@@ -90,6 +91,8 @@ export async function readCateringOrderWithClient(client, { tenantId, orderId, v
   if (row.tenant_id !== tenantId || row.order_id !== orderId || !isCateringOrderStatus(row.status)
     || !['initial','change','cancel','exception'].includes(row.operation)) invalid();
   const orderVersion = positive(row.version);
+  if (row.delivery_operation !== row.operation
+    && !(row.delivery_operation === 'initial' && row.operation === 'change' && orderVersion > 1)) invalid();
   const source = await loadCateringOrderSourceWithClient(client, { tenantId, requestId: row.request_id,
     requestVersion: positive(row.request_version), assignmentRevision: positive(row.assignment_revision) });
   if (!source || source.request.snapshot.configurationRevisions.catalogue !== positive(row.catalogue_revision)) invalid();
@@ -115,6 +118,7 @@ export async function readCateringOrderWithClient(client, { tenantId, orderId, v
   if (decision && (!quote || !['approved','rejected'].includes(decision.decision) || decision.quoteRevision !== quote.revision
     || decision.cost.amountMinor !== quote.cost.amountMinor || decision.cost.currency !== quote.cost.currency)) invalid();
   return Object.freeze({ tenantId, snapshot, providerId: provider.id, configurationRevision: positive(row.configuration_revision),
+    ...(row.delivery_operation === row.operation ? {} : { deliveryOperation: row.delivery_operation }),
     operation: row.operation, state: Object.freeze({ revision: positive(row.state_revision), status: row.status,
       updatedAt: row.state_updated_at.toISOString() }), quote, decision });
 }

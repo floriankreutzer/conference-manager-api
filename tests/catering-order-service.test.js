@@ -69,6 +69,29 @@ function fixture() {
   return { make, service: make(), repository, view, snapshot, calls, events, prepare, quote, decide };
 }
 
+test('first physical replacement DTO explicitly retains business review and exact v2 quote/decision approval', async () => {
+  const f = fixture(); f.view.snapshot = { ...f.snapshot, orderVersion: 2 };
+  f.view.operation = 'change'; f.view.deliveryOperation = 'initial';
+  const loaded = await f.service.load({ ...context(), orderId: f.snapshot.orderId, orderVersion: 2 });
+  assert.equal(loaded.schemaVersion, 2); assert.equal(loaded.deliveryOperation, 'initial');
+  assert.equal(loaded.operation, 'change'); assert.equal(loaded.order.orderVersion, 2);
+  assert.equal(Object.hasOwn(loaded.order, 'tenantId'), false);
+  const quoted = await f.service.recordQuote({ ...f.quote(), expectedOrderVersion: 2 });
+  assert.equal(quoted.state.status, 'pending_manager_review'); assert.equal(quoted.schemaVersion, 2);
+  const approved = await f.service.decide({ ...f.decide(), expectedOrderVersion: 2 });
+  assert.equal(approved.state.status, 'released'); assert.equal(approved.decision.cost.amountMinor, 1200);
+  assert.equal(approved.deliveryOperation, 'initial');
+  for (const extra of [{ deliveryOperation: 'change' }, { operation: 'initial' }, { operation: 'cancel' },
+    { snapshot: f.snapshot }, { deliveryOperation: 'unknown' }]) {
+    const invalid = fixture(); invalid.view.snapshot = { ...invalid.snapshot, orderVersion: 2 };
+    Object.assign(invalid.view, { operation: 'change', deliveryOperation: 'initial' }, extra);
+    await assert.rejects(invalid.service.load({ ...context(), orderId: invalid.snapshot.orderId }), /RESULT_INVALID/);
+  }
+  const old = fixture();
+  const initial = await old.service.load({ ...context(), orderId: old.snapshot.orderId });
+  assert.equal(initial.schemaVersion, 1); assert.equal(Object.hasOwn(initial, 'deliveryOperation'), false);
+});
+
 test('Manager prepares, records exact supplier cost and decides through independent revisions and minimized server audit', async () => {
   const f = fixture();
   const prepared = await f.service.prepare(f.prepare());

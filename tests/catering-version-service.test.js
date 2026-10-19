@@ -98,3 +98,26 @@ test('version history enforces complete20/21 pages and cannot advertise unsafe r
     await assert.rejects(fixture({ load: async () => corrupt }).service.load({ ...versionContext(), orderId: id(5) }), /INVALID/);
   }
 });
+
+test('only an unsent withdrawn head can advertise no-basis change and its audit distinguishes first physical delivery', async () => {
+  const page = { ...versionPage(), basis: null, allowedOperations: ['change'],
+    orderState: { orderVersion: 1, revision: 6, status: 'withdrawn' } };
+  assert.deepEqual((await fixture({ load: async () => page }).service.load({ ...versionContext(), orderId: id(5) }))
+    .allowedOperations, ['change']);
+  for (const extra of [{ allowedOperations: ['cancel'] }, { allowedOperations: ['exception'] },
+    { currentAssignmentRevision: 0 }, { currentRequest: null }, { currentRequest: { version: 2, status: 'Cancelled' } },
+    { orderState: { orderVersion: 1, revision: 6, status: 'rejected' } }]) {
+    await assert.rejects(fixture({ load: async () => ({ ...page, ...extra }) }).service.load({ ...versionContext(), orderId: id(5) }),
+      /INVALID/);
+  }
+  let event;
+  const first = fixture({ async propose(input) {
+    event = input.auditEventFor({ orderId: id(5), orderVersion: 2, priorOrderVersion: 1, priorStateRevision: 6,
+      basisOrderVersion: 1, requestVersion: 2, sourceRequestVersion: 2, operation: 'change', deliveryOperation: 'initial' });
+    return { status: 'proposed', replayed: false, proposal: versionProposal(),
+      orderState: { orderVersion: 2, revision: 1, status: 'pending_quote' } };
+  } });
+  await first.service.propose(versionCommand()); assert.equal(event.action, 'catering.order.unsent_replaced');
+  assert.equal(event.metadata.deliveryOperation, 'initial'); assert.equal(event.metadata.versionOperation, 'change');
+  assert.doesNotMatch(JSON.stringify(event), /Synthetic changed|justification|positions|sessionId/);
+});
