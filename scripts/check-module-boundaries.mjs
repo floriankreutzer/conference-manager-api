@@ -147,6 +147,14 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
   }
 
   for (const file of graph.keys()) {
+    if (isInside(file, 'src/demo')) {
+      const emailPath = firstReachablePath(graph, file,
+        (dependency) => dependency === 'src/integrations/resend-email-client.js');
+      if (emailPath && emailPath.length > 2) {
+        violations.push(violation(file,
+          `Demo runtime must not import Production identity/provider implementation through an intermediary (${emailPath.join(' -> ')}).`));
+      }
+    }
     const customerDemo = demoSurfaceFile(file, 'customer');
     const platformDemo = demoSurfaceFile(file, 'platform');
     if (!customerDemo && !platformDemo) continue;

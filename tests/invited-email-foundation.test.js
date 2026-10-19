@@ -20,6 +20,12 @@ test('synthetic Demo compositions cannot import the real Resend delivery adapter
       'src/integrations/resend-email-client.js': 'export const adapter = true;',
     });
     assert.ok(violations.some((value) => value.includes('must not import Production identity/provider')));
+    const indirect = architectureConsolidationBoundaryViolations({
+      [`src/demo/${surface}-composition.js`]: "import '../integrations/transactional-delivery.js';",
+      'src/integrations/transactional-delivery.js': "export { createResendEmailClient } from './resend-email-client.js';",
+      'src/integrations/resend-email-client.js': 'export const adapter = true;',
+    });
+    assert.ok(indirect.some((value) => value.includes('through an intermediary')));
   }
 });
 

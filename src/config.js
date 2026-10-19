@@ -1,5 +1,6 @@
 import { ApiError } from './api-error.js';
 import { loadFeatureFlags } from './feature-flags.js';
+import { resolveDeploymentEnvironment } from './deployment-environment.js';
 
 export const APPROVED_OUTBOUND_ORIGINS = Object.freeze({
   microsoftIdentity: 'https://login.microsoftonline.com',
@@ -201,6 +202,12 @@ export function loadDatabaseConfig(env = process.env, mode = parseMode(env)) {
 
 export function loadConfig(env = process.env) {
   const mode = parseMode(env);
+  let deploymentEnvironment;
+  try {
+    deploymentEnvironment = resolveDeploymentEnvironment(env.DEPLOYMENT_ENVIRONMENT, mode);
+  } catch (error) {
+    throw new ConfigurationError(error.message);
+  }
   const supportFallback = mode === 'development' || mode === 'test';
   const publicOrigin = parseOrigin(env.PUBLIC_ORIGIN, mode);
   const database = loadDatabaseConfig(env, mode);
@@ -219,6 +226,7 @@ export function loadConfig(env = process.env) {
 
   return Object.freeze({
     mode,
+    deploymentEnvironment,
     featureFlags: loadFeatureFlags(env),
     serviceVersion: parseSupportIdentifier(env.SERVICE_VERSION, supportFallback ? '0.1.0' : null, {
       requiredCode: 'SERVICE_VERSION_REQUIRED',
