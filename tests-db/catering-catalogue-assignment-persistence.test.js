@@ -61,7 +61,7 @@ test('versioned Catering ownership is canonical, scoped, sealed, CAS/audit atomi
     await pool.query(`INSERT INTO sessions (id,tenant_id,user_id,token_hash,provider,provider_identity_reference,
       roles,permissions,principal_version,issued_at,expires_at)
       VALUES ($1,$2,$3,$4,'test_identity','synthetic',ARRAY[$5]::text[],ARRAY[$6]::text[],$7,
-        clock_timestamp(),clock_timestamp()+interval '1 day')`,
+        clock_timestamp()-interval '1 day',clock_timestamp()+interval '1 day')`,
     [id(session), id(tenant), id(user), String(session).padStart(64, '0'), role, permission, version]);
   }
   function context(tenant = 1, user = 3, session = 7, version = 1) {
