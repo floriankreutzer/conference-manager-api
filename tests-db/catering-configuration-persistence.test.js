@@ -179,8 +179,8 @@ test('Catering configuration commits scoped revisions and audit atomically and f
   assert.equal(await isPostgresSchemaReady(pool), false);
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
-  await pool.query('TRUNCATE catering_integration_configuration_revisions,catering_integration_configurations');
   assert.equal(await rollbackLatest(pool), true); // Empty Catering assignment schema 047.
+  await pool.query('TRUNCATE catering_integration_configuration_revisions,catering_integration_configurations');
   await rollbackLatest(pool);
   assert.equal(await isPostgresSchemaReady(pool), false);
   await migrateUp(pool);
