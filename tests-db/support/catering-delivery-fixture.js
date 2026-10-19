@@ -71,7 +71,7 @@ export async function createCateringDeliveryFixture(pool, { registry = createCat
   const assignments = createCateringCatalogueAssignmentService({ authorizationPolicy, auditService,
     repository: createPostgresCateringCatalogueAssignmentRepository(pool, { registry, auditRepository }) });
   await assignments.replace({ ...context(), schemaVersion: 1, expectedRevision: 0, catalogueRevision: 2,
-    assignments: source(0).ownership.assignments });
+    assignments: source(0).ownership.assignments.map((entry) => ({ ...entry, integrationId: id(3) })) });
   const orders = createCateringOrderService({ authorizationPolicy, auditService, registry,
     repository: createPostgresCateringOrderRepository(pool, { registry, auditRepository }) });
   async function createApprovedOrder(sequence = 0, { quoteExpiresAt = new Date(Date.now() + 3600000).toISOString() } = {}) {
