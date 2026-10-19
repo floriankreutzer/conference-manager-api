@@ -651,6 +651,7 @@ test('Platform metering PostgreSQL ledger, reconciliation and quota invariants',
   await t.test('migration rollback refuses retained state and is reversible after reviewed cleanup', async () => {
     assert.deepEqual(await createPostgresPlatformProjectionRepository(pool).consumeBatch(),
       { refreshedCount: 2, retryCount: 0, poisonCount: 0 });
+    assert.equal(await rollbackLatest(pool), true); // Empty Catering configuration schema 046.
     assert.equal(await rollbackLatest(pool), true); // Empty Request lifecycle schema 045.
     assert.equal(await rollbackLatest(pool), true); // Successfully drain 044 before testing retained 033 evidence.
     await assert.rejects(

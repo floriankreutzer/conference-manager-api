@@ -119,6 +119,11 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
 - `src/entitlements/capabilities.js` owns stable product capability IDs and the authorization/entitlement/rollout intersection.
 - `src/entitlements/entitlement-service.js` owns fail-closed Tenant capability evaluation and deny-by-default operator entitlement changes.
 - `src/integrations/calendar-contract.js` owns the provider-neutral calendar port, response validation and stable provider failure taxonomy.
+- `src/integrations/provider-registry.js` and the Catering value contracts own immutable source registration,
+  capability modes, normalized receipts and configuration values; registry membership grants no Tenant authority.
+- `src/application/catering-configuration-service.js` owns the uncomposed Tenant Admin configuration use case.
+  Its PostgreSQL adapter owns typed revision/history/audit transactions and live actor/session fencing.
+  Neither component activates a provider, exposes credentials or dispatches orders.
 - `src/integrations/booking-reference.js` owns the opaque provider-reference persistence model.
 - `src/application/booking-integration-service.js` coordinates authorized and entitled availability, reservation validation and idempotent calendar operations without provider-specific types.
 - `src/persistence/postgres/pool.js` owns bounded PostgreSQL pooling, TLS policy and exact schema readiness.

@@ -15,7 +15,7 @@ import {
   seedDemoBusinessState,
 } from './demo-fixture-state.js';
 
-const PRODUCTION_SCHEMA_VERSION = 45;
+const PRODUCTION_SCHEMA_VERSION = 46;
 const CHECKSUM_PATTERN = /^[0-9a-f]{64}$/;
 const DATABASE_NAME_PATTERN = /^conference_manager_demo_[a-z0-9_]{1,48}$/;
 const DATABASE_ROLE_PATTERN = /^[a-z][a-z0-9_]{2,62}$/;
@@ -53,6 +53,8 @@ export const DEMO_RESET_TABLES = Object.freeze([
   'catering_packages',
   'catering_items',
   'integrations',
+  'catering_integration_configurations',
+  'catering_integration_configuration_revisions',
   'requests',
   'notifications',
   'audit_events',

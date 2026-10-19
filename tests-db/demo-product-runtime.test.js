@@ -233,7 +233,8 @@ test('Demo runtime Product reads verified existing events through minimal Ops gr
     assert.equal(metric(result, 'onboarding_completed').value, 0);
     assert.equal(metric(result, 'time_to_submit').value, null);
     assert.equal(coverage(result, 'request_submitted').state, 'partial');
-    await rollbackLatestDemoMigration(pool, { roles: ROLES });
+    await rollbackLatestDemoMigration(pool, { roles: ROLES }); // Catering grants overlay 012.
+    await rollbackLatestDemoMigration(pool, { roles: ROLES }); // Product-source overlay 011.
     await assert.rejects(repository.read());
     await migrateDemoUp(pool, { roles: ROLES });
     assert.equal(metric(await repository.read(), 'request_submitted').value, 0);
