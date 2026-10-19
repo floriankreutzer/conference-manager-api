@@ -124,3 +124,26 @@ test('persistence and required audit failures propagate without invoking outboun
   } });
   await assert.rejects(f.service.issueBatch(context(), { commandId: id(50), invitations: [intent()] }));
 });
+
+test('invitation conflicts expose only the fixed409 contract without private persistence context', async () => {
+  const { CustomerInvitationConflictError } = await import('../src/domain/customer-invitation-errors.js');
+  const { asApiError } = await import('../src/api-error.js');
+  const error = new CustomerInvitationConflictError();
+  assert.equal(asApiError(error).statusCode, 409);
+  assert.equal(asApiError(error).code, 'CUSTOMER_INVITATION_CONFLICT');
+});
+
+test('object and session authority lost inside persistence is denied with minimized Tenant audit', async () => {
+  const { AuthorizationDeniedError } = await import('../src/authorization/errors.js');
+  for (const method of ['list','issueBatch','reissue','revoke']) {
+    const failure = new AuthorizationDeniedError('RESOURCE_NOT_AVAILABLE', { conceal: true });
+    const f = fixture({ async [method]() { throw failure; } });
+    const result = method === 'list' ? f.service.list(context()) : method === 'issueBatch'
+      ? f.service.issueBatch(context(),{ commandId: id(50),invitations: [intent()] })
+      : f.service[method](context(),{ invitationId: id(10),expectedRevision: 1 });
+    await assert.rejects(result,error => error===failure);
+    assert.equal(f.denied.length,1); assert.equal(f.denied[0].tenantContext.tenantId,id(1));
+    assert.equal(f.denied[0].targetId, ['list','issueBatch'].includes(method) ? 'customer_invitations' : id(10));
+    assert.doesNotMatch(JSON.stringify(f.denied),/person@example.com|recipient|code|token|secret/);
+  }
+});

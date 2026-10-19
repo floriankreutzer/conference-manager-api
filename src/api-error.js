@@ -1,3 +1,4 @@
+import { CustomerInvitationConflictError } from './domain/customer-invitation-errors.js';
 import { CateringProviderCatalogueInputError,
   CateringProviderCatalogueConflictError } from './application/catering-provider-catalogue-errors.js';
 import { CateringVersionInputError, CateringVersionConflictError } from './application/catering-version-errors.js';
@@ -162,6 +163,7 @@ export function asApiError(error) {
       ? new ApiError(404, 'NOT_FOUND')
       : new ApiError(403, 'FORBIDDEN');
   }
+  if (error instanceof CustomerInvitationConflictError) return new ApiError(409, 'CUSTOMER_INVITATION_CONFLICT');
   if (error instanceof RequestStateConflictError) return new ApiError(409, 'REQUEST_STATE_CONFLICT');
   if (error instanceof AuditIntegrityError) return new ApiError(503, 'AUDIT_INTEGRITY_UNAVAILABLE');
   return new ApiError(500, 'INTERNAL_ERROR');

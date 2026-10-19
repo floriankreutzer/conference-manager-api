@@ -1,12 +1,18 @@
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import test from 'node:test';
+import { Readable } from 'node:stream';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
 import { createPostgresPlatformAuditRepository } from '../src/persistence/postgres/platform-audit-repository.js';
 import { createPostgresPlatformPasskeyAuthRepository } from '../src/persistence/postgres/platform-passkey-auth-repository.js';
 import { createPostgresPlatformSessionRepository } from '../src/persistence/postgres/platform-session-repository.js';
 import { createPlatformSessionService } from '../src/platform/identity/session-service.js';
+import { createPlatformAuthorizationPolicy } from '../src/platform/identity/policy.js';
+import { protectPlatformPasskeyRoute } from '../src/platform/http/passkey-operation-route.js';
+import { platformTenantRoutes } from '../src/platform/http/tenant-routes.js';
+import { createPlatformPrincipalGuard } from '../src/platform/http/principal-guard.js';
+import { createPlatformAuditService } from '../src/platform/audit/audit-service.js';
 import { permissionsForPlatformRoles } from '../src/platform/identity/policy.js';
 import { createPlatformPasskeyVerifier } from '../src/platform/identity/passkey-verifier.js';
 import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
@@ -26,8 +32,10 @@ test('durable Platform passkey authentication is bounded, single-use, audited an
   await migrateUp(pool);
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
-  assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue source schema054.
-  assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty Customer056 before historical guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty enrollment055.
+  assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue054.
+  assert.equal(await rollbackLatest(pool), true); // Retained empty credential053 rollback.
   await migrateUp(pool);
   const verifier = createPlatformPasskeyVerifier({ publicOrigin: 'https://ops-int.example.com', environment: 'int' });
   const auditRepository = createPostgresPlatformAuditRepository(pool, { hmacSecret: 'a'.repeat(48) });
@@ -149,6 +157,81 @@ test('durable Platform passkey authentication is bounded, single-use, audited an
       operatorSecurityVersion: 2, environment: 'int' }), []);
     assert.deepEqual(await repository.listActiveCredentialIds({ operatorId: f.operatorId,
       operatorSecurityVersion: 2, environment: 'prod' }), []);
+  });
+
+  await t.test('concrete route commits a real signature, SQL mutation, buffered response and ordinary session together', async () => {
+    const f = await setup(); const secondKey = platformPasskeyFixture({ operatorId: f.operatorId });
+    await pool.query(`UPDATE platform_operators SET roles=ARRAY['platform_security_admin','platform_tenant_operator'] WHERE id=$1`,
+      [f.operatorId]);
+    await pool.query(`INSERT INTO platform_passkey_credentials
+      (id,operator_id,environment,credential_id,public_key,user_handle,signature_counter,backup_eligible,backed_up)
+      VALUES ($1,$2,'int',$3,$4,$5,0,false,false)`,
+    [randomUUID(), f.operatorId, secondKey.credential.id, secondKey.credential.publicKey, f.fixture.userHandle]);
+    const version = Number((await pool.query('SELECT security_version FROM platform_operators WHERE id=$1',
+      [f.operatorId])).rows[0].security_version);
+    const service = createPlatformPasskeyAuthService({ repository, verifier, sessionService: sessions,
+      primaryOperatorService: { async resolve() { return { operatorId: f.operatorId, securityVersion: version,
+        primaryAuthenticatedAt: new Date().toISOString() }; } }, environment: 'int', securityEpoch: 7,
+      transactionSecret: 'p'.repeat(48), minimumCredentialCount: 2 });
+    const started = await service.startLogin('synthetic-verified-primary');
+    const loginResponse = f.fixture.response('get', { client: { challenge: started.options.challenge } });
+    const login = await service.complete({ cookie: readPlatformPasskeyTransactionCookie({ cookie: started.setCookie.split(';')[0] }),
+      state: started.state, response: loginResponse });
+    const authorizationPolicy = createPlatformAuthorizationPolicy();
+    const auditService = createPlatformAuditService({ repository: auditRepository, authorizationPolicy,
+      tenantTargetPolicy: { async queryScope() { throw new Error('UNEXPECTED_AUDIT_READ'); } } });
+    const guard = createPlatformPrincipalGuard({ platformSessionService: sessions, platformAuditService: auditService });
+    let failMutation = true;
+    const mutationId = randomUUID();
+    const operationBody = { displayName: 'Signed synthetic customer', reason: 'Synthetic signed onboarding',
+      confirmation: { action: 'tenant.invitation.create', displayName: 'Signed synthetic customer' } };
+    const handler = protectPlatformPasskeyRoute(platformTenantRoutes,
+      { authService: service, environment: 'int', securityEpoch: 7 }).createHandler({ maxBodyBytes: 32768, maxResponseBytes: 65536,
+      platformPrincipalGuard: guard, platformAuditService: auditService,
+      platformTenantOperationsService: { async listDirectory() {}, async revokeInvitation() {}, async reissueInvitation() {},
+        async transitionLifecycle() {}, async createTenantInvitation(value) {
+          authorizationPolicy.authorize(value.operatorContext, 'platform:invitation:manage');
+          await withPostgresTransaction(pool, async client => {
+            await client.query('INSERT INTO passkey_test_mutations VALUES ($1)', [mutationId]);
+            if (failMutation) throw new Error('EXPECTED_CONCRETE_BUSINESS_FAILURE');
+          });
+          return { outcome: 'updated' };
+        } },
+    });
+    async function invoke({ proof, pendingCookie, body = operationBody } = {}) {
+      const encoded = JSON.stringify(body); const request = Readable.from([Buffer.from(encoded)]);
+      request.method = 'POST'; request.headers = { 'content-type': 'application/json', 'content-length': String(Buffer.byteLength(encoded)),
+        'x-csrf-token': login.csrfToken, 'idempotency-key': mutationId,
+        cookie: [login.setCookies[0].split(';')[0],pendingCookie?.split(';')[0]].filter(Boolean).join('; '),
+        ...(proof ? { 'x-platform-passkey-proof': Buffer.from(JSON.stringify(proof)).toString('base64url') } : {}) };
+      const out = { statusCode: 200, headers: {}, body: null, setHeader(name, value) { this.headers[name] = value; },
+        end(value) { this.body = JSON.parse(value); } };
+      try { await handler({ path: '/api/v1/platform/tenants', parsedUrl: new URL('https://ops-int.example.com/api/v1/platform/tenants'),
+        request, response: out, requestId: randomUUID() }); }
+      catch (error) { out.error = error; }
+      return out;
+    }
+    const challenge = await invoke(); assert.equal(challenge.statusCode, 428);
+    const response = f.fixture.response('get', { counter: 2, client: { challenge: challenge.body.options.challenge } });
+    const proof = { state: challenge.body.state, response }; const pendingCookie = challenge.headers['Set-Cookie'];
+    assert.match(pendingCookie, /^cm_platform_operation_tx=/);
+    const swapped = await invoke({ proof, pendingCookie, body: { ...operationBody, reason: 'Different signed operation' } });
+    assert.equal(swapped.error.statusCode, 403); assert.equal(swapped.body, null);
+    const failed = await invoke({ proof, pendingCookie }); assert.match(failed.error.message, /EXPECTED_CONCRETE_BUSINESS_FAILURE/);
+    assert.equal(failed.body, null); assert.equal(failed.headers['Set-Cookie'], undefined);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM passkey_test_mutations WHERE id=$1', [mutationId])).rows[0].n, 0);
+    assert.equal(Number((await pool.query('SELECT signature_counter FROM platform_passkey_credentials WHERE id=$1',
+      [f.credentialRecordId])).rows[0].signature_counter), 1);
+    assert.ok(await sessions.resolvePrincipal({ headers: { cookie: login.setCookies[0].split(';')[0] } }));
+    failMutation = false;
+    const completed = await invoke({ proof, pendingCookie }); assert.equal(completed.error, undefined);
+    assert.equal(completed.statusCode, 201); assert.deepEqual(completed.body, { outcome: 'updated' });
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM passkey_test_mutations WHERE id=$1', [mutationId])).rows[0].n, 1);
+    const current = await sessions.resolvePrincipal({ headers: { cookie: completed.headers['Set-Cookie'][0].split(';')[0] } });
+    assert.equal(current.assurance.level, 'mfa'); assert.notEqual(current.session.id, login.principal.session.id);
+    assert.equal((await invoke({ proof, pendingCookie })).body, null);
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM platform_sessions
+      WHERE operator_id=$1 AND assurance_level='step_up' AND revoked_at IS NULL`, [f.operatorId])).rows[0].n, 0);
   });
 
   await t.test('wrong browser, owner, epoch, environment, purpose and security version do not consume a legitimate attempt', async () => {
@@ -279,9 +362,11 @@ test('durable Platform passkey authentication is bounded, single-use, audited an
       [other.credentialRecordId]), /IMMUTABLE/);
     await assert.rejects(pool.query('UPDATE platform_passkey_credentials SET operator_id = $1 WHERE id = $2',
       [f.operatorId, other.credentialRecordId]), /IMMUTABLE/);
+    assert.equal(await rollbackLatest(pool), true); // Empty Customer056 before historical guards.
+    assert.equal(await rollbackLatest(pool), true); // Empty enrollment055 before provider catalogue054.
     assert.equal(await rollbackLatest(pool), true); // Empty054 before the retained053 populated guard.
     await assert.rejects(rollbackLatest(pool), /PLATFORM_PASSKEY_STORAGE_REQUIRES_VERIFIED_RECOVERY/);
-    await migrateUp(pool); // Restore current054 readiness without changing retained Platform credentials.
+    await migrateUp(pool); // Restore current055 readiness without changing retained Platform credentials.
     assert.equal(await isPostgresSchemaReady(pool), true);
   });
 });

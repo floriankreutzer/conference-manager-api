@@ -162,3 +162,92 @@ cases verify mailbox scope/purpose, legacy HMAC compatibility, malformed context
 and mailbox template/transport behavior. Durable mailbox custody, expiry/attempts,
 HTTP/CSRF/choice/session consumption and actual mail receipt are still open; these
 primitives and templates remain uncomposed and send no mail by themselves.
+
+## Unreleased encrypted mailbox and delivery custody
+
+`persistence/customer-access-cipher.js` is a separate server-only mailbox/delivery
+custody boundary using Node AES-256-GCM, fresh96-bit nonces and128-bit tags. Bounded
+opaque bytes are1..32768; the positive envelope carries only version, key ID,
+canonical base64url nonce/tag/ciphertext. Independently loaded environment, mailbox,
+record ID, purpose and invitation Tenant form authenticated associated data.
+Mailbox recipient/code purposes forbid a Tenant; invitation purpose requires one.
+Ciphertext cannot establish its own scope or select an algorithm/key outside the
+protected server keyring. This does not relax or repurpose Integration credentials.
+
+A separate HMAC lookup key produces deployment-specific mailbox fingerprints from
+the conservative normalized recipient. It preserves local case and plus/dot aliases;
+no plaintext recipient is an index, log or public identifier. Up to eight copied
+256-bit encryption keys support explicit old-key reads/new-key writes. Lookup-key
+rotation is not achieved by changing configuration: it needs an independently
+reviewed atomic fingerprint migration to avoid duplicate mailbox identities.
+Database/backup custody and encryption/lookup keys must remain separate.
+
+The caller must clear returned plaintext buffers after bounded use. Failure clears
+intermediate unverified bytes; destroy clears copied encryption/lookup material and
+prevents further use. This is best-effort JavaScript cleanup, not a memory-compromise
+guarantee. Cipher validity is not current-record/replay/authorization authority;
+current invitation, recipient, version, expiry and lease checks still belong to the
+transactional repository and dispatch use case. No runtime loads these keys yet.
+Five focused cases passed real encryption, all scope/tamper substitutions, lookup
+separation, rotation/retirement, caller mutation, shape bounds and destruction.
+The first local style check found overlong test lines; they were wrapped unchanged.
+
+## Storage draft — not qualified or active
+
+The local unreleased056 SQL draft follows the separately reviewed enrollment055
+chain. It has not run in PostgreSQL. Readiness, Demo overlay/reset inventory and historical
+rollback integration are now staged for056/022, together with the repository draft;
+there is no HTTP/runtime composition and this is not a deployable migration candidate.
+It defines environment-specific encrypted mailbox custody, Tenant/mailbox/User
+memberships, immutable recipient/role invitation intent with revisioned terminal
+accept/revoke, exact actor/command receipts, mailbox/browser proof records, encrypted
+stable delivery intent and shared opaque recipient/source abuse budgets. Addresses
+and codes are not plaintext columns. Delivery ID/payload remain stable through
+bounded retries within23 hours, before provider idempotency retention expires.
+
+Mailbox challenges retain a bounded immutable server-loaded admission snapshot.
+Code proof does not admit newly added/reissued invitations or revive stale Users:
+selection must compare the captured membership, invitation revision and User
+security version to live state. No pre-proof organization list is exposed. All
+expiry, attempt, shared recipient/source budgets, current authority, lease and
+replay checks still require the actual transaction implementation and negative/
+concurrency coverage. Successful admission must append Tenant audit and issue the
+existing session in the same transaction. Accepted memberships cannot change
+existing roles or local disable state through invitation acceptance.
+
+The draft's invitation audit constraint requires the exact Tenant/object/revision/
+operation event, and accepted invitations require the matching populated membership.
+Cross-mailbox delivery references are constrained together with their scope. The
+custody guards preserve identity, purpose, immutable intent and monotonic counters/
+versions; populated/evidence-bearing down migration refuses. These are drafted
+controls, not verified guarantees. Dedicated Demo-only role denial/reset integration
+must be added while real INT reset must preserve this entire identity/custody domain.
+
+The subsequent repository draft serializes Tenant/User/session authority before
+lookup, replay or mutation, orders global mailbox locks by keyed fingerprint and
+queues encrypted stable content inside the invitation/audit transaction. It never
+calls the provider. Command digests use another HMAC domain, preventing offline
+recipient guessing from an unkeyed command hash. Receipts contain only a closed
+metadata schema, enforced in the draft SQL; replay independently decrypts the
+immutable recipient instead of storing plaintext addresses in receipts. Expired/
+revoked/accepted changes and actor/role/audit failures must remain fail closed.
+This repository draft and its actual-PostgreSQL test have not executed yet. The
+architecture gate initially rejected a persistence import of an application error;
+the shared conflict value was moved to the domain boundary without a gate exception.
+
+For enumeration resistance, the challenge draft permits a durable unadmitted flow
+with no mailbox and an empty admission snapshot, alongside normal admitted flows.
+Both need identical bounded pre-proof status/expiry/CSRF behavior and a common
+browser-binding port; an unadmitted flow can never be verified or issue authority.
+It stores only keyed recipient/source references, not an unknown plaintext address.
+Actual request orchestration, shared rate/attempt ceilings, retention/resource
+bounds and the common binding implementation remain required before activation.
+
+The staged056/022 integration preserves every prior rollback probe by first draining
+the empty Customer layer. Demo grants explicitly deny all Customer/Platform CRUD
+and permit only the isolated reset role to truncate the seven new tables. The
+canonical three-customer seed is unchanged. Metrics upgrade guards retain the old
+054/021 denial and add055/022 plus future057/023 denial; media guards retain old
+versions and advance the future-version negative. Focused native Demo/reset/media
+checks passed32 cases. PostgreSQL, all cross-repository browser/reset gates and
+real INT identity-preserving reset remain independently required.

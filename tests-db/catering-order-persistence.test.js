@@ -37,6 +37,8 @@ test('Catering orders retain scoped historical source, atomic quotes/decisions a
   t.after(() => pool.end());
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty Customer056 before historical guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema055 before historical rollback guards.
   assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue source schema054.
   assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
@@ -320,6 +322,8 @@ test('Catering orders retain scoped historical source, atomic quotes/decisions a
   await assert.rejects(pool.query(`UPDATE catering_order_version_states SET revision=revision+1,status='released'
     WHERE tenant_id=$1 AND order_id=$2 AND version=1`, [id(1), componentOrder.orders[0].orderId]), (error) => error.code === '23514');
   assert.equal(await auditRepository.verifyTenantChain(id(1)), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty Customer056 before historical guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema055 before historical rollback guards.
   assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue source schema054.
   assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
@@ -329,6 +333,8 @@ test('Catering orders retain scoped historical source, atomic quotes/decisions a
   await assert.rejects(rollbackLatest(pool), /CATERING_ORDER_ROLLBACK_REQUIRES_REVIEW/);
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty Customer056 before historical guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema055 before historical rollback guards.
   assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue source schema054.
   assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.

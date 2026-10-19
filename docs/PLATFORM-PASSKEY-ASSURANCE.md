@@ -210,3 +210,229 @@ It does not mint a Microsoft acrs claim or derive any privilege from browser dat
 No normal HTTP route or runtime configuration exposes this service yet. OIDC
 pending-flow routing, independent enrollment/recovery, DE/EN UI and epoch-safe
 activation remain required; no real owner/device evidence is implied by fixtures.
+
+## Enrollment grant policy and application port — inactive
+
+The enrollment grant policy binds a random 256-bit one-use capability to the exact
+internal operator/security version, verified Microsoft directory/object identity,
+deployment environment, security epoch and random grant ID. Persistence receives
+only its domain-separated SHA-256 hash. A structural grant record is not issuance
+authority. Bootstrap/recovery require an independent offline issuer and bounded
+approval reference, with no primary-session substitute. Additional-key grants
+require an existing strongly verified session and a maximum five-minute lifetime;
+offline grants are bounded to fifteen minutes. The unactivated durable repository
+below implements database-clock expiry, issuance authorization, one-use redemption
+and atomic audit. Its new PostgreSQL integration evidence remains pending.
+
+The inactive enrollment application service resolves the opaque Microsoft-primary
+assertion, accepts only a grant ID/token from the browser and supplies all identity
+and deployment authority itself. Separate independent 256-bit state/browser values
+are hashed under an enrollment-only environment/epoch namespace. A dedicated `cm_platform_passkey_enroll` cookie uses the narrower
+`/api/v1/platform/auth/passkey/enrollment` path with Secure, HttpOnly and Strict
+attributes. Login and enrollment use separate cookies and namespaces; neither
+can redeem the other's records. Raw grant/browser tokens are never
+sent to the repository. Ceremony lifetime is 120 seconds; browser state must echo
+the cookie state on every mutation. Routes must additionally enforce exact Origin,
+request/content bounds, abuse limits and the applicable CSRF policy.
+
+Registration stages only a public candidate key after real SDK validation. A fresh
+distinct challenge then requires a signed UV-required assertion from that candidate
+key before the repository may atomically consume the grant, insert the active key,
+invalidate older operator authority and append audit evidence. A forged `none`
+attestation cannot activate a key without private-key possession. Enrollment has
+no session-issuance port and returns only `credential_enrolled`; a new complete
+Microsoft/passkey login is required afterwards.
+
+The application-port tests use real synthetic P-256 signatures for both stages,
+wrong challenges/origins, missing UV, foreign keys, browser/state/environment/epoch
+mix-ups, expiry and replay. Their in-memory repository is a port fixture, not
+PostgreSQL evidence. The new durable enrollment/lifecycle implementation below
+still requires its own complete database/browser CI. HTTP composition, native UI,
+deployment configuration and real device acceptance remain incomplete. No
+enrollment or recovery is exposed by the current runtime.
+
+## Durable enrollment and lifecycle candidate — not composed
+
+Unmerged migration055 stores immutable, exact-identity grant records and one
+browser-bound registration/possession ceremony per grant. Only hashes of opaque
+grant/browser values, random challenges/handles and public candidate keys are
+stored. Database expiry bounds both phases, each with at most five attempts;
+wrong browser/state/deployment authority cannot consume another ceremony's budget.
+The registration candidate remains inactive until a separate real signature is
+verified. Grant redemption, credential insertion, operator-version invalidation
+and minimized HMAC-chain audit commit together. Required audit failure rolls all
+of them back. Concurrent completion can succeed once, including zero-counter keys.
+
+The operator is locked before grant/ceremony/credential authority. Existing
+operator handles are reused across additions/recovery; inconsistent legacy handles
+fail closed. First bootstrap requires no credential history in that environment.
+The SQL grant trigger independently checks exact active operator/provider identity,
+current version and issuance authority. Grant identity, capability hash, approval,
+issuer, expiry and session bindings cannot change, and used/revoked grants cannot
+be restored or deleted. Staged candidates and consumed ceremonies are immutable.
+
+Offline bootstrap/recovery requires the authenticated SQL login, effective role,
+configured offline role and actual grant-table catalog owner to agree. The offline
+issuer is forbidden from HTTP, normal runtime and both Demo dependency graphs.
+`scripts/platform-passkey-offline-grant.mjs` currently accepts only pilot/INT and
+the explicitly configured security epoch. It requires a separate protected owner
+connection to the same database as the Platform runtime, a different SQL username,
+verified TLS and bounded single-connection/timeouts. DEV/PROD remain prepared only.
+Runtime credentials must never own the grant table or carry offline-owner access.
+
+The CLI reads bounded JSON exclusively from descriptor3, validates the private
+descriptor4 before connecting, checks exact schema readiness and prints the opaque
+grant exclusively to descriptor4. Ordinary output contains only receipt metadata;
+errors contain fixed codes. No token may enter command arguments, URLs, ordinary
+logs, email or browser storage. If final descriptor delivery fails after commit,
+the protected owner must reissue: issuance revokes older outstanding grants and
+records the replacement; it must not pretend an unread token was delivered.
+
+Offline recovery revokes all old keys, sessions and outstanding grants, then adds
+a final managed security-version increment even if historical keys were already
+revoked. It never reactivates an old key or restores old sessions. An audit-only
+`offline_owner` marker identifies this independent owner action with empty actor
+roles/permissions and the exact passkey-grant target. It cannot satisfy any trusted
+Platform identity/session schema or authorize business operations. Recovery has
+no email-code or Microsoft-primary-only bypass.
+
+Additional-key issuance requires a live, current, application-passkey step-up
+session, one to four existing active keys and an exact server-computed addition
+operation. Its temporary strong cookie never leaves the verification transaction.
+The returned session has ordinary MFA. The verified current Microsoft/passkey
+identity and fresh addition assertion authorize registration in the same transaction;
+the grant is not exposed to the browser or carried through another Microsoft redirect. Revocation binds the exact owned active
+key and requires another active key to remain. It invalidates old operator/session
+authority, revokes outstanding grants and finishes with cleared session/transaction
+cookies and a fresh-login requirement. It never issues an obsolete-version session.
+
+Candidate schema readiness is exact055/021. Demo overlay021 grants only TRUNCATE
+on the two new tables to the sentinel-checked reset role; neither synthetic runtime
+gets enrollment privileges. Historical rollback probes explicitly drain021/055 and020/054
+before their retained019/053 and older guards. Populated055 or retained offline
+audit evidence prevents rollback and requires reviewed recovery. The synthetic
+seed checksum, production security epoch and current live CA mode are unchanged.
+
+
+## Pending HTTP and two-key setup candidate — not selected by runtime
+
+The alternative Microsoft route module requests fresh primary identity without CA
+contexts and accepts only a browser-bound pending result on callback. It can never
+emit a business session. The default CA route registry and runtime composition are
+unchanged. This candidate is neither a deployed login mode nor cutover evidence.
+
+Unreleased055 extends pending authentication with an `enroll` purpose carrying the
+verified primary authentication time. It has no session or operation hash and cannot
+be redeemed by the assertion endpoint. The SQL clock bounds that primary time.
+Pending identity is consumed in the same transaction as independently granted
+registration creation; a mismatched grant rolls back the consumption. Every stage
+rechecks current operator/version/environment/epoch and server expiry.
+
+A setup-only service always rejects normal session issuance. After the independently
+granted first key, another fresh Microsoft login and real first-key signature can
+create an internal temporary strong session, issue an additional grant and begin
+registration of the second key atomically. That temporary session is revoked before
+returning registration options. Two completed keys finish setup without a business
+session. A separately composed active service must explicitly require two keys.
+Setup never produces a reusable strong-session cookie or a Microsoft-only login.
+
+The alternative routes below are bounded to the same origin, exact host, JSON bodies
+of at most32768 bytes and30 requests per source address/minute. They reject queries,
+unknown fields and unsupported methods. Preauthentication writes require the exact
+server-issued state in both body and CSRF header, plus the initiating HttpOnly
+cookie. Authenticated key management uses the normal Platform session/CSRF guard.
+
+| Path below `/api/v1/platform/auth/passkey` | Method | Contract |
+| --- | --- | --- |
+| `/configuration` | GET | Mode, environment, minimum key count only |
+| `/pending` | GET | Pending assertion or independently granted enrollment |
+| `/authenticate` | POST | Exact state and native assertion |
+| `/enrollment/pending` | GET | Resume registration or possession proof |
+| `/enrollment/start` | POST | Exact pending state and independent grant ID/token |
+| `/enrollment/register` | POST | Stage native registration candidate |
+| `/enrollment/complete` | POST | Activate only after actual signed possession |
+| `/manage/keys` | GET | Current operator's minimized active key list |
+| `/manage/addition/start` | POST | Begin exact addition proof |
+| `/manage/addition/complete` | POST | Proof and registration start in one transaction |
+| `/manage/revocation/start` | POST | Begin proof bound to owned credential ID |
+| `/manage/revocation/complete` | POST | Exact proof, revoke and logout |
+
+Bodies contain no trusted identity, public-key persistence record, session token,
+raw grant result or strong cookie. Normal login completion returns only status;
+the existing session endpoint supplies its normal minimized session projection.
+Public errors and durable denial reasons exclude native/provider payloads. These
+HTTP port tests do not substitute for real PostgreSQL, browser/device or deployed
+cutover acceptance. Generic business operation step-up, production composition,
+native DE/EN UI and owner authenticator verification remain open.
+
+
+Integration with main5bbe97b preserves the independent supplier catalogue migration054/
+Demo020 and assigns the unreleased enrollment migration055/Demo021. Exact readiness
+is055/021. Both sets of tables and historical rollback/role-denial probes remain
+required. The earlier054/020 enrollment candidate is superseded, not deployed.
+
+## Composition and exact-operation candidate — not deployed
+
+A follow-up candidate introduces the protected `PLATFORM_ASSURANCE_MODE` selector.
+Its default remains `conditional_access`, with the existing strict contexts and
+identity path. Unknown modes fail closed. `passkey_setup` and `application_passkey`
+require a known DEV/INT/PROD environment, an explicit security epoch of at least2,
+a separate32–512-byte transaction secret, no CA contexts and fixed300-second primary
+OIDC freshness/transaction lifetime. Reusing Platform or Customer identity/session/
+audit secret material is rejected. These requirements are rechecked by composition.
+An epoch is deployment authority, never a browser or tenant setting.
+
+Setup composes the primary/pending and enrollment HTTP ports but its HTTP session
+resolver always returns unauthenticated, including for an old CA session. Its
+internal temporary session port exists only for audited second-key setup. Active
+mode explicitly requires two keys before login and its HTTP resolver accepts only
+application-passkey assurance; primary-only or old CA contexts cannot become an
+active Platform principal. No offline issuer is imported by either composition.
+
+Sensitive existing route families are decorated, without a generic command/action
+endpoint. The first exact request validates the current Platform session and CSRF
+and returns428 with a fresh native assertion challenge. The server hashes canonical
+bounded request body, exact method/path/query, idempotency header, current session,
+operator/version, environment and epoch. Read-only sensitive diagnostic correlation
+and audit export also require CSRF for this deliberate proof exchange.
+
+Retry uses the same request and `X-Platform-Passkey-Proof`, a bounded canonical
+base64url JSON object containing only state/native response. The separate transient
+`cm_platform_operation_tx` cookie uses `/api/v1/platform` so it reaches that exact
+business route; it is Secure, HttpOnly, Strict,120 seconds, and never sufficient
+without the live session, CSRF, signature and stored operation hash. Login and
+enrollment retain their separate narrower cookies. No reusable elevated cookie
+or principal is returned.
+
+Inside the signature transaction, an instance-private, one-use proof context may
+supply the strong principal to exactly that internal request. Existing positive
+body schemas, role/target checks, idempotency and concrete services still execute.
+The temporary request carries only the validated body and idempotency contract;
+client cookies, identity headers or arbitrary outbound URLs are not forwarded.
+Its bounded JSON response is buffered until proof consumption, counter, business
+writes, audit and ordinary MFA session issuance commit. A mutation/audit/commit
+failure cannot send business success before rollback. Changed body/target/query/
+idempotency/session, clone/reuse of proof context and replay are rejected.
+
+This is an unmerged implementation candidate, not INT activation evidence.
+Native operation-proof transport/presentation, authenticated key-management UI,
+exact-head database/browser gates, real owner enrollment/recovery rehearsal and
+reviewed live epoch cutover remain required. DEV and PROD are prepared in code;
+no environment has been activated by this change. Rollback must fail closed or
+advance the epoch and revoke affected authority; it must never restore primary-only
+or superseded sessions. Populated key/grant migrations cannot be rolled back to
+recover access; use the independently audited owner recovery procedure instead.
+
+## Revoked-session review correction
+
+Review of exact integration8e0fedf identified a race after the HTTP principal guard:
+if a session was revoked before lifecycle re-resolution, normalizing a missing
+principal produced an internal TypeError. The follow-up explicitly rejects null/
+undefined re-resolution with the bounded Platform identity error before key reads,
+signature work, grant callbacks or mutations. Managed key-list denials now receive
+the same minimized denial audit as management POSTs; preauthentication polling
+keeps its prior behavior. No successful path, permission, session or key policy is
+weakened. Deterministic lifecycle and actual HTTP tests cover listing, addition and
+revocation interleavings with fixed403, no cookie, no private cause, three minimized
+managed denial events and no verifier/repository effect. The initial style failure
+was an overlong fixture-return line, wrapped without changing assertions.

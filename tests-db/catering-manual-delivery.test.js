@@ -39,11 +39,15 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
   pool = createPostgresPool({ mode: 'test', ...database, databaseUrl: url.toString(), databasePoolMax: 6 });
   await migrateUp(pool); await migrateDemoUp(pool, { roles });
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Customer022 before historical grants.
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Enrollment reset grants021 before historical overlays.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Platform passkey reset grants019 before schema053.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Unsent grants018 before schema052.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Version grants017.
   await rollbackLatestDemoMigration(pool, { roles });
+  assert.equal(await rollbackLatest(pool), true); // Empty Customer056 before historical guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema055 before historical rollback guards.
   assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue source schema054.
   assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
@@ -146,10 +150,14 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
     await assert.rejects(customer.query(sql), (error) => error.code === '42501');
     await assert.rejects(pool.query(sql), /CATERING_ORDER_HISTORY_APPEND_ONLY/);
   }
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Customer022 before historical grants.
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Enrollment reset grants021 before historical overlays.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   await rollbackLatestDemoMigration(pool, { roles }); // Platform passkey reset grants019 before schema053.
   await rollbackLatestDemoMigration(pool, { roles }); // Unsent grants018 before schema052.
   await rollbackLatestDemoMigration(pool, { roles }); // Revoke017 before recreating051.
+  assert.equal(await rollbackLatest(pool), true); // Empty Customer056 before historical guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema055 before historical rollback guards.
   assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue source schema054.
   assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
@@ -218,10 +226,14 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
   assert.equal((await request(fixture.manager)).status, 401);
   assert.equal((await pool.query('SELECT count(*)::integer AS n FROM catering_manual_delivery_facts')).rows[0].n, 22);
   await pool.query('TRUNCATE catering_manual_delivery_heads,catering_manual_delivery_facts');
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Customer022 before historical grants.
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Enrollment reset grants021 before historical overlays.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   await rollbackLatestDemoMigration(pool, { roles }); // Platform passkey reset grants019 before schema053.
   await rollbackLatestDemoMigration(pool, { roles }); // Unsent grants018 before schema052.
   await rollbackLatestDemoMigration(pool, { roles }); // Revoke017 before recreating051.
+  assert.equal(await rollbackLatest(pool), true); // Empty Customer056 before historical guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema055 before historical rollback guards.
   assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue source schema054.
   assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
@@ -241,11 +253,15 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
   for (const table of ['catering_manual_delivery_facts','catering_manual_delivery_heads']) {
     assert.equal((await pool.query(`SELECT count(*)::integer AS n FROM ${table}`)).rows[0].n, 0);
   }
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Customer022 before historical grants.
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Enrollment reset grants021 before historical overlays.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Platform passkey reset grants019 before schema053.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Unsent grants018 before schema052.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Version grants017.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty Customer056 before historical guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema055 before historical rollback guards.
   assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue source schema054.
   assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.

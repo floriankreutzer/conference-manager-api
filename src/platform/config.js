@@ -182,6 +182,14 @@ export function loadPlatformConfig(env) {
     fail(error.message);
   }
   const productionLike = mode === 'pilot' || mode === 'production';
+  const assuranceMode = env.PLATFORM_ASSURANCE_MODE || 'conditional_access';
+  if (!['conditional_access','passkey_setup','application_passkey'].includes(assuranceMode)) {
+    fail('PLATFORM_ASSURANCE_MODE_INVALID');
+  }
+  const applicationPasskeys = assuranceMode !== 'conditional_access';
+  if (applicationPasskeys && !['dev','int','prod'].includes(deploymentEnvironment)) {
+    fail('PLATFORM_PASSKEY_DEPLOYMENT_ENVIRONMENT_REQUIRED');
+  }
   const publicOrigin = parseOrigin(env.PLATFORM_PUBLIC_ORIGIN);
   const anyIdentityConfiguration = Boolean(
     env.PLATFORM_ENTRA_TENANT_ID
@@ -190,7 +198,7 @@ export function loadPlatformConfig(env) {
     || env.PLATFORM_ENTRA_AUTHORITY
     || env.PLATFORM_OIDC_TRANSACTION_SECRET
   );
-  const identityRequired = productionLike || anyIdentityConfiguration;
+  const identityRequired = productionLike || anyIdentityConfiguration || applicationPasskeys;
   const tenantId = parseGuid(env.PLATFORM_ENTRA_TENANT_ID, {
     required: identityRequired,
     requiredCode: 'PLATFORM_ENTRA_TENANT_ID_REQUIRED',
@@ -233,11 +241,11 @@ export function loadPlatformConfig(env) {
   });
   const mfaAuthenticationContext = parseAuthenticationContext(
     env.PLATFORM_ENTRA_MFA_AUTHENTICATION_CONTEXT,
-    { required: identityRequired, code: 'PLATFORM_ENTRA_MFA_AUTHENTICATION_CONTEXT_INVALID' },
+    { required: identityRequired && !applicationPasskeys, code: 'PLATFORM_ENTRA_MFA_AUTHENTICATION_CONTEXT_INVALID' },
   );
   const stepUpAuthenticationContext = parseAuthenticationContext(
     env.PLATFORM_ENTRA_STEP_UP_AUTHENTICATION_CONTEXT,
-    { required: identityRequired, code: 'PLATFORM_ENTRA_STEP_UP_AUTHENTICATION_CONTEXT_INVALID' },
+    { required: identityRequired && !applicationPasskeys, code: 'PLATFORM_ENTRA_STEP_UP_AUTHENTICATION_CONTEXT_INVALID' },
   );
   if (
     mfaAuthenticationContext !== null
@@ -266,12 +274,33 @@ export function loadPlatformConfig(env) {
   );
   rejectAlias(databaseUrl, env.DATABASE_URL, 'PLATFORM_DATABASE_CREDENTIAL_ALIAS_FORBIDDEN');
 
+  if (applicationPasskeys && (mfaAuthenticationContext !== null || stepUpAuthenticationContext !== null)) {
+    fail('PLATFORM_PASSKEY_CA_CONTEXT_FORBIDDEN');
+  }
+  const passkeyTransactionSecret = parseSecret(env.PLATFORM_PASSKEY_TRANSACTION_SECRET, {
+    required: applicationPasskeys, requiredCode: 'PLATFORM_PASSKEY_TRANSACTION_SECRET_REQUIRED',
+    invalidCode: 'PLATFORM_PASSKEY_TRANSACTION_SECRET_INVALID',
+  });
+  if (!applicationPasskeys && passkeyTransactionSecret !== null) fail('PLATFORM_PASSKEY_MODE_REQUIRED');
+  for (const existing of [oidcTransactionSecret, csrfSecret, auditHmacSecret, cursorSecret, tenantAuditHmacSecret,
+    env.OIDC_TRANSACTION_SECRET, env.CSRF_SECRET, env.AUDIT_HMAC_SECRET, clientSecret, env.ENTRA_CLIENT_SECRET]) {
+    rejectAlias(passkeyTransactionSecret, existing, 'PLATFORM_PASSKEY_SECRET_ALIAS_FORBIDDEN');
+  }
+  const securityEpoch = parseInteger(env.PLATFORM_SECURITY_EPOCH, DEFAULTS.securityEpoch, {
+    min: 1, max: Number.MAX_SAFE_INTEGER, code: 'PLATFORM_SECURITY_EPOCH_INVALID',
+  });
+  if (applicationPasskeys && (!env.PLATFORM_SECURITY_EPOCH || securityEpoch < 2)) fail('PLATFORM_PASSKEY_EPOCH_CUTOVER_REQUIRED');
+  if (applicationPasskeys && [env.PLATFORM_AUTHENTICATION_MAX_AGE_SECONDS, env.PLATFORM_OIDC_TRANSACTION_TTL_SECONDS]
+    .some(value => value !== undefined && value !== '' && String(value) !== '300')) fail('PLATFORM_PASSKEY_PRIMARY_TTL_INVALID');
+
   const authority = parseAuthority(env.PLATFORM_ENTRA_AUTHORITY, tenantId, { required: identityRequired });
   const supportFallback = mode === 'development' || mode === 'test';
   return Object.freeze({
     mode,
     deploymentEnvironment,
     identityMode: 'microsoft_entra',
+    assuranceMode,
+    passkeyTransactionSecret,
     serviceVersion: parseIdentifier(
       env.PLATFORM_SERVICE_VERSION,
       supportFallback ? '0.1.0' : null,
@@ -348,19 +377,15 @@ export function loadPlatformConfig(env) {
     }),
     authenticationMaxAgeSeconds: parseInteger(
       env.PLATFORM_AUTHENTICATION_MAX_AGE_SECONDS,
-      DEFAULTS.authenticationMaxAgeSeconds,
+      applicationPasskeys ? 300 : DEFAULTS.authenticationMaxAgeSeconds,
       { min: 60, max: 1_800, code: 'PLATFORM_AUTHENTICATION_MAX_AGE_INVALID' },
     ),
     oidcTransactionTtlSeconds: parseInteger(
       env.PLATFORM_OIDC_TRANSACTION_TTL_SECONDS,
-      DEFAULTS.oidcTransactionTtlSeconds,
+      applicationPasskeys ? 300 : DEFAULTS.oidcTransactionTtlSeconds,
       { min: 120, max: 600, code: 'PLATFORM_OIDC_TRANSACTION_TTL_INVALID' },
     ),
-    securityEpoch: parseInteger(env.PLATFORM_SECURITY_EPOCH, DEFAULTS.securityEpoch, {
-      min: 1,
-      max: Number.MAX_SAFE_INTEGER,
-      code: 'PLATFORM_SECURITY_EPOCH_INVALID',
-    }),
+    securityEpoch,
     entraTenantId: tenantId,
     entraClientId: clientId,
     entraClientSecret: clientSecret,
