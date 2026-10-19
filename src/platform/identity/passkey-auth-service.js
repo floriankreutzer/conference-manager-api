@@ -5,15 +5,22 @@ import { permissionsForPlatformRoles } from './policy.js';
 import { PlatformIdentityError } from './errors.js';
 import { serializePlatformPasskeyTransactionCookie, clearPlatformPasskeyTransactionCookie } from './passkey-auth-cookie.js';
 import { serializeClearedPlatformSessionCookie } from './session-cookie.js';
+import { PLATFORM_PASSKEY_ENROLLMENT_COOKIE_NAME, serializePlatformPasskeyEnrollmentCookie } from './passkey-enrollment-cookie.js';
 
 const OPAQUE = /^[A-Za-z0-9_-]{43}$/;
 const HASH = /^[0-9a-f]{64}$/;
 const TTL_SECONDS = 120;
 function reject() { throw new PlatformIdentityError('PLATFORM_PASSKEY_AUTHENTICATION_REJECTED'); }
+function identityForProof(proof, level) {
+  return normalizeTrustedPlatformIdentity({ operatorId: proof.operatorId,
+    providerIdentity: proof.providerIdentity, roles: proof.roles, permissions: permissionsForPlatformRoles(proof.roles),
+    securityVersion: proof.securityVersion, targetScope: { mode: proof.scopeMode, securityVersion: proof.securityVersion },
+    assurance: { level, authenticationContext: 'cm:pk:v1', authenticatedAt: proof.authenticatedAt } });
+}
 
 export function createPlatformPasskeyAuthService({ repository, primaryOperatorService, verifier, sessionService,
   environment, securityEpoch, transactionSecret, tokenFactory = () => randomBytes(32).toString('base64url'),
-  idFactory = () => randomUUID() } = {}) {
+  idFactory = () => randomUUID(), allowBusinessLogin = true, minimumCredentialCount = 1 } = {}) {
   if (!['create', 'findPending', 'listActiveCredentialIds', 'authenticate'].every(name => typeof repository?.[name] === 'function')) {
     throw new TypeError('PLATFORM_PASSKEY_AUTH_REPOSITORY_REQUIRED');
   }
@@ -28,9 +35,13 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
     throw new TypeError('PLATFORM_PASSKEY_CONFIGURATION_INVALID');
   }
   const secret = Buffer.from(transactionSecret || '', 'utf8');
+  if (typeof allowBusinessLogin !== 'boolean' || ![1, 2].includes(minimumCredentialCount)) {
+    throw new TypeError('PLATFORM_PASSKEY_LOGIN_POLICY_INVALID');
+  }
   if (secret.length < 32 || secret.length > 512) throw new TypeError('PLATFORM_PASSKEY_TRANSACTION_SECRET_INVALID');
   const mac = (domain, value, encoding = 'hex') => createHmac('sha256', secret)
     .update(`platform-passkey:v1:${environment}:${securityEpoch}:${domain}:${value}`, 'utf8').digest(encoding);
+  const operationContexts = new WeakMap();
   function browser(state) { return mac('browser', state, 'base64url'); }
   function locator(cookie) {
     if (typeof cookie !== 'string' || cookie.length !== 87) reject();
@@ -39,9 +50,12 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
       || !timingSafeEqual(Buffer.from(signature), Buffer.from(browser(state)))) reject();
     return { state, stateHash: mac('state', state), browserHash: mac('browser-proof', signature), environment, securityEpoch };
   }
-  async function options(record) {
-    const ids = await repository.listActiveCredentialIds({ operatorId: record.operatorId,
+  async function activeIds(record) {
+    return repository.listActiveCredentialIds({ operatorId: record.operatorId,
       operatorSecurityVersion: record.operatorSecurityVersion, environment });
+  }
+  async function options(record, ids = null) {
+    ids ??= await activeIds(record);
     if (!ids.length) throw new PlatformIdentityError('PLATFORM_PASSKEY_ENROLLMENT_REQUIRED');
     return verifier.authenticationOptions({ challenge: record.challenge, allowedCredentialIds: ids });
   }
@@ -53,9 +67,14 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
     }
     const record = { ...binding, environment, securityEpoch, id, correlationId, ttlSeconds: TTL_SECONDS,
       stateHash: mac('state', state), browserHash: mac('browser-proof', browser(state)), challenge: verifier.createChallenge() };
-    const authenticationOptions = await options(record);
+    const ids = await activeIds(record);
+    const enrolling = ids.length === 0 && binding.purpose === 'login';
+    if (enrolling) record.purpose = 'enroll';
+    else delete record.primaryAuthenticatedAt;
+    const authenticationOptions = enrolling ? null : await options(record, ids);
     if (!await repository.create(record)) reject();
-    return Object.freeze({ status: 'passkey_required', state, options: authenticationOptions,
+    return Object.freeze({ status: enrolling ? 'enrollment_required' : 'passkey_required', state,
+      ...(enrolling ? {} : { options: authenticationOptions }),
       setCookie: serializePlatformPasskeyTransactionCookie(`${state}.${browser(state)}`, TTL_SECONDS) });
   }
   async function finish({ cookie, state, response, request } = {}, operationHash, mutation, invalidateSession = false) {
@@ -72,17 +91,23 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
     }
     const { challenge, correlationId, ...binding } = pending;
     const verified = await repository.authenticate({ ...lookup, ...binding, response }, async proof => {
-      const identity = normalizeTrustedPlatformIdentity({ operatorId: proof.operatorId,
-        providerIdentity: proof.providerIdentity, roles: proof.roles, permissions: permissionsForPlatformRoles(proof.roles),
-        securityVersion: proof.securityVersion, targetScope: { mode: proof.scopeMode, securityVersion: proof.securityVersion },
-        assurance: { level: mutation ? 'step_up' : 'mfa',
-          authenticationContext: 'cm:pk:v1', authenticatedAt: proof.authenticatedAt } });
-      if (!mutation) return { issued: await sessionService.issue(identity, { correlationId: proof.correlationId }) };
+      const identity = identityForProof(proof, mutation ? 'step_up' : 'mfa');
+      if (!mutation) {
+        if (!allowBusinessLogin || (await activeIds({ operatorId: proof.operatorId,
+          operatorSecurityVersion: proof.securityVersion })).length < minimumCredentialCount) {
+          throw new PlatformIdentityError('PLATFORM_PASSKEY_SETUP_REQUIRED');
+        }
+        return { issued: await sessionService.issue(identity, { correlationId: proof.correlationId }) };
+      }
       // The strongly verified session exists only inside this transaction. Its
       // cookie never leaves the server and cannot authorize a different action.
       const temporary = await sessionService.rotate(current, identity,
         { purpose: 'step_up', correlationId: proof.correlationId });
-      const result = await mutation(Object.freeze({ principal: temporary.principal, operationHash }));
+      const context = Object.freeze({ principal: temporary.principal, operationHash });
+      operationContexts.set(context, context);
+      let result;
+      try { result = await mutation(context); }
+      finally { operationContexts.delete(context); }
       if (result === null || result === undefined) throw new Error('PLATFORM_PASSKEY_MUTATION_REQUIRED');
       if (!await sessionService.revoke(temporary.principal, { correlationId: proof.correlationId })) reject();
       if (invalidateSession) return { result, issued: null };
@@ -102,7 +127,8 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
     async startLogin(assertion, { correlationId = idFactory() } = {}) {
       const primary = await primaryOperatorService.resolve(assertion, { correlationId });
       return start({ operatorId: primary.operatorId, operatorSecurityVersion: primary.securityVersion,
-        purpose: 'login', expectedSessionId: null, operationHash: null }, correlationId);
+        purpose: 'login', expectedSessionId: null, operationHash: null,
+        primaryAuthenticatedAt: primary.primaryAuthenticatedAt }, correlationId);
     },
     async startStepUp(principalValue, { operationHash, correlationId = idFactory() } = {}) {
       const principal = normalizePlatformPrincipal(principalValue);
@@ -119,6 +145,49 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
     async complete(input = {}) {
       return finish(input, null, null);
     },
+    async pendingAuthentication(cookie) {
+      const { state, ...lookup } = locator(cookie);
+      const pending = await repository.findPending(lookup);
+      if (!pending) reject();
+      if (pending.purpose === 'enroll') return Object.freeze({ status: 'enrollment_required', state });
+      const ids = await activeIds(pending);
+      return Object.freeze({ status: 'passkey_required', state, options: await options(pending, ids),
+        setupRequired: pending.purpose === 'login' && (!allowBusinessLogin || ids.length < minimumCredentialCount) });
+    },
+    async consumeEnrollmentPrimary({ cookie, state } = {}, onResolved) {
+      if (typeof repository.consumeEnrollmentPrimary !== 'function' || typeof onResolved !== 'function') reject();
+      const { state: expected, ...lookup } = locator(cookie);
+      if (state !== expected) reject();
+      const result = await repository.consumeEnrollmentPrimary(lookup, onResolved);
+      if (!result) reject();
+      return result;
+    },
+    async executeSetupLogin({ cookie, state, response } = {}, mutation) {
+      if (typeof mutation !== 'function') reject();
+      const { state: expected, ...lookup } = locator(cookie);
+      if (state !== expected) reject();
+      const pending = await repository.findPending(lookup);
+      if (!pending || pending.purpose !== 'login') reject();
+      const { challenge, correlationId, ...binding } = pending;
+      const result = await repository.authenticate({ ...lookup, ...binding, response }, async proof => {
+        const ids = await activeIds({ operatorId: proof.operatorId, operatorSecurityVersion: proof.securityVersion });
+        if (ids.length >= 2) return Object.freeze({ status: 'setup_complete', setCookie: clearPlatformPasskeyTransactionCookie() });
+        if (ids.length !== 1) reject();
+        const temporary = await sessionService.issue(identityForProof(proof, 'step_up'), { correlationId: proof.correlationId });
+        const next = await mutation(Object.freeze({ principal: temporary.principal, correlationId: proof.correlationId }));
+        if (!next || Object.keys(next).sort().join(',') !== 'options,setCookie,state,status'
+          || next.status !== 'registration_required' || !OPAQUE.test(next.state || '')
+          || typeof next.setCookie !== 'string'
+          || !next.setCookie.startsWith(`${PLATFORM_PASSKEY_ENROLLMENT_COOKIE_NAME}=${next.state}.`)
+          || typeof next.options !== 'object' || next.options === null) reject();
+        const value = next.setCookie.split(';')[0].slice(PLATFORM_PASSKEY_ENROLLMENT_COOKIE_NAME.length + 1);
+        if (next.setCookie !== serializePlatformPasskeyEnrollmentCookie(value, TTL_SECONDS)) reject();
+        if (!await sessionService.revoke(temporary.principal, { correlationId: proof.correlationId })) reject();
+        return next;
+      });
+      if (!result) reject();
+      return result;
+    },
     async executeStepUp(input, mutation) {
       if (typeof mutation !== 'function' || !HASH.test(input?.operationHash || '')) reject();
       return finish(input, input.operationHash, mutation);
@@ -126,6 +195,12 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
     async executeCredentialLifecycle(input, mutation) {
       if (typeof mutation !== 'function' || !HASH.test(input?.operationHash || '')) reject();
       return finish(input, input.operationHash, mutation, true);
+    },
+    verifiedOperationPrincipal(context, operationHash) {
+      const verified = operationContexts.get(context);
+      operationContexts.delete(context);
+      if (!verified || verified.operationHash !== operationHash) reject();
+      return verified.principal;
     },
   });
 }

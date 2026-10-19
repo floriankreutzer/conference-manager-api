@@ -66,6 +66,7 @@ function safeObserverCall(callback) {
 export function createPlatformApp({
   config,
   platformAuthService,
+  platformPasskeyService,
   platformAuditService,
   platformDiagnosticOperationsService,
   platformEntitlementOperationsService,
@@ -112,6 +113,7 @@ export function createPlatformApp({
   });
   const dispatch = routeRegistry.createDispatcher({
     platformAuthService,
+    platformPasskeyService,
     platformAuditService,
     platformDiagnosticOperationsService,
     platformEntitlementOperationsService,
@@ -141,6 +143,7 @@ export function createPlatformApp({
     readTransactionCookie,
     maxBodyBytes: config.maxBodyBytes,
     maxResponseBytes: config.maxResponseBytes,
+    platformClock: clock,
   });
 
   return async function handlePlatformRequest(request, response) {

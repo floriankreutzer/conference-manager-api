@@ -36,7 +36,25 @@ export function createPlatformPasskeyLifecycleService({ authService, sessionServ
     return value;
   }
   function correlation() { const id = idFactory(); if (!isInternalUuid(id)) reject(); return id; }
+  async function addition(value, onGranted) {
+    const request = input(value, false);
+    const current = principal(await sessionService.resolvePrincipal(request.request));
+    const operationHash = operation(current, 'add'); const correlationId = correlation();
+    return authService.executeStepUp({ ...request, operationHash }, async ({ principal: strong, operationHash: actual }) => {
+      if (actual !== operationHash || strong.operatorId !== current.operatorId) reject();
+      const result = await repository.issueAdditional({ principal: strong, environment, securityEpoch, correlationId });
+      if (!result) reject();
+      return onGranted ? onGranted({ principal: strong, grant: result.grant, correlationId }) : result;
+    });
+  }
   return Object.freeze({
+    async list(request) {
+      if (typeof repository.listActive !== 'function') reject();
+      const current = principal(await sessionService.resolvePrincipal(request));
+      const items = await repository.listActive({ principal: current, environment, securityEpoch });
+      if (!Array.isArray(items)) reject();
+      return Object.freeze({ items });
+    },
     async startAddition(value) {
       const current = principal(value);
       return authService.startStepUp(current, { operationHash: operation(current, 'add'), correlationId: correlation() });
@@ -47,15 +65,11 @@ export function createPlatformPasskeyLifecycleService({ authService, sessionServ
         correlationId: correlation() });
     },
     async issueAdditional(value) {
-      const request = input(value, false);
-      const current = principal(await sessionService.resolvePrincipal(request.request));
-      const operationHash = operation(current, 'add'); const correlationId = correlation();
-      return authService.executeStepUp({ ...request, operationHash }, async ({ principal: strong, operationHash: actual }) => {
-        if (actual !== operationHash || strong.operatorId !== current.operatorId) reject();
-        const result = await repository.issueAdditional({ principal: strong, environment, securityEpoch, correlationId });
-        if (!result) reject();
-        return result;
-      });
+      return addition(value, null);
+    },
+    async beginAddition(value, onGranted) {
+      if (typeof onGranted !== 'function') reject();
+      return addition(value, onGranted);
     },
     async revoke(value) {
       const { credentialId, ...request } = input(value, true);

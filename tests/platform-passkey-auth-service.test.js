@@ -5,6 +5,7 @@ import { createPlatformPasskeyAuthService } from '../src/platform/identity/passk
 import { readPlatformPasskeyTransactionCookie, serializePlatformPasskeyTransactionCookie,
   clearPlatformPasskeyTransactionCookie } from '../src/platform/identity/passkey-auth-cookie.js';
 import { permissionsForPlatformRoles } from '../src/platform/identity/policy.js';
+import { serializePlatformPasskeyEnrollmentCookie } from '../src/platform/identity/passkey-enrollment-cookie.js';
 
 const OPERATOR = '11111111-1111-4111-8111-111111111111';
 const SESSION = '22222222-2222-4222-8222-222222222222';
@@ -20,7 +21,7 @@ function principal() {
       expiresAt: new Date(Date.now() + 3600000).toISOString(), stepUpExpiresAt: null } };
 }
 
-function fixture() {
+function fixture({ allowBusinessLogin = true, minimumCredentialCount = 1 } = {}) {
   const calls = { primary: 0, issue: [], rotate: [], revoke: [], authenticate: 0, find: 0 };
   const records = new Map();
   let current = principal(); let credentialIds = [randomBytes(32).toString('base64url')];
@@ -44,6 +45,14 @@ function fixture() {
       records.delete(value.stateHash);
       return result;
     },
+    async consumeEnrollmentPrimary(lookup, work) {
+      const record = records.get(lookup.stateHash);
+      if (!record || record.purpose !== 'enroll' || record.browserHash !== lookup.browserHash
+        || record.environment !== lookup.environment || record.securityEpoch !== lookup.securityEpoch) return null;
+      const result = await work({ operatorId: OPERATOR, securityVersion: 4, providerIdentity,
+        primaryAuthenticatedAt: record.primaryAuthenticatedAt });
+      records.delete(lookup.stateHash); return result;
+    },
   };
   const primaryOperatorService = { async resolve(assertion) {
     calls.primary += 1;
@@ -62,9 +71,9 @@ function fixture() {
   const service = createPlatformPasskeyAuthService({ repository, primaryOperatorService, sessionService,
     verifier: { createChallenge: () => randomBytes(32).toString('base64url'),
       authenticationOptions: async value => ({ ...value, userVerification: 'required' }) },
-    environment: 'int', securityEpoch: 7, transactionSecret: 's'.repeat(48) });
+    environment: 'int', securityEpoch: 7, transactionSecret: 's'.repeat(48), allowBusinessLogin, minimumCredentialCount });
   return { service, records, calls, setCurrent: value => { current = value; },
-    removeKeys: () => { credentialIds = []; } };
+    removeKeys: () => { credentialIds = []; }, setKeys: values => { credentialIds = values; } };
 }
 const cookie = result => readPlatformPasskeyTransactionCookie({ cookie: result.setCookie.split(';')[0] });
 
@@ -115,8 +124,13 @@ test('wrong state, cookie signature, environment or missing enrollment cannot cr
     /AUTHENTICATION_REJECTED/);
   assert.equal(f.calls.authenticate, 0);
   f.removeKeys();
-  await assert.rejects(f.service.startLogin('verified-primary'), /ENROLLMENT_REQUIRED/);
-  assert.equal(f.records.size, 1);
+  const enrollment = await f.service.startLogin('verified-primary');
+  assert.equal(enrollment.status, 'enrollment_required');
+  assert.equal(Object.hasOwn(enrollment, 'options'), false);
+  assert.equal((await f.service.pendingAuthentication(cookie(enrollment))).status, 'enrollment_required');
+  await assert.rejects(f.service.complete({ cookie: cookie(enrollment), state: enrollment.state, response: { valid: true } }),
+    /AUTHENTICATION_REJECTED/);
+  assert.equal(f.records.size, 2);
   assert.equal(f.calls.issue.length, 0);
 });
 
@@ -182,4 +196,79 @@ test('passkey cookies reject duplicates and overlong/malformed values and never 
   assert.equal(readPlatformPasskeyTransactionCookie({ cookie: 'cm_platform_passkey_tx=invalid' }), null);
   assert.doesNotMatch(header, /Domain=/);
   assert.throws(() => serializePlatformPasskeyTransactionCookie(value, 301), /COOKIE_INVALID/);
+});
+
+test('durable pending Microsoft identity is separately one-use and cannot be redeemed as a business login', async () => {
+  const f = fixture(); f.removeKeys();
+  const started = await f.service.startLogin('verified-primary');
+  assert.equal(started.status, 'enrollment_required');
+  const input = { cookie: cookie(started), state: started.state };
+  await assert.rejects(f.service.consumeEnrollmentPrimary({ ...input, state: 'foreign' }, () => true), /REJECTED/);
+  const result = await f.service.consumeEnrollmentPrimary(input, async value => {
+    assert.equal(value.operatorId, OPERATOR); assert.equal(value.securityVersion, 4);
+    assert.equal(Object.hasOwn(value, 'roles'), false); return { started: true };
+  });
+  assert.deepEqual(result, { started: true });
+  await assert.rejects(f.service.consumeEnrollmentPrimary(input, () => true), /REJECTED/);
+  assert.equal(f.calls.issue.length, 0);
+});
+
+test('setup-only login can issue only an internal temporary strong session for the next registration', async () => {
+  const f = fixture({ allowBusinessLogin: false, minimumCredentialCount: 2 });
+  const started = await f.service.startLogin('verified-primary');
+  const input = { cookie: cookie(started), state: started.state, response: { valid: true } };
+  assert.equal((await f.service.pendingAuthentication(input.cookie)).setupRequired, true);
+  await assert.rejects(f.service.complete(input), /SETUP_REQUIRED/);
+  assert.equal(f.calls.issue.length, 0);
+  const state = randomBytes(32).toString('base64url'); const browser = randomBytes(32).toString('base64url');
+  const registration = { status: 'registration_required', state, options: {},
+    setCookie: serializePlatformPasskeyEnrollmentCookie(`${state}.${browser}`) };
+  const result = await f.service.executeSetupLogin(input, async ({ principal }) => {
+    assert.equal(principal.assurance.level, 'step_up'); return registration;
+  });
+  assert.deepEqual(result, registration);
+  assert.equal(Object.hasOwn(result, 'principal'), false);
+  assert.equal(f.calls.issue.length, 1); assert.equal(f.calls.issue[0].assurance.level, 'step_up');
+  assert.equal(f.calls.revoke.length, 1);
+  assert.doesNotMatch(result.setCookie, /cm_platform_session/);
+});
+
+test('two completed keys finish setup without a session; active login separately requires the configured key minimum', async () => {
+  const f = fixture({ allowBusinessLogin: false, minimumCredentialCount: 2 });
+  const ids = [randomBytes(32).toString('base64url'), randomBytes(32).toString('base64url')]; f.setKeys(ids);
+  const started = await f.service.startLogin('verified-primary');
+  const input = { cookie: cookie(started), state: started.state, response: { valid: true } };
+  const result = await f.service.executeSetupLogin(input, () => { throw new Error('unexpected issuance'); });
+  assert.equal(result.status, 'setup_complete'); assert.equal(f.calls.issue.length, 0);
+  const active = fixture({ minimumCredentialCount: 2 });
+  const pending = await active.service.startLogin('verified-primary');
+  const proof = { cookie: cookie(pending), state: pending.state, response: { valid: true } };
+  await assert.rejects(active.service.complete(proof), /SETUP_REQUIRED/);
+  active.setKeys(ids);
+  assert.equal((await active.service.complete(proof)).status, 'authenticated');
+  assert.equal(active.calls.issue[0].assurance.level, 'mfa');
+});
+
+test('setup callback cannot smuggle a session, another cookie scope or unknown response authority', async () => {
+  for (const change of [{ principal: principal() }, { setCookie: 'cm_platform_session=forbidden' },
+    { setCookie: `cm_platform_passkey_enroll=${'S'.repeat(43)}.${'B'.repeat(43)}; Domain=foreign.example.com` }]) {
+    const f = fixture({ allowBusinessLogin: false }); const started = await f.service.startLogin('verified-primary');
+    await assert.rejects(f.service.executeSetupLogin({ cookie: cookie(started), state: started.state, response: { valid: true } },
+      async () => ({ status: 'registration_required', state: 'S'.repeat(43), options: {},
+        setCookie: serializePlatformPasskeyEnrollmentCookie(`${'S'.repeat(43)}.${'B'.repeat(43)}`), ...change })), /REJECTED/);
+  }
+});
+
+test('operation context is opaque, transaction-lifetime-bound, exact-hash and one-use for HTTP authorization', async () => {
+  const f = fixture(); const operationHash = 'd'.repeat(64);
+  const started = await f.service.startStepUp(principal(), { operationHash }); let captured;
+  await f.service.executeStepUp({ cookie: cookie(started), state: started.state, response: { valid: true }, request: {}, operationHash },
+    async context => {
+      captured = context;
+      assert.throws(() => f.service.verifiedOperationPrincipal({ ...context }, operationHash), /REJECTED/);
+      assert.equal(f.service.verifiedOperationPrincipal(context, operationHash).assurance.level, 'step_up');
+      assert.throws(() => f.service.verifiedOperationPrincipal(context, operationHash), /REJECTED/);
+      return { changed: true };
+    });
+  assert.throws(() => f.service.verifiedOperationPrincipal(captured, operationHash), /REJECTED/);
 });

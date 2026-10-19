@@ -1,5 +1,6 @@
 import { PlatformHttpError } from './errors.js';
-import { validatePlatformEntraAuthorizationUrl } from '../identity/entra-authorization-url.js';
+import { validatePlatformEntraAuthorizationUrl,
+  validatePlatformEntraPrimaryAuthorizationUrl } from '../identity/entra-authorization-url.js';
 
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 
@@ -77,4 +78,9 @@ export function requirePlatformResultRedirect(value, publicOrigin) {
   const expected = new URL('/', publicOrigin).toString();
   if (value !== expected) throw new PlatformHttpError(500, 'PLATFORM_RESULT_REDIRECT_INVALID');
   return value;
+}
+
+export function requirePlatformPrimaryAuthorizationUrl(value, contract) {
+  try { return validatePlatformEntraPrimaryAuthorizationUrl(value, contract); }
+  catch { throw new PlatformHttpError(500, 'PLATFORM_AUTHORIZATION_REDIRECT_INVALID'); }
 }

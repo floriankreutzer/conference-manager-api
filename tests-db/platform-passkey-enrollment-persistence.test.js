@@ -15,6 +15,8 @@ import { createPlatformSessionService } from '../src/platform/identity/session-s
 import { createPlatformPasskeyAuthService } from '../src/platform/identity/passkey-auth-service.js';
 import { createPlatformPasskeyLifecycleService } from '../src/platform/identity/passkey-lifecycle-service.js';
 import { readPlatformPasskeyTransactionCookie } from '../src/platform/identity/passkey-auth-cookie.js';
+import { createPlatformPasskeyEnrollmentFlow } from '../src/platform/identity/passkey-enrollment-flow.js';
+import { readPlatformPasskeyEnrollmentCookie } from '../src/platform/identity/passkey-enrollment-cookie.js';
 import { platformPasskeyFixture } from '../tests/support/platform-passkey-fixture.js';
 
 test('independently granted enrollment stages public keys and atomically requires real possession before activation', async t => {
@@ -38,7 +40,8 @@ test('independently granted enrollment stages public keys and atomically require
       kind: 'bootstrap', approvalReference: 'CM-INT-OWNER-001', ttlSeconds: 600, correlationId: randomUUID() };
     const primaryOperatorService = { async resolve() {
       const row = (await pool.query('SELECT security_version FROM platform_operators WHERE id = $1', [operatorId])).rows[0];
-      return { operatorId, securityVersion: Number(row.security_version), providerIdentity };
+      return { operatorId, securityVersion: Number(row.security_version), providerIdentity,
+        primaryAuthenticatedAt: new Date().toISOString() };
     } };
     function service(port = repository) { return createPlatformPasskeyEnrollmentService({ repository: port, primaryOperatorService,
       verifier, environment: 'int', securityEpoch: 8 }); }
@@ -184,6 +187,12 @@ test('independently granted enrollment stages public keys and atomically require
     assert.match(revoked.setCookies[0], /Max-Age=0/);
     assert.equal(await sessions.resolvePrincipal({ headers: { cookie: session.setCookies[0].split(';')[0] } }), null);
     const remaining = await login(secondKey, 4);
+    // Five ceremonies in the same DB-clock window are deliberately the limit,
+    // including consumed proofs. Verify the cap before moving fixture time.
+    await assert.rejects(lifecycle.startRevocation(remaining.principal, secondKey.credential.id), /AUTHENTICATION_REJECTED/);
+    await pool.query(`UPDATE platform_passkey_auth_transactions
+      SET created_at=created_at-INTERVAL '3 minutes',expires_at=expires_at-INTERVAL '3 minutes',
+        consumed_at=consumed_at-INTERVAL '3 minutes' WHERE operator_id=$1`, [f.operatorId]);
     const last = await lifecycle.startRevocation(remaining.principal, secondKey.credential.id);
     await assert.rejects(lifecycle.revoke({ ...signed(last, secondKey, 5), credentialId: secondKey.credential.id,
       request: { headers: { cookie: remaining.setCookies[0].split(';')[0] } } }), /LIFECYCLE_REJECTED/);
@@ -194,4 +203,76 @@ test('independently granted enrollment stages public keys and atomically require
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM platform_sessions
       WHERE operator_id=$1 AND assurance_level='step_up' AND revoked_at IS NULL`, [f.operatorId])).rows[0].n, 0);
   });
+
+  await t.test('durable primary bootstrap and a second key finish setup without exposing a business or strong session', async () => {
+    const f = await setup();
+    const sessions = createPlatformSessionService({ repository: createPostgresPlatformSessionRepository(pool, { auditRepository }),
+      publicOrigin: 'https://ops-int.example.com', csrfSecret: 'c'.repeat(48), securityEpoch: 8 });
+    const authRepository = createPostgresPlatformPasskeyAuthRepository(pool, { verifier, auditRepository });
+    const authService = createPlatformPasskeyAuthService({ repository: authRepository, primaryOperatorService: f.primaryOperatorService,
+      verifier, sessionService: sessions, environment: 'int', securityEpoch: 8, transactionSecret: 't'.repeat(48),
+      allowBusinessLogin: false, minimumCredentialCount: 2 });
+    const flow = createPlatformPasskeyEnrollmentFlow({ authService, repository, verifier, environment: 'int', securityEpoch: 8 });
+    const cookie = started => readPlatformPasskeyTransactionCookie({ cookie: started.setCookie.split(';')[0] });
+    const sessionsCount = async () => (await pool.query(`SELECT count(*)::int AS n FROM platform_sessions
+      WHERE operator_id=$1 AND revoked_at IS NULL`, [f.operatorId])).rows[0].n;
+    const issued = await issuer.issueOffline(f.request);
+    const primary = await authService.startLogin('verified-primary-port-fixture');
+    assert.equal(primary.status, 'enrollment_required');
+    assert.equal(Object.hasOwn(primary, 'options'), false);
+    const primaryInput = { cookie: cookie(primary), state: primary.state };
+    await assert.rejects(authService.complete({ ...primaryInput, response: {} }), /AUTHENTICATION_REJECTED/);
+    await assert.rejects(flow.start({ ...primaryInput, grant: { ...issued.grant, token: verifier.createChallenge() } }),
+      /ENROLLMENT_REJECTED/);
+    // Failed grant matching rolls back pending-primary consumption atomically.
+    assert.equal((await authService.pendingAuthentication(primaryInput.cookie)).status, 'enrollment_required');
+    const first = await flow.start({ ...primaryInput, grant: issued.grant });
+    await assert.rejects(flow.start({ ...primaryInput, grant: issued.grant }), /AUTHENTICATION_REJECTED/);
+    const firstKey = platformPasskeyFixture({ operatorId: f.operatorId });
+    async function enroll(started, key) {
+      const startedCookie = readPlatformPasskeyEnrollmentCookie({ cookie: started.setCookie.split(';')[0] });
+      const resumed = await flow.pending(startedCookie);
+      assert.equal(resumed.status, 'registration_required');
+      assert.deepEqual(resumed.options, started.options);
+      const registration = key.response('create', { client: { challenge: started.options.challenge } });
+      const staged = await flow.register({ cookie: startedCookie, state: started.state, response: registration });
+      assert.equal((await flow.pending(startedCookie)).status, 'possession_required');
+      const response = key.response('get', { counter: 1, client: { challenge: staged.options.challenge } });
+      response.response.userHandle = started.options.user.id;
+      assert.equal((await flow.complete({ cookie: startedCookie, state: started.state, response })).status, 'credential_enrolled');
+      return started.options.user.id;
+    }
+    const handle = await enroll(first, firstKey);
+    assert.equal(await f.count(), 1); assert.equal(await sessionsCount(), 0);
+    const secondPrimary = await authService.startLogin('verified-primary-port-fixture');
+    const proof = firstKey.response('get', { counter: 2, client: { challenge: secondPrimary.options.challenge } });
+    proof.response.userHandle = handle;
+    const secondInput = { cookie: cookie(secondPrimary), state: secondPrimary.state, response: proof };
+    await assert.rejects(authService.complete(secondInput), /SETUP_REQUIRED/);
+    assert.equal(await sessionsCount(), 0);
+    const second = await flow.continueSetup(secondInput);
+    assert.equal(second.status, 'registration_required');
+    assert.equal(Object.hasOwn(second, 'principal'), false);
+    assert.doesNotMatch(second.setCookie, /cm_platform_session/);
+    assert.equal(await sessionsCount(), 0, 'temporary strong session was revoked inside the setup transaction');
+    const secondKey = platformPasskeyFixture({ operatorId: f.operatorId });
+    assert.equal(await enroll(second, secondKey), handle);
+    assert.equal(await f.count(), 2);
+    const finished = await authService.startLogin('verified-primary-port-fixture');
+    const finishedProof = secondKey.response('get', { counter: 2, client: { challenge: finished.options.challenge } });
+    finishedProof.response.userHandle = handle;
+    assert.equal((await flow.continueSetup({ cookie: cookie(finished), state: finished.state,
+      response: finishedProof })).status, 'setup_complete');
+    assert.equal(await sessionsCount(), 0);
+    const active = createPlatformPasskeyAuthService({ repository: authRepository, primaryOperatorService: f.primaryOperatorService,
+      verifier, sessionService: sessions, environment: 'int', securityEpoch: 8, transactionSecret: 't'.repeat(48),
+      allowBusinessLogin: true, minimumCredentialCount: 2 });
+    const login = await active.startLogin('verified-primary-port-fixture');
+    const loginProof = secondKey.response('get', { counter: 3, client: { challenge: login.options.challenge } });
+    loginProof.response.userHandle = handle;
+    const authenticated = await active.complete({ cookie: cookie(login), state: login.state, response: loginProof });
+    assert.equal(authenticated.status, 'authenticated');
+    assert.equal(authenticated.principal.assurance.level, 'mfa'); assert.equal(await sessionsCount(), 1);
+  });
+
 });

@@ -85,7 +85,8 @@ test('registration requires verified primary and exact independent grant; only a
   await assert.rejects(f.service.registrationOptions(started.cookie), /ENROLLMENT_REJECTED/);
   const completed = await f.service.complete({ ...input, response: f.assertionResponse() });
   assert.deepEqual(completed, { status: 'credential_enrolled',
-    setCookie: 'cm_platform_passkey_tx=; Path=/api/v1/platform/auth/passkey; HttpOnly; Secure; SameSite=Strict; Max-Age=0' });
+    setCookie: 'cm_platform_passkey_enroll=; Path=/api/v1/platform/auth/passkey/enrollment; '
+      + 'HttpOnly; Secure; SameSite=Strict; Max-Age=0' });
   assert.equal(f.active(), true);
   assert.equal(Object.hasOwn(completed, 'principal'), false);
   await assert.rejects(f.service.complete({ ...input, response: f.assertionResponse() }), /ENROLLMENT_REJECTED/);

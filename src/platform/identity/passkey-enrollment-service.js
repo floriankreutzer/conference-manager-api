@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { isInternalUuid } from '../../domain/identifiers.js';
 import { PlatformIdentityError } from './errors.js';
 import { normalizePlatformPasskeyEnrollmentGrantClaim } from './passkey-enrollment-grant.js';
-import { serializePlatformPasskeyTransactionCookie, clearPlatformPasskeyTransactionCookie } from './passkey-auth-cookie.js';
+import { serializePlatformPasskeyEnrollmentCookie, clearPlatformPasskeyEnrollmentCookie } from './passkey-enrollment-cookie.js';
 
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const TTL_SECONDS = 120;
@@ -73,11 +73,21 @@ export function createPlatformPasskeyEnrollmentService({ repository, primaryOper
         correlationId: value.correlationId, ttlSeconds: TTL_SECONDS });
       const options = await registration(record);
       return Object.freeze({ status: 'registration_required', state, options,
-        setCookie: serializePlatformPasskeyTransactionCookie(`${state}.${browser}`, TTL_SECONDS) });
+        setCookie: serializePlatformPasskeyEnrollmentCookie(`${state}.${browser}`, TTL_SECONDS) });
     },
     async registrationOptions(cookie) {
       const { state, ...lookup } = locator(cookie);
       return Object.freeze({ state, options: await registration(await repository.findRegistration(lookup)) });
+    },
+    async pending(cookie) {
+      const { state, ...lookup } = locator(cookie);
+      const record = await repository.findRegistration(lookup);
+      if (record) return Object.freeze({ status: 'registration_required', state, options: await registration(record) });
+      if (typeof repository.findPossession !== 'function') reject();
+      const staged = await repository.findPossession(lookup);
+      if (!staged) reject();
+      return Object.freeze({ status: 'possession_required', state, options: await verifier.authenticationOptions({
+        challenge: staged.possessionChallenge, allowedCredentialIds: [staged.credentialId] }) });
     },
     async register(value) {
       const pending = await repository.stageCredential(request(value), async record => verifier.verifyRegistration({
@@ -96,7 +106,7 @@ export function createPlatformPasskeyEnrollmentService({ repository, primaryOper
       if (enrolled !== true) reject();
       // Enrollment invalidates prior authority. A new Microsoft + passkey login
       // is required; this use case has no session issuance capability.
-      return Object.freeze({ status: 'credential_enrolled', setCookie: clearPlatformPasskeyTransactionCookie() });
+      return Object.freeze({ status: 'credential_enrolled', setCookie: clearPlatformPasskeyEnrollmentCookie() });
     },
   });
 }

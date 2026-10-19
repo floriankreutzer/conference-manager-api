@@ -179,6 +179,27 @@ export function createPostgresPlatformPasskeyEnrollmentRepository(pool, { auditR
   }
 
   return Object.freeze({
+    async listActive(value) {
+      exact(value, ['principal','environment','securityEpoch']);
+      const principal = normalizePlatformPrincipal(value.principal);
+      if (!['dev','int','prod'].includes(value.environment) || principal.session.securityEpoch !== value.securityEpoch) invalid();
+      return withPostgresTransaction(pool, async client => {
+        const result = await client.query({ name: 'platform-passkey-own-key-list',
+          text: `SELECT c.credential_id,c.created_at,c.last_used_at,c.backup_eligible,c.backed_up
+            FROM platform_sessions s JOIN platform_operators o ON o.id=s.operator_id
+            LEFT JOIN platform_passkey_credentials c ON c.operator_id=o.id AND c.environment=$4 AND c.revoked_at IS NULL
+            WHERE s.id=$1 AND s.operator_id=$2 AND s.principal_version=$3 AND s.security_epoch=$5
+              AND s.revoked_at IS NULL AND s.expires_at > clock_timestamp()
+              AND o.status='active' AND o.security_version=s.principal_version ORDER BY c.created_at,c.id LIMIT 6`,
+          values: [principal.session.id,principal.operatorId,principal.securityVersion,value.environment,value.securityEpoch] });
+        if (!result.rowCount) return null;
+        const rows = result.rows.filter(row => row.credential_id !== null);
+        if (rows.length > 5) invalid();
+        return Object.freeze(rows.map(row => Object.freeze({ id: binary(row.credential_id, 1, 1024),
+          createdAt: row.created_at.toISOString(), lastUsedAt: row.last_used_at?.toISOString() ?? null,
+          backupEligible: row.backup_eligible, backedUp: row.backed_up })));
+      });
+    },
     async issueAdditional(value) {
       exact(value, ['principal','environment','securityEpoch','correlationId']);
       const principal = strongPrincipal(value);
@@ -293,6 +314,17 @@ export function createPostgresPlatformPasskeyEnrollmentRepository(pool, { auditR
       });
     },
     async stageCredential(value, verify) { return perform(value, verify, 'registration'); },
+    async findPossession(value) {
+      lookup(value);
+      return withPostgresTransaction(pool, async client => {
+        const result = await client.query({ name: 'platform-passkey-enrollment-possession-options',
+          text: `${PENDING_SQL} AND t.staged_at IS NOT NULL AND t.possession_attempts < 5`, values: parameters(value) });
+        const record = result.rows[0];
+        if (!record || !await lockOperator(client, grantBinding(record))) return null;
+        return Object.freeze({ possessionChallenge: binary(record.possession_challenge, 32),
+          credentialId: binary(record.candidate_id, 1, 1024) });
+      });
+    },
     async complete(value, verify) { return perform(value, verify, 'possession'); },
   });
 }

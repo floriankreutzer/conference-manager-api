@@ -1,3 +1,20 @@
+ALTER TABLE platform_passkey_auth_transactions ADD COLUMN primary_authenticated_at TIMESTAMPTZ;
+ALTER TABLE platform_passkey_auth_transactions DROP CONSTRAINT platform_passkey_auth_transactions_purpose_check;
+ALTER TABLE platform_passkey_auth_transactions DROP CONSTRAINT platform_passkey_auth_transactions_check2;
+ALTER TABLE platform_passkey_auth_transactions ADD CONSTRAINT platform_passkey_auth_transactions_purpose_check
+  CHECK (purpose IN ('login', 'step_up', 'enroll'));
+ALTER TABLE platform_passkey_auth_transactions ADD CONSTRAINT platform_passkey_auth_transactions_check2 CHECK (
+  (purpose IN ('login', 'enroll') AND expected_session_id IS NULL AND operation_hash IS NULL)
+  OR (purpose = 'step_up' AND expected_session_id IS NOT NULL
+    AND operation_hash IS NOT NULL AND operation_hash ~ '^[0-9a-f]{64}$')
+);
+ALTER TABLE platform_passkey_auth_transactions ADD CONSTRAINT platform_passkey_primary_time_valid CHECK (
+  (purpose = 'enroll' AND primary_authenticated_at IS NOT NULL
+    AND primary_authenticated_at >= created_at - INTERVAL '5 minutes'
+    AND primary_authenticated_at <= created_at + INTERVAL '1 minute')
+  OR (purpose <> 'enroll' AND primary_authenticated_at IS NULL)
+);
+
 CREATE TABLE platform_passkey_enrollment_grants (
   id UUID PRIMARY KEY,
   operator_id UUID NOT NULL REFERENCES platform_operators(id) ON DELETE RESTRICT,

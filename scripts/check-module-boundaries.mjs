@@ -33,6 +33,7 @@ const REAL_PRODUCTION_IDENTITY_AND_PROVIDER_MODULES = new Set([
   'src/platform/identity/primary-operator-service.js',
   'src/platform/identity/passkey-auth-service.js',
   'src/platform/identity/passkey-enrollment-service.js',
+  'src/platform/identity/passkey-enrollment-flow.js',
   'src/platform/identity/passkey-lifecycle-service.js',
   'src/platform/identity/passkey-enrollment-grant.js',
   'src/persistence/postgres/platform-passkey-grant-issuer.js',
@@ -207,6 +208,7 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
           || dependency === 'src/persistence/postgres/platform-passkey-auth-repository.js'
           || dependency === 'src/platform/identity/passkey-auth-service.js'
           || dependency === 'src/platform/identity/passkey-enrollment-service.js'
+          || dependency === 'src/platform/identity/passkey-enrollment-flow.js'
           || dependency === 'src/platform/identity/passkey-lifecycle-service.js'
           || dependency === 'src/persistence/postgres/platform-passkey-enrollment-repository.js'
           || dependency === 'src/platform/identity/passkey-enrollment-grant.js');

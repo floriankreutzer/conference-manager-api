@@ -227,10 +227,10 @@ and atomic audit. Its new PostgreSQL integration evidence remains pending.
 The inactive enrollment application service resolves the opaque Microsoft-primary
 assertion, accepts only a grant ID/token from the browser and supplies all identity
 and deployment authority itself. Separate independent 256-bit state/browser values
-are hashed under an enrollment-only environment/epoch namespace. The existing
-narrow-path Secure/HttpOnly/SameSite=Strict passkey transaction cookie is reused;
-starting enrollment replaces a pending login ceremony in that browser. The two
-namespaces cannot redeem each other's records. Raw grant/browser tokens are never
+are hashed under an enrollment-only environment/epoch namespace. A dedicated `cm_platform_passkey_enroll` cookie uses the narrower
+`/api/v1/platform/auth/passkey/enrollment` path with Secure, HttpOnly and Strict
+attributes. Login and enrollment use separate cookies and namespaces; neither
+can redeem the other's records. Raw grant/browser tokens are never
 sent to the repository. Ceremony lifetime is 120 seconds; browser state must echo
 the cookie state on every mutation. Routes must additionally enforce exact Origin,
 request/content bounds, abuse limits and the applicable CSRF policy.
@@ -299,8 +299,9 @@ no email-code or Microsoft-primary-only bypass.
 Additional-key issuance requires a live, current, application-passkey step-up
 session, one to four existing active keys and an exact server-computed addition
 operation. Its temporary strong cookie never leaves the verification transaction.
-The returned session has ordinary MFA; the short-lived grant still requires fresh
-Microsoft identity before registration. Revocation binds the exact owned active
+The returned session has ordinary MFA. The verified current Microsoft/passkey
+identity and fresh addition assertion authorize registration in the same transaction;
+the grant is not exposed to the browser or carried through another Microsoft redirect. Revocation binds the exact owned active
 key and requires another active key to remain. It invalidates old operator/session
 authority, revokes outstanding grants and finishes with cleared session/transaction
 cookies and a fresh-login requirement. It never issues an obsolete-version session.
@@ -311,3 +312,55 @@ gets enrollment privileges. Historical rollback probes explicitly drain020/054
 before their retained019/053 and older guards. Populated054 or retained offline
 audit evidence prevents rollback and requires reviewed recovery. The synthetic
 seed checksum, production security epoch and current live CA mode are unchanged.
+
+
+## Pending HTTP and two-key setup candidate — not selected by runtime
+
+The alternative Microsoft route module requests fresh primary identity without CA
+contexts and accepts only a browser-bound pending result on callback. It can never
+emit a business session. The default CA route registry and runtime composition are
+unchanged. This candidate is neither a deployed login mode nor cutover evidence.
+
+Unreleased054 extends pending authentication with an `enroll` purpose carrying the
+verified primary authentication time. It has no session or operation hash and cannot
+be redeemed by the assertion endpoint. The SQL clock bounds that primary time.
+Pending identity is consumed in the same transaction as independently granted
+registration creation; a mismatched grant rolls back the consumption. Every stage
+rechecks current operator/version/environment/epoch and server expiry.
+
+A setup-only service always rejects normal session issuance. After the independently
+granted first key, another fresh Microsoft login and real first-key signature can
+create an internal temporary strong session, issue an additional grant and begin
+registration of the second key atomically. That temporary session is revoked before
+returning registration options. Two completed keys finish setup without a business
+session. A separately composed active service must explicitly require two keys.
+Setup never produces a reusable strong-session cookie or a Microsoft-only login.
+
+The alternative routes below are bounded to the same origin, exact host, JSON bodies
+of at most32768 bytes and30 requests per source address/minute. They reject queries,
+unknown fields and unsupported methods. Preauthentication writes require the exact
+server-issued state in both body and CSRF header, plus the initiating HttpOnly
+cookie. Authenticated key management uses the normal Platform session/CSRF guard.
+
+| Path below `/api/v1/platform/auth/passkey` | Method | Contract |
+| --- | --- | --- |
+| `/configuration` | GET | Mode, environment, minimum key count only |
+| `/pending` | GET | Pending assertion or independently granted enrollment |
+| `/authenticate` | POST | Exact state and native assertion |
+| `/enrollment/pending` | GET | Resume registration or possession proof |
+| `/enrollment/start` | POST | Exact pending state and independent grant ID/token |
+| `/enrollment/register` | POST | Stage native registration candidate |
+| `/enrollment/complete` | POST | Activate only after actual signed possession |
+| `/manage/keys` | GET | Current operator's minimized active key list |
+| `/manage/addition/start` | POST | Begin exact addition proof |
+| `/manage/addition/complete` | POST | Proof and registration start in one transaction |
+| `/manage/revocation/start` | POST | Begin proof bound to owned credential ID |
+| `/manage/revocation/complete` | POST | Exact proof, revoke and logout |
+
+Bodies contain no trusted identity, public-key persistence record, session token,
+raw grant result or strong cookie. Normal login completion returns only status;
+the existing session endpoint supplies its normal minimized session projection.
+Public errors and durable denial reasons exclude native/provider payloads. These
+HTTP port tests do not substitute for real PostgreSQL, browser/device or deployed
+cutover acceptance. Generic business operation step-up, production composition,
+native DE/EN UI and owner authenticator verification remain open.
