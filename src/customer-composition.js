@@ -41,6 +41,7 @@ import { createTenantOnboardingService } from './onboarding/tenant-onboarding-se
 import { createPostgresPersistence } from './persistence/postgres/index.js';
 import { createHttpServer } from './server.js';
 import { shutdownCustomerRuntime } from './customer-shutdown.js';
+import { createCateringConfigurationRouteModules } from './catering-configuration-composition.js';
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -366,6 +367,9 @@ const selectedAdditionalRouteModules = routeModulesFactory
 if (!Array.isArray(selectedAdditionalRouteModules)) {
   throw new TypeError('CUSTOMER_ROUTE_MODULES_INVALID');
 }
+const cateringConfigurationRouteModules = createCateringConfigurationRouteModules({
+  config, persistence, authorizationPolicy, auditService,
+});
 const server = httpServerFactory({
   config,
   persistence,
@@ -391,7 +395,7 @@ const server = httpServerFactory({
   tenantUserAdministrationService,
   tenantUserLifecycleService,
   microsoft365ConnectionService: microsoft365Service,
-  additionalRouteModules: selectedAdditionalRouteModules,
+  additionalRouteModules: [...selectedAdditionalRouteModules, ...cateringConfigurationRouteModules],
   loadTenant: persistence?.loadTenant,
   readinessChecks: persistence?.readinessChecks || [],
 });

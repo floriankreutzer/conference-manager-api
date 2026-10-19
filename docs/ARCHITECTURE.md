@@ -121,7 +121,9 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
 - `src/integrations/calendar-contract.js` owns the provider-neutral calendar port, response validation and stable provider failure taxonomy.
 - `src/integrations/provider-registry.js` and the Catering value contracts own immutable source registration,
   capability modes, normalized receipts and configuration values; registry membership grants no Tenant authority.
-- `src/application/catering-configuration-service.js` owns the uncomposed Tenant Admin configuration use case.
+- `src/application/catering-configuration-service.js` owns the Tenant Admin configuration use case.
+  `catering-configuration-composition.js` composes its bounded GET/PUT routes only behind the
+  default-off server feature flag, with a source-defined manual-only registry and PostgreSQL/audit.
   Its PostgreSQL adapter owns typed revision/history/audit transactions and live actor/session fencing.
   Neither component activates a provider, exposes credentials or dispatches orders.
 - `src/integrations/booking-reference.js` owns the opaque provider-reference persistence model.

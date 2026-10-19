@@ -1,4 +1,5 @@
 import { ApiError } from './api-error.js';
+import { loadFeatureFlags } from './feature-flags.js';
 
 export const APPROVED_OUTBOUND_ORIGINS = Object.freeze({
   microsoftIdentity: 'https://login.microsoftonline.com',
@@ -217,6 +218,7 @@ export function loadConfig(env = process.env) {
 
   return Object.freeze({
     mode,
+    featureFlags: loadFeatureFlags(env),
     serviceVersion: parseSupportIdentifier(env.SERVICE_VERSION, supportFallback ? '0.1.0' : null, {
       requiredCode: 'SERVICE_VERSION_REQUIRED',
       invalidCode: 'SERVICE_VERSION_INVALID',
