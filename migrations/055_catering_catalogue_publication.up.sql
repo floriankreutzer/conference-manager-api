@@ -163,6 +163,11 @@ BEGIN
     OR NEW.catalogue_revision<>actual_catalogue OR NEW.assignment_revision<>coalesce(actual_assignment,0)
     OR (increment=0 AND NEW.bindings<>'[]'::jsonb) THEN
     RAISE EXCEPTION 'CATERING_CATALOGUE_REVIEW_REVISION_INVALID' USING ERRCODE='23514'; END IF;
+  IF (NEW.command->>'expectedAssignmentRevision')::bigint=0 AND EXISTS (
+    SELECT 1 FROM public.tenant_catalogue_revisions catalogue WHERE catalogue.tenant_id=NEW.tenant_id
+      AND catalogue.revision=(NEW.command->>'expectedCatalogueRevision')::bigint
+      AND (jsonb_array_length(catalogue.snapshot->'cateringItems')<>0 OR jsonb_array_length(catalogue.snapshot->'cateringPackages')<>0)
+  ) THEN RAISE EXCEPTION 'CATERING_CATALOGUE_REVIEW_ASSIGNMENT_REQUIRED' USING ERRCODE='23514'; END IF;
   NEW.recorded_at:=clock_timestamp(); RETURN NEW;
 END $$;
 CREATE FUNCTION guard_catering_catalogue_review_head()
@@ -191,7 +196,7 @@ DECLARE
   source jsonb; previous_catalogue jsonb; next_catalogue jsonb; expected_bindings jsonb; retained_bindings jsonb;
   collection text; source_collection text; review_kind text; selected jsonb; product jsonb; expected_entry jsonb; actual_entry jsonb;
   old_entry jsonb; old_variant jsonb; variant jsonb; variant_product jsonb; expected_variants jsonb; expected_ids jsonb;
-  component text; mapping jsonb; owner uuid; field text; expected_count integer;
+  component text; mapping jsonb; owner uuid; field text; expected_count integer; catalogue_summary jsonb;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.catering_catalogue_review_heads WHERE tenant_id=NEW.tenant_id
     AND integration_id=NEW.integration_id AND review_revision=NEW.review_revision)
@@ -301,6 +306,12 @@ BEGIN
         END IF;
       END IF;
       SELECT x INTO actual_entry FROM jsonb_array_elements(next_catalogue->collection) x WHERE x->>'id'=old_entry->>'id';
+      IF review_kind='package' THEN
+        expected_entry:=expected_entry||jsonb_build_object('variants',(SELECT coalesce(jsonb_agg(x ORDER BY x->>'id' COLLATE "C"),'[]'::jsonb)
+          FROM jsonb_array_elements(expected_entry->'variants') x));
+        actual_entry:=actual_entry||jsonb_build_object('variants',(SELECT coalesce(jsonb_agg(x ORDER BY x->>'id' COLLATE "C"),'[]'::jsonb)
+          FROM jsonb_array_elements(actual_entry->'variants') x));
+      END IF;
       IF actual_entry IS DISTINCT FROM expected_entry THEN
         RAISE EXCEPTION 'CATERING_CATALOGUE_UNRELATED_ENTRY_CHANGED' USING ERRCODE='23514'; END IF;
     END LOOP;
@@ -315,12 +326,23 @@ BEGIN
         WHERE b->>'kind'=old_assignment.kind AND b->>'entryId'=old_assignment.entry_id)
       AND next_assignment.integration_id IS DISTINCT FROM old_assignment.integration_id) THEN
     RAISE EXCEPTION 'CATERING_CATALOGUE_UNRELATED_OWNER_CHANGED' USING ERRCODE='23514'; END IF;
+  catalogue_summary:=jsonb_build_object(
+    'operation','catering_catalogue_publication',
+    'roomPriceCount',jsonb_array_length(next_catalogue->'roomPrices'),
+    'serviceCount',jsonb_array_length(next_catalogue->'services'),
+    'activeServiceCount',(SELECT count(*) FROM jsonb_array_elements(next_catalogue->'services') x WHERE x->'active'='true'::jsonb),
+    'equipmentCount',jsonb_array_length(next_catalogue->'equipment'),
+    'activeEquipmentCount',(SELECT count(*) FROM jsonb_array_elements(next_catalogue->'equipment') x WHERE x->'active'='true'::jsonb),
+    'packageCount',jsonb_array_length(next_catalogue->'cateringPackages'),
+    'activePackageCount',(SELECT count(*) FROM jsonb_array_elements(next_catalogue->'cateringPackages') x WHERE x->'active'='true'::jsonb),
+    'cateringItemCount',jsonb_array_length(next_catalogue->'cateringItems'),
+    'activeCateringItemCount',(SELECT count(*) FROM jsonb_array_elements(next_catalogue->'cateringItems') x WHERE x->'active'='true'::jsonb));
   FOREACH field IN ARRAY ARRAY['catalogue','assignment'] LOOP
     IF NOT EXISTS (SELECT 1 FROM public.audit_events WHERE tenant_id=NEW.tenant_id AND actor_user_id=NEW.reviewed_by_user_id
       AND correlation_id=NEW.correlation_id AND action='tenant.configuration.changed' AND outcome='success' AND retention_class='administrative'
       AND ((field='catalogue' AND target_type='catalogue' AND target_id='tenant-catalogue'
         AND previous_state=jsonb_build_object('revision',NEW.catalogue_revision-1)
-        AND new_state=jsonb_build_object('revision',NEW.catalogue_revision) AND metadata->>'operation'='catering_catalogue_publication')
+        AND new_state=jsonb_build_object('revision',NEW.catalogue_revision) AND metadata=catalogue_summary)
       OR (field='assignment' AND target_type='tenant_configuration' AND target_id='catering_catalogue_assignments'
         AND previous_state=jsonb_build_object('revision',NEW.assignment_revision-1)
         AND new_state=jsonb_build_object('revision',NEW.assignment_revision,'catalogueRevision',NEW.catalogue_revision)

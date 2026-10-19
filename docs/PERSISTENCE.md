@@ -623,4 +623,18 @@ and admits only bounded reset privileges on both new FK-owning tables. Runtime
 and Demo readiness advance to exact054/020; missing/future ledgers and historical
 incompatible pairs fail closed. Installation/reset creates no source, supplier
 connection, publication or order. See CATERING-PROVIDER-CATALOGUES.md for actual
-qualification status; SQL and paired CI are still pending at this checkpoint.
+qualification status. API#229 accepted054/020 after complete PostgreSQL18.6
+and all four permanent paired browser/storage matrices; that supersedes the
+historical pending checkpoint above.
+
+
+Draft migration055/Demo021 adds immutable explicit Manager catalogue reviews and
+separate review/publication heads. Publication composes existing canonical and
+assignment writes with review and three audit completions in one same-client
+transaction; rejection retains earlier published state. All observed revisions,
+source content, explicit selling prices, same-provider components/variants,
+ownership and unrelated retained content are fenced. No source or order is
+backfilled. The candidate advances exact readiness/reset inventories to55/21,
+including all three FK-owning tables and private nonexecutable guards. It remains
+uncomposed and unqualified until actual PostgreSQL and all required exact-head
+gates pass. See CATERING-CATALOGUE-PUBLICATION.md for evidence and remaining scope.

@@ -1,8 +1,9 @@
 # Provider catalogue publication — unpublished preparation
 
 Work in progress for application#233, dependent on source intake054/Demo020.
-Draft055 publication SQL is present but unexecuted. No coherent readiness/role/
-reset integration, runtime composition, HTTP/UI, availability or acceptance exists yet. Current preparation is isolated on
+Draft055/Demo021 publication SQL, exact readiness and role/reset integration
+are prepared but unexecuted in PostgreSQL. No runtime composition, HTTP/UI,
+availability or publication acceptance exists yet. Current preparation is isolated on
 feat/saas4-catalogue-publication-recovered on accepted API#229 main5bbe97b.
 
 ## Implemented application and persistence draft
@@ -84,6 +85,41 @@ administration and transaction-native regressions. All assertions were retained.
 Draft055 adds immutable review receipts, review/publication heads, closed SQL
 commands, current source/configuration/actor/counter fences, reviewed source to
 canonical content/price/ownership checks and deferred completion. It is not
-qualified, composed or ready to migrate. Demo021, exact inventories/readiness,
-actual PostgreSQL concurrency/rollback/security and browser acceptance remain
-required before a publication claim. No existing migration checksum is changed.
+qualified, composed or ready to migrate. Demo021 and exact inventories/readiness are now prepared. Actual PostgreSQL
+concurrency/rollback/security and browser acceptance remain required before a
+publication claim. No existing migration checksum is changed.
+
+## Coherent055/021 CI preparation
+
+The candidate preserves accepted054/020 and appends055/021. Customer can append
+immutable reviews and advance the two heads; Platform cannot read them; Reset
+can SELECT/TRUNCATE all three FK-owning tables. Runtime roles cannot execute the
+five private review validators/guards. Down migration refuses retained review,
+head or published/rejected audit evidence, including audit-only state after a
+reset. Exact runtime/operator/media/recovery inventories advance coherently;
+legacy44/9 through54/20 compatibility bounds and earlier53/20 rejection remain.
+Missing and future ledgers remain invalid. Existing historical probes drain021
+before020 and empty055 before their original054/older guards. Source054's own
+populated/audit-only rollback proof is preserved, with55/21 restored before reset.
+No earlier migration checksum, assertion, timeout, retry or required gate changes.
+
+The actual PostgreSQL case is prepared for Catalogue-only live Manager, restricted
+Customer/Platform/Reset roles, foreign Tenant concealment, concurrent identical
+and distinct commands, source/CAS/replay, independent DB rejection of a tampered
+selling price, rollback after both nested writes and final audit failure, raw
+closed-schema/epoch/completion/head/history negatives, rejection retaining the
+prior publication, omitted own offers retired with unchanged historical orders,
+HMAC/minimized audit, filled reset and audit-only rollback refusal. A separate
+subcase prepares first publication from empty assignment revision0 at full300
+items/100 packages/20 variants each, then verifies canonical counts and reset.
+The test fixture's optional empty-Catering flag defaults false; existing fixture
+preparation and all existing callers retain their prior behavior.
+
+Complete local serial check passed1634 native cases, Customer live HTTP DAST and
+all17 Platform HTTP security cases. All architecture/static/secret/role gates
+passed. The focused migration/reset/media/recovery group passed66/66. Final DB
+fixture/test additions have independent syntax/lint/style validation; PostgreSQL
+has not executed locally. Initial metadata/DB-test long-line failures are retained
+and corrected without assertion changes. Remote exact-head gates remain pending.
+This foundation remains uncomposed: no publication HTTP caller, Employee offer
+projection, availability, automatic order authority, live supplier or deployment.
