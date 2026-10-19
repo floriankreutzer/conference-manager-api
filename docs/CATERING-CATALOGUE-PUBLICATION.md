@@ -156,3 +156,16 @@ are unchanged. A broader source scan found no other current54/20 constants;
 historical ledgers and genuine20-entry product/history limits remain intact.
 This second failure remains retained and is not suite acceptance. The next head
 must execute every required database, browser and security gate again.
+
+
+The third run36a822a7 / CI39324628866 / job118307988049 again passed actual
+publication/capacity and source custody. Its fresh-overlay subcase verified all
+new table privileges and five private function denials successfully. The older
+upgrade-from001..003 subcase then found a second literal expected ledger ending
+at20 instead of21. The complete file and every numeric change from the accepted
+source054 diff were reviewed; the original full upgrade assertion now appends021.
+Historical001..003 denial, original reset privilege assertions, current55 checks,
+all old ledger entries and every runtime/migration invariant remain unchanged.
+This third failed run stays retained. Documentation now distinguishes the55/21
+candidate readiness from accepted main54/20. The next exact head must pass the
+entire suite and all browser/security gates; no partial run substitutes for it.
