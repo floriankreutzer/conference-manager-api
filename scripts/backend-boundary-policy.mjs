@@ -13,6 +13,10 @@ const GENERIC_DUMPING_GROUNDS = new Set([
   'helpers',
   'utils',
 ]);
+const FOUNDATION_RUNTIME_AUTHORITY = new RegExp([
+  '\\b(?:fetch|WebSocket|EventSource|XMLHttpRequest|WebTransport|Worker|SharedWorker',
+  '|navigator|global|globalThis|process|require|eval|Function)\\b',
+].join(''));
 const GENERIC_SETTINGS_MODULES = new Set([
   'settings-service.js',
   'settings-repository.js',
@@ -32,6 +36,10 @@ const PROVIDER_NEUTRAL_INTEGRATION_MODULES = new Set([
   'src/integrations/booking-reference.js',
   'src/integrations/calendar-contract.js',
   'src/integrations/errors.js',
+  'src/integrations/provider-registry.js',
+  'src/integrations/delivery-policy.js',
+  'src/integrations/catering-contract.js',
+  'src/integrations/catering-configuration.js',
 ]);
 const TENANT_READINESS_POLICY_FILE = 'src/tenancy/tenant-readiness-policy.js';
 const PLATFORM_PROJECTION_REPOSITORY_FILE = 'src/persistence/postgres/platform-projection-repository.js';
@@ -115,6 +123,22 @@ export function backendSaas2BoundaryViolations(sourceEntries) {
   for (const [rawFile, rawSource] of sources) {
     const file = normalized(rawFile);
     const source = String(rawSource);
+    if (file === 'src/integrations/catering-configuration.js'
+      && (moduleImports(source).some(({ specifier, dynamic }) => dynamic
+        || !['../domain/catering-approval-policy.js', './provider-registry.js'].includes(specifier))
+        || FOUNDATION_RUNTIME_AUTHORITY.test(source))) {
+      violations.push(violation(file, 'catering configuration must remain a provider-neutral value contract.'));
+    }
+    if (file === 'src/integrations/catering-contract.js'
+      && (moduleImports(source).some(({ specifier, dynamic }) => dynamic
+        || !['../domain/identifiers.js', './provider-registry.js'].includes(specifier))
+        || FOUNDATION_RUNTIME_AUTHORITY.test(source))) {
+      violations.push(violation(file, 'catering contracts may depend only on neutral registration and internal identifiers.'));
+    }
+    if (['src/integrations/provider-registry.js', 'src/integrations/delivery-policy.js'].includes(file)
+      && (moduleImports(source).length > 0 || FOUNDATION_RUNTIME_AUTHORITY.test(source))) {
+      violations.push(violation(file, 'provider foundation must remain an import-free, network-free policy/metadata contract.'));
+    }
     const genericSegment = pathSegments(file)
       .find((segment) => GENERIC_DUMPING_GROUNDS.has(segment));
     if (genericSegment) {
