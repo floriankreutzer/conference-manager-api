@@ -44,9 +44,11 @@
     "test:db": "node scripts/test-db.mjs",
     "test:dast": "node scripts/security-dast.mjs",
     "test:dast:platform": "node --test tests/platform-http-security.test.js",
-    "check": "npm run check:syntax && npm run check:agents && npm run check:architecture && npm run check:pilot-activation && npm run check:pilot-operations && npm run check:pilot-readiness && npm run check:multi-tenant && npm run check:application-contract && npm run check:jit && npm run check:roles && npm run check:microsoft365 && npm run check:entitlements && npm run check:booking && npm run check:observability && npm run check:security-baseline && npm run check:dependencies && npm run check:static && npm run check:secrets && npm run check:style && npm test && npm run test:dast && npm run test:dast:platform",
+    "check": "npm run check:syntax && npm run check:lint && npm run check:format && npm run check:agents && npm run check:architecture && npm run check:pilot-activation && npm run check:pilot-operations && npm run check:pilot-readiness && npm run check:multi-tenant && npm run check:application-contract && npm run check:jit && npm run check:roles && npm run check:microsoft365 && npm run check:entitlements && npm run check:booking && npm run check:observability && npm run check:security-baseline && npm run check:dependencies && npm run check:static && npm run check:secrets && npm run check:style && npm test && npm run test:dast && npm run test:dast:platform",
     "audit": "npm audit --audit-level=high",
-    "test:public-api-publication": "node --test tests/public-api-publication.test.js"
+    "test:public-api-publication": "node --test tests/public-api-publication.test.js",
+    "check:lint": "biome lint --config-path=biome.json --error-on-warnings src scripts tests tests-db",
+    "check:format": "npm run check:style"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1148.0",
@@ -55,6 +57,7 @@
     "sharp": "0.35.5"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.15",
     "es-module-lexer": "3.0.3"
   }
 }
