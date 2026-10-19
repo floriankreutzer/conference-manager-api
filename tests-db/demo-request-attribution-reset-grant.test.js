@@ -113,7 +113,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
 
   await migrateUp(pool);
   await createRoles(pool);
-  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 20);
+  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 21);
 
   await t.test('fresh install records all Demo overlays and permits the real reset sequence', async () => {
     await migrateDemoUp(pool, { roles: ROLES });
@@ -137,7 +137,8 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
       { version: 17, name: 'catering_version_proposal_privileges', checksum_length: 64 },
       { version: 18, name: 'catering_unsent_order_privileges', checksum_length: 64 },
       { version: 19, name: 'platform_passkey_reset_privileges', checksum_length: 64 },
-      { version: 20, name: 'platform_passkey_enrollment_reset_privileges', checksum_length: 64 },
+      { version: 20, name: 'catering_provider_catalogue_privileges', checksum_length: 64 },
+      { version: 21, name: 'platform_passkey_enrollment_reset_privileges', checksum_length: 64 },
     ]);
     for (const table of ['platform_passkey_credentials', 'platform_passkey_auth_transactions',
       'platform_passkey_enrollment_grants', 'platform_passkey_enrollment_transactions']) {
@@ -191,7 +192,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
     );
     await migrateDemoUp(pool, { roles: ROLES });
     assert.deepEqual((await overlayVersions(pool)).map(({ version }) => version),
-      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]);
     await resetAttributionStateAsRole(pool, ROLES.reset);
   });
 

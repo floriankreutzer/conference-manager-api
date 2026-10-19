@@ -198,7 +198,7 @@ export function loadPlatformConfig(env) {
     || env.PLATFORM_ENTRA_AUTHORITY
     || env.PLATFORM_OIDC_TRANSACTION_SECRET
   );
-  const identityRequired = productionLike || anyIdentityConfiguration;
+  const identityRequired = productionLike || anyIdentityConfiguration || applicationPasskeys;
   const tenantId = parseGuid(env.PLATFORM_ENTRA_TENANT_ID, {
     required: identityRequired,
     requiredCode: 'PLATFORM_ENTRA_TENANT_ID_REQUIRED',

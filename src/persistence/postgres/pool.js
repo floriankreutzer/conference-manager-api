@@ -28,8 +28,9 @@ const { Pool } = pg;
 // Schema 46 adds revisioned Catering integration configuration without activating providers.
 // Schema 52 adds local unsent withdrawal and immutable first-delivery routing.
 // Schema 53 stores inactive Platform passkey credentials and browser-bound authentication ceremonies.
-// Schema 54 stores independently authorized two-stage Platform passkey enrollment.
-export const CURRENT_SCHEMA_VERSION = 54;
+// Schema 54 records immutable provider catalogue sources without publishing offers.
+// Schema 55 stores independently authorized two-stage Platform passkey enrollment.
+export const CURRENT_SCHEMA_VERSION = 55;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

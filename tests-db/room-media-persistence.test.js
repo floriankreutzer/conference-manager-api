@@ -77,7 +77,8 @@ test('Room bytes are Tenant-owned, attachment-bound, active-scoped and rollback 
   assert.equal((await pool.query(`SELECT count(*)::integer AS count FROM tenant_room_media_assets
     WHERE tenant_id = $1`, [TENANT_A])).rows[0].count, 1);
   assert.equal((await createPostgresPlatformProjectionRepository(pool).consumeBatch({ limit: 100 })).retryCount, 0);
-  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema054 before historical rollback guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema055 before historical rollback guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue source schema054.
   assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
   assert.equal(await rollbackLatest(pool), true); // Empty version proposal schema051.
