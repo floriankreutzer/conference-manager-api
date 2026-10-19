@@ -30,6 +30,12 @@ export const AUDIT_ACTION = Object.freeze({
   CATERING_ORDER_PREPARED: 'catering.order.prepared',
   CATERING_ORDER_QUOTED: 'catering.order.quoted',
   CATERING_ORDER_DECIDED: 'catering.order.decided',
+  CATERING_DELIVERY_QUEUED: 'catering.delivery.queued',
+  CATERING_DELIVERY_CLAIMED: 'catering.delivery.claimed',
+  CATERING_DELIVERY_ATTEMPTED: 'catering.delivery.attempted',
+  CATERING_DELIVERY_OBSERVED: 'catering.delivery.observed',
+  CATERING_DELIVERY_DEFERRED: 'catering.delivery.deferred',
+  CATERING_DELIVERY_RECOVERED: 'catering.delivery.recovered',
   AUDIT_READ: 'audit.read',
 });
 
