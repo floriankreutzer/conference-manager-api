@@ -136,6 +136,21 @@ export function createMetricsRegistry({
       observe('integration_call_duration_ms', labels, durationMs);
     },
 
+    recordIntegrationJobBatch(value) {
+      const keys = ['completedCount','deferredCount','reconciliationCount','failedCount'];
+      if (!value || typeof value !== 'object' || Array.isArray(value)
+        || ![Object.prototype, null].includes(Object.getPrototypeOf(value)) || Reflect.ownKeys(value).length !== keys.length
+        || Reflect.ownKeys(value).some((key) => {
+          const property = Object.getOwnPropertyDescriptor(value, key);
+          return !keys.includes(key) || !property.enumerable || !Object.hasOwn(property, 'value')
+            || !Number.isSafeInteger(property.value) || property.value < 0 || property.value > 25;
+        }) || keys.reduce((sum, key) => sum + value[key], 0) > 25) throw new TypeError('METRIC_JOB_BATCH_INVALID');
+      for (const key of keys) {
+        if (value[key] > 0) increment('integration_job_outcomes_total', { outcome: key.replace('Count', '') }, value[key]);
+      }
+    },
+    recordIntegrationJobBatchFailure() { increment('integration_job_batch_failures_total', {}); },
+
     recordDependencyState({ state, required }) {
       if (typeof required !== 'boolean') throw new TypeError('METRIC_DEPENDENCY_REQUIRED_INVALID');
       increment('dependency_health_observations_total', Object.freeze({

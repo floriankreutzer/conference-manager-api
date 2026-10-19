@@ -1,8 +1,9 @@
 # Integration job worker lifecycle foundation
 
 `src/integrations/job-worker.js` owns the existing-process polling lifecycle for an injected durable
-job service. It is not composed into Customer startup and introduces no table, queue, provider call,
-credentials, scheduler, always-on service or delivery deadline. The Owner-approved execution model
+job service. Catering composition is documented in CATERING-JOB-EXECUTION.md. The generic lifecycle
+module itself introduces no table, provider implementation, credentials, external scheduler,
+always-on service or delivery deadline. The Owner-approved execution model
 remains existing infrastructure only: process while awake and resume after restart/sleep.
 
 The default interval is 60 seconds and the maximum batch is 25 jobs. Starting schedules an immediate
@@ -19,10 +20,10 @@ Observer failures cannot change service outcomes. A failed batch surfaces one fi
 never automatically replayed inside the same tick. A later tick invokes the durable service afresh;
 that service must reconcile unknown writes rather than blindly dispatching again.
 
-The next persistence/application increment must implement scoped atomic enqueue, unique lease and
-attempt ownership, dispatch intent before external I/O, current order/quote/Manager/configuration
-revalidation, stale-result fencing and audit-atomic completion. Only that implementation plus actual
-PostgreSQL crash/restart/concurrency acceptance can establish durability. This lifecycle component's
+Catering now supplies scoped atomic enqueue, lease/attempt custody, intent before external I/O,
+current source revalidation and fenced audit-atomic completion through separate repositories/services.
+Their implementation still requires actual PostgreSQL crash/restart/concurrency acceptance before
+a durable-execution acceptance claim. This lifecycle component's
 native tests establish startup, serialization, readiness, shutdown, bounds and redaction only.
 
 The domain-owned `catering-job-policy.js` derives a canonical idempotency identity from independently

@@ -61,3 +61,22 @@ test('customer composition still closes persistence when HTTP close fails', asyn
 
   assert.deepEqual(events, ['http', 'persistence']);
 });
+
+
+test('customer shutdown waits for active job fact custody before HTTP and persistence close', async () => {
+  const events = []; let finish;
+  const stopped = shutdownCustomerRuntime({ jobWorker: { async stop() {
+    events.push('job-stopping'); await new Promise((resolve) => { finish = resolve; }); events.push('job-stopped');
+  } }, server: { close(callback) { events.push('http'); callback(); } },
+  persistence: { close: async () => events.push('persistence') }, started: true, timeoutMs: 25 });
+  await Promise.resolve(); assert.deepEqual(events, ['job-stopping']); finish(); await stopped;
+  assert.deepEqual(events, ['job-stopping','job-stopped','http','persistence']);
+});
+
+test('job shutdown failure still closes HTTP and persistence and is not acknowledged as success', async () => {
+  const events = [];
+  await assert.rejects(shutdownCustomerRuntime({ jobWorker: { async stop() { throw new Error('SYNTHETIC_JOB_STOP_FAILED'); } },
+    server: { close(callback) { events.push('http'); callback(); } },
+    persistence: { close: async () => events.push('persistence') }, started: true, timeoutMs: 25 }), /SYNTHETIC_JOB_STOP_FAILED/);
+  assert.deepEqual(events, ['http','persistence']);
+});

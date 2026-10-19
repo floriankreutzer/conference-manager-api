@@ -28,9 +28,10 @@ function closeHttpServerWithinDeadline(server, timeoutMs) {
   });
 }
 
-export async function shutdownCustomerRuntime({ server, persistence, started, timeoutMs }) {
+export async function shutdownCustomerRuntime({ server, persistence, started, timeoutMs, jobWorker = null }) {
   try {
-    if (started) await closeHttpServerWithinDeadline(server, timeoutMs);
+    try { await jobWorker?.stop(); }
+    finally { if (started) await closeHttpServerWithinDeadline(server, timeoutMs); }
   } finally {
     await persistence?.close?.();
   }

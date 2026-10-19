@@ -7,7 +7,7 @@ import {
 test('quote editing and decisions stop before delivery/reconciliation facts can be overwritten', () => {
   assert.equal(canRecordCateringOrderQuote('pending_quote'), true);
   assert.equal(canDecideCateringOrderQuote('pending_quote'), false);
-  for (const status of ['pending_manager_review','rejected','released']) {
+  for (const status of ['pending_manager_review','released']) {
     assert.equal(canRecordCateringOrderQuote(status), true);
     assert.equal(canDecideCateringOrderQuote(status), true);
   }
@@ -16,6 +16,12 @@ test('quote editing and decisions stop before delivery/reconciliation facts can 
     'delivered', undefined, null, true, {}]) {
     assert.equal(canRecordCateringOrderQuote(status), false);
     assert.equal(canDecideCateringOrderQuote(status), false);
+  }
+});
+test('only Manager quote rejection can reopen review; supplier rejection preserves its approved historical cost', () => {
+  for (const policy of [canRecordCateringOrderQuote,canDecideCateringOrderQuote]) {
+    assert.equal(policy('rejected', 'rejected'), true);
+    for (const decision of [null,undefined,'approved','unknown',{},true]) assert.equal(policy('rejected', decision), false);
   }
 });
 test('operation capability remains explicit and unknown/prototype values cannot select an adapter method', () => {

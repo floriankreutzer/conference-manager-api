@@ -1,8 +1,8 @@
 # Explicit Catering delivery commands
 
 This slice adds bounded Manager enqueue/read commands on the schema049 custody
-foundation. It does not yet compose the process worker, invoke providers or
-claim supplier transmission/confirmation. Historical released orders remain
+foundation. Existing-process execution is described in CATERING-JOB-EXECUTION.md;
+an enqueue acknowledgement does not claim supplier transmission/confirmation. Historical released orders remain
 untouched until an explicit authorized enqueue command.
 
 `CATERING_DELIVERY_ENABLED` defaults false and accepts only literal true/false.
@@ -43,7 +43,7 @@ Job responses exclude Tenant, actor, lease IDs, lease expiry, correlation,
 credentials, raw provider payload, business content and supplier costs. Counts,
 status, revision, source/order references and UTC clocks are positively validated.
 Processing status is not delivery confirmation. Latest receipt/history presentation,
-manual handoff, status reconciliation and worker execution remain subsequent work.
+manual handoff and ongoing post-transmission receipt/status ingestion remain subsequent work.
 
 ## Validation boundary
 

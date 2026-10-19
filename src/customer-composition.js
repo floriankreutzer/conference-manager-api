@@ -44,6 +44,7 @@ import { shutdownCustomerRuntime } from './customer-shutdown.js';
 import { createCateringConfigurationRouteModules } from './catering-configuration-composition.js';
 import { createCateringOrderRouteModules } from './catering-order-composition.js';
 import { createCateringDeliveryRouteModules } from './catering-delivery-composition.js';
+import { createCateringJobRuntime } from './catering-job-composition.js';
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -404,6 +405,7 @@ const server = httpServerFactory({
   loadTenant: persistence?.loadTenant,
   readinessChecks: persistence?.readinessChecks || [],
 });
+const cateringJobs = createCateringJobRuntime({ config, persistence, auditService, metrics, logger });
 let started = false;
 let closed = false;
 return Object.freeze({
@@ -428,6 +430,7 @@ return Object.freeze({
       server.listen(config.port, config.host);
     });
     started = true;
+    cateringJobs?.start();
     logger.lifecycle({
       event: 'server_started',
       serviceVersion: config.serviceVersion,
@@ -440,7 +443,7 @@ return Object.freeze({
     if (closed) return;
     closed = true;
     try {
-      await shutdownCustomerRuntime({ server, persistence, started, timeoutMs: shutdownTimeoutMs });
+      await shutdownCustomerRuntime({ server, persistence, started, timeoutMs: shutdownTimeoutMs, jobWorker: cateringJobs });
     } finally {
       started = false;
     }
