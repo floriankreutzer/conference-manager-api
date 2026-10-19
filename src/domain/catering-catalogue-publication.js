@@ -196,3 +196,29 @@ export function planCateringCataloguePublication(value, expected) {
     catalogue: next, assignments: assignments.assignments, bindings: Object.freeze(bindings.sort((left,right) =>
       key(left.kind,left.entryId) < key(right.kind,right.entryId) ? -1 : 1)) });
 }
+
+// A rejection retains the last publication and carries no proposed replacement.
+// Review intent still binds every observed version; no body field is authority.
+export function normalizeCateringCatalogueReviewCommand(value) {
+  record(value, ['schemaVersion','commandId','expectedReviewRevision','expectedSourceRevision','expectedConfigurationRevision',
+    'expectedCatalogueRevision','expectedAssignmentRevision','expectedPublicationRevision','decision','justification','items','packages']);
+  if (!['published','rejected'].includes(value.decision) || typeof value.justification !== 'string'
+    || !value.justification.isWellFormed()
+    || /[<>\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(value.justification)) invalid();
+  const justification = value.justification.trim().normalize('NFC'); if (!justification.length || justification.length > 1000) invalid();
+  const command = normalizeCateringCataloguePublicationCommand({ schemaVersion: value.schemaVersion,commandId: value.commandId,
+    expectedSourceRevision: value.expectedSourceRevision,expectedConfigurationRevision: value.expectedConfigurationRevision,
+    expectedCatalogueRevision: value.expectedCatalogueRevision,expectedAssignmentRevision: value.expectedAssignmentRevision,
+    expectedPublicationRevision: value.expectedPublicationRevision,items: value.items,packages: value.packages });
+  if (value.decision === 'rejected' && (command.items.length !== 0 || command.packages.length !== 0)) invalid();
+  return Object.freeze({ ...command,expectedReviewRevision: revision(value.expectedReviewRevision,0),
+    decision: value.decision,justification });
+}
+
+// Reuses the publication planner's closed retained-binding schema for readers.
+// The supplied immutable published catalogue is evidence, never current ownership.
+export function normalizeCateringCataloguePublicationBindings(value,catalogueValue) {
+  const bindings=previousBindings(value,normalizeTenantCatalogue(catalogueValue));
+  if (new Set(bindings.map((entry) => key(entry.kind,entry.sourceId))).size !== bindings.length) invalid();
+  return Object.freeze(bindings);
+}

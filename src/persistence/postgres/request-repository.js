@@ -1,3 +1,4 @@
+import { readCateringPublishedOffersWithClient,cateringSnapshotRemainsPublishedWithClient } from './catering-published-offers.js';
 import { publicGuestRoomFields } from '../../domain/request-room-guest-presentation.js';
 import { publicSiteGuestInformation } from '../../domain/site-guest-information.js';
 import {
@@ -425,7 +426,11 @@ export async function resolveCurrentRequestCompositionWithClient(client, {
   requestVersion,
   changeWindowStartsAt,
   allowReadyDemoSeed = false,
+  requirePublishedCatering = false,
+  cateringRegistry = null,
 }) {
+  if (typeof requirePublishedCatering !== 'boolean') throw new TypeError('CATERING_PUBLICATION_POLICY_REQUIRED');
+  if (requirePublishedCatering && typeof cateringRegistry?.get !== 'function') throw new TypeError('CATERING_REGISTRY_REQUIRED');
   const draft = normalizeRequestCompositionDraft(draftValue, schemaVersion);
   const tenantResult = await client.query({
     name: 'request-v2-authority-tenant-lock',
@@ -501,6 +506,15 @@ export async function resolveCurrentRequestCompositionWithClient(client, {
     name: row.name,
     price: frozenPrice(row),
   });
+  if (requirePublishedCatering && (draft.catering.itemQuantities.length>0 || draft.catering.packageSelection !== null)) {
+    const publication=await readCateringPublishedOffersWithClient(client,{
+      tenantId,registry:cateringRegistry,catalogueRevision: revisions.catalogue,
+    });
+    if (!publication.allowsSelection({siteId:room.siteId,roomId:room.id,
+      itemIds:draft.catering.itemQuantities.map((entry) => entry.itemId),packageSelection:draft.catering.packageSelection})) {
+      throw new RequestCompositionUnavailableError();
+    }
+  }
   const catalogueSnapshot = await selectedCatalogueWithClient(client, {
     tenantId,
     draft,
@@ -667,8 +681,10 @@ export async function appendRequestRevisionWithClient(
 
 export function createPostgresRequestRepository(
   pool,
-  { auditRepository, calendarAuthorityGuard } = {},
+  { auditRepository, calendarAuthorityGuard,requirePublishedCatering = false,cateringRegistry = null } = {},
 ) {
+  if (typeof requirePublishedCatering !== 'boolean') throw new TypeError('CATERING_PUBLICATION_POLICY_REQUIRED');
+  if (requirePublishedCatering && typeof cateringRegistry?.get !== 'function') throw new TypeError('CATERING_REGISTRY_REQUIRED');
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
   }
@@ -1069,6 +1085,7 @@ export function createPostgresRequestRepository(
         const authority = await resolveCurrentRequestCompositionWithClient(client, {
           tenantId,
           actorUserId: requesterUserId,
+          requirePublishedCatering,cateringRegistry,
           schemaVersion,
           draft: requestDraft,
           operation: BOOKING_POLICY_OPERATION.CREATE,
@@ -1165,6 +1182,7 @@ export function createPostgresRequestRepository(
         const authority = await resolveCurrentRequestCompositionWithClient(client, {
           tenantId,
           actorUserId: requesterUserId,
+          requirePublishedCatering,cateringRegistry,
           schemaVersion,
           draft: requestDraft,
           operation: BOOKING_POLICY_OPERATION.RESUBMIT,
@@ -1365,6 +1383,10 @@ export function createPostgresRequestRepository(
         ) {
           return Object.freeze({ status: 'state_conflict', request: current });
         }
+
+        if (requirePublishedCatering && !await cateringSnapshotRemainsPublishedWithClient(client,{
+          tenantId,registry:cateringRegistry,snapshot:current.snapshot,roomId:current.roomId,
+        })) return Object.freeze({status:'state_conflict',request:current});
 
         if (!await calendarAuthorityGuard.lockCurrent(
           client,

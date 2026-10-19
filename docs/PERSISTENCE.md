@@ -1,5 +1,10 @@
 # PostgreSQL Persistence
 
+Current custody readiness is055/Demo021, accepted in API#230 mainbe04a087.
+This branch adds a default-off Manager review HTTP interface without changing
+that qualified schema or any deployed immutable counterpart. HTTP qualification
+remains separate from accepted storage and from deployment/release.
+
 ## Decision
 
 Conference Manager uses PostgreSQL 18 as the relational production persistence platform. The pinned `pg` driver is used directly so SQL, Tenant predicates, transaction boundaries, constraints and migrations remain explicit and reviewable.
@@ -167,7 +172,7 @@ The all-role Tenant presentation contract reuses the current Organization row an
 `organization_revision`. Its managed-brand policy maps one fixed reference to a code-shipped preset
 and therefore introduces no upload metadata, asset table, external object reference or migration.
 
-Migration 039 introduced schema version 39; the current exact runtime readiness version is 54. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
+Migration 039 introduced schema version 39; the current exact runtime readiness version is 55. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
 
 No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
 
@@ -350,7 +355,7 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 54.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 55.
 
 ## Shared Demo persistence
 
@@ -362,8 +367,8 @@ reset/seed capability and migration ownership. All four URLs must resolve to the
 distinct.
 
 The canonical `migrations/` stream remains the source of the business schema and must contain the
-exact applied sequence `001..054`. The independent `demo-migrations/` stream has its own
-`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `019`
+exact applied sequence `001..055`. The independent `demo-migrations/` stream has its own
+`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `021`
 installs the immutable database sentinel, provider/persona reference tables, minimized views and
 role grants, private Room/Catering media and create/attach lifecycle support. Overlay 004 grants only `INSERT` and `TRUNCATE` on the canonical attribution
 migration-state singleton to the reset role; customer and Platform roles receive no access. The
@@ -623,4 +628,19 @@ and admits only bounded reset privileges on both new FK-owning tables. Runtime
 and Demo readiness advance to exact054/020; missing/future ledgers and historical
 incompatible pairs fail closed. Installation/reset creates no source, supplier
 connection, publication or order. See CATERING-PROVIDER-CATALOGUES.md for actual
-qualification status; SQL and paired CI are still pending at this checkpoint.
+qualification status. API#229 accepted054/020 after complete PostgreSQL18.6
+and all four permanent paired browser/storage matrices; that supersedes the
+historical pending checkpoint above.
+
+
+Migration055/Demo021 adds immutable explicit Manager catalogue reviews and
+separate review/publication heads. Publication composes existing canonical and
+assignment writes with review and three audit completions in one same-client
+transaction; rejection retains earlier published state. All observed revisions,
+source content, explicit selling prices, same-provider components/variants,
+ownership and unrelated retained content are fenced. No source or order is
+backfilled. Exact readiness/reset inventories include all three FK-owning tables
+and private nonexecutable guards. API#230 qualified custody on PostgreSQL18.6 and
+all nine current-head checks. The default-off HTTP/read interface prepared here
+requires its own actual cookie/database and complete paired/security acceptance.
+See CATERING-CATALOGUE-PUBLICATION.md for retained evidence and remaining scope.

@@ -21,7 +21,10 @@ import { cateringId as id, cateringOrderFixture } from '../../tests/support/cate
 // is controlled SQL test setup; no supplier, calendar or live order is created.
 export async function createCateringDeliveryFixture(pool, {
   registry = createCateringConfigurationRegistry(), extraCount = 0, reviewOperations = false, manualCatalogue = false,
+  emptyCateringCatalogue = false,pricedRoom = false,
 } = {}) {
+  if (typeof pricedRoom !== 'boolean') throw new TypeError('SYNTHETIC_PRICED_ROOM_FLAG_INVALID');
+  if (typeof emptyCateringCatalogue !== 'boolean') throw new TypeError('SYNTHETIC_EMPTY_CATALOGUE_FLAG_INVALID');
   if (typeof manualCatalogue !== 'boolean') throw new TypeError('SYNTHETIC_MANUAL_CATALOGUE_FLAG_INVALID');
   const authorizationPolicy = createAuthorizationPolicy();
   const auditRepository = createPostgresAuditRepository(pool, { hmacSecret: 'a'.repeat(32) });
@@ -72,11 +75,15 @@ export async function createCateringDeliveryFixture(pool, {
     startsAt: new Date(Date.now() + 172800000 + sequence * 7200000).toISOString() });
   const catalogue = createTenantCatalogueService({ authorizationPolicy, auditService,
     repository: createPostgresTenantCatalogueRepository(pool, { auditRepository }) });
-  await catalogue.update({ ...context(), schemaVersion: 1, expectedRevision: 1, catalogue: source(0).canonicalCatalogue });
-  const assignments = createCateringCatalogueAssignmentService({ authorizationPolicy, auditService,
-    repository: createPostgresCateringCatalogueAssignmentRepository(pool, { registry, auditRepository }) });
-  await assignments.replace({ ...context(), schemaVersion: 1, expectedRevision: 0, catalogueRevision: 2,
-    assignments: source(0).ownership.assignments.map((entry) => ({ ...entry, integrationId: id(3) })) });
+  if (!emptyCateringCatalogue) {
+    await catalogue.update({ ...context(), schemaVersion: 1, expectedRevision: 1,catalogue: { ...source(0).canonicalCatalogue,
+      ...(pricedRoom ? {roomPrices:[{roomId:'room-a',price:{amountMinor:0,currency:'EUR'}}]} : {}),
+    } });
+    const assignments = createCateringCatalogueAssignmentService({ authorizationPolicy, auditService,
+      repository: createPostgresCateringCatalogueAssignmentRepository(pool, { registry, auditRepository }) });
+    await assignments.replace({ ...context(), schemaVersion: 1, expectedRevision: 0, catalogueRevision: 2,
+      assignments: source(0).ownership.assignments.map((entry) => ({ ...entry, integrationId: id(3) })) });
+  }
   const orders = createCateringOrderService({ authorizationPolicy, auditService, registry,
     repository: createPostgresCateringOrderRepository(pool, { registry, auditRepository }) });
   async function prepareOrder(sequence) {

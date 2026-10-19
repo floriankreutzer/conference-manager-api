@@ -1,3 +1,5 @@
+import { CateringCataloguePublicationInputError,
+  CateringCataloguePublicationConflictError } from './application/catering-catalogue-publication-errors.js';
 import { CateringProviderCatalogueInputError,
   CateringProviderCatalogueConflictError } from './application/catering-provider-catalogue-errors.js';
 import { CateringVersionInputError, CateringVersionConflictError } from './application/catering-version-errors.js';
@@ -105,6 +107,7 @@ export function asApiError(error) {
     || error instanceof CateringVersionInputError
     || error instanceof CateringWithdrawalInputError
     || error instanceof CateringManualInputError
+    || error instanceof CateringCataloguePublicationInputError
     || error instanceof CateringProviderCatalogueInputError
     || error instanceof CateringOrderInputError
   ) {
@@ -117,6 +120,7 @@ export function asApiError(error) {
   if (error instanceof CateringCatalogueAssignmentConflictError) {
     return new ApiError(409, error.code, { currentRevision: error.currentRevision });
   }
+  if (error instanceof CateringCataloguePublicationConflictError) return new ApiError(409, error.code);
   if (error instanceof CateringProviderCatalogueConflictError) return new ApiError(409, error.code);
   if (error instanceof CateringDeliveryConflictError) return new ApiError(409, error.code);
   if (error instanceof CateringVersionConflictError) return new ApiError(409, error.code);
