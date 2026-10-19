@@ -7,7 +7,7 @@ issues #351 and #352. Root `AGENTS.md`, the existing session, authorization and
 Tenant contracts remain authoritative. This is not an active authentication
 endpoint or a completed login flow.
 
-The implementation adds three bounded owners:
+The implementation adds four bounded owners:
 
 - `domain/invitation-recipient.js`: conservative ASCII mailbox validation;
   normalize domain casing only, preserve local-part casing and plus/dot aliases.
@@ -20,6 +20,16 @@ The implementation adds three bounded owners:
 - `integrations/resend-email-client.js`: fixed-destination transactional plain
   text delivery. Sender, credential, environment and deadline are server-owned.
   Application input cannot add recipients, sender, headers, URLs or attachments.
+- `integrations/customer-access-email-content.js`: inactive German and English
+  plain-text invitations and sign-in-code messages. The factory accepts only a
+  canonical server-configured HTTPS Customer origin and a known environment.
+  Invitations carry no bearer credential and point to the fixed application
+  root; membership admission remains a separate backend requirement. Codes stay
+  out of subjects and URLs, preserve leading zeroes and show an explicit UTC
+  expiry localized to DE/EN. Non-production messages identify their environment.
+  Unknown fields/locales, display-label control characters, malformed timestamps
+  and code lifetimes outside 2–15 minutes are rejected. These content checks do
+  not enforce actual challenge expiry, single use, browser binding or admission.
 
 ## Outbound provider boundary
 
@@ -61,12 +71,16 @@ following remain required and must be independently tested:
    durable dispatch/recovery; no silent account linking by email claims.
 4. Existing session issuance only after successful proof and membership
    resolution, with audit-atomic persistence and security-version fencing.
-5. Verified sender configuration, protected secrets, accessible DE/EN templates,
-   complete login UI/browser tests and actual authorized receipt evidence.
+5. Verified sender configuration, protected secrets, composition of the DE/EN
+   templates only after the durable flow enforces their promises, complete
+   login UI/browser tests and actual authorized receipt/client accessibility
+   evidence. Plain-text content uses paragraphs and text labels without HTML,
+   images, tracking or remote assets; real email-client/screen-reader behavior
+   remains an activation check.
 6. INT composition with real-user/reset isolation, retaining the existing Demo
    invariants; no Demo fallback or weakening of Platform MFA/step-up.
 
-Neither new module is composed into an entrypoint. No outbound email is sent
+None of these modules is composed into an entrypoint. No outbound email is sent
 by loading configuration or creating a proof. No provider SDK/dependency,
 schema, stored role, existing login or session contract changes in this slice.
 The module architecture gate also rejects imports of the real delivery adapter
