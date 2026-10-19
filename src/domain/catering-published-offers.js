@@ -88,6 +88,21 @@ export function createCateringPublishedOfferIndex(publications,expected) {
     itemIds: Object.freeze([...items].sort()),
     packages: Object.freeze([...packages].sort(([a],[b]) => a<b ? -1 : a>b ? 1 : 0)
       .map(([entryId,variants]) => Object.freeze({ entryId,variantIds: Object.freeze([...variants].sort()) }))),
+    allowsSelection(value) {
+      record(value,['siteId','roomId','itemIds','packageSelection']);
+      const siteId=id(value.siteId); const roomId=id(value.roomId);
+      const itemIds=array(value.itemIds,200).map(id); if (new Set(itemIds).size !== itemIds.length) invalid();
+      const applicable=(entry) => entry?.active === true && (entry.siteIds.length === 0 || entry.siteIds.includes(siteId))
+        && (entry.roomIds.length === 0 || entry.roomIds.includes(roomId));
+      if (itemIds.some((entryId) => !items.has(entryId)
+        || !applicable(catalogue.cateringItems.find((entry) => entry.id === entryId)))) return false;
+      if (value.packageSelection === null) return true;
+      record(value.packageSelection,['packageId','variantId']);
+      const packageId=id(value.packageSelection.packageId); const variantId=id(value.packageSelection.variantId);
+      const group=catalogue.cateringPackages.find((entry) => entry.id === packageId);
+      return packages.get(packageId)?.has(variantId) === true && applicable(group)
+        && group.itemIds.every((entryId) => applicable(catalogue.cateringItems.find((entry) => entry.id === entryId)));
+    },
     allowsItem(entryId) { return items.has(id(entryId)); },
     allowsPackage(entryId,variantId) { return packages.get(id(entryId))?.has(id(variantId)) === true; },
   });

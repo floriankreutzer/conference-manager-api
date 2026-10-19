@@ -111,3 +111,19 @@ test('full300-item/100-package/20-variant publication remains eligible without n
   const value=index(f.publications,f.expected); assert.equal(value.itemIds.length,300); assert.equal(value.packages.length,100);
   assert.equal(value.packages.reduce((sum,x)=>sum+x.variantIds.length,0),2000);
 });
+
+test('trusted selections require current site/room applicability for direct items, packages and every included item',()=>{
+  const f=fixture(); for (const catalogue of [f.expected.catalogue,f.publications[0].catalogue]) {
+    catalogue.cateringItems[0].siteIds=['site-a']; catalogue.cateringItems[0].roomIds=['room-a'];
+    catalogue.cateringPackages[0].siteIds=['site-a']; catalogue.cateringPackages[0].roomIds=['room-a'];
+  }
+  const value=index(f.publications,f.expected); const selection={siteId:'site-a',roomId:'room-a',itemIds:['coffee'],
+    packageSelection:{packageId:'break',variantId:'standard'}};
+  assert.equal(value.allowsSelection(selection),true);
+  assert.equal(value.allowsSelection({...selection,siteId:'site-b'}),false);
+  assert.equal(value.allowsSelection({...selection,roomId:'room-b'}),false);
+  assert.equal(value.allowsSelection({...selection,itemIds:['fruit']}),false);
+  assert.equal(value.allowsSelection({...selection,itemIds:[],packageSelection:null}),true);
+  assert.throws(()=>value.allowsSelection({...selection,tenantId:uuid(2)}));
+  assert.throws(()=>value.allowsSelection({...selection,itemIds:['coffee','coffee']}));
+});

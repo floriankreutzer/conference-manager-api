@@ -1,3 +1,12 @@
+import { createProductionApplicationService } from '../src/application/production-application-service.js';
+import { createTenantCatalogueService } from '../src/application/tenant-catalogue-service.js';
+import { createPostgresApplicationRepository } from '../src/persistence/postgres/application-repository.js';
+import { createPostgresRequestRepository,resolveCurrentRequestCompositionWithClient
+} from '../src/persistence/postgres/request-repository.js';
+import { createPostgresMicrosoft365CalendarAuthorityGuard } from '../src/persistence/postgres/calendar-authority-guard.js';
+import { readCateringPublishedOffersWithClient,cateringSnapshotRemainsPublishedWithClient,lockCateringPublishedOfferAuthorityWithClient
+} from '../src/persistence/postgres/catering-published-offers.js';
+import { requestLoadDraft } from '../tests/support/request-load-draft.js';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import test from 'node:test';
@@ -111,6 +120,21 @@ test('actual Customer publication atomically fences reviewed content, ownership,
     [roles.customer,roles.platform,roles.reset])).rows[0];
     assert.deepEqual(privileges,{ append: true,mutate: false,remove: false,advance: true,platform: false,reset: true,validator: false });
     await assert.rejects(platform.query('SELECT command FROM catering_catalogue_reviews'),(error) => error.code === '42501');
+    const employeeCatalogue=createPostgresApplicationRepository(customer,{
+      auditRepository:fixture.auditRepository,requirePublishedCatering:true,cateringRegistry:fixture.registry,
+    });
+    const employeeRequests=createPostgresRequestRepository(customer,{
+      auditRepository:fixture.auditRepository,requirePublishedCatering:true,cateringRegistry:fixture.registry,
+      calendarAuthorityGuard:createPostgresMicrosoft365CalendarAuthorityGuard()});
+    const employeeApplication=createProductionApplicationService({
+      ...application,repository:employeeCatalogue,requestRepository:employeeRequests,
+    });
+    const publishedAt=(catalogueRevision)=>withPostgresTransaction(customer,client=>readCateringPublishedOffersWithClient(client,{
+      tenantId:fixture.tenantId,registry:fixture.registry,catalogueRevision,
+    }),{isolationLevel:'REPEATABLE READ',readOnly:true});
+    assert.deepEqual((await publishedAt(2)).itemIds,[]);
+    assert.deepEqual((await employeeCatalogue.loadCatalog(fixture.tenantId)).cateringItems,[]);
+    assert.deepEqual((await employeeCatalogue.loadCatalogPage({tenantId:fixture.tenantId,section:'cateringItems',limit:1})).entries,[]);
     await receive(0); const first = intent();
     for (const principal of [{ ...context.principal,roles: ['employee'] },{ ...context.principal,roles: ['tenant_admin'] },
       { ...context.principal,tenantId: id(99) },{ ...context.principal,permissions: [] }]) {
@@ -168,21 +192,64 @@ test('actual Customer publication atomically fences reviewed content, ownership,
     assert.equal(current.catalogue.cateringItems.find((x) => x.id === 'reviewed-coffee').price.amountMinor,700);
     assert.equal(current.catalogue.cateringItems.find((x) => x.id === 'reviewed-coffee').name,source().items[0].name);
     assert.equal(JSON.stringify((await fixture.orders.load({ ...fixture.context(),orderId: prepared.order.orderId })).order),orderBefore);
+    const eligible=await publishedAt(3); assert.deepEqual(eligible.itemIds,['reviewed-coffee']);
+    assert.equal(eligible.allowsPackage('reviewed-break','reviewed-standard'),true);
+    assert.equal(eligible.allowsPackage('package-a','variant-a'),false);
+    const employeeFull=await employeeCatalogue.loadCatalog(fixture.tenantId);
+    assert.deepEqual(employeeFull.cateringItems.map(x=>x.id),['reviewed-coffee']);
+    assert.deepEqual(employeeFull.cateringPackages.map(x=>x.id),['reviewed-break']);
+    for (const [section,expected] of [['cateringItems','reviewed-coffee'],['cateringPackages','reviewed-break']]) {
+      const page=await employeeCatalogue.loadCatalogPage({tenantId:fixture.tenantId,section,limit:1});
+      assert.equal(page.status,'ready'); assert.deepEqual(page.entries.map(x=>x.id),[expected]);
+    }
+    const draftFor=(catalogueRevision)=>({...requestLoadDraft({startsAt:new Date(Date.now()+345600000).toISOString(),
+      configurationRevisions:{organization:1,locations:1,catalogue:catalogueRevision,bookingPolicies:1,costAllocation:1}}),roomId:'room-a',
+      catering:{participantCount:2,packageSelection:{packageId:'reviewed-break',variantId:'reviewed-standard'},
+        itemQuantities:[{itemId:'reviewed-coffee',quantity:1}]}});
+    const resolveDraft=(draft)=>withPostgresTransaction(customer,client=>resolveCurrentRequestCompositionWithClient(client,{
+      tenantId:fixture.tenantId,actorUserId:id(2),draft,schemaVersion:3,operation:'create',capturedAt:new Date().toISOString(),
+      requestVersion:1,requirePublishedCatering:true,cateringRegistry:fixture.registry,
+    }));
+    const allowed=await resolveDraft(draftFor(3)); assert.equal(allowed.status,'ready');
+    assert.equal(await withPostgresTransaction(customer,client=>cateringSnapshotRemainsPublishedWithClient(client,{
+      tenantId:fixture.tenantId,registry:fixture.registry,snapshot:allowed.snapshot,roomId:'room-a',
+    }),{isolationLevel:'REPEATABLE READ',readOnly:true}),true);
+    const unpublishedDraft=draftFor(3); unpublishedDraft.catering.packageSelection={packageId:'package-a',variantId:'variant-a'};
+    await assert.rejects(resolveDraft(unpublishedDraft),/REQUEST_CONFIGURATION_UNAVAILABLE/);
+    const catalogueService=createTenantCatalogueService({...application,repository:catalogue});
+    await assert.rejects(withPostgresTransaction(customer,async(client)=>{
+      const unrelated=structuredClone(current.catalogue); unrelated.services.push({
+        id:'unrelated-service',name:'Synthetic unrelated service',
+        description:null,price:money(0),active:true,order:0,siteIds:[],roomIds:[]});
+      await catalogueService.update({...context,schemaVersion:1,expectedRevision:3,catalogue:unrelated});
+      assert.equal((await publishedAt(4)).allowsItem('reviewed-coffee'),true);
+      const changed=structuredClone(unrelated); changed.cateringItems.find(x=>x.id==='reviewed-coffee').price.amountMinor++;
+      await catalogueService.update({...context,schemaVersion:1,expectedRevision:4,catalogue:changed});
+      assert.equal((await publishedAt(5)).allowsItem('reviewed-coffee'),false);
+      assert.deepEqual((await employeeCatalogue.loadCatalogPage({tenantId:fixture.tenantId,section:'cateringItems',limit:1})).entries,[]);
+      await assert.rejects(resolveDraft(draftFor(5)),/REQUEST_CONFIGURATION_UNAVAILABLE/);
+      assert.equal(await cateringSnapshotRemainsPublishedWithClient(client,{tenantId:fixture.tenantId,registry:fixture.registry,
+        snapshot:allowed.snapshot,roomId:'room-a'}),false);
+      throw new Error('SYNTHETIC_PUBLICATION_ELIGIBILITY_ROLLBACK');
+    },{isolationLevel:'REPEATABLE READ'}),/SYNTHETIC_PUBLICATION_ELIGIBILITY_ROLLBACK/);
+    assert.deepEqual(await catalogue.loadCurrent(fixture.tenantId),current);
     const origin = 'http://localhost:3000';
     const config = loadConfig({ NODE_ENV: 'test',PUBLIC_ORIGIN: origin,CATERING_CONFIGURATION_ENABLED: 'true' });
     const modules = createCateringConfigurationRouteModules({ config,...application,
       persistence: { pool: customer,auditRepository: fixture.auditRepository } });
     const tenants = createPostgresTenantRepository(pool);
     const server = createHttpServer({ config,...application,additionalRouteModules: modules,sessionService: fixture.sessionService,
+      productionApplicationService:employeeApplication,
       loadTenant: (tenantId) => tenants.findById(tenantId),
       logger: { requestCompleted() {},healthEvaluated() {},securityOutcome() {},unhandledError() {} } });
     await new Promise((resolve) => server.listen(0,'127.0.0.1',resolve));
     t.after(() => new Promise((resolve,reject) => server.close((error) => error ? reject(error) : resolve())));
     const root = `/api/v1/tenant/catering/provider-catalogues/${fixture.integrationId}`;
-    function request(actor,{ suffix = '/review',method = 'GET',command: bodyValue,csrf = null,requestOrigin = origin } = {}) {
+    function request(actor,{ suffix = '/review',method = 'GET',command: bodyValue,csrf = null,
+      requestOrigin = origin,path:requestPath=null } = {}) {
       return new Promise((resolve,reject) => {
         const body = bodyValue === undefined ? undefined : JSON.stringify(bodyValue);
-        const outgoing = http.request({ hostname: '127.0.0.1',port: server.address().port,path: root+suffix,method,
+        const outgoing = http.request({ hostname: '127.0.0.1',port: server.address().port,path: requestPath ?? root+suffix,method,
           headers: { Host: new URL(origin).host,Origin: requestOrigin,
             ...(actor ? { Cookie: actor.setCookie.split(';',1)[0] } : {}),...(csrf ? { 'X-CSRF-Token': csrf } : {}),
             ...(body ? { 'Content-Type': 'application/json','Content-Length': Buffer.byteLength(body) } : {}) } },(response) => {
@@ -199,6 +266,14 @@ test('actual Customer publication atomically fences reviewed content, ownership,
       permissions: [],securityVersion: 1,providerIdentity: { provider: 'test_identity',reference: 'synthetic-review-employee' } },
     { correlationId: id(90) });
     assert.equal((await request(employee)).status,403);
+    const employeeSites=await request(employee,{path:'/api/v1/application/catalog?section=sites&limit=1'});
+    assert.equal(employeeSites.status,200); const employeeContext=encodeURIComponent(employeeSites.body.context);
+    const employeeOffers=await request(employee,{
+      path:`/api/v1/application/catalog?section=cateringItems&context=${employeeContext}&limit=1`,
+    });
+    assert.equal(employeeOffers.status,200); assert.deepEqual(employeeOffers.body.entries.map(x=>x.id),['reviewed-coffee']);
+    assert.doesNotMatch(JSON.stringify(employeeOffers.body),/providerPrice|bindings|justification|supplier-coffee|integrationId/);
+
     const observed = await request(manager); assert.equal(observed.status,200);
     assert.equal(observed.body.canReview,true); assert.equal(observed.body.reviewRevision,1);
     assert.equal(observed.body.publicationRevision,1); assert.equal(observed.body.catalogueRevision,3);
@@ -220,6 +295,7 @@ test('actual Customer publication atomically fences reviewed content, ownership,
     const rejected = { ...next,decision: 'rejected',items: [],packages: [] };
     const rejection = await review(rejected); assert.equal(rejection.reviewRevision,2);
     assert.equal(rejection.publicationRevision,1);
+    assert.equal((await publishedAt(3)).allowsItem('reviewed-coffee'),true);
     assert.equal(rejection.catalogueRevision,3); assert.equal(rejection.assignmentRevision,2);
     assert.deepEqual(await catalogue.loadCurrent(fixture.tenantId),current);
     assert.equal((await review(first)).replayed,true);
@@ -232,6 +308,8 @@ test('actual Customer publication atomically fences reviewed content, ownership,
     assert.equal(retired.cateringItems.find((x) => x.id === 'reviewed-coffee').active,false);
     assert.equal(retired.cateringPackages.find((x) => x.id === 'reviewed-break').variants[0].active,false);
     assert.equal(retired.cateringPackages.find((x) => x.id === 'package-a').active,true);
+    assert.deepEqual((await publishedAt(4)).itemIds,[]);
+    assert.deepEqual((await employeeCatalogue.loadCatalog(fixture.tenantId)).cateringPackages,[]);
     for (const query of ['UPDATE catering_catalogue_reviews SET bindings=bindings','DELETE FROM catering_catalogue_reviews']) {
       await assert.rejects(customer.query(query),(error) => error.code === '42501');
       await assert.rejects(pool.query(query),(error) => error.code === '55000');
@@ -309,6 +387,38 @@ test('actual Customer publication atomically fences reviewed content, ownership,
         afterBinding=response.body.nextAfterBinding;
       } while (afterBinding !== null);
       assert.equal(allBindings.length,400); assert.equal(new Set(allBindings).size,400);
+      const fullIndex=await withPostgresTransaction(customer,client=>readCateringPublishedOffersWithClient(client,{
+        tenantId:empty.tenantId,registry:empty.registry,catalogueRevision:2,
+      }),{isolationLevel:'REPEATABLE READ',readOnly:true});
+      assert.equal(fullIndex.itemIds.length,300); assert.equal(fullIndex.packages.length,100);
+      assert.equal(fullIndex.packages.every(x=>x.variantIds.length===20),true);
+      const fullProjection=await employeeCatalogue.loadCatalog(empty.tenantId);
+      assert.equal(fullProjection.cateringItems.length,300); assert.equal(fullProjection.cateringPackages.length,100);
+      assert.equal(fullProjection.cateringPackages.every(x=>x.variants.length===20),true);
+      let disablePending=Promise.resolve();
+      try {
+        await withPostgresTransaction(customer,async(client)=>{
+          await client.query('SELECT id FROM tenants WHERE id=$1 FOR SHARE',[empty.tenantId]);
+          await lockCateringPublishedOfferAuthorityWithClient(client,empty.tenantId);
+          const holder=(await client.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+          disablePending=empty.setOrderCapability(false);
+          const deadline=Date.now()+5000; let blocked=false;
+          do {
+            blocked=(await pool.query(`SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+              WHERE wait_event_type='Lock' AND $1::integer=ANY(pg_blocking_pids(pid))) AS blocked`,[holder])).rows[0].blocked;
+            if (!blocked) await new Promise(resolve=>setTimeout(resolve,20));
+          } while (!blocked && Date.now()<deadline);
+          assert.equal(blocked,true,'Configuration update must wait for the final current-publication authority fence');
+          assert.equal((await readCateringPublishedOffersWithClient(client,{
+            tenantId:empty.tenantId,registry:empty.registry,catalogueRevision:2,
+          })).itemIds.length,300);
+        });
+      } finally { await disablePending; }
+      const disabled=await withPostgresTransaction(customer,client=>readCateringPublishedOffersWithClient(client,{
+        tenantId:empty.tenantId,registry:empty.registry,catalogueRevision:2,
+      }),{isolationLevel:'REPEATABLE READ',readOnly:true});
+      assert.deepEqual(disabled.itemIds,[]); assert.deepEqual(disabled.packages,[]);
+
 
       assert.equal((await reset.reset({ fixture: DEMO_FIXTURE,checksum: DEMO_FIXTURE_CHECKSUM })).checksum,DEMO_FIXTURE_CHECKSUM);
     });
