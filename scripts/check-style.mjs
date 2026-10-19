@@ -21,7 +21,7 @@ const files = [
 for (const file of files) {
   const content = await readFile(file, 'utf8');
   if (!content.endsWith('\n')) throw new Error(`${file} must end with a newline.`);
-  const lines = content.split('\n');
+  const lines = content.split(/\r?\n/);
   lines.forEach((line, index) => {
     if (/\s+$/.test(line)) throw new Error(`${file}:${index + 1} contains trailing whitespace.`);
     if (line.includes('\t')) throw new Error(`${file}:${index + 1} contains a tab.`);
