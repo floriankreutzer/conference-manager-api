@@ -26,8 +26,8 @@ const { Pool } = pg;
 // Schema 44 atomically records coalescing Platform projection invalidations.
 // Schema 45 records content-free Request starts and explicit abandonment.
 // Schema 46 adds revisioned Catering integration configuration without activating providers.
-// Schema 51 adds reviewed Catering version proposals without historical activation.
-export const CURRENT_SCHEMA_VERSION = 51;
+// Schema 52 adds local unsent withdrawal and immutable first-delivery routing.
+export const CURRENT_SCHEMA_VERSION = 52;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

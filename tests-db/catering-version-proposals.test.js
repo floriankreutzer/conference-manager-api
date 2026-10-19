@@ -47,7 +47,9 @@ test('actual Customer reviewed versions retain the confirmed order until replace
   pool = createPostgresPool({ mode: 'test', ...database, databaseUrl: url.toString(), databasePoolMax: 6 });
   await migrateUp(pool); await migrateDemoUp(pool, { roles });
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Unsent grants018.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
   assert.equal(await rollbackLatest(pool), true); assert.equal(await isPostgresSchemaReady(pool), false);
   await migrateUp(pool); await migrateDemoUp(pool, { roles });
   const fixture = await createCateringDeliveryFixture(pool, { extraCount: 1, reviewOperations: true });
@@ -136,8 +138,11 @@ test('actual Customer reviewed versions retain the confirmed order until replace
   const original = await receipt(await transmit(initial), ['confirmed','confirmed']);
   const originalSnapshot = JSON.stringify(original.order);
   assert.equal((await versionContext(orderId)).basis.orderVersion, 1);
+  // Both overlays require exact runtime readiness; revoke both before canonical rollback.
+  await rollbackLatestDemoMigration(pool, { roles }); await rollbackLatestDemoMigration(pool, { roles });
+  await rollbackLatest(pool); // Empty052 above the original051 rollback probe.
   // Canonical051 can roll back empty while preserving existing050 physical facts.
-  await rollbackLatestDemoMigration(pool, { roles }); await rollbackLatest(pool);
+  await rollbackLatest(pool);
   assert.equal((await pool.query('SELECT count(*)::integer AS n FROM catering_manual_delivery_facts')).rows[0].n, 2);
   await migrateUp(pool); await migrateDemoUp(pool, { roles });
   // A complete-looking version without reviewed proposal evidence still cannot seal.
@@ -257,7 +262,9 @@ test('actual Customer reviewed versions retain the confirmed order until replace
     await assert.rejects(customer.query(statement), (error) => error.code === '42501');
     await assert.rejects(pool.query(statement), /CATERING_ORDER_HISTORY_APPEND_ONLY/);
   }
+  await rollbackLatestDemoMigration(pool, { roles }); await rollbackLatest(pool); // Empty052 above retained051.
   await assert.rejects(rollbackLatest(pool), /CATERING_VERSION_ROLLBACK_REQUIRES_REVIEW/);
+  await migrateUp(pool); await migrateDemoUp(pool, { roles });
   const config = loadConfig({ NODE_ENV: 'test', PUBLIC_ORIGIN: ORIGIN,
     CATERING_ORDERS_ENABLED: 'true', CATERING_DELIVERY_ENABLED: 'true' });
   const composition = { config, persistence: { pool: customer, auditRepository: fixture.auditRepository }, ...application };
@@ -299,11 +306,14 @@ test('actual Customer reviewed versions retain the confirmed order until replace
   const historic = await request(fixture.manager, { path: `${root}?orderVersion=2` });
   assert.equal(historic.status, 200); assert.equal(historic.body.order.orderVersion, 2);
   assert.equal((await request(fixture.manager, { path: `${root}/versions?afterOrderVersion=21` })).status, 200);
-  await pool.query(`TRUNCATE catering_version_proposals,catering_manual_delivery_heads,catering_manual_delivery_facts,
+  await pool.query(`TRUNCATE catering_unsent_replacements,catering_order_withdrawals,catering_version_proposals,
+    catering_manual_delivery_heads,catering_manual_delivery_facts,
     catering_delivery_observations,catering_delivery_attempts,catering_delivery_jobs,catering_order_version_states,
     catering_order_decisions,catering_order_quotes,catering_order_heads,catering_order_version_seals,catering_order_positions,
     catering_order_versions,catering_orders`);
+  await rollbackLatestDemoMigration(pool, { roles }); await rollbackLatest(pool); // Empty052 above retained051.
   await assert.rejects(rollbackLatest(pool), /CATERING_VERSION_ROLLBACK_REQUIRES_REVIEW/);
+  await migrateUp(pool); await migrateDemoUp(pool, { roles });
   const resetSource = await fixture.createApprovedOrder(100);
   await receipt(await transmit(resetSource), ['confirmed','confirmed']);
   await versions.propose(await proposed(resetSource.order.orderId));
@@ -315,6 +325,7 @@ test('actual Customer reviewed versions retain the confirmed order until replace
   const reset = createPostgresDemoResetRepository({ pool: resetPool, expectedDatabaseName: name, expectedResetRole: roles.reset });
   assert.equal((await reset.reset({ fixture: DEMO_FIXTURE, checksum: DEMO_FIXTURE_CHECKSUM })).checksum, DEMO_FIXTURE_CHECKSUM);
   assert.equal((await pool.query('SELECT count(*)::integer AS n FROM catering_version_proposals')).rows[0].n, 0);
-  await rollbackLatestDemoMigration(pool, { roles }); await rollbackLatest(pool);
+  await rollbackLatestDemoMigration(pool, { roles }); await rollbackLatestDemoMigration(pool, { roles });
+  await rollbackLatest(pool); await rollbackLatest(pool);
   await migrateUp(pool); await migrateDemoUp(pool, { roles }); assert.equal(await isPostgresSchemaReady(pool), true);
 });

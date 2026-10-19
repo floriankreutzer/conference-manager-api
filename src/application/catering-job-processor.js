@@ -18,10 +18,12 @@ function record(value, keys) {
   })) invalid();
 }
 function lease(value, registry) {
-  record(value, ['kind','job','leaseId','providerId','mode','snapshot','quote']);
+  const extended = value !== null && typeof value === 'object' && Object.hasOwn(value, 'deliveryOperation');
+  record(value, ['kind','job','leaseId','providerId','mode','snapshot','quote', ...(extended ? ['deliveryOperation'] : [])]);
   if (!['dispatch','reconcile'].includes(value.kind) || !isInternalUuid(value.leaseId)
     || !['api','manual','unsupported'].includes(value.mode) || registry.get(value.providerId).id !== value.providerId) invalid();
   const job = normalizeCateringDeliveryJob(value.job, { tenantId: value.job?.tenantId });
+  if (extended && (value.deliveryOperation !== 'initial' || job.operation !== 'change' || job.orderVersion < 2)) invalid();
   if (job.status !== (value.kind === 'dispatch' ? 'leased' : 'reconciling')
     || (value.kind === 'dispatch' && job.dispatchAttempts >= 3)) invalid();
   const snapshot = normalizeCateringOrderSnapshot(value.snapshot, { tenantId: job.tenantId, orderId: job.orderId });
@@ -92,8 +94,8 @@ export function createCateringJobProcessor({ repository, registry, providers, ji
     try {
       if (!provider || current.mode !== 'api') throw new CateringDeliveryError('unavailable');
       const response = await providerResult((outboundSignal) => provider[
-        current.kind === 'dispatch' ? METHODS[current.job.operation] : 'readOrderStatus']({
-        ...scope, idempotencyKey, signal: outboundSignal,
+        current.kind === 'dispatch' ? METHODS[current.deliveryOperation ?? current.job.operation] : 'readOrderStatus']({
+        ...scope, operation: current.deliveryOperation ?? scope.operation, idempotencyKey, signal: outboundSignal,
         ...(current.kind === 'dispatch' ? { order: current.snapshot, quote: current.quote } : {}) }), signal, providerTimeoutMs);
       let normalized;
       try {

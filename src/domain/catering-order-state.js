@@ -1,5 +1,5 @@
 export const CATERING_ORDER_STATUSES = Object.freeze(['pending_quote','pending_manager_review','released','queued',
-  'dispatching','reconciliation_required','transmitted','confirmed','partially_confirmed','rejected','cancelled','failed']);
+  'dispatching','reconciliation_required','transmitted','confirmed','partially_confirmed','rejected','cancelled','failed','withdrawn']);
 
 export function isCateringOrderStatus(value) { return CATERING_ORDER_STATUSES.includes(value); }
 

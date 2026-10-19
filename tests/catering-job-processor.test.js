@@ -114,3 +114,40 @@ test('shutdown after committed intent but before I/O records proven not-sent wit
   assert.equal(f.calls.some((value) => value.provider), false);
   assert.equal(f.calls.at(-1).finish.outcome, 'not_sent'); assert.equal(f.calls.at(-1).finish.status, 'retry_wait');
 });
+
+test('unsent replacement dispatch and reconciliation use first-order semantics and the same business idempotency scope', async () => {
+  const keys = [];
+  for (const kind of ['dispatch','reconcile']) {
+    const f = fixture({ kind, attempt: kind === 'reconcile' ? 1 : 0 });
+    f.candidate.snapshot = { ...f.candidate.snapshot, orderVersion: 2 };
+    f.candidate.job = { ...f.candidate.job, orderVersion: 2, operation: 'change' };
+    f.candidate.deliveryOperation = 'initial';
+    const invoked = [];
+    const provider = {
+      async placeOrder(value) { invoked.push(['place', value]); throw new Error('Synthetic unknown transport outcome'); },
+      async readOrderStatus(value) {
+        invoked.push(['read', value]); return { orderId: value.orderId, orderVersion: 2,
+          positions: f.candidate.snapshot.positions.map((position) => ({ positionId: position.positionId, outcome: 'confirmed' })) };
+      },
+    };
+    const registry = createProviderRegistry({ runtime: 'production', descriptors: [{ id: 'synthetic_caterer', runtime: 'production',
+      capabilities: { 'catering.order': 'api', 'catering.status': 'api' } }] });
+    const processor = createCateringJobProcessor({ repository: f.repository, registry,
+      providers: { async resolve() { return provider; } } });
+    const result = await processor.runBatch({ limit: 25, signal: f.controller.signal });
+    assert.equal(invoked.length, 1); assert.equal(invoked[0][0], kind === 'dispatch' ? 'place' : 'read');
+    assert.equal(invoked[0][1].operation, 'initial'); keys.push(invoked[0][1].idempotencyKey);
+    assert.equal(result[kind === 'dispatch' ? 'reconciliationCount' : 'completedCount'], 1);
+    assert.equal(f.calls.includes('intent'), kind === 'dispatch');
+    if (kind === 'reconcile') assert.equal(Object.hasOwn(invoked[0][1], 'order'), false);
+  }
+  assert.equal(keys[0], keys[1]);
+});
+
+test('first-order routing rejects invented or inconsistent replacement lease mappings before provider access', async () => {
+  for (const extra of [{ deliveryOperation: 'change' }, { deliveryOperation: 'initial' }]) {
+    const f = fixture(); Object.assign(f.candidate, extra);
+    await assert.rejects(f.run(), /PORT_INVALID/);
+    assert.deepEqual(f.calls, ['claim']);
+  }
+});

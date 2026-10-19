@@ -196,7 +196,7 @@ test('malformed policy/payload and full receipt ledger fail before transport', a
     if (fault === 'field') f.ports.warning.payload.cc = ['foreign@example.test'];
     if (fault === 'size') f.ports.warning.payload.text = 'x'.repeat(16_385);
     if (fault === 'ack') f.state.stored.neon.reportedThresholds = ['invalid'];
-    if (fault === 'full') f.state.stored.deliveries = Array.from({ length: 51 }, (_, i) =>
+    if (fault === 'full') f.state.stored.deliveries = Array.from({ length: 50 }, (_, i) =>
       ({ idempotencyKey: `old-${i}`, sendId: `receipt-${i}`, status: 'accepted' }));
     await assert.rejects(f.run(), /PROVIDER_WATCH_INVALID/); assert.equal(f.state.sends, 0);
   }

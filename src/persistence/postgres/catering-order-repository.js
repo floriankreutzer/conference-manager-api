@@ -77,7 +77,7 @@ export function createPostgresCateringOrderRepository(pool, { registry, auditRep
       if (current.rows[0]?.valid !== true) return result('request_conflict');
     }
     const configured = await connection(client, input.tenantId, view.snapshot.integrationId, registry);
-    const capability = capabilityForCateringOrderOperation(view.operation);
+    const capability = capabilityForCateringOrderOperation(view.deliveryOperation ?? view.operation);
     if (!configured || configured.capabilities[capability] === 'unsupported') return result('connection_unavailable');
     return { view, configured };
   }
@@ -196,7 +196,7 @@ export function createPostgresCateringOrderRepository(pool, { registry, auditRep
         const loaded = await writable(client, input);
         if (loaded.status) return loaded;
         const { view, configured } = loaded;
-        if (configured.capabilities[capabilityForCateringOrderOperation(view.operation)] !== 'manual') {
+        if (configured.capabilities[capabilityForCateringOrderOperation(view.deliveryOperation ?? view.operation)] !== 'manual') {
           return result('manual_quote_not_supported');
         }
         if (!canRecordCateringOrderQuote(view.state.status, view.decision?.decision)) return result('delivery_in_progress');

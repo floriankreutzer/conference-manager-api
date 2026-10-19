@@ -205,6 +205,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 49, name: 'catering_delivery_jobs' },
       { version: 50, name: 'catering_manual_delivery_facts' },
       { version: 51, name: 'catering_version_proposals' },
+      { version: 52, name: 'catering_unsent_orders' },
     ]);
   });
 

@@ -54,21 +54,23 @@ export async function readCateringVersionContextWithClient(client, { tenantId, o
   // Read-only discovery must not take the configuration writer's row lock.
   let modes = configured?.capabilities;
   if (!lock) {
-    const configuration = await client.query(`SELECT configuration.update_mode,configuration.cancel_mode
+    const configuration = await client.query(`SELECT configuration.order_mode,configuration.update_mode,configuration.cancel_mode
       FROM catering_integration_configurations configuration JOIN integrations integration
         ON integration.tenant_id=configuration.tenant_id AND integration.id=configuration.integration_id
       WHERE configuration.tenant_id=$1 AND configuration.integration_id=$2 AND integration.status IN ('configured','active')`,
     [tenantId,view.snapshot.integrationId]);
     modes = configuration.rowCount === 0 ? null : {
+      'catering.order': configuration.rows[0].order_mode,
       'catering.update': configuration.rows[0].update_mode, 'catering.cancel': configuration.rows[0].cancel_mode,
     };
   }
   const plans = {};
-  if (basis && request && effective) for (const operation of ['change','cancel','exception']) {
+  if (request) for (const operation of ['change','cancel','exception']) {
+    const reference = basis ?? view;
     const plan = cateringVersionProposalBasis({ operation, headVersion: view.snapshot.orderVersion, headStatus: view.state.status,
       effective, currentRequestVersion: request.version, currentRequestStatus: request.status,
-      effectiveRequestVersion: basis.snapshot.requestVersion, effectiveAssignmentRevision: basis.snapshot.assignmentRevision });
-    if (plan.eligible && ['manual','api'].includes(modes?.[capabilityForCateringOrderOperation(operation)])
+      effectiveRequestVersion: reference.snapshot.requestVersion, effectiveAssignmentRevision: reference.snapshot.assignmentRevision });
+    if (plan.eligible && ['manual','api'].includes(modes?.[capabilityForCateringOrderOperation(plan.deliveryOperation ?? operation)])
       && (operation !== 'change' || (assignmentRevision > 0
         && Number(assignments.rows[0].catalogue_revision) === request.catalogueRevision))) plans[operation] = plan;
   }

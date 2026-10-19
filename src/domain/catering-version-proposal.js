@@ -43,12 +43,20 @@ export function cateringVersionProposalBasis(value) {
   const request = positive(value.currentRequestVersion);
   const basisRequest = positive(value.effectiveRequestVersion);
   const assignment = positive(value.effectiveAssignmentRevision);
-  if (value.effective === null) return Object.freeze({ eligible: false, reason: 'confirmed_order_required' });
+  if (value.effective === null) {
+    if (value.operation !== 'change' || value.headStatus !== 'withdrawn' || value.currentRequestStatus !== 'Confirmed') {
+      return Object.freeze({ eligible: false, reason: 'confirmed_order_required' });
+    }
+    if (basisRequest > request) invalid();
+    return Object.freeze({ eligible: true, source: 'current_request', deliveryOperation: 'initial',
+      basisOrderVersion: head, sourceRequestVersion: request, basisAssignmentRevision: assignment,
+      requestEvidenceVersion: request, requestEvidenceStatus: value.currentRequestStatus, nextOrderVersion: head + 1 });
+  }
   record(value.effective, ['orderVersion','status']);
   const effectiveVersion = positive(value.effective.orderVersion);
   if (!['confirmed','cancelled'].includes(value.effective.status) || effectiveVersion > head || basisRequest > request) invalid();
   if (value.effective.status === 'cancelled') return Object.freeze({ eligible: false, reason: 'order_already_cancelled' });
-  if (!['confirmed','rejected','failed'].includes(value.headStatus)
+  if (!['confirmed','rejected','failed','withdrawn'].includes(value.headStatus)
     || (value.headStatus === 'confirmed' && effectiveVersion !== head)) {
     return Object.freeze({ eligible: false, reason: 'prior_version_unresolved' });
   }

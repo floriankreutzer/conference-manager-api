@@ -77,7 +77,7 @@ export async function createCateringDeliveryFixture(pool, {
     assignments: source(0).ownership.assignments.map((entry) => ({ ...entry, integrationId: id(3) })) });
   const orders = createCateringOrderService({ authorizationPolicy, auditService, registry,
     repository: createPostgresCateringOrderRepository(pool, { registry, auditRepository }) });
-  async function createApprovedOrder(sequence = 0, { quoteExpiresAt = new Date(Date.now() + 3600000).toISOString() } = {}) {
+  async function prepareOrder(sequence) {
     const request = { ...source(sequence).request, id: `request-delivery-${sequence}` };
     const event = auditService.createEvent({ principal: { tenantId: id(1), userId: id(2) },
       tenantContext: { tenantId: id(1), status: 'active' }, correlationId: id(90), action: 'request.created',
@@ -97,12 +97,18 @@ export async function createCateringDeliveryFixture(pool, {
     });
     const prepared = await orders.prepare({ ...context(), schemaVersion: 1, requestId: request.id, commandId: id(100 + sequence),
       expectedRequestVersion: 1, expectedAssignmentRevision: 1 });
-    const orderId = prepared.orders[0].orderId;
+    return prepared.orders[0].orderId;
+  }
+  async function createPreparedOrder(sequence = 0) {
+    return orders.load({ ...context(), orderId: await prepareOrder(sequence) });
+  }
+  async function createApprovedOrder(sequence = 0, { quoteExpiresAt = new Date(Date.now() + 3600000).toISOString() } = {}) {
+    const orderId = await prepareOrder(sequence);
     await orders.recordQuote({ ...context(), schemaVersion: 1, orderId, expectedStateRevision: 1, expectedQuoteRevision: 0,
       cost: { amountMinor: 1200, currency: 'EUR' }, expiresAt: quoteExpiresAt });
     return orders.decide({ ...context(), schemaVersion: 1, orderId, expectedStateRevision: 2, expectedQuoteRevision: 1,
       decision: 'approved' });
   }
   return Object.freeze({ registry, auditRepository, auditService, sessionService, manager, admin, context,
-    createApprovedOrder, setOrderCapability, orders, tenantId: id(1), integrationId: id(3) });
+    createPreparedOrder, createApprovedOrder, setOrderCapability, orders, tenantId: id(1), integrationId: id(3) });
 }
