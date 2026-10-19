@@ -158,6 +158,19 @@ This second failure remains retained and is not suite acceptance. The next head
 must execute every required database, browser and security gate again.
 
 
+The third run36a822a7 / CI39324628866 / job118307988049 again passed actual
+publication/capacity and source custody. Its fresh-overlay subcase verified all
+new table privileges and five private function denials successfully. The older
+upgrade-from001..003 subcase then found a second literal expected ledger ending
+at20 instead of21. The complete file and every numeric change from the accepted
+source054 diff were reviewed; the original full upgrade assertion now appends021.
+Historical001..003 denial, original reset privilege assertions, current55 checks,
+all old ledger entries and every runtime/migration invariant remain unchanged.
+This third failed run stays retained. Documentation now distinguishes the55/21
+candidate readiness from accepted main54/20. The next exact head must pass the
+entire suite and all browser/security gates; no partial run substitutes for it.
+
+
 ## Separate unpublished HTTP/read preparation
 
 Branch feat/saas4-catalogue-publication-http normally follows the current
@@ -195,3 +208,8 @@ five-entry HTTP pages. Foundation SQL proof is not HTTP acceptance. The complete
 new candidate and all mandatory paired/security gates remain outstanding. No
 Manager browser publication form, Employee publication filter, availability or
 SaaS4 release is claimed by this preparation.
+
+The complete local HTTP candidate check subsequently passed1646 native tests,
+Customer live HTTP DAST and all17 Platform HTTP security cases. The HTTP runtime implementation remained unchanged; the foundation's ledger/documentation corrections were normally
+integrated, retaining the HTTP work and every failure record. Actual new HTTP /
+PostgreSQL and exact-head remote acceptance remain outstanding.
