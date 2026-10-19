@@ -76,7 +76,54 @@ PostgreSQL/browser acceptance are still required. No availability activation or
 supplier protocol/access/qualification is claimed here.
 
 The current request-scope refinement passed the same26 native cases and all
-lint/style908 checks. Its final complete check is running. Parallel unmerged
+lint/style908 checks. Its complete local check passed1684 native cases, Customer HTTP DAST and17 Platform HTTP. Parallel unmerged
 Platform/invitation PRs currently propose next migration numbers, so availability
 DDL will be registered against the then-current accepted migration ledger; no
 conflicting number, schema gap or relaxed readiness/grant/reset check is introduced.
+
+## Uncomposed request/receipt application boundary
+
+The application service now defines explicit transactional `request` and `receive`
+ports, without runtime composition, HTTP routes or provider calls. Query authority
+uses existing Request scope: Employee owns their Request; a Conference Manager
+with request management can operate inside the authenticated Tenant. Technical
+administration and catalogue management alone grant no Request authority. Both
+ports carry the live session identity and security epoch for persisted revalidation.
+
+Query commands contain only command identity, expected Request version and expected
+availability revision. Every provider query must be independently derived from a
+locked Request/source basis. Manual receipt requires Request-management authority,
+an explicit supplier-receipt attestation, an exact query identity and the expected
+query round. Canonical response intent makes reordered equivalent statuses, NFC
+text and equivalent UTC forms replay consistently. Replay still validates actor,
+security epoch, exact intent, captured query and normalized receipt, invokes no
+new planners/audit factories and conveys no current availability decision.
+
+The durable port contract has two independent counters. A new query round advances
+both the round and availability revision. Each accepted provider response advances
+only the availability revision; independent replies in the same round can coexist.
+An older round cannot replace current facts. A response is accepted once per query;
+updated supplier facts require a new query identity/round. Acknowledgements expose
+only command/revision/recording facts, never an `available`, quote, reservation or
+order-success claim. The current service can only accept manual capabilities for
+manual receipts; API capability cannot silently fall back to manual authority.
+
+The repository must lock Tenant, actor/security/session and Request ownership,
+verify exact replay before current-state CAS, allocate query/position identities,
+lock current integration/configuration/publication evidence, invoke every planner
+and audit factory inside one transaction, and persist immutable rounds, queries,
+observations and heads atomically. Receipts are closed private contracts checked
+against independently normalized query/observation values. New receipt freshness
+must equal the captured query-policy/current-policy minimum, even if an earlier
+provider expiry would hide a changed policy. Clocks are repository-owned. The two
+new audit actions retain only Request/revision/operation/manual-source metadata.
+No business requirements, source positions, supplier terms, prices or credentials
+are copied into audit metadata.
+
+Fifteen application/projection progression and adversarial cases cover minimized
+receipts, role/ownership scope, all five stale basis fences, exact replay, forged
+private receipts, missing factories, unknown source capability, corrupted clocks,
+closed input/getter rejection and no retries. These are port-contract tests; they
+do not prove PostgreSQL atomicity, live sessions, HTTP/CSRF or browser acceptance.
+The complete repository check is being executed for this uncomposed increment.
+Durable SQL/read/HTTP/UI and captured Request-to-source provenance remain open.

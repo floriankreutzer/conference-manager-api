@@ -30,6 +30,8 @@ export const AUDIT_ACTION = Object.freeze({
   CATERING_CATALOGUE_RECEIVED: 'catering.catalogue.received',
   CATERING_CATALOGUE_PUBLISHED: 'catering.catalogue.published',
   CATERING_CATALOGUE_REJECTED: 'catering.catalogue.rejected',
+  CATERING_AVAILABILITY_REQUESTED: 'catering.availability.requested',
+  CATERING_AVAILABILITY_RECEIVED: 'catering.availability.received',
   CATERING_ORDER_PREPARED: 'catering.order.prepared',
   CATERING_ORDER_QUOTED: 'catering.order.quoted',
   CATERING_ORDER_DECIDED: 'catering.order.decided',

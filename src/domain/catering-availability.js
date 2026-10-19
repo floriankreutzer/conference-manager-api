@@ -93,28 +93,22 @@ export function normalizeCateringAvailabilityObservation(value,expected) {
   const query=normalizeCateringAvailabilityQuery(expected.query,{tenantId:expected.tenantId,integrationId:expected.integrationId,
     requestId:expected.requestId,requestVersion:expected.requestVersion});
   const receivedAt=instant(expected.receivedAt); const maximumAgeMs=integer(expected.maximumAgeMs,1,CATERING_MAX_AVAILABILITY_AGE_MS);
-  record(value,['schemaVersion','queryId','availabilityVersion','observedAt','validUntil','positions','terms']);
-  if (value.schemaVersion !== 1 || uuid(value.queryId) !== query.queryId) invalid();
-  const observedAt=instant(value.observedAt); if (observedAt>receivedAt) invalid();
-  const providerValidUntil=value.validUntil === null ? null : instant(value.validUntil);
-  if (providerValidUntil !== null && providerValidUntil<=observedAt) invalid();
-  const positions=array(value.positions,CATERING_MAX_ORDER_POSITIONS).map(position=>{
-    record(position,['positionId','status']); const positionId=uuid(position.positionId);
-    if (!STATUSES.has(position.status) || !query.positions.some(entry=>entry.positionId === positionId)) invalid();
-    return Object.freeze({positionId,status:position.status});
-  });
+  const intent=normalizeCateringAvailabilityObservationIntent(value);
+  if (intent.queryId !== query.queryId) invalid();
+  const observedAt=intent.observedAt; if (observedAt>receivedAt) invalid();
+  const providerValidUntil=intent.validUntil; const positions=intent.positions;
   if (positions.length !== query.positions.length
-    || new Set(positions.map(position=>position.positionId)).size !== positions.length) invalid();
+    || positions.some(position=>!query.positions.some(entry=>entry.positionId === position.positionId))) invalid();
   const byId=new Map(positions.map(position=>[position.positionId,position]));
   const validUntil=providerValidUntil === null ? null
     : new Date(Math.min(Date.parse(providerValidUntil),Date.parse(observedAt)+maximumAgeMs)).toISOString();
   return Object.freeze({schemaVersion:1,tenantId:query.tenantId,integrationId:query.integrationId,queryId:query.queryId,
     requestId:query.requestId,requestVersion:query.requestVersion,queryFingerprint:query.queryFingerprint,
     configurationRevision:query.configurationRevision,publicationRevision:query.publicationRevision,
-    sourceRevision:query.sourceRevision,availabilityVersion:text(value.availabilityVersion),
+    sourceRevision:query.sourceRevision,availabilityVersion:intent.availabilityVersion,
     observedAt,receivedAt,providerValidUntil,validUntil,
     positions:Object.freeze(query.positions.map(position=>byId.get(position.positionId))),
-    terms:normalizeCateringProviderTerms(value.terms)});
+    terms:intent.terms});
 }
 
 // Necessary factual freshness only. Every use repeats current basis and timing;
@@ -137,4 +131,47 @@ export function evaluateCateringAvailability(value,expected) {
   if (observation.positions.some(position=>position.status === 'unknown')) reasons.push('availability_unknown');
   return Object.freeze({available:reasons.length === 0,reasons:Object.freeze(reasons),validUntil:observation.validUntil,
     availabilityVersion:observation.availabilityVersion,positions:observation.positions,terms:observation.terms});
+}
+
+// Standalone canonical response intent for replay comparison only. Query scope,
+// exact coverage, receipt clock and active revision proof remain mandatory above.
+export function normalizeCateringAvailabilityObservationIntent(value) {
+  record(value,['schemaVersion','queryId','availabilityVersion','observedAt','validUntil','positions','terms']);
+  if (value.schemaVersion !== 1) invalid();
+  const observedAt=instant(value.observedAt); const validUntil=value.validUntil === null ? null : instant(value.validUntil);
+  if (validUntil !== null && validUntil<=observedAt) invalid();
+  const positions=array(value.positions,CATERING_MAX_ORDER_POSITIONS).map(position=>{
+    record(position,['positionId','status']); if (!STATUSES.has(position.status)) invalid();
+    return Object.freeze({positionId:uuid(position.positionId),status:position.status});
+  }).sort((a,b)=>a.positionId<b.positionId ? -1 : a.positionId>b.positionId ? 1 : 0);
+  if (!positions.length || new Set(positions.map(position=>position.positionId)).size !== positions.length) invalid();
+  return Object.freeze({schemaVersion:1,queryId:uuid(value.queryId),availabilityVersion:text(value.availabilityVersion),
+    observedAt,validUntil,positions:Object.freeze(positions),terms:normalizeCateringProviderTerms(value.terms)});
+}
+
+export function normalizeCateringAvailabilityRequestCommand(value) {
+  record(value,['schemaVersion','commandId','expectedRequestVersion','expectedRevision']);
+  if (value.schemaVersion !== 1 || !isRequestVersion(value.expectedRequestVersion)) invalid();
+  return Object.freeze({schemaVersion:1,commandId:uuid(value.commandId),expectedRequestVersion:value.expectedRequestVersion,
+    expectedRevision:integer(value.expectedRevision,0,Number.MAX_SAFE_INTEGER-2)});
+}
+
+export function normalizeCateringAvailabilityManualReceiptCommand(value,queryId) {
+  record(value,['schemaVersion','commandId','expectedRoundRevision','attestReceivedFromSupplier','observation']);
+  if (value.schemaVersion !== 1 || value.attestReceivedFromSupplier !== true) invalid();
+  const observation=normalizeCateringAvailabilityObservationIntent(value.observation);
+  if (observation.queryId !== uuid(queryId)) invalid();
+  return Object.freeze({schemaVersion:1,commandId:uuid(value.commandId),expectedRoundRevision:integer(value.expectedRoundRevision),
+    attestReceivedFromSupplier:true,observation});
+}
+
+// Explicit provider/persistence payload projection: private ownership/fingerprint
+// headers cannot leak into the source query or replace its independent scope.
+export function cateringAvailabilityQueryIntent(value) {
+  record(value,['tenantId','integrationId','requestId','requestVersion','queryFingerprint',...QUERY_KEYS]);
+  const raw=Object.fromEntries(QUERY_KEYS.map(key=>[key,value[key]]));
+  const normalized=normalizeCateringAvailabilityQuery(raw,{tenantId:value.tenantId,integrationId:value.integrationId,
+    requestId:value.requestId,requestVersion:value.requestVersion});
+  if (value.queryFingerprint !== normalized.queryFingerprint) invalid();
+  return Object.freeze(Object.fromEntries(QUERY_KEYS.map(key=>[key,normalized[key]])));
 }
