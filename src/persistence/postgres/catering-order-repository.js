@@ -201,7 +201,7 @@ export function createPostgresCateringOrderRepository(pool, { registry, auditRep
         if (loaded.status) return loaded;
         const { view, configured } = loaded;
         if (configured.capabilities['catering.order'] !== 'manual') return result('manual_quote_not_supported');
-        if (!canRecordCateringOrderQuote(view.state.status)) return result('delivery_in_progress');
+        if (!canRecordCateringOrderQuote(view.state.status, view.decision?.decision)) return result('delivery_in_progress');
         const currentQuote = view.quote?.revision ?? 0;
         if (currentQuote !== input.expectedQuoteRevision) return result('quote_conflict', { currentRevision: currentQuote });
         if (view.state.revision >= Number.MAX_SAFE_INTEGER - 1 || currentQuote >= Number.MAX_SAFE_INTEGER - 1) {
@@ -238,7 +238,7 @@ export function createPostgresCateringOrderRepository(pool, { registry, auditRep
           const loaded = await writable(client, input);
           if (loaded.status) return loaded;
           const { view, configured } = loaded;
-          if (!canDecideCateringOrderQuote(view.state.status)) return result('delivery_in_progress');
+          if (!canDecideCateringOrderQuote(view.state.status, view.decision?.decision)) return result('delivery_in_progress');
           if (!view.quote || view.quote.revision !== input.expectedQuoteRevision) return result('quote_conflict');
           if (view.state.revision >= Number.MAX_SAFE_INTEGER - 1) return result('revision_exhausted');
           const now = (await client.query('SELECT clock_timestamp() AS now')).rows[0].now.toISOString();

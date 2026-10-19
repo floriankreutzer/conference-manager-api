@@ -69,6 +69,11 @@ acknowledgement require separate versioned receipt ingestion; this retry worker
 does not yet implement that ongoing polling lifecycle. Change/cancel/exception
 version commands and original-effective-order retention remain separate work.
 
+A supplier rejection retains its earlier approved cost decision. Unlike a
+Manager's quote rejection, it cannot reopen same-version quote/decision writes;
+the repository enforces this distinction using the independently loaded decision.
+Rejected provider facts require a separately reviewed later version.
+
 ## Verification status
 
 Native processor tests cover intent-before-I/O, no manual fallback, unsafe result

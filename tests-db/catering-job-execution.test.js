@@ -150,6 +150,19 @@ test('actual Customer execution retains intent, lease recovery, safe retry facts
   const atomicPort = { ...make(), async claimNext() { if (!atomicFirst) return null; atomicFirst = false; return atomicLease; } };
   assert.equal((await run(atomicPort)).completedCount, 1); assert.equal(await business(atomic), 'confirmed');
   assert.equal((await state(atomic)).dispatch_attempts, 1);
+  const rejected = await enqueue(9); await switchMode('api'); replies = ['rejected','rejected'];
+  assert.equal((await run()).completedCount, 1); assert.equal(await business(rejected), 'rejected');
+  await switchMode('manual');
+  const rejectedView = await fixture.orders.load({ ...fixture.context(), orderId: rejected.orderId });
+  assert.equal(rejectedView.decision.decision, 'approved');
+  const rejectedCommand = { ...fixture.context(), schemaVersion: 1, orderId: rejected.orderId,
+    expectedStateRevision: rejectedView.state.revision, expectedQuoteRevision: rejectedView.quote.revision };
+  await assert.rejects(fixture.orders.recordQuote({ ...rejectedCommand, cost: { amountMinor: 1300, currency: 'EUR' },
+    expiresAt: new Date(Date.now() + 3600000).toISOString() }), { code: 'CATERING_ORDER_DELIVERY_IN_PROGRESS' });
+  await assert.rejects(fixture.orders.decide({ ...rejectedCommand, decision: 'approved' }), {
+    code: 'CATERING_ORDER_DELIVERY_IN_PROGRESS',
+  });
+  assert.deepEqual(await fixture.orders.load({ ...fixture.context(), orderId: rejected.orderId }), rejectedView);
   const startupJob = await enqueue(8); // Restore the actual production manual descriptor.
   const config = { ...loadConfig({ NODE_ENV: 'test', PUBLIC_ORIGIN: 'http://localhost:3000',
     CATERING_ORDERS_ENABLED: 'true', CATERING_DELIVERY_ENABLED: 'true' }), ...database, mode: 'test',
