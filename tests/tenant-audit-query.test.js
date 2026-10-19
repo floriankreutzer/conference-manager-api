@@ -241,3 +241,23 @@ test('audit query fails closed for integrity failure, cross-Tenant rows and miss
   );
   assert.equal(denied.audit.events.at(-1).action, 'authorization.denied');
 });
+
+
+test('Catering order and delivery actions retain verified minimized Tenant audit access', async () => {
+  const actions = ['catering.order.prepared', 'catering.order.quoted', 'catering.order.decided',
+    'catering.delivery.queued', 'catering.delivery.claimed', 'catering.delivery.attempted',
+    'catering.delivery.observed', 'catering.delivery.deferred', 'catering.delivery.recovered'];
+  for (const action of actions) {
+    const harness = service({ rows: [row({ action, targetType: 'catering_order', targetId: CORRELATION_ID,
+      previousState: { status: 'released' }, newState: { status: 'queued', revision: 4 },
+      metadata: { amountMinor: 1200, currency: 'EUR', providerPayload: 'must-not-pass' } })] });
+    const page = await harness.service.listEvents({ principal: principal(),
+      tenantContext: { tenantId: TENANT_ID, status: 'active' }, correlationId: CORRELATION_ID, category: 'request' });
+    assert.equal(harness.received().categoryActions.includes(action), true);
+    assert.equal(page.events[0].category, 'request');
+    assert.equal(page.events[0].action, action);
+    assert.deepEqual(page.events[0].target, { type: 'catering_order', id: CORRELATION_ID });
+    assert.deepEqual(page.events[0].change, { before: { status: 'released' }, after: { revision: 4, status: 'queued' } });
+    assert.doesNotMatch(JSON.stringify(page), /amountMinor|currency|providerPayload|must-not-pass/);
+  }
+});
