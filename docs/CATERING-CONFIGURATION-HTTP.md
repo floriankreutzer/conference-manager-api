@@ -42,3 +42,7 @@ The default-off collection setup/list/create contract is described in [Catering 
 Admin UI, actual credential custody/lifecycle/health, manual delivery, qualified
 API adapters, current source OpenAPI and release-bound publication remain required follow-up work.
 No external Developer documentation is published by this default-off component.
+
+The same default-off configuration composition also owns the read-only
+[operational health summary](CATERING-OPERATIONAL-HEALTH.md). Stored work and
+configuration evidence do not constitute a live provider health probe.
