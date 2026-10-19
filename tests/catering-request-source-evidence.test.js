@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createCateringRequestSourceEvidence as create,normalizeCateringRequestSourceEvidence as normalize,
-  carryCateringRequestSourceEvidence as carry } from '../src/domain/catering-request-source-evidence.js';
+  carryCateringRequestSourceEvidence as carry,revalidateCateringRequestSourceForAvailability as revalidate
+} from '../src/domain/catering-request-source-evidence.js';
+import { createCateringAvailabilityQueryPlan } from '../src/domain/catering-availability-query-plan.js';
+import { createCateringRequestCommercialSelection } from '../src/domain/catering-request-commercial-selection.js';
 import { cateringId as id,cateringOrderFixture } from './support/catering-order-fixture.js';
 function fixture(options) {
   const input=cateringOrderFixture(options); input.request.status='Submitted';
@@ -123,4 +126,54 @@ test('all101 independently owned commercial positions retain their exact provide
   assert.equal(value.providers.reduce((sum,v)=>sum+v.bindings.length,0),301);
   assert.deepEqual(normalize(value,expected(input)),value);
   input.publications.push(input.publications[0]); assert.throws(()=>create(input));
+});
+
+function current(input) {
+  const currentCatalogue=structuredClone(input.canonicalCatalogue);
+  const currentOwnership=structuredClone(input.ownership); currentOwnership.catalogueRevision++;
+  const currentPublications=structuredClone(input.publications).map(value=>({...value,configurationRevision:3,
+    reviewRevision:4,publicationRevision:2,sourceRevision:2,sourceVersion:'synthetic-v2'}));
+  return {...expected(input),currentCatalogue,currentCatalogueRevision:5,currentOwnership,
+    currentConnections:structuredClone(input.connections),currentPublications};
+}
+test('current source revalidation tolerates unrelated catalogue/assignment/publication changes without altering a saved Request',()=>{
+  const input=fixture(); const captured=create(input); const state=current(input);
+  const extra={...state.currentCatalogue.cateringItems[0],id:'unselected-new'};
+  state.currentCatalogue.cateringItems.push(extra);
+  state.currentOwnership.assignments.push({kind:'item',entryId:extra.id,integrationId:id(3)});
+  state.currentPublications[0].bindings.push({kind:'item',entryId:extra.id,sourceId:'supplier-unselected-new',variants:[]});
+  const before=JSON.stringify(input.request); const providers=revalidate(captured,state);
+  assert.equal(providers.length,2); assert.equal(providers[0].configurationRevision,3);
+  assert.equal(providers[0].sourceRevision,2); assert.equal(providers[0].publicationRevision,2);
+  assert.equal(captured.providers[0].sourceRevision,1); assert.equal(JSON.stringify(input.request),before);
+  assert.throws(()=>createCateringRequestCommercialSelection({...input,ownership:state.currentOwnership,
+    canonicalCatalogue:state.currentCatalogue,connections:state.currentConnections}));
+  let sequence=5000; const queries=createCateringAvailabilityQueryPlan({...input,providers,
+    queryIdFactory:()=>id(sequence++),positionIdFactory:()=>id(sequence++)});
+  assert.equal(queries[0].sourceRevision,2); assert.equal(queries[0].requestVersion,2);
+  assert.equal(queries[0].positions[0].sourceId,'supplier-package-a'); assert.equal(input.request.status,'Submitted');
+});
+test('same canonical meal IDs cannot launder a changed supplier SKU, variant or included component mapping',()=>{
+  for (const change of [
+    state=>{state.currentPublications[1].bindings[0].sourceId='different-supplier-sku';},
+    state=>{state.currentPublications[0].bindings.find(v=>v.kind === 'package').variants[0].sourceId='different-variant';},
+    state=>{state.currentPublications[0].bindings.find(v=>v.kind === 'item').sourceId='different-component';},
+  ]) { const input=fixture(); const state=current(input); change(state); assert.throws(()=>revalidate(create(input),state)); }
+});
+test('changed current commercial content, price, package components or supplier owner requires explicit new composition',()=>{
+  for (const change of [
+    state=>{state.currentCatalogue.cateringItems[0].price.amountMinor++;},
+    state=>{state.currentCatalogue.cateringItems[0].name='Different recipe';},
+    state=>{state.currentCatalogue.cateringPackages[0].variants[0].description='Different meal';},
+    state=>{state.currentCatalogue.cateringPackages[0].itemIds.pop();},
+    state=>{state.currentOwnership.assignments.forEach(v=>{if(v.integrationId === id(4))v.integrationId=id(3);});},
+  ]) { const input=fixture(); const state=current(input); change(state); assert.throws(()=>revalidate(create(input),state)); }
+});
+test('independently supplied current revision, connection scope and complete source context fail closed when stale or forged',()=>{
+  for (const change of [
+    state=>{state.currentCatalogueRevision=4;},state=>{state.currentCatalogueRevision=0;},
+    state=>{state.currentConnections[0].tenantId=id(9);},state=>{state.currentPublications.pop();},
+    state=>{state.currentPublications[0].tenantId=id(9);},state=>{state.currentPublications[0].publicationRevision=0;},
+    state=>{state.currentPublications[0].bindings=state.currentPublications[0].bindings.filter(v=>v.kind === 'package');},
+  ]) { const input=fixture(); const state=current(input); change(state); assert.throws(()=>revalidate(create(input),state)); }
 });

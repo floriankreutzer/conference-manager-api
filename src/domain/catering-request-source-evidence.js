@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { isInternalUuid } from './identifiers.js';
 import { normalizeRequest } from './request.js';
 import { normalizeCateringCataloguePublicationBindings } from './catering-catalogue-publication.js';
-import { createCateringRequestCommercialSelection } from './catering-request-commercial-selection.js';
+import { createCateringRequestCommercialSelection,createCateringRequestCommercialSelectionAtCatalogue
+} from './catering-request-commercial-selection.js';
 import { CATERING_MAX_ORDER_POSITIONS } from './catering-order-limits.js';
 
 function invalid() { throw new TypeError('CATERING_REQUEST_SOURCE_EVIDENCE_INVALID'); }
@@ -62,14 +63,7 @@ function selectedBindings(source,positions,canonicalCatalogue) {
   return Object.freeze([...selected.values()].sort(compare));
 }
 
-// Capture only from independently loaded same-transaction Request, exact
-// assignment and immutable publication/source references. This positive value
-// schema cannot prove those database references exist or authenticate an actor.
-export function createCateringRequestSourceEvidence({request:requestValue,assignmentRevision,
-  canonicalCatalogue,ownership,connections,publications}={}) {
-  const request=normalizeRequest(requestValue);
-  const selection=selectionFor({request,canonicalCatalogue,ownership,connections});
-  if (assignmentRevision !== 0 || selection.length>0) revision(assignmentRevision);
+function providersFor(request,selection,publications,canonicalCatalogue) {
   const metadata=new Map();
   for (const publication of array(publications)) {
     record(publication,['tenantId','integrationId','configurationRevision','reviewRevision','publicationRevision',
@@ -80,12 +74,23 @@ export function createCateringRequestSourceEvidence({request:requestValue,assign
     version(publication.sourceVersion); metadata.set(integrationId,publication);
   }
   if (metadata.size !== selection.length || selection.some(value=>!metadata.has(value.integrationId))) invalid();
-  const providers=selection.map(({integrationId,positions})=>{
+  return Object.freeze(selection.map(({integrationId,positions})=>{
     const source=metadata.get(integrationId);
     return Object.freeze({integrationId,configurationRevision:source.configurationRevision,reviewRevision:source.reviewRevision,
       publicationRevision:source.publicationRevision,sourceRevision:source.sourceRevision,sourceVersion:source.sourceVersion,
       bindings:selectedBindings(source.bindings,positions,canonicalCatalogue)});
-  });
+  }));
+}
+
+// Capture only from independently loaded same-transaction Request, exact
+// assignment and immutable publication/source references. This positive value
+// schema cannot prove those database references exist or authenticate an actor.
+export function createCateringRequestSourceEvidence({request:requestValue,assignmentRevision,
+  canonicalCatalogue,ownership,connections,publications}={}) {
+  const request=normalizeRequest(requestValue);
+  const selection=selectionFor({request,canonicalCatalogue,ownership,connections});
+  if (assignmentRevision !== 0 || selection.length>0) revision(assignmentRevision);
+  const providers=providersFor(request,selection,publications,canonicalCatalogue);
   return Object.freeze({schemaVersion:1,tenantId:request.tenantId,requestId:request.id,requestVersion:request.version,
     originRequestVersion:request.version,catalogueRevision:request.snapshot.configurationRevisions.catalogue,assignmentRevision,
     intentFingerprint:fingerprint(request,selection),providers:Object.freeze(providers)});
@@ -128,4 +133,27 @@ export function carryCateringRequestSourceEvidence(value,{previousRequest,reques
   const request=normalizeRequest(requestValue);
   if (request.version !== normalized.requestVersion+1) invalid();
   return normalizeCateringRequestSourceEvidence({...normalized,requestVersion:request.version},{request,...source});
+}
+
+// Necessary current semantic/source revalidation only. Immutable captured source
+// records remain unchanged. Live authorization, configuration capability, actual
+// current publication FKs and lock consistency are independent repository duties.
+export function revalidateCateringRequestSourceForAvailability(value,{request:requestValue,originRequest,
+  canonicalCatalogue,ownership,connections,currentCatalogue,currentCatalogueRevision,currentOwnership,
+  currentConnections,currentPublications}={}) {
+  const request=normalizeRequest(requestValue); const currentRevision=revision(currentCatalogueRevision);
+  const captured=normalizeCateringRequestSourceEvidence(value,{request,originRequest,canonicalCatalogue,ownership,connections});
+  const catering=request.snapshot.details.catering;
+  const selection=catering.packageSelection === null && catering.itemQuantities.length === 0 ? []
+    : createCateringRequestCommercialSelectionAtCatalogue({request,canonicalCatalogue:currentCatalogue,
+      ownership:currentOwnership,connections:currentConnections},currentRevision);
+  if (fingerprint(request,selection) !== captured.intentFingerprint) invalid();
+  const providers=providersFor(request,selection,currentPublications,currentCatalogue);
+  if (providers.length !== captured.providers.length || providers.some((provider,index)=>{
+    const original=captured.providers[index];
+    return provider.integrationId !== original.integrationId || JSON.stringify(provider.bindings) !== JSON.stringify(original.bindings);
+  })) invalid();
+  return Object.freeze(providers.map(provider=>Object.freeze({tenantId:request.tenantId,integrationId:provider.integrationId,
+    configurationRevision:provider.configurationRevision,publicationRevision:provider.publicationRevision,
+    sourceRevision:provider.sourceRevision,sourceVersion:provider.sourceVersion,bindings:provider.bindings})));
 }

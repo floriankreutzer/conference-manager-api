@@ -52,7 +52,9 @@ provider and can retain the actual zero assignment head. Existing101 independent
 owned commercial positions/301 selected bindings remain supported, with the
 original300-component/package capacity unchanged.
 
-Ten progression/negative cases cover capture, multi-status carry, content/quantity/
+Checkpoint602a22c0 passed the complete local repository check:1716 native cases,
+Customer HTTP DAST and17 Platform HTTP, with all architecture/static/security/
+dependency gates. Ten progression/negative cases cover capture, multi-status carry, content/quantity/
 slot/owner changes, real origin/version, database JSON ordering, scope/reference/
 fingerprint corruption, exact selected binding subsets, closed getters and empty/
 101-provider boundaries. Lint/style916 files pass. These are pure value tests,
@@ -94,3 +96,35 @@ schema gap, number collision, broad privilege, reset/readiness exception, failed
 check bypass or weaker rollback. Required actual PostgreSQL Customer/Platform/
 Reset roles, retained/audit-only rollback refusal, populated reset, constraint/
 concurrency/replay tests and all paired permanent Demo cases remain open.
+
+## Current semantic/source comparison
+
+A separately named shared selection entry point accepts the independently loaded
+current catalogue/ownership revision. It compares exact saved product contents,
+prices, variant and components without changing the Request's original catalogue
+revision or forging an assignment epoch. The existing historical/order entry
+point retains its original strict Request-catalogue revision binding.
+
+`revalidateCateringRequestSourceForAvailability` normalizes real captured/origin
+proof, compares the saved commercial intent and providers against that actual
+current catalogue/ownership, then compares every selected supplier SKU, package
+variant and component source binding. Changed provider or SKU is rejected even
+when the canonical product ID, name and price are unchanged. Changed product
+contents, saved quantities and prices also fail closed. Unrelated current
+catalogue/assignment changes and newer publication/source/configuration revisions
+are allowed only when every selected business/source binding remains equivalent.
+The returned query contexts use those newer real observed revisions; original
+captured source records and Request status/content remain unchanged.
+
+This supplies necessary semantic/source consistency only. The transaction must
+still prove authentic/current references, active connection/capabilities/current
+published eligibility, actual Room/Site applicability, authorization/session,
+locks and atomic persistence. Neither this projection nor a hash supplies those
+independent authorities. No availability, confirmation or order is released.
+
+Four additional revalidation progression/negative cases pass together with the
+ten capture cases, seven availability planner cases and five unchanged order
+cases26/26. The successful unrelated-revision case also exercises the actual
+source query planner with the original Submitted Request and newer publication/
+source revisions. The complete repository gates are being repeated for this
+follow-on comparison; no database/runtime activation is claimed.

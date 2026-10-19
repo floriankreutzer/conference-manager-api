@@ -19,11 +19,9 @@ function sameEntry(snapshot, canonical) {
 // Pure commercial selection only, including before confirmation. Inputs must be
 // independently loaded by an authorized transaction. This allocates no order,
 // position or query identity and grants no publication/availability authority.
-export function createCateringRequestCommercialSelection({ request: requestValue,
-  ownership,canonicalCatalogue,connections }={}) {
+function selectionAtCatalogue({request:requestValue,ownership,canonicalCatalogue,connections},catalogueRevision) {
   const request=normalizeRequest(requestValue); if (request.snapshot === null) invalid();
   const canonical = normalizeTenantCatalogue(canonicalCatalogue);
-  const catalogueRevision = request.snapshot.configurationRevisions.catalogue;
   const normalizedOwnership = normalizeCateringCatalogueAssignments(ownership, {
     tenantId: request.tenantId, catalogueRevision, catalogue: canonical, connections,
   });
@@ -69,4 +67,17 @@ export function createCateringRequestCommercialSelection({ request: requestValue
   if (total !== expectedTotal || allPositions.length > CATERING_MAX_ORDER_POSITIONS) invalid();
   return frozenCopy([...groups].sort(([left],[right])=>left<right ? -1 : left>right ? 1 : 0)
     .map(([integrationId,positions])=>({integrationId,positions})));
+}
+
+// Captured/historical catalogue remains the default order-source contract.
+export function createCateringRequestCommercialSelection(value={}) {
+  const request=normalizeRequest(value.request); if (request.snapshot === null) invalid();
+  return selectionAtCatalogue({...value,request},request.snapshot.configurationRevisions.catalogue);
+}
+
+// A separately loaded current catalogue/ownership revision can be compared with
+// saved semantic content without fabricating a new Request or assignment epoch.
+// The caller must independently prove this observed current revision and scope.
+export function createCateringRequestCommercialSelectionAtCatalogue(value,catalogueRevision) {
+  return selectionAtCatalogue(value,catalogueRevision);
 }
