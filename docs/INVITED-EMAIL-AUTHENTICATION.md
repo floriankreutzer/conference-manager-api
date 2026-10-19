@@ -314,3 +314,63 @@ integrated57-migration chain, including encrypted issue/replay, wrong-scope/vers
 refusal, audit integrity, acceptance evidence guards and populated-down refusal.
 These results do not substitute for native server concurrency/role/TLS or required
 paired browser/reset CI. Earlier failed/pending candidate evidence remains above.
+
+## Unreleased browser-bound mailbox challenge implementation
+
+The uncomposed email challenge repository queues an encrypted ten-minute mailbox
+code only for a server-loaded eligible membership/invitation snapshot. Unknown or
+unadmitted recipients receive the same durable browser/CSRF pending shape, with no
+mailbox, no delivery and an unusable random verifier. No fake Tenant/User is used.
+Request replacement consumes old challenges and cancels queued old code deliveries.
+Code verification checks the initiating browser and CSRF before charging a wrong
+code attempt. Wrong proofs commit their challenge/shared counters; the fifth attempt
+closes that challenge. A correct proof rotates to an independent five-minute choice
+browser token and CSRF domain. Old code/browser proof cannot replay. This stage
+creates no User, role, provider link or business session.
+
+The closed immutable admission snapshot fences exact membership/Tenant, pending
+invitation/revision or existing User/security version. Choice must compare it with
+current locked eligibility before admission; this primitive grants no authority.
+The HTTPS-only Strict/HttpOnly cookie is scoped to `/api/v1/auth/email`, with bounded
+canonical challenge/browser values and duplicate rejection. These modules are not
+connected to HTTP, so Origin checks, edge limits, enumeration timing behavior and
+safe public error/cookie orchestration still require implementation and tests.
+
+Shared SQL abuse counters lock source before recipient, before any challenge lock.
+Issue limits are30/source/hour and3/recipient/hour with a60-second recipient gap;
+wrong-proof ceilings are50/source/hour and10/recipient/hour across challenges and
+new sources. Window reset preserves the send cooldown at the hour boundary.
+Counters and timestamps are database-owned; failed work rolls back atomically.
+Source keys use separate environment-bound HMAC over the server socket address,
+canonicalizing IPv6/IPv4-mapped forms and rejecting forwarded lists/ports/zones.
+No plaintext address is retained as abuse evidence. Trusted-proxy support is absent.
+
+Twelve focused native primitive tests and fourteen scratch-only PostgreSQL18.6/WASM
+sequential SQL/service preflight checks passed. Actual integration cases additionally
+cover concurrent issue/verify, persisted failed attempts, cooldown/window boundaries,
+rollback, unknown-flow parity, rotated proof and absence of User/session issuance.
+Those native-server cases have not executed locally; the WASM preflight cannot
+qualify concurrent pools, TLS, roles, full database or browser/reset acceptance.
+An initial source-key negative case exposed IPv6 zone handling and was corrected;
+initial style failures were wrapped without changing assertions.
+
+Current Tenant choice/atomic provisioning/session issuance, live-eligible dispatch,
+retention, sender configuration, explicit dual-proof Microsoft linking, HTTP/UI and
+protected INT/reset composition remain required. No provider call or real mail has
+been made and no runtime activates this candidate. This slice now follows integrated
+057/023 custody; the earlier fourteen-case preflight used the former56-migration
+chain and does not by itself qualify this new integrated source tree.
+
+The integrated057/023 mailbox-challenge slice passed twelve focused primitive
+cases and fifteen sequential PostgreSQL18.6/WASM SQL/service preflight checks.
+The additional boundary case proves that hour-window reset cannot erase a recent
+send cooldown. Accepted-User snapshot reads no longer join historical invitations;
+only pending memberships resolve a current unaccepted/unrevoked invitation. Actual
+native concurrent proof/issue tests and complete current-tree gates remain required.
+No admission, HTTP, worker, provider configuration or real message is activated.
+
+The first full challenge check rejected URL construction inside the identity
+source-key module under the existing outbound-boundary gate. IPv6 normalization
+now uses the data-only Node SocketAddress value class; no gate exception or network
+operation was introduced. Existing alternate-spelling/mapped-address and malformed
+input assertions are retained. Node22 API reference: https://nodejs.org/docs/latest-v22.x/api/net.html#class-netsocketaddress
