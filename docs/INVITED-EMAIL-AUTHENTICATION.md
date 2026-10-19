@@ -162,3 +162,16 @@ cases verify mailbox scope/purpose, legacy HMAC compatibility, malformed context
 and mailbox template/transport behavior. Durable mailbox custody, expiry/attempts,
 HTTP/CSRF/choice/session consumption and actual mail receipt are still open; these
 primitives and templates remain uncomposed and send no mail by themselves.
+
+
+## Audit context review correction
+
+The invitation service projects only Principal, verified Tenant context and
+correlation into the production audit factory. Extra caller context cannot replace
+its derived Tenant or actor. A mismatched Principal/context retains the original
+authorization error and writes no Tenant audit against unverified ownership.
+Permission/lifecycle and persistence denials within verified scope still require
+minimized audit evidence; audit persistence failure remains fail-closed.
+Regression cases use the actual AuditService through its existing test harness,
+including hostile top-level actor/Tenant overrides, foreign context, and valid-scope
+denial. This does not activate invitation HTTP or delivery composition.
