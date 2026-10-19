@@ -113,7 +113,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
 
   await migrateUp(pool);
   await createRoles(pool);
-  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 20);
+  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 21);
 
   await t.test('fresh install records all Demo overlays and permits the real reset sequence', async () => {
     await migrateDemoUp(pool, { roles: ROLES });
@@ -138,6 +138,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
       { version: 18, name: 'catering_unsent_order_privileges', checksum_length: 64 },
       { version: 19, name: 'platform_passkey_reset_privileges', checksum_length: 64 },
       { version: 20, name: 'catering_provider_catalogue_privileges', checksum_length: 64 },
+      { version: 21, name: 'catering_catalogue_publication_privileges', checksum_length: 64 },
     ]);
     for (const table of ['platform_passkey_credentials', 'platform_passkey_auth_transactions']) {
       for (const [surface, role] of Object.entries(ROLES)) {
@@ -145,6 +146,24 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
           const grant = await pool.query('SELECT has_table_privilege($1, $2, $3) AS permitted', [role, table, privilege]);
           assert.equal(grant.rows[0].permitted, surface === 'reset' && privilege === 'TRUNCATE');
         }
+      }
+    }
+    for (const table of ['catering_catalogue_reviews','catering_catalogue_review_heads','catering_catalogue_publication_heads']) {
+      for (const [surface,role] of Object.entries(ROLES)) {
+        for (const privilege of ['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) {
+          const allowed = surface === 'customer' ? ['SELECT','INSERT',...(table.endsWith('_heads') ? ['UPDATE'] : [])]
+            : surface === 'reset' ? ['SELECT','TRUNCATE'] : [];
+          const actual = await pool.query('SELECT has_table_privilege($1,$2,$3) AS permitted',[role,table,privilege]);
+          assert.equal(actual.rows[0].permitted,allowed.includes(privilege));
+        }
+      }
+    }
+    for (const signature of ['catering_catalogue_review_mapping_valid(jsonb,boolean,boolean)',
+      'catering_catalogue_review_command_valid(jsonb)','guard_catering_catalogue_review()',
+      'guard_catering_catalogue_review_head()','verify_catering_catalogue_review()']) {
+      for (const role of Object.values(ROLES)) {
+        const actual = await pool.query(`SELECT has_function_privilege($1,$2,'EXECUTE') AS permitted`,[role,signature]);
+        assert.equal(actual.rows[0].permitted,false);
       }
     }
     assert.deepEqual(await privileges(pool, ROLES.reset), {

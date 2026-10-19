@@ -143,3 +143,16 @@ then empty055 and054. No production readiness check, original source assertion,
 DDL checksum, permission, retry, deadline or budget was relaxed. All full-suite
 and browser/security gates must rerun on the corrected immutable head. The failed
 run remains failed and is retained as evidence; it is not a passing DB suite.
+
+
+The corrected079a13af run again passed both publication cases at20:59:58UTC and
+the complete original source receipt case at21:00:44UTC. It subsequently failed
+CI39323439541/job118304269944 at21:01:06 on a stale test expectation for Demo
+constant20 rather than current21. The exact overlay inventory now appends021;
+all old entries/assertions remain. The same real-role test additionally verifies
+every privilege on all three new tables and nonexecution of all five private
+review functions for Customer, Platform and Reset. Runtime and migration SQL
+are unchanged. A broader source scan found no other current54/20 constants;
+historical ledgers and genuine20-entry product/history limits remain intact.
+This second failure remains retained and is not suite acceptance. The next head
+must execute every required database, browser and security gate again.
