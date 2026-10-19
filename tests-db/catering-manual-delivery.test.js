@@ -97,7 +97,7 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
     /TRANSMISSION_REQUIRED/);
   await assert.rejects(service.record(command(orderId, 3)), /REVISION_CONFLICT/);
   await assert.rejects(service.record(command(orderId, 4, { occurredAt: new Date(Date.now() + 60000).toISOString() })), /TIME_CONFLICT/);
-  await assert.rejects(service.record(command(orderId, 4, { occurredAt: '2020-01-01T00:00:00.000Z' })), /SOURCE_UNAVAILABLE|TIME_CONFLICT/);
+  await assert.rejects(service.record(command(orderId, 4, { occurredAt: '2020-01-01T00:00:00.000Z' })), /TIME_CONFLICT/);
   const transmitted = command(orderId);
   await assert.rejects(make({ async appendWithClient() { throw new Error('SYNTHETIC_MANUAL_AUDIT_UNAVAILABLE'); } })
     .record(transmitted), /SYNTHETIC_MANUAL_AUDIT_UNAVAILABLE/);

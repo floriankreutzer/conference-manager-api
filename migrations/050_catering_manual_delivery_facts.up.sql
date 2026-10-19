@@ -73,9 +73,12 @@ BEGIN
   SELECT * INTO STRICT quote FROM public.catering_order_quotes
     WHERE tenant_id=NEW.tenant_id AND order_id=NEW.order_id AND version=NEW.order_version AND revision=NEW.quote_revision;
   NEW.recorded_at:=clock_timestamp();
+  IF NEW.occurred_at>NEW.recorded_at OR NEW.occurred_at<source.created_at THEN
+    RAISE EXCEPTION 'CATERING_MANUAL_TIME_INVALID' USING ERRCODE='23514';
+  END IF;
   IF NEW.origin_state_revision<>state.revision OR NEW.operation<>source.operation
     OR NEW.quote_revision IS DISTINCT FROM state.quote_revision OR NEW.decision_sequence IS DISTINCT FROM state.decision_sequence
-    OR decision.decision<>'approved' OR NEW.occurred_at>NEW.recorded_at OR NEW.occurred_at<source.created_at
+    OR decision.decision<>'approved'
     OR NOT EXISTS (SELECT 1 FROM public.users WHERE tenant_id=NEW.tenant_id AND id=NEW.recorded_by_user_id
       AND active=true AND security_version=NEW.actor_security_version)
     OR NOT EXISTS (SELECT 1 FROM public.catering_integration_configuration_revisions configuration

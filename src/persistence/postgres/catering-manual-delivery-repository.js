@@ -177,7 +177,8 @@ export function createPostgresCateringManualDeliveryRepository(pool, { registry,
             orderState: Object.freeze({ orderVersion: input.expectedOrderVersion, revision: input.expectedStateRevision + 1, status }) });
         });
       } catch (error) {
-        if (error?.code === '23514' && ['CATERING_MANUAL_TRANSMISSION_INVALID','CATERING_MANUAL_RECEIPT_INVALID']
+        if (error?.code === '23514' && ['CATERING_MANUAL_TIME_INVALID','CATERING_MANUAL_TRANSMISSION_INVALID',
+          'CATERING_MANUAL_RECEIPT_INVALID']
           .includes(error.message)) return result('time_conflict');
         if (error?.code === '23514' && error.message === 'CATERING_MANUAL_RECEIPT_POSITIONS_INVALID') return result('receipt_conflict');
         if (error?.code === '23514' && error.message === 'CATERING_MANUAL_APPROVED_SOURCE_REQUIRED') {
