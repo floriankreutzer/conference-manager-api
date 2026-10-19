@@ -50,6 +50,7 @@ test('bounded backfill, idempotent copy, guarded purge and verified rollback pre
   assert.equal((await repository.runBatch({ phase: 'copy', kind: 'room' })).changed, 0);
   const projections = createPostgresPlatformProjectionRepository(pool);
   assert.deepEqual(await projections.consumeBatch(), { refreshedCount: 1, retryCount: 0, poisonCount: 0 });
+  assert.equal(await rollbackLatest(pool), true); // Empty manual delivery schema 050.
   assert.equal(await rollbackLatest(pool), true); // Empty Catering delivery schema 049.
   assert.equal(await rollbackLatest(pool), true); // Empty Catering order schema 048.
   assert.equal(await rollbackLatest(pool), true); // Empty Catering assignment schema 047.

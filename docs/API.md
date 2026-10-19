@@ -780,3 +780,9 @@ object ownership and session/CSRF boundaries remain required for these reads and
 
 Locations read/history explicitly select `?schemaVersion=2`; v2 update/rollback bodies manage each Site's nullable `guestInformation`. Existing v1 reads/writes/rollbacks preserve their exact contract.
 Confirmed Request consumers explicitly request `room-context?projection=guest`; normal room-context stays schema v1. See `docs/SITE-GUEST-INFORMATION.md` for exact fields, bounds, ownership, query rejection and conflict behavior.
+
+The default-off Catering delivery module also exposes Manager-only
+`GET/POST /api/v1/tenant/catering/orders/{orderId}/manual-delivery` for manual facts.
+See [manual transmission and receipt contract](CATERING-MANUAL-DELIVERY.md) for the
+exact closed payload, time/approval rules, immutable history and effective-version read.
+This endpoint sends no order and provides no automatic fallback from uncertain API delivery.

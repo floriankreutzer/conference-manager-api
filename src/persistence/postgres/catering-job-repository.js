@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { isInternalUuid } from '../../domain/identifiers.js';
 import { normalizeCateringDeliveryJob } from '../../domain/catering-delivery-job.js';
+import { cateringOrderStateFromReceipt } from '../../domain/catering-receipt-state.js';
 import { cateringDeliveryJobFromRow as projection } from './catering-delivery-row.js';
 import { normalizeCateringReceipt } from '../../integrations/catering-contract.js';
 import { readCateringOrderWithClient } from './catering-order-source.js';
@@ -233,8 +234,8 @@ export function createPostgresCateringJobRepository(pool, {
           const normalized = normalizeCateringReceipt(input.receipt, { orderId: row.order_id, orderVersion: Number(row.order_version),
             positionIds: positions.rows.map((position) => position.position_id) });
           const { counts, ...value } = normalized; receipt = value; status = 'succeeded';
-          businessStatus = counts.confirmed === normalized.positions.length ? row.operation === 'cancel' ? 'cancelled' : 'confirmed'
-            : counts.confirmed > 0 ? 'partially_confirmed' : counts.rejected === normalized.positions.length ? 'rejected' : 'transmitted';
+          businessStatus = cateringOrderStateFromReceipt({ operation: row.operation,
+            positionCount: normalized.positions.length, counts });
         } else if (input.receipt !== null) throw new TypeError('CATERING_JOB_OBSERVATION_INVALID');
         const sequence = Number(row.last_observation ?? 0) + 1;
         await client.query(`INSERT INTO catering_delivery_observations

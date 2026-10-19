@@ -45,3 +45,23 @@ test('catering configuration has only neutral descriptor and business-policy dep
     assert.ok(backendSaas2BoundaryViolations({ [file]: source }).some((value) => value.includes('provider-neutral value contract')));
   }
 });
+
+test('manual and API receipts share one pure domain value contract behind the unchanged provider export', () => {
+  assert.deepEqual(backendSaas2BoundaryViolations({
+    [CONTRACT]: "export { normalizeCateringReceipt } from '../domain/catering-receipt.js'; import './provider-registry.js';",
+    'src/domain/catering-receipt.js': "import './identifiers.js'; import './catering-order-limits.js';",
+    'src/domain/catering-manual-contract.js': "import './identifiers.js'; import './catering-receipt.js';",
+    'src/domain/identifiers.js': 'export const id = true;',
+    'src/domain/catering-order-limits.js': 'export const maximum = 101;',
+    'src/integrations/provider-registry.js': 'export const registry = true;',
+    'src/persistence/postgres/manual-repository.js': "import '../../domain/catering-manual-contract.js';",
+    'src/application/manual-service.js': "import '../domain/catering-manual-contract.js';",
+  }), []);
+  for (const file of ['src/domain/catering-receipt.js','src/domain/catering-receipt-state.js','src/domain/catering-manual-contract.js']) {
+    for (const source of ["import sdk from '@azure/msal-node';", "import '../application/service.js';",
+      "import '../integrations/catering-contract.js';", "import('./identifiers.js');", "fetch('https://untrusted.invalid');",
+      'const config = process.env;', 'const scope = globalThis;']) {
+      assert.ok(backendSaas2BoundaryViolations({ [file]: source }).some((value) => value.includes('pure, bounded domain contracts')));
+    }
+  }
+});

@@ -44,6 +44,12 @@ const PROVIDER_NEUTRAL_INTEGRATION_MODULES = new Set([
   'src/integrations/catering-contract.js',
   'src/integrations/catering-configuration.js',
 ]);
+const CATERING_VALUE_DEPENDENCIES = {
+  'src/domain/catering-receipt-state.js': ['./catering-order-limits.js', './catering-order-state.js'],
+  'src/domain/catering-receipt.js': ['./identifiers.js', './catering-order-limits.js'],
+  'src/domain/catering-manual-contract.js': ['./identifiers.js', './catering-order-state.js',
+    './catering-receipt-state.js', './catering-receipt.js'],
+};
 const TENANT_READINESS_POLICY_FILE = 'src/tenancy/tenant-readiness-policy.js';
 const PLATFORM_PROJECTION_REPOSITORY_FILE = 'src/persistence/postgres/platform-projection-repository.js';
 const PLATFORM_FLEET_READINESS_SERVICE_FILE = 'src/platform/application/fleet-readiness-service.js';
@@ -134,10 +140,16 @@ export function backendSaas2BoundaryViolations(sourceEntries) {
     }
     if (file === 'src/integrations/catering-contract.js'
       && (moduleImports(source).some(({ specifier, dynamic }) => dynamic
-        || !['../domain/identifiers.js', '../domain/catering-order-limits.js', './provider-registry.js'].includes(specifier))
+        || !['../domain/identifiers.js', '../domain/catering-order-limits.js', '../domain/catering-receipt.js',
+          './provider-registry.js'].includes(specifier))
         || FOUNDATION_RUNTIME_AUTHORITY.test(source))) {
       violations.push(violation(file,
         'catering contracts may depend only on neutral registration and internal identifiers, plus bounded order limits.'));
+    }
+    if (Object.hasOwn(CATERING_VALUE_DEPENDENCIES, file)
+      && (moduleImports(source).some(({ specifier, dynamic }) => dynamic || !CATERING_VALUE_DEPENDENCIES[file].includes(specifier))
+        || FOUNDATION_RUNTIME_AUTHORITY.test(source))) {
+      violations.push(violation(file, 'Catering receipt/manual values must remain pure, bounded domain contracts.'));
     }
     if (['src/integrations/provider-registry.js', 'src/integrations/delivery-policy.js',
       'src/domain/catering-order-limits.js'].includes(file)

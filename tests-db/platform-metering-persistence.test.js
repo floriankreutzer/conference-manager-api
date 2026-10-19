@@ -651,6 +651,7 @@ test('Platform metering PostgreSQL ledger, reconciliation and quota invariants',
   await t.test('migration rollback refuses retained state and is reversible after reviewed cleanup', async () => {
     assert.deepEqual(await createPostgresPlatformProjectionRepository(pool).consumeBatch(),
       { refreshedCount: 2, retryCount: 0, poisonCount: 0 });
+    assert.equal(await rollbackLatest(pool), true); // Empty manual delivery schema 050.
     assert.equal(await rollbackLatest(pool), true); // Empty Catering delivery schema 049.
     assert.equal(await rollbackLatest(pool), true); // Empty Catering order schema 048.
     assert.equal(await rollbackLatest(pool), true); // Empty Catering assignment schema 047.

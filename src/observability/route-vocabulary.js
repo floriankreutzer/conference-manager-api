@@ -68,6 +68,7 @@ export const TELEMETRY_ROUTE_KEYS = Object.freeze([
   'catering_order_decision',
   'catering_delivery_collection',
   'catering_delivery_detail',
+  'catering_manual_detail',
   'tenant_capabilities',
   'microsoft365_connection',
   'microsoft365_connect',
