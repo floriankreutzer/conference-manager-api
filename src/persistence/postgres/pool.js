@@ -25,7 +25,8 @@ const { Pool } = pg;
 // Schema 43 adds private media metadata and immutable durable upload intents.
 // Schema 44 atomically records coalescing Platform projection invalidations.
 // Schema 45 records content-free Request starts and explicit abandonment.
-export const CURRENT_SCHEMA_VERSION = 45;
+// Schema 46 adds revisioned Catering integration configuration without activating providers.
+export const CURRENT_SCHEMA_VERSION = 46;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

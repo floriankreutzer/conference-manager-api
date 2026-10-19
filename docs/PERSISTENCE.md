@@ -167,9 +167,14 @@ The all-role Tenant presentation contract reuses the current Organization row an
 `organization_revision`. Its managed-brand policy maps one fixed reference to a code-shipped preset
 and therefore introduces no upload metadata, asset table, external object reference or migration.
 
-Migration 039 introduced schema version 39; the current exact runtime readiness version is 43. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
+Migration 039 introduced schema version 39; the current exact runtime readiness version is 46. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
 
 No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
+
+Migration 046 adds typed, Tenant/Integration-scoped Catering configuration with immutable history,
+revision CAS and a deferred current-revision FK. It backfills/activates no providers. The uncomposed
+backend component revalidates live actor/session authority and commits configuration/history/audit
+atomically. See [Catering configuration persistence](CATERING-CONFIGURATION-PERSISTENCE.md).
 
 ## Tenant integrity
 
@@ -311,7 +316,7 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 43.
+The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 46.
 
 ## Shared Demo persistence
 
@@ -323,12 +328,14 @@ reset/seed capability and migration ownership. All four URLs must resolve to the
 distinct.
 
 The canonical `migrations/` stream remains the source of the business schema and must contain the
-exact applied sequence `001..043`. The independent `demo-migrations/` stream has its own
-`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `008`
+exact applied sequence `001..046`. The independent `demo-migrations/` stream has its own
+`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `012`
 installs the immutable database sentinel, provider/persona reference tables, minimized views and
 role grants, private Room/Catering media and create/attach lifecycle support. Overlay 004 grants only `INSERT` and `TRUNCATE` on the canonical attribution
 migration-state singleton to the reset role; customer and Platform roles receive no access. The
-overlay reads but never writes the canonical `schema_migrations` ledger.
+overlay reads but never writes the canonical `schema_migrations` ledger. Overlays 009–012 add
+projection-outbox custody, Request-start privileges, Product runtime sources and Catering
+configuration privileges respectively; these source changes do not prove an environment was migrated.
 
 Reset uses the reset-only role and first verifies the sentinel key, current database and role,
 recorded distinct principals, complete canonical migration sequence and exact expected table

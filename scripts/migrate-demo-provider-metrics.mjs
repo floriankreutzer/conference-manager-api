@@ -9,7 +9,7 @@ try {
   if (process.argv.length !== 2) throw new TypeError('INVALID_ARGUMENTS');
   const config = loadDemoConfig(process.env);
   const canonical = await loadMigrations(); const overlays = await loadDemoMigrations();
-  if (canonical.length !== 45 || canonical.at(-1).version !== 45 || overlays.length !== 11 || overlays.at(-1).version !== 11) {
+  if (canonical.length !== 46 || canonical.at(-1).version !== 46 || overlays.length !== 12 || overlays.at(-1).version !== 12) {
     throw new Error('DEMO_METRICS_MIGRATION_SOURCE_INVALID');
   }
   const roles = Object.freeze({ customer: config.databases.customer.role,

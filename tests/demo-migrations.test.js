@@ -15,8 +15,8 @@ const ROLES = Object.freeze({
 
 test('Demo migration stream is versioned independently from Production', async () => {
   const [production, demo] = await Promise.all([loadMigrations(), loadDemoMigrations()]);
-  assert.equal(production.at(-1).version, 45);
-  assert.equal(demo.length, 11);
+  assert.equal(production.at(-1).version, 46);
+  assert.equal(demo.length, 12);
   assert.equal(demo[0].version, 1);
   assert.equal(demo[0].name, 'demo_runtime_foundation');
   assert.match(demo[0].checksum, /^[0-9a-f]{64}$/);
@@ -79,7 +79,7 @@ test('Demo migration runner reads Production readiness but writes only its own l
     async query(query, values) {
       queries.push({ query, values });
       if (query?.name === 'demo-migration-production-schema') {
-        return { rows: [{ versions: Array.from({ length: 45 }, (_, index) => index + 1) }] };
+        return { rows: [{ versions: Array.from({ length: 46 }, (_, index) => index + 1) }] };
       }
       if (typeof query === 'string' && query.includes('SELECT version, name, checksum')) return { rows: [] };
       return { rows: [], rowCount: 0 };

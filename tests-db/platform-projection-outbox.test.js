@@ -53,9 +53,15 @@ test('outbox commits atomically, rebuilds current state, survives lost notificat
     has_table_privilege($1, 'platform_projection_outbox', 'SELECT') AS customer_read,
     has_table_privilege($1, 'platform_projection_outbox', 'INSERT') AS customer_write,
     has_function_privilege($1, 'enqueue_platform_projection_invalidation()', 'EXECUTE') AS direct_execute,
-    has_table_privilege($2, 'platform_projection_outbox', 'DELETE') AS worker_ack`, [roles.customer, roles.platform]);
+    has_table_privilege($2, 'platform_projection_outbox', 'DELETE') AS worker_ack,
+    has_table_privilege($1, 'catering_integration_configurations', 'UPDATE') AS catering_config_write,
+    has_table_privilege($1, 'catering_integration_configuration_revisions', 'UPDATE') AS catering_history_update,
+    has_table_privilege($2, 'catering_integration_configurations', 'SELECT') AS platform_catering_read,
+    has_table_privilege($3, 'catering_integration_configuration_revisions', 'TRUNCATE') AS reset_catering_truncate`,
+  [roles.customer, roles.platform, roles.reset]);
   assert.deepEqual(permissions.rows[0], {
     customer_read: false, customer_write: false, direct_execute: false, worker_ack: true,
+    catering_config_write: true, catering_history_update: false, platform_catering_read: false, reset_catering_truncate: true,
   });
   const sources = await pool.query(`SELECT count(*)::integer AS count FROM pg_trigger
     WHERE tgfoid = 'enqueue_platform_projection_invalidation()'::regprocedure AND NOT tgisinternal`);
@@ -127,8 +133,10 @@ test('outbox commits atomically, rebuilds current state, survives lost notificat
       [NORTHWIND]);
   }
   assert.equal((await restarted.consumeBatch()).poisonCount, 0);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catering grants overlay 012.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Product-source overlay 011.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Lifecycle grants overlay 010.
+  assert.equal(await rollbackLatest(pool), true); // Empty Catering configuration schema 046.
   assert.equal(await rollbackLatest(pool), true); // Empty Request lifecycle schema 045.
   await assert.rejects(rollbackLatest(pool), /PLATFORM_PROJECTION_OUTBOX_ROLLBACK_REQUIRES_DRAIN/);
   await migrateUp(pool); // Restore the current reset readiness contract after the 044 guard probe.
@@ -137,10 +145,31 @@ test('outbox commits atomically, rebuilds current state, survives lost notificat
   await pool.query('DROP FUNCTION reject_outbox_projection_test()');
   await pool.query("UPDATE tenants SET display_name = 'Recovered committed source' WHERE id = $1", [NORTHWIND]);
   assert.equal((await restarted.consumeBatch()).refreshedCount, 1);
+  const cateringIntegration = 'c0000000-0000-4000-8000-000000000099';
+  const setup = await pool.connect();
+  try {
+    await setup.query('BEGIN');
+    await setup.query(`INSERT INTO integrations (tenant_id,id,provider,provider_reference,status)
+      VALUES ($1,$2,'reference_catering','synthetic-reset-catering','pending')`, [NORTHWIND, cateringIntegration]);
+    await setup.query(`INSERT INTO catering_integration_configurations (tenant_id,integration_id,revision,initial_order_mode,
+      catalogue_mode,availability_mode,order_mode,update_mode,cancel_mode,status_mode,created_at,updated_at,updated_by_user_id)
+      SELECT tenant_id,$2,1,'manager_review','manual','manual','manual','manual','manual','manual',
+      transaction_timestamp(),transaction_timestamp(),id FROM users WHERE tenant_id=$1 ORDER BY id LIMIT 1`,
+    [NORTHWIND, cateringIntegration]);
+    await setup.query(`INSERT INTO catering_integration_configuration_revisions SELECT configuration.*, $3::uuid
+      FROM catering_integration_configurations configuration WHERE tenant_id=$1 AND integration_id=$2`,
+    [NORTHWIND, cateringIntegration, 'c0000000-0000-4000-8000-000000000098']);
+    await setup.query('COMMIT');
+  } finally { setup.release(); }
+  assert.equal((await pool.query('SELECT count(*)::integer AS count FROM catering_integration_configurations')).rows[0].count, 1);
   assert.equal((await reset.reset(input)).checksum, DEMO_FIXTURE_CHECKSUM);
+  assert.equal((await pool.query('SELECT count(*)::integer AS count FROM catering_integration_configurations')).rows[0].count, 0);
+  assert.equal((await pool.query('SELECT count(*)::integer AS count FROM catering_integration_configuration_revisions')).rows[0].count, 0);
   assert.equal((await restarted.consumeBatch()).refreshedCount, 3);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catering grants overlay 012.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty Catering configuration schema 046.
   assert.equal(await rollbackLatest(pool), true); // Empty Request lifecycle schema 045.
   assert.equal(await rollbackLatest(pool), true);
 });

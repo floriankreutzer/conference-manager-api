@@ -113,7 +113,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
 
   await migrateUp(pool);
   await createRoles(pool);
-  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 11);
+  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 12);
 
   await t.test('fresh install records all Demo overlays and permits the real reset sequence', async () => {
     await migrateDemoUp(pool, { roles: ROLES });
@@ -129,6 +129,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
       { version: 9, name: 'projection_outbox_privileges', checksum_length: 64 },
       { version: 10, name: 'request_workflow_privileges', checksum_length: 64 },
       { version: 11, name: 'product_runtime_sources', checksum_length: 64 },
+      { version: 12, name: 'catering_configuration_privileges', checksum_length: 64 },
     ]);
     assert.deepEqual(await privileges(pool, ROLES.reset), {
       insert_allowed: true,
@@ -172,7 +173,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
       (error) => error.code === '42501',
     );
     await migrateDemoUp(pool, { roles: ROLES });
-    assert.deepEqual((await overlayVersions(pool)).map(({ version }) => version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    assert.deepEqual((await overlayVersions(pool)).map(({ version }) => version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
     await resetAttributionStateAsRole(pool, ROLES.reset);
   });
 
