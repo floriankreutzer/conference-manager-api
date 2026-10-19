@@ -115,8 +115,8 @@ test('delivery schema fences actual Customer leases, immutable attempts and exac
     [tenantId,selectedJob,sequence,current.dispatch_attempts,token,kind,outcome,
       kind === 'recovery' ? 'lease_expired' : outcome === 'transmitted' ? 'none' : 'unknown',
       receipt === null ? null : JSON.stringify(receipt),id(90),retryable]);
-    await client.query(`UPDATE catering_delivery_jobs SET revision=revision+1,status=$3,last_observation=$4,
-      lease_id=NULL,lease_manual=false,lease_expires_at=NULL,available_at=CASE WHEN $3='retry_wait' THEN clock_timestamp() ELSE NULL END,
+    await client.query(`UPDATE catering_delivery_jobs SET revision=revision+1,status=$3::varchar,last_observation=$4,
+      lease_id=NULL,lease_manual=false,lease_expires_at=NULL,available_at=CASE WHEN $3::varchar='retry_wait' THEN clock_timestamp() ELSE NULL END,
       updated_at=clock_timestamp() WHERE tenant_id=$1 AND id=$2`,
     [tenantId,selectedJob,status,sequence]);
   }
