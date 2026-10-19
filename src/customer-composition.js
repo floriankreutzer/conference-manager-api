@@ -1,3 +1,4 @@
+import { createCateringConfigurationRegistry } from './integrations/catering-provider-registration.js';
 import { createFinalRoomConfirmationService } from './application/final-room-confirmation-service.js';
 import { createBookingChangeService } from './application/booking-change-service.js';
 import { createMicrosoft365BookingServiceFactory } from './application/microsoft365-booking-service-factory.js';
@@ -50,7 +51,7 @@ const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
 export function createCustomerComposition({
   config,
-  persistence = config?.databaseUrl ? createPostgresPersistence(config) : null,
+  persistence = config?.databaseUrl ? createPostgresPersistence(config,{cateringRegistry:createCateringConfigurationRegistry()}) : null,
   entraClient = null,
   microsoft365Client = null,
   logger = createLogger(),
