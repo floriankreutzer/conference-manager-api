@@ -174,6 +174,7 @@ test('Catering configuration commits scoped revisions and audit atomically and f
   assert.deepEqual(identities, identities.slice().sort());
   assert.deepEqual((await repository.listCurrent({ tenantId: otherTenant })).items, []);
   assert.equal(await auditRepository.verifyTenantChain(tenantId), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue source schema054.
   assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
   assert.equal(await rollbackLatest(pool), true); // Empty version proposal schema051.
@@ -185,6 +186,7 @@ test('Catering configuration commits scoped revisions and audit atomically and f
   assert.equal(await isPostgresSchemaReady(pool), false);
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue source schema054.
   assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
   assert.equal(await rollbackLatest(pool), true); // Empty version proposal schema051.

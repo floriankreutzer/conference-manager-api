@@ -1,3 +1,5 @@
+import { CateringProviderCatalogueInputError,
+  CateringProviderCatalogueConflictError } from './application/catering-provider-catalogue-errors.js';
 import { CateringVersionInputError, CateringVersionConflictError } from './application/catering-version-errors.js';
 import { CateringWithdrawalInputError, CateringWithdrawalConflictError } from './application/catering-withdrawal-errors.js';
 import { CateringDeliveryInputError, CateringDeliveryConflictError } from './application/catering-delivery-errors.js';
@@ -103,6 +105,7 @@ export function asApiError(error) {
     || error instanceof CateringVersionInputError
     || error instanceof CateringWithdrawalInputError
     || error instanceof CateringManualInputError
+    || error instanceof CateringProviderCatalogueInputError
     || error instanceof CateringOrderInputError
   ) {
     return new ApiError(400, 'VALIDATION_FAILED');
@@ -114,6 +117,7 @@ export function asApiError(error) {
   if (error instanceof CateringCatalogueAssignmentConflictError) {
     return new ApiError(409, error.code, { currentRevision: error.currentRevision });
   }
+  if (error instanceof CateringProviderCatalogueConflictError) return new ApiError(409, error.code);
   if (error instanceof CateringDeliveryConflictError) return new ApiError(409, error.code);
   if (error instanceof CateringVersionConflictError) return new ApiError(409, error.code);
   if (error instanceof CateringWithdrawalConflictError) return new ApiError(409, error.code);

@@ -1,3 +1,4 @@
+import { lockCateringCatalogueManager } from './catering-catalogue-manager-session.js';
 import { isInternalUuid } from '../../domain/identifiers.js';
 import {
   cateringCatalogueAssignmentConnectionIds, normalizeCateringCatalogueAssignments,
@@ -27,27 +28,6 @@ async function catalogueState(client, tenantId, lock = false) {
   if (result.rows.length !== 1) return null;
   return { catalogueRevision: counter(Number(result.rows[0].catalog_revision)),
     catalogue: normalizeTenantCatalogue(result.rows[0].snapshot) };
-}
-async function actorAvailable(client, input) {
-  const tenant = await client.query({
-    name: 'catering-assignment-tenant-lock', text: "SELECT id FROM tenants WHERE id=$1 AND status='active' FOR UPDATE",
-    values: [input.tenantId],
-  });
-  if (tenant.rowCount !== 1) return false;
-  const user = await client.query({
-    name: 'catering-assignment-user-lock',
-    text: 'SELECT id FROM users WHERE tenant_id=$1 AND id=$2 AND active=true AND security_version=$3 FOR SHARE',
-    values: [input.tenantId, input.actorUserId, input.expectedSecurityVersion],
-  });
-  if (user.rowCount !== 1) return false;
-  const session = await client.query({
-    name: 'catering-assignment-session-lock',
-    text: `SELECT id FROM sessions WHERE tenant_id=$1 AND user_id=$2 AND id=$3 AND principal_version=$4
-      AND revoked_at IS NULL AND expires_at>clock_timestamp() AND roles @> ARRAY['conference_manager']::text[]
-      AND permissions @> ARRAY['tenant:catalogue:manage']::text[] FOR SHARE`,
-    values: [input.tenantId, input.actorUserId, input.sessionId, input.expectedSecurityVersion],
-  });
-  return session.rowCount === 1;
 }
 function connectionValue(row, registry) {
   const normalized = normalizeCateringConfiguration({ initialOrderMode: row.initial_order_mode,
@@ -142,7 +122,7 @@ export function createPostgresCateringCatalogueAssignmentRepository(pool, { regi
         || typeof input.auditEventFor !== 'function') throw new TypeError('CATERING_ASSIGNMENT_WRITE_INVALID');
       const ids = cateringCatalogueAssignmentConnectionIds(input.proposal);
       return withPostgresTransaction(pool, async (client) => {
-        if (!await actorAvailable(client, input)) return Object.freeze({ status: 'not_authorized' });
+        if (!await lockCateringCatalogueManager(client, input)) return Object.freeze({ status: 'not_authorized' });
         const state = await catalogueState(client, input.tenantId, true);
         if (input.proposal.catalogueRevision !== state.catalogueRevision) {
           return Object.freeze({ status: 'catalogue_conflict', currentRevision: state.catalogueRevision });

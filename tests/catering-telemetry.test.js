@@ -1,3 +1,4 @@
+import { cateringProviderCatalogueRouteKey } from '../src/http/catering-provider-catalogues.js';
 import { cateringVersionRouteKey } from '../src/http/catering-order-versions.js';
 import { cateringOperationalHealthRouteKey } from '../src/http/settings/catering-health.js';
 import { cateringWithdrawalRouteKey } from '../src/http/catering-order-withdrawal.js';
@@ -16,6 +17,9 @@ test('all closed Catering routes retain bounded completion metrics without objec
   const keys = [cateringConfigurationRouteKey('/api/v1/integrations/catering'),
     cateringConfigurationRouteKey(`/api/v1/integrations/catering/${ID}/configuration`),
     cateringOperationalHealthRouteKey(`/api/v1/integrations/catering/${ID}/health`),
+    cateringProviderCatalogueRouteKey(`${root}/provider-catalogues`),
+    cateringProviderCatalogueRouteKey(`${root}/provider-catalogues/${ID}`),
+    cateringProviderCatalogueRouteKey(`${root}/provider-catalogues/${ID}/revisions/1`),
     cateringCatalogueAssignmentRouteKey(`${root}/catalogue-assignments`),
     cateringCatalogueAssignmentRouteKey(`${root}/catalogue-connections`),
     ...['',`/${ID}`,`/${ID}/quote`,`/${ID}/decision`].map((suffix) => cateringOrderRouteKey(`${root}/orders${suffix}`)),
@@ -29,6 +33,6 @@ test('all closed Catering routes retain bounded completion metrics without objec
     metrics.recordApiRequest({ route, method: 'GET', statusCode: 200, durationMs: 1 });
   }
   const snapshot = JSON.stringify(metrics.snapshot());
-  assert.equal(metrics.snapshot().counters.length, 14); assert.doesNotMatch(snapshot, new RegExp(ID));
+  assert.equal(metrics.snapshot().counters.length, 17); assert.doesNotMatch(snapshot, new RegExp(ID));
   assert.throws(() => metrics.recordApiRequest({ route: `catering_delivery_${ID}`, method: 'GET', statusCode: 200, durationMs: 1 }));
 });

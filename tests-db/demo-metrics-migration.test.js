@@ -80,18 +80,27 @@ test('reviewed metrics upgrade preserves retained Demo data, excludes concurrent
   await assert.rejects(withDemoMetricsMigrationGate(pool, { ...expected, customer: 'cm_wrong_customer' }, upgrade), /PRECONDITIONS/);
   assert.equal(upgrades, 0);
   assert.deepEqual(await withDemoMetricsMigrationGate(pool, expected, upgrade), {
-    canonicalVersion: 53, demoVersion: 19, resetPerformed: false, retainedCountsMatch: true,
+    canonicalVersion: 54, demoVersion: 20, resetPerformed: false, retainedCountsMatch: true,
   });
   assert.equal(upgrades, 1);
   assert.equal((await raw.query('SELECT count(*)::integer AS count FROM tenants')).rows[0].count, 1);
   assert.equal((await withDemoMetricsMigrationGate(pool, expected, upgrade)).retainedCountsMatch, true);
   assert.equal(upgrades, 2);
-  for (const [table, version] of [['schema_migrations', 54], ['demo_schema_migrations', 20]]) {
+  for (const [table, version] of [['schema_migrations', 55], ['demo_schema_migrations', 21]]) {
     await raw.query(`INSERT INTO ${table}(version,name,checksum) VALUES ($1,'synthetic_future_schema',repeat('a',64))`, [version]);
     try {
       await assert.rejects(withDemoMetricsMigrationGate(pool, expected, upgrade), /PRECONDITIONS/);
       assert.equal(upgrades, 2);
     } finally { await raw.query(`DELETE FROM ${table} WHERE version=$1`, [version]); }
+  }
+  const removed = (await raw.query('DELETE FROM schema_migrations WHERE version=54 RETURNING *')).rows[0];
+  try {
+    // A contiguous053 ledger must not admit the future020 grants, even with retained tables.
+    await assert.rejects(withDemoMetricsMigrationGate(pool,expected,upgrade),/PRECONDITIONS/);
+    assert.equal(upgrades,2);
+  } finally {
+    await raw.query('INSERT INTO schema_migrations(version,name,checksum,applied_at) VALUES ($1,$2,$3,$4)',
+      [removed.version,removed.name,removed.checksum,removed.applied_at]);
   }
   const releaseClient = await raw.connect();
   try {
