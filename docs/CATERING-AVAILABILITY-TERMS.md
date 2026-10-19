@@ -32,3 +32,36 @@ expiry and immediate update semantics, current confirmation-time revalidation,
 scoped persistence/HTTP, role-owned DE/EN visibility and all exact-head PostgreSQL/
 browser/security gates remain required. No provider, release, SLA or complete
 SaaS4 acceptance is claimed by this checkpoint.
+
+## Request-bound availability values
+
+A separate pure query/response boundary now binds configuration/publication/
+published-source revisions, source version, actual site/room, UTC slot,
+participant count and exact source position quantities. It preserves the existing
+100-direct-item plus one package request capacity (500 package participants,
+1000 item units); it does not narrow the independent300/100/20 source catalogue.
+Opaque query/position identities bind replies. A private SHA-256 context digest
+includes independent Tenant/provider scope and every meaningful query value,
+while regenerated transport IDs or reordered equivalent positions do not change
+business context. Fingerprints do not replace authorization or query ownership.
+
+Every response must cover every expected position exactly once with an explicit
+available/unavailable/unknown status. Partial, duplicated, swapped or extra
+positions and claimed Tenant/price/publication/order authority fail closed.
+The trusted use case supplies receipt time and an explicit maximum age (bounded
+to one hour); no provider field can extend that policy. Effective expiry is the
+earlier of provider validity and observed-time plus that bound, so a late receipt
+cannot refresh old facts. Missing validity stays unknown. Expiry is exclusive;
+future provider observation is invalid and server time before receipt cannot
+make an observation available. Revised configuration/publication/published source
+invalidates the observation. A later unreviewed catalogue receipt alone has no
+role in this published basis. Factual terms/status do not authorize a quote,
+publication, reservation or order and cannot alter confirmed orders.
+
+Ten new availability boundary cases plus ten terms and six source cases pass
+26/26. Lint/style pass908 files after long-line correction. This remains pure,
+uncomposed preparation: durable query/observation revisions, current query nonce
+and replay/out-of-order fences, scoped receipt provenance/credential/Manager
+attestation, expiry/read projections, final confirmation authority and all
+PostgreSQL/browser acceptance are still required. No availability activation or
+supplier protocol/access/qualification is claimed here.
