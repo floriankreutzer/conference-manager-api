@@ -168,7 +168,9 @@ test('actual Customer reviewed versions retain the confirmed order until replace
     const next = normalizeRequest({ ...source, id: currentRequest.id, version: nextVersion, status,
       requesterAttribution: currentRequest.requesterAttribution, createdAt: currentRequest.createdAt, updatedAt: now,
       statusChangedAt: status === 'Cancelled' ? now : currentRequest.statusChangedAt,
-      statusReason: status === 'Cancelled' ? 'Synthetic conference cancellation' : null,
+      // Canonical Request cancellation has no statusReason; supplier justification
+      // belongs to the separate reviewed cancellation proposal below.
+      statusReason: null,
       snapshot: { ...source.snapshot, requestVersion: nextVersion } });
     const employee = status === 'Cancelled';
     const event = fixture.auditService.createEvent({ ...context,
