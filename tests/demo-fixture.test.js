@@ -26,6 +26,7 @@ test('Demo fixture is deterministic, bounded and deeply immutable', () => {
   assert.equal(Object.isFrozen(DEMO_FIXTURE), true);
   assert.equal(Object.isFrozen(DEMO_FIXTURE.tenants[0].settings), true);
   assert.match(DEMO_FIXTURE_CHECKSUM, /^[0-9a-f]{64}$/);
+  assert.equal(DEMO_FIXTURE_CHECKSUM, '7e22005f1e9689fbea4ccfc75084f5f3d224fe10e60a6af23c1cb600f2b70014');
   assert.equal(semanticChecksum(DEMO_FIXTURE), DEMO_FIXTURE_CHECKSUM);
   assert.equal(assertSemanticChecksum(DEMO_FIXTURE, DEMO_FIXTURE_CHECKSUM), DEMO_FIXTURE_CHECKSUM);
 });
