@@ -4,6 +4,8 @@ import { createCateringJobRuntime } from '../src/catering-job-composition.js';
 import { loadConfig } from '../src/config.js';
 import { createMetricsRegistry } from '../src/observability/metrics.js';
 import { createAuditHarness } from './support/audit-harness.js';
+import { createCustomerComposition } from '../src/customer-composition.js';
+import { createPostgresPersistence } from '../src/persistence/postgres/index.js';
 
 const enabled = () => loadConfig({ NODE_ENV: 'test', CATERING_ORDERS_ENABLED: 'true', CATERING_DELIVERY_ENABLED: 'true' });
 function fixture(ready) {
@@ -56,4 +58,21 @@ test('job metric labels contain only fixed aggregate outcomes and reject private
     assert.throws(() => metrics.recordIntegrationJobBatch(value), /METRIC_JOB_BATCH_INVALID/);
   }
   assert.equal(metrics.snapshot().counters.length, 5);
+});
+
+test('enabled real Customer composition constructs with the required calendar port without making provider calls', async () => {
+  const config = loadConfig({ NODE_ENV: 'test', DATABASE_URL: 'postgres://localhost:1/synthetic', DATABASE_SSL: 'disable',
+    CATERING_ORDERS_ENABLED: 'true', CATERING_DELIVERY_ENABLED: 'true', AUDIT_HMAC_SECRET: 'a'.repeat(32),
+    CSRF_SECRET: 'c'.repeat(32), OIDC_TRANSACTION_SECRET: 'o'.repeat(32),
+    ENTRA_CLIENT_ID: 'e0000000-0000-4000-8000-000000000001', ENTRA_CLIENT_SECRET: 'e'.repeat(32) });
+  const persistence = createPostgresPersistence(config);
+  let calls = 0;
+  const forbidden = () => { calls++; throw new Error('SYNTHETIC_PROVIDER_OPERATION_FORBIDDEN'); };
+  const microsoft365Client = Object.fromEntries(['lookupFreeBusy','adminConsentUrl','verifyBasePermissions','discoverRooms']
+    .map((method) => [method, forbidden]));
+  let runtime;
+  try {
+    runtime = createCustomerComposition({ config, persistence, microsoft365Client, logger: { lifecycle() {} } });
+    assert.equal(typeof runtime.start, 'function'); assert.equal(calls, 0);
+  } finally { if (runtime) await runtime.stop(); else await persistence.close(); }
 });

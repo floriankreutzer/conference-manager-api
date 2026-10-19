@@ -157,7 +157,11 @@ test('actual Customer execution retains intent, lease recovery, safe retry facts
   const storage = createPostgresPersistence(config); let storageClosed = false;
   async function closeStorage() { if (!storageClosed) { storageClosed = true; await storage.close(); } }
   t.after(closeStorage);
-  runtime = createCustomerComposition({ config, persistence: { ...storage, pool: customer,
+  let calendarCalls = 0;
+  const forbiddenCalendar = () => { calendarCalls++; throw new Error('SYNTHETIC_CALENDAR_OPERATION_FORBIDDEN'); };
+  const microsoft365Client = Object.fromEntries(['lookupFreeBusy','adminConsentUrl','verifyBasePermissions','discoverRooms']
+    .map((method) => [method, forbiddenCalendar]));
+  runtime = createCustomerComposition({ config, microsoft365Client, persistence: { ...storage, pool: customer,
     auditRepository: fixture.auditRepository, close: closeStorage }, logger: {
     lifecycle() {}, requestCompleted() {}, healthEvaluated() {}, securityOutcome() {}, unhandledError() {},
   } });
@@ -170,5 +174,6 @@ test('actual Customer execution retains intent, lease recovery, safe retry facts
   assert.equal((await state(startupJob)).status, 'deferred');
   assert.equal((await state(startupJob)).dispatch_attempts, 0);
   await runtime.stop(); assert.equal(storageClosed, true);
+  assert.equal(calendarCalls, 0);
   assert.equal(await fixture.auditRepository.verifyTenantChain(id(1)), true);
 });
