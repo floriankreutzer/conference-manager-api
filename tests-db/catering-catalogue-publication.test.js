@@ -73,7 +73,7 @@ test('actual Customer publication atomically fences reviewed content, ownership,
       return scoped;
     }
     const customer = rolePool(roles.customer); const platform = rolePool(roles.platform);
-    const fixture = await createCateringDeliveryFixture(pool,{ manualCatalogue: true });
+    const fixture = await createCateringDeliveryFixture(pool,{ manualCatalogue: true,pricedRoom: true });
     const manager = await fixture.sessionService.issue({ tenantId: fixture.tenantId,userId: id(20),roles: ['conference_manager'],
       permissions: ['tenant:catalogue:manage'],securityVersion: 1,
       providerIdentity: { provider: 'test_identity',reference: 'synthetic-publication-manager' } },{ correlationId: id(90) });
