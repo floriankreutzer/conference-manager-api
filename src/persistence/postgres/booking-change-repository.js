@@ -1,3 +1,5 @@
+import { cateringSnapshotRemainsPublishedWithClient,lockCateringPublishedOfferAuthorityWithClient
+} from './catering-published-offers.js';
 import { randomUUID } from 'node:crypto';
 import {
   normalizeBookingChange,
@@ -194,7 +196,11 @@ function calendarRestoration(value) {
   return Object.freeze(Object.fromEntries(keys.map((key) => [key, value[key]])));
 }
 
-export function createPostgresBookingChangeRepository(pool, { auditRepository } = {}) {
+export function createPostgresBookingChangeRepository(pool, {
+  auditRepository,requirePublishedCatering = false,cateringRegistry = null,
+} = {}) {
+  if (typeof requirePublishedCatering !== 'boolean') throw new TypeError('CATERING_PUBLICATION_POLICY_REQUIRED');
+  if (requirePublishedCatering && typeof cateringRegistry?.get !== 'function') throw new TypeError('CATERING_REGISTRY_REQUIRED');
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
   }
@@ -277,6 +283,7 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
           const authority = await resolveCurrentRequestCompositionWithClient(client, {
             tenantId,
             actorUserId: initiatorUserId,
+            requirePublishedCatering,cateringRegistry,
             schemaVersion,
             draft: proposal,
             operation: BOOKING_POLICY_OPERATION.CHANGE,
@@ -771,6 +778,12 @@ export function createPostgresBookingChangeRepository(pool, { auditRepository } 
           || request.version !== change.baseRequestVersion
           || (change.requestSchemaVersion === 1 && request.updatedAt !== change.baseRequestUpdatedAt)
         ) return Object.freeze({ status: 'conflict' });
+        if (requirePublishedCatering) {
+          await lockCateringPublishedOfferAuthorityWithClient(client,tenantId);
+          if (!await cateringSnapshotRemainsPublishedWithClient(client,{
+            tenantId,registry:cateringRegistry,snapshot:change.proposedRequestSnapshot,roomId:change.roomId,
+          })) return Object.freeze({status:'blocked'});
+        }
         const replacement = calendarReplacement === null
           ? null
           : normalizeBookingChangeCalendarReplacement(calendarReplacement);

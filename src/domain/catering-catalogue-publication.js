@@ -214,3 +214,11 @@ export function normalizeCateringCatalogueReviewCommand(value) {
   return Object.freeze({ ...command,expectedReviewRevision: revision(value.expectedReviewRevision,0),
     decision: value.decision,justification });
 }
+
+// Reuses the publication planner's closed retained-binding schema for readers.
+// The supplied immutable published catalogue is evidence, never current ownership.
+export function normalizeCateringCataloguePublicationBindings(value,catalogueValue) {
+  const bindings=previousBindings(value,normalizeTenantCatalogue(catalogueValue));
+  if (new Set(bindings.map((entry) => key(entry.kind,entry.sourceId))).size !== bindings.length) invalid();
+  return Object.freeze(bindings);
+}
