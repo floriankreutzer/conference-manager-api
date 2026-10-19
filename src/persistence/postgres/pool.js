@@ -27,7 +27,8 @@ const { Pool } = pg;
 // Schema 45 records content-free Request starts and explicit abandonment.
 // Schema 46 adds revisioned Catering integration configuration without activating providers.
 // Schema 52 adds local unsent withdrawal and immutable first-delivery routing.
-export const CURRENT_SCHEMA_VERSION = 52;
+// Schema 53 stores inactive Platform passkey credentials and browser-bound authentication ceremonies.
+export const CURRENT_SCHEMA_VERSION = 53;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

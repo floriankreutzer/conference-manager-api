@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
-import { createHash, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 import test from 'node:test';
-import { isoCBOR } from '@simplewebauthn/server/helpers';
+import { platformPasskeyFixture as fixture } from './support/platform-passkey-fixture.js';
 import { createPlatformPasskeyVerifier, PlatformPasskeyError } from '../src/platform/identity/passkey-verifier.js';
 import { architectureConsolidationBoundaryViolations } from '../scripts/check-module-boundaries.mjs';
 
@@ -11,43 +10,7 @@ const OPERATOR = '11111111-1111-4111-8111-111111111111';
 const OTHER = '22222222-2222-4222-8222-222222222222';
 const factory = () => createPlatformPasskeyVerifier({ publicOrigin: ORIGIN, environment: 'int' });
 const encoded = (value) => Buffer.from(value).toString('base64url');
-const hash = (value) => createHash('sha256').update(value).digest();
 
-function fixture() {
-  const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
-  const jwk = publicKey.export({ format: 'jwk' });
-  const cose = isoCBOR.encode(new Map([[1, 2], [3, -7], [-1, 1],
-    [-2, Buffer.from(jwk.x, 'base64url')], [-3, Buffer.from(jwk.y, 'base64url')]]));
-  const id = randomBytes(32);
-  const challenge = randomBytes(32).toString('base64url');
-  const userHandle = randomBytes(32).toString('base64url');
-  const credential = { id: encoded(id), publicKey: encoded(cose), counter: 0,
-    backupEligible: false, operatorId: OPERATOR, environment: 'int', userHandle };
-
-  function response(purpose, changes = {}) {
-    const data = Buffer.from(JSON.stringify({ type: purpose === 'create' ? 'webauthn.create' : 'webauthn.get',
-      origin: ORIGIN, challenge, crossOrigin: false, ...changes.client }));
-    const count = Buffer.alloc(4);
-    count.writeUInt32BE(changes.counter ?? (purpose === 'create' ? 0 : 1));
-    const flags = Buffer.from([changes.flags ?? (purpose === 'create' ? 0x45 : 0x05)]);
-    const prefix = [hash(changes.rpId || RP_ID), flags, count];
-    const envelope = { id: encoded(id), rawId: encoded(id), type: 'public-key', clientExtensionResults: {} };
-    if (purpose === 'create') {
-      const length = Buffer.alloc(2);
-      length.writeUInt16BE(id.length);
-      const authData = Buffer.concat([...prefix, Buffer.alloc(16), length, id, cose]);
-      return { ...envelope, response: { clientDataJSON: encoded(data), transports: ['internal'],
-        attestationObject: encoded(isoCBOR.encode(new Map([
-          ['fmt', changes.fmt || 'none'], ['attStmt', changes.attStmt || new Map()], ['authData', authData],
-        ]))) } };
-    }
-    const authData = Buffer.concat(prefix);
-    const signature = sign('sha256', Buffer.concat([authData, hash(data)]), privateKey);
-    return { ...envelope, response: { clientDataJSON: encoded(data), authenticatorData: encoded(authData),
-      signature: encoded(signature), userHandle } };
-  }
-  return { credential, challenge, userHandle, response };
-}
 
 test('server options require user verification, exact Platform RP, discoverable credentials and bounded credential lists', async () => {
   const verifier = factory();

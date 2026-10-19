@@ -30,6 +30,7 @@ const REAL_PRODUCTION_IDENTITY_AND_PROVIDER_MODULES = new Set([
   'src/platform-production-authentication.js',
   'src/platform/identity/entra-client.js',
   'src/platform/identity/passkey-verifier.js',
+  'src/persistence/postgres/platform-passkey-auth-repository.js',
   'src/platform/identity/entra-auth-service.js',
   'src/platform/identity/claim-policy.js',
   'src/platform/identity/identity-service.js',
@@ -175,7 +176,8 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
     }
     if (isInside(file, 'src/demo')) {
       const passkeyPath = firstReachablePath(graph, file,
-        (dependency) => dependency === 'src/platform/identity/passkey-verifier.js');
+        (dependency) => dependency === 'src/platform/identity/passkey-verifier.js'
+          || dependency === 'src/persistence/postgres/platform-passkey-auth-repository.js');
       if (passkeyPath) violations.push(violation(file,
         `Demo runtime must not reach real Platform passkey verification (${passkeyPath.join(' -> ')}).`));
     }

@@ -136,7 +136,7 @@ async function assertDirectCallsDenied(pool, role) {
 }
 
 test('migration 038 confines Request attribution SECURITY DEFINER execution to triggers', async (t) => {
-  assert.equal(CURRENT_SCHEMA_VERSION, 52);
+  assert.equal(CURRENT_SCHEMA_VERSION, 53);
   const pool = createPostgresPool(databaseConfig());
   t.after(async () => {
     try {
@@ -210,6 +210,7 @@ test('migration 038 confines Request attribution SECURITY DEFINER execution to t
   }]);
 
   assert.equal((await createPostgresPlatformProjectionRepository(pool).consumeBatch({ limit: 100 })).retryCount, 0);
+  assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
   assert.equal(await rollbackLatest(pool), true); // Empty version proposal schema051.
   assert.equal(await rollbackLatest(pool), true); // Empty manual delivery schema 050.

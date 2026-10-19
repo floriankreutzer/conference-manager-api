@@ -80,13 +80,13 @@ test('reviewed metrics upgrade preserves retained Demo data, excludes concurrent
   await assert.rejects(withDemoMetricsMigrationGate(pool, { ...expected, customer: 'cm_wrong_customer' }, upgrade), /PRECONDITIONS/);
   assert.equal(upgrades, 0);
   assert.deepEqual(await withDemoMetricsMigrationGate(pool, expected, upgrade), {
-    canonicalVersion: 52, demoVersion: 18, resetPerformed: false, retainedCountsMatch: true,
+    canonicalVersion: 53, demoVersion: 18, resetPerformed: false, retainedCountsMatch: true,
   });
   assert.equal(upgrades, 1);
   assert.equal((await raw.query('SELECT count(*)::integer AS count FROM tenants')).rows[0].count, 1);
   assert.equal((await withDemoMetricsMigrationGate(pool, expected, upgrade)).retainedCountsMatch, true);
   assert.equal(upgrades, 2);
-  for (const [table, version] of [['schema_migrations', 53], ['demo_schema_migrations', 19]]) {
+  for (const [table, version] of [['schema_migrations', 54], ['demo_schema_migrations', 19]]) {
     await raw.query(`INSERT INTO ${table}(version,name,checksum) VALUES ($1,'synthetic_future_schema',repeat('a',64))`, [version]);
     try {
       await assert.rejects(withDemoMetricsMigrationGate(pool, expected, upgrade), /PRECONDITIONS/);

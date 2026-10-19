@@ -16,7 +16,7 @@ const row = { tenant_id: tenantId, id: assetId, content_type: 'image/webp',
 
 function setup({ locked = row, restored = bytes, failure = false, includeDemoCatalogue = false,
   demoDiscard = false, identity = { database: 'conference_manager_demo_shared', role: 'cm_demo_migration',
-    schema_version: 52, overlay_version: 18, sentinel_count: '1' } } = {}) {
+    schema_version: 53, overlay_version: 18, sentinel_count: '1' } } = {}) {
   const events = [];
   const query = async (input) => {
     events.push(input);
@@ -142,10 +142,10 @@ test('Demo discard is a distinct port and cannot replace ordinary restore-bound 
 
 test('Demo discard rejects non-Demo identity and unknown schema before candidates or provider access', async () => {
   const valid = { database: 'conference_manager_demo_shared', role: 'cm_demo_migration',
-    schema_version: 52, overlay_version: 18, sentinel_count: '1' };
+    schema_version: 53, overlay_version: 18, sentinel_count: '1' };
   for (const identity of [null, ...[{ database: 'production' }, { role: 'cm_demo_customer' },
     { schema_version: 45 }, { schema_version: 46 }, { schema_version: 47 }, { schema_version: 48 },
-    { schema_version: 49 }, { schema_version: 50 }, { schema_version: 51 }, { schema_version: 53 },
+    { schema_version: 49 }, { schema_version: 50 }, { schema_version: 51 }, { schema_version: 52 }, { schema_version: 54 },
     { overlay_version: 8 }, { overlay_version: 11 },
     { overlay_version: 12 }, { overlay_version: 13 }, { overlay_version: 14 }, { overlay_version: 15 },
     { overlay_version: 16 }, { overlay_version: 17 }, { overlay_version: 19 },

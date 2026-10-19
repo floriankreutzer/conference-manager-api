@@ -10,7 +10,7 @@ the preceding plan to rely exclusively on Conditional Access contexts.
 Root `AGENTS.md` and the existing Platform authorization/session/audit contracts
 remain authoritative. The approved replacement is staged work, not an active
 login mode. Current compositions still enforce the existing Microsoft MFA and
-step-up contexts. This slice adds only an uncomposed cryptographic adapter;
+step-up contexts. This branch adds an uncomposed cryptographic adapter and durable authentication repository;
 neither configuration nor token validation accepts weaker assurance.
 
 ## Target trust flow — not yet composed
@@ -87,8 +87,8 @@ real signed protocol fixtures, not business authorization.
 
 ## Required work before activation
 
-- Versioned PostgreSQL credential/ceremony/bootstrap-grant persistence; atomic
-  single-use redemption, counter updates, expiry, attempt/rate limits and audits.
+- Independently authorized bootstrap-grant persistence and credential lifecycle/recovery services.
+  The authentication persistence described below does not authorize enrollment.
 - Bind every ceremony to environment, operator, purpose, initiating browser,
   exact active credential and current security version; additionally bind step-up
   to the current session and sensitive operation. Browser timeout is not expiry.
@@ -108,3 +108,47 @@ real signed protocol fixtures, not business authorization.
 
 References: https://simplewebauthn.dev/docs/packages/server and
 https://www.w3.org/TR/webauthn-3/.
+
+## Durable authentication repository — inactive until composition
+
+Migration053 adds separate Platform credential and authentication-ceremony tables.
+Only public keys, public credential identifiers, random handles, counters and backup
+flags are stored for credentials. No private key, raw session token or browser
+secret is stored. Credential identity/public key/owner/environment are immutable;
+revocation cannot be undone, counters cannot decrease and history cannot be deleted.
+A database trigger serializes enrollment capacity at five active keys per operator
+and environment. Adding or revoking a credential increments the existing operator
+security version, invalidating older sessions and pending ceremonies. Runtime
+lifecycle services must lock the operator before credentials and supply separate
+strong enrollment authority; there is deliberately no enrollment HTTP route here.
+
+`platform-passkey-auth-repository.js` creates database-clock ceremonies lasting
+60–300 seconds, bound to the initiating browser hash, exact operator/security
+version, environment, security epoch and purpose. Step-up also binds the current
+session and a server-computed operation hash. Primary Microsoft identity validation
+must happen before a future composition calls this port. Creating a record alone
+is not evidence of Microsoft authentication and grants no application authority.
+
+Creation is serialized per operator with a fixed-namespace advisory lock. Five
+unexpired records, including exhausted and completed ones, bound the number of
+ceremonies within their server-chosen 60–300 second lifetime. Each ceremony permits five verification attempts.
+Wrong browser or authority bindings cannot burn another browser's attempt budget.
+This bound supplements, and does not replace, HTTP/IP abuse controls at activation.
+
+Authentication locks current operator/session authority, the ceremony and the
+operator-owned credential. Real SDK signature verification runs against the locked
+counter. An invalid assertion commits the attempt and minimized denial audit.
+Success rechecks expiry and authority, consumes the ceremony and updates the counter
+with the success audit and injected session mutation in the same PostgreSQL
+transaction. Existing session repositories reuse this transaction. Audit/session
+failure rolls all changes back; concurrent redemption can succeed only once,
+including for authenticators whose signature counter stays zero. Returned proof
+context contains no cookie, role or browser-selected authority.
+
+The current repository has no registration, revocation or recovery endpoint and is
+not imported by the Platform composition. Synthetic signed fixtures and repository
+checks do not prove owner device enrollment or deployed INT behavior. Schema
+readiness advances to exact053/018; the Demo receives no privileges on these real
+Platform tables. Historical schema rollback tests explicitly drain the empty053
+migration before exercising their original guards. Populated053 rollback fails
+closed and requires a reviewed recovery/cutover plan; the current epoch is unchanged.

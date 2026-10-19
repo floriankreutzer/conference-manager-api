@@ -160,6 +160,7 @@ test('outbox commits atomically, rebuilds current state, survives lost notificat
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catering grants overlay 012.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Product-source overlay 011.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Lifecycle grants overlay 010.
+  assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
   assert.equal(await rollbackLatest(pool), true); // Empty version proposal schema051.
   assert.equal(await rollbackLatest(pool), true); // Empty manual delivery schema 050.
@@ -281,6 +282,7 @@ test('outbox commits atomically, rebuilds current state, survives lost notificat
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catering grants overlay 012.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
   assert.equal(await rollbackLatest(pool), true); // Empty version proposal schema051.
   assert.equal(await rollbackLatest(pool), true); // Empty manual delivery schema 050.

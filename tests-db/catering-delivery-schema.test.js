@@ -27,6 +27,7 @@ test('delivery schema fences actual Customer leases, immutable attempts and exac
   const url = new URL(database.databaseUrl); url.pathname = `/${name}`;
   pool = createPostgresPool({ mode: 'test', ...database, databaseUrl: url.toString(), databasePoolMax: 6 });
   await migrateUp(pool); assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
   assert.equal(await rollbackLatest(pool), true); // Empty version proposal schema051.
   assert.equal(await rollbackLatest(pool), true); // Empty manual facts schema050.
@@ -215,6 +216,7 @@ test('delivery schema fences actual Customer leases, immutable attempts and exac
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Unsent grants018 before schema052.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Version grants overlay017.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Revoke overlay016 before recreating its tables.
+  assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
   assert.equal(await rollbackLatest(pool), true); // Empty version proposal schema051.
   assert.equal(await rollbackLatest(pool), true); // Empty manual facts schema050.
@@ -233,6 +235,7 @@ test('delivery schema fences actual Customer leases, immutable attempts and exac
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Unsent grants018 before schema052.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Version grants overlay017.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Revoke overlay016 before recreating its tables.
+  assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
   assert.equal(await rollbackLatest(pool), true); // Empty version proposal schema051.
   assert.equal(await rollbackLatest(pool), true); // Empty manual facts schema050.
@@ -261,6 +264,7 @@ test('delivery schema fences actual Customer leases, immutable attempts and exac
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Version grants overlay017.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Manual grants overlay016.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Delivery grants overlay015.
+  assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
   assert.equal(await rollbackLatest(pool), true); // Empty version proposal schema051.
   assert.equal(await rollbackLatest(pool), true); // Empty manual facts schema050.

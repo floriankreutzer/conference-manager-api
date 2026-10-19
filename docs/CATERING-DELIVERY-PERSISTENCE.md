@@ -4,7 +4,7 @@
 
 Canonical migration 049 and Demo overlay 015 define scoped delivery job, immutable dispatch-intent and immutable
 observation tables. Runtime readiness, operator wrappers, migration inventories and reset require
-exact 52/18 after the unsent-order extension. Installation and reset enqueue or dispatch no orders and change no existing order data.
+exact 53/18 after the Platform passkey storage extension. Installation and reset enqueue or dispatch no orders and change no existing order data.
 The original049 schema introduced no worker composition or external delivery. Subsequent
 reviewed increments compose explicit enqueue, manual facts and an awake-process worker;
 see [delivery execution](CATERING-JOB-EXECUTION.md) and [unsent orders](CATERING-UNSENT-ORDERS.md).

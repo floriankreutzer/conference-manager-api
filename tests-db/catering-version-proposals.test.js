@@ -49,6 +49,7 @@ test('actual Customer reviewed versions retain the confirmed order until replace
   assert.equal(await isPostgresSchemaReady(pool), true);
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Unsent grants018.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
   assert.equal(await rollbackLatest(pool), true); assert.equal(await isPostgresSchemaReady(pool), false);
   await migrateUp(pool); await migrateDemoUp(pool, { roles });
