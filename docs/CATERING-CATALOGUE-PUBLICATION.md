@@ -1,4 +1,30 @@
-# Provider catalogue publication — unpublished preparation
+# Provider catalogue publication custody and Manager interface
+
+## Current accepted foundation and candidate interface
+
+API#230 merged asbe04a087bb64316969dddb20db6541db6ee87ffb, canonical055/Demo021.
+Exact candidatec59196fa / tree0c7b6247 passed all nine required checks: complete
+CI39325694885 quality/PostgreSQL18.6/four permanent Chromium+WebKit x objects+
+PostgreSQL matrices, and secret/dependency/source gates. Actual SQL publication,
+full300/100/20 empty-assignment capacity, source custody, every role/function
+privilege, replay/CAS/audit rollback/history/retirement/reset and the complete
+legacy suite passed. Three failed preparation runs below remain historical.
+The accepted foundation had no HTTP publication caller. Source UI#358 separately
+merged as287b4f13 after all eight current-head checks,482 full browser cases,
+shared roles/Tenant/CSRF, actual200% Chromium zoom and both three-customer/two-reset
+cases. Neither source acceptance changes deployed immutable counterparts.
+
+This branch adds default-off Manager publication/rejection HTTP and bounded
+review context/history. Complete local1646 native+Customer DAST+17Platform,
+focused17 and lint/style checks passed; the actual new cookie/SQL read/POST and
+400-binding tests are prepared. All exact-head PostgreSQL/browser/security gates
+remain required before HTTP acceptance. No publication browser form, Employee
+filter, availability, automatic ordering, provider qualification or release is
+accepted by this candidate. Historical preparation statements below are retained
+as dated evidence; this section defines current accepted versus candidate scope.
+
+## Historical preparation and dated evidence
+
 
 Work in progress for application#233, dependent on source intake054/Demo020.
 Draft055/Demo021 publication SQL, exact readiness and role/reset integration
