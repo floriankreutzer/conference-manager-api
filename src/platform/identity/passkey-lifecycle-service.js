@@ -20,6 +20,7 @@ export function createPlatformPasskeyLifecycleService({ authService, sessionServ
     throw new TypeError('PLATFORM_PASSKEY_CONFIGURATION_INVALID');
   }
   function principal(value) {
+    if (value === null || value === undefined) reject();
     const current = normalizePlatformPrincipal(value);
     if (current.session.securityEpoch !== securityEpoch) reject();
     return current;

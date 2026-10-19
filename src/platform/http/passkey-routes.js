@@ -181,7 +181,7 @@ export const platformPasskeyRoutes = definePlatformRouteModule({
         sendPlatformJson(response, 200, { ...payload, requestId }, maxResponseBytes); return 200;
       } catch (error) {
         if (!['PlatformIdentityError','PlatformPasskeyError'].includes(error?.name)) throw error;
-        if (request.method === 'POST') {
+        if (request.method === 'POST' || managed) {
           const event = principal ? platformAuditService.createDeniedEvent({ principal,
             action: 'platform.authorization.denied', targetType: 'platform_passkey_operation', targetId: 'request',
             metadata: { reasonCode: 'passkey_rejected' }, correlationId: requestId })
