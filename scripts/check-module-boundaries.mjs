@@ -26,6 +26,7 @@ const REAL_PRODUCTION_IDENTITY_AND_PROVIDER_MODULES = new Set([
   'src/identity/provider-identity-resolver.js',
   'src/identity/jit-user-service.js',
   'src/integrations/microsoft365-client.js',
+  'src/integrations/resend-email-client.js',
   'src/integrations/microsoft365-calendar-provider.js',
   'src/platform-production-authentication.js',
   'src/platform/identity/entra-client.js',
@@ -147,6 +148,14 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
   }
 
   for (const file of graph.keys()) {
+    if (isInside(file, 'src/demo')) {
+      const emailPath = firstReachablePath(graph, file,
+        (dependency) => dependency === 'src/integrations/resend-email-client.js');
+      if (emailPath && emailPath.length > 2) {
+        violations.push(violation(file,
+          `Demo runtime must not import Production identity/provider implementation through an intermediary (${emailPath.join(' -> ')}).`));
+      }
+    }
     const customerDemo = demoSurfaceFile(file, 'customer');
     const platformDemo = demoSurfaceFile(file, 'platform');
     if (!customerDemo && !platformDemo) continue;
