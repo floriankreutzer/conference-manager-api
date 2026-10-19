@@ -162,6 +162,7 @@ test('default-off Customer HTTP does not expose the configuration route', async 
   t.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
   assert.equal((await request(server.address().port)).status, 404);
   assert.equal((await request(server.address().port, { path: '/api/v1/integrations/catering' })).status, 404);
+  assert.equal((await request(server.address().port, { path: PATH.replace('/configuration','/health') })).status, 404);
   for (const path of ['/api/v1/tenant/catering/catalogue-assignments', '/api/v1/tenant/catering/catalogue-connections']) {
     assert.equal((await request(server.address().port, { path })).status, 404);
   }
