@@ -10,6 +10,7 @@ import {
 import { normalizeCateringConfiguration } from '../../integrations/catering-configuration.js';
 import { loadCateringOrderSourceWithClient, readCateringOrderWithClient } from './catering-order-source.js';
 import { withPostgresTransaction } from './transaction.js';
+import { lockCateringManager as lockActor } from './catering-manager-session.js';
 
 const MODES = ['catalogue','availability','order','update','cancel','status'];
 const result = (status, extra = {}) => Object.freeze({ status, ...extra });
@@ -30,21 +31,6 @@ function actor(input) {
   if (!(input.changedAt instanceof Date) || !Number.isFinite(input.changedAt.getTime())
     || typeof input.auditEventFor !== 'function') throw new TypeError('CATERING_ORDER_WRITE_CONTEXT_INVALID');
   return normalized;
-}
-async function lockActor(client, input) {
-  const tenant = await client.query({ name: 'catering-order-tenant-lock',
-    text: "SELECT id FROM tenants WHERE id=$1 AND status='active' FOR UPDATE", values: [input.tenantId] });
-  if (tenant.rowCount !== 1) return false;
-  const user = await client.query({ name: 'catering-order-actor-lock',
-    text: 'SELECT id FROM users WHERE tenant_id=$1 AND id=$2 AND active=true AND security_version=$3 FOR SHARE',
-    values: [input.tenantId, input.actorUserId, input.expectedSecurityVersion] });
-  if (user.rowCount !== 1) return false;
-  const session = await client.query({ name: 'catering-order-session-lock',
-    text: `SELECT id FROM sessions WHERE tenant_id=$1 AND user_id=$2 AND id=$3 AND principal_version=$4
-      AND revoked_at IS NULL AND expires_at>clock_timestamp() AND roles @> ARRAY['conference_manager']::text[]
-      AND permissions @> ARRAY['request:manage']::text[] FOR SHARE`,
-    values: [input.tenantId, input.actorUserId, input.sessionId, input.expectedSecurityVersion] });
-  return session.rowCount === 1;
 }
 async function currentRequest(client, tenantId, requestId) {
   if (!isRequestId(requestId)) throw new TypeError('CATERING_ORDER_REQUEST_INVALID');
