@@ -39,7 +39,9 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
   pool = createPostgresPool({ mode: 'test', ...database, databaseUrl: url.toString(), databasePoolMax: 6 });
   await migrateUp(pool); await migrateDemoUp(pool, { roles });
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Version grants017.
   await rollbackLatestDemoMigration(pool, { roles });
+  assert.equal(await rollbackLatest(pool), true); // Empty version schema051.
   assert.equal(await rollbackLatest(pool), true); assert.equal(await isPostgresSchemaReady(pool), false);
   await migrateUp(pool); await migrateDemoUp(pool, { roles });
   const fixture = await createCateringDeliveryFixture(pool, { extraCount: 1 });
@@ -215,6 +217,9 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
   for (const table of ['catering_manual_delivery_facts','catering_manual_delivery_heads']) {
     assert.equal((await pool.query(`SELECT count(*)::integer AS n FROM ${table}`)).rows[0].n, 0);
   }
-  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Version grants017.
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty version schema051.
+  assert.equal(await rollbackLatest(pool), true);
   await migrateUp(pool); await migrateDemoUp(pool, { roles }); assert.equal(await isPostgresSchemaReady(pool), true);
 });

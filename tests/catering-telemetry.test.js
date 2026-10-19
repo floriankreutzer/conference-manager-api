@@ -1,3 +1,4 @@
+import { cateringVersionRouteKey } from '../src/http/catering-order-versions.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createMetricsRegistry } from '../src/observability/metrics.js';
@@ -16,13 +17,14 @@ test('all closed Catering routes retain bounded completion metrics without objec
     cateringCatalogueAssignmentRouteKey(`${root}/catalogue-connections`),
     ...['',`/${ID}`,`/${ID}/quote`,`/${ID}/decision`].map((suffix) => cateringOrderRouteKey(`${root}/orders${suffix}`)),
     ...['',`/${ID}`].map((suffix) => cateringDeliveryRouteKey(`${root}/delivery-jobs${suffix}`)),
-    cateringManualRouteKey(`${root}/orders/${ID}/manual-delivery`)];
+    cateringManualRouteKey(`${root}/orders/${ID}/manual-delivery`),
+    cateringVersionRouteKey(`${root}/orders/${ID}/versions`)];
   const metrics = createMetricsRegistry();
   for (const route of keys) {
     assert.equal(typeof route, 'string');
     metrics.recordApiRequest({ route, method: 'GET', statusCode: 200, durationMs: 1 });
   }
   const snapshot = JSON.stringify(metrics.snapshot());
-  assert.equal(metrics.snapshot().counters.length, 11); assert.doesNotMatch(snapshot, new RegExp(ID));
+  assert.equal(metrics.snapshot().counters.length, 12); assert.doesNotMatch(snapshot, new RegExp(ID));
   assert.throws(() => metrics.recordApiRequest({ route: `catering_delivery_${ID}`, method: 'GET', statusCode: 200, durationMs: 1 }));
 });
