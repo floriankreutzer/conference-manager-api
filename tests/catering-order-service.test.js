@@ -39,7 +39,7 @@ function fixture() {
       view.state = { revision: previous + 1, status: 'pending_manager_review', updatedAt: input.changedAt.toISOString() };
       view.quote = { revision: input.expectedQuoteRevision + 1, cost: input.cost, expiresAt: input.expiresAt, expired: false };
       view.decision = null;
-      events.push(input.auditEventFor({ orderId: snapshot.orderId, version: 1, previousRevision: previous,
+      events.push(input.auditEventFor({ orderId: snapshot.orderId, version: view.snapshot.orderVersion, previousRevision: previous,
         revision: view.state.revision, status: view.state.status, quoteRevision: view.quote.revision,
         amountMinor: input.cost.amountMinor, currency: input.cost.currency }));
       return { status: 'quoted', current: view };
@@ -51,7 +51,7 @@ function fixture() {
         updatedAt: input.changedAt.toISOString() };
       view.decision = { sequence: 1, decision: input.decision, quoteRevision: view.quote.revision, cost: view.quote.cost,
         deciderUserId: input.actorUserId, securityVersion: input.expectedSecurityVersion };
-      events.push(input.auditEventFor({ orderId: snapshot.orderId, version: 1, previousRevision: previous,
+      events.push(input.auditEventFor({ orderId: snapshot.orderId, version: view.snapshot.orderVersion, previousRevision: previous,
         revision: view.state.revision, status: view.state.status, quoteRevision: view.quote.revision,
         amountMinor: view.quote.cost.amountMinor, currency: view.quote.cost.currency, decision: input.decision }));
       return { status: 'decided', current: view };
@@ -179,4 +179,36 @@ test('collection reads are bounded, strictly scoped and reject corrupt or inacce
     const service = f.make({ repository: { ...f.repository, list: async () => pageValue } });
     await assert.rejects(service.list(context()));
   }
+});
+
+test('quote and decision bind an explicit order version while legacy writes remain scoped to initial version one', async () => {
+  const legacy = fixture(); await legacy.service.recordQuote(legacy.quote());
+  assert.equal(legacy.calls.at(-1).input.expectedOrderVersion, 1);
+  const next = fixture(); next.view.snapshot = { ...next.snapshot, orderVersion: 2 };
+  await next.service.recordQuote({ ...next.quote(), expectedOrderVersion: 2 });
+  assert.equal(next.calls.at(-1).input.expectedOrderVersion, 2);
+  await next.service.decide({ ...next.decide(), expectedOrderVersion: 2 });
+  assert.equal(next.calls.at(-1).input.expectedOrderVersion, 2);
+  assert.deepEqual(next.events.map((event) => event.newState.version), [2,2]);
+  for (const expectedOrderVersion of [0, '2', Number.MAX_SAFE_INTEGER]) {
+    const f = fixture();
+    await assert.rejects(f.service.recordQuote({ ...f.quote(), expectedOrderVersion })); assert.equal(f.calls.length, 0);
+    await assert.rejects(f.service.decide({ ...f.decide(), expectedOrderVersion })); assert.equal(f.calls.length, 0);
+  }
+});
+
+test('a same-revision response from another order version cannot acknowledge a quote or decision', async () => {
+  const quote = fixture(); quote.view.snapshot = { ...quote.snapshot, orderVersion: 2 };
+  await assert.rejects(quote.service.recordQuote(quote.quote()), /CATERING_ORDER_RESULT_INVALID/);
+  const decision = fixture(); decision.view.snapshot = { ...decision.snapshot, orderVersion: 2 };
+  await decision.service.recordQuote({ ...decision.quote(), expectedOrderVersion: 2 });
+  await assert.rejects(decision.service.decide(decision.decide()), /CATERING_ORDER_RESULT_INVALID/);
+});
+
+test('historical order reads cannot receive another version from the persistence port', async () => {
+  const f = fixture(); assert.equal((await f.service.load({ ...context(), orderId: f.snapshot.orderId, orderVersion: 1 }))
+    .order.orderVersion, 1);
+  assert.equal(f.calls.at(-1).input.orderVersion, 1);
+  await assert.rejects(f.service.load({ ...context(), orderId: f.snapshot.orderId, orderVersion: 2 }), /INVALID/);
+  await assert.rejects(f.service.load({ ...context(), orderId: f.snapshot.orderId, orderVersion: 0 }));
 });

@@ -1,3 +1,4 @@
+import { readCurrentCateringConnectionWithClient as connection } from './catering-current-connection.js';
 import { randomUUID } from 'node:crypto';
 import { isInternalUuid } from '../../domain/identifiers.js';
 import { isRequestId } from '../../domain/request.js';
@@ -7,12 +8,10 @@ import { evaluateCateringOrderRelease } from '../../domain/catering-order-releas
 import {
   canDecideCateringOrderQuote, canRecordCateringOrderQuote, capabilityForCateringOrderOperation,
 } from '../../domain/catering-order-state.js';
-import { normalizeCateringConfiguration } from '../../integrations/catering-configuration.js';
 import { loadCateringOrderSourceWithClient, readCateringOrderWithClient } from './catering-order-source.js';
 import { withPostgresTransaction } from './transaction.js';
 import { lockCateringManager as lockActor } from './catering-manager-session.js';
 
-const MODES = ['catalogue','availability','order','update','cancel','status'];
 const result = (status, extra = {}) => Object.freeze({ status, ...extra });
 function counter(value, minimum = 1) {
   if (!Number.isSafeInteger(value) || value < minimum || value >= Number.MAX_SAFE_INTEGER) {
@@ -38,18 +37,6 @@ async function currentRequest(client, tenantId, requestId) {
     text: 'SELECT request_version,status FROM requests WHERE tenant_id=$1 AND id=$2 FOR UPDATE', values: [tenantId, requestId] });
   return rows.rows[0] ?? null;
 }
-async function connection(client, tenantId, integrationId, registry) {
-  const rows = await client.query({ name: 'catering-order-current-connection-lock',
-    text: `SELECT configuration.*,integration.provider,integration.status FROM catering_integration_configurations configuration
-      JOIN integrations integration ON integration.tenant_id=configuration.tenant_id AND integration.id=configuration.integration_id
-      WHERE configuration.tenant_id=$1 AND configuration.integration_id=$2 FOR SHARE OF configuration,integration`,
-    values: [tenantId, integrationId] });
-  if (rows.rowCount !== 1) return null;
-  const row = rows.rows[0];
-  const configuration = normalizeCateringConfiguration({ initialOrderMode: row.initial_order_mode,
-    capabilities: Object.fromEntries(MODES.map((name) => [`catering.${name}`, row[`${name}_mode`]])) }, registry.get(row.provider));
-  return ['configured','active'].includes(row.status) ? { ...configuration, revision: counter(Number(row.revision)) } : null;
-}
 async function appendAudit(client, repository, input, orderId, action, values) {
   const event = input.auditEventFor(values);
   if (event?.tenantId !== input.tenantId || event.actorUserId !== input.actorUserId || event.targetType !== 'catering_order'
@@ -67,19 +54,27 @@ export function createPostgresCateringOrderRepository(pool, { registry, auditRep
   if (!registry || typeof registry.get !== 'function') throw new TypeError('PROVIDER_REGISTRY_REQUIRED');
   if (!auditRepository || typeof auditRepository.appendWithClient !== 'function') throw new TypeError('AUDIT_REPOSITORY_REQUIRED');
   if (typeof idFactory !== 'function') throw new TypeError('ID_FACTORY_REQUIRED');
-  async function detail(client, tenantId, orderId, lock = false) {
-    return readCateringOrderWithClient(client, { tenantId, orderId, registry, lock });
+  async function detail(client, tenantId, orderId, lock = false, version = null) {
+    return readCateringOrderWithClient(client, { tenantId, orderId, registry, lock, version });
   }
   async function writable(client, input) {
     if (!await lockActor(client, input)) return result('not_authorized');
     const view = await detail(client, input.tenantId, uuid(input.orderId), true);
     if (!view) return result('not_found');
+    if (view.snapshot.orderVersion !== counter(input.expectedOrderVersion ?? 1)) return result('state_conflict');
     if (view.state.revision !== counter(input.expectedStateRevision)) {
       return result('state_conflict', { currentRevision: view.state.revision });
     }
     const request = await currentRequest(client, input.tenantId, view.snapshot.requestId);
-    if (!request || Number(request.request_version) !== view.snapshot.requestVersion || request.status !== 'Confirmed') {
-      return result('request_conflict');
+    if (!request) return result('request_conflict');
+    if (view.operation === 'initial') {
+      if (Number(request.request_version) !== view.snapshot.requestVersion || request.status !== 'Confirmed') {
+        return result('request_conflict');
+      }
+    } else {
+      const current = await client.query('SELECT catering_order_source_current($1,$2,$3) AS valid',
+        [input.tenantId,input.orderId,view.snapshot.orderVersion]);
+      if (current.rows[0]?.valid !== true) return result('request_conflict');
     }
     const configured = await connection(client, input.tenantId, view.snapshot.integrationId, registry);
     const capability = capabilityForCateringOrderOperation(view.operation);
@@ -87,8 +82,9 @@ export function createPostgresCateringOrderRepository(pool, { registry, auditRep
     return { view, configured };
   }
   return Object.freeze({
-    load({ tenantId, orderId }) {
-      return withPostgresTransaction(pool, (client) => detail(client, uuid(tenantId), uuid(orderId)), {
+    load({ tenantId, orderId, orderVersion = null }) {
+      if (orderVersion !== null) counter(orderVersion);
+      return withPostgresTransaction(pool, (client) => detail(client, uuid(tenantId), uuid(orderId), false, orderVersion), {
         isolationLevel: 'REPEATABLE READ', readOnly: true,
       });
     },
@@ -200,7 +196,9 @@ export function createPostgresCateringOrderRepository(pool, { registry, auditRep
         const loaded = await writable(client, input);
         if (loaded.status) return loaded;
         const { view, configured } = loaded;
-        if (configured.capabilities['catering.order'] !== 'manual') return result('manual_quote_not_supported');
+        if (configured.capabilities[capabilityForCateringOrderOperation(view.operation)] !== 'manual') {
+          return result('manual_quote_not_supported');
+        }
         if (!canRecordCateringOrderQuote(view.state.status, view.decision?.decision)) return result('delivery_in_progress');
         const currentQuote = view.quote?.revision ?? 0;
         if (currentQuote !== input.expectedQuoteRevision) return result('quote_conflict', { currentRevision: currentQuote });

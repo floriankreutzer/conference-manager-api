@@ -19,7 +19,9 @@ import { cateringId as id, cateringOrderFixture } from '../../tests/support/cate
 
 // Real application/session/audit preparation. Only the future Confirmed Request
 // is controlled SQL test setup; no supplier, calendar or live order is created.
-export async function createCateringDeliveryFixture(pool, { registry = createCateringConfigurationRegistry(), extraCount = 0 } = {}) {
+export async function createCateringDeliveryFixture(pool, {
+  registry = createCateringConfigurationRegistry(), extraCount = 0, reviewOperations = false,
+} = {}) {
   const authorizationPolicy = createAuthorizationPolicy();
   const auditRepository = createPostgresAuditRepository(pool, { hmacSecret: 'a'.repeat(32) });
   const auditService = createAuditService({ repository: auditRepository, authorizationPolicy });
@@ -46,7 +48,8 @@ export async function createCateringDeliveryFixture(pool, { registry = createCat
       actorUserId: id(30), sessionId: admin.principal.session.id, expectedSecurityVersion: 1,
       expectedRevision, changedAt: new Date(), correlationId: id(90),
       configuration: { initialOrderMode: 'manager_review', capabilities: enabled ? {
-        'catering.order': mode, ...(mode === 'api' ? { 'catering.status': 'api' } : {}),
+        'catering.order': mode, ...(reviewOperations ? { 'catering.update': mode, 'catering.cancel': mode } : {}),
+        ...(mode === 'api' ? { 'catering.status': 'api' } : {}),
       } : {} },
       auditEventFor({ revision }) { return auditService.createEvent({ ...context(admin), action: 'tenant.configuration.changed',
         targetType: 'integration', targetId: id(3), previousState: { revision: expectedRevision }, newState: { revision },

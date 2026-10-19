@@ -10,9 +10,10 @@ const SCHEMAS = Object.freeze({
     expectedRequestVersion: Number.isSafeInteger, expectedAssignmentRevision: Number.isSafeInteger }, optional: {} },
   quote: { required: { schemaVersion: Number.isSafeInteger, expectedStateRevision: Number.isSafeInteger,
     expectedQuoteRevision: Number.isSafeInteger, cost: (value) => value !== null && typeof value === 'object' && !Array.isArray(value),
-    expiresAt: (value) => typeof value === 'string' }, optional: {} },
+    expiresAt: (value) => typeof value === 'string' }, optional: { expectedOrderVersion: Number.isSafeInteger } },
   decision: { required: { schemaVersion: Number.isSafeInteger, expectedStateRevision: Number.isSafeInteger,
-    expectedQuoteRevision: Number.isSafeInteger, decision: (value) => ['approved','rejected'].includes(value) }, optional: {} },
+    expectedQuoteRevision: Number.isSafeInteger, decision: (value) => ['approved','rejected'].includes(value) },
+    optional: { expectedOrderVersion: Number.isSafeInteger } },
 });
 function resource(path) {
   if (path === ROOT) return { kind: 'collection', orderId: null };
@@ -62,11 +63,16 @@ export function createCateringOrderHttpHandler({ service = null, principalGuard,
       const parameters = Object.fromEntries(query);
       value = await service.list({ ...context, afterOrderId: parameters.afterOrderId ?? null, requestId: parameters.requestId ?? null });
     } else {
-      if (query.length > 0) throw new ApiError(400, 'VALIDATION_FAILED');
       if (selected.kind === 'detail') {
+        if (query.length > 1 || query.some(([key, entry]) => key !== 'orderVersion' || !/^[1-9]\d{0,15}$/u.test(entry)
+          || !Number.isSafeInteger(Number(entry)) || Number(entry) >= Number.MAX_SAFE_INTEGER)) {
+          throw new ApiError(400, 'VALIDATION_FAILED');
+        }
         await emptyBody(request);
-        value = await service.load({ ...context, orderId: selected.orderId });
+        value = await service.load({ ...context, orderId: selected.orderId,
+          ...(query.length === 0 ? {} : { orderVersion: Number(query[0][1]) }) });
       } else {
+        if (query.length > 0) throw new ApiError(400, 'VALIDATION_FAILED');
         const command = selected.kind === 'collection' ? 'prepare' : selected.kind;
         const body = validateExactObject(await readJsonObjectBody(request, { maxBytes: Math.min(maxBodyBytes, 4096) }), SCHEMAS[command]);
         if (command === 'prepare') value = await service.prepare({ ...context, ...body });

@@ -111,3 +111,19 @@ test('guard denial and unknown route spelling cannot reach order operations or i
   }
   assert.equal(cateringOrderRouteKey(`${ROOT}/${id(8)}/quote`), 'catering_order_quote');
 });
+
+test('historical reads and quote decisions carry canonical explicit order-version selectors', async () => {
+  const f = fixture(); assert.equal(await (await f.invoke('GET', `${ROOT}/${id(8)}?orderVersion=2`)).pending, 200);
+  assert.equal(f.calls[0].input.orderVersion, 2);
+  for (const selector of ['0','01','1e2','9007199254740991','2&orderVersion=3']) {
+    await assert.rejects((await f.invoke('GET', `${ROOT}/${id(8)}?orderVersion=${selector}`)).pending,
+      (error) => error.statusCode === 400);
+  }
+  const quote = { schemaVersion: 1, expectedOrderVersion: 2, expectedStateRevision: 1, expectedQuoteRevision: 0,
+    cost: { amountMinor: 1500, currency: 'EUR' }, expiresAt: '2026-10-20T10:00:00.000Z' };
+  assert.equal(await (await f.invoke('PUT', `${ROOT}/${id(8)}/quote`, quote)).pending, 200);
+  assert.equal(f.calls.at(-1).input.expectedOrderVersion, 2);
+  assert.equal(await (await f.invoke('POST', `${ROOT}/${id(8)}/decision`, { schemaVersion: 1, expectedOrderVersion: 2,
+    expectedStateRevision: 2, expectedQuoteRevision: 1, decision: 'approved' })).pending, 200);
+  assert.equal(f.calls.at(-1).input.expectedOrderVersion, 2);
+});

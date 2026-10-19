@@ -57,7 +57,8 @@ test('manual and API receipts share one pure domain value contract behind the un
     'src/persistence/postgres/manual-repository.js': "import '../../domain/catering-manual-contract.js';",
     'src/application/manual-service.js': "import '../domain/catering-manual-contract.js';",
   }), []);
-  for (const file of ['src/domain/catering-receipt.js','src/domain/catering-receipt-state.js','src/domain/catering-manual-contract.js']) {
+  for (const file of ['src/domain/catering-receipt.js','src/domain/catering-receipt-state.js','src/domain/catering-manual-contract.js',
+    'src/domain/catering-version-proposal.js']) {
     for (const source of ["import sdk from '@azure/msal-node';", "import '../application/service.js';",
       "import '../integrations/catering-contract.js';", "import('./identifiers.js');", "fetch('https://untrusted.invalid');",
       'const config = process.env;', 'const scope = globalThis;']) {

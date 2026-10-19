@@ -152,9 +152,12 @@ export function createCateringOrderService({ repository, registry, authorization
     async load(context) {
       const authorized = await authorize(context, 'catering_order_read');
       const orderId = input(() => uuid(context.orderId));
-      const view = await repository.load({ tenantId: authorized.tenantContext.tenantId, orderId });
+      const orderVersion = input(() => context.orderVersion == null ? null : counter(context.orderVersion));
+      const view = await repository.load({ tenantId: authorized.tenantContext.tenantId, orderId, orderVersion });
       if (!view) throw new AuthorizationDeniedError('RESOURCE_NOT_AVAILABLE', { conceal: true });
-      return publicView(view, authorized.tenantContext.tenantId, orderId);
+      const current = publicView(view, authorized.tenantContext.tenantId, orderId);
+      if (orderVersion !== null && current.order.orderVersion !== orderVersion) invalid();
+      return current;
     },
     async list(context) {
       const authorized = await authorize(context, 'catering_order_list');
@@ -198,7 +201,7 @@ export function createCateringOrderService({ repository, registry, authorization
       const authorized = await writeContext(context, 'catering_order_quote', AUDIT_ACTION.CATERING_ORDER_QUOTED);
       const command = input(() => {
         schema(context.schemaVersion);
-        return { orderId: uuid(context.orderId),
+        return { orderId: uuid(context.orderId), expectedOrderVersion: counter(context.expectedOrderVersion ?? 1),
           expectedStateRevision: counter(context.expectedStateRevision, 1, Number.MAX_SAFE_INTEGER - 2),
           expectedQuoteRevision: counter(context.expectedQuoteRevision, 0, Number.MAX_SAFE_INTEGER - 2),
           cost: normalizeCateringOrderTotal(context.cost), expiresAt: instant(context.expiresAt) };
@@ -206,7 +209,8 @@ export function createCateringOrderService({ repository, registry, authorization
       const saved = await outcome(await repository.recordQuote({ ...authorized, ...command }), authorized,
         'catering_order_quote', 'quoted');
       const current = publicView(saved.current, authorized.tenantId, command.orderId);
-      if (current.state.revision !== command.expectedStateRevision + 1 || current.state.status !== 'pending_manager_review'
+      if (current.order.orderVersion !== command.expectedOrderVersion
+        || current.state.revision !== command.expectedStateRevision + 1 || current.state.status !== 'pending_manager_review'
         || current.quote?.revision !== command.expectedQuoteRevision + 1 || current.decision !== null
         || current.quote.cost.amountMinor !== command.cost.amountMinor || current.quote.cost.currency !== command.cost.currency
         || current.quote.expiresAt !== command.expiresAt) invalid();
@@ -217,7 +221,7 @@ export function createCateringOrderService({ repository, registry, authorization
       const command = input(() => {
         schema(context.schemaVersion);
         if (!['approved','rejected'].includes(context.decision)) invalid();
-        return { orderId: uuid(context.orderId),
+        return { orderId: uuid(context.orderId), expectedOrderVersion: counter(context.expectedOrderVersion ?? 1),
           expectedStateRevision: counter(context.expectedStateRevision, 1, Number.MAX_SAFE_INTEGER - 2),
           expectedQuoteRevision: counter(context.expectedQuoteRevision), decision: context.decision };
       });
@@ -225,7 +229,8 @@ export function createCateringOrderService({ repository, registry, authorization
       if (saved.current?.decision?.deciderUserId !== authorized.actorUserId
         || saved.current?.decision?.securityVersion !== authorized.expectedSecurityVersion) invalid();
       const current = publicView(saved.current, authorized.tenantId, command.orderId);
-      if (current.state.revision !== command.expectedStateRevision + 1
+      if (current.order.orderVersion !== command.expectedOrderVersion
+        || current.state.revision !== command.expectedStateRevision + 1
         || current.state.status !== (command.decision === 'approved' ? 'released' : 'rejected')
         || current.quote?.revision !== command.expectedQuoteRevision || current.decision?.decision !== command.decision
         || current.decision.quoteRevision !== command.expectedQuoteRevision) invalid();

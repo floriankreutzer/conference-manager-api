@@ -1,3 +1,4 @@
+import { readEffectiveCateringVersionWithClient } from './catering-effective-version.js';
 import { isInternalUuid } from '../../domain/identifiers.js';
 import { cateringOrderStateFromReceipt } from '../../domain/catering-receipt-state.js';
 import { normalizeCateringManualCommand, normalizeCateringManualFact } from '../../domain/catering-manual-contract.js';
@@ -38,25 +39,6 @@ export function createPostgresCateringManualDeliveryRepository(pool, { registry,
   if (!registry || typeof registry.get !== 'function' || typeof auditRepository?.appendWithClient !== 'function') {
     throw new TypeError('CATERING_MANUAL_PERSISTENCE_PORT_REQUIRED');
   }
-  async function effective(client, tenantId, orderId) {
-    // Immutable complete confirmations, not the latest proposed head, determine
-    // the effective version. No migration backfill or writable pointer is needed.
-    const rows = await client.query(`SELECT history.version,history.operation FROM catering_order_versions history
-      WHERE history.tenant_id=$1 AND history.order_id=$2 AND (EXISTS (
-        SELECT 1 FROM catering_delivery_jobs job JOIN catering_delivery_observations observation
-          ON observation.tenant_id=job.tenant_id AND observation.job_id=job.id
-        WHERE job.tenant_id=history.tenant_id AND job.order_id=history.order_id AND job.order_version=history.version
-          AND observation.outcome='transmitted' AND observation.receipt IS NOT NULL
-          AND jsonb_array_length(observation.receipt->'positions')=history.position_count
-          AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(observation.receipt->'positions') position
-            WHERE position->>'outcome' IS DISTINCT FROM 'confirmed')) OR EXISTS (
-        SELECT 1 FROM catering_manual_delivery_facts manual WHERE manual.tenant_id=history.tenant_id
-          AND manual.order_id=history.order_id AND manual.order_version=history.version
-          AND manual.kind='receipt' AND manual.status IN ('confirmed','cancelled')))
-      ORDER BY history.version DESC LIMIT 1`, [tenantId,orderId]);
-    return rows.rowCount === 0 ? null : Object.freeze({ orderVersion: counter(Number(rows.rows[0].version)),
-      status: rows.rows[0].operation === 'cancel' ? 'cancelled' : 'confirmed' });
-  }
   async function head(client, tenantId, orderId, version) {
     const rows = await client.query(`SELECT last_sequence FROM catering_manual_delivery_heads
       WHERE tenant_id=$1 AND order_id=$2 AND order_version=$3`, [tenantId,orderId,version]);
@@ -88,7 +70,7 @@ export function createPostgresCateringManualDeliveryRepository(pool, { registry,
         return Object.freeze({ tenantId, orderId, orderVersion: version, orderState: state(view),
           manualSequence: await head(client, tenantId, orderId, version), events,
           nextAfterSequence: rows.rowCount > 20 ? events.at(-1).sequence : null,
-          effective: await effective(client, tenantId, orderId) });
+          effective: await readEffectiveCateringVersionWithClient(client, tenantId, orderId) });
       }, { isolationLevel: 'REPEATABLE READ', readOnly: true });
     },
     async record(value) {

@@ -39,7 +39,9 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
   pool = createPostgresPool({ mode: 'test', ...database, databaseUrl: url.toString(), databasePoolMax: 6 });
   await migrateUp(pool); await migrateDemoUp(pool, { roles });
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Version grants017.
   await rollbackLatestDemoMigration(pool, { roles });
+  assert.equal(await rollbackLatest(pool), true); // Empty version schema051.
   assert.equal(await rollbackLatest(pool), true); assert.equal(await isPostgresSchemaReady(pool), false);
   await migrateUp(pool); await migrateDemoUp(pool, { roles });
   const fixture = await createCateringDeliveryFixture(pool, { extraCount: 1 });
@@ -138,7 +140,10 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
     await assert.rejects(customer.query(sql), (error) => error.code === '42501');
     await assert.rejects(pool.query(sql), /CATERING_ORDER_HISTORY_APPEND_ONLY/);
   }
+  await rollbackLatestDemoMigration(pool, { roles }); // Revoke017 before recreating051.
+  assert.equal(await rollbackLatest(pool), true); // Empty051; retain populated050 evidence.
   await assert.rejects(rollbackLatest(pool), /CATERING_MANUAL_ROLLBACK_REQUIRES_REVIEW/);
+  await migrateUp(pool); await migrateDemoUp(pool, { roles });
   assert.equal(await fixture.auditRepository.verifyTenantChain(fixture.tenantId), true);
   const manualAudit = await pool.query("SELECT metadata FROM audit_events WHERE action LIKE 'catering.manual.%'");
   assert.equal(manualAudit.rowCount, 21);
@@ -201,7 +206,10 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
   assert.equal((await request(fixture.manager)).status, 401);
   assert.equal((await pool.query('SELECT count(*)::integer AS n FROM catering_manual_delivery_facts')).rows[0].n, 22);
   await pool.query('TRUNCATE catering_manual_delivery_heads,catering_manual_delivery_facts');
+  await rollbackLatestDemoMigration(pool, { roles }); // Revoke017 before recreating051.
+  assert.equal(await rollbackLatest(pool), true); // Empty051; retained050 audit still blocks rollback.
   await assert.rejects(rollbackLatest(pool), /CATERING_MANUAL_ROLLBACK_REQUIRES_REVIEW/);
+  await migrateUp(pool); await migrateDemoUp(pool, { roles });
   const renewed = await fixture.sessionService.issue({ tenantId: fixture.tenantId, userId: id(20),
     roles: ['conference_manager'], permissions: ['request:manage'], securityVersion: 1,
     providerIdentity: { provider: 'test_identity', reference: 'synthetic-renewed' } }, { correlationId: id(90) });
@@ -215,6 +223,9 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
   for (const table of ['catering_manual_delivery_facts','catering_manual_delivery_heads']) {
     assert.equal((await pool.query(`SELECT count(*)::integer AS n FROM ${table}`)).rows[0].n, 0);
   }
-  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); assert.equal(await rollbackLatest(pool), true);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Version grants017.
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty version schema051.
+  assert.equal(await rollbackLatest(pool), true);
   await migrateUp(pool); await migrateDemoUp(pool, { roles }); assert.equal(await isPostgresSchemaReady(pool), true);
 });

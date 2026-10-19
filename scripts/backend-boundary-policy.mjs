@@ -45,6 +45,7 @@ const PROVIDER_NEUTRAL_INTEGRATION_MODULES = new Set([
   'src/integrations/catering-configuration.js',
 ]);
 const CATERING_VALUE_DEPENDENCIES = {
+  'src/domain/catering-version-proposal.js': ['./identifiers.js', './request.js'],
   'src/domain/catering-receipt-state.js': ['./catering-order-limits.js', './catering-order-state.js'],
   'src/domain/catering-receipt.js': ['./identifiers.js', './catering-order-limits.js'],
   'src/domain/catering-manual-contract.js': ['./identifiers.js', './catering-order-state.js',

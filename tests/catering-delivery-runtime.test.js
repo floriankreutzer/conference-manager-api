@@ -43,7 +43,7 @@ test('enabled delivery composes through the real server flat runtime bounds befo
     async connect() { reads++; throw new Error('UNEXPECTED_PERSISTENCE'); } };
   const modules = createCateringDeliveryRouteModules({ config, authorizationPolicy, auditService: audit.service,
     persistence: { pool, auditRepository: { async appendWithClient() { throw new Error('UNEXPECTED_AUDIT'); } } } });
-  assert.deepEqual(modules.map((module) => module.id), ['catering-delivery-jobs','catering-manual-delivery']);
+  assert.deepEqual(modules.map((module) => module.id), ['catering-delivery-jobs','catering-manual-delivery','catering-order-versions']);
   const server = createHttpServer({ config, authorizationPolicy, auditService: audit.service, additionalRouteModules: modules,
     logger: { requestCompleted() {}, healthEvaluated() {}, securityOutcome() {}, unhandledError() {} } });
   assert.equal(server.listening, false); assert.equal(reads, 0);
