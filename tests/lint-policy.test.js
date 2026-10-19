@@ -1,17 +1,21 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 
 const binary = fileURLToPath(new URL('../node_modules/@biomejs/biome/bin/biome', import.meta.url));
-function lint(code) {
-  const directory = mkdtempSync(fileURLToPath(new URL('./lint-probe-', import.meta.url)));
-  const target = join(directory, 'probe.js');
+function lint(code, sourceRoot = 'tests', extension = 'js') {
+  const directory = mkdtempSync(join(tmpdir(), 'cm-lint-policy-'));
+  const targetRoot = join(directory, sourceRoot);
+  const target = join(targetRoot, `probe.${extension}`);
   try {
+    mkdirSync(targetRoot);
+    writeFileSync(join(directory, 'biome.json'), readFileSync(new URL('../biome.json', import.meta.url)));
     writeFileSync(target, code + '\n');
-    const result = spawnSync(process.execPath, [binary, 'lint', '--config-path=biome.json',
+    const result = spawnSync(process.execPath, [binary, 'lint', `--config-path=${join(directory, 'biome.json')}`,
       '--error-on-warnings', target], { encoding: 'utf8', timeout: 10_000 });
     assert.equal(result.error, undefined);
     assert.equal(readFileSync(target, 'utf8'), code + '\n');
@@ -37,4 +41,14 @@ test('valid native ESM code passes without a formatter, generated fix or source 
   const result = lint('export const data = Object.freeze({ ready: true });');
   assert.equal(result.status, 0, result.output);
   assert.ok(result.output.includes('No fixes applied'));
+});
+
+test('every maintained source root rejects undefined identifiers in both native ESM extensions', () => {
+  for (const sourceRoot of ['src', 'scripts', 'tests', 'tests-db']) {
+    for (const extension of ['js', 'mjs']) {
+      const result = lint('export const value = unknownAuthority;', sourceRoot, extension);
+      assert.notEqual(result.status, 0, `${sourceRoot}/${extension} was excluded`);
+      assert.ok(result.output.includes('noUndeclaredVariables'), result.output);
+    }
+  }
 });
