@@ -555,8 +555,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 45;/.test(pool)) {
-  throw new Error('Runtime schema readiness must include Request lifecycle migration version 45.');
+if (!/export const CURRENT_SCHEMA_VERSION = 46;/.test(pool)) {
+  throw new Error('Runtime schema readiness must include current schema including Catering configuration version 46.');
 }
 const retentionPrivilegeMigration = await readFile(
   'migrations/041_room_media_retention_privileges.up.sql',

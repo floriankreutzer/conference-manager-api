@@ -206,7 +206,7 @@ async function tableHasColumn(pool, tableName, columnName) {
 }
 
 test('migration 036 preserves honest legacy attribution and enforces post-cutover snapshots', async (t) => {
-  assert.equal(CURRENT_SCHEMA_VERSION, 45);
+  assert.equal(CURRENT_SCHEMA_VERSION, 46);
   const pool = createPostgresPool(databaseConfig());
   t.after(async () => pool.end());
 

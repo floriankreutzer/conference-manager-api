@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 45;/.test(pool)) {
-  throw new Error('Production application contract requires Request lifecycle schema version 45.');
+if (!/export const CURRENT_SCHEMA_VERSION = 46;/.test(pool)) {
+  throw new Error('Production application contract requires current schema including Catering configuration version 46.');
 }
 
 const auditEvent = await readFile('src/audit/event.js', 'utf8');

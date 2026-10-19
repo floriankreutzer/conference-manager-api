@@ -129,8 +129,8 @@ test('Live operator inventory verifies real PostgreSQL current and historical cu
       CREATE TABLE demo_database_sentinel (singleton boolean NOT NULL,sentinel_key text NOT NULL,
         runtime_schema_version integer NOT NULL,database_name text NOT NULL,
         customer_role text NOT NULL,platform_role text NOT NULL,reset_role text NOT NULL);
-      INSERT INTO schema_migrations VALUES (45);
-      INSERT INTO demo_schema_migrations VALUES (9);
+      INSERT INTO schema_migrations VALUES (46);
+      INSERT INTO demo_schema_migrations VALUES (12);
       INSERT INTO demo_database_sentinel VALUES (true,'conference-manager-shared-demo-v1',1,current_database(),
         'cm_demo_customer','cm_demo_platform','cm_demo_reset');
     `);
