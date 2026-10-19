@@ -16,8 +16,11 @@ must still require the descriptor's exact capability mode and pass authorized se
 normalizeCateringReceipt accepts only orderId, orderVersion and positions. The expected order ID,
 version and exact position-ID set come from the authorized use case's persisted snapshot, not from
 provider authority. All identifiers are internal UUIDs; adapters map external references before
-normalization. Versions are positive safe integers. Receipts contain 1–100 distinct positions, a
-bounded contract guardrail rather than a change to any existing conference/catalogue limit.
+normalization. Versions are positive safe integers. Receipts contain 1–101 distinct commercial
+positions. This follows the existing Request limit of 100 direct selections plus one composite
+package; its complete content of up to 300 items remains in the package detail snapshot. The early
+uncomposed foundation's 100-position guardrail was reassessed before order projection, preserving
+the old 100-position regression and adding exact 101/102-position acceptance/rejection coverage.
 Missing, extra, duplicate, foreign, sparse or stale positions fail closed, as do unknown fields,
 symbols, accessors, hidden properties and unknown outcomes. The output is deeply frozen and copied.
 
@@ -67,7 +70,10 @@ cateringQuoteHasCurrentApproval compares independently loaded persisted evidence
 expected Tenant, Integration, Order and order version, the exact quote revision, amount and currency.
 An approved decision must name an internal decider; rejection, no evidence or any changed scope,
 revision, amount (including a reduction) or currency cannot match. Exact bounded records reject
-unknown/hidden/symbol/accessor fields; costs reuse the existing money contract. Inputs are not mutated.
+unknown/hidden/symbol/accessor fields. Costs use the closed Catering aggregate-money contract:
+nonnegative integer minor units below Number.MAX_SAFE_INTEGER and a supported currency. Existing
+catalogue unit prices continue to use the unchanged normalizeMoney/MAX_PRICE_MINOR limit. The
+separate aggregate bound preserves legitimate quantity-times-unit-price totals. Inputs are not mutated.
 
 This is an evidence-consistency rule, not a way to submit or authorize approvals. The trusted use case
 must independently authenticate and authorize the Manager, load the correct records, check quote

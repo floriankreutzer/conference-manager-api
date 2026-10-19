@@ -131,11 +131,13 @@ export function backendSaas2BoundaryViolations(sourceEntries) {
     }
     if (file === 'src/integrations/catering-contract.js'
       && (moduleImports(source).some(({ specifier, dynamic }) => dynamic
-        || !['../domain/identifiers.js', './provider-registry.js'].includes(specifier))
+        || !['../domain/identifiers.js', '../domain/catering-order-limits.js', './provider-registry.js'].includes(specifier))
         || FOUNDATION_RUNTIME_AUTHORITY.test(source))) {
-      violations.push(violation(file, 'catering contracts may depend only on neutral registration and internal identifiers.'));
+      violations.push(violation(file,
+        'catering contracts may depend only on neutral registration and internal identifiers, plus bounded order limits.'));
     }
-    if (['src/integrations/provider-registry.js', 'src/integrations/delivery-policy.js'].includes(file)
+    if (['src/integrations/provider-registry.js', 'src/integrations/delivery-policy.js',
+      'src/domain/catering-order-limits.js'].includes(file)
       && (moduleImports(source).length > 0 || FOUNDATION_RUNTIME_AUTHORITY.test(source))) {
       violations.push(violation(file, 'provider foundation must remain an import-free, network-free policy/metadata contract.'));
     }
