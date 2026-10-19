@@ -20,8 +20,9 @@ import { cateringId as id, cateringOrderFixture } from '../../tests/support/cate
 // Real application/session/audit preparation. Only the future Confirmed Request
 // is controlled SQL test setup; no supplier, calendar or live order is created.
 export async function createCateringDeliveryFixture(pool, {
-  registry = createCateringConfigurationRegistry(), extraCount = 0, reviewOperations = false,
+  registry = createCateringConfigurationRegistry(), extraCount = 0, reviewOperations = false, manualCatalogue = false,
 } = {}) {
+  if (typeof manualCatalogue !== 'boolean') throw new TypeError('SYNTHETIC_MANUAL_CATALOGUE_FLAG_INVALID');
   const authorizationPolicy = createAuthorizationPolicy();
   const auditRepository = createPostgresAuditRepository(pool, { hmacSecret: 'a'.repeat(32) });
   const auditService = createAuditService({ repository: auditRepository, authorizationPolicy });
@@ -48,7 +49,8 @@ export async function createCateringDeliveryFixture(pool, {
       actorUserId: id(30), sessionId: admin.principal.session.id, expectedSecurityVersion: 1,
       expectedRevision, changedAt: new Date(), correlationId: id(90),
       configuration: { initialOrderMode: 'manager_review', capabilities: enabled ? {
-        'catering.order': mode, ...(reviewOperations ? { 'catering.update': mode, 'catering.cancel': mode } : {}),
+        'catering.order': mode, ...(manualCatalogue ? { 'catering.catalogue': 'manual' } : {}),
+        ...(reviewOperations ? { 'catering.update': mode, 'catering.cancel': mode } : {}),
         ...(mode === 'api' ? { 'catering.status': 'api' } : {}),
       } : {} },
       auditEventFor({ revision }) { return auditService.createEvent({ ...context(admin), action: 'tenant.configuration.changed',

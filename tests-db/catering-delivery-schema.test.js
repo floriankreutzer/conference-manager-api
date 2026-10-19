@@ -27,7 +27,8 @@ test('delivery schema fences actual Customer leases, immutable attempts and exac
   const url = new URL(database.databaseUrl); url.pathname = `/${name}`;
   pool = createPostgresPool({ mode: 'test', ...database, databaseUrl: url.toString(), databasePoolMax: 6 });
   await migrateUp(pool); assert.equal(await isPostgresSchemaReady(pool), true);
-  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema054 before historical rollback guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema055 before historical rollback guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue source schema054.
   assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
   assert.equal(await rollbackLatest(pool), true); // Empty version proposal schema051.
@@ -214,12 +215,14 @@ test('delivery schema fences actual Customer leases, immutable attempts and exac
     outcome: 'not_sent', retryable: false, status: 'failed' }));
   assert.equal((await row(permanentJob)).status, 'failed');
   assert.equal((await row(permanentJob)).dispatch_attempts, 1);
-  assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Enrollment reset grants020 before historical overlays.
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Enrollment reset grants021 before historical overlays.
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Catalogue source grants020.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Platform passkey reset grants019 before schema053.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Unsent grants018 before schema052.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Version grants overlay017.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Revoke overlay016 before recreating its tables.
-  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema054 before historical rollback guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema055 before historical rollback guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue source schema054.
   assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
   assert.equal(await rollbackLatest(pool), true); // Empty version proposal schema051.
@@ -236,12 +239,14 @@ test('delivery schema fences actual Customer leases, immutable attempts and exac
   await customer((client) => fixture.auditRepository.appendWithClient(client, event));
   await pool.query(`TRUNCATE catering_unsent_replacements,catering_order_withdrawals,
     catering_delivery_observations,catering_delivery_attempts,catering_delivery_jobs`);
-  assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Enrollment reset grants020 before historical overlays.
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Enrollment reset grants021 before historical overlays.
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Catalogue source grants020.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Platform passkey reset grants019 before schema053.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Unsent grants018 before schema052.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Version grants overlay017.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Revoke overlay016 before recreating its tables.
-  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema054 before historical rollback guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema055 before historical rollback guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue source schema054.
   assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
   assert.equal(await rollbackLatest(pool), true); // Empty version proposal schema051.
@@ -267,13 +272,15 @@ test('delivery schema fences actual Customer leases, immutable attempts and exac
   for (const table of ['catering_delivery_jobs','catering_delivery_attempts','catering_delivery_observations']) {
     assert.equal((await pool.query(`SELECT count(*)::integer AS count FROM ${table}`)).rows[0].count, 0);
   }
-  assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Enrollment reset grants020 before historical overlays.
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Enrollment reset grants021 before historical overlays.
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Catalogue source grants020.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Platform passkey reset grants019 before schema053.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Unsent grants018 before schema052.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Version grants overlay017.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Manual grants overlay016.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Delivery grants overlay015.
-  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema054 before historical rollback guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema055 before historical rollback guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue source schema054.
   assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
   assert.equal(await rollbackLatest(pool), true); // Empty version proposal schema051.

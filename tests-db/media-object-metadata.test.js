@@ -53,7 +53,8 @@ test('private media metadata preserves rollback, immutable intents, orphan recov
   assert.deepEqual(await repository.read(durable, durable.key), bytes);
   const projections = createPostgresPlatformProjectionRepository(pool);
   assert.deepEqual(await projections.consumeBatch(), { refreshedCount: 1, retryCount: 0, poisonCount: 0 });
-  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema054 before historical rollback guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty enrollment schema055 before historical rollback guards.
+  assert.equal(await rollbackLatest(pool), true); // Empty provider catalogue source schema054.
   assert.equal(await rollbackLatest(pool), true); // Empty Platform passkey storage schema053.
   assert.equal(await rollbackLatest(pool), true); // Empty unsent schema052.
   assert.equal(await rollbackLatest(pool), true); // Empty version proposal schema051.

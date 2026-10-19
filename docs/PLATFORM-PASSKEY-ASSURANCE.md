@@ -253,7 +253,7 @@ enrollment or recovery is exposed by the current runtime.
 
 ## Durable enrollment and lifecycle candidate — not composed
 
-Unmerged migration054 stores immutable, exact-identity grant records and one
+Unmerged migration055 stores immutable, exact-identity grant records and one
 browser-bound registration/possession ceremony per grant. Only hashes of opaque
 grant/browser values, random challenges/handles and public candidate keys are
 stored. Database expiry bounds both phases, each with at most five attempts;
@@ -306,10 +306,10 @@ key and requires another active key to remain. It invalidates old operator/sessi
 authority, revokes outstanding grants and finishes with cleared session/transaction
 cookies and a fresh-login requirement. It never issues an obsolete-version session.
 
-Candidate schema readiness is exact054/020. Demo overlay020 grants only TRUNCATE
+Candidate schema readiness is exact055/021. Demo overlay021 grants only TRUNCATE
 on the two new tables to the sentinel-checked reset role; neither synthetic runtime
-gets enrollment privileges. Historical rollback probes explicitly drain020/054
-before their retained019/053 and older guards. Populated054 or retained offline
+gets enrollment privileges. Historical rollback probes explicitly drain021/055 and020/054
+before their retained019/053 and older guards. Populated055 or retained offline
 audit evidence prevents rollback and requires reviewed recovery. The synthetic
 seed checksum, production security epoch and current live CA mode are unchanged.
 
@@ -321,7 +321,7 @@ contexts and accepts only a browser-bound pending result on callback. It can nev
 emit a business session. The default CA route registry and runtime composition are
 unchanged. This candidate is neither a deployed login mode nor cutover evidence.
 
-Unreleased054 extends pending authentication with an `enroll` purpose carrying the
+Unreleased055 extends pending authentication with an `enroll` purpose carrying the
 verified primary authentication time. It has no session or operation hash and cannot
 be redeemed by the assertion endpoint. The SQL clock bounds that primary time.
 Pending identity is consumed in the same transaction as independently granted
@@ -364,3 +364,9 @@ Public errors and durable denial reasons exclude native/provider payloads. These
 HTTP port tests do not substitute for real PostgreSQL, browser/device or deployed
 cutover acceptance. Generic business operation step-up, production composition,
 native DE/EN UI and owner authenticator verification remain open.
+
+
+Integration with main5bbe97b preserves the independent supplier catalogue migration054/
+Demo020 and assigns the unreleased enrollment migration055/Demo021. Exact readiness
+is055/021. Both sets of tables and historical rollback/role-denial probes remain
+required. The earlier054/020 enrollment candidate is superseded, not deployed.
