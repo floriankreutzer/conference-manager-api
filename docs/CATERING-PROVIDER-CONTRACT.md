@@ -55,3 +55,22 @@ from changes, cancellation and exceptions. Only the explicitly configured initia
 use conference approval; all later operations require Manager review. Unknown modes/operations
 fail closed. A requirement is not a recorded decision, actor authorization, cost approval or order
 release. Versioned Manager decisions and renewed approval of extra costs remain #234/#235 work.
+
+## Quote cost review policy
+
+The domain policy also identifies extra cost by comparing integer minor-unit amounts only inside
+the same supported currency. A higher amount or changed currency requires Manager review. A lower
+or equal same-currency amount means no extra cost; it does not waive the separate Manager review
+required for every change, cancellation or exception.
+
+cateringQuoteHasCurrentApproval compares independently loaded persisted evidence against the
+expected Tenant, Integration, Order and order version, the exact quote revision, amount and currency.
+An approved decision must name an internal decider; rejection, no evidence or any changed scope,
+revision, amount (including a reduction) or currency cannot match. Exact bounded records reject
+unknown/hidden/symbol/accessor fields; costs reuse the existing money contract. Inputs are not mutated.
+
+This is an evidence-consistency rule, not a way to submit or authorize approvals. The trusted use case
+must independently authenticate and authorize the Manager, load the correct records, check quote
+expiry/availability, persist versioned decisions and audit atomically, and recheck before acceptance.
+No caller-supplied approval, matching UUID or pure-policy result can release an order. Persistence,
+HTTP, dispatch and renewed-cost-review UX remain open; no live supplier action is performed here.
