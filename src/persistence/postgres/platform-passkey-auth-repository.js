@@ -76,12 +76,13 @@ function auditEvent(operator, ceremony, verified) {
   });
 }
 
-export function createPostgresPlatformPasskeyAuthRepository(pool, { auditRepository, verifier } = {}) {
+export function createPostgresPlatformPasskeyAuthRepository(pool, { auditRepository, verifier,stepUpTransaction=null } = {}) {
   if (!pool || typeof pool.connect !== 'function' || typeof pool.query !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
   }
   if (typeof auditRepository?.appendWithClient !== 'function') throw new TypeError('PLATFORM_AUDIT_REPOSITORY_REQUIRED');
   if (typeof verifier?.verifyAuthentication !== 'function') throw new TypeError('PLATFORM_PASSKEY_VERIFIER_REQUIRED');
+  if (stepUpTransaction!==null && typeof stepUpTransaction!=='function') throw new TypeError('PLATFORM_PASSKEY_TRANSACTION_SCOPE_INVALID');
 
   return Object.freeze({
     async listActiveCredentialIds(value) {
@@ -176,7 +177,11 @@ export function createPostgresPlatformPasskeyAuthRepository(pool, { auditReposit
       binding(value);
       if (value.purpose === 'enroll' || !HASH.test(value.stateHash || '') || !HASH.test(value.browserHash || '')
         || typeof onVerified !== 'function') throw new TypeError('PLATFORM_PASSKEY_TRANSACTION_INVALID');
-      return withPostgresTransaction(pool, async (client) => {
+      let invoked=false,completed=false,authenticationResult;
+      const authenticate=async()=>{
+        if (invoked) throw new TypeError('PLATFORM_PASSKEY_TRANSACTION_SCOPE_INVALID');
+        invoked=true;
+        authenticationResult=await withPostgresTransaction(pool, async (client) => {
         const operator = await lockAuthority(client, value);
         if (!operator) return null;
         const pending = await client.query({
@@ -255,6 +260,15 @@ export function createPostgresPlatformPasskeyAuthRepository(pool, { auditReposit
       // their writable snapshot before proof consumption so nested reads join
       // without an illegal isolation upgrade or a separate commit boundary.
       }, { isolationLevel: value.purpose === 'step_up' ? 'REPEATABLE READ' : 'READ COMMITTED' });
+        completed=true;return authenticationResult;
+      };
+      if (value.purpose==='step_up' && stepUpTransaction) {
+        const result=await stepUpTransaction(Object.freeze({ operatorId: value.operatorId,
+          operatorSecurityVersion: value.operatorSecurityVersion }),authenticate);
+        if (!completed || result!==authenticationResult) throw new TypeError('PLATFORM_PASSKEY_TRANSACTION_SCOPE_INVALID');
+        return result;
+      }
+      return authenticate();
     },
 
     async consumeEnrollmentPrimary(value, onResolved) {

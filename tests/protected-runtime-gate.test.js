@@ -3,7 +3,7 @@ import { AsyncResource } from 'node:async_hooks';
 import test from 'node:test';
 import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
 import {
-  withProtectedRuntimeSharedGate,withProtectedRuntimeExclusiveGate,
+  withProtectedRuntimeSharedGate,withProtectedRuntimeExclusiveGate,withProtectedRuntimeRepeatableExclusiveGate,
 } from '../src/persistence/postgres/protected-runtime-gate.js';
 
 function fixture(acquired=true) {
@@ -63,4 +63,17 @@ test('detached asynchronous descendants cannot reuse a released runtime lease or
     detached=AsyncResource.bind(()=>withProtectedRuntimeSharedGate(f.pool,'int',async()=>assert.fail('RELEASED_LEASE_REUSED')));
   });
   await assert.rejects(detached(),{ code: 'PROTECTED_RUNTIME_GATE_SCOPE_INVALID' });assert.equal(f.connections(),1);
+});
+
+test('explicit repeatable exclusive scopes retain proof isolation and refuse an existing RC lease upgrade',async()=>{
+  const f=fixture();
+  await withProtectedRuntimeRepeatableExclusiveGate(f.pool,'int',async client=>{
+    assert.equal(f.queries[0],'BEGIN ISOLATION LEVEL REPEATABLE READ READ WRITE');
+    assert.equal(await withPostgresTransaction(f.pool,async nested=>nested===client,{ isolationLevel: 'REPEATABLE READ' }),true);
+    assert.equal(await withProtectedRuntimeExclusiveGate(f.pool,'int',async nested=>nested===client),true);
+  });
+  await withProtectedRuntimeExclusiveGate(f.pool,'int',async()=>{
+    await assert.rejects(withProtectedRuntimeRepeatableExclusiveGate(f.pool,'int',async()=>assert.fail('ISOLATION_UPGRADE')),
+      { code: 'PROTECTED_RUNTIME_GATE_SCOPE_INVALID' });
+  });
 });

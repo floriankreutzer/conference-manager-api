@@ -21,6 +21,7 @@ test('durable invited Microsoft primary flow preserves browser/state custody bef
   await t.test('empty Microsoft migration rolls back without rewriting accepted057 and restores its exact checksum',async()=>{
     const checksum=(await pool.query('SELECT checksum FROM schema_migrations WHERE version=58')).rows[0].checksum;
     const accepted=(await pool.query('SELECT checksum FROM schema_migrations WHERE version=57')).rows[0].checksum;
+    assert.equal(await rollbackLatest(pool),true); // Empty060 before059.
     assert.equal(await rollbackLatest(pool),true); // Empty protected runtime059 before the original Microsoft058 probe.
     assert.equal(await rollbackLatest(pool),true);
     assert.equal(Number((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version),57);
@@ -110,6 +111,7 @@ test('durable invited Microsoft primary flow preserves browser/state custody bef
       principal: customer.principal })).status,'rejected');
     assert.equal(await customer.auditRepository.verifyTenantChain(customer.tenantId),true);
   });
+  assert.equal(await rollbackLatest(pool),true); // Empty060 before059.
   assert.equal(await rollbackLatest(pool),true); // Empty protected runtime059; retain the populated058 recovery guard.
   await assert.rejects(rollbackLatest(pool),error=>error.code==='55000'
     && error.message.includes('CUSTOMER_MICROSOFT_FLOWS_REQUIRE_VERIFIED_RECOVERY'));

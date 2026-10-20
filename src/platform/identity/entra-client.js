@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { ConfidentialClientApplication } from '@azure/msal-node';
 import { PlatformIdentityError } from './errors.js';
+import { PLATFORM_ENTRA_PROVIDER } from '../../domain/identity-provider.js';
 import { canonicalizePlatformEntraSdkUrl } from './entra-sdk-authorization-url.js';
 import {
   PLATFORM_ENTRA_SCOPES,
@@ -8,7 +9,7 @@ import {
   validatePlatformEntraPrimaryAuthorizationUrl,
 } from './entra-authorization-url.js';
 
-export const PLATFORM_ENTRA_PROVIDER = 'microsoft_entra_platform';
+export { PLATFORM_ENTRA_PROVIDER } from '../../domain/identity-provider.js';
 const VERIFIED_ASSERTION = Symbol('verifiedPlatformEntraAssertion');
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

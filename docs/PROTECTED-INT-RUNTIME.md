@@ -22,9 +22,11 @@ re-reads custody on every resolution, validates registry scope, permits only
 invited email/Microsoft access for real Tenants and a separate operator-delegation
 kind/provider for synthetic Tenants. Unknown custody fails closed; repository
 availability errors propagate without fallback. Existing issue/CSRF/revoke/rotate
-contracts remain with the ordinary service. This uncomposed guard has unit
-evidence only; the authoritative PostgreSQL session-access binding repository and
-native concurrency/negative acceptance remain required before activation.
+contracts remain with the ordinary service. API252 added an owned protected invited
+factory and authoritative same-transaction real membership/session qualification.
+Its corrected103d9156/tree47f74da passed all nine contexts including native protected
+email/Microsoft linking, epoch invalidation and rollback in CI39451839534 before
+mergef973c48. Synthetic delegation and whole-root activation remain unimplemented.
 The architecture gate excludes the guard from both closed Demo import graphs.
 
 The prepared protected provider gate fixes one adapter mode at composition,
@@ -44,11 +46,16 @@ try-lock failure, with no wait/retry. Acquire it before ordinary business/proof
 locks. Safe same-scope nesting joins the same client; shared-to-exclusive upgrades,
 cross-pool/environment nesting, joining unmarked business transactions and reuse
 by detached descendants after release are denied. The existing transaction
-adapter owns commit/rollback/connection release. The gate is uncomposed; its new
-native concurrency test still requires actual PostgreSQL execution before any
-concurrency or reset-safety acceptance claim.
+adapter owns commit/rollback/connection release. The original gate and registry
+native suites passed on corrected1dd7530 in CI39445946024 before mergee498b88;
+that component evidence is not protected runtime deployment or reset acceptance.
+The new uncomposed execution-scope adapter separates shared lease/business pools
+and adds an explicit repeatable-exclusive path with locked current-custody checks.
+Its MVCC/max1 contract requires its own exact-source evidence independently of
+the older gate tests. See
+`PROTECTED-RUNTIME-EXECUTION-SCOPES.md` for isolation and integration requirements.
 
-Draft canonical059 and closed-Demo overlay025 add four private custody tables:
+Accepted frozen canonical059 and closed-Demo overlay025 added four private custody tables:
 current deployment epoch, append-only epoch history, retained synthetic
 generations and immutable Tenant registry. No existing row is classified or
 migrated into a generation. Former epochs cannot be reused; generation owner,
@@ -77,10 +84,21 @@ registry suites in CI39444281483/job118702723489. The later unchanged attributio
 suite failed its old current-schema58 assertion after the advance to59. Three
 remaining current-readiness constants were corrected without changing their
 attribution/location/rollback/security assertions. The first full native failure
-remains failed; the corrected source needs all nine required current-head checks.
-PR251 and frontend SaaS1 issue351 retain current acceptance and failure history.
+remains failed. Corrected1dd7530/tree03c3c34 passed all nine contexts in
+CI39445946024:1843 tests/both DAST, full native118709406859 and all four permanent
+paired progression/two-reset jobs, plus dependency/secret/source gates. PR251
+merged ate498b88. Frontend SaaS1 issue351 retains acceptance and failure history.
 
 ## Persistent authority to implement
+
+Prepared060 adds private synthetic catalogue imagery and additively aligns the
+generation-owner guard with the actual `microsoft_entra_platform` provider rather
+than the Customer label used in059. Accepted059 source remains frozen. New native
+fixtures reject the Customer label and use the Platform-primary contract. Separate
+proof transaction/continuation ports prepare atomic delegation without reusing a
+revoked old or temporary session. See `SYNTHETIC-RUNTIME-CUSTODY.md`; these new
+native cases require their own exact-source evidence; whole-root acceptance
+remains outstanding, with no live activation.
 
 Each protected Tenant has one immutable deployment/mode classification. Current
 deployment epochs rotate through monotonic revisions with retained non-reuse

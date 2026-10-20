@@ -191,6 +191,13 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
   three fixed business templates and three synthetic Customer roles per Tenant. It returns
   a data plan, grants no authority and is excluded from both closed Demo graphs. The shared
   pure scheduling module preserves the existing Demo's timezone-aware future-week behavior.
+- `persistence/postgres/protected-runtime-execution-scopes.js` prepares distinct bounded
+  lease/business pool scopes for protected shared work and same-client repeatable exclusive
+  synthetic mutations. It rechecks deployment/owner custody but grants no authentication or
+  exact-operation proof. See `PROTECTED-RUNTIME-EXECUTION-SCOPES.md` for MVCC and integration limits.
+- `docs/SYNTHETIC-RUNTIME-CUSTODY.md` describes prepared060 private catalogue media, actual
+  Platform-provider alignment, proof-transaction injection and private continuing MFA session
+  contexts. None activates protected roots, generation reset or browser delegation.
 - `src/media/synthetic-template-media.js` resolves known fixed template asset IDs to packaged
   `src/synthetic/media` bytes, verifying source length, signature and checksum. It performs no
   network, provider, identity or database work and supplies no Tenant authorization. Demo and
