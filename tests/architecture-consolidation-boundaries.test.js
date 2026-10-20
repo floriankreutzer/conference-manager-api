@@ -210,7 +210,9 @@ test('both closed Demo surfaces reject real mailbox/invitation authority directl
 });
 
 test('protected session and provider gates cannot enter either closed Demo graph through a bridge',()=>{
-  for (const target of ['src/tenancy/synthetic-generation-plan.js',
+  for (const target of ['src/platform/application/synthetic-generation-service.js',
+    'src/persistence/postgres/platform-synthetic-generation-repository.js',
+    'src/platform/identity/protected-platform-sessions.js','src/tenancy/synthetic-generation-plan.js',
     'src/persistence/postgres/protected-runtime-execution-scopes.js',
     'src/identity/protected-customer-session-service.js','src/tenancy/protected-tenant-provider-gate.js',
     'src/persistence/postgres/protected-runtime-gate.js','src/persistence/postgres/protected-tenant-runtime-repository.js',

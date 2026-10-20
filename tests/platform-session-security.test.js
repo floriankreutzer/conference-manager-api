@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHash,randomUUID } from 'node:crypto';
 import { PLATFORM_AUDIT_ACTION } from '../src/platform/audit/event.js';
 import { PlatformSessionError } from '../src/platform/identity/errors.js';
 import { PLATFORM_ROLE, permissionsForPlatformRoles } from '../src/platform/identity/policy.js';
@@ -8,6 +9,8 @@ import {
   serializePlatformSessionCookie,
 } from '../src/platform/identity/session-cookie.js';
 import { createPlatformSessionService } from '../src/platform/identity/session-service.js';
+import { createProtectedPlatformSessions } from '../src/platform/identity/protected-platform-sessions.js';
+import { PLATFORM_ENTRA_PROVIDER } from '../src/domain/identity-provider.js';
 
 const OPERATOR_ID = '11111111-1111-4111-8111-111111111111';
 const SESSION_ONE = '22222222-2222-4222-8222-222222222222';
@@ -181,4 +184,83 @@ test('session issuance rejects stale authentication and customer-shaped identiti
     securityEpoch: 7,
     stepUpTtlSeconds: 301,
   }), /PLATFORM_STEP_UP_TTL_INVALID/);
+});
+
+const PROTECTED_EPOCH='b1000000-0000-4000-8000-000000000001';
+const NEXT_PROTECTED_EPOCH='b1000000-0000-4000-8000-000000000002';
+function protectedSessions(repository,overrides={}) {
+  return createProtectedPlatformSessions({ repository,environment: 'int',protectedSecurityEpoch: PROTECTED_EPOCH,
+    publicOrigin: 'https://127.0.0.1',csrfSecret: 's'.repeat(48),securityEpoch: 7,clock: ()=>NOW,
+    tokenFactory: ()=>TOKEN_ONE,idFactory: randomUUID,...overrides });
+}
+function microsoftIdentity(overrides={}) {
+  return identity({ providerIdentity: { ...identity().providerIdentity,provider: PLATFORM_ENTRA_PROVIDER },...overrides });
+}
+const cookieRequest=value=>({ headers: { cookie: value.setCookie.split(';')[0] } });
+
+test('protected Platform sessions isolate identical tokens across legacy, environments and both independent epochs',async()=>{
+  const repository=fakeRepository(),legacy=service(repository),current=protectedSessions(repository);
+  const old=await legacy.issue(microsoftIdentity()),issued=await current.issue(microsoftIdentity());
+  assert.ok(repository.sessions.has(createHash('sha256').update(`platform-session:v1:7:${TOKEN_ONE}`).digest('hex')));
+  assert.ok(repository.sessions.has(createHash('sha256')
+    .update(`platform-session:v1:7:protected-v1:int:${PROTECTED_EPOCH}:${TOKEN_ONE}`).digest('hex')));
+  assert.deepEqual(await legacy.resolvePrincipal(cookieRequest(issued)),old.principal);
+  // Both browsers intentionally present the same opaque token. Each service
+  // resolves only its own distinct row, never the row from another namespace.
+  assert.equal((await current.resolvePrincipal(cookieRequest(old))).session.id,issued.principal.session.id);
+  assert.notEqual(issued.principal.session.id,old.principal.session.id);
+  for (const overrides of [{ environment: 'dev' },{ environment: 'prod' },
+    { protectedSecurityEpoch: NEXT_PROTECTED_EPOCH },{ securityEpoch: 8 }]) {
+    assert.equal(await protectedSessions(repository,overrides).resolvePrincipal(cookieRequest(issued)),null);
+  }
+  const onlyProtected=fakeRepository(),isolated=await protectedSessions(onlyProtected).issue(microsoftIdentity());
+  assert.equal(await service(onlyProtected).resolvePrincipal(cookieRequest(isolated)),null);
+  const onlyLegacy=fakeRepository(),prior=await service(onlyLegacy).issue(microsoftIdentity());
+  assert.equal(await protectedSessions(onlyLegacy).resolvePrincipal(cookieRequest(prior)),null);
+  assert.equal(await current.verifyCsrf({ headers: { 'x-csrf-token': issued.csrfToken } },issued.principal),true);
+  assert.equal(await current.verifyCsrf({ headers: { 'x-csrf-token': old.csrfToken } },issued.principal),false);
+});
+
+test('protected Platform issuance and resolution reject Customer or Demo providers without session or audit writes',async()=>{
+  const repository=fakeRepository(),current=protectedSessions(repository);
+  for (const provider of ['microsoft_entra','demo_platform','entra_platform','email_code']) {
+    await assert.rejects(async()=>current.issue(identity({ providerIdentity: { ...identity().providerIdentity,provider } })),
+      /PROTECTED_PLATFORM_SESSION_PROVIDER_DENIED/);
+  }
+  assert.equal(repository.sessions.size,0);assert.equal(repository.auditEvents.length,0);
+  const issued=await current.issue(microsoftIdentity());
+  const row=[...repository.sessions.values()][0];
+  row.providerIdentity={ ...row.providerIdentity,provider: 'microsoft_entra' };
+  assert.equal(await current.resolvePrincipal(cookieRequest(issued)),null);
+  await assert.rejects(async()=>current.rotate({ ...issued.principal,providerIdentity: row.providerIdentity },microsoftIdentity()),
+    /PROTECTED_PLATFORM_SESSION_PROVIDER_DENIED/);
+  assert.equal(repository.sessions.size,1);
+});
+
+test('protected Platform rotation retains namespace, revokes old sessions and preserves temporary step-up semantics',async()=>{
+  const repository=fakeRepository(),tokens=[TOKEN_ONE,TOKEN_TWO];
+  const current=protectedSessions(repository,{ tokenFactory: ()=>tokens.shift() });
+  const issued=await current.issue(microsoftIdentity());
+  const identity=microsoftIdentity({ assurance: { level: 'step_up',authenticationContext: 'cm:pk:v1',
+    authenticatedAt: '2026-08-28T11:59:00.000Z' } });
+  const elevated=await current.rotate(issued.principal,identity,{ purpose: 'step_up' });
+  assert.equal(await current.resolvePrincipal(cookieRequest(issued)),null);
+  assert.equal((await current.resolvePrincipal(cookieRequest(elevated))).assurance.level,'step_up');
+  assert.ok(repository.sessions.has(createHash('sha256')
+    .update(`platform-session:v1:7:protected-v1:int:${PROTECTED_EPOCH}:${TOKEN_TWO}`).digest('hex')));
+  await current.revoke(elevated.principal);
+  assert.equal(await current.resolvePrincipal(cookieRequest(elevated)),null);
+});
+
+test('protected Platform namespace input is closed and canonical without changing legacy defaults',()=>{
+  for (const environment of ['demo','test','INT',null,undefined]) {
+    assert.throws(()=>protectedSessions(fakeRepository(),{ environment }),/NAMESPACE_INVALID/);
+  }
+  for (const protectedSecurityEpoch of ['legacy',null,undefined,'00000000-0000-0000-0000-000000000000']) {
+    assert.throws(()=>protectedSessions(fakeRepository(),{ protectedSecurityEpoch }),/NAMESPACE_INVALID/);
+  }
+  for (const securityNamespace of ['demo','',false,'protected-v1:int:legacy']) {
+    assert.throws(()=>createPlatformSessionService({ repository: fakeRepository(),publicOrigin: 'https://127.0.0.1',
+      csrfSecret: 's'.repeat(48),securityEpoch: 7,securityNamespace }),/PLATFORM_SESSION_NAMESPACE_INVALID/);
+  }
 });

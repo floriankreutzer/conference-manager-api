@@ -9,6 +9,7 @@ import { createPostgresPlatformAuditRepository } from '../src/persistence/postgr
 import { createPostgresPlatformSessionRepository } from '../src/persistence/postgres/platform-session-repository.js';
 import { createPostgresPlatformPasskeyAuthRepository } from '../src/persistence/postgres/platform-passkey-auth-repository.js';
 import { createPlatformSessionService } from '../src/platform/identity/session-service.js';
+import { createProtectedPlatformSessions } from '../src/platform/identity/protected-platform-sessions.js';
 import { createPlatformPasskeyAuthService } from '../src/platform/identity/passkey-auth-service.js';
 import { createPlatformPasskeyVerifier } from '../src/platform/identity/passkey-verifier.js';
 import { PLATFORM_ENTRA_PROVIDER } from '../src/domain/identity-provider.js';
@@ -38,8 +39,9 @@ test('native signed continuation uses the protected max1 RR scope and rolls proo
   await pool.query('CREATE TABLE synthetic_continuation_probe(id uuid PRIMARY KEY,source_session uuid REFERENCES platform_sessions(id))');
   const scopes=createPostgresProtectedRuntimeExecutionScopes({ pool,leasePool,environment: 'int',securityEpoch: epoch });
   const auditRepository=createPostgresPlatformAuditRepository(pool,{ hmacSecret: 'a'.repeat(48) });
-  const sessions=createPlatformSessionService({ repository: createPostgresPlatformSessionRepository(pool,{ auditRepository }),
-    publicOrigin: 'https://ops-int.example.com',csrfSecret: 'c'.repeat(48),securityEpoch: 7 });
+  const sessionOptions={ repository: createPostgresPlatformSessionRepository(pool,{ auditRepository }),
+    publicOrigin: 'https://ops-int.example.com',csrfSecret: 'c'.repeat(48),securityEpoch: 7 };
+  const sessions=createProtectedPlatformSessions({ ...sessionOptions,environment: 'int',protectedSecurityEpoch: epoch });
   const verifier=createPlatformPasskeyVerifier({ publicOrigin: 'https://ops-int.example.com',environment: 'int' });
   const repository=createPostgresPlatformPasskeyAuthRepository(pool,{ verifier,auditRepository,
     stepUpTransaction: scopes.withSyntheticExclusive });
@@ -70,6 +72,14 @@ test('native signed continuation uses the protected max1 RR scope and rolls proo
   });
   const active=await sessions.resolvePrincipal({ headers: { cookie: completed.setCookies[0].split(';')[0] } });
   assert.equal(active.session.id,normalId);assert.equal(active.assurance.level,'mfa');
+  const currentRequest={ headers: { cookie: completed.setCookies[0].split(';')[0] } };
+  assert.equal(await createPlatformSessionService(sessionOptions).resolvePrincipal(currentRequest),null);
+  for (const scope of [{ environment: 'dev',protectedSecurityEpoch: epoch },
+    { environment: 'prod',protectedSecurityEpoch: epoch },{ environment: 'int',protectedSecurityEpoch: randomUUID() }]) {
+    assert.equal(await createProtectedPlatformSessions({ ...sessionOptions,...scope }).resolvePrincipal(currentRequest),null);
+  }
+  assert.equal(await createProtectedPlatformSessions({ ...sessionOptions,environment: 'int',
+    protectedSecurityEpoch: epoch,securityEpoch: 8 }).resolvePrincipal(currentRequest),null);
   assert.equal(await sessions.resolvePrincipal(input.request),null);
   assert.ok((await pool.query('SELECT revoked_at FROM platform_sessions WHERE id=$1',[temporaryId])).rows[0].revoked_at);
   const before=(await pool.query(`SELECT (SELECT count(*)::int FROM platform_sessions WHERE operator_id=$1) AS sessions,

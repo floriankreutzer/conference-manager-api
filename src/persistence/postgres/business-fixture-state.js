@@ -183,14 +183,6 @@ export async function seedTenantBusinessFixtureState({ client,fixture,mediaObjec
           media.width, media.height, Buffer.from(media.sha256, 'hex'), fixture.fixedClock, creator.userId, key],
       });
     });
-    await forEachFixtureMediaBatch(tenant.catalogueMedia, async (media) => {
-      const bytes = await catalogueMediaBytes(media,tenant.id);
-      const creator = mediaCreatorForTenant(tenant.id);
-      if (!creator) throw new Error('DEMO_FIXTURE_CATALOGUE_MEDIA_CREATOR_INVALID');
-      const key = await publishFixtureMedia(client, tenant.id, media, 'catalogue', bytes, mediaObjects);
-      await writeCatalogueMedia(client,{ tenantId: tenant.id,media,bytes,objectKey: key,
-        createdAt: fixture.fixedClock,createdByUserId: creator.userId });
-    });
     for (const service of tenant.settings.catalogue.services) {
       await client.query({
         name: 'demo-fixture-insert-service',
@@ -293,6 +285,14 @@ export async function seedTenantBusinessFixtureState({ client,fixture,mediaObjec
         });
       }
     }
+    await forEachFixtureMediaBatch(tenant.catalogueMedia, async (media) => {
+      const bytes = await catalogueMediaBytes(media,tenant.id);
+      const creator = mediaCreatorForTenant(tenant.id);
+      if (!creator) throw new Error('DEMO_FIXTURE_CATALOGUE_MEDIA_CREATOR_INVALID');
+      const key = await publishFixtureMedia(client, tenant.id, media, 'catalogue', bytes, mediaObjects);
+      await writeCatalogueMedia(client,{ tenantId: tenant.id,media,bytes,objectKey: key,
+        createdAt: fixture.fixedClock,createdByUserId: creator.userId });
+    });
     await client.query({
       name: 'demo-fixture-insert-catalogue-revision',
       text: `INSERT INTO tenant_catalogue_revisions

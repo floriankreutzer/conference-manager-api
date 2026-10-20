@@ -8,6 +8,18 @@ The cross-repository production topology is defined in `floriankreutzer/conferen
 
 ## Current foundation
 
+The uncomposed protected Platform session factory owns environment/UUID namespace
+construction while retaining the independent integer Platform epoch. It shares a
+pure namespace contract with Customer sessions and is excluded from both closed
+Demo graphs. See `PROTECTED-PLATFORM-SESSIONS.md` for its scope and acceptance limits.
+
+The uncomposed own synthetic-generation service consumes exact operation proof
+and the canonical lifecycle permission. Its Platform persistence adapter requires
+the exact owner-stamped RR scope, archives through ordinary lifecycle persistence
+with both audit domains, and seeds fresh private business data. It grants no real
+Tenant target scope. See `SYNTHETIC-GENERATION-REPLACEMENT.md` for its PostgreSQL-only
+media contract, retained quota/cooldown and pending native/root acceptance.
+
 The service uses Node.js 22 native HTTP and ECMAScript modules. The implemented foundation includes:
 
 - a bounded same-origin HTTP boundary;
