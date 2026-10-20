@@ -841,15 +841,12 @@ if (index.includes("from './demo/") || index.includes('demoRuntime: true')) {
 const customerComposition = await readFile('src/customer-composition.js', 'utf8');
 for (const required of [
   'createCustomerComposition',
-  'createSessionService',
+  'createCustomerAuthenticationComposition({',
+  'config,persistence,auditService,entraClient,authenticationFactory',
   'createAuthorizationPolicy',
   'createRequestService',
   'createRoomAvailabilityService',
   'createAuditService',
-  'createEntraAuthService',
-  'createTenantOnboardingService',
-  'createJitUserService',
-  'createPendingProviderIdentityResolver({ onboardingService, jitUserService })',
   'createMicrosoft365ConnectionService',
   'createMicrosoft365ConnectionHealthView',
   'createMicrosoft365CapabilityHealthService',
@@ -884,6 +881,18 @@ for (const required of [
 ]) {
   if (!customerComposition.includes(required)) {
     throw new Error(`Shared customer composition must wire ${required}.`);
+  }
+}
+const customerAuthenticationComposition=await readFile('src/customer-authentication-composition.js','utf8');
+for (const required of [
+  'createSessionService', 'createEntraAuthService', 'createTenantOnboardingService', 'createJitUserService',
+  'createPendingProviderIdentityResolver({ onboardingService, jitUserService })',
+  "const HTTP_SESSION_METHODS=Object.freeze(['resolvePrincipal','verifyCsrf','csrfTokenForPrincipal','revoke','clearCookie'])",
+  'sessionService: ownedHttpSession(authenticationFactory,',
+  'onboardingService: null,entraAuthService: null',
+]) {
+  if (!customerAuthenticationComposition.includes(required)) {
+    throw new Error(`Customer authentication composition must wire ${required}.`);
   }
 }
 if (!customerComposition.includes('managedAssetPolicy: managedBrandPolicy')) {
