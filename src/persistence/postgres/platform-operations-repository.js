@@ -196,7 +196,7 @@ export async function appendPlatformMutationEvidence(
   return tenantAudit;
 }
 
-function directoryRow(row) {
+function directoryRow(row,invitedCustomerAccess=false) {
   const invitationState = row.invitation_id === null
     ? 'none'
     : row.consumed_at !== null
@@ -213,7 +213,9 @@ function directoryRow(row) {
       : 'pending';
   const onboardingState = identityState === 'active'
     ? ['ready', 'active', 'suspended', 'archived'].includes(row.lifecycle_status) ? 'complete' : 'claimed'
-    : row.claim_pending === true
+    : invitedCustomerAccess && row.customer_member_accepted===true
+      ? 'claimed'
+      : row.claim_pending === true
       ? 'claim_pending'
       : row.invitation_id === null ? 'not_started' : 'invited';
   return Object.freeze({
@@ -279,11 +281,16 @@ export function createPostgresPlatformTenantOperationsRepository(pool, {
   onboardingRepository,
   tenantLifecycleRepository,
   cursorSecret,
+  customerInvitationEnvironment=null,
 } = {}) {
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
   }
   requireAuditRepositories(tenantAuditRepository, platformAuditRepository);
+  if (customerInvitationEnvironment!==null && !['dev','int','prod'].includes(customerInvitationEnvironment)) {
+    throw new TypeError('PLATFORM_CUSTOMER_DIRECTORY_ENVIRONMENT_INVALID');
+  }
+  const invitedCustomerAccess=customerInvitationEnvironment!==null;
   if (
     !onboardingRepository
     || typeof onboardingRepository.findInvitationByTenantId !== 'function'
@@ -326,6 +333,7 @@ export function createPostgresPlatformTenantOperationsRepository(pool, {
         const filters = Object.freeze({
           lifecycleStatus: query.lifecycleStatus,
           search: query.search === null ? null : query.search.toLowerCase(),
+          ...(invitedCustomerAccess ? { customerInvitationEnvironment } : {}),
         });
         const cursor = query.cursor === null
           ? null
@@ -339,7 +347,7 @@ export function createPostgresPlatformTenantOperationsRepository(pool, {
           throw new TypeError('PLATFORM_OPERATION_CURSOR_INVALID');
         }
         const page = await pool.query({
-          name: 'platform-tenant-directory-page',
+          name: invitedCustomerAccess ? 'platform-tenant-directory-invited-page' : 'platform-tenant-directory-page',
           text: `
             WITH authorized_tenants AS MATERIALIZED (
               SELECT tenant.*
@@ -358,17 +366,21 @@ export function createPostgresPlatformTenantOperationsRepository(pool, {
               invitation.consumed_at,
               invitation.revoked_at,
               binding.status AS binding_status,
-              EXISTS (
-                SELECT 1 FROM tenant_claim_transactions claim
-                WHERE claim.invitation_id = invitation.id AND claim.expires_at > $4
-              ) AS claim_pending,
+              ${invitedCustomerAccess ? `false AS claim_pending,
+                EXISTS(SELECT 1 FROM customer_access_memberships member
+                  WHERE member.environment=$9 AND member.tenant_id=tenant.id
+                    AND member.user_id IS NOT NULL AND member.accepted_at<=$4) AS customer_member_accepted`
+                : `EXISTS (SELECT 1 FROM tenant_claim_transactions claim
+                  WHERE claim.invitation_id = invitation.id AND claim.expires_at > $4) AS claim_pending`},
               $4::timestamptz AS snapshot_at
             FROM authorized_tenants tenant
             LEFT JOIN LATERAL (
-              SELECT id, revision, expires_at, consumed_at, revoked_at
-              FROM tenant_onboarding_invitations
+              SELECT id, revision, expires_at, ${invitedCustomerAccess ? 'accepted_at AS consumed_at' : 'consumed_at'}, revoked_at
+              FROM ${invitedCustomerAccess ? 'customer_member_invitations' : 'tenant_onboarding_invitations'}
               WHERE tenant_id = tenant.id AND created_at <= $4
-              ORDER BY created_at DESC, id DESC
+                ${invitedCustomerAccess ? `AND environment=$9
+                  ORDER BY (revoked_at IS NULL AND accepted_at IS NULL AND expires_at>$4) DESC,
+                    (accepted_at IS NOT NULL) DESC,created_at DESC,id DESC` : 'ORDER BY created_at DESC, id DESC'}
               LIMIT 1
             ) invitation ON true
             LEFT JOIN LATERAL (
@@ -394,12 +406,13 @@ export function createPostgresPlatformTenantOperationsRepository(pool, {
             query.search,
             afterTenantId,
             query.limit + 1,
+            ...(invitedCustomerAccess ? [customerInvitationEnvironment] : []),
           ],
         });
         const hasMore = page.rows.length > query.limit;
         const rows = hasMore ? page.rows.slice(0, query.limit) : page.rows;
         return Object.freeze({
-          items: Object.freeze(rows.map(directoryRow)),
+          items: Object.freeze(rows.map(row=>directoryRow(row,invitedCustomerAccess))),
           snapshotAt,
           nextCursor: hasMore
             ? cursorCodec.encode({
