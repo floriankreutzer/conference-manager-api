@@ -76,3 +76,28 @@ INT runtime/reset, full linked-data retention, operational sender configuration,
 physical key/recovery evidence and real owner contact remain separate SaaS1
 activation work. No sender, physical key, cost-bearing resource or live state is
 created by this preparation.
+
+## Explicit HTTP composition
+
+`createPlatformApp` accepts the optional `platformCustomerOnboardingService` port.
+Its default is null, preserving the existing legacy/Demo request shape. With the
+port explicitly selected, `POST /api/v1/platform/tenants` requires an additional
+`invitations` array of zero to nineteen intents and calls `createTenant` only.
+The application contract performs nested recipient/role/locale validation and
+always adds the configured owner. Unknown root fields, oversized arrays, query
+parameters, missing idempotency and invalid confirmation remain rejected. A
+configured but invalid service fails at composition; a service failure never
+falls back to bearer-claim creation.
+
+This is the existing concrete `TENANT_CREATE` route. Its ordinary session, CSRF,
+origin/body/response limits and telemetry identity remain shared. In the prepared
+application-passkey composition, the exact-request hash includes every recipient,
+role and locale. A pending proof cannot be used after changing any of them. The
+route response and ordinary session cookie remain buffered until proof/business
+commit succeeds. Tests exercise the actual decorator and route module together;
+synthetic verification ports do not replace the separately required native and
+physical-key acceptance evidence.
+
+The port is not selected by a process entrypoint in this preparation. Platform
+list/resend/revoke and directory projection for the new custody remain follow-on
+work before activating this create path in protected INT.
