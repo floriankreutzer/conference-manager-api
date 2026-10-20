@@ -18,7 +18,7 @@ export function createPostgresSyntheticCustomerHandoffRepository(pool,{ scope,br
   if (typeof pool?.connect!=='function' || typeof pool?.query!=='function'
     || ['stateVerifier','matchesBrowser','matchesCode','issueCompletion','matchesCompletion','completionCsrf','verifyCompletionCsrf']
       .some(name=>typeof browserBinding?.[name]!=='function')
-    || ['resolvePrincipal','issue','revoke'].some(name=>typeof sessionService?.[name]!=='function')) {
+    || ['resolvePrincipal','issue','revoke','clearCookie'].some(name=>typeof sessionService?.[name]!=='function')) {
     throw new TypeError('SYNTHETIC_CUSTOMER_HANDOFF_CONFIGURATION_INVALID');
   }
   const protection={ environment: scope.environment,securityEpoch: scope.securityEpoch };
@@ -118,6 +118,20 @@ export function createPostgresSyntheticCustomerHandoffRepository(pool,{ scope,br
         const { row,time }=await approved(client,flowId);requireCompletion(row,time,{ browserToken,completion });
         return Object.freeze({ slot: row.slot,role: row.selected_role,
           csrfToken: browserBinding.completionCsrf({ binding: codeBinding(row),value: completion }) });
+      });
+    },
+    async logout({ flowId,browserToken,completion,csrfToken,request,correlationId }={}) {
+      requireProtectedRuntimeSharedExecutionScope(pool,protection);
+      if (!isInternalUuid(correlationId)) deny();
+      return withPostgresTransaction(pool,async client=>{
+        const { row,time }=await approved(client,flowId);requireCompletion(row,time,{ browserToken,completion });
+        if (!browserBinding.verifyCompletionCsrf({ binding: codeBinding(row),value: completion,csrfToken })) deny();
+        // Explicit browser action only. Revoke the actual current protected
+        // cookie's session through canonical Tenant audit. An unknown/expired
+        // cookie has no authority to revoke, but may still be cleared safely.
+        const principal=await sessionService.resolvePrincipal(request);
+        if (principal && await sessionService.revoke(principal,{ correlationId })!==true) deny();
+        return Object.freeze({ setCookie: sessionService.clearCookie() });
       });
     },
     async complete({ flowId,browserToken,completion,csrfToken,request,correlationId }={}) {
