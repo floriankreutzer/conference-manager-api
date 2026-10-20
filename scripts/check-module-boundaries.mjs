@@ -22,6 +22,7 @@ const PRODUCTION_COMPOSITION_ROOTS = new Set([
 ]);
 const CUSTOMER_EMAIL_AUTHORITY_MODULES = new Set([
   'src/identity/customer-microsoft-authentication-service.js',
+  'src/http/customer-microsoft-authentication-routes.js',
   'src/identity/customer-microsoft-admission-service.js',
   'src/identity/customer-microsoft-flow-binding.js',
   'src/persistence/postgres/customer-microsoft-flow-repository.js',
