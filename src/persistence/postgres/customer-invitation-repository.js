@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { normalizeCustomerInvitationBatch } from '../../authorization/customer-invitation-policy.js';
 import { CustomerInvitationConflictError } from '../../domain/customer-invitation-errors.js';
 import { withPostgresTransaction } from './transaction.js';
+import { createCustomerInvitationCustody } from './customer-invitation-custody.js';
 import { customerInvitationUuid as uuid, customerInvitationActor, lockCustomerInvitationActor,
-  customerInvitationDenied, customerInvitationRecord, openCustomerMailbox,
+  customerInvitationDenied, customerInvitationRecord,
   CUSTOMER_INVITATION_COLUMNS, CUSTOMER_INVITATION_JOINS } from './customer-invitation-records.js';
 
 function revision(value) {
@@ -25,14 +26,7 @@ export function createPostgresCustomerInvitationRepository(pool, {
     || !cipher || ['seal','open','recipientLookup','commandDigest'].some(method => typeof cipher[method] !== 'function')
     || !content || typeof content.invitation !== 'function' || !auditRepository || typeof auditRepository.appendWithClient !== 'function'
     || typeof identifierFactory !== 'function') throw new TypeError('CUSTOMER_INVITATION_REPOSITORY_CONFIGURATION_INVALID');
-  const nextId = () => uuid(identifierFactory());
-  async function load(client, tenantId, invitationId) {
-    const result = await client.query({ name: 'customer-invitation-read-one',
-      text: `SELECT ${CUSTOMER_INVITATION_COLUMNS} FROM customer_member_invitations invitation ${CUSTOMER_INVITATION_JOINS}
-        WHERE invitation.environment=$1 AND invitation.tenant_id=$2 AND invitation.id=$3`,
-      values: [environment,tenantId,invitationId] });
-    return customerInvitationRecord(cipher, environment, result.rows[0]);
-  }
+  const { load,delivery,issue }=createCustomerInvitationCustody(pool,{ environment,cipher,content,identifierFactory });
   async function audit(client, input, invitationId, nextRevision, now) {
     if (typeof input.auditEventFor !== 'function') throw new TypeError('CUSTOMER_INVITATION_AUDIT_REQUIRED');
     const event = input.auditEventFor({ invitationId, nextRevision, occurredAt: now.toISOString() });
@@ -43,36 +37,6 @@ export function createPostgresCustomerInvitationRepository(pool, {
       throw new Error('CUSTOMER_INVITATION_AUDIT_FAILED');
     }
     return identifier;
-  }
-  async function mailbox(client, recipient) {
-    const hash = cipher.recipientLookup(recipient);
-    const proposedId = nextId(), plaintext = Buffer.from(recipient, 'utf8');
-    let envelope;
-    try { envelope = cipher.seal(plaintext, { environment, mailboxId: proposedId, recordId: proposedId,
-      purpose: 'mailbox_recipient', tenantId: null }); } finally { plaintext.fill(0); }
-    await client.query({ name: 'customer-invitation-mailbox-insert',
-      text: `INSERT INTO customer_access_mailboxes(environment,id,lookup_hash,recipient_envelope)
-        VALUES($1,$2,$3,$4::jsonb) ON CONFLICT(environment,lookup_hash) DO NOTHING`,
-      values: [environment,proposedId,hash,JSON.stringify(envelope)] });
-    const result = await client.query({ name: 'customer-invitation-mailbox-lock',
-      text: `SELECT id AS mailbox_id,lookup_hash,recipient_envelope FROM customer_access_mailboxes
-        WHERE environment=$1 AND lookup_hash=$2 FOR UPDATE`, values: [environment,hash] });
-    if (result.rowCount !== 1 || openCustomerMailbox(cipher, environment, result.rows[0]) !== recipient) {
-      throw new Error('CUSTOMER_INVITATION_CUSTODY_INVALID');
-    }
-    return result.rows[0].mailbox_id;
-  }
-  async function delivery(client, { tenantId, invitationId, invitationRevision, mailboxId, recipient, tenantDisplayName, locale, now }) {
-    const deliveryId = nextId(), message = content.invitation({ recipient, tenantDisplayName, locale, deliveryId });
-    const plaintext = Buffer.from(JSON.stringify(message), 'utf8');
-    let envelope;
-    try { envelope = cipher.seal(plaintext, { environment, mailboxId, recordId: deliveryId, purpose: 'membership_invitation', tenantId }); }
-    finally { plaintext.fill(0); }
-    await client.query({ name: 'customer-invitation-delivery-enqueue',
-      text: `INSERT INTO customer_access_deliveries(environment,id,mailbox_id,tenant_id,invitation_id,invitation_revision,
-        purpose,payload_envelope,created_at,expires_at,next_attempt_at)
-        VALUES($1,$2,$3,$4,$5,$6,'membership_invitation',$7::jsonb,$8,$8::timestamptz+interval '23 hours',$8)`,
-      values: [environment,deliveryId,mailboxId,tenantId,invitationId,invitationRevision,JSON.stringify(envelope),now] });
   }
   async function mutate(input, operation) {
     const actor = customerInvitationActor(input, environment), invitationId = uuid(input.invitationId);
@@ -162,23 +126,8 @@ export function createPostgresCustomerInvitationRepository(pool, {
         const ordered = normalized.invitations.map((intent,index) => ({ intent,index,hash: cipher.recipientLookup(intent.recipient) }))
           .sort((left,right) => left.hash < right.hash ? -1 : left.hash > right.hash ? 1 : 0);
         for (const { intent,index } of ordered) {
-          const mailboxId = await mailbox(client, intent.recipient), membershipId = nextId(), invitationId = nextId();
-          const existing = await client.query({ name: 'customer-invitation-membership-existing',
-            text: 'SELECT id FROM customer_access_memberships WHERE environment=$1 AND tenant_id=$2 AND mailbox_id=$3 FOR UPDATE',
-            values: [environment,actor.tenantId,mailboxId] });
-          if (existing.rowCount) throw new CustomerInvitationConflictError();
-          await client.query({ name: 'customer-invitation-membership-insert',
-            text: 'INSERT INTO customer_access_memberships(environment,tenant_id,id,mailbox_id,created_at) VALUES($1,$2,$3,$4,$5)',
-            values: [environment,actor.tenantId,membershipId,mailboxId,now] });
-          const auditId = await audit(client, input, invitationId, 1, now);
-          await client.query({ name: 'customer-invitation-insert',
-            text: `INSERT INTO customer_member_invitations(environment,tenant_id,id,membership_id,mailbox_id,elevated_roles,locale,
-              created_at,issued_at,expires_at,last_audit_event_id)
-              VALUES($1,$2,$3,$4,$5,$6::varchar[],$7,$8,$8,$8::timestamptz+interval '7 days',$9)`,
-            values: [environment,actor.tenantId,invitationId,membershipId,mailboxId,intent.roles,intent.locale,now,auditId] });
-          await delivery(client, { tenantId: actor.tenantId, invitationId, invitationRevision: 1, mailboxId,
-            recipient: intent.recipient, tenantDisplayName, locale: intent.locale, now });
-          stored[index] = await load(client, actor.tenantId, invitationId);
+          stored[index] = await issue(client,{ tenantId: actor.tenantId,intent,tenantDisplayName,now,
+            recordAudit: ({ invitationId,now: issuedAt }) => audit(client,input,invitationId,1,issuedAt) });
         }
         const receipts = stored.map(({ id, revision: version, roles, locale, state, expiresAt, delivery: deliveryState }) => ({
           id, revision: version, roles, locale, state, expiresAt, delivery: deliveryState,

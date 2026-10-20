@@ -1,50 +1,14 @@
-import { normalizeCustomerInvitationBatch, normalizeCustomerInvitationIntent } from '../authorization/customer-invitation-policy.js';
+import { normalizeCustomerInvitationBatch } from '../authorization/customer-invitation-policy.js';
 import { AuthorizationDeniedError, AuthorizationInputError } from '../authorization/errors.js';
 import { PERMISSION } from '../authorization/policy.js';
 import { AUDIT_ACTION, AUDIT_OUTCOME, AUDIT_RETENTION_CLASS } from '../audit/event.js';
 import { isInternalUuid } from '../domain/identifiers.js';
-
-const STATES = new Set(['pending', 'accepted', 'revoked', 'expired']);
-const DELIVERY_STATES = new Set(['queued', 'processing', 'accepted', 'failed', 'cancelled']);
-const ROW_FIELDS = ['tenantId', 'environment', 'id', 'revision', 'recipient', 'roles', 'locale', 'state', 'expiresAt', 'delivery'];
+import { projectCustomerInvitation as publicInvitation,projectCustomerInvitations as rows } from './customer-invitation-result.js';
 
 function invalid() { throw new AuthorizationInputError('CUSTOMER_INVITATION_INPUT_INVALID'); }
 function invalidResult() { throw new TypeError('CUSTOMER_INVITATION_RESULT_INVALID'); }
 function uuid(value) { if (!isInternalUuid(value)) invalid(); return value.toLowerCase(); }
 function revision(value) { if (!Number.isSafeInteger(value) || value < 1 || value >= Number.MAX_SAFE_INTEGER) invalid(); return value; }
-function publicInvitation(row, tenantId, environment) {
-  if (!row || typeof row !== 'object' || Array.isArray(row)
-    || ![Object.prototype, null].includes(Object.getPrototypeOf(row))) invalidResult();
-  const keys = Reflect.ownKeys(row);
-  if (keys.length !== ROW_FIELDS.length || keys.some((key) => {
-    const property = Object.getOwnPropertyDescriptor(row, key);
-    return !ROW_FIELDS.includes(key) || !property.enumerable || !Object.hasOwn(property, 'value');
-  })) invalidResult();
-  if (row.tenantId !== tenantId || row.environment !== environment || !isInternalUuid(row.id)
-    || !Number.isSafeInteger(row.revision) || row.revision < 1 || row.revision >= Number.MAX_SAFE_INTEGER
-    || !STATES.has(row.state) || !DELIVERY_STATES.has(row.delivery) || (row.state === 'revoked' && row.delivery === 'queued')
-    || typeof row.expiresAt !== 'string' || !Number.isFinite(Date.parse(row.expiresAt))
-    || new Date(row.expiresAt).toISOString() !== row.expiresAt) invalidResult();
-  let intent;
-  try { intent = normalizeCustomerInvitationIntent({ recipient: row.recipient, roles: row.roles, locale: row.locale }); }
-  catch { invalidResult(); }
-  const entry = intent;
-  if (entry.recipient !== row.recipient || JSON.stringify(entry.roles) !== JSON.stringify(row.roles)) invalidResult();
-  return Object.freeze({ id: row.id.toLowerCase(), revision: row.revision, ...entry,
-    state: row.state, expiresAt: row.expiresAt, delivery: row.delivery });
-}
-function rows(value, maximum, tenantId, environment) {
-  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype || value.length > maximum
-    || Reflect.ownKeys(value).length !== value.length + 1) invalidResult();
-  const results = [];
-  for (let index = 0; index < value.length; index++) {
-    const property = Object.getOwnPropertyDescriptor(value, String(index));
-    if (!property?.enumerable || !Object.hasOwn(property, 'value')) invalidResult();
-    results.push(publicInvitation(property.value, tenantId, environment));
-  }
-  if (new Set(results.map((entry) => entry.id)).size !== results.length) invalidResult();
-  return Object.freeze(results);
-}
 
 // Tenant Admin use cases only. Platform onboarding uses its own authenticated
 // control-plane boundary; a Customer principal never carries Platform authority.

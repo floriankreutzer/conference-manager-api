@@ -193,6 +193,7 @@ export async function appendPlatformMutationEvidence(
     { expectedTargetTenantId: tenantId },
   );
   if (!platformAudit || platformAudit.targetTenantId !== tenantId) throw new Error('PLATFORM_AUDIT_APPEND_FAILED');
+  return tenantAudit;
 }
 
 function directoryRow(row) {
