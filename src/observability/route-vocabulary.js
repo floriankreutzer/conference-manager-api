@@ -14,6 +14,8 @@ export const TELEMETRY_ROUTE_KEYS = Object.freeze([
   'customer_email_verify',
   'customer_email_choices',
   'customer_email_selection',
+  'customer_invitations',
+  'customer_invitation_mutation',
   'onboarding_start',
   'onboarding_claim',
   'session',
