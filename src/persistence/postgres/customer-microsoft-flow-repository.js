@@ -141,6 +141,33 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
     values: [environment,row.id,time,entry.tenantId,entry.userId,entry.membershipId,entry.userSecurityVersion,auditId] });
   }
   return Object.freeze({
+    async accountState({ principal: value }={}) {
+      let principal;try { principal=normalizePrincipal(value); } catch { return rejected(); }
+      if (!['email_code','microsoft_entra'].includes(principal.providerIdentity.provider)) return rejected();
+      const result=await pool.query({ name: 'customer-microsoft-current-account-state',text: `SELECT
+        EXISTS(SELECT 1 FROM user_identity_bindings identity WHERE identity.tenant_id=person.tenant_id AND identity.user_id=person.id
+          AND identity.provider='microsoft_entra') AS microsoft_linked,
+        (session.provider='email_code' AND session.issued_at>=clock_timestamp()-interval '5 minutes'
+          AND EXISTS(SELECT 1 FROM user_identity_bindings email WHERE email.tenant_id=person.tenant_id AND email.user_id=person.id
+            AND email.provider='email_code' AND email.provider_tenant_reference=$1
+            AND email.provider_user_reference=member.mailbox_id::text
+            AND session.provider_identity_reference=member.mailbox_id::text)) AS fresh_email
+        FROM customer_access_memberships member JOIN users person ON person.tenant_id=member.tenant_id AND person.id=member.user_id
+        JOIN tenants tenant ON tenant.id=person.tenant_id JOIN sessions session ON session.tenant_id=person.tenant_id
+          AND session.user_id=person.id AND session.id=$4 WHERE member.environment=$1 AND member.tenant_id=$2 AND member.user_id=$3
+          AND member.accepted_at IS NOT NULL AND person.active=true AND person.security_version=$5
+          AND tenant.status IN ('pending','onboarding','ready','active') AND session.principal_version=$5
+          AND session.provider=$6 AND session.provider_identity_reference=$7 AND session.revoked_at IS NULL
+          AND session.expires_at>clock_timestamp() AND session.issued_at<=clock_timestamp()`,
+      values: [environment,principal.tenantId,principal.userId,principal.session.id,principal.session.securityVersion,
+        principal.providerIdentity.provider,principal.providerIdentity.reference] });
+      const row=result.rows[0];
+      if (result.rowCount!==1) return rejected();
+      if (typeof row.microsoft_linked!=='boolean' || typeof row.fresh_email!=='boolean') {
+        throw new Error('CUSTOMER_MICROSOFT_ACCOUNT_STATE_INVALID');
+      }
+      return Object.freeze({ status: 'account',microsoftLinked: row.microsoft_linked,emailReauthenticationRequired: !row.fresh_email });
+    },
     async choices({ flowId,browserToken }={}) {
       const row=await load(pool,flowId),time=await databaseNow(pool);
       if (!verifiedProof(row,{ browserToken },time,'login')) return rejected();

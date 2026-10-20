@@ -185,6 +185,8 @@ test('both closed Demo surfaces reject real mailbox/invitation authority directl
     'src/identity/customer-microsoft-admission-service.js',
     'src/persistence/postgres/customer-microsoft-flow-repository.js',
     'src/persistence/postgres/platform-customer-onboarding-repository.js',
+    'src/persistence/postgres/platform-customer-invitation-repository.js',
+    'src/platform/application/customer-invitation-administration-service.js',
     'src/platform/application/customer-onboarding-service.js',
     'src/application/customer-access-delivery-worker.js',
     'src/persistence/postgres/customer-access-delivery-repository.js','src/persistence/postgres/customer-access-delivery-eligibility.js',

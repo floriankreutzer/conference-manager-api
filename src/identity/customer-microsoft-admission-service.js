@@ -17,7 +17,8 @@ function exact(value,keys) {
 // proofs and current locked membership; the ordinary session service owns
 // credentials. All three persistence adapters must share the same pool.
 export function createCustomerMicrosoftAdmissionService({ repository,auditService,sessionService }={}) {
-  if (!repository || ['choices','admit','linkConfirmation','confirmLink'].some(method=>typeof repository[method]!=='function')
+  if (!repository || ['choices','admit','linkConfirmation','confirmLink','accountState']
+    .some(method=>typeof repository[method]!=='function')
     || typeof auditService?.createActorEvent!=='function' || typeof sessionService?.issue!=='function') {
     throw new TypeError('CUSTOMER_MICROSOFT_ADMISSION_CONFIGURATION_INVALID');
   }
@@ -35,6 +36,9 @@ export function createCustomerMicrosoftAdmissionService({ repository,auditServic
       metadata: { provider: 'microsoft_entra',source: 'explicit_link' } });
   }
   return Object.freeze({
+    accountState(input) {
+      exact(input,['principal']);return repository.accountState({ principal: input.principal });
+    },
     choices(input) {
       exact(input,['flowId','browserToken']);return repository.choices({ flowId: uuid(input.flowId),browserToken: input.browserToken });
     },

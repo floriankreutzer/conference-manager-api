@@ -28,6 +28,8 @@ const CUSTOMER_EMAIL_AUTHORITY_MODULES = new Set([
   'src/persistence/postgres/customer-microsoft-flow-repository.js',
   'src/persistence/postgres/customer-invitation-custody.js',
   'src/persistence/postgres/platform-customer-onboarding-repository.js',
+    'src/persistence/postgres/platform-customer-invitation-repository.js',
+    'src/platform/application/customer-invitation-administration-service.js',
   'src/platform/application/customer-onboarding-service.js',
   'src/application/customer-access-delivery-worker.js',
   'src/persistence/postgres/customer-access-delivery-repository.js',

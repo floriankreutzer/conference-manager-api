@@ -13,6 +13,7 @@ import {
 } from './security.js';
 
 export const PLATFORM_TENANTS_PATH = '/api/v1/platform/tenants';
+const TENANT_INVITATIONS_PATH=/^\/api\/v1\/platform\/tenants\/([0-9a-f-]{36})\/invitations$/i;
 const TENANT_INVITATION_PATH = new RegExp(
   '^/api/v1/platform/tenants/([0-9a-f-]{36})/invitations/([0-9a-f-]{36})$',
   'i',
@@ -174,12 +175,35 @@ function tenantRoute(context) {
   return null;
 }
 
-export const platformTenantRoutes = definePlatformRouteModule({
+function invitationCollection(path) {
+  const match=path.match(TENANT_INVITATIONS_PATH);
+  return match && internalId(match[1]) ? match[1].toLowerCase() : null;
+}
+function invitationListQuery(parsedUrl) {
+  for (const key of parsedUrl.searchParams.keys()) {
+    if (!['limit','afterId'].includes(key) || parsedUrl.searchParams.getAll(key).length!==1) {
+      throw new PlatformHttpError(400,'PLATFORM_VALIDATION_FAILED');
+    }
+  }
+  const limit=parsedUrl.searchParams.get('limit'),after=parsedUrl.searchParams.get('afterId');
+  if ((limit!==null && (!/^[1-9]\d{0,2}$/.test(limit) || Number(limit)>100))
+    || (after!==null && !internalId(after))) throw new PlatformHttpError(400,'PLATFORM_VALIDATION_FAILED');
+  return { limit: limit===null ? 50 : Number(limit),afterInvitationId: after===null ? null : after.toLowerCase() };
+}
+export function createPlatformTenantRoutes({ invitationAdministration=false } = {}) {
+  if (typeof invitationAdministration!=='boolean') throw new TypeError('PLATFORM_TENANT_ROUTE_CONFIGURATION_INVALID');
+  return definePlatformRouteModule({
   id: 'platform-tenants',
-  claim: tenantRoute,
+  claim(context) {
+    if (invitationAdministration && invitationCollection(context.path)!==null) {
+      return context.method==='GET' ? PLATFORM_HTTP_ROUTE.INVITATION_LIST : PLATFORM_HTTP_ROUTE.INVITATION_ISSUE;
+    }
+    return tenantRoute(context);
+  },
   createHandler({
     platformTenantOperationsService,
     platformCustomerOnboardingService=null,
+    platformCustomerInvitationAdministrationService=null,
     platformPrincipalGuard,
     maxBodyBytes,
     maxResponseBytes,
@@ -197,12 +221,40 @@ export const platformTenantRoutes = definePlatformRouteModule({
     if (platformCustomerOnboardingService!==null && typeof platformCustomerOnboardingService?.createTenant!=='function') {
       throw new TypeError('PLATFORM_CUSTOMER_ONBOARDING_SERVICE_REQUIRED');
     }
+    if (invitationAdministration && (platformCustomerOnboardingService===null
+      || !platformCustomerInvitationAdministrationService
+      || ['list','issueBatch','reissue','revoke'].some(name=>typeof platformCustomerInvitationAdministrationService[name]!=='function'))) {
+      throw new TypeError('PLATFORM_CUSTOMER_INVITATION_ADMINISTRATION_REQUIRED');
+    }
     if (!platformPrincipalGuard || typeof platformPrincipalGuard.require !== 'function') {
       throw new TypeError('PLATFORM_PRINCIPAL_GUARD_REQUIRED');
     }
 
     return async function handle(context) {
       const { path, parsedUrl, request, response, requestId } = context;
+      const collection=invitationAdministration ? invitationCollection(path) : null;
+      if (collection!==null) {
+        if (!['GET','POST'].includes(request.method)) throw new PlatformHttpError(405,'PLATFORM_METHOD_NOT_ALLOWED');
+        const trusted=await platformMutationAuthority({ platformPrincipalGuard,request,correlationId: requestId,
+          idempotent: request.method==='POST' });
+        let result;
+        if (request.method==='GET') {
+          await assertNoPlatformRequestBody(request);
+          result=await platformCustomerInvitationAdministrationService.list({ ...trusted,tenantId: collection,
+            correlationId: requestId,...invitationListQuery(parsedUrl) });
+        } else {
+          assertPlatformNoQuery(parsedUrl);
+          const body=requirePlatformExactObject(await readPlatformJsonObject(request,{ maxBytes: maxBodyBytes }),{ required: {
+            invitations: value=>Array.isArray(value) && value.length>=1 && value.length<=20,
+            reason: value=>boundedText(value,500),confirmation: value=>value && typeof value==='object' && !Array.isArray(value),
+          } });
+          confirmationForTenant(body.confirmation,PLATFORM_OPERATION.TENANT_INVITATION_CREATE,collection);
+          result=await platformCustomerInvitationAdministrationService.issueBatch({ ...trusted,...body,
+            tenantId: collection,correlationId: requestId });
+        }
+        const status=request.method==='POST' && result?.outcome==='updated' ? 201 : 200;
+        sendPlatformJson(response,status,result,maxResponseBytes);return status;
+      }
       const match = tenantMatches(path);
       if (path !== PLATFORM_TENANTS_PATH && match === null) return null;
 
@@ -280,11 +332,16 @@ export const platformTenantRoutes = definePlatformRouteModule({
         invitationId: match.invitationId,
         correlationId: requestId,
       };
-      const result = match.type === 'revoke'
-        ? await platformTenantOperationsService.revokeInvitation(input)
-        : await platformTenantOperationsService.reissueInvitation(input);
+      const result = invitationAdministration
+        ? await platformCustomerInvitationAdministrationService[match.type](input)
+        : match.type === 'revoke'
+          ? await platformTenantOperationsService.revokeInvitation(input)
+          : await platformTenantOperationsService.reissueInvitation(input);
       sendPlatformJson(response, 200, result, maxResponseBytes);
       return 200;
     };
   },
 });
+}
+
+export const platformTenantRoutes=createPlatformTenantRoutes();

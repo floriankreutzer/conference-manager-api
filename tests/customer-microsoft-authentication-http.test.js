@@ -24,13 +24,14 @@ async function fixture(t,{ injected=true }={}) {
     complete: { status: 'membership_required',csrfToken: CSRF,setCookie: cookie(true) },
     choices: { status: 'membership_required',csrfToken: CSRF,items: [{ membershipId: id(6),displayName: 'Invited organization',
       roles: ['platform_admin'],recipient: 'Private@example.test' }] },select: { status: 'authenticated',setCookie: session },
+    accountState: { status: 'account',microsoftLinked: false,emailReauthenticationRequired: false },
     linkConfirmation: { status: 'link_confirmation_required',csrfToken: CSRF },
     confirmLink: { status: 'authenticated',setCookie: session } };
   const port=name=>async(...args)=>{ calls.push({ name,args });const value=state[name==='startLink' ? 'startLogin' : name];
     if (value instanceof Error) throw value;return value; };
   const service={ startLogin: port('startLogin'),startLink: port('startLink'),complete: port('complete') };
   const module=createCustomerMicrosoftAuthenticationRouteModule({ publicOrigin: ORIGIN,authenticationService: service,
-    admissionService: Object.fromEntries(['choices','select','linkConfirmation','confirmLink'].map(name=>[name,port(name)])),
+    admissionService: Object.fromEntries(['choices','select','linkConfirmation','confirmLink','accountState'].map(name=>[name,port(name)])),
     sourceKey: { fingerprint(address) { sources.push(address);return 'f'.repeat(64); } },
     sessionService: { async resolvePrincipal() { return state.principal; } } });
   const config=loadConfig({ NODE_ENV: 'test',PUBLIC_ORIGIN: ORIGIN,RATE_LIMIT_MAX: '120' });
@@ -127,4 +128,12 @@ test('inactive composition preserves legacy login and rejects closed Demo module
   const f=await fixture(t,{ injected: false });assert.equal((await f.request()).status,503);assert.equal(f.calls.length,0);
   assert.throws(()=>createApp({ ...f.options,config: { ...f.options.config,demoRuntime: true },
     customerMicrosoftAuthenticationRouteModule: f.module }),/COMPOSITION_INVALID/);
+});
+test('profile link status requires an ordinary current session and exposes only minimized server state without a flow cookie',async t=>{
+  const f=await fixture(t),result=await f.request('/link/status');assert.equal(result.status,200);
+  assert.deepEqual(Object.keys(JSON.parse(result.body)).sort(),['emailReauthenticationRequired','microsoftLinked','requestId','status']);
+  assert.equal(JSON.parse(result.body).microsoftLinked,false);
+  assert.equal(f.calls[0].name,'accountState');assert.equal(f.calls[0].args[0].principal.userId,principal.userId);
+  f.state.principal=null;assert.equal((await f.request('/link/status')).status,401);
+  assert.equal(f.calls.length,1);
 });

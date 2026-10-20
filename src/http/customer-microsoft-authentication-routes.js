@@ -16,6 +16,7 @@ const ROUTES=Object.freeze({
   [`${ROOT}/choices`]: ['GET','customer_microsoft_choices'],
   [`${ROOT}/selection`]: ['POST','customer_microsoft_selection'],
   [`${ROOT}/link/start`]: ['POST','customer_microsoft_link_start'],
+  [`${ROOT}/link/status`]: ['GET','customer_microsoft_link_status'],
   [`${ROOT}/link/confirmation`]: ['GET','customer_microsoft_link_confirmation'],
   [`${ROOT}/link/confirm`]: ['POST','customer_microsoft_link_confirm'],
 });
@@ -65,7 +66,7 @@ export function createCustomerMicrosoftAuthenticationRouteModule({ authenticatio
   let origin;try { origin=new URL(publicOrigin); } catch { throw new TypeError('CUSTOMER_MICROSOFT_HTTP_CONFIGURATION_INVALID'); }
   if (origin.protocol!=='https:' || origin.origin!==publicOrigin
     || ['startLogin','startLink','complete'].some(method=>typeof authenticationService?.[method]!=='function')
-    || ['choices','select','linkConfirmation','confirmLink'].some(method=>typeof admissionService?.[method]!=='function')
+    || ['choices','select','linkConfirmation','confirmLink','accountState'].some(method=>typeof admissionService?.[method]!=='function')
     || typeof sourceKey?.fingerprint!=='function' || typeof sessionService?.resolvePrincipal!=='function') {
     throw new TypeError('CUSTOMER_MICROSOFT_HTTP_CONFIGURATION_INVALID');
   }
@@ -103,6 +104,13 @@ export function createCustomerMicrosoftAuthenticationRouteModule({ authenticatio
           const url=authorizationUrl(result.authorizationUrl),cookie=transactionCookie(result.setCookie);
           response.setHeader('Set-Cookie',cookie);
           return linking ? send(response,200,{ authorizationUrl: url,requestId },maxResponseBytes) : redirect(response,302,url);
+        }
+        if (path===`${ROOT}/link/status`) {
+          const result=await admissionService.accountState({ principal: await principalGuard.require(request) });rejected(result);
+          if (result?.status!=='account' || typeof result.microsoftLinked!=='boolean'
+            || typeof result.emailReauthenticationRequired!=='boolean') outputInvalid();
+          return send(response,200,{ status: 'account',microsoftLinked: result.microsoftLinked,
+            emailReauthenticationRequired: result.emailReauthenticationRequired,requestId },maxResponseBytes);
         }
         const cookie=readCustomerMicrosoftTransactionCookie(request.headers);
         if (isCallback) {

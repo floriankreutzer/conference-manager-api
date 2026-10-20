@@ -7,7 +7,7 @@ const id=n=>`b5000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const context={ flowId: id(1),browserToken: 'B'.repeat(43),csrfToken: 'c'.repeat(64),correlationId: id(2) };
 function fixture() {
   const calls=[];
-  const repository=Object.fromEntries(['choices','admit','linkConfirmation','confirmLink'].map(method=>[method,async input=>{
+  const repository=Object.fromEntries(['choices','admit','linkConfirmation','confirmLink','accountState'].map(method=>[method,async input=>{
     calls.push({ method,input });return { status: 'rejected' };
   }]));
   const auditRepository=Object.fromEntries(['append','listByTenantId','verifyTenantChain'].map(method=>[method,async()=>{
@@ -54,4 +54,9 @@ test('read ceremonies preserve explicit browser custody and reject added primary
   await f.service.linkConfirmation({ flowId: id(1),browserToken: context.browserToken,principal: null });
   assert.deepEqual(f.calls.map(call=>call.method),['choices','linkConfirmation']);
   assert.throws(()=>f.service.choices({ flowId: id(1),browserToken: context.browserToken,identity: {} }),/INPUT_INVALID/);
+});
+test('personal link state accepts only the authenticated server principal and no caller-selected account',async()=>{
+  const f=fixture(),principal=Object.freeze({ sentinel: true });await f.service.accountState({ principal });
+  assert.equal(f.calls[0].method,'accountState');assert.equal(f.calls[0].input.principal,principal);
+  assert.throws(()=>f.service.accountState({ principal,userId: id(5) }),/INPUT_INVALID/);assert.equal(f.calls.length,1);
 });

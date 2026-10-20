@@ -4,8 +4,9 @@ This is an inactive foundation, not an authentication cutover. Existing runtime
 entrypoints do not import or select it. The fresh primary adapter is documented in
 [CUSTOMER-MICROSOFT-PRIMARY.md](CUSTOMER-MICROSOFT-PRIMARY.md). Organization selection,
 atomic session admission and explicit account-link confirmation are prepared
-through separate admission-service ports. HTTP and protected INT runtime
-composition and integrated acceptance remain required before activation.
+through separate admission-service ports. The opt-in HTTP contract is prepared in
+CUSTOMER-MICROSOFT-HTTP.md. Protected INT runtime composition and integrated
+acceptance remain required before activation.
 
 ## Protocol and browser custody
 
@@ -52,6 +53,9 @@ transaction. Link confirmation uses the same lock order, requires `confirm:true`
 rejects an existing/conflicting Microsoft binding and writes the exact minimized
 identity-link audit under the original server-generated flow correlation.
 Any session/audit/commit failure rolls back all identity, version and proof writes.
+The existing Tenant audit query retains the new action in its User category and
+keeps its normal minimized summary allowlist. Provider subject/directory references,
+proofs and security versions do not enter that public history projection.
 
 ## Persistence and migration boundary
 

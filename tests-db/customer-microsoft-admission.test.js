@@ -6,6 +6,8 @@ import { createPostgresPool } from '../src/persistence/postgres/pool.js';
 import { createPostgresCustomerMicrosoftFlowRepository } from '../src/persistence/postgres/customer-microsoft-flow-repository.js';
 import { createCustomerMicrosoftAuthenticationService } from '../src/identity/customer-microsoft-authentication-service.js';
 import { createCustomerMicrosoftAdmissionService } from '../src/identity/customer-microsoft-admission-service.js';
+import { createTenantAuditQueryService } from '../src/audit/tenant-audit-query-service.js';
+import { createPostgresTenantAuditQueryRepository } from '../src/persistence/postgres/tenant-audit-query-repository.js';
 import { createCustomerMicrosoftFlowBinding } from '../src/identity/customer-microsoft-flow-binding.js';
 import { createFreshCustomerEntraClient } from '../src/identity/entra-client.js';
 import { readCustomerMicrosoftTransactionCookie } from '../src/identity/customer-microsoft-cookie.js';
@@ -50,6 +52,14 @@ test('explicit dual-proof linking and invited Microsoft admission are atomic, si
     [customer.tenantId,customer.principal.userId]);return result.rows[0];
   }
   const link=await primary(true),before=await evidence();
+  await t.test('personal account state is accepted-member/current-session scoped and includes no external identity or role',async()=>{
+    assert.deepEqual(await admission().accountState({ principal: customer.principal }),{
+      status: 'account',microsoftLinked: false,emailReauthenticationRequired: false });
+    for (const principal of [{ ...customer.principal,tenantId: randomUUID() },{ ...customer.principal,
+      session: { ...customer.principal.session,id: randomUUID() } }]) {
+      assert.deepEqual(await admission().accountState({ principal }),{ status: 'rejected' });
+    }
+  });
   await t.test('confirmation reads and invalid browser/CSRF/foreign principal cannot mutate identity or session authority',async()=>{
     assert.equal((await admission().linkConfirmation({ flowId: link.flowId,browserToken: link.browserToken,
       principal: customer.principal })).status,'link_confirmation_required');
@@ -76,6 +86,17 @@ test('explicit dual-proof linking and invited Microsoft admission are atomic, si
     assert.equal(principal.tenantId,customer.tenantId);assert.equal(principal.userId,customer.principal.userId);
     assert.deepEqual(principal.roles,['employee','tenant_admin']);assert.equal(principal.session.securityVersion,before.version+1);
     assert.equal(principal.providerIdentity.provider,'microsoft_entra');
+    assert.deepEqual(await admission().accountState({ principal }),{
+      status: 'account',microsoftLinked: true,emailReauthenticationRequired: true });
+    assert.deepEqual(await admission().accountState({ principal: customer.principal }),{ status: 'rejected' });
+    const query=createTenantAuditQueryService({
+      queryRepository: createPostgresTenantAuditQueryRepository(pool),integrityRepository: customer.auditRepository,
+      authorizationPolicy: customer.authorizationPolicy,auditService: customer.auditService });
+    const history=await query.listEvents({ principal,tenantContext: { tenantId: customer.tenantId,status: 'onboarding' },
+      correlationId: randomUUID(),category: 'user',limit: 100 });
+    const linked=history.events.find(event=>event.action==='tenant.user.identity_linked');assert.ok(linked);
+    assert.equal(linked.category,'user');assert.deepEqual(linked.change,{ before: null,after: null,summary: { provider: 'microsoft_entra' } });
+    assert.equal(JSON.stringify(linked).includes(DIRECTORY),false);assert.equal(JSON.stringify(linked).includes(SUBJECT),false);
     assert.equal(await customer.sessions.resolvePrincipal({ headers: { cookie: customer.cookie } }),null);
     assert.deepEqual(await evidence(),{ sessions: before.sessions+1,bindings: before.bindings+1,links: before.links+1,
       version: before.version+1 });

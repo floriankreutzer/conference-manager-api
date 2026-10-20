@@ -20,6 +20,7 @@ browser. It is separate from Microsoft365 integration consent and Platform login
 | `/choices` | GET | Rotated verified browser cookie; minimized accepted membership IDs/labels plus bound CSRF. |
 | `/selection` | POST | Same-origin JSON containing only membershipId; cookie-bound flow CSRF;204 plus ordinary session only after atomic current admission. |
 | `/link/start` | POST | Empty JSON, actual Customer session and its ordinary session CSRF;200 with fixed authorization URL and new transaction cookie. |
+| `/link/status` | GET | Actual current accepted Customer/session scope; only Microsoft-linked and fresh-email-reauthentication booleans, no flow cookie or external identity. |
 | `/link/confirmation` | GET | Rotated flow cookie and actual current Customer session; fixed confirmation status and flow CSRF only. |
 | `/link/confirm` | POST | Same-origin JSON containing only confirm:true, actual same Customer session and separate flow CSRF;204 plus replacement session after atomic dual-proof confirmation. |
 
@@ -46,6 +47,10 @@ and separate key custody. Forwarding headers and browser fields cannot select a
 budget identity. Link start uses the ordinary session's CSRF; confirmation uses
 the independent flow CSRF and rechecks that exact fresh email-session identity in
 the repository. A Microsoft-only or stale session cannot authorize link intent.
+The personal status read independently checks persisted session/provider/User
+version, accepted environment membership and active Tenant. It exposes no email,
+directory/subject reference, role or other person's account, and lets a profile
+show actual linked state after an ambiguous confirmation without replaying it.
 
 The email and Microsoft transports share only output-cookie, bounded JSON, empty
 body and flow-CSRF parsing contracts. Their proof, session, membership and provider
