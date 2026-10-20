@@ -22,6 +22,7 @@ const PRODUCTION_COMPOSITION_ROOTS = new Set([
 ]);
 const CUSTOMER_EMAIL_AUTHORITY_MODULES = new Set([
   'src/http/customer-invitation-routes.js',
+  'src/persistence/postgres/customer-email-anonymous-retention.js',
   'src/http/customer-email-authentication-routes.js',
   'src/identity/customer-email-authentication-service.js',
   'src/identity/customer-email-admission-service.js',
