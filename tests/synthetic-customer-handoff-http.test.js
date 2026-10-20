@@ -1,0 +1,143 @@
+import assert from 'node:assert/strict';
+import http from 'node:http';
+import { randomUUID } from 'node:crypto';
+import test from 'node:test';
+import { loadConfig } from '../src/config.js';
+import { createHttpServer } from '../src/server.js';
+import { createLogger } from '../src/logger.js';
+import { createSyntheticHandoffBrowserBinding } from '../src/identity/synthetic-handoff-browser-binding.js';
+import { createSyntheticCustomerHandoffRouteModule } from '../src/http/synthetic-customer-handoff-routes.js';
+import { serializeSyntheticHandoffBrowserCookie,serializeSyntheticHandoffCompletionCookie }
+  from '../src/identity/synthetic-handoff-cookie.js';
+import { serializeSessionCookie } from '../src/identity/session-cookie.js';
+
+const ORIGIN='https://127.0.0.1',ROOT='/api/v1/auth/delegation',NOW=Date.now();
+async function fixture(t,{ injected=true }={}) {
+  const scope={ environment: 'int',securityEpoch: randomUUID(),platformSecurityEpoch: 7,
+    customerOrigin: ORIGIN,platformOrigin: 'https://localhost' };
+  const binding=createSyntheticHandoffBrowserBinding({ scope,secret: 'h'.repeat(48) }),flowId=randomUUID();
+  const start=binding.issueStart(flowId),code=binding.issueCode(flowId);
+  const signed=binding.issueCompletion({ binding: { flowId,browserVerifier: start.browserVerifier,codeVerifier: code.codeVerifier },
+    browserToken: start.browserToken,now: new Date(NOW),expiresAt: new Date(NOW+30_000) });
+  const originalCookie=serializeSyntheticHandoffBrowserCookie({ flowId,browserToken: start.browserToken }).split(';')[0];
+  const completionCookie=serializeSyntheticHandoffCompletionCookie(signed.value).split(';')[0];
+  const ordinaryCookie=serializeSessionCookie(Buffer.alloc(32,7).toString('base64url'),{ secure: true,maxAgeSeconds: 28800 });
+  const state={ start: { status: 'started',flowId,state: start.state,browserToken: start.browserToken,
+    expiresAt: new Date(NOW+600_000).toISOString() },
+    callback: { status: 'confirmation',completion: signed.value,expiresAt: new Date(NOW+30_000).toISOString() },
+    confirmation: { slot: 'northwind',role: 'employee',csrfToken: signed.csrfToken },
+    complete: { principal: {},csrfToken: 'private-session-csrf',setCookie: ordinaryCookie },block: null,entered: null };
+  const calls=[],logs=[];
+  const service=Object.fromEntries(['start','callback','confirmation','complete'].map(name=>[name,async input=>{
+    calls.push({ name,input });
+    if (name==='complete' && state.block) { state.entered();await state.block; }
+    if (state[name] instanceof Error) throw state[name];return state[name];
+  }]));
+  const module=createSyntheticCustomerHandoffRouteModule({ service,scope,clock: ()=>NOW });
+  const config=loadConfig({ NODE_ENV: 'test',PUBLIC_ORIGIN: ORIGIN,RATE_LIMIT_MAX: '120' });
+  const server=createHttpServer({ config,logger: createLogger({ write: value=>logs.push(value) }),
+    additionalRouteModules: injected ? [module] : [] });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(async()=>{ binding.destroy();await new Promise(resolve=>server.close(resolve)); });
+  async function request(path='/start',{ method='POST',body={},headers={} }={}) {
+    const bytes=body===null ? null : Buffer.from(typeof body==='string' ? body : JSON.stringify(body));
+    return new Promise((resolve,reject)=>{
+      const req=http.request({ hostname: '127.0.0.1',port: server.address().port,path: ROOT+path,method,
+        headers: Object.fromEntries(Object.entries({ host: '127.0.0.1',origin: ORIGIN,'sec-fetch-site': 'same-origin',
+          ...(bytes===null ? {} : { 'content-type': 'application/json','content-length': bytes.length }),...headers })
+          .filter(([,value])=>value!==undefined)) },response=>{
+        const chunks=[];response.on('data',chunk=>chunks.push(chunk));response.on('end',()=>{
+          const text=Buffer.concat(chunks).toString('utf8');resolve({ status: response.statusCode,headers: response.headers,text });
+        });
+      });req.on('error',reject);if (bytes) req.write(bytes);req.end();
+    });
+  }
+  return { request,state,calls,logs,start,code,flowId,signed,originalCookie,completionCookie,ordinaryCookie,scope };
+}
+
+test('loopback callback preserves private browser custody and scrubs code without a session GET',async t=>{
+  const f=await fixture(t),answer=await f.request();assert.equal(answer.status,303);
+  const target=new URL(answer.headers.location);assert.equal(target.origin,f.scope.platformOrigin);
+  assert.equal(target.pathname,'/api/v1/platform/auth/delegation/arrive');
+  assert.equal(target.searchParams.get('flow'),f.flowId);assert.equal(target.searchParams.get('state'),f.start.state);
+  assert.doesNotMatch(target.href,new RegExp(f.start.browserToken));
+  assert.match(answer.headers['set-cookie'][0],/Path=\/api\/v1\/auth\/delegation; HttpOnly; SameSite=Lax; Secure; Max-Age=600$/);
+  assert.match(answer.headers['set-cookie'][1],/cm_synthetic_completion=;.*Max-Age=0/);
+  assert.equal(f.calls[0].input,'127.0.0.1');
+  const callback=await f.request(`/callback?state=${f.start.state}&code=${f.code.code}`,{ method: 'GET',body: null,
+    headers: { cookie: f.originalCookie,origin: undefined,'sec-fetch-site': 'cross-site' } });
+  assert.equal(callback.status,303);assert.equal(callback.headers.location,'/?auth=synthetic_confirmation');
+  assert.match(callback.headers['set-cookie'][0],/SameSite=Strict; Secure; Max-Age=30$/);
+  assert.equal(callback.headers['cache-control'],'no-store');assert.equal(callback.headers['referrer-policy'],'no-referrer');
+  assert.doesNotMatch(callback.headers['set-cookie'].join(';'),/cm_session=/);
+  assert.deepEqual(f.calls.at(-1).input,{ flowId: f.flowId,browserToken: f.start.browserToken,state: f.start.state,code: f.code.code });
+  const view=await f.request('/confirmation',{ method: 'GET',body: null,
+    headers: { cookie: `${f.originalCookie}; ${f.completionCookie}` } });
+  assert.equal(view.status,200);assert.deepEqual(Object.keys(JSON.parse(view.text)).sort(),['csrfToken','requestId','role','slot']);
+  assert.doesNotMatch(view.text,new RegExp(`${f.code.code}|${f.flowId}|${f.start.state}|${f.start.browserToken}`));
+  assert.equal(f.calls.some(call=>call.name==='complete'),false);
+  assert.doesNotMatch(f.logs.join(''),
+    new RegExp(`${f.code.code}|${f.flowId}|${f.start.state}|${f.start.browserToken}|${f.signed.csrfToken}`));
+});
+
+test('final same-origin POST forwards the current ordinary cookie and emits only committed session plus cleanup redirect',async t=>{
+  const f=await fixture(t);let release,entered,settled=false;
+  f.state.block=new Promise(resolve=>{ release=resolve; });const seen=new Promise(resolve=>{ entered=resolve; });f.state.entered=entered;
+  const cookie=`${f.originalCookie}; ${f.completionCookie}; ${f.ordinaryCookie.split(';')[0]}`;
+  const pending=f.request('/complete',{ headers: { cookie,'x-csrf-token': f.signed.csrfToken } })
+    .then(value=>{ settled=true;return value; });
+  await seen;assert.equal(settled,false);assert.equal(f.calls.at(-1).input.request.headers.cookie,cookie);
+  assert.equal(f.calls.at(-1).input.csrfToken,f.signed.csrfToken);release();
+  const answer=await pending;assert.equal(answer.status,303);assert.equal(answer.headers.location,'/');assert.equal(answer.text,'');
+  assert.equal(answer.headers['set-cookie'][0],f.ordinaryCookie);
+  assert.equal(answer.headers['set-cookie'].filter(value=>/Max-Age=0/.test(value)).length,2);
+  assert.match(f.calls.at(-1).input.correlationId,/^[a-f0-9-]{36}$/);
+  f.state.block=null;f.state.complete=new Error('SYNTHETIC_HANDOFF_LOGOUT_REQUIRED');
+  const denied=await f.request('/complete',{ headers: { cookie,'x-csrf-token': f.signed.csrfToken } });
+  assert.equal(denied.status,409);assert.match(denied.text,/AUTHENTICATION_LOGOUT_REQUIRED/);
+  assert.equal(denied.headers['set-cookie'],undefined);
+});
+
+test('unsafe authority/origin/body/cookie/CSRF is rejected before calling the private service',async t=>{
+  const f=await fixture(t),cookie=`${f.originalCookie}; ${f.completionCookie}`;
+  for (const [path,options] of [
+    ['/start',{ headers: { origin: undefined } }],['/start',{ headers: { origin: 'https://foreign.test' } }],
+    ['/start',{ headers: { 'sec-fetch-site': 'cross-site' } }],['/start?tenantId=foreign',{}],
+    ['/start',{ body: { role: 'tenant_admin' } }],['/start',{ headers: { 'content-type': 'text/plain' } }],
+    ['/start',{ body: { padding: 'x'.repeat(1200) } }],['/complete',{}],
+    ['/complete',{ headers: { cookie } }],['/complete',{ headers: { cookie,'x-csrf-token': 'wrong' } }],
+    ['/complete',{ body: { tenantId: randomUUID() },headers: { cookie,'x-csrf-token': f.signed.csrfToken } }],
+    ['/confirmation',{ method: 'GET',body: null,headers: { cookie: `${cookie}; ${f.originalCookie}` } }],
+    ['/confirmation',{ method: 'GET',body: null,headers: { cookie: f.originalCookie } }],
+  ]) {
+    const answer=await f.request(path,options);assert.ok(answer.status>=400 && answer.status<500,`${path}:${answer.status}`);
+  }
+  assert.equal(f.calls.length,0);
+  for (const path of ['/start','/callback','/confirmation','/complete']) {
+    assert.equal((await f.request(path,{ method: 'DELETE',body: null })).status,405);
+  }
+  assert.equal(f.calls.length,0);
+});
+
+test('invalid callback is scrubbed without service authority; infrastructure and invalid outputs do not masquerade as success',async t=>{
+  const f=await fixture(t);
+  for (const path of ['/callback?code=bad&state=bad',
+    `/callback?state=${f.start.state}&code=${f.code.code}&tenantId=foreign`,
+    `/callback?state=${f.start.state}&state=${f.start.state}&code=${f.code.code}`]) {
+    const answer=await f.request(path,{ method: 'GET',body: null,headers: { cookie: f.originalCookie } });
+    assert.equal(answer.status,303);assert.equal(answer.headers.location,'/?auth=authentication_failed');
+  }
+  assert.equal(f.calls.length,0);
+  f.state.start={ status: 'limited' };assert.equal((await f.request()).status,429);
+  f.state.start={ status: 'capacity' };assert.equal((await f.request()).status,503);
+  f.state.start=new Error('SQL private provider credential');const failed=await f.request();assert.equal(failed.status,500);
+  assert.doesNotMatch(failed.text,/private|provider|credential|SQL/);
+  f.state.complete={ ...f.state.complete,setCookie: `${f.ordinaryCookie}; Domain=foreign.test` };
+  const invalid=await f.request('/complete',{ headers: { cookie: `${f.originalCookie}; ${f.completionCookie}`,
+    'x-csrf-token': f.signed.csrfToken } });assert.equal(invalid.status,500);assert.equal(invalid.headers['set-cookie'],undefined);
+  assert.doesNotMatch(f.logs.join(''),/SQL private provider credential/);
+});
+
+test('handoff transport remains unavailable without explicit route injection',async t=>{
+  const f=await fixture(t,{ injected: false });assert.equal((await f.request()).status,404);assert.equal(f.calls.length,0);
+});

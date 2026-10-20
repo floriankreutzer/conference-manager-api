@@ -1,6 +1,6 @@
 import { isInternalUuid } from '../../domain/identifiers.js';
 import { PLATFORM_ENTRA_PROVIDER } from '../../domain/identity-provider.js';
-import { normalizeSyntheticHandoffScope,normalizeSyntheticHandoffIntent,syntheticHandoffOperationHash }
+import { normalizeSyntheticHandoffScope,normalizeSyntheticHandoffIntent,syntheticHandoffOperationHash,syntheticHandoffCustomerRedirect }
   from '../../domain/synthetic-handoff.js';
 import { normalizePlatformPrincipal } from '../identity/principal.js';
 import { PLATFORM_PERMISSION } from '../identity/policy.js';
@@ -68,11 +68,10 @@ export function createSyntheticHandoffService({ repository,passkeyService,author
         || !Number.isFinite(Date.parse(result.expiresAt)) || new Date(result.expiresAt).toISOString()!==result.expiresAt) {
         throw new Error('SYNTHETIC_HANDOFF_APPROVAL_RESULT_INVALID');
       }
-      const location=new URL('/api/v1/auth/delegation/callback',scope.customerOrigin);
-      location.searchParams.set('state',intent.state);location.searchParams.set('code',result.code);
       // Private mutation result only. The HTTP root must await the whole passkey
       // completion/commit before sending this fixed redirect or normal cookie.
-      return Object.freeze({ status: 'redirect',location: location.href });
+      return Object.freeze({ status: 'redirect',
+        location: syntheticHandoffCustomerRedirect(scope,{ state: intent.state,code: result.code }) });
     },
   });
 }
