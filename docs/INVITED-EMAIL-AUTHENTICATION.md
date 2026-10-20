@@ -325,6 +325,121 @@ refusal, audit integrity, acceptance evidence guards and populated-down refusal.
 These results do not substitute for native server concurrency/role/TLS or required
 paired browser/reset CI. Earlier failed/pending candidate evidence remains above.
 
+## Unreleased browser-bound mailbox challenge implementation
+
+The uncomposed email challenge repository queues an encrypted ten-minute mailbox
+code only for a server-loaded eligible membership/invitation snapshot. Unknown or
+unadmitted recipients receive the same durable browser/CSRF pending shape, with no
+mailbox, no delivery and an unusable random verifier. No fake Tenant/User is used.
+Request replacement consumes old challenges and cancels queued old code deliveries.
+Code verification checks the initiating browser and CSRF before charging a wrong
+code attempt. Wrong proofs commit their challenge/shared counters; the fifth attempt
+closes that challenge. A correct proof rotates to an independent five-minute choice
+browser token and CSRF domain. Old code/browser proof cannot replay. This stage
+creates no User, role, provider link or business session.
+
+The closed immutable admission snapshot fences exact membership/Tenant, pending
+invitation/revision or existing User/security version. Choice must compare it with
+current locked eligibility before admission; this primitive grants no authority.
+The HTTPS-only Strict/HttpOnly cookie is scoped to `/api/v1/auth/email`, with bounded
+canonical challenge/browser values and duplicate rejection. These modules are not
+connected to HTTP, so Origin checks, edge limits, enumeration timing behavior and
+safe public error/cookie orchestration still require implementation and tests.
+
+Shared SQL abuse counters lock source before recipient, before any challenge lock.
+Issue limits are30/source/hour and3/recipient/hour with a60-second recipient gap;
+wrong-proof ceilings are50/source/hour and10/recipient/hour across challenges and
+new sources. Window reset preserves the send cooldown at the hour boundary.
+Counters and timestamps are database-owned; failed work rolls back atomically.
+Source keys use separate environment-bound HMAC over the server socket address,
+canonicalizing IPv6/IPv4-mapped forms and rejecting forwarded lists/ports/zones.
+No plaintext address is retained as abuse evidence. Trusted-proxy support is absent.
+
+Twelve focused native primitive tests and fourteen scratch-only PostgreSQL18.6/WASM
+sequential SQL/service preflight checks passed. Actual integration cases additionally
+cover concurrent issue/verify, persisted failed attempts, cooldown/window boundaries,
+rollback, unknown-flow parity, rotated proof and absence of User/session issuance.
+Those native-server cases have not executed locally; the WASM preflight cannot
+qualify concurrent pools, TLS, roles, full database or browser/reset acceptance.
+An initial source-key negative case exposed IPv6 zone handling and was corrected;
+initial style failures were wrapped without changing assertions.
+
+Current Tenant choice/atomic provisioning/session issuance, live-eligible dispatch,
+retention, sender configuration, explicit dual-proof Microsoft linking, HTTP/UI and
+protected INT/reset composition remain required. No provider call or real mail has
+been made and no runtime activates this candidate. This slice now follows integrated
+057/023 custody; the earlier fourteen-case preflight used the former56-migration
+chain and does not by itself qualify this new integrated source tree.
+
+The integrated057/023 mailbox-challenge slice passed twelve focused primitive
+cases and fifteen sequential PostgreSQL18.6/WASM SQL/service preflight checks.
+The additional boundary case proves that hour-window reset cannot erase a recent
+send cooldown. Accepted-User snapshot reads no longer join historical invitations;
+only pending memberships resolve a current unaccepted/unrevoked invitation. Actual
+native concurrent proof/issue tests and complete current-tree gates remain required.
+No admission, HTTP, worker, provider configuration or real message is activated.
+
+The first full challenge check rejected URL construction inside the identity
+source-key module under the existing outbound-boundary gate. IPv6 normalization
+now uses the data-only Node SocketAddress value class; no gate exception or network
+operation was introduced. Existing alternate-spelling/mapped-address and malformed
+input assertions are retained. Node22 API reference: https://nodejs.org/docs/latest-v22.x/api/net.html#class-netsocketaddress
+
+
+## Unreleased current-membership choice and atomic admission
+
+The next uncomposed slice resolves only choices from the verified mailbox's closed
+captured snapshot. Names are returned after browser-bound proof; no Tenant/User,
+provider reference, roles or recipient enters that public choice projection.
+One bounded query rechecks current eligible memberships; selection accepts only an
+opaque membership reference already captured by the server. The browser cannot
+choose independent Tenant, actor or roles.
+
+Admission locks Tenant, membership, User/invitation, then challenge; it never holds
+a global challenge/mailbox lock while waiting for a Tenant business lock. It checks
+database time after lock acquisition, exact snapshot/current User security version,
+active User/Tenant, pending invitation/revision/expiry and browser/choice CSRF again.
+Initial acceptance provisions a new User with only stored invited elevated roles,
+creates its scoped mailbox identity binding, appends provision/accept audit, accepts
+the membership/invitation and issues the existing ordinary session atomically.
+Existing accepted Users receive current roles; invitation roles are never regranted
+and local disable/security-version changes cannot be undone by a mailbox proof.
+One consumed choice cannot admit a second Tenant or replay a business session.
+
+The identity service creates fixed server audit events and delegates session
+creation to the existing SessionService. Runtime composition must construct the
+admission/session repositories with the exact same pool so the existing transaction
+context includes session and audit writes. The existing deferred SQL acceptance
+guards verify new User, binding, exact initial roles and matching audit at commit.
+Session-result and deferred-commit failures roll back proof consumption, User,
+roles, binding, invitations, audit and session together; cookies are returned only
+after the enclosing transaction commits. Platform identity remains separate.
+
+Fourteen focused native primitive/service tests and twenty-one scratch-only
+PostgreSQL18.6/WASM sequential SQL/service preflight checks passed, including real
+ordinary session resolution, changed-role login, stale User version/local disable,
+post-proof revocation, rollback after real session issuance and deferred audit
+constraint failure. Native integration cases add concurrent first acceptance,
+new-Tenant snapshot exclusion, expired/max-attempt/browser-mismatch denial and
+cross-Tenant/current-role fences. Those native pool/concurrency/role/TLS and full
+paired browser tests remain independently required. No HTTP route, Microsoft
+linking, dispatch worker, real recipient/mail, INT reset or identity mode activates
+this source candidate; earlier challenge-only scope limits above are historical.
+
+The architecture gate additionally forbids both closed Demo surfaces from reaching
+real invitation/challenge/admission authority directly or through an intermediary.
+A matrix regression retains direct and transitive boundary checks without changing
+provider-neutral primitive reuse or introducing an exception for the new INT path.
+
+## Unreleased HTTP transport slice
+
+The next opt-in transport is specified in `CUSTOMER-EMAIL-HTTP.md`. Its five
+browser-bound endpoints use the existing HTTP security/error framework and the
+current locked admission use case. They are not installed in a runtime entrypoint.
+The first five loopback HTTP cases passed; complete current-tree gates and actual
+INT/provider/browser acceptance remain required. Earlier no-HTTP descriptions
+above record preceding uncomposed checkpoints rather than deployed behavior.
+
 ## Bounded anonymous-proof retention candidate
 
 Before schema057 is accepted or deployed, its custody guard now permits only two
@@ -351,3 +466,11 @@ real-mailbox proof preservation, foreign environment and active/recent abuse
 budgets. Those native cases and current-head full/security/browser qualification
 remain pending for this changed057 candidate. Earlier named commit qualification
 above is historical evidence and does not qualify the new retention revision.
+
+The mailbox challenge composition now invokes the bounded sweep through
+`withCustomerEmailBudget` before allocating a new source/recipient window or flow.
+Invalid input opens no connection; retention failure creates no new challenge or
+budget and fails closed. Native budget concurrency coverage includes real expired
+anonymous/stale-window cleanup while retaining the existing cooldown, failure,
+window-boundary and rollback assertions. Periodic idle cleanup, edge limits and
+retention for real linked custody remain separate activation requirements.
