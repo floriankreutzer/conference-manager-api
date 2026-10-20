@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { createSyntheticBusinessTemplates } from '../synthetic/business-templates.js';
 
 function roomAssetKey(roomId) {
-  const match=/^northwind-berlin-room-(10|[1-9])$/.exec(roomId);
+  const match=roomId.match(/^northwind-berlin-room-(10|[1-9])$/);
   if (match) return `northwind-room-${match[1].padStart(2,'0')}`;
   if (roomId==='contoso-paris-room-1') return roomId;
   throw new Error('SYNTHETIC_MEDIA_MANIFEST_INVALID');
