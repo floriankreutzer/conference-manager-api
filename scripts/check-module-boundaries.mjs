@@ -47,6 +47,8 @@ const CUSTOMER_EMAIL_AUTHORITY_MODULES = new Set([
   'src/persistence/postgres/customer-invitation-repository.js',
 ]);
 const PROTECTED_RUNTIME_AUTHORITY_MODULES = new Set([
+  'src/transport/protected-http-execution.js',
+  'src/platform/http/protected-execution-boundary.js',
   'src/protected-customer-access-delivery-composition.js',
   'src/protected-invited-customer-access-composition.js',
   'src/protected-synthetic-customer-access-composition.js',
