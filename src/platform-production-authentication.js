@@ -1,3 +1,17 @@
+import { loadPlatformConfig } from './platform/config.js';
+import { createPlatformAuthorizationPolicy } from './platform/identity/policy.js';
+import { createPlatformTenantTargetPolicy } from './platform/identity/tenant-target-policy.js';
+import { createPlatformAuditService } from './platform/audit/audit-service.js';
+import { createProtectedPlatformSessions } from './platform/identity/protected-platform-sessions.js';
+import { deriveProtectedAuthenticationFlowSecret } from './identity/protected-authentication-flow-secret.js';
+import { createPostgresProtectedRuntimeExecutionScopes } from './persistence/postgres/protected-runtime-execution-scopes.js';
+import { createPostgresProtectedPlatformPasskeyAuthRepository }
+  from './persistence/postgres/platform-protected-passkey-auth-repository.js';
+import { createPostgresPlatformAuditRepository } from './persistence/postgres/platform-audit-repository.js';
+import { createPostgresPlatformOperatorRepository } from './persistence/postgres/platform-operator-repository.js';
+import { createPostgresPlatformSessionRepository } from './persistence/postgres/platform-session-repository.js';
+import { createPostgresPlatformOidcTransactionRepository } from './persistence/postgres/platform-oidc-transaction-repository.js';
+
 import { createPlatformClaimPolicy } from './platform/identity/claim-policy.js';
 import { createPlatformEntraAuthService } from './platform/identity/entra-auth-service.js';
 import { createPlatformEntraClient } from './platform/identity/entra-client.js';
@@ -17,7 +31,12 @@ import { platformPasskeyAuthenticationRoutes } from './platform/http/passkey-aut
 import { platformPasskeyRoutes } from './platform/http/passkey-routes.js';
 import { protectPlatformPasskeyRoute } from './platform/http/passkey-operation-route.js';
 
-function passkeyAuthentication({ config, persistence, platformAuditService, platformSessionService }) {
+function scopedFunctions(service,scopes,synchronous=[]) {
+  return Object.freeze(Object.fromEntries(Object.entries(service).map(([name,value])=>[name,
+    typeof value==='function' && !synchronous.includes(name) ? (...args)=>scopes.withShared(()=>value(...args)) : value])));
+}
+
+function passkeyAuthentication({ config, persistence, platformAuditService, platformSessionService,protectedRuntime=null }) {
   const environment = config.deploymentEnvironment;
   const securityEpoch = config.securityEpoch;
   const active = config.assuranceMode === 'application_passkey';
@@ -32,21 +51,26 @@ function passkeyAuthentication({ config, persistence, platformAuditService, plat
     tenantReference: config.entraTenantId, authority: config.entraAuthority, redirectUri: config.entraRedirectUri,
     publicOrigin: config.publicOrigin, authenticationMaxAgeSeconds: 300 });
   const verifier = createPlatformPasskeyVerifier({ publicOrigin: config.publicOrigin, environment });
-  const repository = createPostgresPlatformPasskeyAuthRepository(persistence.pool,
-    { verifier, auditRepository: persistence.auditRepository });
+  const repository = protectedRuntime
+    ? createPostgresProtectedPlatformPasskeyAuthRepository(persistence.pool,{ verifier,auditRepository: persistence.auditRepository,
+      environment,securityEpoch: protectedRuntime.securityEpoch })
+    : createPostgresPlatformPasskeyAuthRepository(persistence.pool,{ verifier,auditRepository: persistence.auditRepository });
   const enrollmentRepository = createPostgresPlatformPasskeyEnrollmentRepository(persistence.pool,
     { auditRepository: persistence.auditRepository });
   const primaryOperatorService = createPlatformPrimaryOperatorService({ primaryClient,
     operatorRepository: persistence.operatorRepository, auditService: platformAuditService });
-  const authService = createPlatformPasskeyAuthService({ repository, primaryOperatorService, verifier,
+  const ordinaryAuthService = createPlatformPasskeyAuthService({ repository, primaryOperatorService, verifier,
     sessionService: platformSessionService, environment, securityEpoch, transactionSecret: config.passkeyTransactionSecret,
     allowBusinessLogin: active, minimumCredentialCount: 2 });
+  const pureProofMethods=['verifiedOperationPrincipal','verifiedOperationWithContinuation'];
+  const authService=protectedRuntime ? scopedFunctions(ordinaryAuthService,protectedRuntime.scopes,pureProofMethods) : ordinaryAuthService;
   const lifecycleService = createPlatformPasskeyLifecycleService({ authService, sessionService: platformSessionService,
     repository: enrollmentRepository, environment, securityEpoch });
   const enrollmentFlow = createPlatformPasskeyEnrollmentFlow({ authService, lifecycleService,
     repository: enrollmentRepository, verifier, environment, securityEpoch });
-  const platformPasskeyService = createPlatformPasskeyHttpService({ authService, enrollmentFlow, lifecycleService,
-    assuranceMode: config.assuranceMode, environment });
+  const ordinaryHttp=createPlatformPasskeyHttpService({ authService,enrollmentFlow,lifecycleService,
+    assuranceMode: config.assuranceMode,environment });
+  const platformPasskeyService=protectedRuntime ? scopedFunctions(ordinaryHttp,protectedRuntime.scopes,['configuration']) : ordinaryHttp;
   const oidc = createPlatformEntraPrimaryAuthService({ repository: persistence.oidcTransactionRepository,
     entraClient: primaryClient, passkeyAuthService: authService, auditService: platformAuditService,
     transactionSecret: config.oidcTransactionSecret, publicOrigin: config.publicOrigin, securityEpoch });
@@ -57,10 +81,41 @@ function passkeyAuthentication({ config, persistence, platformAuditService, plat
       return principal?.assurance?.authenticationContext === 'cm:pk:v1' ? principal : null;
     },
   });
-  const operational = active ? PLATFORM_OPERATIONAL_ROUTE_MODULES.map(module => protectPlatformPasskeyRoute(module,
+  const operational = protectedRuntime ? [] : active
+    ? PLATFORM_OPERATIONAL_ROUTE_MODULES.map(module => protectPlatformPasskeyRoute(module,
     { authService, environment, securityEpoch })) : PLATFORM_OPERATIONAL_ROUTE_MODULES;
-  return Object.freeze({ ...oidc, platformPasskeyService, platformHttpSessionService,
+  if (!protectedRuntime) return Object.freeze({ ...oidc,platformPasskeyService,platformHttpSessionService,
     routeModules: Object.freeze([platformPasskeyAuthenticationRoutes,platformPasskeyRoutes,...operational]) });
+  const { scopes }=protectedRuntime;
+  const qualifiedHttpSession=Object.freeze({
+    resolvePrincipal: request=>scopes.withShared(async()=>{
+      const principal=await platformHttpSessionService.resolvePrincipal(request);
+      if (!principal || principal.assurance.level!=='mfa') return null;
+      const ids=await repository.listActiveCredentialIds({ operatorId: principal.operatorId,
+        operatorSecurityVersion: principal.securityVersion,environment });
+      return new Set(ids).size>=2 ? principal : null;
+    }),
+    revoke: (principal,options)=>scopes.withShared(()=>platformSessionService.revoke(principal,options)),
+    verifyCsrf: platformSessionService.verifyCsrf,csrfTokenForPrincipal: platformSessionService.csrfTokenForPrincipal,
+    clearCookie: platformSessionService.clearCookie,
+  });
+  let syntheticPasskeyService=null;
+  if (active && environment!=='prod') {
+    const exclusive=createPlatformPasskeyAuthService({ primaryOperatorService,verifier,sessionService: platformSessionService,
+      environment,securityEpoch,transactionSecret: config.passkeyTransactionSecret,allowBusinessLogin: active,minimumCredentialCount: 2,
+      repository: createPostgresProtectedPlatformPasskeyAuthRepository(persistence.pool,{ verifier,
+        auditRepository: persistence.auditRepository,environment,securityEpoch: protectedRuntime.securityEpoch,
+        stepUpTransaction: scopes.withSyntheticExclusive }) });
+    syntheticPasskeyService=Object.freeze({
+      startStepUp: (...args)=>scopes.withShared(()=>exclusive.startStepUp(...args)),
+      executeStepUp: exclusive.executeStepUp,executeStepUpWithContinuation: exclusive.executeStepUpWithContinuation,
+      verifiedOperationPrincipal: exclusive.verifiedOperationPrincipal,
+      verifiedOperationWithContinuation: exclusive.verifiedOperationWithContinuation,
+    });
+  }
+  return Object.freeze({ ...scopedFunctions(oidc,scopes,['clearCookie']),platformPasskeyService,
+    platformHttpSessionService: qualifiedHttpSession,normalPasskeyService: authService,syntheticPasskeyService,
+    routeModules: Object.freeze([platformPasskeyAuthenticationRoutes,platformPasskeyRoutes]) });
 }
 
 
@@ -116,4 +171,39 @@ export function createProductionPlatformAuthentication({
     stepUpAuthenticationContext: config.stepUpAuthenticationContext,
     transactionTtlSeconds: config.oidcTransactionTtlSeconds,
   });
+}
+
+
+// Inactive owned construction. Environment parsing, actual repositories, current
+// UUID leases, protected session namespace, minimum-two-key policy and both
+// pending-flow MAC purposes are fixed here. No arbitrary legacy session/auth
+// instance or caller repository can replace them. No route/process is started.
+export function createProtectedPlatformAuthentication({ env,pool,leasePool,protectedSecurityEpoch }={}) {
+  const config=loadPlatformConfig(env),environment=config.deploymentEnvironment;
+  if (!['passkey_setup','application_passkey'].includes(config.assuranceMode)) {
+    throw new TypeError('PROTECTED_PLATFORM_PASSKEY_PROFILE_REQUIRED');
+  }
+  const scopes=createPostgresProtectedRuntimeExecutionScopes({ pool,leasePool,environment,securityEpoch: protectedSecurityEpoch });
+  const protection={ environment,securityEpoch: protectedSecurityEpoch };
+  const auditRepository=createPostgresPlatformAuditRepository(pool,{ hmacSecret: config.auditHmacSecret });
+  const operatorRepository=createPostgresPlatformOperatorRepository(pool,{ auditRepository });
+  const sessionRepository=createPostgresPlatformSessionRepository(pool,{ auditRepository });
+  const oidcTransactionRepository=createPostgresPlatformOidcTransactionRepository(pool);
+  const platformAuditService=createPlatformAuditService({ repository: auditRepository,
+    authorizationPolicy: createPlatformAuthorizationPolicy(),
+    tenantTargetPolicy: createPlatformTenantTargetPolicy({ operatorRepository }) });
+  const sessions=createProtectedPlatformSessions({ repository: sessionRepository,environment,protectedSecurityEpoch,
+    publicOrigin: config.publicOrigin,csrfSecret: config.csrfSecret,securityEpoch: config.securityEpoch,
+    sessionTtlSeconds: config.sessionTtlSeconds,stepUpTtlSeconds: config.stepUpTtlSeconds,
+    authenticationMaxAgeSeconds: config.authenticationMaxAgeSeconds });
+  const scopedConfig={ ...config,
+    passkeyTransactionSecret: deriveProtectedAuthenticationFlowSecret({ ...protection,secret: config.passkeyTransactionSecret,
+      purpose: 'platform-passkey-flow' }),
+    oidcTransactionSecret: deriveProtectedAuthenticationFlowSecret({ ...protection,secret: config.oidcTransactionSecret,
+      purpose: 'platform-microsoft-flow' }),
+  };
+  const authentication=passkeyAuthentication({ config: scopedConfig,
+    persistence: { pool,auditRepository,operatorRepository,sessionRepository,oidcTransactionRepository },
+    platformAuditService,platformSessionService: sessions,protectedRuntime: { scopes,securityEpoch: protectedSecurityEpoch } });
+  return Object.freeze({ ...authentication,platformAuditService,withPreparationScope: scopes.withShared });
 }
