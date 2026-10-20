@@ -20,6 +20,9 @@ import { withPostgresTransaction } from '../src/persistence/postgres/transaction
 import { createPlatformPasskeyAuthService } from '../src/platform/identity/passkey-auth-service.js';
 import { readPlatformPasskeyTransactionCookie } from '../src/platform/identity/passkey-auth-cookie.js';
 import { platformPasskeyFixture } from '../tests/support/platform-passkey-fixture.js';
+import { createPostgresAuditRepository } from '../src/persistence/postgres/audit-repository.js';
+import { createPostgresEntitlementRepository } from '../src/persistence/postgres/entitlement-repository.js';
+import { createPostgresPlatformEntitlementOperationsRepository } from '../src/persistence/postgres/platform-operations-repository.js';
 
 const roles = ['platform_security_admin'];
 const hash = () => randomBytes(32).toString('hex');
@@ -135,7 +138,16 @@ test('durable Platform passkey authentication is bounded, single-use, audited an
     const input = { cookie: stepCookie, state: step.state, response: stepResponse, operationHash,
       request: { headers: { cookie: completed.setCookies[0].split(';')[0] } } };
     const mutationId = randomUUID();
+    const tenantId = randomUUID();
+    await pool.query("INSERT INTO tenants (id,display_name,status) VALUES ($1,'Signed entitlement fixture','active')", [tenantId]);
+    const tenantAuditRepository = createPostgresAuditRepository(pool, { hmacSecret: 't'.repeat(48) });
+    const entitlementRepository = createPostgresEntitlementRepository(pool, { auditRepository: tenantAuditRepository });
+    const { entitlementReader } = createPostgresPlatformEntitlementOperationsRepository(pool, {
+      tenantAuditRepository, platformAuditRepository: auditRepository, entitlementRepository, cursorSecret: 'u'.repeat(48),
+    });
     await assert.rejects(service.executeStepUp(input, () => withPostgresTransaction(pool, async client => {
+      assert.equal((await client.query('SHOW transaction_isolation')).rows[0].transaction_isolation, 'repeatable read');
+      assert.equal((await entitlementReader.findTenantState(tenantId)).tenantId, tenantId);
       await client.query('INSERT INTO passkey_test_mutations VALUES ($1)', [mutationId]);
       throw new Error('EXPECTED_BUSINESS_MUTATION_FAILURE');
     })), /EXPECTED_BUSINESS_MUTATION_FAILURE/);
@@ -144,6 +156,7 @@ test('durable Platform passkey authentication is bounded, single-use, audited an
     const executed = await service.executeStepUp(input, context => withPostgresTransaction(pool, async client => {
       assert.equal(context.principal.assurance.level, 'step_up');
       assert.equal(context.operationHash, operationHash);
+      assert.equal((await entitlementReader.findTenantState(tenantId)).tenantId, tenantId);
       await client.query('INSERT INTO passkey_test_mutations VALUES ($1)', [mutationId]);
       return { changed: true };
     }));
