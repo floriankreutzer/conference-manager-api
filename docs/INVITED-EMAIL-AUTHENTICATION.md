@@ -324,3 +324,30 @@ integrated57-migration chain, including encrypted issue/replay, wrong-scope/vers
 refusal, audit integrity, acceptance evidence guards and populated-down refusal.
 These results do not substitute for native server concurrency/role/TLS or required
 paired browser/reset CI. Earlier failed/pending candidate evidence remains above.
+
+## Bounded anonymous-proof retention candidate
+
+Before schema057 is accepted or deployed, its custody guard now permits only two
+specific disposable cases: an anonymous challenge with no mailbox, an empty
+admission snapshot and no verification, more than one hour after proof expiry;
+or an abuse-budget window older than24 hours with no send in the past24 hours.
+Live cooldown/failure windows and every real mailbox, membership, invitation,
+command, delivery, linked proof and audit record remain protected. No trigger is
+disabled and no mutable session setting or privileged runtime role bypass exists.
+This is not a general identity/history cleanup or INT reset implementation.
+
+`pruneCustomerAnonymousEmailState` performs fixed twenty-row sweeps of each class
+with environment predicates, dedicated indexes, SKIP LOCKED and a nonblocking
+environment-specific transaction advisory lock. It returns aggregate counts only.
+It accepts no caller-selected time, table, retention duration, SQL or batch size.
+An overlapping sweep is a neutral no-op; errors and invalid counts roll back both
+deletions. The authentication follow-up must invoke this port before new budget/
+challenge allocation; a protected periodic caller can use the same bounded port
+while traffic is idle. Both closed Demo graphs reject direct/transitive access.
+
+Three local focused contract/architecture cases passed. Added native PostgreSQL
+cases cover batch bounds, competing sweeps, fresh anonymous state, grace period,
+real-mailbox proof preservation, foreign environment and active/recent abuse
+budgets. Those native cases and current-head full/security/browser qualification
+remain pending for this changed057 candidate. Earlier named commit qualification
+above is historical evidence and does not qualify the new retention revision.
