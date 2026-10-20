@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { isInternalUuid } from './identifiers.js';
+import { isInternalUuid,isOpaqueBrowserToken } from './identifiers.js';
 
 export const SYNTHETIC_HANDOFF_OPERATION='synthetic.customer_access.approve';
 export const SYNTHETIC_HANDOFF_ROLES=Object.freeze(['employee','conference_manager','tenant_admin']);
@@ -62,4 +62,19 @@ export function syntheticDelegationIdentityReference(value) {
   exact(value,['generationId','operatorId','role']);
   if (!SYNTHETIC_HANDOFF_ROLES.includes(value.role)) invalid();
   return `${uuid(value.generationId)}:${uuid(value.operatorId)}:${value.role}`;
+}
+
+
+// One fixed cross-surface redirect contract; neither function grants custody.
+export function syntheticHandoffCustomerRedirect(scope,value) {
+  const current=normalizeSyntheticHandoffScope(scope);exact(value,['state','code']);
+  if (!isOpaqueBrowserToken(value.state) || !isOpaqueBrowserToken(value.code)) invalid();
+  const location=new URL('/api/v1/auth/delegation/callback',current.customerOrigin);
+  location.searchParams.set('state',value.state);location.searchParams.set('code',value.code);return location.href;
+}
+export function requireSyntheticHandoffCustomerRedirect(scope,value,state) {
+  if (typeof value!=='string' || value.length>512) invalid();
+  let location;try { location=new URL(value); } catch { invalid(); }
+  const expected=syntheticHandoffCustomerRedirect(scope,{ state,code: location.searchParams.get('code') });
+  if (value!==expected) invalid();return expected;
 }

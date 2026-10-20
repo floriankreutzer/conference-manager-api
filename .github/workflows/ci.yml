@@ -87,6 +87,8 @@ jobs:
         run: npm ci --ignore-scripts --no-fund
       - name: Run PostgreSQL migration and persistence integration tests
         run: npm run test:db
+      - name: Verify synthetic session after actual proof expiry
+        run: npm run test:db:handoff-expiry
 
   shared-demo-e2e:
     env:
