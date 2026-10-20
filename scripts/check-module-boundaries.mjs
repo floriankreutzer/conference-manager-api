@@ -21,6 +21,7 @@ const PRODUCTION_COMPOSITION_ROOTS = new Set([
   'src/platform/app.js',
 ]);
 const REAL_PRODUCTION_IDENTITY_AND_PROVIDER_MODULES = new Set([
+  'src/persistence/postgres/customer-email-anonymous-retention.js',
   'src/identity/entra-client.js',
   'src/identity/entra-auth-service.js',
   'src/identity/provider-identity-resolver.js',
@@ -159,7 +160,8 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
   for (const file of graph.keys()) {
     if (isInside(file, 'src/demo')) {
       const emailPath = firstReachablePath(graph, file,
-        (dependency) => dependency === 'src/integrations/resend-email-client.js');
+        (dependency) => dependency === 'src/integrations/resend-email-client.js'
+          || dependency === 'src/persistence/postgres/customer-email-anonymous-retention.js');
       if (emailPath && emailPath.length > 2) {
         violations.push(violation(file,
           `Demo runtime must not import Production identity/provider implementation through an intermediary (${emailPath.join(' -> ')}).`));

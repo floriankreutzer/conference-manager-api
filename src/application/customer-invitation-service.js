@@ -74,6 +74,16 @@ export function createCustomerInvitationService({ repository, authorizationPolic
     }
     return { tenantId: tenantContext.tenantId, environment, principal, correlationId };
   }
+  async function repositoryCall({ principal, tenantContext, correlationId }, operation, targetId, work) {
+    try { return await work(); }
+    catch (error) {
+      if (error instanceof AuthorizationDeniedError) await auditService.recordAuthorizationDenied({
+        principal, tenantContext, correlationId, targetType: targetId ? 'customer_invitation' : 'endpoint',
+        targetId: targetId || 'customer_invitations', metadata: { operation },
+      });
+      throw error;
+    }
+  }
   function auditEventFor({ principal, tenantContext, correlationId }, operation) {
     return ({ invitationId, nextRevision, occurredAt }) => {
       uuid(invitationId); revision(nextRevision);
@@ -93,8 +103,9 @@ export function createCustomerInvitationService({ repository, authorizationPolic
   async function mutate(context, operation, invitationId, expectedRevision) {
     const scope = await authorize(context, operation);
     const id = uuid(invitationId), expected = revision(expectedRevision);
-    const result = await repository[operation]({ ...scope, invitationId: id, expectedRevision: expected,
-      auditEventFor: auditEventFor(context, operation) });
+    const result = await repositoryCall(context, operation, id, () => repository[operation]({
+      ...scope, invitationId: id, expectedRevision: expected, auditEventFor: auditEventFor(context, operation),
+    }));
     const value = publicInvitation(result, scope.tenantId, environment);
     if (value.id !== id || value.revision !== expected + 1
       || value.state !== (operation === 'revoke' ? 'revoked' : 'pending')
@@ -106,7 +117,8 @@ export function createCustomerInvitationService({ repository, authorizationPolic
       const scope = await authorize(context, 'list');
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) invalid();
       const after = afterInvitationId === null ? null : uuid(afterInvitationId);
-      const result = rows(await repository.list({ ...scope, limit, afterInvitationId: after }), limit, scope.tenantId, environment);
+      const result = rows(await repositoryCall(context, 'list', null,
+        () => repository.list({ ...scope, limit, afterInvitationId: after })), limit, scope.tenantId, environment);
       for (let index = 0; index < result.length; index++) {
         if ((after !== null && result[index].id <= after) || (index > 0 && result[index].id <= result[index - 1].id)) invalidResult();
       }
@@ -115,8 +127,9 @@ export function createCustomerInvitationService({ repository, authorizationPolic
     async issueBatch(context, command) {
       const scope = await authorize(context, 'issue');
       const normalized = normalizeCustomerInvitationBatch(command);
-      const result = rows(await repository.issueBatch({ ...scope, commandId: normalized.commandId, invitations: normalized.invitations,
-        auditEventFor: auditEventFor(context, 'issue') }), normalized.invitations.length, scope.tenantId, environment);
+      const result = rows(await repositoryCall(context, 'issue', null, () => repository.issueBatch({ ...scope,
+        commandId: normalized.commandId, invitations: normalized.invitations, auditEventFor: auditEventFor(context, 'issue'),
+      })), normalized.invitations.length, scope.tenantId, environment);
       if (result.length !== normalized.invitations.length) invalidResult();
       for (let index = 0; index < result.length; index++) {
         const actual = result[index], expected = normalized.invitations[index];

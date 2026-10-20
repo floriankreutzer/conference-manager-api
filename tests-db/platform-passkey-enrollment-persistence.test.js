@@ -172,7 +172,9 @@ test('independently granted enrollment stages public keys and atomically require
     await assert.rejects(pool.query(`UPDATE platform_passkey_credentials SET revoked_at=NULL
       WHERE operator_id=$1 AND revoked_at IS NOT NULL`,
       [f.operatorId]), /IMMUTABLE/);
+    assert.equal(await rollbackLatest(pool),true); // Empty Customer057 before the retained populated056 guard.
     await assert.rejects(rollbackLatest(pool), /PLATFORM_PASSKEY_ENROLLMENT_REQUIRES_VERIFIED_RECOVERY/);
+    await migrateUp(pool); // Restore Customer057 before subsequent passkey cases.
   });
 
   await t.test('an exact real step-up adds a second key; revocation logs out and the last key remains protected', async () => {

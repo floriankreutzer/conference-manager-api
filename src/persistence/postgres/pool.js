@@ -31,7 +31,8 @@ const { Pool } = pg;
 // Schema 54 records immutable provider catalogue sources without publishing offers.
 // Schema 55 records atomic explicit Manager catalogue reviews and publication.
 // Schema 56 stores independently authorized two-stage Platform passkey enrollment.
-export const CURRENT_SCHEMA_VERSION = 56;
+// Schema 57 stores invited Customer membership, encrypted delivery and mailbox proof.
+export const CURRENT_SCHEMA_VERSION = 57;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

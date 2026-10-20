@@ -59,8 +59,10 @@ test('actual Customer publication atomically fences reviewed content, ownership,
     pool = createPostgresPool({ mode: 'test',...database,databaseUrl: url.toString(),databasePoolMax: 6 });
     await migrateUp(pool); await migrateDemoUp(pool,{ roles });
     assert.equal(await isPostgresSchemaReady(pool),true);
+    await rollbackLatestDemoMigration(pool,{ roles }); // Customer023 before retained enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Original empty publication021.
+    assert.equal(await rollbackLatest(pool),true); // Empty Customer057 before retained enrollment056.
     assert.equal(await rollbackLatest(pool),true); // Empty enrollment056.
     assert.equal(await rollbackLatest(pool),true); // Original empty publication055.
     await migrateUp(pool); await migrateDemoUp(pool,{ roles });
@@ -336,10 +338,12 @@ test('actual Customer publication atomically fences reviewed content, ownership,
       [fixture.tenantId,manager.principal.session.id]);
     await assert.rejects(review(first),(error) => error.code === 'PRINCIPAL_NOT_AUTHORIZED');
     assert.equal((await request(manager)).status,401);
+    await rollbackLatestDemoMigration(pool,{ roles }); // Customer023 before retained enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Enrollment022 before056.
+    assert.equal(await rollbackLatest(pool),true); // Empty Customer057 before retained enrollment056.
     assert.equal(await rollbackLatest(pool),true); // Empty056; retain the original populated055 probe.
     await assert.rejects(rollbackLatest(pool),/CATERING_CATALOGUE_PUBLICATION_ROLLBACK_REQUIRES_REVIEW/);
-    await migrateUp(pool); await migrateDemoUp(pool,{ roles }); // Restore exact056/022 and reset privileges.
+    await migrateUp(pool); await migrateDemoUp(pool,{ roles }); // Restore exact057/023 and reset privileges.
     const reset = createPostgresDemoResetRepository({ pool: rolePool(roles.reset),
       expectedDatabaseName: name,expectedResetRole: roles.reset });
     assert.equal((await reset.reset({ fixture: DEMO_FIXTURE,checksum: DEMO_FIXTURE_CHECKSUM })).checksum,DEMO_FIXTURE_CHECKSUM);
@@ -351,10 +355,12 @@ test('actual Customer publication atomically fences reviewed content, ownership,
       tenantContext: { tenantId: persona.tenantId },correlationId: id(90),action: 'catering.catalogue.rejected',
       targetType: 'integration',targetId: fixture.integrationId,outcome: 'success',retentionClass: 'business',
       previousState: { revision: 0 },newState: { revision: 1 },metadata: { operation: 'synthetic_audit_only_rollback_probe' } });
+    await rollbackLatestDemoMigration(pool,{ roles }); // Customer023 before retained enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Enrollment022 before056.
+    assert.equal(await rollbackLatest(pool),true); // Empty Customer057 before retained enrollment056.
     assert.equal(await rollbackLatest(pool),true); // Empty056; retain the original populated055 probe.
     await assert.rejects(rollbackLatest(pool),/CATERING_CATALOGUE_PUBLICATION_ROLLBACK_REQUIRES_REVIEW/);
-    await migrateUp(pool); await migrateDemoUp(pool,{ roles }); // Restore exact056/022 and reset privileges.
+    await migrateUp(pool); await migrateDemoUp(pool,{ roles }); // Restore exact057/023 and reset privileges.
     assert.equal((await reset.reset({ fixture: DEMO_FIXTURE,checksum: DEMO_FIXTURE_CHECKSUM })).checksum,DEMO_FIXTURE_CHECKSUM);
     await t.test('first publication from empty assignment state retains full300/100/20 supplier catalogue capacity',async () => {
       const empty = await createCateringDeliveryFixture(pool,{ manualCatalogue: true,emptyCateringCatalogue: true });

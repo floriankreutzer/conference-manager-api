@@ -81,8 +81,8 @@ following remain required and must be independently tested:
    invariants; no Demo fallback or weakening of Platform MFA/step-up.
 
 None of these modules is composed into an entrypoint. No outbound email is sent
-by loading configuration or creating a proof. No provider SDK/dependency,
-schema, stored role, existing login or session contract changes in this slice.
+by loading configuration or creating a proof. The primitives add no provider SDK/dependency, stored role or change to the
+existing login/session contract. The custody candidate below adds schema057.
 The module architecture gate also rejects imports of the real delivery adapter
 from either synthetic Demo composition.
 
@@ -124,12 +124,14 @@ Mutation receipts must match the exact object and next revision. Audit callbacks
 contain invitation ID/revision/operation only, never recipient, code or tokens.
 Delivery `accepted` means provider acceptance; no `delivered` state is fabricated.
 
-Ten focused native progression/negative cases passed. The first local style check
+Historical foundation-only checkpoint: ten focused native progression/negative
+cases passed. The first local style check
 found overlong test lines, which were wrapped without changing assertions. These
 are application/port tests, not real transaction, mail receipt, HTTP/CSRF, replay,
-concurrency or activation evidence. No repository, schema, worker, Customer route
-or entrypoint currently composes these ports. Durable implementation, Platform
-creation, invited-only authentication/account linking and browser UI remain open.
+concurrency or activation evidence. At that checkpoint no repository/schema composed these ports. The custody
+candidate below now implements invitation persistence. Platform creation, HTTP,
+invited-only authentication/linking, dispatch and browser UI are separate follow-up
+scopes; no entrypoint activates real Customer access in this custody candidate.
 
 ## Unreleased mailbox-proof separation
 
@@ -163,6 +165,103 @@ and mailbox template/transport behavior. Durable mailbox custody, expiry/attempt
 HTTP/CSRF/choice/session consumption and actual mail receipt are still open; these
 primitives and templates remain uncomposed and send no mail by themselves.
 
+## Unreleased encrypted mailbox and delivery custody
+
+`persistence/customer-access-cipher.js` is a separate server-only mailbox/delivery
+custody boundary using Node AES-256-GCM, fresh96-bit nonces and128-bit tags. Bounded
+opaque bytes are1..32768; the positive envelope carries only version, key ID,
+canonical base64url nonce/tag/ciphertext. Independently loaded environment, mailbox,
+record ID, purpose and invitation Tenant form authenticated associated data.
+Mailbox recipient/code purposes forbid a Tenant; invitation purpose requires one.
+Ciphertext cannot establish its own scope or select an algorithm/key outside the
+protected server keyring. This does not relax or repurpose Integration credentials.
+
+A separate HMAC lookup key produces deployment-specific mailbox fingerprints from
+the conservative normalized recipient. It preserves local case and plus/dot aliases;
+no plaintext recipient is an index, log or public identifier. Up to eight copied
+256-bit encryption keys support explicit old-key reads/new-key writes. Lookup-key
+rotation is not achieved by changing configuration: it needs an independently
+reviewed atomic fingerprint migration to avoid duplicate mailbox identities.
+Database/backup custody and encryption/lookup keys must remain separate.
+
+The caller must clear returned plaintext buffers after bounded use. Failure clears
+intermediate unverified bytes; destroy clears copied encryption/lookup material and
+prevents further use. This is best-effort JavaScript cleanup, not a memory-compromise
+guarantee. Cipher validity is not current-record/replay/authorization authority;
+current invitation, recipient, version, expiry and lease checks still belong to the
+transactional repository and dispatch use case. No runtime loads these keys yet.
+Five focused cases passed real encryption, all scope/tamper substitutions, lookup
+separation, rotation/retirement, caller mutation, shape bounds and destruction.
+The first local style check found overlong test lines; they were wrapped unchanged.
+
+## Current custody candidate — schema057 / Demo023, not activated
+
+The Customer-access migration is057 and its Demo-only overlay is023. It follows
+Platform enrollment056/Demo022 and accepted publication055/Demo021. Runtime
+readiness requires exact schema57. The migration/repository candidate has passed
+native PostgreSQL integration and all four paired Chromium/WebKit × PostgreSQL/
+objects permanent three-customer/two-reset-cycle jobs at commit553c39d9951658e662db755289ce32dcc583e3d9
+(CI run39397607250). Quality, dependency policy, secret scanning and release-source
+inventory also passed for that commit. This qualifies the named candidate's tested
+scope; it does not apply migrations to INT or activate a login/sender. Review and
+protected deployment acceptance remain separate gates. No ordinary entrypoint or
+closed Demo runtime installs real Customer invitation, admission or dispatch.
+
+It defines environment-specific encrypted mailbox custody, Tenant/mailbox/User
+memberships, immutable recipient/role invitation intent with revisioned terminal
+accept/revoke, exact actor/command receipts, mailbox/browser proof records, encrypted
+stable delivery intent and shared opaque recipient/source abuse budgets. Addresses
+and codes are not plaintext columns. Delivery ID/payload remain stable through
+bounded retries within23 hours, before provider idempotency retention expires.
+
+Mailbox challenges retain a bounded immutable server-loaded admission snapshot.
+Code proof does not admit newly added/reissued invitations or revive stale Users:
+selection must compare the captured membership, invitation revision and User
+security version to live state. No pre-proof organization list is exposed. All
+expiry, attempt, shared recipient/source budgets, current authority, lease and
+replay checks still require the actual transaction implementation and negative/
+concurrency coverage. Successful admission must append Tenant audit and issue the
+existing session in the same transaction. Accepted memberships cannot change
+existing roles or local disable state through invitation acceptance.
+
+The migration's invitation audit constraint requires the exact Tenant/object/revision/
+operation event, and accepted invitations require the matching populated membership.
+Cross-mailbox delivery references are constrained together with their scope. The
+custody guards preserve identity, purpose, immutable intent and monotonic counters/
+versions; populated/evidence-bearing down migration refuses. Native tests cover
+these constraints and Demo-only role-denial/reset integration. Real INT reset must
+preserve this entire identity/custody domain and remains an activation requirement.
+
+The invitation repository serializes Tenant/User/session authority before
+lookup, replay or mutation, orders global mailbox locks by keyed fingerprint and
+queues encrypted stable content inside the invitation/audit transaction. It never
+calls the provider. Command digests use another HMAC domain, preventing offline
+recipient guessing from an unkeyed command hash. Receipts contain only a closed
+metadata schema, enforced in SQL; replay independently decrypts the
+immutable recipient instead of storing plaintext addresses in receipts. Expired/
+revoked/accepted changes and actor/role/audit failures must remain fail closed.
+The native PostgreSQL test exercises these transactions, replay, concurrency,
+revocation and audit rollback. Historically, the architecture gate rejected a persistence import of an application error;
+the shared conflict value was moved to the domain boundary without a gate exception.
+
+For enumeration resistance, the challenge draft permits a durable unadmitted flow
+with no mailbox and an empty admission snapshot, alongside normal admitted flows.
+Both need identical bounded pre-proof status/expiry/CSRF behavior and a common
+browser-binding port; an unadmitted flow can never be verified or issue authority.
+It stores only keyed recipient/source references, not an unknown plaintext address.
+Actual request orchestration, shared rate/attempt ceilings, retention/resource
+bounds and the common binding implementation remain required before activation.
+
+The current057/023 integration preserves every prior rollback probe by first draining
+the empty Customer layer. Demo grants explicitly deny all Customer/Platform CRUD
+and permit only the isolated reset role to truncate the seven new tables. The
+canonical three-customer seed is unchanged. Upgrade guards retain incompatible
+older schema/overlay pair denials and reject future058/024. Historical rollback
+assertions are preserved; empty newer layers are drained before older probes and
+restored before readiness checks. Native and paired browser/reset qualification
+passed at the exact commit above; real INT identity-preserving reset and deployed
+TLS/provider/recipient acceptance remain independently required.
+
 
 ## Audit context review correction
 
@@ -175,3 +274,80 @@ minimized audit evidence; audit persistence failure remains fail-closed.
 Regression cases use the actual AuditService through its existing test harness,
 including hostile top-level actor/Tenant overrides, foreign context, and valid-scope
 denial. This does not activate invitation HTTP or delivery composition.
+
+
+## Historical local SQL preflight correction and limits
+
+A scratch-only PGlite0.5.10 engine reports PostgreSQL18.6/WASM. Applying the actual
+migration chain exposed PostgreSQL's regular-expression repetition-bound limit in
+the envelope check. The draft now independently enforces character length2..43691
+and the canonical alphabet, retaining the full maximum and oversize rejection.
+No production dependency or lockfile was changed.
+
+Memberships must start pending. Deferred acceptance additionally requires a matching
+accepted invitation, newly provisioned active User, exact initial invited roles,
+mailbox identity binding and same-correlation User-provisioned Tenant audit. Direct
+populated insertion or unsupported pending-to-accepted writes are rejected.
+Actual PostgreSQL integration cases cover these guards and envelope boundaries.
+
+Ten local sequential SQL/service preflight checks passed: all56 canonical up
+migrations, empty056 down, envelope bounds, encrypted atomic issue/list, replay,
+changed intent/early resend, revoke/stale revision, audit integrity, populated-down
+refusal and unsupported acceptance. This is partial SQL/transaction evidence only;
+it does not qualify native server pools, concurrent operations, TLS, Demo role
+privileges, full database integration or Chromium/WebKit/reset acceptance. Those
+checks and real INT identity-preserving reset remain open.
+
+
+## Historical integration checkpoints and superseded draft numbering
+
+Accepted publication055/Demo021 remains unchanged. Integrated unreleased Platform
+enrollment now occupies056/Demo022; invited Customer custody is057/Demo023. Earlier
+056/022 Customer preflight checkpoints above describe only the former unmerged
+candidate. Current exact readiness, reset inventory, media/recovery tools and
+upgrade guards require057/023. Historical publication055, catalogue054, passkey053
+and older rollback/role-denial probes remain; empty newer layers are drained before
+each original probe and restored before current runtime/reset checks. Incompatible
+056/023,055/022,054/021,053/020 and future058/024 guards remain explicit.
+
+The integration unions both fixed Customer-invitation conflict and publication
+error contracts. Audit context projection corrections and membership acceptance
+evidence guards are retained. Seventy-six focused invitation/Demo/reset/media/
+recovery checks passed. Full current-tree native database, paired browser/security
+qualification and real INT identity-preserving reset remain open. No migration,
+mail, provider login or Customer admission has been activated.
+
+The integrated057/023 custody tree passed the final full local repository check,
+including both HTTP security gates, and all76 focused invitation/Demo/reset/media/
+recovery cases. Ten scratch-only sequential SQL/service checks passed against the
+integrated57-migration chain, including encrypted issue/replay, wrong-scope/version
+refusal, audit integrity, acceptance evidence guards and populated-down refusal.
+These results do not substitute for native server concurrency/role/TLS or required
+paired browser/reset CI. Earlier failed/pending candidate evidence remains above.
+
+## Bounded anonymous-proof retention candidate
+
+Before schema057 is accepted or deployed, its custody guard now permits only two
+specific disposable cases: an anonymous challenge with no mailbox, an empty
+admission snapshot and no verification, more than one hour after proof expiry;
+or an abuse-budget window older than24 hours with no send in the past24 hours.
+Live cooldown/failure windows and every real mailbox, membership, invitation,
+command, delivery, linked proof and audit record remain protected. No trigger is
+disabled and no mutable session setting or privileged runtime role bypass exists.
+This is not a general identity/history cleanup or INT reset implementation.
+
+`pruneCustomerAnonymousEmailState` performs fixed twenty-row sweeps of each class
+with environment predicates, dedicated indexes, SKIP LOCKED and a nonblocking
+environment-specific transaction advisory lock. It returns aggregate counts only.
+It accepts no caller-selected time, table, retention duration, SQL or batch size.
+An overlapping sweep is a neutral no-op; errors and invalid counts roll back both
+deletions. The authentication follow-up must invoke this port before new budget/
+challenge allocation; a protected periodic caller can use the same bounded port
+while traffic is idle. Both closed Demo graphs reject direct/transitive access.
+
+Three local focused contract/architecture cases passed. Added native PostgreSQL
+cases cover batch bounds, competing sweeps, fresh anonymous state, grace period,
+real-mailbox proof preservation, foreign environment and active/recent abuse
+budgets. Those native cases and current-head full/security/browser qualification
+remain pending for this changed057 candidate. Earlier named commit qualification
+above is historical evidence and does not qualify the new retention revision.
