@@ -87,12 +87,15 @@ export function createCustomerInvitationService({ repository, authorizationPolic
   function auditEventFor({ principal, tenantContext, correlationId }, operation) {
     return ({ invitationId, nextRevision, occurredAt }) => {
       uuid(invitationId); revision(nextRevision);
+      if (operation !== 'issue' && nextRevision < 2) invalidResult();
       if (typeof occurredAt !== 'string' || !Number.isFinite(Date.parse(occurredAt))
         || new Date(occurredAt).toISOString() !== occurredAt) invalidResult();
       return auditService.createEvent({ principal, tenantContext, correlationId, action: AUDIT_ACTION.TENANT_ONBOARDING_INVITED,
         targetType: 'customer_invitation', targetId: invitationId, occurredAt,
         outcome: AUDIT_OUTCOME.SUCCESS, retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
-        previousState: null, newState: { revision: nextRevision,
+        // The locked repository supplies the verified next revision; mutations
+        // therefore retain its authoritative predecessor without inventing expiry state.
+        previousState: operation === 'issue' ? null : { revision: nextRevision - 1 }, newState: { revision: nextRevision,
           status: { issue: 'issued', reissue: 'reissued', revoke: 'revoked' }[operation] }, metadata: { operation },
       });
     };
