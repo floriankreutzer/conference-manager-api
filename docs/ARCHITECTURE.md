@@ -6,7 +6,10 @@ and code MAC keys derive from independent external secrets plus purpose, environ
 and UUID epoch. Stable cipher, lookup, audit and source-budget keys are unchanged.
 The shared REAL predicate also serves dispatch; admission takes a direct Tenant
 write lock to avoid lock upgrades. This installs no route/provider/timer and adds no
-migration. See [protected invited access](PROTECTED-INVITED-CUSTOMER-ACCESS.md).
+migration. Its optional Microsoft client composes canonical primary/link services
+with the same REAL/session/audit boundary and an epoch-bound protocol MAC. Tenant
+locks precede protocol row locks in protected link reservation and login capture.
+See [protected Microsoft access](PROTECTED-INVITED-MICROSOFT.md) and [protected invited access](PROTECTED-INVITED-CUSTOMER-ACCESS.md).
 
 ## Authority
 

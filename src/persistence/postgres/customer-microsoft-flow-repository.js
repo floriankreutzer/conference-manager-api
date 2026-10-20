@@ -18,10 +18,13 @@ function expected(row) {
   return row && { tenantId: row.expected_tenant_id,userId: row.expected_user_id,membershipId: row.expected_membership_id,
     sessionId: row.expected_session_id,securityVersion: Number(row.expected_security_version) };
 }
-export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment,flowBinding,auditRepository=null }={}) {
+export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment,flowBinding,auditRepository=null,
+  tenantEligibility=null }={}) {
   if (typeof pool?.connect!=='function' || typeof pool?.query!=='function' || !['dev','int','prod'].includes(environment)
     || ['matchesBrowser','verifyCsrf','csrfFor'].some(method=>typeof flowBinding?.[method]!=='function')
-    || auditRepository!==null && typeof auditRepository?.appendWithClient!=='function') {
+    || auditRepository!==null && typeof auditRepository?.appendWithClient!=='function'
+    || tenantEligibility!==null && ['allowsWithClient','lockAdmissionWithClient']
+      .some(method=>typeof tenantEligibility?.[method]!=='function')) {
     throw new TypeError('CUSTOMER_MICROSOFT_FLOW_CONFIGURATION_INVALID');
   }
   const globalKey=createHash('sha256').update(`customer-microsoft-global-start:v1:${environment}`).digest('hex');
@@ -40,6 +43,8 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
     if (principal.providerIdentity.provider!=='email_code' || expectedValue && (expectedValue.tenantId!==principal.tenantId
       || expectedValue.userId!==principal.userId || expectedValue.sessionId!==principal.session.id
       || expectedValue.securityVersion!==principal.session.securityVersion)) return null;
+    if (tenantEligibility!==null && await tenantEligibility[lock ? 'lockAdmissionWithClient' : 'allowsWithClient'](
+      client,principal.tenantId)!==true) return null;
     if (lock) {
       const tenant=await client.query({ name: 'customer-microsoft-email-tenant-lock',text: `SELECT id FROM tenants
         WHERE id=$1 AND status IN ('pending','onboarding','ready','active') FOR UPDATE`,values: [principal.tenantId] });
@@ -140,60 +145,97 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
         selected_security_version=$7,link_audit_event_id=$8 WHERE environment=$1 AND id=$2`,
     values: [environment,row.id,time,entry.tenantId,entry.userId,entry.membershipId,entry.userSecurityVersion,auditId] });
   }
-  return Object.freeze({
-    async accountState({ principal: value }={}) {
-      let principal;try { principal=normalizePrincipal(value); } catch { return rejected(); }
-      if (!['email_code','microsoft_entra'].includes(principal.providerIdentity.provider)) return rejected();
-      const result=await pool.query({ name: 'customer-microsoft-current-account-state',text: `SELECT
-        EXISTS(SELECT 1 FROM user_identity_bindings identity WHERE identity.tenant_id=person.tenant_id AND identity.user_id=person.id
-          AND identity.provider='microsoft_entra') AS microsoft_linked,
-        (session.provider='email_code' AND session.issued_at>=clock_timestamp()-interval '5 minutes'
-          AND EXISTS(SELECT 1 FROM user_identity_bindings email WHERE email.tenant_id=person.tenant_id AND email.user_id=person.id
-            AND email.provider='email_code' AND email.provider_tenant_reference=$1
-            AND email.provider_user_reference=member.mailbox_id::text
-            AND session.provider_identity_reference=member.mailbox_id::text)) AS fresh_email
-        FROM customer_access_memberships member JOIN users person ON person.tenant_id=member.tenant_id AND person.id=member.user_id
-        JOIN tenants tenant ON tenant.id=person.tenant_id JOIN sessions session ON session.tenant_id=person.tenant_id
-          AND session.user_id=person.id AND session.id=$4 WHERE member.environment=$1 AND member.tenant_id=$2 AND member.user_id=$3
-          AND member.accepted_at IS NOT NULL AND person.active=true AND person.security_version=$5
-          AND tenant.status IN ('pending','onboarding','ready','active') AND session.principal_version=$5
-          AND session.provider=$6 AND session.provider_identity_reference=$7 AND session.revoked_at IS NULL
-          AND session.expires_at>clock_timestamp() AND session.issued_at<=clock_timestamp()`,
-      values: [environment,principal.tenantId,principal.userId,principal.session.id,principal.session.securityVersion,
-        principal.providerIdentity.provider,principal.providerIdentity.reference] });
-      const row=result.rows[0];
-      if (result.rowCount!==1) return rejected();
-      if (typeof row.microsoft_linked!=='boolean' || typeof row.fresh_email!=='boolean') {
-        throw new Error('CUSTOMER_MICROSOFT_ACCOUNT_STATE_INVALID');
-      }
-      return Object.freeze({ status: 'account',microsoftLinked: row.microsoft_linked,emailReauthenticationRequired: !row.fresh_email });
-    },
-    async choices({ flowId,browserToken }={}) {
-      const row=await load(pool,flowId),time=await databaseNow(pool);
-      if (!verifiedProof(row,{ browserToken },time,'login')) return rejected();
-      const snapshot=normalizeCustomerMicrosoftAdmissionSnapshot(row.admission_snapshot);
-      if (snapshot.length===0) return rejected();
-      const result=await pool.query({ name: 'customer-microsoft-admission-choices',text: `SELECT member.id,member.tenant_id,
-        member.user_id,person.security_version,tenant.display_name FROM customer_access_memberships member
+  async function capture(client,providerTenant,providerUser) {
+    const result=await client.query({ name: 'customer-microsoft-admission-capture',text: `SELECT member.id AS membership_id,
+        member.tenant_id,member.user_id,person.security_version FROM customer_access_memberships member
         JOIN users person ON person.tenant_id=member.tenant_id AND person.id=member.user_id
         JOIN tenants tenant ON tenant.id=person.tenant_id JOIN user_identity_bindings identity
           ON identity.tenant_id=person.tenant_id AND identity.user_id=person.id AND identity.provider='microsoft_entra'
-          AND identity.provider_tenant_reference=$3 AND identity.provider_user_reference=$4
-        WHERE member.environment=$1 AND member.id=ANY($2::uuid[]) AND member.accepted_at IS NOT NULL
-          AND person.active=true AND tenant.status IN ('pending','onboarding','ready','active')
-        ORDER BY member.tenant_id,member.id LIMIT 101`,
-      values: [environment,snapshot.map(entry=>entry.membershipId),row.provider_tenant_reference,row.provider_user_reference] });
-      if (result.rows.length>100) return rejected();
-      const items=[];
-      for (const current of result.rows) {
-        if (!matchesCustomerMicrosoftAdmission({ snapshot,current: { membershipId: current.id,tenantId: current.tenant_id,
-          userId: current.user_id,userSecurityVersion: Number(current.security_version) } })) continue;
-        if (typeof current.display_name!=='string' || current.display_name.length<1 || current.display_name.length>160
-          || /[\u0000-\u001f\u007f]/.test(current.display_name)) throw new Error('CUSTOMER_MICROSOFT_CHOICE_LABEL_INVALID');
-        items.push(Object.freeze({ membershipId: current.id,displayName: current.display_name }));
+          AND identity.provider_tenant_reference=$2 AND identity.provider_user_reference=$3
+        WHERE member.environment=$1 AND member.accepted_at IS NOT NULL AND person.active=true
+          AND tenant.status IN ('pending','onboarding','ready','active') ORDER BY member.tenant_id,member.id LIMIT 101`,
+    values: [environment,providerTenant,providerUser] });
+    let snapshot=normalizeCustomerMicrosoftAdmissionSnapshot(result.rows.map(row=>({ membershipId: row.membership_id,
+        tenantId: row.tenant_id,userId: row.user_id,userSecurityVersion: Number(row.security_version) })));
+    if (tenantEligibility!==null) {
+      const qualified=[];
+      for (const entry of snapshot) {
+        if (await tenantEligibility.allowsWithClient(client,entry.tenantId)===true) qualified.push(entry);
       }
-      return Object.freeze({ status: 'membership_required',items: Object.freeze(items),csrfToken: flowBinding.csrfFor({
-        context: { flowId: row.id,purpose: 'login',stage: 'choice' },browserVerifier: row.choice_verifier }) });
+      snapshot=qualified;
+    }
+    return snapshot;
+  }
+  async function accountStateWithClient(client,{ principal: value }={}) {
+    let principal;try { principal=normalizePrincipal(value); } catch { return rejected(); }
+    if (!['email_code','microsoft_entra'].includes(principal.providerIdentity.provider)) return rejected();
+    if (tenantEligibility!==null && await tenantEligibility.allowsWithClient(client,principal.tenantId)!==true) return rejected();
+    const result=await client.query({ name: 'customer-microsoft-current-account-state',text: `SELECT
+      EXISTS(SELECT 1 FROM user_identity_bindings identity WHERE identity.tenant_id=person.tenant_id AND identity.user_id=person.id
+        AND identity.provider='microsoft_entra') AS microsoft_linked,
+      (session.provider='email_code' AND session.issued_at>=clock_timestamp()-interval '5 minutes'
+        AND EXISTS(SELECT 1 FROM user_identity_bindings email WHERE email.tenant_id=person.tenant_id AND email.user_id=person.id
+          AND email.provider='email_code' AND email.provider_tenant_reference=$1
+          AND email.provider_user_reference=member.mailbox_id::text
+          AND session.provider_identity_reference=member.mailbox_id::text)) AS fresh_email
+      FROM customer_access_memberships member JOIN users person ON person.tenant_id=member.tenant_id AND person.id=member.user_id
+      JOIN tenants tenant ON tenant.id=person.tenant_id JOIN sessions session ON session.tenant_id=person.tenant_id
+        AND session.user_id=person.id AND session.id=$4 WHERE member.environment=$1 AND member.tenant_id=$2 AND member.user_id=$3
+        AND member.accepted_at IS NOT NULL AND person.active=true AND person.security_version=$5
+        AND tenant.status IN ('pending','onboarding','ready','active') AND session.principal_version=$5
+        AND session.provider=$6 AND session.provider_identity_reference=$7 AND session.revoked_at IS NULL
+        AND session.expires_at>clock_timestamp() AND session.issued_at<=clock_timestamp()`,
+    values: [environment,principal.tenantId,principal.userId,principal.session.id,principal.session.securityVersion,
+      principal.providerIdentity.provider,principal.providerIdentity.reference] });
+    const row=result.rows[0];
+    if (result.rowCount!==1) return rejected();
+    if (typeof row.microsoft_linked!=='boolean' || typeof row.fresh_email!=='boolean') {
+      throw new Error('CUSTOMER_MICROSOFT_ACCOUNT_STATE_INVALID');
+    }
+    return Object.freeze({ status: 'account',microsoftLinked: row.microsoft_linked,emailReauthenticationRequired: !row.fresh_email });
+  }
+  async function choicesWithClient(client,{ flowId,browserToken }={}) {
+    const row=await load(client,flowId),time=await databaseNow(client);
+    if (!verifiedProof(row,{ browserToken },time,'login')) return rejected();
+    const snapshot=normalizeCustomerMicrosoftAdmissionSnapshot(row.admission_snapshot);
+    if (snapshot.length===0) return rejected();
+    const result=await client.query({ name: 'customer-microsoft-admission-choices',text: `SELECT member.id,member.tenant_id,
+      member.user_id,person.security_version,tenant.display_name FROM customer_access_memberships member
+      JOIN users person ON person.tenant_id=member.tenant_id AND person.id=member.user_id
+      JOIN tenants tenant ON tenant.id=person.tenant_id JOIN user_identity_bindings identity
+        ON identity.tenant_id=person.tenant_id AND identity.user_id=person.id AND identity.provider='microsoft_entra'
+        AND identity.provider_tenant_reference=$3 AND identity.provider_user_reference=$4
+      WHERE member.environment=$1 AND member.id=ANY($2::uuid[]) AND member.accepted_at IS NOT NULL
+        AND person.active=true AND tenant.status IN ('pending','onboarding','ready','active')
+      ORDER BY member.tenant_id,member.id LIMIT 101`,
+    values: [environment,snapshot.map(entry=>entry.membershipId),row.provider_tenant_reference,row.provider_user_reference] });
+    if (result.rows.length>100) return rejected();
+    const items=[];
+    for (const current of result.rows) {
+      if (!matchesCustomerMicrosoftAdmission({ snapshot,current: { membershipId: current.id,tenantId: current.tenant_id,
+        userId: current.user_id,userSecurityVersion: Number(current.security_version) } })) continue;
+      if (tenantEligibility!==null && await tenantEligibility.allowsWithClient(client,current.tenant_id)!==true) continue;
+      if (typeof current.display_name!=='string' || current.display_name.length<1 || current.display_name.length>160
+        || /[\u0000-\u001f\u007f]/.test(current.display_name)) throw new Error('CUSTOMER_MICROSOFT_CHOICE_LABEL_INVALID');
+      items.push(Object.freeze({ membershipId: current.id,displayName: current.display_name }));
+    }
+    return Object.freeze({ status: 'membership_required',items: Object.freeze(items),csrfToken: flowBinding.csrfFor({
+      context: { flowId: row.id,purpose: 'login',stage: 'choice' },browserVerifier: row.choice_verifier }) });
+  }
+  async function linkConfirmationWithClient(client,{ flowId,browserToken,principal }={}) {
+    const row=await load(client,flowId),time=await databaseNow(client);
+    if (!verifiedProof(row,{ browserToken },time,'link') || !await currentEmail(client,principal,expected(row))) return rejected();
+    return Object.freeze({ status: 'link_confirmation_required',csrfToken: flowBinding.csrfFor({
+      context: { flowId: row.id,purpose: 'link',stage: 'confirmation' },browserVerifier: row.choice_verifier }) });
+  }
+  return Object.freeze({
+    accountState(input) {
+      return tenantEligibility===null ? accountStateWithClient(pool,input)
+        : withPostgresTransaction(pool,client=>accountStateWithClient(client,input));
+    },
+    choices(input) {
+      return tenantEligibility===null ? choicesWithClient(pool,input)
+        : withPostgresTransaction(pool,client=>choicesWithClient(client,input));
     },
     async admit({ flowId,browserToken,csrfToken,membershipId,correlationId,issueSession }={}) {
       uuid(flowId);uuid(membershipId);uuid(correlationId);
@@ -205,6 +247,8 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
         .find(entry=>entry.membershipId===membershipId.toLowerCase());
       if (!expectedEntry) return rejected();
       return withPostgresTransaction(pool,async client=>{
+        if (tenantEligibility!==null
+          && await tenantEligibility.lockAdmissionWithClient(client,expectedEntry.tenantId)!==true) return rejected();
         // Business scope first; never hold a global protocol row while waiting
         // for Tenant/member/User locks needed by lifecycle and role changes.
         const tenant=await client.query({ name: 'customer-microsoft-admission-tenant-lock',text:
@@ -227,11 +271,9 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
         return Object.freeze({ status: 'authenticated',setCookie });
       });
     },
-    async linkConfirmation({ flowId,browserToken,principal }={}) {
-      const row=await load(pool,flowId),time=await databaseNow(pool);
-      if (!verifiedProof(row,{ browserToken },time,'link') || !await currentEmail(pool,principal,expected(row))) return rejected();
-      return Object.freeze({ status: 'link_confirmation_required',csrfToken: flowBinding.csrfFor({
-        context: { flowId: row.id,purpose: 'link',stage: 'confirmation' },browserVerifier: row.choice_verifier }) });
+    linkConfirmation(input) {
+      return tenantEligibility===null ? linkConfirmationWithClient(pool,input)
+        : withPostgresTransaction(pool,client=>linkConfirmationWithClient(client,input));
     },
     async confirmLink({ flowId,browserToken,csrfToken,principal,correlationId,auditEventFor,issueSession }={}) {
       uuid(flowId);uuid(correlationId);
@@ -300,6 +342,11 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
     async reserve({ flowId,stateHash,browserToken,correlationId,principal }={}) {
       uuid(flowId);digest(stateHash);uuid(correlationId);
       return withPostgresTransaction(pool,async client=>{
+        if (tenantEligibility!==null) {
+          const initial=await load(client,flowId);
+          if (!browser(initial,browserToken) || initial.status!=='started' || initial.state_hash!==stateHash
+            || initial.purpose==='link' && !await currentEmail(client,principal,expected(initial),true)) return null;
+        }
         const flow=await load(client,flowId,true),time=await databaseNow(client);
         if (!browser(flow,browserToken) || flow.status!=='started' || flow.state_hash!==stateHash || flow.expires_at<=time
           || flow.purpose==='link' && !await currentEmail(client,principal,expected(flow))) return null;
@@ -328,24 +375,11 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
         const initial=await load(client,flowId);
         if (!browser(initial,browserToken) || initial.status!=='redeeming') return false;
         if (initial.purpose==='link' && !await currentEmail(client,principal,expected(initial),true)) return false;
+        const snapshot=initial.purpose==='login' ? await capture(client,providerTenant,providerUser) : [];
         const flow=await load(client,flowId,true),time=await databaseNow(client);
         if (!browser(flow,browserToken) || flow.status!=='redeeming' || flow.expires_at<=time
           || authenticated.getTime()<Math.max(flow.created_at.getTime()-60000,time.getTime()-360000)
           || authenticated.getTime()>time.getTime()+60000 || providerTenant==='9188040d-6c67-4c5b-b112-36a304b66dad') return false;
-        let snapshot=[];
-        if (flow.purpose==='login') {
-          const result=await client.query({ name: 'customer-microsoft-admission-capture',text: `SELECT member.id AS membership_id,
-            member.tenant_id,member.user_id,person.security_version FROM customer_access_memberships member
-            JOIN users person ON person.tenant_id=member.tenant_id AND person.id=member.user_id
-            JOIN tenants tenant ON tenant.id=person.tenant_id JOIN user_identity_bindings identity
-              ON identity.tenant_id=person.tenant_id AND identity.user_id=person.id AND identity.provider='microsoft_entra'
-              AND identity.provider_tenant_reference=$2 AND identity.provider_user_reference=$3
-            WHERE member.environment=$1 AND member.accepted_at IS NOT NULL AND person.active=true
-              AND tenant.status IN ('pending','onboarding','ready','active') ORDER BY member.tenant_id,member.id LIMIT 101`,
-          values: [environment,providerTenant,providerUser] });
-          snapshot=normalizeCustomerMicrosoftAdmissionSnapshot(result.rows.map(row=>({ membershipId: row.membership_id,
-            tenantId: row.tenant_id,userId: row.user_id,userSecurityVersion: Number(row.security_version) })));
-        }
         await client.query({ name: 'customer-microsoft-flow-verified',text: `UPDATE customer_microsoft_flows
           SET status='verified',verified_at=$3,choice_verifier=$4,provider_tenant_reference=$5,provider_user_reference=$6,
             authenticated_at=$7,admission_snapshot=$8::jsonb WHERE environment=$1 AND id=$2`,

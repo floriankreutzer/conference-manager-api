@@ -6,7 +6,7 @@ import { createProtectedSessionNamespace } from '../domain/protected-session-nam
 // across epochs; they must never be passed through this flow-only derivation.
 export function deriveProtectedAuthenticationFlowSecret({ secret,environment,securityEpoch,purpose } = {}) {
   if (typeof secret !== 'string' || Buffer.byteLength(secret)<32 || Buffer.byteLength(secret)>512
-    || /[\u0000-\u001f\u007f]/.test(secret) || !['customer-email-flow','customer-email-code'].includes(purpose)) {
+    || /[\u0000-\u001f\u007f]/.test(secret) || !['customer-email-flow','customer-email-code','customer-microsoft-flow'].includes(purpose)) {
     throw new TypeError('PROTECTED_AUTHENTICATION_FLOW_SECRET_INVALID');
   }
   const namespace=createProtectedSessionNamespace({ environment,securityEpoch });

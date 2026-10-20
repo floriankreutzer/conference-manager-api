@@ -3,6 +3,9 @@ import { createAuthorizationPolicy } from './authorization/policy.js';
 import { createCustomerEmailAdmissionService } from './identity/customer-email-admission-service.js';
 import { createCustomerEmailAuthenticationService } from './identity/customer-email-authentication-service.js';
 import { createCustomerEmailFlowBinding } from './identity/customer-email-flow-binding.js';
+import { createCustomerMicrosoftFlowBinding } from './identity/customer-microsoft-flow-binding.js';
+import { createCustomerMicrosoftAuthenticationService } from './identity/customer-microsoft-authentication-service.js';
+import { createCustomerMicrosoftAdmissionService } from './identity/customer-microsoft-admission-service.js';
 import { createCustomerEmailSourceKey } from './identity/customer-email-source-key.js';
 import { createEmailMailboxProofFactory } from './identity/email-code-proof.js';
 import { createProtectedInvitedCustomerSessions } from './identity/protected-invited-customer-sessions.js';
@@ -10,6 +13,7 @@ import { deriveProtectedAuthenticationFlowSecret } from './identity/protected-au
 import { createCustomerAccessEmailContent } from './integrations/customer-access-email-content.js';
 import { createPostgresAuditRepository } from './persistence/postgres/audit-repository.js';
 import { createPostgresCustomerEmailAdmissionRepository } from './persistence/postgres/customer-email-admission-repository.js';
+import { createPostgresCustomerMicrosoftFlowRepository } from './persistence/postgres/customer-microsoft-flow-repository.js';
 import { createPostgresCustomerEmailChallengeRepository } from './persistence/postgres/customer-email-challenge-repository.js';
 import { createPostgresProtectedCustomerAccessRepository } from './persistence/postgres/protected-customer-access-repository.js';
 import { createPostgresProtectedInvitedSessionRepository } from './persistence/postgres/protected-invited-session-repository.js';
@@ -20,7 +24,8 @@ import { createPostgresProtectedRuntimeExecutionScopes } from './persistence/pos
 // Every anonymous entry acquires current deployment custody, including neutral
 // unknown-recipient flows which never reach the REAL qualification predicate.
 export function createProtectedInvitedCustomerAccess({ pool,leasePool,environment,securityEpoch,publicOrigin,cipher,
-  auditHmacSecret,csrfSecret,emailFlowSecret,emailCodeSecret,emailSourceSecret,sessionTtlSeconds,clock } = {}) {
+  auditHmacSecret,csrfSecret,emailFlowSecret,emailCodeSecret,emailSourceSecret,sessionTtlSeconds,clock,
+  microsoftClient=null,microsoftFlowSecret } = {}) {
   const scopes=createPostgresProtectedRuntimeExecutionScopes({ pool,leasePool,environment,securityEpoch });
   const protection={ environment,securityEpoch: securityEpoch.toLowerCase() };
   const tenantScope=createPostgresProtectedRealTenantScope(pool,protection);
@@ -50,5 +55,32 @@ export function createProtectedInvitedCustomerAccess({ pool,leasePool,environmen
     choices: input=>scopes.withShared(()=>ordinary.choices(input)),
     select: (input,command)=>scopes.withShared(()=>ordinary.select(input,command)),
   });
-  return Object.freeze({ service,sessionService });
+  let microsoft=null;
+  if (microsoftClient!==null) {
+    const microsoftBinding=createCustomerMicrosoftFlowBinding({ environment,
+      secret: deriveProtectedAuthenticationFlowSecret({ ...protection,secret: microsoftFlowSecret,
+        purpose: 'customer-microsoft-flow' }) });
+    const repository=createPostgresCustomerMicrosoftFlowRepository(pool,{ environment,flowBinding: microsoftBinding,
+      auditRepository,tenantEligibility: tenantScope });
+    const authentication=createCustomerMicrosoftAuthenticationService({ repository,entraClient: microsoftClient,
+      flowBinding: microsoftBinding });
+    const admissionService=createCustomerMicrosoftAdmissionService({ repository,auditService,sessionService });
+    microsoft=Object.freeze({
+      authenticationService: Object.freeze({
+        startLogin: input=>scopes.withShared(()=>authentication.startLogin(input)),
+        startLink: input=>scopes.withShared(()=>authentication.startLink(input)),
+        complete: input=>scopes.withShared(()=>authentication.complete(input)),
+        clearCookie: authentication.clearCookie,
+      }),
+      admissionService: Object.freeze({
+        accountState: input=>scopes.withShared(()=>admissionService.accountState(input)),
+        choices: input=>scopes.withShared(()=>admissionService.choices(input)),
+        select: (input,command)=>scopes.withShared(()=>admissionService.select(input,command)),
+        linkConfirmation: input=>scopes.withShared(()=>admissionService.linkConfirmation(input)),
+        confirmLink: (input,command)=>scopes.withShared(()=>admissionService.confirmLink(input,command)),
+      }),
+      sourceKey: Object.freeze({ fingerprint: sourceKey.fingerprint }),
+    });
+  }
+  return Object.freeze({ service,sessionService,microsoft });
 }
