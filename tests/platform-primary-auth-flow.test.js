@@ -94,3 +94,10 @@ test('miscomposed primary flow cannot accidentally return a business session ins
   await assert.rejects(f.service.complete(input), /PRIMARY_PENDING_RESULT_INVALID/);
   assert.equal(f.calls.failures.at(-1).reasonCode, 'assertion_rejected');
 });
+
+test('verified primary can return only pending independent enrollment when no key exists', async () => {
+  const f = fixture(); const input = await f.start();
+  f.setResult({ status: 'enrollment_required', state: 'pending', setCookie: 'preauth-cookie' });
+  assert.equal((await f.service.complete(input)).status, 'enrollment_required');
+  assert.equal(f.calls.startPasskey, 1);
+});

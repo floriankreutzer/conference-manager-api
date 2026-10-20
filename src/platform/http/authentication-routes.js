@@ -2,6 +2,7 @@ import { readPlatformEntraTransactionCookie } from '../identity/entra-transactio
 import { PlatformHttpError } from './errors.js';
 import { PLATFORM_HTTP_ROUTE } from './observability.js';
 import { definePlatformRouteModule } from './route-module.js';
+import { parsePlatformMicrosoftCallbackQuery } from './microsoft-callback-query.js';
 import {
   requirePlatformCookie,
   requirePlatformProviderAuthorizationUrl,
@@ -18,30 +19,6 @@ export const PLATFORM_AUTH_STEP_UP_PATH = '/api/v1/platform/auth/microsoft/step-
 export const PLATFORM_AUTH_CALLBACK_PATH = '/api/v1/platform/auth/microsoft/callback';
 
 const OPAQUE_VALUE = /^[A-Za-z0-9_-]{43}$/;
-const AUTHORIZATION_CODE = /^[A-Za-z0-9._~-]{1,4096}$/;
-const PROVIDER_ERROR = /^[a-z][a-z0-9_]{1,63}$/;
-
-function callbackQuery(parsedUrl) {
-  const keys = [...parsedUrl.searchParams.keys()];
-  if (
-    keys.some((key) => !['state', 'code', 'error'].includes(key))
-    || keys.some((key) => parsedUrl.searchParams.getAll(key).length !== 1)
-  ) {
-    throw new PlatformHttpError(400, 'PLATFORM_VALIDATION_FAILED');
-  }
-  const state = parsedUrl.searchParams.get('state');
-  const code = parsedUrl.searchParams.get('code');
-  const providerError = parsedUrl.searchParams.get('error');
-  if (
-    !OPAQUE_VALUE.test(state || '')
-    || ((code === null) === (providerError === null))
-    || (code !== null && !AUTHORIZATION_CODE.test(code))
-    || (providerError !== null && !PROVIDER_ERROR.test(providerError))
-  ) {
-    throw new PlatformHttpError(400, 'PLATFORM_VALIDATION_FAILED');
-  }
-  return Object.freeze({ state, code, providerError });
-}
 
 function isAuthenticationRejection(error) {
   return error?.name === 'PlatformIdentityError' || error?.name === 'PlatformAuthenticationError';
@@ -146,7 +123,7 @@ export const platformAuthenticationRoutes = definePlatformRouteModule({
       await assertNoPlatformRequestBody(request);
       const clearedCookie = transactionCookie(platformAuthService.clearCookie());
       response.setHeader('Set-Cookie', clearedCookie);
-      const query = callbackQuery(parsedUrl);
+      const query = parsePlatformMicrosoftCallbackQuery(parsedUrl);
       try {
         const result = await platformAuthService.complete({
           request,

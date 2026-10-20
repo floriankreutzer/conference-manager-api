@@ -644,3 +644,12 @@ and private nonexecutable guards. API#230 qualified custody on PostgreSQL18.6 an
 all nine current-head checks. The default-off HTTP/read interface prepared here
 requires its own actual cookie/database and complete paired/security acceptance.
 See CATERING-CATALOGUE-PUBLICATION.md for retained evidence and remaining scope.
+
+
+Unreleased migration056 adds independently authorized Platform passkey enrollment
+after the retained catalogue publication055. Demo022 grants only isolated reset
+TRUNCATE; publication021 and supplier020 grants remain intact. This candidate
+requires exact056/022 readiness and all paired regression/security evidence.
+The former unmerged055/021 enrollment numbering was superseded during main
+integration; no accepted publication migration or checksum was rewritten.
+See PLATFORM-PASSKEY-ASSURANCE.md. CA mode and the security epoch remain unchanged.

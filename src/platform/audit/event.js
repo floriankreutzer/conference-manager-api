@@ -105,11 +105,14 @@ export function normalizePlatformAuditEvent(value) {
   const roles = stringSnapshot(value.roles || []);
   const permissions = stringSnapshot(value.permissions || [], { permissions: true });
   if (value.operatorId === null) {
+    const offlineOwner = value.action === PLATFORM_AUDIT_ACTION.OPERATOR_CHANGED
+      && value.assuranceLevel === 'offline_owner' && value.targetTenantId === null
+      && value.targetType === 'platform_passkey_grant' && isInternalUuid(value.targetId)
+      && value.outcome === PLATFORM_AUDIT_OUTCOME.SUCCESS && value.retentionClass === PLATFORM_AUDIT_RETENTION.RECOVERY;
     if (
-      value.action !== PLATFORM_AUDIT_ACTION.AUTHENTICATION_FAILED
+      (!offlineOwner && (value.action !== PLATFORM_AUDIT_ACTION.AUTHENTICATION_FAILED || value.assuranceLevel !== 'unverified'))
       || roles.length !== 0
       || permissions.length !== 0
-      || value.assuranceLevel !== 'unverified'
     ) invalid();
   } else {
     let expected;

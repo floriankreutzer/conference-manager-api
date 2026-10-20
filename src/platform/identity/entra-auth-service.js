@@ -248,7 +248,7 @@ function createAuthService({
       if (primaryOnly) {
         try {
           const pending = await passkeyAuthService.startLogin(assertion, { correlationId: flowCorrelationId });
-          if (pending?.status !== 'passkey_required' || pending.principal !== undefined
+          if (!['passkey_required', 'enrollment_required'].includes(pending?.status) || pending.principal !== undefined
             || pending.csrfToken !== undefined || pending.setCookies !== undefined) {
             throw new PlatformIdentityError('PLATFORM_PRIMARY_PENDING_RESULT_INVALID');
           }
