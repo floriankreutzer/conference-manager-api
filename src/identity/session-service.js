@@ -11,6 +11,7 @@ import {
   AUDIT_RETENTION_CLASS,
 } from '../audit/event.js';
 import { normalizePrincipal, normalizeTrustedIdentity } from './principal.js';
+import { isProtectedCustomerSessionNamespace } from './protected-customer-session-namespace.js';
 import {
   SESSION_TOKEN_PATTERN,
   readSessionToken,
@@ -30,9 +31,9 @@ export class SessionServiceError extends Error {
   }
 }
 
-function tokenHash(token) {
+function tokenHash(token,securityNamespace) {
   return createHash('sha256')
-    .update(`customer-session:${CUSTOMER_SESSION_SECURITY_EPOCH}:${token}`, 'ascii')
+    .update(`customer-session:${securityNamespace}:${token}`, 'ascii')
     .digest('hex');
 }
 
@@ -46,12 +47,12 @@ function safeEqual(left, right) {
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function sessionRecord(identity, { id, token, issuedAt, expiresAt }) {
+function sessionRecord(identity, { id, token, issuedAt, expiresAt,securityNamespace }) {
   return Object.freeze({
     id,
     tenantId: identity.tenantId,
     userId: identity.userId,
-    tokenHash: tokenHash(token),
+    tokenHash: tokenHash(token,securityNamespace),
     providerIdentity: identity.providerIdentity,
     roles: identity.roles,
     permissions: identity.permissions,
@@ -83,10 +84,16 @@ export function createSessionService({
   publicOrigin,
   csrfSecret,
   sessionTtlSeconds = DEFAULT_SESSION_TTL_SECONDS,
+  securityNamespace = CUSTOMER_SESSION_SECURITY_EPOCH,
   clock = () => Date.now(),
   tokenFactory = () => randomBytes(32).toString('base64url'),
   idFactory = () => randomUUID(),
 } = {}) {
+  if (securityNamespace!==CUSTOMER_SESSION_SECURITY_EPOCH && !isProtectedCustomerSessionNamespace(securityNamespace)) {
+    throw new TypeError('CUSTOMER_SESSION_NAMESPACE_INVALID');
+  }
+  const hashNamespace=securityNamespace===CUSTOMER_SESSION_SECURITY_EPOCH ? CUSTOMER_SESSION_SECURITY_EPOCH
+    : `${CUSTOMER_SESSION_SECURITY_EPOCH}:${securityNamespace}`;
   if (!repository || typeof repository.issue !== 'function' || typeof repository.resolveByTokenHash !== 'function') {
     throw new TypeError('SESSION_REPOSITORY_REQUIRED');
   }
@@ -120,7 +127,7 @@ export function createSessionService({
     const expiresAt = new Date(issuedMs + (sessionTtlSeconds * 1000)).toISOString();
     return Object.freeze({
       token,
-      record: sessionRecord(identity, { id, token, issuedAt, expiresAt }),
+      record: sessionRecord(identity, { id, token, issuedAt, expiresAt,securityNamespace: hashNamespace }),
     });
   }
 
@@ -168,7 +175,7 @@ export function createSessionService({
       const token = readSessionToken(request?.headers);
       if (!token) return null;
       const now = new Date(clock());
-      const stored = await repository.resolveByTokenHash(tokenHash(token), now);
+      const stored = await repository.resolveByTokenHash(tokenHash(token,hashNamespace), now);
       return stored ? principalFromSession(stored) : null;
     },
 
