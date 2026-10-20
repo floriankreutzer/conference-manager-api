@@ -47,3 +47,23 @@ test('both Demo surfaces reject transitive access to real passkey authentication
     assert.ok(violations.some(value => value.includes('must not reach real Platform passkey')));
   }
 });
+
+test('step-up opens a writable coherent snapshot without changing ordinary login isolation', async () => {
+  for (const purpose of ['login', 'step_up']) {
+    const queries=[];
+    const pool={ query() { throw new Error('UNEXPECTED_POOL_QUERY'); },async connect() {
+      return { async query(query) {
+        queries.push(typeof query==='string' ? query : query.name);
+        return { rowCount: 0,rows: [] };
+      },release() {} };
+    } };
+    const repository=createPostgresPlatformPasskeyAuthRepository(pool,
+      { auditRepository: { appendWithClient() {} },verifier: { verifyAuthentication() {} } });
+    const { id,correlationId,ttlSeconds,challenge,...request }=record();
+    assert.equal(await repository.authenticate({ ...request,purpose,response: {},
+      ...(purpose==='step_up' ? { expectedSessionId: ID,operationHash: 'd'.repeat(64) } : {}) },
+    () => { throw new Error('UNVERIFIED_CALLBACK'); }),null);
+    assert.equal(queries[0],`BEGIN ISOLATION LEVEL ${purpose==='step_up' ? 'REPEATABLE READ' : 'READ COMMITTED'} READ WRITE`);
+    assert.ok(queries.includes('COMMIT'));
+  }
+});
