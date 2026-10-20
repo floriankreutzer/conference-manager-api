@@ -25,6 +25,7 @@ const CUSTOMER_EMAIL_AUTHORITY_MODULES = new Set([
   'src/persistence/postgres/customer-access-delivery-repository.js',
   'src/persistence/postgres/customer-access-delivery-eligibility.js',
   'src/http/customer-invitation-routes.js',
+  'src/persistence/postgres/customer-email-anonymous-retention.js',
   'src/http/customer-email-authentication-routes.js',
   'src/identity/customer-email-authentication-service.js',
   'src/identity/customer-email-admission-service.js',
