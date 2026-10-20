@@ -319,7 +319,7 @@ async function fetchMicrosoftIdentity({
   };
 }
 
-function createBoundedMicrosoftIdentityNetworkClient({
+export function createBoundedMicrosoftIdentityNetworkClient({
   fetchImpl,
   timeoutMs,
   totalDeadlineSignal = null,
