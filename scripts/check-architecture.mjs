@@ -556,8 +556,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 58;/.test(pool)) {
-  throw new Error('Runtime schema readiness requires invited Customer Microsoft proof/link custody version 58.');
+if (!/export const CURRENT_SCHEMA_VERSION = 59;/.test(pool)) {
+  throw new Error('Runtime schema readiness requires protected Tenant runtime schema 59.');
 }
 const retentionPrivilegeMigration = await readFile(
   'migrations/041_room_media_retention_privileges.up.sql',

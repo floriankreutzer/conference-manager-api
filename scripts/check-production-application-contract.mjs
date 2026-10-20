@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 58;/.test(pool)) {
-  throw new Error('Production application requires invited Customer Microsoft proof/link custody version 58.');
+if (!/export const CURRENT_SCHEMA_VERSION = 59;/.test(pool)) {
+  throw new Error('Production application requires protected Tenant runtime schema 59.');
 }
 
 const auditEvent = await readFile('src/audit/event.js', 'utf8');
