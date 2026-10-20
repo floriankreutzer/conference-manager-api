@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createAuditHarness } from './support/audit-harness.js';
+import { createTenantAuditQueryService } from '../src/audit/tenant-audit-query-service.js';
 import { AuthorizationDeniedError } from '../src/authorization/errors.js';
 import { createCustomerInvitationService } from '../src/application/customer-invitation-service.js';
 import { createAuthorizationPolicy, tenantAuthorizationSnapshot } from '../src/authorization/policy.js';
@@ -181,4 +182,26 @@ test('real audit service preserves foreign-context denial without foreign eviden
   assert.equal(audit.events.length, 1);
   assert.equal(audit.events[0].tenantId, id(1)); assert.equal(audit.events[0].actorUserId, id(2));
   assert.equal(audit.events[0].outcome, 'denied');
+});
+
+test('Tenant-visible audit distinguishes issue, reissue and revocation without revealing recipient metadata', async () => {
+  const audit = createAuditHarness();
+  const f = fixture({ async revoke(input) {
+    f.audits.push(input.auditEventFor({ invitationId: input.invitationId, nextRevision: 2, occurredAt: time }));
+    return row({ revision: 2, state: 'revoked' });
+  } }, audit.service);
+  await f.service.issueBatch(context(), { commandId: id(50), invitations: [intent()] });
+  await f.service.reissue(context(), { invitationId: id(10), expectedRevision: 1 });
+  await f.service.revoke(context(), { invitationId: id(10), expectedRevision: 1 });
+  const query = createTenantAuditQueryService({
+    queryRepository: { async listByTenantId({ tenantId }) {
+      assert.equal(tenantId, id(1)); return f.audits.map((event, index) => ({ ...event, id: String(3-index) }));
+    } }, integrityRepository: { async verifyTenantChain(tenantId) { assert.equal(tenantId, id(1)); return true; } },
+    authorizationPolicy: createAuthorizationPolicy(), auditService: audit.service, clock: () => Date.parse(time),
+  });
+  const page = await query.listEvents(context());
+  assert.deepEqual(page.events.map(event => event.change.after), [
+    { revision: 1, status: 'issued' }, { revision: 2, status: 'reissued' }, { revision: 2, status: 'revoked' },
+  ]);
+  assert.doesNotMatch(JSON.stringify(page), /recipient|person@example|metadata|operation|token|secret/);
 });
