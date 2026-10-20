@@ -92,7 +92,8 @@ export function createCustomerInvitationService({ repository, authorizationPolic
       return auditService.createEvent({ principal, tenantContext, correlationId, action: AUDIT_ACTION.TENANT_ONBOARDING_INVITED,
         targetType: 'customer_invitation', targetId: invitationId, occurredAt,
         outcome: AUDIT_OUTCOME.SUCCESS, retentionClass: AUDIT_RETENTION_CLASS.ADMINISTRATIVE,
-        previousState: null, newState: { revision: nextRevision }, metadata: { operation },
+        previousState: null, newState: { revision: nextRevision,
+          status: { issue: 'issued', reissue: 'reissued', revoke: 'revoked' }[operation] }, metadata: { operation },
       });
     };
   }

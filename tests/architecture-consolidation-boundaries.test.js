@@ -176,3 +176,24 @@ test('closed Demo listener may use bounded native HTTP and injected gate without
     'src/demo/traffic-gate.js': "import { timingSafeEqual } from 'node:crypto'; export const compare = timingSafeEqual;",
   }), []);
 });
+
+
+test('both closed Demo surfaces reject real mailbox/invitation authority directly and through a bridge', () => {
+  for (const target of ['src/http/customer-email-authentication-routes.js',
+    'src/identity/customer-email-authentication-service.js','src/identity/customer-email-admission-service.js',
+    'src/persistence/postgres/customer-email-admission-repository.js',
+    'src/persistence/postgres/customer-email-challenge-repository.js',
+    'src/persistence/postgres/customer-invitation-repository.js']) {
+    for (const root of ['src/demo/customer-main.js','src/demo/platform-main.js']) {
+      const direct = architectureConsolidationBoundaryViolations({
+        [root]: `import '../${target.slice(4)}';`,[target]: 'export const realIdentity = true;',
+      });
+      assert.ok(direct.some(item => item.includes('Production identity/provider implementation') && item.includes(target)));
+      const bridged = architectureConsolidationBoundaryViolations({
+        [root]: "import '../customer-email-bridge.js';",
+        'src/customer-email-bridge.js': `import './${target.slice(4)}';`,[target]: 'export const realIdentity = true;',
+      });
+      assert.ok(bridged.some(item => item.includes('through an intermediary') && item.includes(target)));
+    }
+  }
+});

@@ -374,3 +374,58 @@ source-key module under the existing outbound-boundary gate. IPv6 normalization
 now uses the data-only Node SocketAddress value class; no gate exception or network
 operation was introduced. Existing alternate-spelling/mapped-address and malformed
 input assertions are retained. Node22 API reference: https://nodejs.org/docs/latest-v22.x/api/net.html#class-netsocketaddress
+
+
+## Unreleased current-membership choice and atomic admission
+
+The next uncomposed slice resolves only choices from the verified mailbox's closed
+captured snapshot. Names are returned after browser-bound proof; no Tenant/User,
+provider reference, roles or recipient enters that public choice projection.
+One bounded query rechecks current eligible memberships; selection accepts only an
+opaque membership reference already captured by the server. The browser cannot
+choose independent Tenant, actor or roles.
+
+Admission locks Tenant, membership, User/invitation, then challenge; it never holds
+a global challenge/mailbox lock while waiting for a Tenant business lock. It checks
+database time after lock acquisition, exact snapshot/current User security version,
+active User/Tenant, pending invitation/revision/expiry and browser/choice CSRF again.
+Initial acceptance provisions a new User with only stored invited elevated roles,
+creates its scoped mailbox identity binding, appends provision/accept audit, accepts
+the membership/invitation and issues the existing ordinary session atomically.
+Existing accepted Users receive current roles; invitation roles are never regranted
+and local disable/security-version changes cannot be undone by a mailbox proof.
+One consumed choice cannot admit a second Tenant or replay a business session.
+
+The identity service creates fixed server audit events and delegates session
+creation to the existing SessionService. Runtime composition must construct the
+admission/session repositories with the exact same pool so the existing transaction
+context includes session and audit writes. The existing deferred SQL acceptance
+guards verify new User, binding, exact initial roles and matching audit at commit.
+Session-result and deferred-commit failures roll back proof consumption, User,
+roles, binding, invitations, audit and session together; cookies are returned only
+after the enclosing transaction commits. Platform identity remains separate.
+
+Fourteen focused native primitive/service tests and twenty-one scratch-only
+PostgreSQL18.6/WASM sequential SQL/service preflight checks passed, including real
+ordinary session resolution, changed-role login, stale User version/local disable,
+post-proof revocation, rollback after real session issuance and deferred audit
+constraint failure. Native integration cases add concurrent first acceptance,
+new-Tenant snapshot exclusion, expired/max-attempt/browser-mismatch denial and
+cross-Tenant/current-role fences. Those native pool/concurrency/role/TLS and full
+paired browser tests remain independently required. No HTTP route, Microsoft
+linking, dispatch worker, real recipient/mail, INT reset or identity mode activates
+this source candidate; earlier challenge-only scope limits above are historical.
+
+The architecture gate additionally forbids both closed Demo surfaces from reaching
+real invitation/challenge/admission authority directly or through an intermediary.
+A matrix regression retains direct and transitive boundary checks without changing
+provider-neutral primitive reuse or introducing an exception for the new INT path.
+
+## Unreleased HTTP transport slice
+
+The next opt-in transport is specified in `CUSTOMER-EMAIL-HTTP.md`. Its five
+browser-bound endpoints use the existing HTTP security/error framework and the
+current locked admission use case. They are not installed in a runtime entrypoint.
+The first five loopback HTTP cases passed; complete current-tree gates and actual
+INT/provider/browser acceptance remain required. Earlier no-HTTP descriptions
+above record preceding uncomposed checkpoints rather than deployed behavior.
