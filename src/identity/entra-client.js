@@ -12,7 +12,7 @@ function sha256Hex(value) {
 }
 
 function secureHashMatch(value, expectedHash) {
-  if (typeof value !== 'string' || !/^[0-9a-f]{64}$/.test(expectedHash || '')) return false;
+  if (typeof value !== 'string' || typeof expectedHash!=='string' || !/^[0-9a-f]{64}$/.test(expectedHash)) return false;
   const actual = Buffer.from(sha256Hex(value), 'hex');
   const expected = Buffer.from(expectedHash, 'hex');
   return actual.length === expected.length && timingSafeEqual(actual, expected);
@@ -143,7 +143,9 @@ export function createEntraClient({
       }
     },
 
-    async redeemAuthorizationCode({ code, codeVerifier, expectedNonceHash }) {
+    async redeemAuthorizationCode({ code, codeVerifier, expectedNonce, expectedNonceHash }) {
+      if (typeof expectedNonce!=='string' || expectedNonce.length<1 || expectedNonce.length>512
+        || !secureHashMatch(expectedNonce,expectedNonceHash)) throw new EntraAuthenticationError('ENTRA_NONCE_INVALID');
       let result;
       try {
         result = await msal.acquireTokenByCode({
@@ -151,6 +153,7 @@ export function createEntraClient({
           scopes: OIDC_SCOPES,
           redirectUri,
           codeVerifier,
+          nonce: expectedNonce,
         });
       } catch {
         throw new EntraAuthenticationError('ENTRA_CODE_REDEMPTION_FAILED');
