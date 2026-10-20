@@ -133,7 +133,7 @@ test('uniform rejection and bounded provider-free errors never release proof, ro
 
 test('invalid private outputs fail closed and provider authority fields are stripped from the public choice projection',async t => {
   const f=await fixture(t);
-  f.state.request={ ...proof(),expiresAt: new Date(NOW+601_000).toISOString() };
+  f.state.request={ ...proof(),expiresAt: new Date(NOW+661_000).toISOString() };
   let answer=await f.request(); assert.equal(answer.status,500); assert.equal(answer.headers['set-cookie'],undefined);
   f.state.request={ ...proof(),browserToken: 'invalid' };
   answer=await f.request(); assert.equal(answer.status,500); assert.equal(answer.headers['set-cookie'],undefined);
@@ -154,4 +154,21 @@ test('invalid private outputs fail closed and provider authority fields are stri
 test('ordinary app composition exposes no email route without explicit module injection',async t => {
   const f=await fixture(t,{ injected: false });
   const answer=await f.request(); assert.equal(answer.status,404); assert.equal(f.calls.length,0);
+});
+
+test('bounded database clock skew cannot reject fresh proof or extend its browser cookie lifetime',async t => {
+  const f=await fixture(t);
+  f.state.request={ ...proof(),expiresAt: new Date(NOW+630_000).toISOString() };
+  let answer=await f.request(); assert.equal(answer.status,202);
+  assert.match(answer.headers['set-cookie'][0],/Max-Age=600$/);
+  assert.equal(answer.body.expiresAt,f.state.request.expiresAt);
+  f.state.verify={ ...proof('membership_required'),expiresAt: new Date(NOW+330_000).toISOString() };
+  answer=await f.request({ path: '/verify',body: { code: '00123456' },
+    headers: { cookie: cookie(),'x-csrf-token': CSRF } });
+  assert.equal(answer.status,200); assert.match(answer.headers['set-cookie'][0],/Max-Age=300$/);
+  assert.equal(answer.body.expiresAt,f.state.verify.expiresAt);
+  f.state.verify.expiresAt=new Date(NOW+361_000).toISOString();
+  answer=await f.request({ path: '/verify',body: { code: '00123456' },
+    headers: { cookie: cookie(),'x-csrf-token': CSRF } });
+  assert.equal(answer.status,500); assert.equal(answer.headers['set-cookie'],undefined);
 });

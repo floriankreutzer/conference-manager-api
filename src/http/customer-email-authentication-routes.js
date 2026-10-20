@@ -27,9 +27,12 @@ function publicPending(value,expected) {
   return { status: value.status,csrfToken: value.csrfToken,expiresAt: value.expiresAt };
 }
 function transactionCookie(value,clock) {
+  const maximum=value.status==='membership_required' ? 300 : 600;
   const seconds = Math.ceil((Date.parse(value.expiresAt)-clock())/1000);
-  if (!Number.isSafeInteger(seconds) || seconds < 1 || seconds > 600) outputInvalid();
-  try { return serializeCustomerEmailTransactionCookie(value,{ maxAgeSeconds: seconds }); }
+  // Database time owns proof expiry. Bounded clock skew must not make a fresh
+  // proof unusable, nor extend the cookie beyond its original flow lifetime.
+  if (!Number.isSafeInteger(seconds) || seconds < 1 || seconds > maximum+60) outputInvalid();
+  try { return serializeCustomerEmailTransactionCookie(value,{ maxAgeSeconds: Math.min(maximum,seconds) }); }
   catch { outputInvalid(); }
 }
 function sessionCookie(value) {
