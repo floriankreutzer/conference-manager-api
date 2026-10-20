@@ -81,8 +81,8 @@ following remain required and must be independently tested:
    invariants; no Demo fallback or weakening of Platform MFA/step-up.
 
 None of these modules is composed into an entrypoint. No outbound email is sent
-by loading configuration or creating a proof. No provider SDK/dependency,
-schema, stored role, existing login or session contract changes in this slice.
+by loading configuration or creating a proof. The primitives add no provider SDK/dependency, stored role or change to the
+existing login/session contract. The custody candidate below adds schema057.
 The module architecture gate also rejects imports of the real delivery adapter
 from either synthetic Demo composition.
 
@@ -124,12 +124,14 @@ Mutation receipts must match the exact object and next revision. Audit callbacks
 contain invitation ID/revision/operation only, never recipient, code or tokens.
 Delivery `accepted` means provider acceptance; no `delivered` state is fabricated.
 
-Ten focused native progression/negative cases passed. The first local style check
+Historical foundation-only checkpoint: ten focused native progression/negative
+cases passed. The first local style check
 found overlong test lines, which were wrapped without changing assertions. These
 are application/port tests, not real transaction, mail receipt, HTTP/CSRF, replay,
-concurrency or activation evidence. No repository, schema, worker, Customer route
-or entrypoint currently composes these ports. Durable implementation, Platform
-creation, invited-only authentication/account linking and browser UI remain open.
+concurrency or activation evidence. At that checkpoint no repository/schema composed these ports. The custody
+candidate below now implements invitation persistence. Platform creation, HTTP,
+invited-only authentication/linking, dispatch and browser UI are separate follow-up
+scopes; no entrypoint activates real Customer access in this custody candidate.
 
 ## Unreleased mailbox-proof separation
 
@@ -192,12 +194,19 @@ Five focused cases passed real encryption, all scope/tamper substitutions, looku
 separation, rotation/retirement, caller mutation, shape bounds and destruction.
 The first local style check found overlong test lines; they were wrapped unchanged.
 
-## Storage draft — not qualified or active
+## Current custody candidate — schema057 / Demo023, not activated
 
-The local unreleased056 SQL draft follows the separately reviewed enrollment055
-chain. It has not run against the required native PostgreSQL server. Readiness, Demo overlay/reset inventory and historical
-rollback integration are now staged for056/022, together with the repository draft;
-there is no HTTP/runtime composition and this is not a deployable migration candidate.
+The Customer-access migration is057 and its Demo-only overlay is023. It follows
+Platform enrollment056/Demo022 and accepted publication055/Demo021. Runtime
+readiness requires exact schema57. The migration/repository candidate has passed
+native PostgreSQL integration and all four paired Chromium/WebKit × PostgreSQL/
+objects permanent three-customer/two-reset-cycle jobs at commit553c39d9951658e662db755289ce32dcc583e3d9
+(CI run39397607250). Quality, dependency policy, secret scanning and release-source
+inventory also passed for that commit. This qualifies the named candidate's tested
+scope; it does not apply migrations to INT or activate a login/sender. Review and
+protected deployment acceptance remain separate gates. No ordinary entrypoint or
+closed Demo runtime installs real Customer invitation, admission or dispatch.
+
 It defines environment-specific encrypted mailbox custody, Tenant/mailbox/User
 memberships, immutable recipient/role invitation intent with revisioned terminal
 accept/revoke, exact actor/command receipts, mailbox/browser proof records, encrypted
@@ -215,24 +224,24 @@ concurrency coverage. Successful admission must append Tenant audit and issue th
 existing session in the same transaction. Accepted memberships cannot change
 existing roles or local disable state through invitation acceptance.
 
-The draft's invitation audit constraint requires the exact Tenant/object/revision/
+The migration's invitation audit constraint requires the exact Tenant/object/revision/
 operation event, and accepted invitations require the matching populated membership.
 Cross-mailbox delivery references are constrained together with their scope. The
 custody guards preserve identity, purpose, immutable intent and monotonic counters/
-versions; populated/evidence-bearing down migration refuses. These are drafted
-controls, not verified guarantees. Dedicated Demo-only role denial/reset integration
-must be added while real INT reset must preserve this entire identity/custody domain.
+versions; populated/evidence-bearing down migration refuses. Native tests cover
+these constraints and Demo-only role-denial/reset integration. Real INT reset must
+preserve this entire identity/custody domain and remains an activation requirement.
 
-The subsequent repository draft serializes Tenant/User/session authority before
+The invitation repository serializes Tenant/User/session authority before
 lookup, replay or mutation, orders global mailbox locks by keyed fingerprint and
 queues encrypted stable content inside the invitation/audit transaction. It never
 calls the provider. Command digests use another HMAC domain, preventing offline
 recipient guessing from an unkeyed command hash. Receipts contain only a closed
-metadata schema, enforced in the draft SQL; replay independently decrypts the
+metadata schema, enforced in SQL; replay independently decrypts the
 immutable recipient instead of storing plaintext addresses in receipts. Expired/
 revoked/accepted changes and actor/role/audit failures must remain fail closed.
-This repository draft and its actual-PostgreSQL test have not executed yet. The
-architecture gate initially rejected a persistence import of an application error;
+The native PostgreSQL test exercises these transactions, replay, concurrency,
+revocation and audit rollback. Historically, the architecture gate rejected a persistence import of an application error;
 the shared conflict value was moved to the domain boundary without a gate exception.
 
 For enumeration resistance, the challenge draft permits a durable unadmitted flow
@@ -243,14 +252,15 @@ It stores only keyed recipient/source references, not an unknown plaintext addre
 Actual request orchestration, shared rate/attempt ceilings, retention/resource
 bounds and the common binding implementation remain required before activation.
 
-The staged056/022 integration preserves every prior rollback probe by first draining
+The current057/023 integration preserves every prior rollback probe by first draining
 the empty Customer layer. Demo grants explicitly deny all Customer/Platform CRUD
 and permit only the isolated reset role to truncate the seven new tables. The
-canonical three-customer seed is unchanged. Metrics upgrade guards retain the old
-054/021 denial and add055/022 plus future057/023 denial; media guards retain old
-versions and advance the future-version negative. Focused native Demo/reset/media
-checks passed32 cases. PostgreSQL, all cross-repository browser/reset gates and
-real INT identity-preserving reset remain independently required.
+canonical three-customer seed is unchanged. Upgrade guards retain incompatible
+older schema/overlay pair denials and reject future058/024. Historical rollback
+assertions are preserved; empty newer layers are drained before older probes and
+restored before readiness checks. Native and paired browser/reset qualification
+passed at the exact commit above; real INT identity-preserving reset and deployed
+TLS/provider/recipient acceptance remain independently required.
 
 
 ## Audit context review correction
@@ -266,7 +276,7 @@ including hostile top-level actor/Tenant overrides, foreign context, and valid-s
 denial. This does not activate invitation HTTP or delivery composition.
 
 
-## Local SQL preflight correction and limits
+## Historical local SQL preflight correction and limits
 
 A scratch-only PGlite0.5.10 engine reports PostgreSQL18.6/WASM. Applying the actual
 migration chain exposed PostgreSQL's regular-expression repetition-bound limit in
@@ -289,7 +299,7 @@ privileges, full database integration or Chromium/WebKit/reset acceptance. Those
 checks and real INT identity-preserving reset remain open.
 
 
-## Current main integration and superseded draft numbering
+## Historical integration checkpoints and superseded draft numbering
 
 Accepted publication055/Demo021 remains unchanged. Integrated unreleased Platform
 enrollment now occupies056/Demo022; invited Customer custody is057/Demo023. Earlier
