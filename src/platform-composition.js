@@ -166,7 +166,7 @@ export function createPlatformComposition({
   });
   const selectedRouteModules = typeof routeModulesFactory === 'function'
     ? routeModulesFactory({ platformSessionService: sessionService })
-    : routeModules;
+    : routeModules ?? platformAuthService?.routeModules;
   const platformProcess = createPlatformProcess({
     config,
     persistence,
@@ -175,6 +175,7 @@ export function createPlatformComposition({
     ...(httpServerFactory ? { httpServerFactory } : {}),
     routeModules: selectedRouteModules,
     platformAuthService,
+    platformPasskeyService: platformAuthService?.platformPasskeyService,
     platformAuditService,
     platformDiagnosticOperationsService,
     platformEntitlementOperationsService,
@@ -184,7 +185,7 @@ export function createPlatformComposition({
     platformMicrosoftFleetHealthService,
     platformRecoveryOperationsService,
     platformRuntimeStatusService,
-    platformSessionService: sessionService,
+    platformSessionService: platformAuthService?.platformHttpSessionService ?? sessionService,
     platformTenantOperationsService,
   });
   return Object.freeze({
