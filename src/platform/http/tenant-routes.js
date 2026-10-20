@@ -63,12 +63,13 @@ function confirmationForTenant(value, action, tenantId) {
   return value;
 }
 
-function createTenantBody(value) {
+function createTenantBody(value,multipleRecipients=false) {
   const body = requirePlatformExactObject(value, {
     required: {
       displayName: (candidate) => boundedText(candidate, 160),
       reason: (candidate) => boundedText(candidate, 500),
       confirmation: (candidate) => candidate && typeof candidate === 'object' && !Array.isArray(candidate),
+      ...(multipleRecipients ? { invitations: candidate=>Array.isArray(candidate) && candidate.length<=19 } : {}),
     },
   });
   requirePlatformExactObject(body.confirmation, {
@@ -178,6 +179,7 @@ export const platformTenantRoutes = definePlatformRouteModule({
   claim: tenantRoute,
   createHandler({
     platformTenantOperationsService,
+    platformCustomerOnboardingService=null,
     platformPrincipalGuard,
     maxBodyBytes,
     maxResponseBytes,
@@ -191,6 +193,9 @@ export const platformTenantRoutes = definePlatformRouteModule({
       || typeof platformTenantOperationsService.transitionLifecycle !== 'function'
     ) {
       throw new TypeError('PLATFORM_TENANT_OPERATIONS_SERVICE_REQUIRED');
+    }
+    if (platformCustomerOnboardingService!==null && typeof platformCustomerOnboardingService?.createTenant!=='function') {
+      throw new TypeError('PLATFORM_CUSTOMER_ONBOARDING_SERVICE_REQUIRED');
     }
     if (!platformPrincipalGuard || typeof platformPrincipalGuard.require !== 'function') {
       throw new TypeError('PLATFORM_PRINCIPAL_GUARD_REQUIRED');
@@ -219,12 +224,12 @@ export const platformTenantRoutes = definePlatformRouteModule({
           request,
           correlationId: requestId,
         });
-        const body = createTenantBody(await readPlatformJsonObject(request, { maxBytes: maxBodyBytes }));
-        const result = await platformTenantOperationsService.createTenantInvitation({
-          ...trusted,
-          ...body,
-          correlationId: requestId,
-        });
+        const body = createTenantBody(await readPlatformJsonObject(request, { maxBytes: maxBodyBytes }),
+          platformCustomerOnboardingService!==null);
+        const command={ ...trusted,...body,correlationId: requestId };
+        const result = platformCustomerOnboardingService===null
+          ? await platformTenantOperationsService.createTenantInvitation(command)
+          : await platformCustomerOnboardingService.createTenant(command);
         const statusCode = result?.outcome === 'updated' ? 201 : 200;
         sendPlatformJson(response, statusCode, result, maxResponseBytes);
         return statusCode;
