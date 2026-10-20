@@ -182,6 +182,11 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
   outcomes without network access. `src/demo/fixture.js` owns the source-defined seed version and
   semantic checksum; `src/persistence/postgres/demo-reset-repository.js` owns the sentinel-verified,
   exclusively locked, transactional reset/readback contract.
+- `src/synthetic/business-templates.js` owns checked, independently cloned, fixed business
+  templates shared with the legacy Demo fixture. Its private data module supplies no session,
+  persona, provider, runtime or reset authority. The architecture gate confines this pure data
+  graph to `src/synthetic` and domain dependencies, rejects external/runtime imports and checks
+  private-data access. See `SYNTHETIC-BUSINESS-TEMPLATES.md` for checksum and scope limits.
 - `scripts/demo-db-migrations.mjs` owns the independent checksum-protected Demo overlay migration
   ledger after verifying the exact canonical schema `001..053`.
 - `scripts/platform-break-glass-grant.mjs` and `scripts/platform-recovery-fallback.mjs` are the only local privileged mutation wrappers. They accept credentials only through fixed descriptors and require live Platform sessions plus a dual-control, exact Tenant/permission-bound, one-use grant. The retired process-local Tenant-operator runtime and package entry point are prohibited.
