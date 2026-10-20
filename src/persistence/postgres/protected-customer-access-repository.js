@@ -1,6 +1,6 @@
 import { isInternalUuid } from '../../domain/identifiers.js';
 import { normalizePrincipal } from '../../identity/principal.js';
-import { tenantAuthorizationSnapshot } from '../../authorization/policy.js';
+import { TENANT_ROLE,tenantAuthorizationSnapshot } from '../../authorization/policy.js';
 import { requireProtectedTenantRuntime } from '../../tenancy/protected-tenant-runtime.js';
 import { isPostgresTransactionActive } from './transaction.js';
 
@@ -45,7 +45,7 @@ export function createPostgresProtectedCustomerAccessRepository(pool,{ environme
         principal.providerIdentity.provider,principal.providerIdentity.reference,principal.session.issuedAt,principal.session.expiresAt,
         principal.roles,principal.permissions] });
       if (result.rowCount!==1) return null;
-      const authorization=tenantAuthorizationSnapshot(result.rows[0].roles);
+      const authorization=tenantAuthorizationSnapshot([TENANT_ROLE.EMPLOYEE,...result.rows[0].roles]);
       if (!sameSet(principal.roles,authorization.roles) || !sameSet(principal.permissions,authorization.permissions)) return null;
       const runtime=requireProtectedTenantRuntime({ environment,securityEpoch,tenantId: principal.tenantId },{
         environment,securityEpoch,tenantId: principal.tenantId,mode: 'real',
