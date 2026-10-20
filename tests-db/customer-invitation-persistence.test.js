@@ -23,7 +23,7 @@ test('Customer invitation custody is scoped, encrypted, audit-atomic, single-com
   if (!database.databaseUrl) throw new Error('DATABASE_URL_REQUIRED_FOR_INTEGRATION_TEST');
   const pool = createPostgresPool({ mode: 'test', ...database });
   t.after(() => pool.end());
-  await migrateUp(pool); assert.equal(await isPostgresSchemaReady(pool, 60), true);
+  await migrateUp(pool); assert.equal(await isPostgresSchemaReady(pool, 61), true);
   assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty060 before059.
   assert.equal(await rollbackLatest(pool),true); // Empty protected runtime059 before retained Microsoft058.
