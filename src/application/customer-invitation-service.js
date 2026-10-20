@@ -5,7 +5,7 @@ import { AUDIT_ACTION, AUDIT_OUTCOME, AUDIT_RETENTION_CLASS } from '../audit/eve
 import { isInternalUuid } from '../domain/identifiers.js';
 
 const STATES = new Set(['pending', 'accepted', 'revoked', 'expired']);
-const DELIVERY_STATES = new Set(['queued', 'accepted', 'failed']);
+const DELIVERY_STATES = new Set(['queued', 'processing', 'accepted', 'failed', 'cancelled']);
 const ROW_FIELDS = ['tenantId', 'environment', 'id', 'revision', 'recipient', 'roles', 'locale', 'state', 'expiresAt', 'delivery'];
 
 function invalid() { throw new AuthorizationInputError('CUSTOMER_INVITATION_INPUT_INVALID'); }
@@ -22,7 +22,7 @@ function publicInvitation(row, tenantId, environment) {
   })) invalidResult();
   if (row.tenantId !== tenantId || row.environment !== environment || !isInternalUuid(row.id)
     || !Number.isSafeInteger(row.revision) || row.revision < 1 || row.revision >= Number.MAX_SAFE_INTEGER
-    || !STATES.has(row.state) || !DELIVERY_STATES.has(row.delivery)
+    || !STATES.has(row.state) || !DELIVERY_STATES.has(row.delivery) || (row.state === 'revoked' && row.delivery === 'queued')
     || typeof row.expiresAt !== 'string' || !Number.isFinite(Date.parse(row.expiresAt))
     || new Date(row.expiresAt).toISOString() !== row.expiresAt) invalidResult();
   let intent;

@@ -30,7 +30,7 @@ function fixture(overrides = {}, auditService = null) {
       calls.push(input); audits.push(input.auditEventFor({ invitationId: input.invitationId, nextRevision: 2, occurredAt: time }));
       return row({ revision: 2 });
     },
-    async revoke(input) { calls.push(input); return row({ revision: 2, state: 'revoked' }); },
+    async revoke(input) { calls.push(input); return row({ revision: 2, state: 'revoked', delivery: 'cancelled' }); },
     ...overrides,
   };
   const service = createCustomerInvitationService({ repository, authorizationPolicy: createAuthorizationPolicy(), environment: 'int',
@@ -88,7 +88,7 @@ test('invalid commands, revision, pagination and browser Tenant fields do not re
 test('foreign, malformed, private and inconsistent persisted data never becomes public invitation output', async () => {
   for (const extra of [{ tenantId: id(9) }, { environment: 'prod' }, { private: 'not-public' }, { state: 'active' },
     { delivery: 'delivered' }, { roles: ['platform_admin'] }, { recipient: 'person@EXAMPLE.COM' },
-    { expiresAt: '2026-10-26' }, { revision: 0 }]) {
+    { expiresAt: '2026-10-26' }, { revision: 0 }, { state: 'revoked', delivery: 'queued' }]) {
     const f = fixture({ async list() { return [row(extra)]; } });
     await assert.rejects(f.service.list(context()));
   }
@@ -165,7 +165,7 @@ test('Tenant-visible audit distinguishes issue, reissue and revocation without r
   const audit = createAuditHarness();
   const f = fixture({ async revoke(input) {
     f.audits.push(input.auditEventFor({ invitationId: input.invitationId, nextRevision: 2, occurredAt: time }));
-    return row({ revision: 2, state: 'revoked' });
+    return row({ revision: 2, state: 'revoked', delivery: 'cancelled' });
   } }, audit.service);
   await f.service.issueBatch(context(), { commandId: id(50), invitations: [intent()] });
   await f.service.reissue(context(), { invitationId: id(10), expectedRevision: 1 });
