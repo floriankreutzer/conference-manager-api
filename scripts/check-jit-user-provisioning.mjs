@@ -126,8 +126,12 @@ if (entrypoint.includes('createJitUserService')) {
 }
 
 const runtime = await readFile('src/customer-composition.js', 'utf8');
+if (!runtime.includes('createCustomerAuthenticationComposition({')) {
+  throw new Error('Customer business composition must delegate to its owned authentication construction.');
+}
+const authenticationRuntime=await readFile('src/customer-authentication-composition.js','utf8');
 for (const required of ['createJitUserService', 'persistence.jitUserRepository', 'jitUserService']) {
-  if (!runtime.includes(required)) throw new Error(`Runtime composition is missing ${required}.`);
+  if (!authenticationRuntime.includes(required)) throw new Error(`Authentication composition is missing ${required}.`);
 }
 
 const tenantModel = await readFile('src/tenancy/tenant.js', 'utf8');
