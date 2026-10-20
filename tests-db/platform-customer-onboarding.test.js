@@ -30,6 +30,17 @@ import { PLATFORM_OPERATION } from '../src/platform/application/platform-operati
 import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
 import { normalizeCustomerInvitationBatch,normalizeCustomerInvitationIntent } from '../src/authorization/customer-invitation-policy.js';
 import { projectCustomerInvitations } from '../src/application/customer-invitation-result.js';
+import { createPostgresPlatformTenantOperationsRepository } from '../src/persistence/postgres/platform-operations-repository.js';
+import { createPostgresTenantOnboardingRepository } from '../src/persistence/postgres/tenant-onboarding-repository.js';
+import { createPostgresTenantRepository } from '../src/persistence/postgres/tenant-repository.js';
+import { createPostgresSessionRepository } from '../src/persistence/postgres/session-repository.js';
+import { createSessionService } from '../src/identity/session-service.js';
+import { createCustomerEmailFlowBinding } from '../src/identity/customer-email-flow-binding.js';
+import { createEmailMailboxProofFactory } from '../src/identity/email-code-proof.js';
+import { createPostgresCustomerEmailChallengeRepository } from '../src/persistence/postgres/customer-email-challenge-repository.js';
+import { createPostgresCustomerEmailAdmissionRepository } from '../src/persistence/postgres/customer-email-admission-repository.js';
+import { createCustomerEmailAdmissionService } from '../src/identity/customer-email-admission-service.js';
+
 
 // An isolated migrated PostgreSQL database, real persisted Platform sessions and
 // both real audit repositories. No provider or outbound transport is configured.
@@ -120,6 +131,42 @@ test('Platform creates owner-inclusive real customer invitations atomically with
     await assert.rejects(withPostgresTransaction(pool,async()=>{ await service().createTenant({ ...input,idempotencyKey: randomUUID() });
       throw new Error('SYNTHETIC_PROOF_ROTATION_FAILED'); },{ isolationLevel: 'REPEATABLE READ' }),/SYNTHETIC_PROOF_ROTATION_FAILED/);
     assert.deepEqual(await counts(),before);
+  });
+  await t.test('invited directory observes owner email admission while Microsoft directory identity stays independent',async()=>{
+    const { directoryReader }=createPostgresPlatformTenantOperationsRepository(pool,{ ...configuration,
+      onboardingRepository: createPostgresTenantOnboardingRepository(pool,{ auditRepository: tenantAuditRepository }),
+      tenantLifecycleRepository: createPostgresTenantRepository(pool,{ auditRepository: tenantAuditRepository }),
+      cursorSecret: 'd'.repeat(48),customerInvitationEnvironment: 'int' });
+    const authorization=await authorizePlatformOperation({ authorizationPolicy: platformAuthorizationPolicy,tenantTargetPolicy,
+      operatorContext: issued.principal,operation: PLATFORM_OPERATION.TENANT_DIRECTORY_READ,fleet: true });
+    async function current() {
+      const result=await directoryReader.list({ authorization,query: { cursor: null,limit: 100,lifecycleStatus: null,search: null } });
+      const row=result.items.find(value=>value.tenantId===created.tenant.id);assert.ok(row);
+      assert.doesNotMatch(JSON.stringify(result),/Owner@|Operator@|recipient|mailbox|provider_tenant/);return row;
+    }
+    const initial=await current();assert.equal(initial.onboardingState,'invited');assert.equal(initial.invitationState,'open');
+    assert.equal(initial.identityState,'pending');
+    const flowBinding=createCustomerEmailFlowBinding({ environment: 'int',secret: 'f'.repeat(48) });
+    t.after(()=>flowBinding.destroy());
+    const proofFactory=createEmailMailboxProofFactory({ environment: 'int',secret: 'q'.repeat(48),codeFactory: ()=>'00001234' });
+    const challenges=createPostgresCustomerEmailChallengeRepository(pool,{ ...configuration,flowBinding,proofFactory });
+    const customerSessions=createSessionService({
+      repository: createPostgresSessionRepository(pool,{ auditRepository: tenantAuditRepository }),auditService: tenantAuditService,
+      publicOrigin: 'https://127.0.0.1',csrfSecret: 's'.repeat(48) });
+    const admission=createCustomerEmailAdmissionService({ auditService: tenantAuditService,sessionService: customerSessions,
+      repository: createPostgresCustomerEmailAdmissionRepository(pool,{ environment: 'int',flowBinding,
+        auditRepository: tenantAuditRepository }) });
+    const sourceKey='b'.repeat(64),started=await challenges.request({ recipient: 'Owner@example.test',locale: 'de',sourceKey });
+    const proof=await challenges.verify({ ...started,code: '00001234',sourceKey });assert.equal(proof.status,'membership_required');
+    const choices=await admission.choices(proof);assert.equal(choices.items.length,1);
+    const accepted=await admission.select({ ...proof,correlationId: randomUUID() },{ membershipId: choices.items[0].membershipId });
+    assert.equal(accepted.status,'authenticated');
+    const principal=await customerSessions.resolvePrincipal({ headers: { cookie: accepted.setCookie.split(';')[0] } });
+    assert.equal(principal.tenantId,created.tenant.id);assert.deepEqual(principal.roles,['employee','tenant_admin']);
+    const observed=await current();assert.equal(observed.onboardingState,'claimed');assert.equal(observed.identityState,'pending');
+    assert.equal(observed.invitationState,'open'); // Other individual invitations still await acceptance.
+    assert.equal((await pool.query('SELECT count(*)::int n FROM tenant_onboarding_invitations')).rows[0].n,0);
+    assert.equal(await tenantAuditRepository.verifyTenantChain(created.tenant.id),true);
   });
   const administration=createPlatformCustomerInvitationAdministrationService({
     repository: createPostgresPlatformCustomerInvitationRepository(pool,configuration),platformAuthorizationPolicy,

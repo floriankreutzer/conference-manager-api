@@ -143,3 +143,31 @@ not patch a clock, edit immutable existing rows, disable a guard or sleep.
 Writing these cases does not claim native execution; actual current CI remains
 required before acceptance. Directory projection, UI and protected INT activation
 remain follow-on work.
+
+## Invited-customer directory projection
+
+The existing Platform Tenant repository has the optional protected constructor
+setting `customerInvitationEnvironment`. Null preserves the legacy query, its
+parameter shape and claim-state behavior. An explicit dev/int/prod value reads
+only that environment's new invitation and accepted membership records. It does
+not decrypt mailboxes, expose recipients or create synthetic legacy bearer-claim
+rows. An open individual invitation takes precedence in the summarized invitation
+state, while any recorded membership acceptance changes onboarding to `claimed`.
+Other still-pending individuals remain visible through the management collection.
+Microsoft directory identity continues to use its independently verified binding;
+email acceptance does not make that identity active or make onboarding complete.
+
+The projection retains the existing bounded Tenant directory DTO and live
+operator/target SQL scope. Cursor signatures include the selected custody
+environment, so an INT cursor cannot be reused in PROD or the legacy mode. The
+cursor bounds the Tenant traversal and observation window; it does not create an
+invitation-history archive or grant any mutation authority. Individual management
+always rechecks current state and expected revision.
+
+Unit cases verify the separate fixed query modes, environment binding, minimized
+projection, independent membership/directory state and cross-mode cursor denial.
+The native acceptance additionally runs actual Platform-created invitations
+through the existing encrypted email challenge, explicit membership choice,
+ordinary Customer session issuance and directory observation. Synthetic code
+factory material tests backend composition; it does not claim live mail delivery
+or Microsoft identity proof. Current native CI execution remains required.
