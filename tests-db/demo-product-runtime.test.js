@@ -188,7 +188,9 @@ test('Demo runtime Product reads verified existing events through minimal Ops gr
     try {
       const previous = await client.query('SELECT source_epoch FROM demo_product_source_epoch');
       await client.query('BEGIN');
-      await client.query('TRUNCATE audit_events');
+      // The empty invitation custody layer references Tenant audit evidence.
+      // Name its dependent tables explicitly; never weaken those foreign keys.
+      await client.query('TRUNCATE audit_events,customer_member_invitations,customer_access_deliveries');
       const next = await client.query('SELECT source_epoch FROM demo_product_source_epoch');
       assert.notEqual(next.rows[0].source_epoch, previous.rows[0].source_epoch);
       await client.query('ROLLBACK');
