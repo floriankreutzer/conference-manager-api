@@ -1,10 +1,13 @@
 import { createHash } from 'node:crypto';
 import { isInternalUuid } from '../../domain/identifiers.js';
 import { normalizePrincipal } from '../../identity/principal.js';
-import { normalizeCustomerMicrosoftAdmissionSnapshot } from '../../identity/customer-microsoft-admission.js';
+import { normalizeCustomerMicrosoftAdmissionSnapshot,matchesCustomerMicrosoftAdmission }
+  from '../../identity/customer-microsoft-admission.js';
+import { tenantAuthorizationSnapshot } from '../../authorization/policy.js';
 import { withPostgresTransaction } from './transaction.js';
 const HASH=/^[a-f0-9]{64}$/,TOKEN=/^[A-Za-z0-9_-]{43}$/;
 const invalid=()=>{ throw new TypeError('CUSTOMER_MICROSOFT_FLOW_INPUT_INVALID'); };
+const rejected=()=>Object.freeze({ status: 'rejected' });
 function uuid(value) { if (!isInternalUuid(value)) invalid();return value.toLowerCase(); }
 function digest(value) { if (typeof value!=='string' || !HASH.test(value)) invalid();return value; }
 async function databaseNow(client) {
@@ -15,9 +18,12 @@ function expected(row) {
   return row && { tenantId: row.expected_tenant_id,userId: row.expected_user_id,membershipId: row.expected_membership_id,
     sessionId: row.expected_session_id,securityVersion: Number(row.expected_security_version) };
 }
-export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment,flowBinding }={}) {
+export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment,flowBinding,auditRepository=null }={}) {
   if (typeof pool?.connect!=='function' || typeof pool?.query!=='function' || !['dev','int','prod'].includes(environment)
-    || typeof flowBinding?.matchesBrowser!=='function') throw new TypeError('CUSTOMER_MICROSOFT_FLOW_CONFIGURATION_INVALID');
+    || ['matchesBrowser','verifyCsrf','csrfFor'].some(method=>typeof flowBinding?.[method]!=='function')
+    || auditRepository!==null && typeof auditRepository?.appendWithClient!=='function') {
+    throw new TypeError('CUSTOMER_MICROSOFT_FLOW_CONFIGURATION_INVALID');
+  }
   const globalKey=createHash('sha256').update(`customer-microsoft-global-start:v1:${environment}`).digest('hex');
   function browser(row,browserToken) {
     return row && typeof browserToken==='string' && TOKEN.test(browserToken) && flowBinding.matchesBrowser({
@@ -101,7 +107,151 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
             THEN $4 ELSE customer_microsoft_start_budgets.window_started_at END,last_issued_at=$4`,values: [environment,kind,key,time] });
     return true;
   }
+  function verifiedProof(row,{ browserToken,csrfToken },time,purpose) {
+    if (!row || row.status!=='verified' || row.purpose!==purpose || !(row.expires_at instanceof Date)
+      || !(row.verified_at instanceof Date) || time>=row.expires_at || time.getTime()>=row.verified_at.getTime()+300000) return false;
+    const context={ flowId: row.id,purpose,stage: purpose==='login' ? 'choice' : 'confirmation' };
+    return flowBinding.matchesBrowser({ context,browserToken,browserVerifier: row.choice_verifier })
+      && (csrfToken===undefined || typeof csrfToken==='string' && HASH.test(csrfToken)
+        && flowBinding.verifyCsrf({ context,browserVerifier: row.choice_verifier,csrfToken }));
+  }
+  async function identityMatches(client,row,entry) {
+    const result=await client.query({ name: 'customer-microsoft-admission-identity-current',text: `SELECT user_id
+      FROM user_identity_bindings WHERE tenant_id=$1 AND user_id=$2 AND provider='microsoft_entra'
+        AND provider_tenant_reference=$3 AND provider_user_reference=$4 FOR SHARE`,
+    values: [entry.tenantId,entry.userId,row.provider_tenant_reference,row.provider_user_reference] });return result.rowCount===1;
+  }
+  async function issueCurrentSession(client,entry,flow,issueSession) {
+    const result=await client.query({ name: 'customer-microsoft-admission-current-roles',text:
+      'SELECT role FROM tenant_user_roles WHERE tenant_id=$1 AND user_id=$2 ORDER BY role',values: [entry.tenantId,entry.userId] });
+    const issued=await issueSession(Object.freeze({ tenantId: entry.tenantId,userId: entry.userId,
+      securityVersion: entry.userSecurityVersion,...tenantAuthorizationSnapshot(['employee',...result.rows.map(row=>row.role)]),
+      providerIdentity: Object.freeze({ provider: 'microsoft_entra',
+        reference: `${flow.provider_tenant_reference}:${flow.provider_user_reference}` }) }));
+    if (issued?.principal?.tenantId!==entry.tenantId || issued?.principal?.userId!==entry.userId
+      || issued.principal.session.securityVersion!==entry.userSecurityVersion || typeof issued.setCookie!=='string') {
+      throw new Error('CUSTOMER_MICROSOFT_ADMISSION_SESSION_INVALID');
+    }
+    return issued.setCookie;
+  }
+  async function consume(client,row,entry,time,auditId=null) {
+    await client.query({ name: 'customer-microsoft-flow-consume',text: `UPDATE customer_microsoft_flows
+      SET status='consumed',consumed_at=$3,selected_tenant_id=$4,selected_user_id=$5,selected_membership_id=$6,
+        selected_security_version=$7,link_audit_event_id=$8 WHERE environment=$1 AND id=$2`,
+    values: [environment,row.id,time,entry.tenantId,entry.userId,entry.membershipId,entry.userSecurityVersion,auditId] });
+  }
   return Object.freeze({
+    async choices({ flowId,browserToken }={}) {
+      const row=await load(pool,flowId),time=await databaseNow(pool);
+      if (!verifiedProof(row,{ browserToken },time,'login')) return rejected();
+      const snapshot=normalizeCustomerMicrosoftAdmissionSnapshot(row.admission_snapshot);
+      if (snapshot.length===0) return rejected();
+      const result=await pool.query({ name: 'customer-microsoft-admission-choices',text: `SELECT member.id,member.tenant_id,
+        member.user_id,person.security_version,tenant.display_name FROM customer_access_memberships member
+        JOIN users person ON person.tenant_id=member.tenant_id AND person.id=member.user_id
+        JOIN tenants tenant ON tenant.id=person.tenant_id JOIN user_identity_bindings identity
+          ON identity.tenant_id=person.tenant_id AND identity.user_id=person.id AND identity.provider='microsoft_entra'
+          AND identity.provider_tenant_reference=$3 AND identity.provider_user_reference=$4
+        WHERE member.environment=$1 AND member.id=ANY($2::uuid[]) AND member.accepted_at IS NOT NULL
+          AND person.active=true AND tenant.status IN ('pending','onboarding','ready','active')
+        ORDER BY member.tenant_id,member.id LIMIT 101`,
+      values: [environment,snapshot.map(entry=>entry.membershipId),row.provider_tenant_reference,row.provider_user_reference] });
+      if (result.rows.length>100) return rejected();
+      const items=[];
+      for (const current of result.rows) {
+        if (!matchesCustomerMicrosoftAdmission({ snapshot,current: { membershipId: current.id,tenantId: current.tenant_id,
+          userId: current.user_id,userSecurityVersion: Number(current.security_version) } })) continue;
+        if (typeof current.display_name!=='string' || current.display_name.length<1 || current.display_name.length>160
+          || /[\u0000-\u001f\u007f]/.test(current.display_name)) throw new Error('CUSTOMER_MICROSOFT_CHOICE_LABEL_INVALID');
+        items.push(Object.freeze({ membershipId: current.id,displayName: current.display_name }));
+      }
+      return Object.freeze({ status: 'membership_required',items: Object.freeze(items),csrfToken: flowBinding.csrfFor({
+        context: { flowId: row.id,purpose: 'login',stage: 'choice' },browserVerifier: row.choice_verifier }) });
+    },
+    async admit({ flowId,browserToken,csrfToken,membershipId,correlationId,issueSession }={}) {
+      uuid(flowId);uuid(membershipId);uuid(correlationId);
+      if (typeof issueSession!=='function') invalid();
+      if (typeof csrfToken!=='string' || !HASH.test(csrfToken)) return rejected();
+      const initial=await load(pool,flowId);
+      if (!verifiedProof(initial,{ browserToken,csrfToken },await databaseNow(pool),'login')) return rejected();
+      const expectedEntry=normalizeCustomerMicrosoftAdmissionSnapshot(initial.admission_snapshot)
+        .find(entry=>entry.membershipId===membershipId.toLowerCase());
+      if (!expectedEntry) return rejected();
+      return withPostgresTransaction(pool,async client=>{
+        // Business scope first; never hold a global protocol row while waiting
+        // for Tenant/member/User locks needed by lifecycle and role changes.
+        const tenant=await client.query({ name: 'customer-microsoft-admission-tenant-lock',text:
+          "SELECT id FROM tenants WHERE id=$1 AND status IN ('pending','onboarding','ready','active') FOR UPDATE",
+        values: [expectedEntry.tenantId] });if (tenant.rowCount!==1) return rejected();
+        const member=await client.query({ name: 'customer-microsoft-admission-member-lock',text: `SELECT id
+          FROM customer_access_memberships WHERE environment=$1 AND tenant_id=$2 AND id=$3 AND user_id=$4
+            AND accepted_at IS NOT NULL FOR UPDATE`,
+        values: [environment,expectedEntry.tenantId,expectedEntry.membershipId,expectedEntry.userId] });
+        if (member.rowCount!==1) return rejected();
+        const user=await client.query({ name: 'customer-microsoft-admission-user-lock',text: `SELECT id FROM users
+          WHERE tenant_id=$1 AND id=$2 AND active=true AND security_version=$3 FOR UPDATE`,
+        values: [expectedEntry.tenantId,expectedEntry.userId,expectedEntry.userSecurityVersion] });if (user.rowCount!==1) return rejected();
+        const row=await load(client,flowId,true),time=await databaseNow(client);
+        if (!verifiedProof(row,{ browserToken,csrfToken },time,'login')
+          || !matchesCustomerMicrosoftAdmission({ snapshot: row.admission_snapshot,current: expectedEntry })
+          || !await identityMatches(client,row,expectedEntry)) return rejected();
+        const setCookie=await issueCurrentSession(client,expectedEntry,row,issueSession);
+        await consume(client,row,expectedEntry,time);
+        return Object.freeze({ status: 'authenticated',setCookie });
+      });
+    },
+    async linkConfirmation({ flowId,browserToken,principal }={}) {
+      const row=await load(pool,flowId),time=await databaseNow(pool);
+      if (!verifiedProof(row,{ browserToken },time,'link') || !await currentEmail(pool,principal,expected(row))) return rejected();
+      return Object.freeze({ status: 'link_confirmation_required',csrfToken: flowBinding.csrfFor({
+        context: { flowId: row.id,purpose: 'link',stage: 'confirmation' },browserVerifier: row.choice_verifier }) });
+    },
+    async confirmLink({ flowId,browserToken,csrfToken,principal,correlationId,auditEventFor,issueSession }={}) {
+      uuid(flowId);uuid(correlationId);
+      if (typeof auditRepository?.appendWithClient!=='function' || typeof auditEventFor!=='function'
+        || typeof issueSession!=='function') invalid();
+      if (typeof csrfToken!=='string' || !HASH.test(csrfToken)) return rejected();
+      const initial=await load(pool,flowId);
+      if (!verifiedProof(initial,{ browserToken,csrfToken },await databaseNow(pool),'link')) return rejected();
+      try {
+        return await withPostgresTransaction(pool,async client=>{
+          const email=await currentEmail(client,principal,expected(initial),true);
+          if (!email) return rejected();
+          const row=await load(client,flowId,true),time=await databaseNow(client);
+          if (!verifiedProof(row,{ browserToken,csrfToken },time,'link') || row.authenticated_at<new Date(time.getTime()-360000)
+            || !await currentEmail(client,principal,expected(row))) return rejected();
+          const existing=await client.query({ name: 'customer-microsoft-link-binding-conflict',text: `SELECT user_id
+            FROM user_identity_bindings WHERE tenant_id=$1 AND provider='microsoft_entra'
+              AND (user_id=$2 OR (provider_tenant_reference=$3 AND provider_user_reference=$4)) FOR SHARE`,
+          values: [email.tenantId,email.userId,row.provider_tenant_reference,row.provider_user_reference] });
+          if (existing.rowCount!==0 || email.securityVersion>=Number.MAX_SAFE_INTEGER-1) return rejected();
+          const entry={ tenantId: email.tenantId,userId: email.userId,membershipId: email.membershipId,
+            userSecurityVersion: email.securityVersion+1 };
+          await client.query({ name: 'customer-microsoft-link-security-version',text: `UPDATE users
+            SET security_version=security_version+1,updated_at=$3 WHERE tenant_id=$1 AND id=$2`,
+          values: [email.tenantId,email.userId,time] });
+          await client.query({ name: 'customer-microsoft-link-binding-insert',text: `INSERT INTO user_identity_bindings
+            (tenant_id,provider,provider_tenant_reference,provider_user_reference,user_id,created_at,updated_at)
+            VALUES($1,'microsoft_entra',$2,$3,$4,$5,$5)`,
+          values: [email.tenantId,row.provider_tenant_reference,row.provider_user_reference,email.userId,time] });
+          const event=auditEventFor({ tenantId: email.tenantId,userId: email.userId,correlationId: row.correlation_id,
+            occurredAt: time.toISOString(),previousSecurityVersion: email.securityVersion,securityVersion: entry.userSecurityVersion });
+          if (event.tenantId!==email.tenantId || event.actorUserId!==email.userId || event.correlationId!==row.correlation_id) {
+            throw new Error('CUSTOMER_MICROSOFT_LINK_AUDIT_INVALID');
+          }
+          const stored=await auditRepository.appendWithClient(client,event);
+          if (!stored || stored.tenantId!==email.tenantId || !/^[1-9]\d{0,18}$/.test(String(stored.id))) {
+            throw new Error('CUSTOMER_MICROSOFT_LINK_AUDIT_FAILED');
+          }
+          const setCookie=await issueCurrentSession(client,entry,row,issueSession);
+          await consume(client,row,entry,time,String(stored.id));
+          return Object.freeze({ status: 'authenticated',setCookie });
+        });
+      } catch (error) {
+        if (error?.code==='23505' && error.constraint==='user_identity_bindings_pkey') return rejected();
+        throw error;
+      }
+    },
     async create(input) {
       const flowId=uuid(input.flowId),correlationId=uuid(input.correlationId),sourceKey=digest(input.sourceKey);
       digest(input.stateHash);digest(input.nonceHash);digest(input.browserVerifier);

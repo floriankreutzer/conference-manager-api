@@ -3,8 +3,9 @@
 This is an inactive foundation, not an authentication cutover. Existing runtime
 entrypoints do not import or select it. The fresh primary adapter is documented in
 [CUSTOMER-MICROSOFT-PRIMARY.md](CUSTOMER-MICROSOFT-PRIMARY.md). Organization selection,
-atomic session admission and explicit account-link confirmation still require
-their own application/HTTP composition and acceptance before activation.
+atomic session admission and explicit account-link confirmation are prepared
+through separate admission-service ports. HTTP and protected INT runtime
+composition and integrated acceptance remain required before activation.
 
 ## Protocol and browser custody
 
@@ -32,10 +33,25 @@ Link intent requires an actual accepted email-code membership, matching email
 identity and a still-current server session issued within five minutes. Start,
 callback reservation and verified capture independently recheck that authority.
 The callback returns only a confirmation requirement. It does not link accounts.
-The eventual confirmation transaction must lock the same context, consume both
-proofs, increment User security version, write the matching identity-link audit
-and create the replacement ordinary session atomically. Microsoft login identity
+The prepared confirmation transaction locks the same context, consumes both
+proofs, increments User security version, writes the matching identity-link audit
+and creates the replacement ordinary Microsoft-authenticated session atomically.
+The security-version increment invalidates older sessions without deleting their
+history. The original fresh email-session row is retained as immutable link proof.
+Microsoft login identity
 remains separate from the Tenant's Microsoft365 directory connection.
+
+The explicit choice always selects a captured membership ID, even for a single
+organization. Reads expose only membership ID, organization label and the bound
+CSRF value. Admission locks Tenant, accepted membership and current User before
+the protocol row, then rechecks snapshot security version, identity binding,
+browser/CSRF proof and database-time expiry. Roles are loaded from current stored
+Customer roles; neither provider nor browser role claims are accepted. Ordinary
+session creation/audit and one-use proof consumption share the existing pool's
+transaction. Link confirmation uses the same lock order, requires `confirm:true`,
+rejects an existing/conflicting Microsoft binding and writes the exact minimized
+identity-link audit under the original server-generated flow correlation.
+Any session/audit/commit failure rolls back all identity, version and proof writes.
 
 ## Persistence and migration boundary
 
@@ -75,5 +91,9 @@ Native PostgreSQL tests are supplied for real email admission, cross-instance
 one-use callback, source budgets, environment separation, direct-link denial,
 session revocation and guarded migration recovery. Synthetic in-memory SDK token
 fixtures do not establish live Microsoft, sender, device or signature acceptance.
+Admission tests additionally cover explicit confirmation, wrong browser/CSRF or
+foreign principal, concurrent one-winner completion, session/audit rollback,
+security-version invalidation, current-role ordinary session issuance, foreign
+membership selection and captured-version staleness.
 Execution results and exact CI source pairs must be recorded separately; test
 source alone is not a passed database or permanent Demo acceptance claim.
