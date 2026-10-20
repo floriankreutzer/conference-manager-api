@@ -26,6 +26,12 @@ same exact-proof transaction. Its enclosing deployment lease stays on the separa
 pool; unclassified historical command receipts cannot be retroactively admitted.
 See `PROTECTED-REAL-CUSTOMER-ONBOARDING.md` for atomicity and remaining acceptance.
 
+The uncomposed protected access-email worker owns its immutable REAL qualification
+port and holds the current deployment lease across eligibility, provider work and
+settlement. Baseline outbox, lease, idempotency and provider contracts remain with
+the existing worker/repository. See `PROTECTED-CUSTOMER-DELIVERY.md` for boundaries
+and the remaining root/challenge/operating acceptance.
+
 The service uses Node.js 22 native HTTP and ECMAScript modules. The implemented foundation includes:
 
 - a bounded same-origin HTTP boundary;
