@@ -19,6 +19,13 @@ import { createPostgresPlatformCustomerOnboardingRepository } from '../src/persi
 import { createPlatformCustomerOnboardingService } from '../src/platform/application/customer-onboarding-service.js';
 import { createCustomerAccessCipher } from '../src/persistence/customer-access-cipher.js';
 import { createCustomerAccessEmailContent } from '../src/integrations/customer-access-email-content.js';
+import { createPostgresPlatformCustomerInvitationRepository }
+  from '../src/persistence/postgres/platform-customer-invitation-repository.js';
+import { createPlatformCustomerInvitationAdministrationService }
+  from '../src/platform/application/customer-invitation-administration-service.js';
+import { createCustomerInvitationCustody } from '../src/persistence/postgres/customer-invitation-custody.js';
+import { appendPlatformMutationEvidence } from '../src/persistence/postgres/platform-operations-repository.js';
+import { authorizePlatformOperation } from '../src/platform/application/platform-operation-contract.js';
 import { PLATFORM_OPERATION } from '../src/platform/application/platform-operation-contract.js';
 import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
 import { normalizeCustomerInvitationBatch,normalizeCustomerInvitationIntent } from '../src/authorization/customer-invitation-policy.js';
@@ -31,8 +38,10 @@ test('Platform creates owner-inclusive real customer invitations atomically with
   if (!database.databaseUrl) throw new Error('DATABASE_URL_REQUIRED_FOR_INTEGRATION_TEST');
   const pool=createPostgresPool({ mode: 'test',...database });t.after(()=>pool.end());await migrateUp(pool);
   const operatorId=randomUUID(),roles=['platform_tenant_operator'];
-  await pool.query(`INSERT INTO platform_operators(id,provider,provider_tenant_reference,provider_subject_reference,status,scope_mode,roles)
-    VALUES($1,'microsoft_entra_platform','synthetic-directory',$3,'active','all',$2)`,[operatorId,roles,operatorId]);
+  await pool.query(`INSERT INTO platform_operators(id,provider,provider_tenant_reference,provider_subject_reference,
+    status,scope_mode,roles,created_at,updated_at)
+    VALUES($1,'microsoft_entra_platform','synthetic-directory',$3,'active','all',$2,
+      clock_timestamp()-interval '2 minutes',clock_timestamp()-interval '2 minutes')`,[operatorId,roles,operatorId]);
   const versionRow=await pool.query('SELECT security_version FROM platform_operators WHERE id=$1',[operatorId]);
   const version=Number(versionRow.rows[0].security_version);
   const tenantAuditRepository=createPostgresAuditRepository(pool,{ hmacSecret: 't'.repeat(48) });
@@ -111,6 +120,77 @@ test('Platform creates owner-inclusive real customer invitations atomically with
     await assert.rejects(withPostgresTransaction(pool,async()=>{ await service().createTenant({ ...input,idempotencyKey: randomUUID() });
       throw new Error('SYNTHETIC_PROOF_ROTATION_FAILED'); },{ isolationLevel: 'REPEATABLE READ' }),/SYNTHETIC_PROOF_ROTATION_FAILED/);
     assert.deepEqual(await counts(),before);
+  });
+  const administration=createPlatformCustomerInvitationAdministrationService({
+    repository: createPostgresPlatformCustomerInvitationRepository(pool,configuration),platformAuthorizationPolicy,
+    tenantTargetPolicy,operationEvidenceFactory,invitationContract,environment: 'int' });
+  function command(operation,extra={}) {
+    return { operatorContext: issued.principal,tenantId: created.tenant.id,correlationId: randomUUID(),
+      idempotencyKey: randomUUID(),reason: input.reason,
+      confirmation: { action: operation,tenantId: created.tenant.id },...extra };
+  }
+  await t.test('real Platform list, extra batch, cross-Tenant object denial and concurrent revoke use the shared custody',async()=>{
+    const list={ operatorContext: issued.principal,tenantId: created.tenant.id,correlationId: randomUUID(),
+      limit: 100,afterInvitationId: null };
+    assert.equal((await administration.list(list)).items.length,3);
+    const batch=command(PLATFORM_OPERATION.TENANT_INVITATION_CREATE,{ invitations: [
+      { recipient: 'Additional@example.test',roles: ['tenant_admin'],locale: 'en' }] });
+    const extra=await administration.issueBatch(batch);assert.equal(extra.invitations.length,1);
+    const before=await counts();assert.deepEqual(await administration.issueBatch(batch),{ ...extra,outcome: 'idempotent' });
+    assert.deepEqual(await counts(),before);
+    const invitationId=extra.invitations[0].id;
+    await assert.rejects(administration.reissue(command(PLATFORM_OPERATION.INVITATION_REISSUE,
+      { invitationId,expectedRevision: 1 })),/CONFLICT/);
+    const foreign=randomUUID();
+    await pool.query("INSERT INTO tenants(id,display_name,status) VALUES($1,'Other pilot','onboarding')",[foreign]);
+    const denial=command(PLATFORM_OPERATION.INVITATION_REVOKE,{ tenantId: foreign,invitationId,expectedRevision: 1,
+      confirmation: { action: PLATFORM_OPERATION.INVITATION_REVOKE,tenantId: foreign } });
+    await assert.rejects(administration.revoke(denial),/DENIED/);
+    await pool.query(`UPDATE customer_access_deliveries SET status='accepted',attempt_count=1,
+      provider_message_id=$2,accepted_at=clock_timestamp() WHERE environment='int' AND invitation_id=$1`,[invitationId,randomUUID()]);
+    const revoke=command(PLATFORM_OPERATION.INVITATION_REVOKE,{ invitationId,expectedRevision: 1 });
+    const outcomes=await Promise.allSettled([administration.revoke(revoke),
+      administration.revoke({ ...revoke,idempotencyKey: randomUUID() })]);
+    assert.equal(outcomes.filter(value=>value.status==='fulfilled').length,1);
+    const revoked=outcomes.find(value=>value.status==='fulfilled').value;
+    assert.equal(revoked.invitation.revision,2);assert.equal(revoked.invitation.delivery,'accepted');
+    const facts=await pool.query("SELECT status,provider_message_id FROM customer_access_deliveries WHERE invitation_id=$1",[invitationId]);
+    assert.equal(facts.rows[0].status,'accepted');assert.ok(facts.rows[0].provider_message_id);
+    assert.equal((await administration.list(list)).items.find(row=>row.id===invitationId).state,'revoked');
+    assert.equal(await tenantAuditRepository.verifyTenantChain(created.tenant.id),true);
+  });
+  await t.test('a legitimate aged initial invitation reissues once with unchanged intent and a fresh delivery revision',async()=>{
+    // Historical initial fixture, inserted through the normal immutable custody
+    // and audit guards. No clock patch, update bypass, sleep or existing-row edit.
+    const tenantId=randomUUID(),correlationId=randomUUID();let historical;
+    const authorization=await authorizePlatformOperation({ authorizationPolicy: platformAuthorizationPolicy,tenantTargetPolicy,
+      operatorContext: issued.principal,operation: PLATFORM_OPERATION.TENANT_INVITATION_CREATE,tenantCreation: true });
+    await withPostgresTransaction(pool,async client=>{
+      const instant=(await client.query("SELECT clock_timestamp()-interval '61 seconds' AS now")).rows[0].now;
+      await client.query(`INSERT INTO tenants(id,display_name,status,created_at,updated_at)
+        VALUES($1,'Historical synthetic fixture','onboarding',$2,$2)`,[tenantId,new Date(instant.getTime()-1000)]);
+      const custody=createCustomerInvitationCustody(pool,configuration);
+      historical=await custody.issue(client,{ tenantId,tenantDisplayName: 'Historical synthetic fixture',now: instant,
+        intent: { recipient: 'Resend@example.test',roles: ['conference_manager'],locale: 'de' },
+        recordAudit: async({ invitationId })=>{
+          const events=await operationEvidenceFactory.createMutation({ authorization,
+            operation: PLATFORM_OPERATION.TENANT_INVITATION_CREATE,tenantId,correlationId,reason: input.reason,
+            target: { type: 'customer_invitation',id: invitationId },previousState: null,
+            requestedState: { revision: 1,status: 'issued' },occurredAt: instant.toISOString() });
+          return (await appendPlatformMutationEvidence(client,events,tenantId,configuration)).id;
+        } });
+    });
+    const resend=command(PLATFORM_OPERATION.INVITATION_REISSUE,{ tenantId,invitationId: historical.id,expectedRevision: 1,
+      confirmation: { action: PLATFORM_OPERATION.INVITATION_REISSUE,tenantId } });
+    const result=await administration.reissue(resend);assert.equal(result.invitation.revision,2);
+    assert.equal(result.invitation.recipient,historical.recipient);assert.deepEqual(result.invitation.roles,historical.roles);
+    assert.equal(result.invitation.locale,historical.locale);assert.equal(result.invitation.delivery,'queued');
+    const deliveries=await pool.query(`SELECT id,invitation_revision,status FROM customer_access_deliveries
+      WHERE environment='int' AND tenant_id=$1 AND invitation_id=$2 ORDER BY invitation_revision`,[tenantId,historical.id]);
+    assert.deepEqual(deliveries.rows.map(row=>[Number(row.invitation_revision),row.status]),[[1,'cancelled'],[2,'queued']]);
+    assert.notEqual(deliveries.rows[0].id,deliveries.rows[1].id);
+    const before=await counts();assert.deepEqual(await administration.reissue(resend),{ ...result,outcome: 'idempotent' });
+    assert.deepEqual(await counts(),before);assert.equal(await tenantAuditRepository.verifyTenantChain(tenantId),true);
   });
   await t.test('revoked live authority is checked before immutable receipt disclosure or fresh Tenant creation',async()=>{
     await pool.query('UPDATE platform_sessions SET revoked_at=clock_timestamp() WHERE id=$1',[issued.principal.session.id]);

@@ -11,6 +11,7 @@ import { requirePlatformCookie, sendPlatformJson } from './response.js';
 import { assertNoPlatformRequestBody, readPlatformJsonObject, requirePlatformExactObject } from './security.js';
 
 const METHODS = new Map([
+  [ROUTE.INVITATION_LIST, 'GET'], [ROUTE.INVITATION_ISSUE, 'POST'],
   [ROUTE.TENANT_CREATE, 'POST'], [ROUTE.INVITATION_REVOKE, 'DELETE'], [ROUTE.INVITATION_REISSUE, 'POST'],
   [ROUTE.LIFECYCLE_TRANSITION, 'POST'], [ROUTE.ENTITLEMENT_PREVIEW, 'POST'], [ROUTE.ENTITLEMENT_APPLY, 'POST'],
   [ROUTE.PACKAGE_APPLY, 'POST'], [ROUTE.QUOTA_SET, 'POST'], [ROUTE.AUDIT_EXPORTS, 'GET'],

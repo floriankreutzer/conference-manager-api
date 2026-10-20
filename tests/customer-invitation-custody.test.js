@@ -12,5 +12,6 @@ test('shared invitation custody requires the caller transaction before any read,
   await assert.rejects(custody.load(client,id,id),/CUSTOMER_INVITATION_TRANSACTION_REQUIRED/);
   await assert.rejects(custody.delivery(client,{ tenantId: id }),/CUSTOMER_INVITATION_TRANSACTION_REQUIRED/);
   await assert.rejects(custody.issue(client,{ tenantId: id,recordAudit: effect }),/CUSTOMER_INVITATION_TRANSACTION_REQUIRED/);
+  await assert.rejects(custody.mutate(client,{ tenantId: id,recordAudit: effect }),/CUSTOMER_INVITATION_TRANSACTION_REQUIRED/);
   assert.equal(effects,0);
 });
