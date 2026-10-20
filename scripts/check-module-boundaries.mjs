@@ -174,6 +174,12 @@ function isPlatformDemoForbidden(dependency) {
     || isInside(dependency, 'src/http');
 }
 
+function syntheticTemplateSourceIsImpure(source) {
+  return hasDynamicModuleImport(source)
+    || moduleImports(source).some(({ specifier })=>!specifier.startsWith('.') && specifier!=='node:crypto')
+    || /\b(?:fetch|WebSocket|Worker|XMLHttpRequest|setTimeout|setInterval|eval|Function)\s*\(/.test(source);
+}
+
 export function architectureConsolidationBoundaryViolations(sourceEntries) {
   const sources = sourcesMap(sourceEntries);
   const { graph } = buildModuleGraph(sources);
@@ -191,6 +197,17 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
   }
 
   for (const file of graph.keys()) {
+    if (graph.get(file)?.includes('src/synthetic/business-template-data.js') && file!=='src/synthetic/business-templates.js') {
+      violations.push(violation(file,'Synthetic business template data is private; use its checked public factory.'));
+    }
+    if (isInside(file,'src/synthetic')) {
+      const impure=firstReachablePath(graph,file,dependency=>
+        !isInside(dependency,'src/synthetic') && !isInside(dependency,'src/domain')
+          || syntheticTemplateSourceIsImpure(sources.get(dependency) ?? ''));
+      if (syntheticTemplateSourceIsImpure(sources.get(file) ?? '') || impure) {
+        violations.push(violation(file,'Synthetic business templates must remain pure fixed data without runtime/provider authority.'));
+      }
+    }
     if (isInside(file, 'src/demo')) {
       const emailPath = firstReachablePath(graph, file,
         (dependency) => dependency === 'src/integrations/resend-email-client.js'
