@@ -251,7 +251,10 @@ export function createPostgresPlatformPasskeyAuthRepository(pool, { auditReposit
           authenticatedAt: consumed.rows[0].consumed_at.toISOString(), correlationId: ceremony.correlation_id }));
         if (result === null || result === undefined) throw new Error('PLATFORM_PASSKEY_MUTATION_REQUIRED');
         return result;
-      });
+      // Exact business operations can include coherent entitlement reads. Begin
+      // their writable snapshot before proof consumption so nested reads join
+      // without an illegal isolation upgrade or a separate commit boundary.
+      }, { isolationLevel: value.purpose === 'step_up' ? 'REPEATABLE READ' : 'READ COMMITTED' });
     },
 
     async consumeEnrollmentPrimary(value, onResolved) {
