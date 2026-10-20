@@ -87,3 +87,26 @@ test('rendered messages match the bounded transport contract without triggering 
   }
   assert.equal(attempts, 4);
 });
+
+test('mailbox codes disclose no Tenant and preserve code/expiry/environment and fixed transport contract', async () => {
+  const { tenantDisplayName: _tenant, ...input } = CODE;
+  const content = createCustomerAccessEmailContent(CONFIG);
+  for (const locale of ['de', 'en']) {
+    const message = content.mailboxSignInCode({ ...input, locale });
+    assert.equal(message.recipient, 'Invited+pilot@example.com');
+    assert.match(message.subject, /^Conference Manager \[INT\]:/);
+    assert.equal(message.subject.includes(input.code), false);
+    assert.ok(message.text.includes(`\n${input.code}\n`)); assert.match(message.text, /UTC/);
+    assert.equal(message.text.includes(COMMON.tenantDisplayName), false);
+    assert.doesNotMatch(message.text, /https:\/\/|tenantId|userId|tenant_admin|membership/);
+    const client = createResendEmailClient({ apiKey: 're_synthetic_test_key_0000000001', sender: 'support@example.com',
+      environment: 'int', fetchImpl: async (_url, request) => {
+        assert.equal(JSON.parse(request.body).text, message.text); return Response.json({ id: UUID });
+      } });
+    assert.equal((await client.send(message)).status, 'accepted');
+  }
+  for (const extra of [{ tenantDisplayName: 'private' }, { tenantId: UUID }, { mailboxId: UUID }, { recipient: 'a@example.com\n' },
+    { code: '1234567' }, { locale: 'fr' }, { expiresAt: '2026-10-19T17:16:00.000Z' }, { issuedAt: 'invalid' }]) {
+    assert.throws(() => content.mailboxSignInCode({ ...input, ...extra }), /ACCESS_EMAIL_INPUT_INVALID/);
+  }
+});
