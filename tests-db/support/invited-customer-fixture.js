@@ -17,7 +17,7 @@ import { createPostgresSessionRepository } from '../../src/persistence/postgres/
 // Seed only synthetic invitation authority. The tested email User is then created
 // by actual code proof/admission/session custody, never by editing a Demo persona.
 // No provider send is invoked; .test recipients and deterministic code are fixtures.
-export async function createInvitedCustomerFixture(pool,t) {
+export async function createInvitedCustomerFixture(pool,t,{ recipient='Invited@example.test' }={}) {
   const tenantId=randomUUID(),adminId=randomUUID(),correlationId=randomUUID();
   await pool.query("INSERT INTO tenants(id,display_name,status) VALUES($1,'Synthetic invited customer','onboarding')",[tenantId]);
   await pool.query("INSERT INTO users(tenant_id,id,display_name) VALUES($1,$2,'Synthetic invitation admin')",[tenantId,adminId]);
@@ -36,13 +36,13 @@ export async function createInvitedCustomerFixture(pool,t) {
   const invitations=createCustomerInvitationService({ authorizationPolicy,auditService,environment: 'int',
     repository: createPostgresCustomerInvitationRepository(pool,{ environment: 'int',cipher,content,auditRepository }) });
   await invitations.issueBatch({ principal: admin.principal,tenantContext: { tenantId,status: 'onboarding' },correlationId },
-    { commandId: randomUUID(),invitations: [{ recipient: 'Invited@example.test',roles: ['tenant_admin'],locale: 'de' }] });
+    { commandId: randomUUID(),invitations: [{ recipient,roles: ['tenant_admin'],locale: 'de' }] });
   const flowBinding=createCustomerEmailFlowBinding({ environment: 'int',secret: 'f'.repeat(48) });t.after(()=>flowBinding.destroy());
   const proofFactory=createEmailMailboxProofFactory({ environment: 'int',secret: 'p'.repeat(48),codeFactory: ()=> '00001234' });
   const challenges=createPostgresCustomerEmailChallengeRepository(pool,{ environment: 'int',cipher,content,flowBinding,proofFactory });
   const admission=createCustomerEmailAdmissionService({ repository: createPostgresCustomerEmailAdmissionRepository(pool,
     { environment: 'int',flowBinding,auditRepository }),auditService,sessionService: sessions });
-  const sourceKey='e'.repeat(64),pending=await challenges.request({ recipient: 'Invited@example.test',locale: 'de',sourceKey });
+  const sourceKey='e'.repeat(64),pending=await challenges.request({ recipient,locale: 'de',sourceKey });
   const verified=await challenges.verify({ ...pending,code: '00001234',sourceKey });
   if (verified.status!=='membership_required') throw new Error('SYNTHETIC_EMAIL_PROOF_FAILED');
   const choices=await admission.choices(verified),membershipId=choices.items[0]?.membershipId;
