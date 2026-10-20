@@ -266,6 +266,9 @@ export function createPostgresPlatformOperatorRepository(pool, { auditRepository
   if (!auditRepository || typeof auditRepository.appendWithClient !== 'function') {
     throw new TypeError('PLATFORM_AUDIT_REPOSITORY_REQUIRED');
   }
+  // Target-policy reads during an exact proof must join its current client,
+  // including a max1 pool. Outside proof work they own an ordinary read scope.
+  const withTargetReader=(client,read)=>client===undefined ? withPostgresTransaction(pool,read) : read(client);
 
   return Object.freeze({
     async findActiveByProviderIdentity({ provider, tenantReference, subjectReference }) {
@@ -286,43 +289,47 @@ export function createPostgresPlatformOperatorRepository(pool, { auditRepository
       return mapOperator(result.rows[0]);
     },
 
-    async isTenantAllowed({ operatorId, tenantId, securityVersion, client = pool }) {
-      const result = await client.query({
-        name: 'platform-operator-target-authorize',
-        text: `
-          SELECT 1
-          FROM platform_operators o
-          WHERE o.id = $1
-            AND o.status = 'active'
-            AND o.security_version = $3
-            AND (
-              o.scope_mode = 'all'
-              OR (o.scope_mode = 'allowlist' AND EXISTS (
-                SELECT 1
-                FROM platform_operator_tenant_scopes scope
-                WHERE scope.operator_id = o.id AND scope.tenant_id = $2
-              ))
-            )
-          LIMIT 1
-        `,
-        values: [operatorId, tenantId, securityVersion],
+    async isTenantAllowed({ operatorId, tenantId, securityVersion, client }) {
+      return withTargetReader(client,async reader=>{
+        const result = await reader.query({
+          name: 'platform-operator-target-authorize',
+          text: `
+            SELECT 1
+            FROM platform_operators o
+            WHERE o.id = $1
+              AND o.status = 'active'
+              AND o.security_version = $3
+              AND (
+                o.scope_mode = 'all'
+                OR (o.scope_mode = 'allowlist' AND EXISTS (
+                  SELECT 1
+                  FROM platform_operator_tenant_scopes scope
+                  WHERE scope.operator_id = o.id AND scope.tenant_id = $2
+                ))
+              )
+            LIMIT 1
+          `,
+          values: [operatorId, tenantId, securityVersion],
+        });
+        return result.rowCount === 1;
       });
-      return result.rowCount === 1;
     },
 
-    async loadTargetScope({ operatorId, securityVersion, client = pool }) {
-      const result = await client.query({
-        name: 'platform-operator-target-scope-reference',
-        text: `
-          SELECT scope_mode
-          FROM platform_operators
-          WHERE id = $1 AND status = 'active' AND security_version = $2
-          LIMIT 1
-        `,
-        values: [operatorId, securityVersion],
+    async loadTargetScope({ operatorId, securityVersion, client }) {
+      return withTargetReader(client,async reader=>{
+        const result = await reader.query({
+          name: 'platform-operator-target-scope-reference',
+          text: `
+            SELECT scope_mode
+            FROM platform_operators
+            WHERE id = $1 AND status = 'active' AND security_version = $2
+            LIMIT 1
+          `,
+          values: [operatorId, securityVersion],
+        });
+        if (result.rowCount !== 1) return null;
+        return Object.freeze({ mode: result.rows[0].scope_mode, operatorId, securityVersion });
       });
-      if (result.rowCount !== 1) return null;
-      return Object.freeze({ mode: result.rows[0].scope_mode, operatorId, securityVersion });
     },
 
     async createApproved(recordValue, eventFactoryValue) {
