@@ -105,7 +105,10 @@ test('native synthetic media preserves actual ownership, private privileges and 
   await assert.rejects(insert(owner,{ ownerId: spareRoom,userId: foreign.userId }),{ code: '23503' });
   await assert.rejects(insert(owner,{ ownerId: foreign.roomId }),{ code: '23503' });
   await assert.rejects(insert(owner,{ ownerKind: 'catering_item' }),{ code: '23503' });
-  await assert.rejects(pool.query('DELETE FROM rooms WHERE tenant_id=$1 AND id=$2',[owner.tenantId,owner.roomId]),{ code: '23503' });
+  await assert.rejects(pool.query('DELETE FROM rooms WHERE tenant_id=$1 AND id=$2',[owner.tenantId,owner.roomId]),
+    { code: '23001',constraint: 'synthetic_catalogue_media_assets_tenant_id_room_id_fkey' });
+  assert.equal((await pool.query('SELECT count(*)::int AS count FROM rooms WHERE tenant_id=$1 AND id=$2',
+    [owner.tenantId,owner.roomId])).rows[0].count,1);
   await assert.rejects(pool.query('UPDATE synthetic_catalogue_media_assets SET owner_id=$2 WHERE id=$1',
     [assetId,foreign.roomId]),/SYNTHETIC_MEDIA_OWNERSHIP_IMMUTABLE/);
   const removable=await insert(owner,{ ownerId: spareRoom });
