@@ -63,7 +63,8 @@ test('native max1 HTTP fences actual session resolution through response work an
   const answer=await pending;assert.equal(answer.status,200);assert.equal(resolutions,1);
   assert.equal(JSON.parse(answer.text).operatorId,owner.operatorId);
   await control.query("SELECT protected_runtime_acquire_exclusive('int')");
-  await control.query("UPDATE protected_runtime_deployments SET security_epoch=$1 WHERE environment='int'",[randomUUID()]);
+  await control.query(`UPDATE protected_runtime_deployments SET security_epoch=$1,revision=revision+1,
+    updated_at=clock_timestamp() WHERE environment='int'`,[randomUUID()]);
   const stale=await request();assert.equal(stale.status,503);assert.equal(resolutions,1);
   assert.equal(stale.headers['set-cookie'],undefined);assert.equal(JSON.parse(stale.text).error.code,'PROTECTED_RUNTIME_UNAVAILABLE');
   assert.equal(logs.join('').includes(owner.current().setCookie.split(';')[0]),false);
