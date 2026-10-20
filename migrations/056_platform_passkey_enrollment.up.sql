@@ -10,7 +10,7 @@ ALTER TABLE platform_passkey_auth_transactions ADD CONSTRAINT platform_passkey_a
 );
 ALTER TABLE platform_passkey_auth_transactions ADD CONSTRAINT platform_passkey_primary_time_valid CHECK (
   (purpose = 'enroll' AND primary_authenticated_at IS NOT NULL
-    AND primary_authenticated_at >= created_at - INTERVAL '5 minutes'
+    AND primary_authenticated_at >= created_at - INTERVAL '6 minutes'
     AND primary_authenticated_at <= created_at + INTERVAL '1 minute')
   OR (purpose <> 'enroll' AND primary_authenticated_at IS NULL)
 );

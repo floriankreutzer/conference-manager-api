@@ -30,7 +30,7 @@ test('independently granted enrollment stages public keys and atomically require
   const issuer = createPostgresPlatformPasskeyGrantIssuer(pool, { auditRepository, expectedOfflineRole: role });
   const verifier = createPlatformPasskeyVerifier({ publicOrigin: 'https://ops-int.example.com', environment: 'int' });
   const repository = createPostgresPlatformPasskeyEnrollmentRepository(pool, { auditRepository });
-  async function setup() {
+  async function setup(primaryAgeMs = 0) {
     const operatorId = randomUUID(); const directory = randomUUID(); const subject = randomUUID();
     await pool.query(`INSERT INTO platform_operators
       (id,provider,provider_tenant_reference,provider_subject_reference,roles,scope_mode)
@@ -41,7 +41,7 @@ test('independently granted enrollment stages public keys and atomically require
     const primaryOperatorService = { async resolve() {
       const row = (await pool.query('SELECT security_version FROM platform_operators WHERE id = $1', [operatorId])).rows[0];
       return { operatorId, securityVersion: Number(row.security_version), providerIdentity,
-        primaryAuthenticatedAt: new Date().toISOString() };
+        primaryAuthenticatedAt: new Date(Date.now() - primaryAgeMs).toISOString() };
     } };
     function service(port = repository) { return createPlatformPasskeyEnrollmentService({ repository: port, primaryOperatorService,
       verifier, environment: 'int', securityEpoch: 8 }); }
@@ -86,6 +86,38 @@ test('independently granted enrollment stages public keys and atomically require
       [issued.grant.grantId])).rows[0];
     assert.ok(grantRow.consumed_at);
     await assert.rejects(issuer.issueOffline({ ...f.request, operatorSecurityVersion: 2 }), /OFFLINE_ISSUANCE_REJECTED/);
+  });
+
+  await t.test('pending enrollment accepts the primary verifier freshness skew and rejects assertions outside that window', async () => {
+    const f = await setup(330_000);
+    const sessions = createPlatformSessionService({ repository: createPostgresPlatformSessionRepository(pool, { auditRepository }),
+      publicOrigin: 'https://ops-int.example.com', csrfSecret: 'c'.repeat(48), securityEpoch: 8 });
+    const authRepository = createPostgresPlatformPasskeyAuthRepository(pool, { verifier, auditRepository });
+    const authService = createPlatformPasskeyAuthService({ repository: authRepository, primaryOperatorService: f.primaryOperatorService,
+      verifier, sessionService: sessions, environment: 'int', securityEpoch: 8, transactionSecret: 't'.repeat(48),
+      allowBusinessLogin: false, minimumCredentialCount: 2 });
+    assert.equal((await authService.startLogin('verified-primary-skew-fixture')).status, 'enrollment_required');
+    const stored = (await pool.query(`SELECT created_at,primary_authenticated_at FROM platform_passkey_auth_transactions
+      WHERE operator_id=$1`, [f.operatorId])).rows[0];
+    assert.ok(stored.created_at.getTime()-stored.primary_authenticated_at.getTime()>300_000);
+    assert.ok(stored.created_at.getTime()-stored.primary_authenticated_at.getTime()<360_000);
+    const client = await pool.connect();
+    try {
+      for (const [interval,allowed] of [['360 seconds',true],['360.001 seconds',false],
+        ['-60 seconds',true],['-60.001 seconds',false]]) {
+        await client.query('BEGIN');
+        try {
+          // Intervals are fixed test cases, never SQL fragments or wall-clock changes.
+          const update=client.query(`UPDATE platform_passkey_auth_transactions
+            SET primary_authenticated_at=created_at-$2::interval WHERE operator_id=$1`, [f.operatorId,interval]);
+          if (allowed) assert.equal((await update).rowCount,1);
+          else await assert.rejects(update,error => error.code==='23514'
+            && error.constraint==='platform_passkey_primary_time_valid');
+        } finally { await client.query('ROLLBACK'); }
+      }
+    } finally { client.release(); }
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM platform_sessions WHERE operator_id=$1',
+      [f.operatorId])).rows[0].n,0);
   });
 
   await t.test('wrong browser cannot burn another ceremony; invalid proof commits a bounded attempt and denial audit', async () => {
