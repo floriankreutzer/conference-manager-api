@@ -187,6 +187,14 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
   persona, provider, runtime or reset authority. The architecture gate confines this pure data
   graph to `src/synthetic` and domain dependencies, rejects external/runtime imports and checks
   private-data access. See `SYNTHETIC-BUSINESS-TEMPLATES.md` for checksum and scope limits.
+- `src/tenancy/synthetic-generation-plan.js` allocates fresh IDs and consistently remaps
+  three fixed business templates and three synthetic Customer roles per Tenant. It returns
+  a data plan, grants no authority and is excluded from both closed Demo graphs. The shared
+  pure scheduling module preserves the existing Demo's timezone-aware future-week behavior.
+- `src/media/synthetic-template-media.js` resolves known fixed template asset IDs to packaged
+  `src/synthetic/media` bytes, verifying source length, signature and checksum. It performs no
+  network, provider, identity or database work and supplies no Tenant authorization. Demo and
+  future protected provisioning consumers own their separate persistence/authority contracts.
 - `scripts/demo-db-migrations.mjs` owns the independent checksum-protected Demo overlay migration
   ledger after verifying the exact canonical schema `001..053`.
 - `scripts/platform-break-glass-grant.mjs` and `scripts/platform-recovery-fallback.mjs` are the only local privileged mutation wrappers. They accept credentials only through fixed descriptors and require live Platform sessions plus a dual-control, exact Tenant/permission-bound, one-use grant. The retired process-local Tenant-operator runtime and package entry point are prohibited.

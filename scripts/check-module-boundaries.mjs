@@ -44,6 +44,7 @@ const CUSTOMER_EMAIL_AUTHORITY_MODULES = new Set([
   'src/persistence/postgres/customer-invitation-repository.js',
 ]);
 const PROTECTED_RUNTIME_AUTHORITY_MODULES = new Set([
+  'src/tenancy/synthetic-generation-plan.js',
   'src/identity/protected-invited-customer-sessions.js',
   'src/persistence/postgres/protected-customer-access-repository.js',
   'src/persistence/postgres/protected-invited-session-repository.js',
@@ -197,6 +198,12 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
   }
 
   for (const file of graph.keys()) {
+    if (['src/persistence/postgres/business-fixture-state.js','src/persistence/postgres/business-fixture-media.js',
+      'src/media/synthetic-template-media.js','src/tenancy/synthetic-generation-plan.js'].includes(file)) {
+      const demoAuthority=firstReachablePath(graph,file,dependency=>isInside(dependency,'src/demo')
+        || dependency.startsWith('src/persistence/postgres/demo-'));
+      if (demoAuthority) violations.push(violation(file,'Shared synthetic business components must not depend on Demo authority.'));
+    }
     if (graph.get(file)?.includes('src/synthetic/business-template-data.js') && file!=='src/synthetic/business-templates.js') {
       violations.push(violation(file,'Synthetic business template data is private; use its checked public factory.'));
     }

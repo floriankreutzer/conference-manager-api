@@ -97,7 +97,7 @@ test('external seed rejects an adapter returning a noncanonical publication key'
   await assert.rejects(publishDemoFixtureMedia({}, tenant.id, media, 'room', Buffer.alloc(media.byteLength),
     { async putWithClient() { throw new Error('SHOULD_NOT_REACH_PROVIDER'); } }), { code: 'MEDIA_STORAGE_INTEGRITY_FAILED' });
   const roomNumber = media.roomId.slice('northwind-berlin-room-'.length).padStart(2, '0');
-  const encoded = await readFile(new URL(`../src/demo/media/northwind-room-${roomNumber}.webp.b64`, import.meta.url), 'utf8');
+  const encoded = await readFile(new URL(`../src/synthetic/media/northwind-room-${roomNumber}.webp.b64`, import.meta.url), 'utf8');
   await assert.rejects(publishDemoFixtureMedia({}, tenant.id, media, 'room', Buffer.from(encoded.trim(), 'base64'),
     { async putWithClient() { return 'foreign-key'; } }), { code: 'MEDIA_STORAGE_INTEGRITY_FAILED' });
 });

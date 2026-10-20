@@ -148,7 +148,7 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
     const match = /^northwind-berlin-room-(10|[1-9])$/.exec(media.roomId);
     const key = match ? `northwind-room-${match[1].padStart(2, '0')}` : media.roomId;
     const encoded = await readFile(
-      new URL(`../src/demo/media/${key}.webp.b64`, import.meta.url), 'utf8',
+      new URL(`../src/synthetic/media/${key}.webp.b64`, import.meta.url), 'utf8',
     );
     return {
       tenant_id: tenant.id, id: media.id, room_id: media.roomId,
@@ -163,7 +163,7 @@ test('semantic reader reconstructs the exact source fixture from canonical Postg
       const prefix = media.contentType === 'image/png' ? 'rooms-' : 'catering-';
       const suffix = media.contentType === 'image/png' ? '-plan.png' : '.webp';
       const encoded = await readFile(new URL(
-        `../src/demo/media/${prefix}${media.assetKey}${suffix}.b64`, import.meta.url,
+        `../src/synthetic/media/${prefix}${media.assetKey}${suffix}.b64`, import.meta.url,
       ), 'utf8');
       return {
         tenant_id: tenant.id, id: media.id, owner_kind: media.ownerKind,
