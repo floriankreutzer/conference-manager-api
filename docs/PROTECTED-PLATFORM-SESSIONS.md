@@ -38,3 +38,39 @@ signed-continuation test additionally exercises it with actual repositories,
 max1 pools and the pinned WebAuthn verifier; that extension requires exact-source
 CI evidence before acceptance. Software keys do not prove physical-device,
 Microsoft-provider, deployed cutover or full protected-root acceptance.
+
+## Prepared owned authentication construction
+
+`createProtectedPlatformAuthentication` parses the existing Platform environment
+contract and requires an explicit passkey setup/application profile. Default/live
+conditional-access configuration is unchanged. It owns actual audit/operator/
+OIDC/session/passkey repositories and the pinned Microsoft primary/WebAuthn
+adapters; caller-supplied legacy services or repositories cannot replace them.
+It creates no process or installed route. Only the two authentication route
+modules are returned; ordinary operations require their separate qualified root.
+
+Both pending Microsoft and pending passkey MAC secrets derive independent fixed
+purposes from the external base secret, environment and non-reusable protected
+UUID. Integer Platform epoch checks remain independent. This also fences pending
+login proofs, whose purpose has no prior-session binding. Persistent audit,
+recipient lookup, cipher and abuse-budget keys remain stable. Any operational
+profile/integer-epoch cutover must also advance the database UUID and drain old
+binaries; new MACs alone cannot stop an old process.
+
+Normal async authentication, enrollment/lifecycle, session resolution/revocation
+and operation proof entrypoints acquire/join current shared custody. Their pure
+cookie/CSRF/private verified-context functions retain their synchronous contracts.
+The public HTTP session service exposes no issuer/rotator and resolves only
+current normal application MFA with at least two distinct active credentials.
+It cannot establish independent physical devices with attestation none. Active DEV/INT
+add a separate server-only proof service whose mutation transaction uses the
+owner-stamped exclusive scope; no outer shared lease may surround that completion.
+PROD and setup-only profiles return no synthetic proof service. All protected proof repositories use
+fixed referenced-expired-proof retention. No expiry/quota/lifetime is weakened.
+
+The native software acceptance seeds explicitly labelled internal primary
+custody, then exercises actual P256 login, max1 shared/RR resolution and UUID
+rotation. It must show old pending passkey and Microsoft browser proofs denied
+without consumption/provider redemption and old sessions rejected. That fixture
+does not prove a real Microsoft sign-in, device/recovery or deployed operation.
+Its acceptance remains pending until exact-source CI executes successfully.

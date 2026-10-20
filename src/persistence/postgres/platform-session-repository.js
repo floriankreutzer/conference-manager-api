@@ -1,4 +1,4 @@
-import { withPostgresTransaction } from './transaction.js';
+import { withPostgresTransaction,isPostgresTransactionActive } from './transaction.js';
 
 const SESSION_COLUMNS = `
   s.id,
@@ -143,7 +143,7 @@ export function createPostgresPlatformSessionRepository(pool, { auditRepository 
     },
 
     async resolveByTokenHash(tokenHash, securityEpoch) {
-      const result = await pool.query({
+      const read=client=>client.query({
         name: 'platform-session-resolve',
         text: `
           SELECT ${SESSION_COLUMNS}
@@ -161,6 +161,8 @@ export function createPostgresPlatformSessionRepository(pool, { auditRepository 
         `,
         values: [tokenHash, securityEpoch],
       });
+      const result=isPostgresTransactionActive(pool)
+        ? await withPostgresTransaction(pool,read,{ readOnly: true }) : await read(pool);
       return mapSession(result.rows[0]);
     },
 

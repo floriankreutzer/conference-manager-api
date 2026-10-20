@@ -22,10 +22,17 @@ supported; the additional pool is not an additional database/service resource.
 Composition must size the sum of both pools within its actual database limits.
 
 The private shared execution marker identifies the live enclosing lease for the
-exact business pool, environment and UUID epoch. A nested business RR transaction
+exact business pool, lease pool, environment and UUID epoch. A nested business RR transaction
 does not replace that outer lease: its separate transaction ALS context can shadow
 the lease transaction context without releasing the lease. The marker rejects
 foreign or detached scopes and grants no authentication or mutation permission.
+A nested `withShared` can join only this exact already acquired live marker,
+including inside its business transaction. It acquires no additional connection,
+creates no new snapshot and does not deactivate the enclosing marker. Different
+factory instances with the same exact fixed scope and pool identities can join;
+foreign lease/business pools, environment/epoch and detached markers fail closed.
+An arbitrary business transaction without that marker still cannot acquire a
+shared lease. Shared-to-exclusive upgrades remain forbidden.
 Protected real onboarding also locks/rechecks the deployment in its authoritative
 business transaction before creating or replaying immutable REAL classification.
 
@@ -80,3 +87,23 @@ These new native checks are not local execution evidence: they require exact-hea
 CI before acceptance. Neither these component tests nor the existing closed Demo
 matrix replace full protected root, generation reset, handoff, physical-key and
 live provider/deployment acceptance.
+
+## Provider lookup with a separate lease pool
+
+The protected Tenant-runtime repository can now be constructed with that same
+fixed `leasePool`. This path joins the exact live request lease or acquires its
+own current-epoch lease, reads current classification in a short read-only
+business transaction, then releases that connection before invoking provider
+work. The deployment/reset barrier remains held until the entire awaited
+callback finishes. Nested authoritative lookups can join a caller's existing
+business RR transaction without changing its isolation or allocating another
+connection. The mode policy, current registry/generation/operator checks and
+one-invocation provider contract remain mandatory; a lease grants no outbound
+permission by itself.
+
+Omitting the lease pool retains the original component contract for existing
+consumers. A malformed explicit pool never falls back. The future owned runtime
+must supply distinct bounded pools; it must not select the legacy callback that
+holds the business connection. Failures propagate and release or roll back the
+lease. Native max1 evidence must prove callback business access, nesting, wrong
+mode/unknown denial and concurrent reset rejection before integration acceptance.

@@ -122,3 +122,33 @@ test('shared marker remains bound to its enclosing lease across business RR work
   detached();denied();
   await scopes.withSyntheticExclusive(owner,async()=>denied());
 });
+
+
+test('shared scopes join only the same live lease across nested business transactions and preserve outer custody',async()=>{
+  const business=pool(),lease=pool(),scope={ environment: 'int',securityEpoch: epoch };
+  const options={ pool: business.port,leasePool: lease.port,...scope };
+  const outer=createPostgresProtectedRuntimeExecutionScopes(options),inner=createPostgresProtectedRuntimeExecutionScopes(options);
+  const foreign=[{ pool: pool().port },{ leasePool: pool().port },{ environment: 'dev' },{ securityEpoch: operatorId }]
+    .map(change=>createPostgresProtectedRuntimeExecutionScopes({ ...options,...change }));
+  let escaped;
+  await outer.withShared(async()=>{
+    await inner.withShared(async()=>assert.equal(requireProtectedRuntimeSharedExecutionScope(business.port,scope),true));
+    await withPostgresTransaction(business.port,async client=>{
+      assert.equal(await inner.withShared(()=>withPostgresTransaction(business.port,async nested=>nested===client,
+        { isolationLevel: 'REPEATABLE READ' })),true);
+      await assert.rejects(inner.withShared(async()=>{ throw new Error('INNER_FAILED'); }),/INNER_FAILED/);
+      assert.equal(requireProtectedRuntimeSharedExecutionScope(business.port,scope),true);
+      for (const other of foreign) assert.throws(()=>other.withShared(async()=>assert.fail('FOREIGN_JOIN')),
+        { code: 'PROTECTED_RUNTIME_GATE_SCOPE_INVALID' });
+      escaped=AsyncResource.bind(()=>inner.withShared(async()=>assert.fail('DETACHED_JOIN')));
+    },{ isolationLevel: 'REPEATABLE READ' });
+    await assert.rejects(inner.withSyntheticExclusive(owner,async()=>assert.fail('UPGRADE')),
+      { code: 'PROTECTED_RUNTIME_GATE_SCOPE_INVALID' });
+    assert.equal(requireProtectedRuntimeSharedExecutionScope(business.port,scope),true);
+  });
+  assert.equal(lease.queries.filter(q=>typeof q==='object' && q.text.includes('pg_try_advisory')).length,1);
+  assert.equal(lease.queries.filter(q=>q==='COMMIT').length,1);
+  assert.throws(escaped,{ code: 'PROTECTED_RUNTIME_GATE_SCOPE_INVALID' });
+  await inner.withShared(async()=>assert.equal(requireProtectedRuntimeSharedExecutionScope(business.port,scope),true));
+  assert.equal(lease.queries.filter(q=>q==='COMMIT').length,2);
+});
