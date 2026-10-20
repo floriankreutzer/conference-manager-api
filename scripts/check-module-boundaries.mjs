@@ -43,8 +43,15 @@ const CUSTOMER_EMAIL_AUTHORITY_MODULES = new Set([
   'src/persistence/postgres/customer-email-challenge-repository.js',
   'src/persistence/postgres/customer-invitation-repository.js',
 ]);
+const PROTECTED_RUNTIME_AUTHORITY_MODULES = new Set([
+  'src/persistence/postgres/protected-tenant-runtime-repository.js',
+  'src/persistence/postgres/protected-runtime-gate.js',
+  'src/identity/protected-customer-session-service.js',
+  'src/tenancy/protected-tenant-provider-gate.js',
+]);
 const REAL_PRODUCTION_IDENTITY_AND_PROVIDER_MODULES = new Set([
   ...CUSTOMER_EMAIL_AUTHORITY_MODULES,
+  ...PROTECTED_RUNTIME_AUTHORITY_MODULES,
   'src/identity/entra-client.js',
   'src/identity/entra-auth-service.js',
   'src/identity/provider-identity-resolver.js',
@@ -184,7 +191,7 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
     if (isInside(file, 'src/demo')) {
       const emailPath = firstReachablePath(graph, file,
         (dependency) => dependency === 'src/integrations/resend-email-client.js'
-          || CUSTOMER_EMAIL_AUTHORITY_MODULES.has(dependency));
+          || CUSTOMER_EMAIL_AUTHORITY_MODULES.has(dependency) || PROTECTED_RUNTIME_AUTHORITY_MODULES.has(dependency));
       if (emailPath && emailPath.length > 2) {
         violations.push(violation(file,
           `Demo runtime must not import Production identity/provider implementation through an intermediary (${emailPath.join(' -> ')}).`));

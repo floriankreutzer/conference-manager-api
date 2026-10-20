@@ -235,6 +235,7 @@ test('Demo runtime Product reads verified existing events through minimal Ops gr
     assert.equal(metric(result, 'onboarding_completed').value, 0);
     assert.equal(metric(result, 'time_to_submit').value, null);
     assert.equal(coverage(result, 'request_submitted').state, 'partial');
+    assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Protected runtime025 before retained Microsoft024.
     assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Microsoft flow024 before retained Customer023.
     assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Customer023 before retained enrollment022.
     assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Enrollment grants022 before retained publication021.

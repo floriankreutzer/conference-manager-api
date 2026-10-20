@@ -50,8 +50,8 @@ if (/repository|SELECT|UPDATE|INSERT INTO|DELETE FROM/i.test(revision)) {
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 58;/.test(pool)) {
-  throw new Error('Runtime schema readiness requires invited Customer Microsoft proof/link custody version 58.');
+if (!/export const CURRENT_SCHEMA_VERSION = 59;/.test(pool)) {
+  throw new Error('Runtime schema readiness requires protected Tenant runtime schema 59.');
 }
 
 const migration = await readFile('migrations/020_tenant_settings_revisions.up.sql', 'utf8');

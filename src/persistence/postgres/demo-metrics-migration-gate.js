@@ -24,8 +24,8 @@ async function state(client, expected) {
     || row.database_name !== expected.database || row.actual_database !== expected.database
     || row.actual_role !== expected.migration || row.canonical_owner !== expected.migration || row.demo_owner !== expected.migration
     || row.customer_role !== expected.customer || row.platform_role !== expected.platform || row.reset_role !== expected.reset
-    || ![44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58].some((version) => sequence(row.canonical_versions, version))
-    || ![9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24].some((version) => sequence(row.demo_versions, version))
+    || ![44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59].some((version) => sequence(row.canonical_versions, version))
+    || ![9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25].some((version) => sequence(row.demo_versions, version))
     || (row.canonical_versions.length === 44 && row.demo_versions.length !== 9)
     || (row.canonical_versions.length === 45 && row.demo_versions.length > 11)
     || (row.canonical_versions.length === 46 && row.demo_versions.length > 12)
@@ -33,6 +33,7 @@ async function state(client, expected) {
     || (row.canonical_versions.length === 48 && row.demo_versions.length > 14)
     || (row.canonical_versions.length === 49 && row.demo_versions.length > 15)
     || (row.canonical_versions.length === 50 && row.demo_versions.length > 16)
+    || (row.canonical_versions.length === 58 && row.demo_versions.length > 24)
     || (row.canonical_versions.length === 57 && row.demo_versions.length > 23)
     || (row.canonical_versions.length === 56 && row.demo_versions.length > 22)
     || (row.canonical_versions.length === 55 && row.demo_versions.length > 21)
@@ -63,7 +64,7 @@ export async function withDemoMetricsMigrationGate(pool, expected, upgrade) {
     const before = await state(client, expected);
     await upgrade();
     const after = await state(client, expected);
-    if (after.canonicalVersion !== 58 || after.demoVersion !== 24
+    if (after.canonicalVersion !== 59 || after.demoVersion !== 25
       || after.retained.some((count, index) => count !== before.retained[index])) {
       throw new Error('DEMO_METRICS_MIGRATION_READBACK_FAILED');
     }

@@ -33,7 +33,8 @@ const { Pool } = pg;
 // Schema 56 stores independently authorized two-stage Platform passkey enrollment.
 // Schema 57 stores invited Customer membership, encrypted delivery and mailbox proof.
 // Schema 58 stores bounded browser-bound Microsoft login/link proofs and explicit-link evidence.
-export const CURRENT_SCHEMA_VERSION = 58;
+// Schema 59 adds private protected-runtime classification and retained synthetic generations.
+export const CURRENT_SCHEMA_VERSION = 59;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',
