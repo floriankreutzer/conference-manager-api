@@ -95,7 +95,8 @@ test('explicit dual-proof linking and invited Microsoft admission are atomic, si
     const history=await query.listEvents({ principal,tenantContext: { tenantId: customer.tenantId,status: 'onboarding' },
       correlationId: randomUUID(),category: 'user',limit: 100 });
     const linked=history.events.find(event=>event.action==='tenant.user.identity_linked');assert.ok(linked);
-    assert.equal(linked.category,'user');assert.deepEqual(linked.change,{ before: null,after: null,summary: { provider: 'microsoft_entra' } });
+    assert.equal(linked.category,'user');
+    assert.deepEqual(linked.change,{ before: null,after: null,summary: { provider: 'microsoft_entra' } });
     assert.equal(JSON.stringify(linked).includes(DIRECTORY),false);assert.equal(JSON.stringify(linked).includes(SUBJECT),false);
     assert.equal(await customer.sessions.resolvePrincipal({ headers: { cookie: customer.cookie } }),null);
     assert.deepEqual(await evidence(),{ sessions: before.sessions+1,bindings: before.bindings+1,links: before.links+1,
