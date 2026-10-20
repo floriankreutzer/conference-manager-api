@@ -48,3 +48,17 @@ test('pure template graph rejects direct/transitive authority, SDK/network/timer
   assert.deepEqual(architectureConsolidationBoundaryViolations({ [root]:
     "import { createHash } from 'node:crypto'; import './business-template-data.js';",'src/synthetic/business-template-data.js': '' }),[]);
 });
+
+test('shared business/media/provisioning graphs cannot acquire Demo authority through a canonical bridge',()=>{
+  for (const root of ['src/persistence/postgres/business-fixture-state.js','src/persistence/postgres/business-fixture-media.js',
+    'src/media/synthetic-template-media.js','src/tenancy/synthetic-generation-plan.js']) {
+    for (const target of ['src/demo/fixture.js','src/demo/customer-main.js','src/persistence/postgres/demo-reset-repository.js']) {
+      const graph={ [root]: "import '../../business-bridge.js';",
+        'src/business-bridge.js': `import './${target.slice(4)}';`,[target]: '' };
+      // The same graph must be resolved relative to each concrete root.
+      graph[root]=root.startsWith('src/persistence/') ? "import '../../business-bridge.js';" : "import '../business-bridge.js';";
+      assert.ok(architectureConsolidationBoundaryViolations(graph).some(value=>
+        value.includes('Shared synthetic business components must not depend on Demo authority.')));
+    }
+  }
+});

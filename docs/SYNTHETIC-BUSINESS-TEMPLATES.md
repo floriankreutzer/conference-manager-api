@@ -15,13 +15,45 @@ neither its seed version nor its permanent progression/reset contract changes.
 Northwind retains ten rooms and twenty requests. Contoso retains its three authoritative
 business requests. Fabrikam retains its empty onboarding catalogue/location/request state.
 Settings, cost centers, requests, room/catalogue media metadata and detail content remain
-unchanged. Media bytes still belong to the existing Demo asset storage; this extraction does
-not create a new media loader or alter checksums, filenames or object-storage behavior.
+unchanged. Fixed media bytes now live under `src/synthetic/media` and are read through
+`src/media/synthetic-template-media.js`. The source adapter selects only known template asset
+IDs, resolves filenames exclusively from the checked fixed manifest and verifies byte length,
+SHA-256 and PNG/WebP signature. It returns new bytes per read and exposes no filename, provider
+destination or Tenant authority. The legacy Demo seeder reuses this source; its persisted
+media checksums, routes and object-storage contract remain unchanged. Recovery/load fixtures
+read the same moved bytes. Git preserves the original asset blobs without content changes.
 
 Template IDs and requester references are fixed source placeholders, never authenticated
-identity or runtime classification. A future protected provisioning adapter must allocate new
-Tenant/User/resource IDs, consistently remap references, provide its own pure media port and
-persist the complete graph transactionally. Returning templates grants no membership, role,
+identity or runtime classification. `createSyntheticGenerationPlanner` allocates a fresh
+generation ID, three Tenant IDs, independent resource IDs and three Customer User IDs per
+Tenant. It remaps requester, room, catalogue applicability, equipment, package/item/variant,
+cost-center and media-owner references. Semantic service identifiers stay fixed. Media-source
+references retain only their fixed template asset ID for later verified loading; they are not
+provider destinations. The planner rejects PROD, extra authority fields, malformed scope and
+colliding/invalid allocator output immediately without retry. Its environment, epoch, operator
+and captured security version are server-supplied candidates, never proof of current authority.
+
+The shared pure scheduling function retains local start times and request durations in the
+next future week across Berlin/Paris summer-time changes. Both the unchanged Demo generation
+wrapper and the planner use that same implementation. Frozen UTC expectations and canonical
+fixture checks protect the date contract. Each plan contains only business data, internal
+synthetic roles/permissions and fresh IDs; no real identity binding, credential or session.
+
+`persistence/postgres/business-fixture-state.js` owns the shared business-only seed SQL.
+Callers explicitly provide verified media bytes, same-Tenant media creators and the catalogue
+media writer. It does not create identities, classify Tenants, select a provider, reset data
+or append Platform authority. The Demo wrapper retains its own identity/provider/Platform
+seeding and Demo-only catalogue table. The shared media persistence helpers retain the existing
+batch draining and private-object integrity contracts; old Demo exports remain compatibility
+aliases. Existing prepared-statement/error names remain stable for legacy diagnostics.
+Request seeding selects the actual package variant ID rather than deriving it from a package
+ID, allowing fresh independently allocated package/variant IDs while preserving canonical
+Demo snapshots. Protected provisioning must still supply its own reviewed catalogue persistence,
+authorization, current custody, transactional audit and complete semantic readback.
+
+A future protected provisioning adapter must consume this verified media port and persist
+the complete graph transactionally after checking current operator/proof/deployment custody.
+It must never accept a caller's arbitrary data plan as authority. Returning templates grants no membership, role,
 session, Platform scope, provider configuration or permission to reset customer history.
 
 `check-module-boundaries.mjs` prohibits direct raw-data access and runtime/provider/identity/

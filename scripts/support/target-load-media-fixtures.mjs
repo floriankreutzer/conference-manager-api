@@ -33,7 +33,9 @@ export async function prepareBookingLoadMedia({ runtime, config, persistence, te
     assertActive(); const images = [];
     for (let index = 0; index < tenants.length; index += 1) {
       assertActive();
-      const encoded = await readFile(new URL(`../../src/demo/media/northwind-room-0${index % 3 + 1}.webp.b64`, import.meta.url), 'utf8');
+      const encoded = await readFile(new URL(
+        `../../src/synthetic/media/northwind-room-0${index % 3 + 1}.webp.b64`, import.meta.url,
+      ), 'utf8');
       const bytes = Buffer.from(encoded, 'base64'); valid(bytes.length > 0 && bytes.length <= 2 * 1024 * 1024); assertActive();
       const response = await fetch(`${config.publicOrigin}/api/v1/tenant/rooms/room/media`, {
         method: 'POST', headers: { Cookie: managers[index].cookie, Origin: config.publicOrigin,

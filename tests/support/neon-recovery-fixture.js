@@ -13,7 +13,7 @@ export const recoverySettings = Object.freeze({ branch: 'br-disposable-recovery-
   storage: createNeonBranchStorageConfig({ branch: 'br-disposable-recovery-test', bucket: 'conference-manager-media',
     accessKeyId: 'test-access-only', secretAccessKey: 'test-secret-material-not-a-provider-key' }) });
 
-const imageDirectory = new URL('../../src/demo/media/', import.meta.url);
+const imageDirectory = new URL('../../src/synthetic/media/', import.meta.url);
 const bytesByHash = new Map();
 for (const name of await readdir(imageDirectory)) {
   if (!name.endsWith('.b64')) continue;

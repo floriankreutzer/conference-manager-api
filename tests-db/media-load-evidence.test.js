@@ -53,7 +53,7 @@ test('object-backed media measures full and conditional delivery without claimin
     assert.equal(body.user.id, managers[index].userId); tokens[index] = body.csrfToken;
   } });
   for (let index = 0; index < tenants.length; index += 1) {
-    const encoded = await readFile(new URL(`../src/demo/media/northwind-room-0${index % 3 + 1}.webp.b64`, import.meta.url), 'utf8');
+    const encoded = await readFile(new URL(`../src/synthetic/media/northwind-room-0${index % 3 + 1}.webp.b64`, import.meta.url), 'utf8');
     const response = await fetch(`${config.publicOrigin}/api/v1/tenant/rooms/room/media`, {
       method: 'POST', headers: { Cookie: managers[index].cookie, Origin: config.publicOrigin,
         'X-CSRF-Token': tokens[index], 'Content-Type': 'image/webp' }, body: Buffer.from(encoded, 'base64'),

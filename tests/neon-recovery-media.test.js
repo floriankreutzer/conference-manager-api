@@ -43,7 +43,7 @@ test('restored preflight binds all 34 canonical revisions to retained DB blobs a
 });
 
 test('independent provider readback verifies every canonical byte without fallback or unbounded concurrency', async () => {
-  const directory = new URL('../src/demo/media/', import.meta.url);
+  const directory = new URL('../src/synthetic/media/', import.meta.url);
   const bytesByHash = new Map();
   for (const name of await readdir(directory)) {
     if (!name.endsWith('.b64')) continue;
