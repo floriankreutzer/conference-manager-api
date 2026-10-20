@@ -20,12 +20,15 @@ async function databaseTime(client) {
 }
 
 export function createPostgresCustomerInvitationRepository(pool, {
-  environment, cipher, content, auditRepository, identifierFactory = randomUUID,
+  environment, cipher, content, auditRepository, identifierFactory = randomUUID, tenantEligibility = null,
 } = {}) {
   if (!pool || typeof pool.connect !== 'function' || !['dev','int','prod'].includes(environment)
     || !cipher || ['seal','open','recipientLookup','commandDigest'].some(method => typeof cipher[method] !== 'function')
     || !content || typeof content.invitation !== 'function' || !auditRepository || typeof auditRepository.appendWithClient !== 'function'
-    || typeof identifierFactory !== 'function') throw new TypeError('CUSTOMER_INVITATION_REPOSITORY_CONFIGURATION_INVALID');
+    || typeof identifierFactory !== 'function'
+    || tenantEligibility !== null && typeof tenantEligibility?.allowsWithClient !== 'function') {
+    throw new TypeError('CUSTOMER_INVITATION_REPOSITORY_CONFIGURATION_INVALID');
+  }
   const { load,issue,mutate: mutateCustody }=createCustomerInvitationCustody(pool,{ environment,cipher,content,identifierFactory });
   async function audit(client, input, invitationId, nextRevision, now) {
     if (typeof input.auditEventFor !== 'function') throw new TypeError('CUSTOMER_INVITATION_AUDIT_REQUIRED');
@@ -42,6 +45,9 @@ export function createPostgresCustomerInvitationRepository(pool, {
     const actor = customerInvitationActor(input, environment), invitationId = uuid(input.invitationId);
     const expected = revision(input.expectedRevision);
     return withPostgresTransaction(pool, async client => {
+      if (tenantEligibility !== null && await tenantEligibility.allowsWithClient(client,actor.tenantId) !== true) {
+        customerInvitationDenied();
+      }
       const tenantDisplayName = await lockCustomerInvitationActor(client, actor), now = await databaseTime(client);
       return mutateCustody(client,{ tenantId: actor.tenantId,invitationId,expectedRevision: expected,
         operation,tenantDisplayName,now,recordAudit: ({ invitationId: target,nextRevision,now: changedAt })=>
@@ -54,6 +60,9 @@ export function createPostgresCustomerInvitationRepository(pool, {
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new TypeError('CUSTOMER_INVITATION_LIMIT_INVALID');
       const after = input.afterInvitationId === null ? null : uuid(input.afterInvitationId);
       return withPostgresTransaction(pool, async client => {
+        if (tenantEligibility !== null && await tenantEligibility.allowsWithClient(client,actor.tenantId) !== true) {
+          customerInvitationDenied();
+        }
         await lockCustomerInvitationActor(client, actor);
         const result = await client.query({ name: 'customer-invitation-list',
           text: `SELECT ${CUSTOMER_INVITATION_COLUMNS} FROM customer_member_invitations invitation ${CUSTOMER_INVITATION_JOINS}
@@ -70,6 +79,9 @@ export function createPostgresCustomerInvitationRepository(pool, {
       try { hash = cipher.commandDigest(digestBytes, { tenantId: actor.tenantId, commandId: normalized.commandId,
         actorType: 'customer', actorId: actor.principal.userId }); } finally { digestBytes.fill(0); }
       return withPostgresTransaction(pool, async client => {
+        if (tenantEligibility !== null && await tenantEligibility.allowsWithClient(client,actor.tenantId) !== true) {
+          customerInvitationDenied();
+        }
         const tenantDisplayName = await lockCustomerInvitationActor(client, actor);
         const receipt = await client.query({ name: 'customer-invitation-command-read',
           text: `SELECT command_hash,actor_user_id,result FROM customer_access_commands

@@ -113,7 +113,7 @@ test('owned Microsoft entry points require current deployment before protocol, a
     ? { rows: [{ acquired: true }] } : { rowCount: 0,rows: [] });
   const noProvider=()=>{ throw new Error('NO_PROVIDER_WITHOUT_CURRENT_DEPLOYMENT'); };
   const configuration={ pool: business.pool,leasePool: lease.pool,environment,securityEpoch,publicOrigin: 'https://127.0.0.1',
-    cipher: { recipientLookup() {},seal() {} },auditHmacSecret: 'a'.repeat(48),csrfSecret: 's'.repeat(48),
+    cipher: { recipientLookup() {},seal() {},open() {},commandDigest() {} },auditHmacSecret: 'a'.repeat(48),csrfSecret: 's'.repeat(48),
     emailFlowSecret: 'f'.repeat(48),emailCodeSecret: 'p'.repeat(48),emailSourceSecret: 'b'.repeat(48),
     microsoftFlowSecret: 'm'.repeat(48),microsoftClient: { authorizationUrl: noProvider,redeemAuthorizationCode: noProvider,
       verifyPrimary: noProvider } };

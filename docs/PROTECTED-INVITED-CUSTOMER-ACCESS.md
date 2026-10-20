@@ -43,8 +43,9 @@ ordinary compatibility; only the owned factory fixes that port and the enclosing
 lease. It is not an activation API. The optional server-owned Microsoft
 client additionally composes [qualified primary/link flows](PROTECTED-INVITED-MICROSOFT.md).
 Full runtime composition must still handle the combined real/delegated session
-resolver, explicit account switching, invitation/configuration mode guards and
-outbound operating acceptance. This component does not independently resolve those responsibilities.
+resolver, explicit account switching, configuration mode guards and outbound operating
+acceptance. [Protected invitation administration](PROTECTED-INVITATION-ADMINISTRATION.md)
+adds canonical REAL-only Tenant Admin invitation management under the same lease. This component does not independently resolve those responsibilities.
 
 Focused progression/negative tests cover epoch/purpose/environment separation,
 strict qualification, mixed snapshots, absent mail/proof for denied entries,

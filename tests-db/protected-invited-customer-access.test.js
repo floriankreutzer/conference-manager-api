@@ -110,6 +110,24 @@ test('native protected invited login filters REAL before capture, choices and at
   assert.equal(principal.tenantId,real.tenantId);assert.deepEqual(principal.roles,['employee','tenant_admin']);
   assert.equal((await counts()).users,beforeDenied.users+1);assert.equal((await counts()).sessions,beforeDenied.sessions+1);
   assert.equal((await service.choices(choice)).status,'rejected');
+  const invitationContext={ principal,tenantContext: { tenantId: real.tenantId,status: 'onboarding' },correlationId: randomUUID() };
+  const invitationCommand={ commandId: randomUUID(),invitations: [
+    { recipient: 'Additional-A@example.test',roles: ['tenant_admin'],locale: 'de' },
+    { recipient: 'Additional-B@example.test',roles: ['conference_manager'],locale: 'en' }] };
+  const invited=await access.invitationService.issueBatch(invitationContext,invitationCommand);
+  assert.equal(invited.length,2);const beforeReplay=await counts();
+  assert.deepEqual(await access.invitationService.issueBatch(invitationContext,invitationCommand),invited);
+  assert.deepEqual(await counts(),beforeReplay);
+  const listed=await access.invitationService.list(invitationContext,{ limit: 100 });assert.equal(listed.length,3);
+  await assert.rejects(access.invitationService.reissue(invitationContext,{ invitationId: invited[0].id,expectedRevision: 1 }),/CONFLICT/);
+  const revoked=await access.invitationService.revoke(invitationContext,{ invitationId: invited[0].id,expectedRevision: 1 });
+  assert.equal(revoked.state,'revoked');assert.equal(revoked.revision,2);
+  for (const denied of [unclassified,synthetic]) {
+    await assert.rejects(access.invitationService.list({ principal: denied.session.principal,
+      tenantContext: { tenantId: denied.tenantId,status: 'onboarding' },correlationId: randomUUID() },{ limit: 100 }),
+    /RESOURCE_NOT_AVAILABLE/);
+  }
+
   assert.equal(await auditRepository.verifyTenantChain(real.tenantId),true);
   // A fresh invited recipient produces a real queued code but no network call.
   await invitationService.issueBatch({ principal: real.session.principal,
