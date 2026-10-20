@@ -43,7 +43,7 @@ async t=>{
   }
   const first=await replace(owner,own),another=await replace(other,foreign);
   assert.equal(first.revision,2);assert.deepEqual(first.tenants.map(row=>row.slot),['northwind','contoso','fabrikam']);
-  assert.deepEqual(first.tenants.map(row=>row.status),['active','active','onboarding']);
+  assert.deepEqual(first.tenants.map(row=>row.status),['active','ready','onboarding']);
   const ids=first.tenants.map(row=>row.tenantId),foreignIds=another.tenants.map(row=>row.tenantId);
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_operator_tenant_scopes')).rows[0].count,0);
   async function business(tenantIds) {
