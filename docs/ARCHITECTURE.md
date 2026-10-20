@@ -1,5 +1,13 @@
 # Backend Architecture
 
+The uncomposed protected invited access factory owns REAL-qualified anonymous email
+capture, choices and atomic admission under the current deployment lease. Its flow
+and code MAC keys derive from independent external secrets plus purpose, environment
+and UUID epoch. Stable cipher, lookup, audit and source-budget keys are unchanged.
+The shared REAL predicate also serves dispatch; admission takes a direct Tenant
+write lock to avoid lock upgrades. This installs no route/provider/timer and adds no
+migration. See [protected invited access](PROTECTED-INVITED-CUSTOMER-ACCESS.md).
+
 ## Authority
 
 Root `AGENTS.md` is the canonical repository instruction source. This document describes the current implementation and does not override it.
