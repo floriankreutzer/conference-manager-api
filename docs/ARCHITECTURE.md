@@ -11,6 +11,12 @@ with the same REAL/session/audit boundary and an epoch-bound protocol MAC. Tenan
 locks precede protocol row locks in protected link reservation and login capture.
 See [protected Microsoft access](PROTECTED-INVITED-MICROSOFT.md) and [protected invited access](PROTECTED-INVITED-CUSTOMER-ACCESS.md).
 
+Protected invitation administration reuses canonical Customer and Platform custody
+with fixed REAL qualification before recipient access or mutation. Customer service
+entries own the shared deployment lease; the Platform repository requires its
+already acquired exact scope and retains proof/receipt/audit ownership. See
+[protected invitations](PROTECTED-INVITATION-ADMINISTRATION.md). No route or send is activated.
+
 ## Authority
 
 Root `AGENTS.md` is the canonical repository instruction source. This document describes the current implementation and does not override it.

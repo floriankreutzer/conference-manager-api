@@ -1,3 +1,4 @@
+import { createCustomerInvitationService } from './application/customer-invitation-service.js';
 import { createAuditService } from './audit/audit-service.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { createCustomerEmailAdmissionService } from './identity/customer-email-admission-service.js';
@@ -12,6 +13,7 @@ import { createProtectedInvitedCustomerSessions } from './identity/protected-inv
 import { deriveProtectedAuthenticationFlowSecret } from './identity/protected-authentication-flow-secret.js';
 import { createCustomerAccessEmailContent } from './integrations/customer-access-email-content.js';
 import { createPostgresAuditRepository } from './persistence/postgres/audit-repository.js';
+import { createPostgresCustomerInvitationRepository } from './persistence/postgres/customer-invitation-repository.js';
 import { createPostgresCustomerEmailAdmissionRepository } from './persistence/postgres/customer-email-admission-repository.js';
 import { createPostgresCustomerMicrosoftFlowRepository } from './persistence/postgres/customer-microsoft-flow-repository.js';
 import { createPostgresCustomerEmailChallengeRepository } from './persistence/postgres/customer-email-challenge-repository.js';
@@ -82,5 +84,15 @@ export function createProtectedInvitedCustomerAccess({ pool,leasePool,environmen
       sourceKey: Object.freeze({ fingerprint: sourceKey.fingerprint }),
     });
   }
-  return Object.freeze({ service,sessionService,microsoft });
+  const invitationRepository=createPostgresCustomerInvitationRepository(pool,{ environment,cipher,content,auditRepository,
+    tenantEligibility: { allowsWithClient: tenantScope.lockAdmissionWithClient } });
+  const invitations=createCustomerInvitationService({ environment,repository: invitationRepository,auditService,
+    authorizationPolicy: createAuthorizationPolicy() });
+  const invitationService=Object.freeze({
+    list: (context,command)=>scopes.withShared(()=>invitations.list(context,command)),
+    issueBatch: (context,command)=>scopes.withShared(()=>invitations.issueBatch(context,command)),
+    reissue: (context,command)=>scopes.withShared(()=>invitations.reissue(context,command)),
+    revoke: (context,command)=>scopes.withShared(()=>invitations.revoke(context,command)),
+  });
+  return Object.freeze({ service,sessionService,microsoft,invitationService });
 }

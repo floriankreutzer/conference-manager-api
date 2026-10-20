@@ -136,11 +136,15 @@ test('owned anonymous entry points reject a stale deployment before any business
   const lease=fakePool(query=>query?.text?.includes('pg_try_advisory')
     ? { rows: [{ acquired: true }] } : { rowCount: 0,rows: [] });
   const access=createProtectedInvitedCustomerAccess({ pool: business.pool,leasePool: lease.pool,environment,securityEpoch: epoch,
-    publicOrigin: 'https://127.0.0.1',cipher: { recipientLookup() {},seal() {} },auditHmacSecret: 'a'.repeat(48),
+    publicOrigin: 'https://127.0.0.1',cipher: { recipientLookup() {},seal() {},open() {},commandDigest() {} },
+    auditHmacSecret: 'a'.repeat(48),
     csrfSecret: 's'.repeat(48),emailFlowSecret: 'f'.repeat(48),emailCodeSecret: 'p'.repeat(48),emailSourceSecret: 'b'.repeat(48) });
   for (const method of ['request','pending','verify','choices','select']) {
     await assert.rejects(access.service[method]({ recipient: 'Unknown@example.test',locale: 'de',sourceAddress: '127.0.0.1' }),
       { code: 'PROTECTED_RUNTIME_SCOPE_STALE' });
   }
-  assert.equal(business.connections(),0);assert.equal(business.queries.length,0);assert.equal(lease.connections(),5);
+  for (const method of ['list','issueBatch','reissue','revoke']) {
+    await assert.rejects(access.invitationService[method]({}),{ code: 'PROTECTED_RUNTIME_SCOPE_STALE' });
+  }
+  assert.equal(business.connections(),0);assert.equal(business.queries.length,0);assert.equal(lease.connections(),9);
 });

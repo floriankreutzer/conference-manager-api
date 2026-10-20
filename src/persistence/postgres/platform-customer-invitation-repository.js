@@ -13,10 +13,12 @@ import { requireCurrentPlatformMutationAuthorization,lockPlatformOperationReceip
 const fields=['id','revision','roles','locale','state','expiresAt','delivery'];
 const snapshot=row=>Object.fromEntries(fields.map(key=>[key,row[key]]));
 export function createPostgresPlatformCustomerInvitationRepository(pool,{ environment,cipher,content,
-  tenantAuditRepository,platformAuditRepository,identifierFactory=randomUUID } = {}) {
+  tenantAuditRepository,platformAuditRepository,identifierFactory=randomUUID,tenantEligibility=null } = {}) {
   if (!pool || typeof pool.connect!=='function' || !['dev','int','prod'].includes(environment)
     || typeof cipher?.commandDigest!=='function' || typeof tenantAuditRepository?.appendWithClient!=='function'
-    || typeof platformAuditRepository?.appendWithClient!=='function') {
+    || typeof platformAuditRepository?.appendWithClient!=='function'
+    || tenantEligibility!==null && ['allowsWithClient','lockAdmissionWithClient']
+      .some(method=>typeof tenantEligibility?.[method]!=='function')) {
     throw new TypeError('PLATFORM_CUSTOMER_INVITATION_CONFIGURATION_INVALID');
   }
   const custody=createCustomerInvitationCustody(pool,{ environment,cipher,content,identifierFactory });
@@ -62,6 +64,9 @@ export function createPostgresPlatformCustomerInvitationRepository(pool,{ enviro
       finally { bytes.fill(0); }
       const key={ operatorId,operation,tenantId,idempotencyKey: commandId };
       await lockPlatformOperationReceipt(client,key);
+      if (tenantEligibility!==null && await tenantEligibility.lockAdmissionWithClient(client,tenantId)!==true) {
+        throw new PlatformOperationDeniedError();
+      }
       const tenantDisplayName=await lockTenant(client,tenantId),previous=await findPlatformOperationReceipt(client,key);
       if (previous) {
         if (previous.requestDigest!==requestDigest) throw new PlatformOperationConflictError();
@@ -96,6 +101,9 @@ export function createPostgresPlatformCustomerInvitationRepository(pool,{ enviro
       const after=input.afterInvitationId===null ? null : requireInternalId(input.afterInvitationId);
       return withPostgresTransaction(pool,async client=>{
         await requireCurrentPlatformMutationAuthorization(client,input.authorization,tenantId);
+        if (tenantEligibility!==null && await tenantEligibility.allowsWithClient(client,tenantId)!==true) {
+          throw new PlatformOperationDeniedError();
+        }
         await lockTenant(client,tenantId,true);
         const result=await client.query({ name: 'platform-customer-invitation-list',
           text: `SELECT ${CUSTOMER_INVITATION_COLUMNS} FROM customer_member_invitations invitation ${CUSTOMER_INVITATION_JOINS}
