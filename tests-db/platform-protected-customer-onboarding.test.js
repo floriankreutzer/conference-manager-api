@@ -58,10 +58,10 @@ test('native protected real onboarding registers immutable REAL custody in the e
       confirmation: { action: PLATFORM_OPERATION.TENANT_INVITATION_CREATE,displayName: name },
       invitations: [{ recipient: 'Operator@example.test',roles: ['tenant_admin'],locale: 'en' }] };
   }
-  async function execute(value,service=application(),before=async()=>{}) {
+  async function execute(value,service=application(),before=async()=>{},actor=owner) {
     const hash=createHash('sha256').update(JSON.stringify({ environment: 'int',securityEpoch: epoch,...value })).digest('hex');
-    return owner.execute(hash,async context=>{
-      const operatorContext=owner.auth.verifiedOperationPrincipal(context,hash);
+    return actor.execute(hash,async context=>{
+      const operatorContext=actor.auth.verifiedOperationPrincipal(context,hash);
       await before();return service.createTenant({ ...value,operatorContext,correlationId: randomUUID() });
     });
   }
@@ -99,9 +99,11 @@ test('native protected real onboarding registers immutable REAL custody in the e
   assert.deepEqual(await counts(),beforeReplay);
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM tenant_runtime_registry WHERE tenant_id=$1',
     [legacy.tenant.id])).rows[0].count,0);
+  const foreignActor=await createProtectedSyntheticOperatorFixture(pool,leasePool,
+    { epoch,scopeMode: 'all',mutationScope: 'shared' });
   for (const patch of [{ environment: 'dev' },{ environment: 'prod' },{ securityEpoch: randomUUID() }]) {
     const foreign=createPostgresProtectedPlatformCustomerOnboardingRepository(pool,{ ...configuration,...patch });
-    await assert.rejects(execute(intent(),application(foreign)),/PROTECTED_SHARED_EXECUTION_REQUIRED/);
+    await assert.rejects(execute(intent(),application(foreign),async()=>{},foreignActor),/PROTECTED_SHARED_EXECUTION_REQUIRED/);
     assert.deepEqual(await counts(),beforeReplay);
   }
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM synthetic_tenant_generations')).rows[0].count,0);

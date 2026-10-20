@@ -84,6 +84,7 @@ async t=>{
   await assert.rejects(replace(owner,failing,first),/SYNTHETIC_REQUIRED_AUDIT_FAILED/);
   assert.deepEqual(await allBusiness(),rollbackBefore);assert.deepEqual(await business(ids),firstState);
   const second=await replace(owner,own,first),newIds=second.tenants.map(row=>row.tenantId);
+  const secondState=await business(newIds);
   assert.ok(newIds.every(id=>!ids.includes(id) && !foreignIds.includes(id)));
   const archived=await business(ids);
   assert.ok(archived.every(row=>row.status==='archived' && Number(row.lifecycle_revision)===2));
@@ -101,24 +102,31 @@ async t=>{
   assert.equal(Number(actor.security_version),3);
   assert.equal((await pool.query(`SELECT count(*)::int AS count FROM platform_audit_events
     WHERE operator_id=$1 AND target_tenant_id=ANY($2::uuid[])`,[owner.operatorId,[...ids,...newIds]])).rows[0].count,9);
+  assert.equal((await pool.query(`SELECT count(*)::int AS count FROM platform_passkey_auth_transactions
+    WHERE operator_id=$1 AND expires_at>clock_timestamp()`,[owner.operatorId])).rows[0].count,5);
 
   await t.test('fresh authorized owner can archive a stale captured operator version without rewriting its retained history',async()=>{
-    const key=platformPasskeyFixture({ operatorId: owner.operatorId });
+    // This independent scenario has its own owner and genuine ceremonies. The
+    // earlier five retained ceremonies must not bypass the production cap.
+    const recovering=await createProtectedSyntheticOperatorFixture(pool,leasePool,{ epoch }),recoveryService=service(recovering);
+    const captured=await replace(recovering,recoveryService);
+    const key=platformPasskeyFixture({ operatorId: recovering.operatorId });
     await pool.query(`INSERT INTO platform_passkey_credentials
       (id,operator_id,environment,credential_id,public_key,user_handle,signature_counter,backup_eligible,backed_up)
       VALUES($1,$2,'int',$3,$4,$5,0,false,false)`,
-    [randomUUID(),owner.operatorId,key.credential.id,key.credential.publicKey,key.userHandle]);
+    [randomUUID(),recovering.operatorId,key.credential.id,key.credential.publicKey,key.userHandle]);
     const runtime=createPostgresProtectedTenantRuntimeRepository(pool,{ environment: 'int',securityEpoch: epoch });
-    assert.equal(await runtime.findCurrent(newIds[0]),null);
-    assert.equal(await owner.sessions.resolvePrincipal({ headers: { cookie: owner.current().setCookie.split(';')[0] } }),null);
-    await owner.freshSession();
+    assert.equal(await runtime.findCurrent(captured.tenants[0].tenantId),null);
+    assert.equal(await recovering.sessions.resolvePrincipal({ headers: { cookie: recovering.current().setCookie.split(';')[0] } }),null);
+    await recovering.freshSession();
     await new Promise(resolve=>setTimeout(resolve,10_100));
-    const third=await replace(owner,own,second);
+    const replacement=await replace(recovering,recoveryService,captured);
     const retained=(await pool.query(`SELECT state,operator_security_version FROM synthetic_tenant_generations
-      WHERE environment='int' AND operator_id=$1 ORDER BY created_at`,[owner.operatorId])).rows;
+      WHERE environment='int' AND operator_id=$1 ORDER BY created_at`,[recovering.operatorId])).rows;
     assert.deepEqual(retained.map(row=>[row.state,Number(row.operator_security_version)]),
-      [['archived',3],['archived',3],['active',4]]);
-    assert.ok(await runtime.findCurrent(third.tenants[0].tenantId));
+      [['archived',3],['active',4]]);
+    assert.ok(await runtime.findCurrent(replacement.tenants[0].tenantId));
+    assert.deepEqual(await business(newIds),secondState);
     assert.deepEqual(await business(foreignIds),foreignState);assert.deepEqual(await preserved(),beforeReal);
   });
 
