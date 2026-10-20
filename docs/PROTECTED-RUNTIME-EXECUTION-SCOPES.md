@@ -87,3 +87,23 @@ These new native checks are not local execution evidence: they require exact-hea
 CI before acceptance. Neither these component tests nor the existing closed Demo
 matrix replace full protected root, generation reset, handoff, physical-key and
 live provider/deployment acceptance.
+
+## Provider lookup with a separate lease pool
+
+The protected Tenant-runtime repository can now be constructed with that same
+fixed `leasePool`. This path joins the exact live request lease or acquires its
+own current-epoch lease, reads current classification in a short read-only
+business transaction, then releases that connection before invoking provider
+work. The deployment/reset barrier remains held until the entire awaited
+callback finishes. Nested authoritative lookups can join a caller's existing
+business RR transaction without changing its isolation or allocating another
+connection. The mode policy, current registry/generation/operator checks and
+one-invocation provider contract remain mandatory; a lease grants no outbound
+permission by itself.
+
+Omitting the lease pool retains the original component contract for existing
+consumers. A malformed explicit pool never falls back. The future owned runtime
+must supply distinct bounded pools; it must not select the legacy callback that
+holds the business connection. Failures propagate and release or roll back the
+lease. Native max1 evidence must prove callback business access, nesting, wrong
+mode/unknown denial and concurrent reset rejection before integration acceptance.

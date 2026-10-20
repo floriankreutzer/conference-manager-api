@@ -2,11 +2,27 @@ import { isInternalUuid } from '../../domain/identifiers.js';
 import { PLATFORM_ENTRA_PROVIDER } from '../../domain/identity-provider.js';
 import { requireProtectedTenantRuntime } from '../../tenancy/protected-tenant-runtime.js';
 import { withProtectedRuntimeSharedGate } from './protected-runtime-gate.js';
+import { createPostgresProtectedRuntimeExecutionScopes } from './protected-runtime-execution-scopes.js';
+import { withPostgresTransaction } from './transaction.js';
 
-export function createPostgresProtectedTenantRuntimeRepository(pool,{ environment,securityEpoch }={}) {
+export function createPostgresProtectedTenantRuntimeRepository(pool,{ environment,securityEpoch,leasePool=null }={}) {
   if (!pool || typeof pool.query!=='function' || typeof pool.connect!=='function'
     || !['dev','int','prod'].includes(environment) || !isInternalUuid(securityEpoch)) {
     throw new TypeError('PROTECTED_TENANT_RUNTIME_REPOSITORY_CONFIGURATION_INVALID');
+  }
+  // The owned protected composition supplies distinct bounded pools. The
+  // legacy port remains for existing closed component consumers; malformed
+  // explicit lease configuration never silently falls back to that port.
+  const scopes=leasePool===null ? null
+    : createPostgresProtectedRuntimeExecutionScopes({ pool,leasePool,environment,securityEpoch });
+  async function withCurrent(tenantId,work) {
+    if (scopes) return scopes.withShared(async()=>{
+      const runtime=await withPostgresTransaction(pool,client=>current(client,tenantId),{ readOnly: true });
+      // Classification is fresh under the retained reset barrier; release the
+      // short business read before provider work needs its own max1 connection.
+      return work(runtime);
+    });
+    return withProtectedRuntimeSharedGate(pool,environment,async client=>work(await current(client,tenantId)));
   }
   async function current(client,tenantId) {
     if (!isInternalUuid(tenantId)) throw new TypeError('PROTECTED_TENANT_RUNTIME_SCOPE_INVALID');
@@ -29,7 +45,7 @@ export function createPostgresProtectedTenantRuntimeRepository(pool,{ environmen
   }
   return Object.freeze({
     findCurrent(tenantId) {
-      return withProtectedRuntimeSharedGate(pool,environment,client=>current(client,tenantId));
+      return withCurrent(tenantId,value=>value);
     },
     withCurrentTenantRuntime(scope,work) {
       if (!scope || typeof scope!=='object' || Array.isArray(scope)
@@ -37,7 +53,7 @@ export function createPostgresProtectedTenantRuntimeRepository(pool,{ environmen
         || scope.environment!==environment || scope.securityEpoch!==securityEpoch || typeof work!=='function') {
         throw new TypeError('PROTECTED_TENANT_RUNTIME_SCOPE_INVALID');
       }
-      return withProtectedRuntimeSharedGate(pool,environment,async client=>work(await current(client,scope.tenantId)));
+      return withCurrent(scope.tenantId,work);
     },
   });
 }
