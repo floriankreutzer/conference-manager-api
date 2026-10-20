@@ -1,4 +1,5 @@
 import { isInternalUuid } from '../../domain/identifiers.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { PLATFORM_ENTRA_PROVIDER } from '../../domain/identity-provider.js';
 import { isPostgresTransactionActive } from './transaction.js';
 import {
@@ -7,6 +8,19 @@ import {
 
 function poolPort(pool) { return pool && typeof pool.query==='function' && typeof pool.connect==='function'; }
 function denied(code) { throw new ProtectedRuntimeGateError(code); }
+const syntheticContext=new AsyncLocalStorage();
+
+// Read-only assertion of the already acquired, deployment/owner-stamped scope.
+// It cannot acquire a lease or turn an arbitrary business transaction into one.
+export function requireProtectedSyntheticExecutionScope(pool,client,scope) {
+  const active=syntheticContext.getStore();
+  if (!active?.live || active.pool!==pool || active.client!==client || !scope
+    || Object.keys(scope).sort().join(',')!=='environment,operatorId,operatorSecurityVersion,securityEpoch'
+    || active.environment!==scope.environment || active.securityEpoch!==scope.securityEpoch
+    || active.operatorId!==scope.operatorId || active.operatorSecurityVersion!==scope.operatorSecurityVersion
+    || !isPostgresTransactionActive(pool,client)) denied('PROTECTED_SYNTHETIC_EXECUTION_REQUIRED');
+  return true;
+}
 
 // These scopes coordinate database work; neither creates authentication, exact
 // proof, target permission nor a reset grant. Composition must validate HTTP
@@ -54,7 +68,11 @@ export function createPostgresProtectedRuntimeExecutionScopes({ pool,leasePool,e
           WHERE id=$1 AND security_version=$2 AND provider=$3 AND status='active' RETURNING id`,
         values: [scope.operatorId,scope.operatorSecurityVersion,PLATFORM_ENTRA_PROVIDER] });
         if (actor.rowCount!==1) denied('PROTECTED_OPERATOR_SCOPE_STALE');
-        return work(client);
+        const active={ live: true,pool,client,environment,securityEpoch: epoch,
+          operatorId: scope.operatorId.toLowerCase(),operatorSecurityVersion: scope.operatorSecurityVersion };
+        return syntheticContext.run(active,async()=>{
+          try { return await work(client); } finally { active.live=false; }
+        });
       });
     },
   });

@@ -44,6 +44,9 @@ const CUSTOMER_EMAIL_AUTHORITY_MODULES = new Set([
   'src/persistence/postgres/customer-invitation-repository.js',
 ]);
 const PROTECTED_RUNTIME_AUTHORITY_MODULES = new Set([
+  'src/platform/application/synthetic-generation-service.js',
+  'src/persistence/postgres/platform-synthetic-generation-repository.js',
+  'src/platform/identity/protected-platform-sessions.js',
   'src/persistence/postgres/protected-runtime-execution-scopes.js',
   'src/tenancy/synthetic-generation-plan.js',
   'src/identity/protected-invited-customer-sessions.js',

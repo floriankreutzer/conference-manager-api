@@ -13,6 +13,7 @@ import {
 } from '../audit/event.js';
 import { PlatformSessionError } from './errors.js';
 import { normalizePlatformPrincipal, normalizeTrustedPlatformIdentity } from './principal.js';
+import { isProtectedSessionNamespace } from '../../domain/protected-session-namespace.js';
 import {
   PLATFORM_SESSION_TOKEN_PATTERN,
   readPlatformSessionToken,
@@ -31,9 +32,10 @@ function safeEqual(left, right) {
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function tokenHash(token, securityEpoch) {
+function tokenHash(token, securityEpoch, securityNamespace) {
+  const namespace=securityNamespace===null ? '' : `${securityNamespace}:`;
   return createHash('sha256')
-    .update(`platform-session:v1:${securityEpoch}:${token}`, 'ascii')
+    .update(`platform-session:v1:${securityEpoch}:${namespace}${token}`, 'ascii')
     .digest('hex');
 }
 
@@ -98,6 +100,7 @@ export function createPlatformSessionService({
   publicOrigin,
   csrfSecret,
   securityEpoch,
+  securityNamespace = null,
   sessionTtlSeconds = DEFAULT_SESSION_TTL_SECONDS,
   stepUpTtlSeconds = DEFAULT_STEP_UP_TTL_SECONDS,
   authenticationMaxAgeSeconds = DEFAULT_AUTHENTICATION_MAX_AGE_SECONDS,
@@ -128,6 +131,9 @@ export function createPlatformSessionService({
   if (secret.byteLength < 32 || secret.byteLength > 512) throw new TypeError('PLATFORM_CSRF_SECRET_INVALID');
   if (!Number.isSafeInteger(securityEpoch) || securityEpoch < 1) {
     throw new TypeError('PLATFORM_SESSION_EPOCH_INVALID');
+  }
+  if (securityNamespace!==null && !isProtectedSessionNamespace(securityNamespace)) {
+    throw new TypeError('PLATFORM_SESSION_NAMESPACE_INVALID');
   }
   if (!Number.isSafeInteger(sessionTtlSeconds) || sessionTtlSeconds < 300 || sessionTtlSeconds > 86_400) {
     throw new TypeError('PLATFORM_SESSION_TTL_INVALID');
@@ -164,7 +170,7 @@ export function createPlatformSessionService({
       record: Object.freeze({
         id,
         operatorId: identity.operatorId,
-        tokenHash: tokenHash(token, securityEpoch),
+        tokenHash: tokenHash(token, securityEpoch, securityNamespace),
         providerIdentity: identity.providerIdentity,
         roles: identity.roles,
         permissions: identity.permissions,
@@ -220,7 +226,7 @@ export function createPlatformSessionService({
     async resolvePrincipal(request) {
       const token = readPlatformSessionToken(request?.headers);
       if (!token) return null;
-      const stored = await repository.resolveByTokenHash(tokenHash(token, securityEpoch), securityEpoch);
+      const stored = await repository.resolveByTokenHash(tokenHash(token, securityEpoch, securityNamespace), securityEpoch);
       return stored ? principalFromStoredSession(stored) : null;
     },
 

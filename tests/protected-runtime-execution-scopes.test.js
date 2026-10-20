@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createPostgresProtectedRuntimeExecutionScopes } from '../src/persistence/postgres/protected-runtime-execution-scopes.js';
+import {
+  createPostgresProtectedRuntimeExecutionScopes,requireProtectedSyntheticExecutionScope,
+} from '../src/persistence/postgres/protected-runtime-execution-scopes.js';
+import { AsyncResource } from 'node:async_hooks';
+import { withProtectedRuntimeRepeatableExclusiveGate } from '../src/persistence/postgres/protected-runtime-gate.js';
 import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
 import { PLATFORM_ENTRA_PROVIDER } from '../src/domain/identity-provider.js';
 
@@ -67,4 +71,30 @@ test('scope configuration rejects aliased pools, production reset, malformed own
   }
   await scopes.withShared(()=>assert.rejects(scopes.withSyntheticExclusive(owner,async()=>assert.fail('UPGRADE')),
     { code: 'PROTECTED_RUNTIME_GATE_SCOPE_INVALID' }));
+});
+
+test('synthetic custody requires the exact live owner-stamped scope, not an arbitrary RR transaction or lease',async()=>{
+  const business=pool(),lease=pool(),scope={ ...owner,environment: 'int',securityEpoch: epoch };
+  const scopes=createPostgresProtectedRuntimeExecutionScopes({ pool: business.port,leasePool: lease.port,...scope });
+  const denied=()=>assert.throws(()=>requireProtectedSyntheticExecutionScope(business.port,business.client,scope),
+    { code: 'PROTECTED_SYNTHETIC_EXECUTION_REQUIRED' });
+  denied();
+  await withPostgresTransaction(business.port,async()=>denied(),{ isolationLevel: 'REPEATABLE READ' });
+  await withProtectedRuntimeRepeatableExclusiveGate(business.port,'int',async()=>denied());
+  await scopes.withShared(async()=>denied());
+  let detached;
+  await scopes.withSyntheticExclusive(owner,async client=>{
+    assert.equal(requireProtectedSyntheticExecutionScope(business.port,client,scope),true);
+    for (const candidate of [{ ...scope,environment: 'dev' },{ ...scope,securityEpoch: operatorId },
+      { ...scope,operatorId: epoch },{ ...scope,operatorSecurityVersion: 4 },{ ...scope,extra: true }]) {
+      assert.throws(()=>requireProtectedSyntheticExecutionScope(business.port,client,candidate),
+        { code: 'PROTECTED_SYNTHETIC_EXECUTION_REQUIRED' });
+    }
+    assert.throws(()=>requireProtectedSyntheticExecutionScope(lease.port,client,scope),
+      { code: 'PROTECTED_SYNTHETIC_EXECUTION_REQUIRED' });
+    assert.throws(()=>requireProtectedSyntheticExecutionScope(business.port,lease.client,scope),
+      { code: 'PROTECTED_SYNTHETIC_EXECUTION_REQUIRED' });
+    detached=AsyncResource.bind(denied);
+  });
+  detached();denied();
 });
