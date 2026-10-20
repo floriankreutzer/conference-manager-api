@@ -17,7 +17,7 @@ function fail(code) {
 }
 
 function hashMatches(value, expectedHash) {
-  if (typeof value !== 'string' || !/^[0-9a-f]{64}$/.test(expectedHash || '')) return false;
+  if (typeof value !== 'string' || typeof expectedHash!=='string' || !/^[0-9a-f]{64}$/.test(expectedHash)) return false;
   const actual = createHash('sha256').update(value, 'utf8').digest();
   const expected = Buffer.from(expectedHash, 'hex');
   return actual.length === expected.length && timingSafeEqual(actual, expected);
@@ -250,11 +250,16 @@ function createClient({
       code,
       codeVerifier,
       expectedNonceHash,
+      expectedNonce,
       authenticationContext,
     }) {
       if (primaryOnly && authenticationContext !== undefined) fail('PLATFORM_PRIMARY_CONTEXT_FORBIDDEN');
       const requested = primaryOnly ? undefined : context(authenticationContext);
       const requestedMaxAge = primaryOnly ? authenticationMaxAgeSeconds : maxAge(requested);
+      if (typeof expectedNonce!=='string' || expectedNonce.length<1 || expectedNonce.length>512
+        || !hashMatches(expectedNonce,expectedNonceHash)) {
+        fail(primaryOnly ? 'PLATFORM_PRIMARY_CODE_INPUT_INVALID' : 'PLATFORM_ENTRA_NONCE_INVALID');
+      }
       if (primaryOnly && (typeof code !== 'string' || !/^[A-Za-z0-9._~-]{1,4096}$/.test(code)
         || typeof codeVerifier !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(codeVerifier)
         || !/^[0-9a-f]{64}$/.test(expectedNonceHash || ''))) fail('PLATFORM_PRIMARY_CODE_INPUT_INVALID');
@@ -265,6 +270,7 @@ function createClient({
           scopes: PLATFORM_ENTRA_SCOPES,
           redirectUri,
           codeVerifier,
+          nonce: expectedNonce,
         });
       } catch {
         fail('PLATFORM_ENTRA_CODE_REDEMPTION_FAILED');

@@ -150,8 +150,9 @@ function authHarness({ repository = memoryRepository(), currentPrincipal = princ
   const failures = [];
   const calls = { issued: 0, rotated: 0 };
   const provider = {
-    async authorizationUrl({ state }) { return `${AUTHORITY}/oauth2/v2.0/authorize?state=${state}`; },
-    async redeemAuthorizationCode({ code: codeValue, authenticationContext }) {
+    async authorizationUrl({ state,nonce }) { calls.nonce=nonce;return `${AUTHORITY}/oauth2/v2.0/authorize?state=${state}`; },
+    async redeemAuthorizationCode({ code: codeValue, authenticationContext,expectedNonce,expectedNonceHash }) {
+      assert.equal(expectedNonce,calls.nonce);assert.equal(hash(expectedNonce),expectedNonceHash);
       return { code: codeValue, assurance: authenticationContext === STEP_UP_CONTEXT ? 'step_up' : 'mfa' };
     },
   };
@@ -219,7 +220,7 @@ test('Platform Entra adapter fixes workforce Tenant, audience, nonce, and auth c
   const assertion = await adapter.redeemAuthorizationCode({
     code: 'login-code',
     codeVerifier: 'V'.repeat(43),
-    expectedNonceHash: hash(NONCE),
+    expectedNonce: NONCE,expectedNonceHash: hash(NONCE),
     authenticationContext: MFA_CONTEXT,
   });
   const verified = await adapter.verify(assertion);
@@ -246,7 +247,7 @@ test('Platform Entra adapter fixes workforce Tenant, audience, nonce, and auth c
   })).redeemAuthorizationCode({
     code: 'step-up-code',
     codeVerifier: 'V'.repeat(43),
-    expectedNonceHash: hash(NONCE),
+    expectedNonce: NONCE,expectedNonceHash: hash(NONCE),
     authenticationContext: STEP_UP_CONTEXT,
   }), /PLATFORM_ENTRA_AUTHENTICATION_NOT_FRESH/);
 });
@@ -266,7 +267,7 @@ test('Platform Entra adapter rejects customer Tenant, issuer, audience, nonce, c
     await assert.rejects(client(application(overrides)).redeemAuthorizationCode({
       code: 'login-code',
       codeVerifier: 'V'.repeat(43),
-      expectedNonceHash: hash(NONCE),
+      expectedNonce: NONCE,expectedNonceHash: hash(NONCE),
       authenticationContext: MFA_CONTEXT,
     }), PlatformIdentityError);
   }
@@ -348,7 +349,9 @@ test('dedicated Platform OIDC transaction cookie is callback-scoped, one-time, a
   }), null);
   const stored = [...harness.repository.records.values()][0];
   assert.equal(stored.stateHash, hash(STATE));
-  assert.equal(stored.nonceHash, hash(NONCE));
+  assert.match(harness.calls.nonce,/^[A-Za-z0-9_-]{43}$/);
+  assert.equal(stored.nonceHash, hash(harness.calls.nonce));
+  assert.notEqual(harness.calls.nonce,binding(started.setCookie));
   assert.doesNotMatch(JSON.stringify(stored), new RegExp(STATE));
 
   const completed = await harness.service.complete({

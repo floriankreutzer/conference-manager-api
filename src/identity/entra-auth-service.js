@@ -29,6 +29,10 @@ function pkceChallenge(verifier) {
   return createHash('sha256').update(verifier, 'ascii').digest('base64url');
 }
 
+function transactionNonce(secret,state) {
+  return createHmac('sha256',secret).update(`customer-oidc-nonce:v1:${state}`,'utf8').digest('base64url');
+}
+
 function browserBinding(secret, state) {
   return createHmac('sha256', secret).update(`browser:${state}`, 'utf8').digest('base64url');
 }
@@ -120,7 +124,7 @@ export function createEntraAuthService({
   return Object.freeze({
     async start({ correlationId, onboardingInvitationId = null } = {}) {
       const state = requireState(randomToken());
-      const nonce = requireState(randomToken());
+      const nonce = transactionNonce(secret,state);
       validateOnboardingInvitationId(onboardingInvitationId);
       const nowMs = clock();
       if (!Number.isSafeInteger(nowMs) || nowMs < 0) throw new TypeError('OIDC_CLOCK_INVALID');
@@ -171,6 +175,7 @@ export function createEntraAuthService({
       const externalIdentity = await entraClient.redeemAuthorizationCode({
         code,
         codeVerifier: verifier,
+        expectedNonce: transactionNonce(secret,state),
         expectedNonceHash: transaction.nonceHash,
       });
       const resolution = validateIdentityResolution(await identityResolver.resolve(externalIdentity, {
