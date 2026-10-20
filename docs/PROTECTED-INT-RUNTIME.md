@@ -34,8 +34,8 @@ must retain the protected shared lease for the entire bounded provider callback.
 The prepared PostgreSQL runtime repository implements that mode-lookup port with
 current deployment epoch, immutable registry, Tenant lifecycle, generation and
 real operator status/version checks. It is not composed with concrete outbound
-adapters. Its native tripwire tests still await actual execution; unit evidence
-does not establish deployed outbound isolation.
+adapters. Native tripwire evidence must identify its exact source/run separately;
+unit evidence does not establish deployed outbound isolation.
 
 The private PostgreSQL protected-runtime gate provides transaction-scoped shared
 HTTP/worker leases and exclusive reset/cutover leases, separated by deployment
@@ -70,7 +70,15 @@ migration requires verified recovery. Accepted058/024 and earlier checksums are
 unchanged. Existing rollback probes drain only the new empty059/025 layer before
 their unchanged older guards; current readiness/closed reset inventory advance
 mechanically. Native migration, privilege, lifecycle, epoch-reuse, provider/reset
-contention and retained-history tests are supplied but not yet executed.
+contention and retained-history tests require exact-source execution evidence.
+
+On2026-10-20, initial source052d7188 passed the two new native protected lease and
+registry suites in CI39444281483/job118702723489. The later unchanged attribution
+suite failed its old current-schema58 assertion after the advance to59. Three
+remaining current-readiness constants were corrected without changing their
+attribution/location/rollback/security assertions. The first full native failure
+remains failed; the corrected source needs all nine required current-head checks.
+PR251 and frontend SaaS1 issue351 retain current acceptance and failure history.
 
 ## Persistent authority to implement
 
