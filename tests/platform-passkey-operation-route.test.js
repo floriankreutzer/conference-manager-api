@@ -34,7 +34,7 @@ function response() {
   return { headers: {}, statusCode: 200, body: null, setHeader(name, value) { this.headers[name.toLowerCase()] = value; },
     end(value) { this.body = JSON.parse(value); } };
 }
-function fixture(module = platformTenantRoutes) {
+function fixture(module = platformTenantRoutes,platformCustomerOnboardingService=null) {
   let pending = null; let failCommit = false; let failMutation = false; let csrf = true; let denied = 0;
   const contexts = new WeakSet(); const mutations = []; const challenges = []; let current = principal;
   const authService = {
@@ -56,6 +56,7 @@ function fixture(module = platformTenantRoutes) {
     },
   };
   const runtime = {
+    platformCustomerOnboardingService,
     maxBodyBytes: 32768, maxResponseBytes: 65536,
     platformPrincipalGuard: { async require(request, options) {
       if (!current || request.headers.cookie?.includes('cm_platform_session=') !== true) {
@@ -157,4 +158,39 @@ test('malformed proof headers and complex bodies fail before creating or executi
   for (let n = 0; n < 10; n++) nested = { nested };
   assert.ok((await f.invoke({ value: { ...body, nested } })).error);
   assert.equal(f.challenges.length, 1); assert.equal(f.mutations.length, 0);
+});
+
+
+test('real onboarding port binds each recipient, Customer role and locale to the exact operation proof',async()=>{
+  const calls=[];
+  const service={ async createTenant(value) { calls.push(value);return { outcome: 'updated',schemaVersion: 1 }; } };
+  const f=fixture(platformTenantRoutes,service);
+  const value={ ...body,invitations: [{ recipient: 'Operator@example.test',roles: ['tenant_admin'],locale: 'de' }] };
+  assert.equal((await f.invoke({ value })).statusCode,428);assert.equal(calls.length,0);
+  for (const replacement of [{ recipient: 'Other@example.test' },{ roles: ['conference_manager'] },{ locale: 'en' }]) {
+    const altered={ ...value,invitations: [{ ...value.invitations[0],...replacement }] };
+    assert.equal((await f.invoke({ value: altered,proof: encodedProof })).error.statusCode,403);
+  }
+  const result=await f.invoke({ value,proof: encodedProof });assert.equal(result.statusCode,201);
+  assert.equal(calls.length,1);assert.equal(calls[0].operatorContext.assurance.level,'step_up');
+  assert.deepEqual(calls[0].invitations,value.invitations);assert.equal(calls[0].idempotencyKey,ID);
+  assert.equal(f.mutations.length,0); // Legacy creation is never used as a fallback.
+});
+
+test('onboarding body mode is explicit, bounded and never falls back after service failure',async()=>{
+  const original=fixture();const value={ ...body,invitations: [] };
+  await original.invoke({ value });assert.equal((await original.invoke({ value,proof: encodedProof })).error.statusCode,400);
+  let calls=0;
+  const service={ async createTenant() { calls++;throw new Error('SYNTHETIC_ONBOARDING_FAILED'); } };
+  for (const invalid of [body,{ ...value,invitations: Array(20).fill({}) },{ ...value,ownerRecipient: 'Other@example.test' }]) {
+    const f=fixture(platformTenantRoutes,service);await f.invoke({ value: invalid });
+    assert.equal((await f.invoke({ value: invalid,proof: encodedProof })).error.statusCode,400);
+    assert.equal(f.mutations.length,0);
+  }
+  assert.equal(calls,0);
+  const f=fixture(platformTenantRoutes,service);await f.invoke({ value });
+  const result=await f.invoke({ value,proof: encodedProof });assert.match(result.error.message,/SYNTHETIC_ONBOARDING_FAILED/);
+  assert.equal(calls,1);assert.equal(f.mutations.length,0);assert.equal(result.body,null);
+  assert.equal(result.headers['set-cookie'],undefined);
+  assert.throws(()=>fixture(platformTenantRoutes,{}),/ONBOARDING_SERVICE_REQUIRED/);
 });
