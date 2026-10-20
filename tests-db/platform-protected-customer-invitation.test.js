@@ -55,7 +55,7 @@ test('native protected Platform invitation administration preserves exact proof,
   }
   await pool.query("INSERT INTO tenant_runtime_registry(environment,tenant_id,mode) VALUES('int',$1,'real')",[real]);
   await pool.query(`INSERT INTO synthetic_tenant_generations(environment,id,operator_id,operator_security_version,security_epoch)
-    VALUES('int',$1,$2,1,$3)`,[generationId,owner.operatorId,epoch]);
+    VALUES('int',$1,$2,$4,$3)`,[generationId,owner.operatorId,epoch,owner.current().principal.securityVersion]);
   for (const [index,slot] of ['northwind','contoso','fabrikam'].entries()) {
     const id=index===0 ? synthetic : randomUUID();
     if (index!==0) await pool.query("INSERT INTO tenants(id,display_name,status) VALUES($1,'Synthetic slot','onboarding')",[id]);
