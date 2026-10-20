@@ -21,7 +21,7 @@ function principal() {
       expiresAt: new Date(Date.now() + 3600000).toISOString(), stepUpExpiresAt: null } };
 }
 
-function fixture({ allowBusinessLogin = true, minimumCredentialCount = 1 } = {}) {
+function fixture({ allowBusinessLogin = true, minimumCredentialCount = 1,withSessionState=false } = {}) {
   const calls = { primary: 0, issue: [], rotate: [], revoke: [], authenticate: 0, find: 0 };
   const records = new Map();
   let current = principal(); let credentialIds = [randomBytes(32).toString('base64url')];
@@ -59,11 +59,18 @@ function fixture({ allowBusinessLogin = true, minimumCredentialCount = 1 } = {})
     if (assertion !== 'verified-primary') throw new Error('PRIMARY_REJECTED');
     return { operatorId: OPERATOR, securityVersion: 4, providerIdentity, primaryAuthenticatedAt: now };
   } };
+  function issuedPrincipal(identity) {
+    return withSessionState ? { ...identity,session: { ...principal().session,id: randomUUID(),
+      stepUpExpiresAt: identity.assurance.level==='step_up'
+        ? new Date(Date.parse(identity.assurance.authenticatedAt)+300_000).toISOString() : null } } : identity;
+  }
   const sessionService = {
-    async issue(identity) { calls.issue.push(identity); return { principal: identity, csrfToken: 'csrf', setCookie: 'session-cookie' }; },
+    async issue(identity) {
+      calls.issue.push(identity);return { principal: issuedPrincipal(identity), csrfToken: 'csrf', setCookie: 'session-cookie' };
+    },
     async rotate(previous, identity) {
       calls.rotate.push({ previous, identity });
-      return { principal: identity, csrfToken: 'csrf', setCookie: 'rotated-cookie' };
+      return { principal: issuedPrincipal(identity), csrfToken: 'csrf', setCookie: 'rotated-cookie' };
     },
     async revoke(value) { calls.revoke.push(value); return true; },
     async resolvePrincipal() { return current; },
@@ -271,4 +278,56 @@ test('operation context is opaque, transaction-lifetime-bound, exact-hash and on
       return { changed: true };
     });
   assert.throws(() => f.service.verifiedOperationPrincipal(captured, operationHash), /REJECTED/);
+});
+
+test('explicit continuation binds the future normal session privately before mutation; no temporary cookie escapes',async()=>{
+  const f=fixture({ minimumCredentialCount: 2,withSessionState: true }),operationHash='e'.repeat(64);
+  f.setKeys([randomBytes(32).toString('base64url'),randomBytes(32).toString('base64url')]);
+  const started=await f.service.startStepUp(principal(),{ operationHash });let captured,continuation,temporary;
+  const result=await f.service.executeStepUpWithContinuation({ cookie: cookie(started),state: started.state,
+    response: { valid: true },request: {},operationHash },async context=>{
+    captured=context;assert.equal(f.calls.issue.length,1);assert.equal(f.calls.revoke.length,0);
+    assert.throws(()=>f.service.verifiedOperationWithContinuation({ ...context },operationHash),/REJECTED/);
+    const authority=f.service.verifiedOperationWithContinuation(context,operationHash);
+    continuation=authority.continuationPrincipal;temporary=authority.principal;
+    assert.equal(temporary.assurance.level,'step_up');assert.equal(continuation.assurance.level,'mfa');
+    assert.notEqual(continuation.session.id,SESSION);assert.notEqual(continuation.session.id,temporary.session.id);
+    assert.throws(()=>f.service.verifiedOperationPrincipal(context,operationHash),/REJECTED/);
+    return { approved: true };
+  });
+  assert.equal(result.principal.session.id,continuation.session.id);assert.equal(result.principal.assurance.level,'mfa');
+  assert.deepEqual(f.calls.revoke.map(value=>value.session.id),[temporary.session.id]);
+  assert.equal(f.calls.issue.length,1);assert.doesNotMatch(result.setCookies.join('\n'),/rotated-cookie/);
+  assert.throws(()=>f.service.verifiedOperationWithContinuation(captured,operationHash),/REJECTED/);
+});
+
+test('continuation requires explicit active two-key policy and two distinct currently active credentials',async()=>{
+  for (const config of [{},{ allowBusinessLogin: false,minimumCredentialCount: 2 }]) {
+    const f=fixture(config);
+    await assert.rejects(f.service.executeStepUpWithContinuation({ operationHash: 'f'.repeat(64) },async()=>({})),/SETUP_REQUIRED/);
+    assert.equal(f.calls.authenticate,0);assert.equal(f.calls.issue.length,0);
+  }
+  for (const duplicate of [false,true]) {
+    const f=fixture({ minimumCredentialCount: 2,withSessionState: true }),operationHash='e'.repeat(64);
+    const id=randomBytes(32).toString('base64url');f.setKeys(duplicate ? [id,id] : [id]);
+    const started=await f.service.startStepUp(principal(),{ operationHash });let calls=0;
+    await assert.rejects(f.service.executeStepUpWithContinuation({ cookie: cookie(started),state: started.state,
+      response: { valid: true },request: {},operationHash },async()=>{ calls++;return {}; }),/SETUP_REQUIRED/);
+    assert.equal(calls,0);assert.equal(f.calls.issue.length,0);assert.equal(f.calls.rotate.length,0);
+  }
+});
+
+test('ordinary step-up has no continuation authority and failed continuation mutation expires its context',async()=>{
+  const ordinary=fixture(),operationHash='a'.repeat(64);
+  const first=await ordinary.service.startStepUp(principal(),{ operationHash });
+  await assert.rejects(ordinary.service.executeStepUp({ cookie: cookie(first),state: first.state,response: { valid: true },
+    request: {},operationHash },async context=>ordinary.service.verifiedOperationWithContinuation(context,operationHash)),/REJECTED/);
+  const f=fixture({ minimumCredentialCount: 2,withSessionState: true });
+  f.setKeys([randomBytes(32).toString('base64url'),randomBytes(32).toString('base64url')]);
+  const next=await f.service.startStepUp(principal(),{ operationHash });let captured;
+  await assert.rejects(f.service.executeStepUpWithContinuation({ cookie: cookie(next),state: next.state,
+    response: { valid: true },request: {},operationHash },async context=>{
+    captured=context;throw new Error('SYNTHETIC_MUTATION_FAILED');
+  }),/SYNTHETIC_MUTATION_FAILED/);
+  assert.throws(()=>f.service.verifiedOperationWithContinuation(captured,operationHash),/REJECTED/);
 });

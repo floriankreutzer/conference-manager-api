@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 59;/.test(pool)) {
-  throw new Error('Production application requires protected Tenant runtime schema 59.');
+if (!/export const CURRENT_SCHEMA_VERSION = 60;/.test(pool)) {
+  throw new Error('Production application requires private synthetic business schema 60.');
 }
 
 const auditEvent = await readFile('src/audit/event.js', 'utf8');

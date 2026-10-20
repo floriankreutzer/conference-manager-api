@@ -3,6 +3,7 @@ import { isInternalUuid } from '../../domain/identifiers.js';
 import { normalizePlatformPrincipal, normalizeTrustedPlatformIdentity } from './principal.js';
 import { permissionsForPlatformRoles } from './policy.js';
 import { PlatformIdentityError } from './errors.js';
+import { PLATFORM_ENTRA_PROVIDER } from '../../domain/identity-provider.js';
 import { serializePlatformPasskeyTransactionCookie, clearPlatformPasskeyTransactionCookie } from './passkey-auth-cookie.js';
 import { serializeClearedPlatformSessionCookie } from './session-cookie.js';
 import { PLATFORM_PASSKEY_ENROLLMENT_COOKIE_NAME, serializePlatformPasskeyEnrollmentCookie } from './passkey-enrollment-cookie.js';
@@ -42,6 +43,13 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
   const mac = (domain, value, encoding = 'hex') => createHmac('sha256', secret)
     .update(`platform-passkey:v1:${environment}:${securityEpoch}:${domain}:${value}`, 'utf8').digest(encoding);
   const operationContexts = new WeakMap();
+  const operationContinuations = new WeakMap();
+  function verifiedContext(context,operationHash,requiresContinuation=false) {
+    const verified=operationContexts.get(context),continuationPrincipal=operationContinuations.get(context);
+    operationContexts.delete(context);operationContinuations.delete(context);
+    if (!verified || verified.operationHash!==operationHash || requiresContinuation && !continuationPrincipal) reject();
+    return Object.freeze({ principal: verified.principal,continuationPrincipal: continuationPrincipal ?? null });
+  }
   function browser(state) { return mac('browser', state, 'base64url'); }
   function locator(cookie) {
     if (typeof cookie !== 'string' || cookie.length !== 87) reject();
@@ -77,7 +85,8 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
       ...(enrolling ? {} : { options: authenticationOptions }),
       setCookie: serializePlatformPasskeyTransactionCookie(`${state}.${browser(state)}`, TTL_SECONDS) });
   }
-  async function finish({ cookie, state, response, request } = {}, operationHash, mutation, invalidateSession = false) {
+  async function finish({ cookie, state, response, request } = {}, operationHash, mutation,
+    invalidateSession = false,requiresContinuation = false) {
     const { state: expectedState, ...lookup } = locator(cookie);
     if (state !== expectedState) reject();
     const pending = await repository.findPending(lookup);
@@ -99,21 +108,44 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
         }
         return { issued: await sessionService.issue(identity, { correlationId: proof.correlationId }) };
       }
+      if (requiresContinuation && new Set(await activeIds({ operatorId: proof.operatorId,
+        operatorSecurityVersion: proof.securityVersion })).size<2) {
+        throw new PlatformIdentityError('PLATFORM_PASSKEY_SETUP_REQUIRED');
+      }
       // The strongly verified session exists only inside this transaction. Its
       // cookie never leaves the server and cannot authorize a different action.
       const temporary = await sessionService.rotate(current, identity,
         { purpose: 'step_up', correlationId: proof.correlationId });
+      const normalIdentity = normalizeTrustedPlatformIdentity({ ...identity,
+        assurance: { ...identity.assurance, level: 'mfa' } });
+      // Only the explicit continuation flow issues its future normal session
+      // before mutation, inside the same proof transaction. Its cookie remains
+      // private until commit. The old and temporary sessions cannot back handoff.
+      const continuation=requiresContinuation
+        ? await sessionService.issue(normalIdentity,{ correlationId: proof.correlationId }) : null;
+      let continuationPrincipal=null;
+      if (continuation) {
+        continuationPrincipal=normalizePlatformPrincipal(continuation.principal);
+        const temporaryPrincipal=normalizePlatformPrincipal(temporary.principal);
+        if (continuationPrincipal.operatorId!==identity.operatorId || continuationPrincipal.securityVersion!==identity.securityVersion
+          || continuationPrincipal.session.securityEpoch!==securityEpoch || continuationPrincipal.assurance.level!=='mfa'
+          || continuationPrincipal.assurance.authenticationContext!=='cm:pk:v1'
+          || continuationPrincipal.assurance.authenticatedAt!==identity.assurance.authenticatedAt
+          || continuationPrincipal.providerIdentity.provider!==PLATFORM_ENTRA_PROVIDER
+          || ['provider','tenantReference','subjectReference'].some(key=>
+            continuationPrincipal.providerIdentity[key]!==identity.providerIdentity[key])
+          || [current.session.id,temporaryPrincipal.session.id].includes(continuationPrincipal.session.id)) reject();
+      }
       const context = Object.freeze({ principal: temporary.principal, operationHash });
       operationContexts.set(context, context);
+      if (continuation) operationContinuations.set(context,continuationPrincipal);
       let result;
       try { result = await mutation(context); }
-      finally { operationContexts.delete(context); }
+      finally { operationContexts.delete(context);operationContinuations.delete(context); }
       if (result === null || result === undefined) throw new Error('PLATFORM_PASSKEY_MUTATION_REQUIRED');
       if (!await sessionService.revoke(temporary.principal, { correlationId: proof.correlationId })) reject();
       if (invalidateSession) return { result, issued: null };
-      const normalIdentity = normalizeTrustedPlatformIdentity({ ...identity,
-        assurance: { ...identity.assurance, level: 'mfa' } });
-      return { result, issued: await sessionService.issue(normalIdentity, { correlationId: proof.correlationId }) };
+      return { result, issued: continuation ?? await sessionService.issue(normalIdentity, { correlationId: proof.correlationId }) };
     });
     if (!verified) reject();
     const { issued } = verified;
@@ -192,15 +224,20 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
       if (typeof mutation !== 'function' || !HASH.test(input?.operationHash || '')) reject();
       return finish(input, input.operationHash, mutation);
     },
+    async executeStepUpWithContinuation(input,mutation) {
+      if (typeof mutation!=='function' || !HASH.test(input?.operationHash || '')) reject();
+      if (!allowBusinessLogin || minimumCredentialCount!==2) throw new PlatformIdentityError('PLATFORM_PASSKEY_SETUP_REQUIRED');
+      return finish(input,input.operationHash,mutation,false,true);
+    },
     async executeCredentialLifecycle(input, mutation) {
       if (typeof mutation !== 'function' || !HASH.test(input?.operationHash || '')) reject();
       return finish(input, input.operationHash, mutation, true);
     },
     verifiedOperationPrincipal(context, operationHash) {
-      const verified = operationContexts.get(context);
-      operationContexts.delete(context);
-      if (!verified || verified.operationHash !== operationHash) reject();
-      return verified.principal;
+      return verifiedContext(context,operationHash).principal;
+    },
+    verifiedOperationWithContinuation(context,operationHash) {
+      return verifiedContext(context,operationHash,true);
     },
   });
 }

@@ -67,3 +67,44 @@ test('step-up opens a writable coherent snapshot without changing ordinary login
     assert.ok(queries.includes('COMMIT'));
   }
 });
+
+test('an explicit step-up transaction scope surrounds proof locking; ordinary login never enters it',async()=>{
+  for (const purpose of ['login','step_up']) {
+    const events=[];
+    const pool={ query() { throw new Error('UNEXPECTED_POOL_QUERY'); },async connect() {
+      events.push('connect');return { async query(input) {
+        events.push(typeof input==='string' ? input : input.name);return { rowCount: 0,rows: [] };
+      },release() { events.push('release'); } };
+    } };
+    const repository=createPostgresPlatformPasskeyAuthRepository(pool,{ auditRepository: { appendWithClient() {} },
+      verifier: { verifyAuthentication() {} },stepUpTransaction: async(scope,work)=>{
+        assert.deepEqual(scope,{ operatorId: ID,operatorSecurityVersion: 1 });assert.equal(Object.isFrozen(scope),true);
+        events.push('scope-enter');const result=await work();events.push('scope-exit');return result;
+      } });
+    const { id,correlationId,ttlSeconds,challenge,...request }=record();
+    assert.equal(await repository.authenticate({ ...request,purpose,response: {},
+      ...(purpose==='step_up' ? { expectedSessionId: ID,operationHash: 'd'.repeat(64) } : {}) },()=>assert.fail('UNVERIFIED')),null);
+    assert.equal(events[0],purpose==='step_up' ? 'scope-enter' : 'connect');
+    assert.equal(events.at(-1),purpose==='step_up' ? 'scope-exit' : 'release');
+  }
+});
+
+test('step-up scope cannot fabricate a result, skip/double proof work or fall back after a scope failure',async()=>{
+  for (const scenario of ['skip','double','transform','failure']) {
+    let connections=0;
+    const pool={ query() { throw new Error('UNEXPECTED_POOL_QUERY'); },async connect() {
+      connections++;return { async query() { return { rowCount: 0,rows: [] }; },release() {} };
+    } };
+    const repository=createPostgresPlatformPasskeyAuthRepository(pool,{ auditRepository: { appendWithClient() {} },
+      verifier: { verifyAuthentication() {} },stepUpTransaction: async(scope,work)=>{
+        if (scenario==='skip') return { forged: true };
+        if (scenario==='failure') throw new Error('SYNTHETIC_SCOPE_FAILED');
+        await work();return scenario==='double' ? work() : { forged: true };
+      } });
+    const { id,correlationId,ttlSeconds,challenge,...request }=record();
+    await assert.rejects(repository.authenticate({ ...request,purpose: 'step_up',expectedSessionId: ID,
+      operationHash: 'e'.repeat(64),response: {} },()=>assert.fail('UNVERIFIED_CALLBACK')),
+    scenario==='failure' ? /SYNTHETIC_SCOPE_FAILED/ : /TRANSACTION_SCOPE_INVALID/);
+    assert.equal(connections,scenario==='skip' || scenario==='failure' ? 0 : 1);
+  }
+});

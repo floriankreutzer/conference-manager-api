@@ -7,6 +7,7 @@ import { createPostgresProtectedTenantRuntimeRepository } from '../src/persisten
 import { withProtectedRuntimeExclusiveGate } from '../src/persistence/postgres/protected-runtime-gate.js';
 import { createProtectedTenantProviderGate } from '../src/tenancy/protected-tenant-provider-gate.js';
 import { ProtectedTenantRuntimeError } from '../src/tenancy/protected-tenant-runtime.js';
+import { PLATFORM_ENTRA_PROVIDER } from '../src/domain/identity-provider.js';
 import { migrateUp,rollbackLatest } from '../scripts/db-migrations.mjs';
 
 function deferred() { let resolve;const promise=new Promise(done=>{ resolve=done; });return { promise,resolve }; }
@@ -19,7 +20,7 @@ test('private protected registry preserves immutable mode, current owner/epoch, 
   const real=randomUUID(),legacy=randomUUID(),slots=['northwind','contoso','fabrikam'].map(slot=>({ slot,tenantId: randomUUID() }));
   const runtime=createPostgresProtectedTenantRuntimeRepository(pool,{ environment: 'int',securityEpoch: epoch });
   const write=work=>withProtectedRuntimeExclusiveGate(pool,'int',work);
-  async function seedOperator(id,provider='microsoft_entra') {
+  async function seedOperator(id,provider=PLATFORM_ENTRA_PROVIDER) {
     await pool.query(`INSERT INTO platform_operators(id,provider,provider_tenant_reference,provider_subject_reference,roles)
       VALUES($1::uuid,$2,'synthetic-directory',$1::text,ARRAY['platform_tenant_operator'])`,[id,provider]);
   }
@@ -28,11 +29,12 @@ test('private protected registry preserves immutable mode, current owner/epoch, 
       VALUES('int',$1,$2,$3,$4)`,[id,owner,version,epoch]);
   }
   await t.test('empty059 rollback preserves accepted058/057 checksums and restores exact current readiness',async()=>{
+    assert.equal(await rollbackLatest(pool),true); // Empty synthetic business060 before the unchanged059 probe.
     const before=(await pool.query('SELECT version,checksum FROM schema_migrations WHERE version IN (57,58) ORDER BY version')).rows;
     assert.equal(await rollbackLatest(pool),true);
     assert.equal((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version,58);
     await migrateUp(pool);
-    assert.equal((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version,59);
+    assert.equal((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version,60);
     assert.deepEqual((await pool.query('SELECT version,checksum FROM schema_migrations WHERE version IN (57,58) ORDER BY version')).rows,
       before);
     const guard=(await pool.query(`SELECT procedure.prosecdef,procedure.proconfig,
@@ -63,6 +65,8 @@ test('private protected registry preserves immutable mode, current owner/epoch, 
     await assert.rejects(insertGeneration(randomUUID(),operator,2),/SYNTHETIC_GENERATION_CREATION_DENIED/);
     const fake=randomUUID();await seedOperator(fake,'demo_platform');
     await assert.rejects(insertGeneration(randomUUID(),fake),/SYNTHETIC_GENERATION_CREATION_DENIED/);
+    const customerProvider=randomUUID();await seedOperator(customerProvider,'microsoft_entra');
+    await assert.rejects(insertGeneration(randomUUID(),customerProvider),/SYNTHETIC_GENERATION_CREATION_DENIED/);
     await insertGeneration(generation);
     await assert.rejects(pool.query(`UPDATE synthetic_tenant_generations SET state='active',revision=2,activated_at=clock_timestamp()
       WHERE id=$1`,[generation]),/SYNTHETIC_GENERATION_ACTIVATION_DENIED/);
@@ -132,9 +136,11 @@ test('private protected registry preserves immutable mode, current owner/epoch, 
       [generation])).rows[0].count,3);
     await assert.rejects(pool.query("UPDATE synthetic_tenant_generations SET state='active',revision=4 WHERE id=$1",[generation]),
       /SYNTHETIC_GENERATION_TRANSITION_INVALID/);
+    assert.equal(await rollbackLatest(pool),true); // Empty060; populated059 retains its original recovery guard.
     await assert.rejects(rollbackLatest(pool),/PROTECTED_RUNTIME_HISTORY_REQUIRES_VERIFIED_RECOVERY/);
     await assert.rejects(pool.query(`TRUNCATE tenant_runtime_registry,synthetic_tenant_generations,
       protected_runtime_deployments,protected_runtime_epoch_history`),/PROTECTED_RUNTIME_CUSTODY_NOT_RESETTABLE/);
+    await migrateUp(pool); // Restore current060 provider policy after the unchanged populated059 probe.
   });
   await t.test('retained history has a hard per-owner generation bound and production cannot host synthetic generations',async()=>{
     const deployment=(await pool.query("SELECT security_epoch FROM protected_runtime_deployments WHERE environment='int'")).rows[0];

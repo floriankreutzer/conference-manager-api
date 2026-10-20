@@ -50,8 +50,8 @@ if (/repository|SELECT|UPDATE|INSERT INTO|DELETE FROM/i.test(revision)) {
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 59;/.test(pool)) {
-  throw new Error('Runtime schema readiness requires protected Tenant runtime schema 59.');
+if (!/export const CURRENT_SCHEMA_VERSION = 60;/.test(pool)) {
+  throw new Error('Runtime schema readiness requires private synthetic business schema 60.');
 }
 
 const migration = await readFile('migrations/020_tenant_settings_revisions.up.sql', 'utf8');
