@@ -58,13 +58,25 @@ export function createPostgresProtectedRuntimeExecutionScopes({ pool,leasePool,e
   }
   return Object.freeze({
     withShared(work) {
+      if (typeof work!=='function') throw new TypeError('PROTECTED_RUNTIME_WORK_REQUIRED');
+      const enclosing=sharedContext.getStore();
+      if (enclosing) {
+        // Only the already acquired exact live lease can be joined, including
+        // while its business transaction shadows the lease transaction ALS.
+        // Joining never owns/deactivates that enclosing marker or upgrades it.
+        if (!enclosing.live || enclosing.pool!==pool || enclosing.leasePool!==leasePool
+          || enclosing.environment!==environment || enclosing.securityEpoch!==epoch) {
+          denied('PROTECTED_RUNTIME_GATE_SCOPE_INVALID');
+        }
+        return (async()=>work())();
+      }
       beforeScope(work);
       // The lease owns a separate bounded pool. Normal pool.query calls and RR
       // proof transactions can use the business pool even with max=1 on each.
       // Every business snapshot starts after the shared reset barrier is held.
       return withProtectedRuntimeSharedGate(leasePool,environment,async client=>{
         await requireDeployment(client,false);
-        const active={ live: true,pool,environment,securityEpoch: epoch };
+        const active={ live: true,pool,leasePool,environment,securityEpoch: epoch };
         return sharedContext.run(active,async()=>{
           try { return await work(); } finally { active.live=false; }
         });
