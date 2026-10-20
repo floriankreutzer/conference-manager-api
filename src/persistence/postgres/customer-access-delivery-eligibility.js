@@ -1,6 +1,7 @@
 import { normalizeCustomerEmailAdmissionSnapshot } from '../../identity/customer-email-admission.js';
 
-async function pendingInvitation(client,environment,delivery) {
+async function pendingInvitation(client,environment,delivery,tenantEligibility) {
+  if (tenantEligibility && await tenantEligibility.allowsWithClient(client,delivery.tenant_id)!==true) return false;
   const tenant=await client.query({ name: 'customer-delivery-tenant-lock',text: `SELECT id FROM tenants
     WHERE id=$1 AND status IN ('pending','onboarding','ready','active') FOR SHARE`,values: [delivery.tenant_id] });
   if (tenant.rowCount!==1) return false;
@@ -19,7 +20,8 @@ async function pendingInvitation(client,environment,delivery) {
   return invitation.rowCount===1;
 }
 
-async function capturedMember(client,environment,mailboxId,entry) {
+async function capturedMember(client,environment,mailboxId,entry,tenantEligibility) {
+  if (tenantEligibility && await tenantEligibility.allowsWithClient(client,entry.tenantId)!==true) return false;
   const tenant=await client.query({ name: 'customer-delivery-code-tenant-lock',text: `SELECT id FROM tenants
     WHERE id=$1 AND status IN ('pending','onboarding','ready','active') FOR SHARE`,values: [entry.tenantId] });
   if (tenant.rowCount!==1) return false;
@@ -47,8 +49,11 @@ async function capturedMember(client,environment,mailboxId,entry) {
 
 // Authority locks precede challenge and delivery locks, matching admission and
 // invitation mutation order. This port never admits members or changes roles.
-export async function lockCustomerDeliveryEligibility(client,environment,delivery) {
-  if (delivery.purpose==='membership_invitation') return pendingInvitation(client,environment,delivery);
+export async function lockCustomerDeliveryEligibility(client,environment,delivery,tenantEligibility=null) {
+  if (tenantEligibility!==null && typeof tenantEligibility?.allowsWithClient!=='function') {
+    throw new TypeError('CUSTOMER_DELIVERY_TENANT_ELIGIBILITY_INVALID');
+  }
+  if (delivery.purpose==='membership_invitation') return pendingInvitation(client,environment,delivery,tenantEligibility);
   if (delivery.purpose!=='mailbox_code') throw new Error('CUSTOMER_ACCESS_DELIVERY_CUSTODY_INVALID');
   const initial=await client.query({ name: 'customer-delivery-code-snapshot',text: `SELECT admission_snapshot
     FROM customer_email_challenges WHERE environment=$1 AND id=$2 AND mailbox_id=$3`,
@@ -57,7 +62,7 @@ export async function lockCustomerDeliveryEligibility(client,environment,deliver
   const snapshot=normalizeCustomerEmailAdmissionSnapshot(initial.rows[0].admission_snapshot);
   let eligible=false;
   for (const entry of [...snapshot].sort((a,b) => a.tenantId.localeCompare(b.tenantId))) {
-    if (await capturedMember(client,environment,delivery.mailbox_id,entry)) { eligible=true;break; }
+    if (await capturedMember(client,environment,delivery.mailbox_id,entry,tenantEligibility)) { eligible=true;break; }
   }
   const challenge=await client.query({ name: 'customer-delivery-code-challenge-lock',text: `SELECT id
     FROM customer_email_challenges WHERE environment=$1 AND id=$2 AND mailbox_id=$3

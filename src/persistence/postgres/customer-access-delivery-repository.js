@@ -10,14 +10,18 @@ const due=`(status='queued' AND next_attempt_at<=clock_timestamp()
   OR status='claimed' AND lease_until<=clock_timestamp())`;
 function uuid(value) { if (!isInternalUuid(value)) invalid();return value.toLowerCase(); }
 
-export function createPostgresCustomerAccessDeliveryRepository(pool,{ environment,cipher,identifierFactory=randomUUID } = {}) {
+export function createPostgresCustomerAccessDeliveryRepository(pool,{ environment,cipher,identifierFactory=randomUUID,
+  tenantEligibility=null } = {}) {
   if (!pool || typeof pool.query!=='function' || typeof pool.connect!=='function' || !['dev','int','prod'].includes(environment)
     || !cipher || ['open','recipientLookup'].some(key => typeof cipher[key]!=='function') || typeof identifierFactory!=='function') {
     throw new TypeError('CUSTOMER_ACCESS_DELIVERY_CONFIGURATION_INVALID');
   }
+  if (tenantEligibility!==null && typeof tenantEligibility?.allowsWithClient!=='function') {
+    throw new TypeError('CUSTOMER_DELIVERY_TENANT_ELIGIBILITY_INVALID');
+  }
   async function acquire(candidate) {
     return withPostgresTransaction(pool,async client => {
-      const eligible=await lockCustomerDeliveryEligibility(client,environment,candidate);
+      const eligible=await lockCustomerDeliveryEligibility(client,environment,candidate,tenantEligibility);
       const locked=await client.query({ name: 'customer-delivery-claim-lock',text: `SELECT *,clock_timestamp() AS now
         FROM customer_access_deliveries WHERE environment=$1 AND id=$2 AND ${due} FOR UPDATE SKIP LOCKED`,
       values: [environment,uuid(candidate.id)] });
