@@ -22,10 +22,17 @@ supported; the additional pool is not an additional database/service resource.
 Composition must size the sum of both pools within its actual database limits.
 
 The private shared execution marker identifies the live enclosing lease for the
-exact business pool, environment and UUID epoch. A nested business RR transaction
+exact business pool, lease pool, environment and UUID epoch. A nested business RR transaction
 does not replace that outer lease: its separate transaction ALS context can shadow
 the lease transaction context without releasing the lease. The marker rejects
 foreign or detached scopes and grants no authentication or mutation permission.
+A nested `withShared` can join only this exact already acquired live marker,
+including inside its business transaction. It acquires no additional connection,
+creates no new snapshot and does not deactivate the enclosing marker. Different
+factory instances with the same exact fixed scope and pool identities can join;
+foreign lease/business pools, environment/epoch and detached markers fail closed.
+An arbitrary business transaction without that marker still cannot acquire a
+shared lease. Shared-to-exclusive upgrades remain forbidden.
 Protected real onboarding also locks/rechecks the deployment in its authoritative
 business transaction before creating or replaying immutable REAL classification.
 
