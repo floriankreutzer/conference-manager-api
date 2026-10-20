@@ -9,7 +9,7 @@ import { readPlatformPasskeyTransactionCookie,serializePlatformPasskeyTransactio
   from '../identity/passkey-auth-cookie.js';
 import { readPlatformPasskeyOperationCookie,serializePlatformPasskeyOperationCookie,clearPlatformPasskeyOperationCookie }
   from '../identity/passkey-operation-cookie.js';
-import { readPlatformSessionToken,serializePlatformSessionCookie } from '../identity/session-cookie.js';
+import { requireCommittedPlatformPasskeyOperation } from './passkey-operation-result.js';
 import { definePlatformRouteModule } from './route-module.js';
 import { PLATFORM_HTTP_ROUTE as ROUTE } from './observability.js';
 import { PlatformHttpError } from './errors.js';
@@ -41,12 +41,6 @@ function current(value,scope) {
   if (principal.providerIdentity.provider!==PLATFORM_ENTRA_PROVIDER || principal.assurance.level!=='mfa'
     || principal.assurance.authenticationContext!=='cm:pk:v1' || principal.session.securityEpoch!==scope.platformSecurityEpoch) denied();
   return principal;
-}
-function normalCookie(value) {
-  if (typeof value!=='string' || value.length>256) invalid();
-  const token=readPlatformSessionToken({ cookie: value.split(';')[0] }),age=value.match(/; Max-Age=([1-9]\d{0,4})$/);
-  if (!token || !age || Number(age[1])>86400
-    || value!==serializePlatformSessionCookie(token,{ secure: true,maxAgeSeconds: Number(age[1]) })) invalid();return value;
 }
 function customerRedirect(value,intent,scope) {
   try { return requireSyntheticHandoffCustomerRedirect(scope,value,intent.state); } catch { invalid(); }
@@ -130,12 +124,9 @@ export function createPlatformSyntheticHandoffRouteModule({ protocol,intentCooki
         const cookie=readPlatformPasskeyOperationCookie(request.headers);if (!cookie) denied();
         const completed=await callProtocol(()=>protocol.approve({ principal,intent,correlationId: requestId,cookie,state: body.state,
           response: body.response,request }));
-        if (completed?.status!=='operation_completed' || !Array.isArray(completed.setCookies) || completed.setCookies.length!==2
-          || completed.setCookies[1]!==clearPlatformPasskeyTransactionCookie() || completed.result?.status!=='redirect') invalid();
-        const future=current(completed.principal,scope);
-        if (future.operatorId!==principal.operatorId || future.securityVersion!==principal.securityVersion
-          || future.session.id===principal.session.id) invalid();
-        const location=customerRedirect(completed.result.location,intent,scope),normal=normalCookie(completed.setCookies[0]);
+        const committed=requireCommittedPlatformPasskeyOperation(completed,{ principal,securityEpoch: scope.platformSecurityEpoch });
+        if (committed.result?.status!=='redirect') invalid();
+        const location=customerRedirect(committed.result.location,intent,scope),normal=committed.normalCookie;
         response.setHeader('Set-Cookie',[normal,clearPlatformPasskeyTransactionCookie(),
           clearPlatformPasskeyOperationCookie(),intentCookie.clear()]);
         sendPlatformRedirect(response,location);return 303;

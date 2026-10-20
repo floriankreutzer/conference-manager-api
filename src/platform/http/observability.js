@@ -1,4 +1,7 @@
 export const PLATFORM_HTTP_ROUTE = Object.freeze({
+  SYNTHETIC_GENERATION_CURRENT: 'platform_synthetic_generation_current',
+  SYNTHETIC_GENERATION_OPTIONS: 'platform_synthetic_generation_options',
+  SYNTHETIC_GENERATION_REPLACE: 'platform_synthetic_generation_replace',
   AUTH_LOGIN: 'platform_auth_login',
   AUTH_STEP_UP: 'platform_auth_step_up',
   AUTH_CALLBACK: 'platform_auth_callback',
