@@ -1,4 +1,5 @@
 import { withPostgresTransaction } from './transaction.js';
+import { pruneCustomerAnonymousEmailState } from './customer-email-anonymous-retention.js';
 
 const HASH = /^[a-f0-9]{64}$/;
 const HOUR = 3_600_000;
@@ -11,6 +12,9 @@ export async function withCustomerEmailBudget(pool, { environment, sourceKey, re
   if (!['dev','int','prod'].includes(environment) || typeof sourceKey !== 'string' || !HASH.test(sourceKey)
     || typeof recipientKey !== 'string' || !HASH.test(recipientKey)
     || !['issue','verify'].includes(operation) || typeof work !== 'function') throw new TypeError('CUSTOMER_EMAIL_BUDGET_INVALID');
+  // Reclaim only already-expired anonymous state before allocating another
+  // durable flow/window. This shares no recipient/source lock with the sweep.
+  await pruneCustomerAnonymousEmailState(pool,{ environment });
   return withPostgresTransaction(pool,async client => {
     const time = await client.query('SELECT clock_timestamp() AS now'); let now = time.rows[0]?.now;
     if (!(now instanceof Date) || !Number.isFinite(now.getTime())) throw new TypeError('CUSTOMER_EMAIL_BUDGET_CLOCK_INVALID');

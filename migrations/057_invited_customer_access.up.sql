@@ -1,4 +1,4 @@
--- Unreleased: requires the separately reviewed Platform enrollment055 chain.
+-- Unreleased: follows the separately reviewed Platform enrollment056 chain.
 -- Mailbox identity proves only address ownership; Tenant authority lives in membership/User state.
 CREATE FUNCTION customer_access_envelope_valid(value jsonb) RETURNS boolean
 LANGUAGE sql IMMUTABLE SET search_path=pg_catalog AS $$
@@ -133,6 +133,7 @@ CREATE TABLE customer_email_challenges (
   CHECK(consumed_at IS NULL OR consumed_at>=created_at)
 );
 CREATE INDEX customer_email_challenge_mailbox_idx ON customer_email_challenges(environment,mailbox_id,created_at DESC);
+CREATE INDEX customer_email_anonymous_retention_idx ON customer_email_challenges(environment,expires_at,id) WHERE mailbox_id IS NULL;
 
 CREATE TABLE customer_access_deliveries (
   environment varchar(4) NOT NULL,
@@ -183,6 +184,7 @@ CREATE TABLE customer_access_abuse_budgets (
   PRIMARY KEY(environment,kind,key_hash),
   CHECK(last_issued_at IS NULL OR last_issued_at>=window_started_at)
 );
+CREATE INDEX customer_email_budget_retention_idx ON customer_access_abuse_budgets(environment,window_started_at,kind,key_hash);
 
 CREATE FUNCTION guard_customer_access_custody() RETURNS trigger
 LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$
@@ -195,6 +197,15 @@ BEGIN
     RETURN NEW;
   END IF;
   IF TG_OP='DELETE' THEN
+    -- Only expired, unadmitted anonymous proofs and fully stale abuse windows
+    -- are disposable. Real mailbox/membership/delivery/audit history is retained.
+    IF TG_TABLE_NAME='customer_email_challenges' THEN
+      IF OLD.mailbox_id IS NULL AND OLD.admission_snapshot='[]'::jsonb AND OLD.verified_at IS NULL
+        AND OLD.expires_at<clock_timestamp()-interval '1 hour' THEN RETURN OLD; END IF;
+    ELSIF TG_TABLE_NAME='customer_access_abuse_budgets' THEN
+      IF OLD.window_started_at<clock_timestamp()-interval '24 hours'
+        AND (OLD.last_issued_at IS NULL OR OLD.last_issued_at<clock_timestamp()-interval '24 hours') THEN RETURN OLD; END IF;
+    END IF;
     RAISE EXCEPTION 'CUSTOMER_ACCESS_REQUIRES_VERIFIED_RETENTION' USING ERRCODE='55000';
   END IF;
   CASE TG_TABLE_NAME
@@ -247,6 +258,8 @@ CREATE TRIGGER customer_command_custody_guard BEFORE UPDATE OR DELETE ON custome
 CREATE TRIGGER customer_email_proof_custody_guard BEFORE UPDATE OR DELETE ON customer_email_challenges
   FOR EACH ROW EXECUTE FUNCTION guard_customer_access_custody();
 CREATE TRIGGER customer_email_delivery_custody_guard BEFORE UPDATE OR DELETE ON customer_access_deliveries
+  FOR EACH ROW EXECUTE FUNCTION guard_customer_access_custody();
+CREATE TRIGGER customer_email_budget_retention_guard BEFORE DELETE ON customer_access_abuse_budgets
   FOR EACH ROW EXECUTE FUNCTION guard_customer_access_custody();
 
 CREATE FUNCTION verify_customer_invitation_audit() RETURNS trigger
