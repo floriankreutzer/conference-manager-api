@@ -19,7 +19,7 @@ const REDIRECT = `${ORIGIN}/api/v1/platform/auth/microsoft/callback`;
 const NOW = Date.parse('2026-10-19T12:00:00.000Z');
 const NONCE = 'N'.repeat(43);
 const authRequest = { state: 'S'.repeat(43), nonce: NONCE, codeChallenge: 'C'.repeat(43) };
-const redeem = { code: 'code', codeVerifier: 'V'.repeat(43),
+const redeem = { code: 'code', codeVerifier: 'V'.repeat(43),expectedNonce: NONCE,
   expectedNonceHash: createHash('sha256').update(NONCE).digest('hex') };
 const config = { clientId: CLIENT, clientSecret: 's'.repeat(48), tenantReference: DIRECTORY,
   authority: AUTHORITY, redirectUri: REDIRECT, publicOrigin: ORIGIN, clock: () => NOW };

@@ -194,3 +194,28 @@ Repository coverage for this boundary includes:
 - dependency, architecture, static security, secret, style, DAST, unit and database gates.
 
 Live authentication against two independent Entra tenants remains a Pilot deployment acceptance check and must not be represented as passed until executed with real tenant registrations.
+
+## Pinned SDK nonce recovery correction
+
+MSAL Node7.1.0 requires the original expected nonce during `acquireTokenByCode`;
+a valid ID-token nonce is rejected when that expectation is absent. Storing its
+hash and validating after the SDK call alone cannot satisfy that SDK contract.
+Customer OIDC now derives its unpredictable43-character nonce from the protected
+transaction secret and random state in a separate HMAC domain. The database still
+stores only its hash. Another service instance can recover the same expected
+nonce on callback, compare it with the stored hash before provider I/O, and pass
+it to both the SDK and the independent claim validator. PKCE and browser binding
+retain their separate domains and checks. No browser nonce claim supplies this
+expectation, and no compatibility path trusts the returned token's own nonce.
+
+Old in-flight transactions that used a separately random nonce fail closed and
+must restart sign-in after deployment. Their state is consumed once; no local
+identity/session is granted. Existing business sessions, roles, User identities,
+credentials, provider configuration and default authentication mode are unchanged.
+No migration, raw nonce persistence or token cache is added.
+
+Actual pinned-SDK tests use isolated in-memory provider responses to exercise
+Customer and Platform code exchange across separate service instances, reject a
+changed token nonce, reject old pending nonce hashes before provider exchange and
+retain one-use state/browser controls. These synthetic JWTs do not qualify live
+Microsoft signature/device acceptance; deployment verification remains required.
