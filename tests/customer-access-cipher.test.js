@@ -102,3 +102,22 @@ test('command receipts use a separate keyed digest bound to exact actor, Tenant,
   }
   cipher.destroy(); assert.throws(() => cipher.commandDigest(plaintext, binding), /UNAVAILABLE/);
 });
+
+test('Platform creation receipts bind owner-inclusive payloads to environment, operator and command before Tenant creation',()=>{
+  const cipher=createCustomerAccessCipher(configuration()),binding={ operatorId: id(1),commandId: id(2) };
+  const digest=cipher.platformCreationDigest(plaintext,binding);assert.match(digest,/^[a-f0-9]{64}$/);
+  assert.equal(cipher.platformCreationDigest(Buffer.from(plaintext),binding),digest);
+  for (const change of [{ operatorId: id(3) },{ commandId: id(3) }]) {
+    assert.notEqual(cipher.platformCreationDigest(plaintext,{ ...binding,...change }),digest);
+  }
+  assert.notEqual(createCustomerAccessCipher(configuration({ environment: 'prod' })).platformCreationDigest(plaintext,binding),digest);
+  assert.notEqual(cipher.platformCreationDigest(Buffer.from('changed owner'),binding),digest);
+  assert.notEqual(cipher.commandDigest(plaintext,{ tenantId: id(4),commandId: id(2),actorType: 'platform',actorId: id(1) }),digest);
+  for (const scope of [{ ...binding,tenantId: id(4) },{ ...binding,operatorId: 'invalid' }]) {
+    assert.throws(()=>cipher.platformCreationDigest(plaintext,scope),/INVALID/);
+  }
+  for (const bytes of [Buffer.alloc(0),Buffer.alloc(32769),'private']) {
+    assert.throws(()=>cipher.platformCreationDigest(bytes,binding),/INVALID/);
+  }
+  cipher.destroy();assert.throws(()=>cipher.platformCreationDigest(plaintext,binding),/UNAVAILABLE/);
+});

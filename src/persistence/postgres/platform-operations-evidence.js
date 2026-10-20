@@ -125,6 +125,13 @@ export function createPlatformOperationEvidenceFactory({
       const retention = retentionFor(values.operation);
       const previousState = scalarState(values.previousState);
       const newState = scalarState(values.requestedState);
+      const invitationOperation=target.type==='customer_invitation' ? new Map([
+        [PLATFORM_OPERATION.TENANT_INVITATION_CREATE,'issue'],[PLATFORM_OPERATION.INVITATION_REISSUE,'reissue'],
+        [PLATFORM_OPERATION.INVITATION_REVOKE,'revoke'],
+      ]).get(values.operation) : null;
+      if (target.type==='customer_invitation' && !invitationOperation) {
+        throw new TypeError('PLATFORM_OPERATION_EVIDENCE_OPERATION_INVALID');
+      }
       const tenantAuditEvent = tenantAuditService.createActorEvent({
         tenantId: values.tenantId,
         actorUserId: null,
@@ -136,7 +143,7 @@ export function createPlatformOperationEvidenceFactory({
         occurredAt: values.occurredAt,
         correlationId: values.correlationId,
         outcome: AUDIT_OUTCOME.SUCCESS,
-        metadata: { actorType: 'platform_operator', operation: values.operation, reasonRecorded: true },
+        metadata: { actorType: 'platform_operator', operation: invitationOperation || values.operation, reasonRecorded: true },
         retentionClass: retention.tenant,
       });
       const platformAuditEvent = platformAuditService.createEvent({

@@ -61,6 +61,14 @@ export function createCustomerAccessCipher({ environment, activeKeyId, keys, loo
         scope.commandId.toLowerCase(), scope.actorType, scope.actorId.toLowerCase()]);
       return createHmac('sha256', lookupKey).update(binding, 'ascii').update(Buffer.from([0])).update(bytes).digest('hex');
     },
+    platformCreationDigest(bytes, scope) {
+      requireActive();record(scope,['operatorId','commandId']);
+      if (!Buffer.isBuffer(bytes) || bytes.length<1 || bytes.length>MAX_BYTES
+        || ![scope.operatorId,scope.commandId].every(isInternalUuid)) invalid();
+      const binding=JSON.stringify(['platform-customer-onboarding-command:v1',environment,
+        scope.operatorId.toLowerCase(),scope.commandId.toLowerCase()]);
+      return createHmac('sha256',lookupKey).update(binding,'ascii').update(Buffer.from([0])).update(bytes).digest('hex');
+    },
     seal(plaintext, scope) {
       requireActive();
       if (!Buffer.isBuffer(plaintext) || plaintext.length < 1 || plaintext.length > MAX_BYTES) invalid();
