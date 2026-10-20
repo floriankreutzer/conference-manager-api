@@ -129,3 +129,24 @@ checks are unchanged; no form can select an operator, Tenant, redirect or grant.
 The full frontend must allow only its fixed counterpart origin where its CSP
 form-action redirect policy requires it. Actual browser navigation and CSP
 acceptance remain required; loopback HTTP serialization alone is insufficient.
+
+## Explicit account logout
+
+Confirmation also exposes a conservative `accountSwitchRequired` boolean when
+an ordinary Customer cookie is present. It describes cookie presence only,
+never identity or authorization. The final completion still rechecks actual
+custody and refuses a REAL/unknown/foreign account, including a new login after
+that read. No account is switched or logged out automatically.
+
+A separate same-origin JSON `POST /api/v1/auth/delegation/logout` accepts the
+original browser/completion cookies and that flow's bound CSRF. Only an explicit
+user action may invoke it. Under current shared custody and one transaction it
+rechecks the approved flow/completion/CSRF, revokes the actual current protected
+ordinary session through canonical Tenant audit if resolvable, and returns204
+with only the canonical ordinary-cookie clear. An unknown/expired cookie has no
+authority to revoke a session but can be cleared. This avoids trapping a browser
+whose invalid HttpOnly cookie cannot pass ordinary authenticated logout. Other
+sessions/identities and the short handoff cookies remain unchanged. No Customer
+session is issued and the handoff is not consumed by logout. The frontend may
+continue only after a successful acknowledgement and must not blindly replay an
+ambiguous logout. Expired flows require a new start and fresh exact approval.

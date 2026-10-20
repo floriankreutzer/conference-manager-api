@@ -49,5 +49,6 @@ export function createProtectedSyntheticCustomerAccess({ pool,leasePool,scope,br
     callback: input=>scopes.withShared(()=>repository.callback(input)),
     confirmation: input=>scopes.withShared(()=>repository.confirmation(input)),
     complete: input=>scopes.withShared(()=>repository.complete(input)),
+    logout: input=>scopes.withShared(()=>repository.logout(input)),
   });
 }

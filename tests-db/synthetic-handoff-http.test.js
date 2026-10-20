@@ -1,3 +1,7 @@
+import { createProtectedInvitedCustomerSessions } from '../src/identity/protected-invited-customer-sessions.js';
+import { createPostgresProtectedInvitedSessionRepository } from '../src/persistence/postgres/protected-invited-session-repository.js';
+import { createPostgresProtectedCustomerAccessRepository } from '../src/persistence/postgres/protected-customer-access-repository.js';
+import { createInvitedCustomerFixture } from './support/invited-customer-fixture.js';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
@@ -58,6 +62,16 @@ async t=>{
     withPreparationScope: owner.scopes.withShared });
   const customer=createProtectedSyntheticCustomerAccess({ pool,leasePool,scope,browserSecret: 'h'.repeat(48),sourceSecret: 'b'.repeat(48),
     auditHmacSecret: 'a'.repeat(48),csrfSecret: 's'.repeat(48) });
+  const real=await createInvitedCustomerFixture(pool,t),protection={ environment: 'int',securityEpoch: epoch };
+  await pool.query("INSERT INTO tenant_runtime_registry(environment,tenant_id,mode) VALUES('int',$1,'real')",[real.tenantId]);
+  const realSessions=createProtectedInvitedCustomerSessions({ ...protection,
+    sessionRepository: createPostgresProtectedInvitedSessionRepository(pool,{ ...protection,auditRepository: real.auditRepository }),
+    accessRepository: createPostgresProtectedCustomerAccessRepository(pool,protection),auditService: real.auditService,
+    publicOrigin: scope.customerOrigin,csrfSecret: 's'.repeat(48) });
+  const realIdentity={ tenantId: real.tenantId,userId: real.principal.userId,providerIdentity: real.principal.providerIdentity,
+    roles: real.principal.roles,permissions: real.principal.permissions,securityVersion: real.principal.session.securityVersion };
+  const realSession=await realSessions.issue(realIdentity,{ correlationId: randomUUID() });
+  const sibling=await realSessions.issue(realIdentity,{ correlationId: randomUUID() });
   const tenants=createPostgresTenantRepository(pool);
   const customerServer=createHttpServer({
     config: loadConfig({ NODE_ENV: 'test',PUBLIC_ORIGIN: scope.customerOrigin,RATE_LIMIT_MAX: '120' }),
@@ -117,6 +131,23 @@ async t=>{
   const completionCookie=`${original}; ${pair(callback.headers['set-cookie'][0])}`;
   const confirmation=await request('customer','/api/v1/auth/delegation/confirmation',{ headers: { cookie: completionCookie } });
   assert.equal(confirmation.status,200);const csrfToken=JSON.parse(confirmation.text).csrfToken;
+  const realCookie=pair(realSession.setCookie),switchCookie=`${completionCookie}; ${realCookie}`;
+  const switchView=await request('customer','/api/v1/auth/delegation/confirmation',{ headers: { cookie: switchCookie } });
+  assert.equal(JSON.parse(switchView.text).accountSwitchRequired,true);
+  const blocked=await request('customer','/api/v1/auth/delegation/complete',{ method: 'POST',form: { csrfToken },
+    headers: { cookie: switchCookie } });assert.equal(blocked.status,409);assert.equal(blocked.headers['set-cookie'],undefined);
+  const wrong=await request('customer','/api/v1/auth/delegation/logout',{ method: 'POST',body: {},
+    headers: { cookie: switchCookie,'x-csrf-token': '0'.repeat(64) } });assert.equal(wrong.status,401);
+  assert.ok(await realSessions.resolvePrincipal({ headers: { cookie: realCookie } }));
+  const logout=await request('customer','/api/v1/auth/delegation/logout',{ method: 'POST',body: {},
+    headers: { cookie: switchCookie,'x-csrf-token': csrfToken } });assert.equal(logout.status,204);
+  assert.match(logout.headers['set-cookie'][0],/^cm_session=;.*Max-Age=0/);
+  assert.equal(await realSessions.resolvePrincipal({ headers: { cookie: realCookie } }),null);
+  assert.ok(await realSessions.resolvePrincipal({ headers: { cookie: pair(sibling.setCookie) } }));
+  assert.equal(await tenantAudit.verifyTenantChain(real.tenantId),true);assert.equal(await count(),before);
+  const unknown=await request('customer','/api/v1/auth/delegation/logout',{ method: 'POST',body: {},
+    headers: { cookie: `${completionCookie}; cm_session=invalid`,'x-csrf-token': csrfToken } });
+  assert.equal(unknown.status,204);assert.match(unknown.headers['set-cookie'][0],/^cm_session=;.*Max-Age=0/);
   const complete=()=>request('customer','/api/v1/auth/delegation/complete',{ method: 'POST',form: { csrfToken },
     headers: { cookie: completionCookie } });
   const results=await Promise.all([complete(),complete()]);assert.deepEqual(results.map(result=>result.status).sort(),[303,401]);

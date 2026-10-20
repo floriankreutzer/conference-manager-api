@@ -18,6 +18,7 @@ export const TELEMETRY_ROUTE_KEYS = Object.freeze([
   'synthetic_customer_callback',
   'synthetic_customer_confirmation',
   'synthetic_customer_complete',
+  'synthetic_customer_logout',
   'customer_invitations',
   'customer_invitation_mutation',
   'onboarding_start',

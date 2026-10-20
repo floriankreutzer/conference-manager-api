@@ -1,3 +1,4 @@
+import { hasSessionCookie,serializeClearedSessionCookie } from '../identity/session-cookie.js';
 import { BrowserNavigationFormError,isBrowserNavigationForm,readBrowserNavigationForm }
   from '../transport/browser-navigation-form.js';
 import { ApiError } from '../api-error.js';
@@ -16,6 +17,7 @@ const ROUTES=Object.freeze({
   [`${ROOT}/callback`]: ['GET','synthetic_customer_callback'],
   [`${ROOT}/confirmation`]: ['GET','synthetic_customer_confirmation'],
   [`${ROOT}/complete`]: ['POST','synthetic_customer_complete'],
+  [`${ROOT}/logout`]: ['POST','synthetic_customer_logout'],
 });
 function invalid() { throw new ApiError(500,'AUTHENTICATION_RESULT_INVALID'); }
 function exact(value,keys) {
@@ -45,7 +47,8 @@ async function call(work) { try { return await work(); } catch (error) { throw m
 // final same-origin POST sees the ordinary Customer cookie before account change.
 export function createSyntheticCustomerHandoffRouteModule({ service,scope,clock=Date.now }={}) {
   scope=normalizeSyntheticHandoffScope(scope);
-  if (['start','callback','confirmation','complete'].some(name=>typeof service?.[name]!=='function') || typeof clock!=='function') {
+  if (['start','callback','confirmation','complete','logout'].some(name=>typeof service?.[name]!=='function')
+    || typeof clock!=='function') {
     throw new TypeError('SYNTHETIC_CUSTOMER_HTTP_CONFIGURATION_INVALID');
   }
   return defineRouteModule({ id: 'synthetic-customer-handoff',
@@ -88,6 +91,7 @@ export function createSyntheticCustomerHandoffRouteModule({ service,scope,clock=
           || mutation && request.headers.origin!==scope.customerOrigin) throw new ApiError(403,'ORIGIN_NOT_ALLOWED');
         let form=null;
         if (mutation && isBrowserNavigationForm(request.headers)) {
+          if (path===`${ROOT}/logout`) throw new ApiError(415,'UNSUPPORTED_MEDIA_TYPE');
           if (request.headers['x-csrf-token']!==undefined) throw new ApiError(400,'VALIDATION_FAILED');
           form=await call(()=>readBrowserNavigationForm(request,{ keys: path===`${ROOT}/start` ? [] : ['csrfToken'],
             maxBytes: Math.min(1024,maxBodyBytes) }));
@@ -112,9 +116,15 @@ export function createSyntheticCustomerHandoffRouteModule({ service,scope,clock=
           const result=await call(()=>service.confirmation({ ...browser,completion }));exact(result,['slot','role','csrfToken']);
           if (!SYNTHETIC_HANDOFF_SLOTS.includes(result.slot) || !SYNTHETIC_HANDOFF_ROLES.includes(result.role)
             || typeof result.csrfToken!=='string' || !/^[a-f0-9]{64}$/.test(result.csrfToken)) invalid();
-          return sendCustomerAuthenticationJson(response,200,{ ...result,requestId },maxResponseBytes);
+          return sendCustomerAuthenticationJson(response,200,{ ...result,
+            accountSwitchRequired: hasSessionCookie(request.headers),requestId },maxResponseBytes);
         }
         const csrfToken=readCustomerFlowCsrf(form ? { headers: { 'x-csrf-token': form.csrfToken } } : request);
+        if (path===`${ROOT}/logout`) {
+          const result=await call(()=>service.logout({ ...browser,completion,csrfToken,request,correlationId: requestId }));
+          exact(result,['setCookie']);if (result.setCookie!==serializeClearedSessionCookie({ secure: true })) invalid();
+          response.setHeader('Set-Cookie',result.setCookie);response.statusCode=204;response.end();return 204;
+        }
         const result=await call(()=>service.complete({ ...browser,completion,csrfToken,request,correlationId: requestId }));
         exact(result,['principal','csrfToken','setCookie']);
         response.setHeader('Set-Cookie',[checkedCustomerSessionCookie(result.setCookie),...clearSyntheticHandoffCookies()]);

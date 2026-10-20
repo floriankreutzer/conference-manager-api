@@ -9,7 +9,7 @@ import { createSyntheticHandoffBrowserBinding } from '../src/identity/synthetic-
 import { createSyntheticCustomerHandoffRouteModule } from '../src/http/synthetic-customer-handoff-routes.js';
 import { serializeSyntheticHandoffBrowserCookie,serializeSyntheticHandoffCompletionCookie }
   from '../src/identity/synthetic-handoff-cookie.js';
-import { serializeSessionCookie } from '../src/identity/session-cookie.js';
+import { serializeSessionCookie,serializeClearedSessionCookie } from '../src/identity/session-cookie.js';
 
 const ORIGIN='https://127.0.0.1',ROOT='/api/v1/auth/delegation',NOW=Date.now();
 async function fixture(t,{ injected=true }={}) {
@@ -26,9 +26,10 @@ async function fixture(t,{ injected=true }={}) {
     expiresAt: new Date(NOW+600_000).toISOString() },
     callback: { status: 'confirmation',completion: signed.value,expiresAt: new Date(NOW+30_000).toISOString() },
     confirmation: { slot: 'northwind',role: 'employee',csrfToken: signed.csrfToken },
-    complete: { principal: {},csrfToken: 'private-session-csrf',setCookie: ordinaryCookie },block: null,entered: null };
+    complete: { principal: {},csrfToken: 'private-session-csrf',setCookie: ordinaryCookie },
+    logout: { setCookie: serializeClearedSessionCookie({ secure: true }) },block: null,entered: null };
   const calls=[],logs=[];
-  const service=Object.fromEntries(['start','callback','confirmation','complete'].map(name=>[name,async input=>{
+  const service=Object.fromEntries(['start','callback','confirmation','complete','logout'].map(name=>[name,async input=>{
     calls.push({ name,input });
     if (name==='complete' && state.block) { state.entered();await state.block; }
     if (state[name] instanceof Error) throw state[name];return state[name];
@@ -73,7 +74,8 @@ test('loopback callback preserves private browser custody and scrubs code withou
   assert.deepEqual(f.calls.at(-1).input,{ flowId: f.flowId,browserToken: f.start.browserToken,state: f.start.state,code: f.code.code });
   const view=await f.request('/confirmation',{ method: 'GET',body: null,
     headers: { cookie: `${f.originalCookie}; ${f.completionCookie}` } });
-  assert.equal(view.status,200);assert.deepEqual(Object.keys(JSON.parse(view.text)).sort(),['csrfToken','requestId','role','slot']);
+  assert.equal(view.status,200);
+  assert.deepEqual(Object.keys(JSON.parse(view.text)).sort(),['accountSwitchRequired','csrfToken','requestId','role','slot']);
   assert.doesNotMatch(view.text,new RegExp(`${f.code.code}|${f.flowId}|${f.start.state}|${f.start.browserToken}`));
   assert.equal(f.calls.some(call=>call.name==='complete'),false);
   assert.doesNotMatch(f.logs.join(''),
@@ -157,4 +159,22 @@ test('native Customer start/complete forms keep top-level redirects and require 
   const answer=await f.request('/complete',{ body,headers: { ...headers,cookie } });
   assert.equal(answer.status,303);assert.equal(answer.headers.location,'/');assert.equal(answer.headers['set-cookie'][0],f.ordinaryCookie);
   assert.equal(f.calls.at(-1).input.csrfToken,f.signed.csrfToken);assert.equal(f.calls.at(-1).input.request.headers.cookie,cookie);
+});
+
+
+test('flow-bound explicit logout clears only the actual ordinary cookie after commit and never completes or silently switches',async t=>{
+  const f=await fixture(t),cookie=`${f.originalCookie}; ${f.completionCookie}; cm_session=invalid`;
+  const view=await f.request('/confirmation',{ method: 'GET',body: null,headers: { cookie } });
+  assert.equal(JSON.parse(view.text).accountSwitchRequired,true);
+  for (const headers of [{ cookie },{ cookie,'x-csrf-token': 'invalid' },
+    { cookie,'x-csrf-token': f.signed.csrfToken,origin: 'https://foreign.test' }]) {
+    const denied=await f.request('/logout',{ headers });assert.equal(denied.status,403);
+  }
+  assert.equal(f.calls.some(call=>call.name==='logout'),false);
+  const answer=await f.request('/logout',{ headers: { cookie,'x-csrf-token': f.signed.csrfToken } });
+  assert.equal(answer.status,204);assert.deepEqual(answer.headers['set-cookie'],[serializeClearedSessionCookie({ secure: true })]);
+  assert.equal(f.calls.at(-1).input.request.headers.cookie,cookie);assert.equal(f.calls.some(call=>call.name==='complete'),false);
+  f.state.logout=new Error('COMMIT_FAILED private');
+  const failed=await f.request('/logout',{ headers: { cookie,'x-csrf-token': f.signed.csrfToken } });
+  assert.equal(failed.status,500);assert.equal(failed.headers['set-cookie'],undefined);assert.doesNotMatch(failed.text,/private|COMMIT/);
 });
