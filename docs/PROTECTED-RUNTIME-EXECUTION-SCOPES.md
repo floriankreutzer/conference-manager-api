@@ -21,6 +21,14 @@ downgrade and avoids holding the business pool's only connection while an ordina
 supported; the additional pool is not an additional database/service resource.
 Composition must size the sum of both pools within its actual database limits.
 
+The private shared execution marker identifies the live enclosing lease for the
+exact business pool, environment and UUID epoch. A nested business RR transaction
+does not replace that outer lease: its separate transaction ALS context can shadow
+the lease transaction context without releasing the lease. The marker rejects
+foreign or detached scopes and grants no authentication or mutation permission.
+Protected real onboarding also locks/rechecks the deployment in its authoritative
+business transaction before creating or replaying immutable REAL classification.
+
 Host/origin/target/body/rate validation must precede resource allocation. Acquire
 this scope before business transactions. All protected business/provider work
 must be awaited before releasing it. It is not a wrapper for public health or

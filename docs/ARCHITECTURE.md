@@ -20,6 +20,12 @@ with both audit domains, and seeds fresh private business data. It grants no rea
 Tenant target scope. See `SYNTHETIC-GENERATION-REPLACEMENT.md` for its PostgreSQL-only
 media contract, retained quota/cooldown and pending native/root acceptance.
 
+The uncomposed protected real Customer onboarding wrapper retains ordinary
+creation/invitation authority and adds immutable REAL classification inside the
+same exact-proof transaction. Its enclosing deployment lease stays on the separate
+pool; unclassified historical command receipts cannot be retroactively admitted.
+See `PROTECTED-REAL-CUSTOMER-ONBOARDING.md` for atomicity and remaining acceptance.
+
 The service uses Node.js 22 native HTTP and ECMAScript modules. The implemented foundation includes:
 
 - a bounded same-origin HTTP boundary;

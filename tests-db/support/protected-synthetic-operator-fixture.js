@@ -13,10 +13,14 @@ import { platformPasskeyFixture } from '../../tests/support/platform-passkey-fix
 
 // No network or live identity grant. Synthetic Microsoft-shaped operator custody
 // and two actual software P256 keys exercise the pinned verifier and repositories.
-export async function createProtectedSyntheticOperatorFixture(pool,leasePool,{ epoch }={}) {
+export async function createProtectedSyntheticOperatorFixture(pool,leasePool,
+  { epoch,scopeMode='allowlist',mutationScope='synthetic' }={}) {
+  if (!['all','allowlist'].includes(scopeMode) || !['synthetic','shared'].includes(mutationScope)) {
+    throw new TypeError('SYNTHETIC_OPERATOR_FIXTURE_SCOPE_INVALID');
+  }
   const operatorId=randomUUID(),roles=['platform_tenant_operator'];
   await pool.query(`INSERT INTO platform_operators(id,provider,provider_tenant_reference,provider_subject_reference,scope_mode,roles)
-    VALUES($1::uuid,$2,'synthetic-directory',$1::text,'allowlist',$3)`,[operatorId,PLATFORM_ENTRA_PROVIDER,roles]);
+    VALUES($1::uuid,$2,'synthetic-directory',$1::text,$4,$3)`,[operatorId,PLATFORM_ENTRA_PROVIDER,roles,scopeMode]);
   const keys=[platformPasskeyFixture({ operatorId }),platformPasskeyFixture({ operatorId })];
   for (const key of keys) await pool.query(`INSERT INTO platform_passkey_credentials
     (id,operator_id,environment,credential_id,public_key,user_handle,signature_counter,backup_eligible,backed_up)
@@ -31,14 +35,14 @@ export async function createProtectedSyntheticOperatorFixture(pool,leasePool,{ e
   const auth=createPlatformPasskeyAuthService({ environment: 'int',securityEpoch: 7,transactionSecret: 'p'.repeat(48),
     minimumCredentialCount: 2,verifier,sessionService: sessions,
     repository: createPostgresPlatformPasskeyAuthRepository(pool,{ auditRepository,verifier,
-      stepUpTransaction: scopes.withSyntheticExclusive }),
+      stepUpTransaction: mutationScope==='synthetic' ? scopes.withSyntheticExclusive : undefined }),
     primaryOperatorService: { resolve() { throw new Error('PRIMARY_NOT_USED_BY_SYNTHETIC_FIXTURE'); } } });
   let current,counter=0;
   async function freshSession() {
     const row=(await pool.query('SELECT security_version FROM platform_operators WHERE id=$1',[operatorId])).rows[0];
     const securityVersion=Number(row.security_version);
     current=await sessions.issue({ operatorId,roles,permissions: permissionsForPlatformRoles(roles),securityVersion,
-      targetScope: { mode: 'allowlist',securityVersion },providerIdentity: { provider: PLATFORM_ENTRA_PROVIDER,
+      targetScope: { mode: scopeMode,securityVersion },providerIdentity: { provider: PLATFORM_ENTRA_PROVIDER,
         tenantReference: 'synthetic-directory',subjectReference: operatorId },
       assurance: { level: 'mfa',authenticationContext: 'cm:pk:v1',authenticatedAt: new Date().toISOString() } });
   }
@@ -47,11 +51,12 @@ export async function createProtectedSyntheticOperatorFixture(pool,leasePool,{ e
     async execute(operationHash,mutation) {
       const start=await scopes.withShared(()=>auth.startStepUp(current.principal,{ operationHash }));
       counter++;
-      const result=await auth.executeStepUp({ operationHash,state: start.state,
+      const finish=()=>auth.executeStepUp({ operationHash,state: start.state,
         cookie: readPlatformPasskeyTransactionCookie({ cookie: start.setCookie.split(';')[0] }),
         response: keys[0].response('get',{ counter,client: { challenge: start.options.challenge } }),
         request: { headers: { cookie: current.setCookie.split(';')[0] } },
       },mutation);
+      const result=await (mutationScope==='shared' ? scopes.withShared(finish) : finish());
       current={ principal: result.principal,setCookie: result.setCookies[0],csrfToken: result.csrfToken };
       return result.result;
     },

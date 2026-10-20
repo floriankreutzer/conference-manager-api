@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  createPostgresProtectedRuntimeExecutionScopes,requireProtectedSyntheticExecutionScope,
+  createPostgresProtectedRuntimeExecutionScopes,requireProtectedSyntheticExecutionScope,requireProtectedRuntimeSharedExecutionScope,
 } from '../src/persistence/postgres/protected-runtime-execution-scopes.js';
 import { AsyncResource } from 'node:async_hooks';
 import { withProtectedRuntimeRepeatableExclusiveGate } from '../src/persistence/postgres/protected-runtime-gate.js';
@@ -97,4 +97,28 @@ test('synthetic custody requires the exact live owner-stamped scope, not an arbi
     detached=AsyncResource.bind(denied);
   });
   detached();denied();
+});
+
+test('shared marker remains bound to its enclosing lease across business RR work and rejects detached or foreign scopes',async()=>{
+  const business=pool(),lease=pool(),scope={ environment: 'int',securityEpoch: epoch };
+  const scopes=createPostgresProtectedRuntimeExecutionScopes({ pool: business.port,leasePool: lease.port,...scope });
+  const denied=()=>assert.throws(()=>requireProtectedRuntimeSharedExecutionScope(business.port,scope),
+    { code: 'PROTECTED_SHARED_EXECUTION_REQUIRED' });
+  denied();let detached;
+  await scopes.withShared(async()=>{
+    assert.equal(requireProtectedRuntimeSharedExecutionScope(business.port,scope),true);
+    await withPostgresTransaction(business.port,async()=>{
+      assert.equal(requireProtectedRuntimeSharedExecutionScope(business.port,scope),true);
+      for (const candidate of [{ ...scope,environment: 'dev' },{ ...scope,securityEpoch: operatorId },
+        { ...scope,extra: true }]) {
+        assert.throws(()=>requireProtectedRuntimeSharedExecutionScope(business.port,candidate),
+          { code: 'PROTECTED_SHARED_EXECUTION_REQUIRED' });
+      }
+      assert.throws(()=>requireProtectedRuntimeSharedExecutionScope(lease.port,scope),
+        { code: 'PROTECTED_SHARED_EXECUTION_REQUIRED' });
+    },{ isolationLevel: 'REPEATABLE READ' });
+    detached=AsyncResource.bind(denied);
+  });
+  detached();denied();
+  await scopes.withSyntheticExclusive(owner,async()=>denied());
 });

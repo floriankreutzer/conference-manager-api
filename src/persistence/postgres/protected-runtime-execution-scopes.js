@@ -9,6 +9,20 @@ import {
 function poolPort(pool) { return pool && typeof pool.query==='function' && typeof pool.connect==='function'; }
 function denied(code) { throw new ProtectedRuntimeGateError(code); }
 const syntheticContext=new AsyncLocalStorage();
+const sharedContext=new AsyncLocalStorage();
+
+// The bounded lease remains on its separate pool while an ordinary business
+// transaction can shadow the transaction ALS store. Only this private live
+// callback marker identifies that enclosing, already acquired deployment lease.
+export function requireProtectedRuntimeSharedExecutionScope(pool,scope) {
+  const active=sharedContext.getStore();
+  if (!active?.live || active.pool!==pool || !scope
+    || Object.keys(scope).sort().join(',')!=='environment,securityEpoch'
+    || active.environment!==scope.environment || active.securityEpoch!==scope.securityEpoch) {
+    denied('PROTECTED_SHARED_EXECUTION_REQUIRED');
+  }
+  return true;
+}
 
 // Read-only assertion of the already acquired, deployment/owner-stamped scope.
 // It cannot acquire a lease or turn an arbitrary business transaction into one.
@@ -49,7 +63,11 @@ export function createPostgresProtectedRuntimeExecutionScopes({ pool,leasePool,e
       // proof transactions can use the business pool even with max=1 on each.
       // Every business snapshot starts after the shared reset barrier is held.
       return withProtectedRuntimeSharedGate(leasePool,environment,async client=>{
-        await requireDeployment(client,false);return work();
+        await requireDeployment(client,false);
+        const active={ live: true,pool,environment,securityEpoch: epoch };
+        return sharedContext.run(active,async()=>{
+          try { return await work(); } finally { active.live=false; }
+        });
       });
     },
     withSyntheticExclusive(scope,work) {
