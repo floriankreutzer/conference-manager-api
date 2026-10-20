@@ -214,6 +214,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 58, name: 'customer_microsoft_flows' },
       { version: 59, name: 'protected_tenant_runtime' },
       { version: 60, name: 'synthetic_catalogue_media' },
+      { version: 61, name: 'synthetic_customer_handoff' },
     ]);
   });
 

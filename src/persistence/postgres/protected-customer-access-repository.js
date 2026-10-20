@@ -2,7 +2,7 @@ import { isInternalUuid } from '../../domain/identifiers.js';
 import { normalizePrincipal } from '../../identity/principal.js';
 import { TENANT_ROLE,tenantAuthorizationSnapshot } from '../../authorization/policy.js';
 import { requireProtectedTenantRuntime } from '../../tenancy/protected-tenant-runtime.js';
-import { isPostgresTransactionActive } from './transaction.js';
+import { isPostgresTransactionActive,withPostgresTransaction } from './transaction.js';
 
 function sameSet(left,right) {
   return left.length===right.length && left.every(value=>right.includes(value));
@@ -53,7 +53,8 @@ export function createPostgresProtectedCustomerAccessRepository(pool,{ environme
       return Object.freeze({ kind: 'invited_membership',runtime });
   }
   return Object.freeze({
-    resolveCurrentAccess: input=>resolve(input,pool),
+    resolveCurrentAccess: input=>isPostgresTransactionActive(pool)
+      ? withPostgresTransaction(pool,client=>resolve(input,client),{ readOnly: true }) : resolve(input,pool),
     resolveCurrentAccessWithClient(client,input) {
       if (!isPostgresTransactionActive(pool,client)) throw new TypeError('PROTECTED_CUSTOMER_ACCESS_TRANSACTION_REQUIRED');
       return resolve(input,client);

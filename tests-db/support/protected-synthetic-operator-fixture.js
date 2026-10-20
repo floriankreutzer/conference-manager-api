@@ -6,7 +6,8 @@ import { createPlatformPasskeyVerifier } from '../../src/platform/identity/passk
 import { createPlatformPasskeyAuthService } from '../../src/platform/identity/passkey-auth-service.js';
 import { readPlatformPasskeyTransactionCookie } from '../../src/platform/identity/passkey-auth-cookie.js';
 import { createPostgresPlatformSessionRepository } from '../../src/persistence/postgres/platform-session-repository.js';
-import { createPostgresPlatformPasskeyAuthRepository } from '../../src/persistence/postgres/platform-passkey-auth-repository.js';
+import { createPostgresProtectedPlatformPasskeyAuthRepository }
+  from '../../src/persistence/postgres/platform-protected-passkey-auth-repository.js';
 import { createPostgresPlatformAuditRepository } from '../../src/persistence/postgres/platform-audit-repository.js';
 import { createPostgresProtectedRuntimeExecutionScopes } from '../../src/persistence/postgres/protected-runtime-execution-scopes.js';
 import { platformPasskeyFixture } from '../../tests/support/platform-passkey-fixture.js';
@@ -34,7 +35,8 @@ export async function createProtectedSyntheticOperatorFixture(pool,leasePool,
   const verifier=createPlatformPasskeyVerifier({ publicOrigin: 'https://ops-int.example.com',environment: 'int' });
   const auth=createPlatformPasskeyAuthService({ environment: 'int',securityEpoch: 7,transactionSecret: 'p'.repeat(48),
     minimumCredentialCount: 2,verifier,sessionService: sessions,
-    repository: createPostgresPlatformPasskeyAuthRepository(pool,{ auditRepository,verifier,
+    repository: createPostgresProtectedPlatformPasskeyAuthRepository(pool,{ auditRepository,verifier,
+      environment: 'int',securityEpoch: epoch,
       stepUpTransaction: mutationScope==='synthetic' ? scopes.withSyntheticExclusive : undefined }),
     primaryOperatorService: { resolve() { throw new Error('PRIMARY_NOT_USED_BY_SYNTHETIC_FIXTURE'); } } });
   let current,counter=0;
@@ -48,10 +50,13 @@ export async function createProtectedSyntheticOperatorFixture(pool,leasePool,
   }
   await freshSession();
   return { operatorId,keys,auth,sessions,scopes,auditRepository,freshSession,current: ()=>current,
-    async execute(operationHash,mutation) {
+    execute: (operationHash,mutation)=>execute(operationHash,mutation,false),
+    executeWithContinuation: (operationHash,mutation)=>execute(operationHash,mutation,true),
+  };
+  async function execute(operationHash,mutation,continuation) {
       const start=await scopes.withShared(()=>auth.startStepUp(current.principal,{ operationHash }));
       counter++;
-      const finish=()=>auth.executeStepUp({ operationHash,state: start.state,
+      const finish=()=>auth[continuation ? 'executeStepUpWithContinuation' : 'executeStepUp']({ operationHash,state: start.state,
         cookie: readPlatformPasskeyTransactionCookie({ cookie: start.setCookie.split(';')[0] }),
         response: keys[0].response('get',{ counter,client: { challenge: start.options.challenge } }),
         request: { headers: { cookie: current.setCookie.split(';')[0] } },
@@ -59,6 +64,5 @@ export async function createProtectedSyntheticOperatorFixture(pool,leasePool,
       const result=await (mutationScope==='shared' ? scopes.withShared(finish) : finish());
       current={ principal: result.principal,setCookie: result.setCookies[0],csrfToken: result.csrfToken };
       return result.result;
-    },
-  };
+  }
 }

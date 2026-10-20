@@ -50,6 +50,7 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Unsent grants018 before schema052.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Version grants017.
   await rollbackLatestDemoMigration(pool, { roles });
+  assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty060 before059.
   assert.equal(await rollbackLatest(pool),true); // Empty protected runtime059 before retained Microsoft058.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft flow058 before retained Customer057.
@@ -168,6 +169,7 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
   await rollbackLatestDemoMigration(pool, { roles }); // Platform passkey reset grants019 before schema053.
   await rollbackLatestDemoMigration(pool, { roles }); // Unsent grants018 before schema052.
   await rollbackLatestDemoMigration(pool, { roles }); // Revoke017 before recreating051.
+  assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty060 before059.
   assert.equal(await rollbackLatest(pool),true); // Empty protected runtime059 before retained Microsoft058.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft flow058 before retained Customer057.
@@ -252,6 +254,7 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
   await rollbackLatestDemoMigration(pool, { roles }); // Platform passkey reset grants019 before schema053.
   await rollbackLatestDemoMigration(pool, { roles }); // Unsent grants018 before schema052.
   await rollbackLatestDemoMigration(pool, { roles }); // Revoke017 before recreating051.
+  assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty060 before059.
   assert.equal(await rollbackLatest(pool),true); // Empty protected runtime059 before retained Microsoft058.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft flow058 before retained Customer057.
@@ -288,6 +291,7 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Unsent grants018 before schema052.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Version grants017.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
+  assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty060 before059.
   assert.equal(await rollbackLatest(pool),true); // Empty protected runtime059 before retained Microsoft058.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft flow058 before retained Customer057.

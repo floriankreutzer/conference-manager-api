@@ -76,13 +76,17 @@ function auditEvent(operator, ceremony, verified) {
   });
 }
 
-export function createPostgresPlatformPasskeyAuthRepository(pool, { auditRepository, verifier,stepUpTransaction=null } = {}) {
+export function createPostgresPlatformPasskeyAuthRepository(pool, { auditRepository, verifier,stepUpTransaction=null,
+  expiredProofRetention=null } = {}) {
   if (!pool || typeof pool.connect !== 'function' || typeof pool.query !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
   }
   if (typeof auditRepository?.appendWithClient !== 'function') throw new TypeError('PLATFORM_AUDIT_REPOSITORY_REQUIRED');
   if (typeof verifier?.verifyAuthentication !== 'function') throw new TypeError('PLATFORM_PASSKEY_VERIFIER_REQUIRED');
   if (stepUpTransaction!==null && typeof stepUpTransaction!=='function') throw new TypeError('PLATFORM_PASSKEY_TRANSACTION_SCOPE_INVALID');
+  if (expiredProofRetention!==null && typeof expiredProofRetention?.deleteExpiredWithClient!=='function') {
+    throw new TypeError('PLATFORM_PASSKEY_PROOF_RETENTION_INVALID');
+  }
 
   return Object.freeze({
     async listActiveCredentialIds(value) {
@@ -150,9 +154,10 @@ export function createPostgresPlatformPasskeyAuthRepository(pool, { auditReposit
         // Serialize creation for one operator without blocking independent operators.
         await client.query({ name: 'platform-passkey-creation-lock',
           text: 'SELECT pg_advisory_xact_lock(hashtextextended($1, 714533))', values: [value.operatorId] });
-        await client.query({ name: 'platform-passkey-expired-cleanup',
+        if (expiredProofRetention===null) await client.query({ name: 'platform-passkey-expired-cleanup',
           text: 'DELETE FROM platform_passkey_auth_transactions WHERE operator_id = $1 AND expires_at <= clock_timestamp()',
           values: [value.operatorId] });
+        else await expiredProofRetention.deleteExpiredWithClient(client,value.operatorId);
         const result = await client.query({
           name: 'platform-passkey-auth-create',
           text: `WITH database_time AS (SELECT clock_timestamp() AS now)

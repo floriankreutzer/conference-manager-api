@@ -31,6 +31,7 @@ export const PLATFORM_AUDIT_ACTION = Object.freeze({
   AUDIT_READ: 'platform.audit.read',
   AUDIT_EXPORTED: 'platform.audit.exported',
   OPERATOR_CHANGED: 'platform.operator.changed',
+  SYNTHETIC_ACCESS_APPROVED: 'platform.synthetic_access.approved',
 });
 
 export const PLATFORM_AUDIT_OUTCOME = Object.freeze({
