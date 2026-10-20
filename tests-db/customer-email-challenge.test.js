@@ -17,6 +17,8 @@ import { createPostgresCustomerEmailChallengeRepository } from '../src/persisten
 import { createPostgresSessionRepository } from '../src/persistence/postgres/session-repository.js';
 import { createPostgresPool } from '../src/persistence/postgres/pool.js';
 import { migrateUp } from '../scripts/db-migrations.mjs';
+import { createPostgresCustomerAccessDeliveryRepository } from '../src/persistence/postgres/customer-access-delivery-repository.js';
+import { createCustomerAccessDeliveryWorker } from '../src/application/customer-access-delivery-worker.js';
 
 const id = number => `f0000000-0000-4000-8000-${String(number).padStart(12,'0')}`;
 test('mailbox code custody keeps unknown flows uniform and rotates proof without issuing Tenant authority', async t => {
@@ -186,5 +188,26 @@ test('mailbox code custody keeps unknown flows uniform and rotates proof without
     .rows[0].attempt_count,5);
   assert.equal((await counts()).users,afterRevocation.users); assert.equal((await counts()).sessions,afterRevocation.sessions);
   assert.equal(await auditRepository.verifyTenantChain(id(1)),true);
-
+  // Exercise actual code eligibility and decryption through the real outbox.
+  // Existing consumed/exhausted/revoked flows may not dispatch another code.
+  await invitations.issueBatch({ principal: secondSession.principal,
+    tenantContext: { tenantId: id(9),status: 'onboarding' },correlationId: id(11) },
+  { commandId: id(150),invitations: [{ recipient: 'Dispatch-code@example.com',roles: [],locale: 'de' }] });
+  const dispatchFlow=await challenges.request({ recipient: 'Dispatch-code@example.com',locale: 'de',sourceKey: 'e'.repeat(64) });
+  const dispatch=createPostgresCustomerAccessDeliveryRepository(pool,{ environment: 'int',cipher });
+  const sent=[];
+  const worker=createCustomerAccessDeliveryWorker({ repository: dispatch,provider: { async send(message) {
+    sent.push(message);return { status: 'accepted',messageId: id(151+sent.length) };
+  } } });
+  for (let i=0;i<20;i++) { if ((await worker.runOnce()).status==='idle') break; }
+  const code=sent.filter(message => message.recipient==='Dispatch-code@example.com' && message.text.includes('00001234'));
+  assert.equal(code.length,1);
+  const dispatched=await pool.query('SELECT status,attempt_count FROM customer_access_deliveries WHERE challenge_id=$1',
+    [dispatchFlow.challengeId]);
+  assert.equal(dispatched.rows[0].status,'accepted');assert.equal(dispatched.rows[0].attempt_count,1);
+  assert.equal((await challenges.pending(dispatchFlow)).status,'code_required'); // Delivery creates no login authority.
+  for (const flow of [known,lockedFlow]) {
+    const historical=await pool.query('SELECT status FROM customer_access_deliveries WHERE challenge_id=$1',[flow.challengeId]);
+    assert.ok(historical.rows.every(row => row.status!=='accepted'));
+  }
 });
