@@ -54,7 +54,7 @@ function fakeResetPool({ failQueryName = null, failCommit = false, failTransacti
                 reset_role: 'demo_reset',
                 current_database: 'conference_manager_demo_test',
                 current_role: 'demo_reset',
-                production_schema_versions: Array.from({ length: 57 }, (_, index) => index + 1),
+                production_schema_versions: Array.from({ length: 58 }, (_, index) => index + 1),
               }],
             };
           }

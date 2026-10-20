@@ -6,6 +6,14 @@ const OPTIONAL_CLAIMS=['signin_state','login_hint','tenant_region_sub_scope'];
 const SDK_METADATA=['clidata','client_info','client-request-id','x-client-SKU','x-client-VER','x-client-OS','x-client-CPU',
   'x-app-name','x-app-ver'];
 function invalid() { throw new EntraAuthenticationError('ENTRA_FRESH_AUTHORIZATION_URL_INVALID'); }
+// Presentation-output validation shares the approved provider boundary without
+// moving destination configuration or SDK behavior into an HTTP handler.
+export function checkedCustomerMicrosoftBrowserRedirect(value) {
+  if (typeof value!=='string' || value.length>8192) invalid();
+  let url;try { url=new URL(value); } catch { invalid(); }
+  if (url.origin!==APPROVED_OUTBOUND_ORIGINS.microsoftIdentity
+    || url.pathname!=='/organizations/oauth2/v2.0/authorize' || url.username || url.password || url.hash) invalid();return value;
+}
 export function customerMicrosoftEndpoints({ clientId,authority,publicOrigin }) {
   let issuer,origin;
   try { issuer=new URL(authority);origin=new URL(publicOrigin); } catch { throw new TypeError('ENTRA_FRESH_ENDPOINT_INVALID'); }
@@ -21,8 +29,7 @@ export function customerMicrosoftEndpoints({ clientId,authority,publicOrigin }) 
 export function normalizeFreshCustomerMicrosoftUrl(value,endpoints,{ state,nonce,codeChallenge }) {
   if (![state,nonce,codeChallenge].every(item=>typeof item==='string' && TOKEN.test(item))
     || typeof value!=='string' || value.length>8192) invalid();
-  let url;
-  try { url=new URL(value); } catch { invalid(); }
+  const url=new URL(checkedCustomerMicrosoftBrowserRedirect(value));
   const authority=new URL(endpoints.authority);
   if (url.origin!==authority.origin || url.pathname!==`${authority.pathname}/oauth2/v2.0/authorize`
     || url.username || url.password || url.hash) invalid();

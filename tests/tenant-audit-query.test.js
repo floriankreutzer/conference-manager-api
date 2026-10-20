@@ -72,6 +72,17 @@ function service({ rows = [row()], verify = true } = {}) {
   };
 }
 
+test('identity-link audit remains visible in the user category without proof, versions or provider subject disclosure',async()=>{
+  const f=service({ rows: [row({ action: 'tenant.user.identity_linked',targetType: 'user',targetId: USER_ID,
+    previousState: { securityVersion: 1 },newState: { securityVersion: 2 },metadata: { provider: 'microsoft_entra',
+      source: 'explicit_link',providerUserReference: 'must-not-pass' } })] });
+  const result=await f.service.listEvents({ principal: principal(),tenantContext: { tenantId: TENANT_ID,status: 'active' },
+    correlationId: CORRELATION_ID,category: 'user' });
+  assert.equal(result.events[0].category,'user');
+  assert.deepEqual(result.events[0].change,{ before: null,after: null,summary: { provider: 'microsoft_entra' } });
+  assert.doesNotMatch(JSON.stringify(result),/securityVersion|providerUserReference|must-not-pass|explicit_link/);
+});
+
 test('PostgreSQL audit query preserves metadata for the public allowlist projection', async () => {
   let statement;
   const repository = createPostgresTenantAuditQueryRepository({

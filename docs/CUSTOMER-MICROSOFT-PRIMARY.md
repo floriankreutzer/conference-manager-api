@@ -60,9 +60,11 @@ The fixture's synthetic token is not real Microsoft signature/device acceptance.
 No real provider request, contact, credential, mail or deployment was performed.
 
 Full current checks, actual CI and live authorized provider/device acceptance
-must be reported separately. The legacy Customer/Platform code-flow nonce wiring
-is being corrected in a separate focused change; this factory does not silently
-replace those paths.
+must be reported separately. Main includes the separately qualified correction
+of existing Customer/Platform code-flow nonce wiring. The prepared durable invited
+flow, explicit admission/linking and opt-in HTTP contracts are documented in
+CUSTOMER-MICROSOFT-FLOWS.md and CUSTOMER-MICROSOFT-HTTP.md; runtime entrypoints do
+not silently select them or fall back between invited and legacy authority.
 
 Primary references checked on2026-10-20:
 

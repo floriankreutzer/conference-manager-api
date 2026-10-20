@@ -59,9 +59,11 @@ test('actual Customer publication atomically fences reviewed content, ownership,
     pool = createPostgresPool({ mode: 'test',...database,databaseUrl: url.toString(),databasePoolMax: 6 });
     await migrateUp(pool); await migrateDemoUp(pool,{ roles });
     assert.equal(await isPostgresSchemaReady(pool),true);
+    await rollbackLatestDemoMigration(pool,{ roles }); // Microsoft flow024 before retained Customer023.
     await rollbackLatestDemoMigration(pool,{ roles }); // Customer023 before retained enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Original empty publication021.
+    assert.equal(await rollbackLatest(pool),true); // Empty Microsoft flow058 before retained Customer057.
     assert.equal(await rollbackLatest(pool),true); // Empty Customer057 before retained enrollment056.
     assert.equal(await rollbackLatest(pool),true); // Empty enrollment056.
     assert.equal(await rollbackLatest(pool),true); // Original empty publication055.
@@ -338,8 +340,10 @@ test('actual Customer publication atomically fences reviewed content, ownership,
       [fixture.tenantId,manager.principal.session.id]);
     await assert.rejects(review(first),(error) => error.code === 'PRINCIPAL_NOT_AUTHORIZED');
     assert.equal((await request(manager)).status,401);
+    await rollbackLatestDemoMigration(pool,{ roles }); // Microsoft flow024 before retained Customer023.
     await rollbackLatestDemoMigration(pool,{ roles }); // Customer023 before retained enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Enrollment022 before056.
+    assert.equal(await rollbackLatest(pool),true); // Empty Microsoft flow058 before retained Customer057.
     assert.equal(await rollbackLatest(pool),true); // Empty Customer057 before retained enrollment056.
     assert.equal(await rollbackLatest(pool),true); // Empty056; retain the original populated055 probe.
     await assert.rejects(rollbackLatest(pool),/CATERING_CATALOGUE_PUBLICATION_ROLLBACK_REQUIRES_REVIEW/);
@@ -355,8 +359,10 @@ test('actual Customer publication atomically fences reviewed content, ownership,
       tenantContext: { tenantId: persona.tenantId },correlationId: id(90),action: 'catering.catalogue.rejected',
       targetType: 'integration',targetId: fixture.integrationId,outcome: 'success',retentionClass: 'business',
       previousState: { revision: 0 },newState: { revision: 1 },metadata: { operation: 'synthetic_audit_only_rollback_probe' } });
+    await rollbackLatestDemoMigration(pool,{ roles }); // Microsoft flow024 before retained Customer023.
     await rollbackLatestDemoMigration(pool,{ roles }); // Customer023 before retained enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Enrollment022 before056.
+    assert.equal(await rollbackLatest(pool),true); // Empty Microsoft flow058 before retained Customer057.
     assert.equal(await rollbackLatest(pool),true); // Empty Customer057 before retained enrollment056.
     assert.equal(await rollbackLatest(pool),true); // Empty056; retain the original populated055 probe.
     await assert.rejects(rollbackLatest(pool),/CATERING_CATALOGUE_PUBLICATION_ROLLBACK_REQUIRES_REVIEW/);

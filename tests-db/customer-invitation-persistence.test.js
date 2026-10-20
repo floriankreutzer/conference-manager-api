@@ -23,7 +23,8 @@ test('Customer invitation custody is scoped, encrypted, audit-atomic, single-com
   if (!database.databaseUrl) throw new Error('DATABASE_URL_REQUIRED_FOR_INTEGRATION_TEST');
   const pool = createPostgresPool({ mode: 'test', ...database });
   t.after(() => pool.end());
-  await migrateUp(pool); assert.equal(await isPostgresSchemaReady(pool, 57), true);
+  await migrateUp(pool); assert.equal(await isPostgresSchemaReady(pool, 58), true);
+  assert.equal(await rollbackLatest(pool), true); // Empty058 before the original empty057 rollback probe.
   assert.equal(await rollbackLatest(pool), true); // Empty057; retain all earlier migration history.
   await migrateUp(pool); await migrateUp(pool);
   const authorizationPolicy = createAuthorizationPolicy();
@@ -164,7 +165,9 @@ test('Customer invitation custody is scoped, encrypted, audit-atomic, single-com
     await assert.rejects(pool.query(`UPDATE customer_access_memberships SET user_id=$1,accepted_at=clock_timestamp()
       WHERE environment='int' AND tenant_id=$2 AND id=$3`,[id(2),id(1),membership.id]),/CUSTOMER_MEMBERSHIP_ACCEPTANCE_REQUIRED/);
     assert.equal((await pool.query('SELECT user_id FROM customer_access_memberships WHERE id=$1',[membership.id])).rows[0].user_id,null);
+    assert.equal(await rollbackLatest(pool),true); // Empty Microsoft058 before the populated immutable Customer057 guard.
     await assert.rejects(rollbackLatest(pool), /CUSTOMER_ACCESS_REQUIRES_VERIFIED_RECOVERY/);
+    await migrateUp(pool); // Restore current058 for subsequent delivery cases.
   });
   await t.test('real outbox claims fence concurrent workers and retain honest acceptance, failure and revoked eligibility',async () => {
     const dispatch=createPostgresCustomerAccessDeliveryRepository(pool,{ environment: 'int',cipher });

@@ -266,6 +266,7 @@ export function createApp({
   tenantUserLifecycleService,
   microsoft365ConnectionService,
   additionalRouteModules = [],
+  customerMicrosoftAuthenticationRouteModule = null,
   resolvePrincipal,
   verifyCsrf,
   loadTenant,
@@ -292,6 +293,13 @@ export function createApp({
     resolvePrincipal: resolvePrincipal || sessionService?.resolvePrincipal,
     verifyCsrf: verifyCsrf || sessionService?.verifyCsrf,
   });
+  if (customerMicrosoftAuthenticationRouteModule!==null
+    && (customerMicrosoftAuthenticationRouteModule?.id!=='customer-microsoft-authentication'
+      || config.demoRuntime || config.mode==='demo')) throw new TypeError('CUSTOMER_MICROSOFT_HTTP_COMPOSITION_INVALID');
+  const microsoftAuthenticationRegistry=customerMicrosoftAuthenticationRouteModule===null ? null
+    : createRouteModuleRegistry([customerMicrosoftAuthenticationRouteModule]);
+  const microsoftAuthenticationHandler=microsoftAuthenticationRegistry?.createDispatcher({ principalGuard,
+    maxBodyBytes: config.maxBodyBytes,maxResponseBytes: config.maxResponseBytes }) ?? null;
   const tenantGuard = createTenantContextGuard({ loadTenant });
   const routeRegistry = additionalRouteModules.length === 0
     ? TENANT_ROUTE_REGISTRY
@@ -349,7 +357,7 @@ export function createApp({
       assertSameOrigin(request.headers, config.publicOrigin);
       const parsedUrl = urlOf(request.url, config.publicOrigin);
       const path = parsedUrl.pathname;
-      route = routeKey(path, routeRegistry);
+      route = microsoftAuthenticationRegistry?.routeKey(path) || routeKey(path, routeRegistry);
 
       const isLivenessProbe = path === ROUTES.live && request.method === 'GET';
       if (!isLivenessProbe) rateLimiter.consume(clientKey(request));
@@ -386,6 +394,11 @@ export function createApp({
           requestId,
         }, config.maxResponseBytes);
         return;
+      }
+
+      if (microsoftAuthenticationHandler!==null) {
+        const authenticationStatus=await microsoftAuthenticationHandler({ request,response,path,parsedUrl,requestId });
+        if (authenticationStatus!==null) { statusCode=authenticationStatus;return; }
       }
 
       if (path === ROUTES.entraLogin) {
