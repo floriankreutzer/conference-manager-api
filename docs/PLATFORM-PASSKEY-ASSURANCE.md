@@ -407,6 +407,11 @@ or principal is returned.
 Inside the signature transaction, an instance-private, one-use proof context may
 supply the strong principal to exactly that internal request. Existing positive
 body schemas, role/target checks, idempotency and concrete services still execute.
+Exact-operation proof transactions begin at writable `REPEATABLE READ` so the
+existing coherent entitlement reader joins the same transaction without requesting
+an illegal isolation upgrade. Ordinary login keeps `READ COMMITTED`. Concurrent
+snapshot conflicts fail closed and roll back proof, counter, business state and
+session together; no implicit retry of the signed operation is introduced.
 The temporary request carries only the validated body and idempotency contract;
 client cookies, identity headers or arbitrary outbound URLs are not forwarded.
 Its bounded JSON response is buffered until proof consumption, counter, business

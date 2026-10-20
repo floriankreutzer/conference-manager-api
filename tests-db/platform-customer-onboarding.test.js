@@ -32,7 +32,7 @@ test('Platform creates owner-inclusive real customer invitations atomically with
   const pool=createPostgresPool({ mode: 'test',...database });t.after(()=>pool.end());await migrateUp(pool);
   const operatorId=randomUUID(),roles=['platform_tenant_operator'];
   await pool.query(`INSERT INTO platform_operators(id,provider,provider_tenant_reference,provider_subject_reference,status,scope_mode,roles)
-    VALUES($1,'microsoft_entra_platform','synthetic-directory',$1,'active','all',$2)`,[operatorId,roles]);
+    VALUES($1,'microsoft_entra_platform','synthetic-directory',$3,'active','all',$2)`,[operatorId,roles,operatorId]);
   const versionRow=await pool.query('SELECT security_version FROM platform_operators WHERE id=$1',[operatorId]);
   const version=Number(versionRow.rows[0].security_version);
   const tenantAuditRepository=createPostgresAuditRepository(pool,{ hmacSecret: 't'.repeat(48) });
