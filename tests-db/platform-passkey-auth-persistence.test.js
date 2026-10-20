@@ -35,6 +35,7 @@ test('durable Platform passkey authentication is bounded, single-use, audited an
   await migrateUp(pool);
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty060 before059.
   assert.equal(await rollbackLatest(pool),true); // Empty protected runtime059 before retained Microsoft058.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft flow058 before retained Customer057.
@@ -379,6 +380,7 @@ test('durable Platform passkey authentication is bounded, single-use, audited an
       [other.credentialRecordId]), /IMMUTABLE/);
     await assert.rejects(pool.query('UPDATE platform_passkey_credentials SET operator_id = $1 WHERE id = $2',
       [f.operatorId, other.credentialRecordId]), /IMMUTABLE/);
+    assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
     assert.equal(await rollbackLatest(pool),true); // Empty060 before059.
     assert.equal(await rollbackLatest(pool),true); // Empty protected runtime059 before retained Microsoft058.
     assert.equal(await rollbackLatest(pool),true); // Empty Microsoft flow058 before retained Customer057.

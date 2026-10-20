@@ -54,7 +54,7 @@ try {
     diagnostics.advance('schema');
     const versions = await operator.query(`SELECT (SELECT max(version) FROM schema_migrations) AS runtime,
       (SELECT max(version) FROM demo_schema_migrations) AS overlay`);
-    if (versions.rows[0]?.runtime !== 60 || versions.rows[0]?.overlay !== 26) {
+    if (versions.rows[0]?.runtime !== 61 || versions.rows[0]?.overlay !== 27) {
       throw new Error('NEON_RECOVERY_SCHEMA_INVALID');
     }
     diagnostics.advance('database-media');

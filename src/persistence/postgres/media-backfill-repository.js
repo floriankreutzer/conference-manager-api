@@ -16,8 +16,8 @@ async function assertDemoCopyDiscardAuthority(pool) {
         AND platform_role='cm_demo_platform' AND reset_role='cm_demo_reset') AS sentinel_count` });
   const row = result.rows[0];
   if (result.rows.length !== 1 || row.database !== 'conference_manager_demo_shared'
-    || row.role !== 'cm_demo_migration' || Number(row.schema_version) !== 60
-    || Number(row.overlay_version) !== 26 || Number(row.sentinel_count) !== 1) {
+    || row.role !== 'cm_demo_migration' || Number(row.schema_version) !== 61
+    || Number(row.overlay_version) !== 27 || Number(row.sentinel_count) !== 1) {
     throw new TypeError('MEDIA_DEMO_COPY_DISCARD_AUTHORITY_REQUIRED');
   }
 }

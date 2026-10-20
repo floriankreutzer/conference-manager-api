@@ -1,4 +1,4 @@
-import { withPostgresTransaction } from './transaction.js';
+import { withPostgresTransaction,isPostgresTransactionActive } from './transaction.js';
 
 const SESSION_TENANT_STATUSES = ['pending', 'onboarding', 'ready', 'active'];
 
@@ -135,7 +135,8 @@ export function createPostgresSessionRepository(pool, { auditRepository } = {}) 
     },
 
     async resolveByTokenHash(tokenHash, now) {
-      const result = await pool.query({
+      const resolve=async client=>{
+      const result = await client.query({
         name: 'session-resolve-by-token-hash',
         text: `
           SELECT s.id, s.tenant_id, s.user_id, s.token_hash, s.provider,
@@ -155,6 +156,10 @@ export function createPostgresSessionRepository(pool, { auditRepository } = {}) 
         values: [tokenHash, now, SESSION_TENANT_STATUSES],
       });
       return mapSessionRow(result.rows[0]);
+      };
+      // Join the caller's authoritative admission transaction on max=1 pools.
+      // Ordinary reads retain the existing single-query path.
+      return isPostgresTransactionActive(pool) ? withPostgresTransaction(pool,resolve,{ readOnly: true }) : resolve(pool);
     },
 
     async revoke({ sessionId, tenantId, userId, revokedAt, auditEvent }) {

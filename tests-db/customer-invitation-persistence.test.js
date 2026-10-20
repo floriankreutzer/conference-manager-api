@@ -23,7 +23,8 @@ test('Customer invitation custody is scoped, encrypted, audit-atomic, single-com
   if (!database.databaseUrl) throw new Error('DATABASE_URL_REQUIRED_FOR_INTEGRATION_TEST');
   const pool = createPostgresPool({ mode: 'test', ...database });
   t.after(() => pool.end());
-  await migrateUp(pool); assert.equal(await isPostgresSchemaReady(pool, 60), true);
+  await migrateUp(pool); assert.equal(await isPostgresSchemaReady(pool, 61), true);
+  assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty060 before059.
   assert.equal(await rollbackLatest(pool),true); // Empty protected runtime059 before retained Microsoft058.
   assert.equal(await rollbackLatest(pool), true); // Empty058 before the original empty057 rollback probe.
@@ -167,6 +168,7 @@ test('Customer invitation custody is scoped, encrypted, audit-atomic, single-com
     await assert.rejects(pool.query(`UPDATE customer_access_memberships SET user_id=$1,accepted_at=clock_timestamp()
       WHERE environment='int' AND tenant_id=$2 AND id=$3`,[id(2),id(1),membership.id]),/CUSTOMER_MEMBERSHIP_ACCEPTANCE_REQUIRED/);
     assert.equal((await pool.query('SELECT user_id FROM customer_access_memberships WHERE id=$1',[membership.id])).rows[0].user_id,null);
+    assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
     assert.equal(await rollbackLatest(pool),true); // Empty060 before059.
     assert.equal(await rollbackLatest(pool),true); // Empty protected runtime059 before retained Microsoft058.
     assert.equal(await rollbackLatest(pool),true); // Empty Microsoft058 before the populated immutable Customer057 guard.
