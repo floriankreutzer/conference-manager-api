@@ -211,6 +211,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 55, name: 'catering_catalogue_publication' },
       { version: 56, name: 'platform_passkey_enrollment' },
       { version: 57, name: 'invited_customer_access' },
+      { version: 58, name: 'customer_microsoft_flows' },
     ]);
   });
 

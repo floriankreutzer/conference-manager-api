@@ -21,6 +21,7 @@ export const AUDIT_ACTION = Object.freeze({
   TENANT_IDENTITY_CLAIMED: 'tenant.identity.claimed',
   TENANT_IDENTITY_UNBOUND: 'tenant.identity.unbound',
   TENANT_USER_PROVISIONED: 'tenant.user.provisioned',
+  TENANT_USER_IDENTITY_LINKED: 'tenant.user.identity_linked',
   TENANT_USER_PROFILE_UPDATED: 'tenant.user.profile_updated',
   INTEGRATION_CONNECTED: 'integration.connected',
   INTEGRATION_DISCONNECTED: 'integration.disconnected',

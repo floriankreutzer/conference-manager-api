@@ -32,7 +32,8 @@ const { Pool } = pg;
 // Schema 55 records atomic explicit Manager catalogue reviews and publication.
 // Schema 56 stores independently authorized two-stage Platform passkey enrollment.
 // Schema 57 stores invited Customer membership, encrypted delivery and mailbox proof.
-export const CURRENT_SCHEMA_VERSION = 57;
+// Schema 58 stores bounded browser-bound Microsoft login/link proofs and explicit-link evidence.
+export const CURRENT_SCHEMA_VERSION = 58;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

@@ -180,6 +180,8 @@ test('closed Demo listener may use bounded native HTTP and injected gate without
 
 test('both closed Demo surfaces reject real mailbox/invitation authority directly and through a bridge', () => {
   for (const target of ['src/persistence/postgres/customer-invitation-custody.js',
+    'src/identity/customer-microsoft-authentication-service.js','src/identity/customer-microsoft-flow-binding.js',
+    'src/persistence/postgres/customer-microsoft-flow-repository.js',
     'src/persistence/postgres/platform-customer-onboarding-repository.js',
     'src/platform/application/customer-onboarding-service.js',
     'src/application/customer-access-delivery-worker.js',
