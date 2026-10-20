@@ -1,0 +1,4 @@
+# Historical false positive: JavaScript OAuth variable declaration, not a credential.
+# The scanner interpreted the literal expression redemptions=0 as an unquoted OAuth value.
+# Current fixture separates the declarations; this fingerprint covers only the published historical line.
+bc409234343789e086644f9de14f9930bdf06233:tests-db/protected-platform-authentication.test.js:generic-api-key:60

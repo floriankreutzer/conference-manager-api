@@ -96,11 +96,16 @@ export function createPlatformSyntheticHandoffRouteModule({ protocol,intentCooki
         }
         const guardRequest=form ? { method: request.method,headers: { ...request.headers,'x-csrf-token': form.csrfToken } } : request;
         const principal=current(await platformPrincipalGuard.require(guardRequest,{ csrf: mutation,correlationId: requestId }),scope);
-        const pending=intentCookie.read(request.headers);if (!pending) denied();
+        const pending=intentCookie.read(request.headers);
         if (path===`${ROOT}/intent`) {
+          // A normal authenticated startup can resume a signed intent after
+          // Microsoft/passkey login has scrubbed the old presentation query.
+          // Absent/invalid intent returns no grant or selected target.
+          if (!pending) { sendPlatformJson(response,200,{ status: 'none',requestId },maxResponseBytes);return 200; }
           sendPlatformJson(response,200,{ status: 'confirmation_required',slots: [...SYNTHETIC_HANDOFF_SLOTS],
             roles: [...SYNTHETIC_HANDOFF_ROLES],requestId },maxResponseBytes);return 200;
         }
+        if (!pending) denied();
         const body=requirePlatformExactObject(form ? payload
           : await readPlatformJsonObject(request,{ maxBytes: Math.min(maxBodyBytes,16384) }),
           { required: { generationId: isInternalUuid,slot: value=>SYNTHETIC_HANDOFF_SLOTS.includes(value),
