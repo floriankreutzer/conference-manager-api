@@ -101,11 +101,30 @@ test('Customer invitation custody is scoped, encrypted, audit-atomic, single-com
       service.revoke(a,{ invitationId: issued[0].id,expectedRevision: 1 })]);
     assert.equal(results.filter(value => value.status==='fulfilled').length,1);
     const value = results.find(entry => entry.status==='fulfilled').value;
-    assert.equal(value.revision,2); assert.equal(value.state,'revoked');
+    assert.equal(value.revision,2); assert.equal(value.state,'revoked'); assert.equal(value.delivery,'cancelled');
     await assert.rejects(service.reissue(a,{ invitationId: issued[0].id,expectedRevision: 2 }), /CONFLICT/);
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM customer_access_deliveries WHERE status='cancelled'")).rows[0].n,1);
     assert.equal((await service.issueBatch(a,command))[0].state,'pending'); // Immutable original receipt, not reactivation.
     assert.equal((await service.list(a)).find(entry => entry.id===issued[0].id).state,'revoked');
+    assert.equal((await service.list(a)).find(entry => entry.id===issued[0].id).delivery,'cancelled');
+  });
+  await t.test('revocation retains provider acceptance and an in-flight observation instead of inventing another queued send', async () => {
+    const messages=await service.issueBatch(b,{ commandId: id(80),
+      invitations: [intent('Accepted@example.com',[]),intent('Processing@example.com',[])] });
+    await pool.query(`UPDATE customer_access_deliveries SET status='accepted',attempt_count=1,
+      provider_message_id=$2,accepted_at=clock_timestamp() WHERE environment='int' AND invitation_id=$1`,[messages[0].id,id(81)]);
+    await pool.query(`UPDATE customer_access_deliveries SET status='claimed',attempt_count=1,lease_id=$2,
+      lease_until=clock_timestamp()+INTERVAL '45 seconds' WHERE environment='int' AND invitation_id=$1`,[messages[1].id,id(82)]);
+    for (const [index,delivery] of ['accepted','processing'].entries()) {
+      const revoked=await service.revoke(b,{ invitationId: messages[index].id,expectedRevision: 1 });
+      assert.equal(revoked.state,'revoked');assert.equal(revoked.delivery,delivery);
+      assert.equal((await service.list(b)).find(entry => entry.id===messages[index].id).delivery,delivery);
+    }
+    const observations=await pool.query(`SELECT status,provider_message_id,lease_id FROM customer_access_deliveries
+      WHERE environment='int' AND tenant_id=$1 ORDER BY status`,[id(3)]);
+    assert.deepEqual(observations.rows.map(row => row.status),['accepted','claimed']);
+    assert.equal(observations.rows[0].provider_message_id,id(81));assert.equal(observations.rows[1].lease_id,id(82));
+    assert.equal(await auditRepository.verifyTenantChain(id(3)),true);
   });
   await t.test('required audit failure rolls back mailbox/membership/invitation, delivery and command together', async () => {
     const failing = createCustomerInvitationService({ environment: 'int',authorizationPolicy,auditService,

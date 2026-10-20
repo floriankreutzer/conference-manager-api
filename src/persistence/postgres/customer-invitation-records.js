@@ -57,10 +57,10 @@ export const CUSTOMER_INVITATION_COLUMNS = `invitation.id,invitation.tenant_id,i
   invitation.locale,invitation.expires_at,mailbox.id AS mailbox_id,mailbox.lookup_hash,mailbox.recipient_envelope,
   CASE WHEN invitation.revoked_at IS NOT NULL THEN 'revoked' WHEN invitation.accepted_at IS NOT NULL THEN 'accepted'
     WHEN invitation.expires_at<=clock_timestamp() THEN 'expired' ELSE 'pending' END AS invitation_state,
-  CASE delivery.status WHEN 'accepted' THEN 'accepted' WHEN 'failed' THEN 'failed' WHEN 'cancelled' THEN 'failed'
-    ELSE 'queued' END AS delivery_state`;
+  CASE delivery.status WHEN 'accepted' THEN 'accepted' WHEN 'failed' THEN 'failed' WHEN 'cancelled' THEN 'cancelled'
+    WHEN 'claimed' THEN 'processing' WHEN 'queued' THEN 'queued' ELSE 'failed' END AS delivery_state`;
 export const CUSTOMER_INVITATION_JOINS = `JOIN customer_access_mailboxes mailbox
   ON mailbox.environment=invitation.environment AND mailbox.id=invitation.mailbox_id
   LEFT JOIN LATERAL (SELECT status FROM customer_access_deliveries
     WHERE environment=invitation.environment AND tenant_id=invitation.tenant_id AND invitation_id=invitation.id
-      AND invitation_revision=invitation.revision ORDER BY created_at DESC,id DESC LIMIT 1) delivery ON true`;
+      AND invitation_revision<=invitation.revision ORDER BY invitation_revision DESC,created_at DESC,id DESC LIMIT 1) delivery ON true`;
