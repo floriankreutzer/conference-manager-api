@@ -1,3 +1,4 @@
+import { createCustomerAuthenticationComposition } from './customer-authentication-composition.js';
 import { createCateringConfigurationRegistry } from './integrations/catering-provider-registration.js';
 import { createFinalRoomConfirmationService } from './application/final-room-confirmation-service.js';
 import { createBookingChangeService } from './application/booking-change-service.js';
@@ -31,14 +32,9 @@ import { createAuditService } from './audit/audit-service.js';
 import { createTenantAuditQueryService } from './audit/tenant-audit-query-service.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { createEntitlementService } from './entitlements/entitlement-service.js';
-import { createEntraAuthService } from './identity/entra-auth-service.js';
-import { createJitUserService } from './identity/jit-user-service.js';
-import { createPendingProviderIdentityResolver } from './identity/provider-identity-resolver.js';
-import { createSessionService } from './identity/session-service.js';
 import { createMicrosoft365CalendarProviderFactory } from './integrations/microsoft365-calendar-provider.js';
 import { createLogger } from './logger.js';
 import { createMetricsRegistry } from './observability/metrics.js';
-import { createTenantOnboardingService } from './onboarding/tenant-onboarding-service.js';
 import { createPostgresPersistence } from './persistence/postgres/index.js';
 import { createHttpServer } from './server.js';
 import { shutdownCustomerRuntime } from './customer-shutdown.js';
@@ -60,6 +56,7 @@ export function createCustomerComposition({
   shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
   additionalRouteModules = [],
   routeModulesFactory,
+  authenticationFactory = null,
 } = {}) {
 if (!config) throw new TypeError('CUSTOMER_CONFIG_REQUIRED');
 if (typeof httpServerFactory !== 'function') throw new TypeError('CUSTOMER_HTTP_SERVER_FACTORY_REQUIRED');
@@ -88,30 +85,9 @@ const capabilityHealthService = persistence
     repository: persistence.microsoft365CapabilityHealthRepository,
   })
   : null;
-const sessionService = persistence
-  ? createSessionService({
-    repository: persistence.sessionRepository,
-    auditService,
-    publicOrigin: config.publicOrigin,
-    csrfSecret: config.csrfSecret,
-    sessionTtlSeconds: config.sessionTtlSeconds,
-  })
-  : null;
-const onboardingService = persistence && auditService
-  ? createTenantOnboardingService({
-    repository: persistence.tenantOnboardingRepository,
-    auditService,
-    transactionSecret: config.oidcTransactionSecret,
-    publicOrigin: config.publicOrigin,
-  })
-  : null;
-const jitUserService = persistence && auditService
-  ? createJitUserService({
-    bindingRepository: persistence.tenantOnboardingRepository,
-    userRepository: persistence.jitUserRepository,
-    auditService,
-  })
-  : null;
+const { sessionService,onboardingService,entraAuthService }=createCustomerAuthenticationComposition({
+  config,persistence,auditService,entraClient,authenticationFactory,
+});
 const microsoft365CalendarProviderFactory = persistence && microsoft365Client
   ? createMicrosoft365CalendarProviderFactory({
     connectionRepository: persistence.microsoft365ConnectionRepository,
@@ -144,18 +120,6 @@ const roomAvailabilityService = persistence
     authorizationPolicy,
     entitlementService,
     calendarProviderFactory: microsoft365CalendarProviderFactory,
-  })
-  : null;
-const identityResolver = createPendingProviderIdentityResolver({ onboardingService, jitUserService });
-const entraAuthService = persistence && entraClient && sessionService
-  ? createEntraAuthService({
-    repository: persistence.oidcTransactionRepository,
-    entraClient,
-    identityResolver,
-    sessionService,
-    transactionSecret: config.oidcTransactionSecret,
-    publicOrigin: config.publicOrigin,
-    transactionTtlSeconds: config.oidcTransactionTtlSeconds,
   })
   : null;
 const finalRoomConfirmationService = persistence
