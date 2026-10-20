@@ -1,3 +1,5 @@
+import { BrowserNavigationFormError,isBrowserNavigationForm,readBrowserNavigationForm }
+  from '../transport/browser-navigation-form.js';
 import { ApiError } from '../api-error.js';
 import { normalizeSyntheticHandoffScope,SYNTHETIC_HANDOFF_ROLES,SYNTHETIC_HANDOFF_SLOTS } from '../domain/synthetic-handoff.js';
 import { isCustomerEmailBrowserToken } from '../identity/customer-email-browser-token.js';
@@ -28,6 +30,7 @@ function redirect(response,location) {
   response.statusCode=303;response.setHeader('Location',location);response.end();return 303;
 }
 function mapFailure(error) {
+  if (error instanceof BrowserNavigationFormError) return new ApiError(error.statusCode,error.code);
   if (error?.message==='SYNTHETIC_HANDOFF_DENIED') return new ApiError(401,'AUTHENTICATION_REJECTED');
   if (error?.message==='SYNTHETIC_HANDOFF_LOGOUT_REQUIRED') return new ApiError(409,'AUTHENTICATION_LOGOUT_REQUIRED');
   if (['PROTECTED_RUNTIME_BUSY','PROTECTED_RUNTIME_SCOPE_STALE'].includes(error?.code)) {
@@ -83,8 +86,14 @@ export function createSyntheticCustomerHandoffRouteModule({ service,scope,clock=
         if (site!==undefined && site!=='same-origin'
           || request.headers.origin!==undefined && request.headers.origin!==scope.customerOrigin
           || mutation && request.headers.origin!==scope.customerOrigin) throw new ApiError(403,'ORIGIN_NOT_ALLOWED');
-        if (mutation) validateExactObject(await readJsonObjectBody(request,{ maxBytes: Math.min(1024,maxBodyBytes) }),{ required: {} });
-        else await assertEmptyAuthenticationBody(request);
+        let form=null;
+        if (mutation && isBrowserNavigationForm(request.headers)) {
+          if (request.headers['x-csrf-token']!==undefined) throw new ApiError(400,'VALIDATION_FAILED');
+          form=await call(()=>readBrowserNavigationForm(request,{ keys: path===`${ROOT}/start` ? [] : ['csrfToken'],
+            maxBytes: Math.min(1024,maxBodyBytes) }));
+        } else if (mutation) {
+          validateExactObject(await readJsonObjectBody(request,{ maxBytes: Math.min(1024,maxBodyBytes) }),{ required: {} });
+        } else await assertEmptyAuthenticationBody(request);
         if (path===`${ROOT}/start`) {
           const result=await call(()=>service.start(request.socket.remoteAddress));
           if (result?.status==='limited') { response.setHeader('Retry-After','60');throw new ApiError(429,'RATE_LIMITED'); }
@@ -105,7 +114,7 @@ export function createSyntheticCustomerHandoffRouteModule({ service,scope,clock=
             || typeof result.csrfToken!=='string' || !/^[a-f0-9]{64}$/.test(result.csrfToken)) invalid();
           return sendCustomerAuthenticationJson(response,200,{ ...result,requestId },maxResponseBytes);
         }
-        const csrfToken=readCustomerFlowCsrf(request);
+        const csrfToken=readCustomerFlowCsrf(form ? { headers: { 'x-csrf-token': form.csrfToken } } : request);
         const result=await call(()=>service.complete({ ...browser,completion,csrfToken,request,correlationId: requestId }));
         exact(result,['principal','csrfToken','setCookie']);
         response.setHeader('Set-Cookie',[checkedCustomerSessionCookie(result.setCookie),...clearSyntheticHandoffCookies()]);

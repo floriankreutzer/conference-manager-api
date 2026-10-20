@@ -108,3 +108,24 @@ expired proof while deleting the expired unreferenced proof. Revocation of the
 source normal-MFA session must then deny the Customer session. The named test
 has a175s bound and its isolated child process a180s watchdog. This becomes
 acceptance evidence only after the added exact-source CI step has passed.
+
+## Native browser navigation
+
+A browser fetch manual redirect is opaque; fetching a cross-origin303 does not
+navigate the document. In addition to the unchanged strict JSON API contract,
+Customer start accepts an exactly empty native URL-encoded form, Customer
+completion accepts only its bound `csrfToken`, and Platform approval accepts
+only `csrfToken` plus a serialized exact JSON `payload`. Options remain same-origin
+JSON for WebAuthn challenge acquisition. After the actual assertion the browser
+submits a top-level native form to its own API origin; the committed303 performs
+the intended cross-site navigation without returning a code as JSON.
+
+The common transport parser accepts only bounded, canonical URL-encoding and
+exact fields, rejects duplicates/unknown fields/encodings/overflow, and cannot
+establish identity or CSRF. Form CSRF uses the same existing principal-bound
+Platform verifier or original-flow Customer verifier. A competing CSRF header is
+rejected. Host/Origin/site/session/current custody/exact proof, cookie and commit
+checks are unchanged; no form can select an operator, Tenant, redirect or grant.
+The full frontend must allow only its fixed counterpart origin where its CSP
+form-action redirect policy requires it. Actual browser navigation and CSP
+acceptance remain required; loopback HTTP serialization alone is insufficient.

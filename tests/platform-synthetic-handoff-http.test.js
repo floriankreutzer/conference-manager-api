@@ -53,7 +53,7 @@ async function fixture(t,{ injected=true }={}) {
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   t.after(async()=>{ cookieCodec.destroy();await new Promise(resolve=>server.close(resolve)); });
   async function request(path,{ method='GET',body,headers={} }={}) {
-    const raw=body===undefined ? null : JSON.stringify(body);
+    const raw=body===undefined ? null : typeof body==='string' ? body : JSON.stringify(body);
     return new Promise((resolve,reject)=>{
       const req=http.request({ hostname: '127.0.0.1',port: server.address().port,path: ROOT+path,method,
         headers: Object.fromEntries(Object.entries({ host: 'localhost',...(method==='POST' ? { origin: ORIGIN } : {}),
@@ -149,4 +149,26 @@ test('known custody denial and deployment fences stay closed with bounded403/503
     }
   }
   assert.doesNotMatch(f.logs.join(''),/private fence|private stale|private order/);
+});
+
+
+test('native approval form preserves top-level303 and verifies its own session CSRF without accepting header/body ambiguity',async t=>{
+  const f=await fixture(t),selection={ generationId: f.generationId,slot: 'northwind',role: 'employee' };
+  const options=await f.request('/options',{ method: 'POST',body: selection,headers: f.managed });
+  const headers={ ...f.managed,'content-type': 'application/x-www-form-urlencoded','x-csrf-token': undefined,
+    cookie: `${f.managed.cookie}; ${options.headers['set-cookie'][0].split(';')[0]}` };
+  const payload=JSON.stringify({ ...selection,state: PASSKEY_STATE,response: {} });
+  const body=new URLSearchParams({ csrfToken: CSRF,payload }).toString();
+  for (const invalid of [new URLSearchParams({ csrfToken: NONCE,payload }).toString(),body+'&csrfToken='+CSRF,
+    new URLSearchParams({ csrfToken: CSRF,payload,operatorId: f.principal.operatorId }).toString()]) {
+    const rejected=await f.request('/approve',{ method: 'POST',body: invalid,headers });
+    assert.ok(rejected.status>=400 && rejected.status<500);
+  }
+  assert.equal(f.calls.length,1);
+  assert.equal((await f.request('/approve',{ method: 'POST',body,headers: { ...headers,'x-csrf-token': CSRF } })).status,400);
+  const answer=await f.request('/approve',{ method: 'POST',body,headers });
+  assert.equal(answer.status,303);assert.equal(answer.headers.location,f.state.approve.result.location);assert.equal(answer.text,'');
+  assert.equal(answer.headers['set-cookie'][0],f.normalCookie);assert.equal(f.calls.length,2);
+  assert.equal(f.calls.at(-1).input.intent.operatorId,f.principal.operatorId);
+  assert.doesNotMatch(f.logs.join(''),new RegExp(`${CSRF}|${PASSKEY_STATE}|${STATE}`));
 });

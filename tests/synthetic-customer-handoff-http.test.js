@@ -141,3 +141,20 @@ test('invalid callback is scrubbed without service authority; infrastructure and
 test('handoff transport remains unavailable without explicit route injection',async t=>{
   const f=await fixture(t,{ injected: false });assert.equal((await f.request()).status,404);assert.equal(f.calls.length,0);
 });
+
+
+test('native Customer start/complete forms keep top-level redirects and require exact final flow CSRF',async t=>{
+  const f=await fixture(t),headers={ 'content-type': 'application/x-www-form-urlencoded' };
+  const started=await f.request('/start',{ body: '',headers });assert.equal(started.status,303);
+  assert.equal(new URL(started.headers.location).origin,f.scope.platformOrigin);
+  const cookie=`${f.originalCookie}; ${f.completionCookie}; ${f.ordinaryCookie.split(';')[0]}`;
+  const body=new URLSearchParams({ csrfToken: f.signed.csrfToken }).toString();
+  for (const value of ['',body+'&csrfToken='+f.signed.csrfToken,'tenantId='+f.flowId]) {
+    const denied=await f.request('/complete',{ body: value,headers: { ...headers,cookie } });assert.equal(denied.status,400);
+  }
+  assert.equal(f.calls.length,1);
+  assert.equal((await f.request('/complete',{ body,headers: { ...headers,cookie,'x-csrf-token': f.signed.csrfToken } })).status,400);
+  const answer=await f.request('/complete',{ body,headers: { ...headers,cookie } });
+  assert.equal(answer.status,303);assert.equal(answer.headers.location,'/');assert.equal(answer.headers['set-cookie'][0],f.ordinaryCookie);
+  assert.equal(f.calls.at(-1).input.csrfToken,f.signed.csrfToken);assert.equal(f.calls.at(-1).input.request.headers.cookie,cookie);
+});

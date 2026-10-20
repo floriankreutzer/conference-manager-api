@@ -78,21 +78,22 @@ async t=>{
   for (const server of [customerServer,platformServer]) {
     servers.push(server);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   }
-  async function request(surface,path,{ method='GET',body,headers={} }={}) {
+  async function request(surface,path,{ method='GET',body,form,headers={} }={}) {
     const server=surface==='customer' ? customerServer : platformServer;
     const origin=surface==='customer' ? scope.customerOrigin : scope.platformOrigin;
-    const raw=body===undefined ? null : JSON.stringify(body);
+    const raw=form===undefined ? (body===undefined ? null : JSON.stringify(body)) : new URLSearchParams(form).toString();
+    const contentType=form===undefined ? 'application/json' : 'application/x-www-form-urlencoded';
     return new Promise((resolve,reject)=>{
       const outgoing=http.request({ hostname: '127.0.0.1',port: server.address().port,path,method,
         headers: { host: new URL(origin).host,...(method==='POST' ? { origin,'sec-fetch-site': 'same-origin' } : {}),
-          ...(raw===null ? {} : { 'content-type': 'application/json','content-length': Buffer.byteLength(raw) }),...headers } },incoming=>{
+          ...(raw===null ? {} : { 'content-type': contentType,'content-length': Buffer.byteLength(raw) }),...headers } },incoming=>{
         const chunks=[];incoming.on('data',chunk=>chunks.push(chunk));incoming.on('end',()=>resolve({ status: incoming.statusCode,
           headers: incoming.headers,text: Buffer.concat(chunks).toString('utf8') }));
       });outgoing.on('error',reject);outgoing.end(raw);
     });
   }
   const count=async()=>(await pool.query('SELECT count(*)::int AS count FROM sessions')).rows[0].count,before=await count();
-  const started=await request('customer','/api/v1/auth/delegation/start',{ method: 'POST',body: {} });assert.equal(started.status,303);
+  const started=await request('customer','/api/v1/auth/delegation/start',{ method: 'POST',form: {} });assert.equal(started.status,303);
   const target=new URL(started.headers.location),original=pair(started.headers['set-cookie'][0]);
   const arrived=await request('platform',target.pathname+target.search,{ headers: { 'sec-fetch-site': 'cross-site' } });
   assert.equal(arrived.status,303);assert.equal(await count(),before);
@@ -102,9 +103,9 @@ async t=>{
     headers: { cookie: opsCookie,'x-csrf-token': owner.current().csrfToken } });assert.equal(options.status,200);
   const challenge=JSON.parse(options.text);
   const approved=await request('platform','/api/v1/platform/auth/delegation/approve',{ method: 'POST',
-    body: { ...selection,state: challenge.state,response: owner.keys[0].response('get',{
-      counter: 2,client: { challenge: challenge.options.challenge } }) },
-    headers: { cookie: `${opsCookie}; ${pair(options.headers['set-cookie'][0])}`,'x-csrf-token': owner.current().csrfToken } });
+    form: { csrfToken: owner.current().csrfToken,payload: JSON.stringify({ ...selection,state: challenge.state,
+      response: owner.keys[0].response('get',{ counter: 2,client: { challenge: challenge.options.challenge } }) }) },
+    headers: { cookie: `${opsCookie}; ${pair(options.headers['set-cookie'][0])}` } });
   assert.equal(approved.status,303);assert.equal(await count(),before);
   const future=await owner.sessions.resolvePrincipal({ headers: { cookie: pair(approved.headers['set-cookie'][0]) } });
   assert.ok(future);assert.equal(future.assurance.level,'mfa');assert.notEqual(future.session.id,owner.current().principal.session.id);
@@ -116,8 +117,8 @@ async t=>{
   const completionCookie=`${original}; ${pair(callback.headers['set-cookie'][0])}`;
   const confirmation=await request('customer','/api/v1/auth/delegation/confirmation',{ headers: { cookie: completionCookie } });
   assert.equal(confirmation.status,200);const csrfToken=JSON.parse(confirmation.text).csrfToken;
-  const complete=()=>request('customer','/api/v1/auth/delegation/complete',{ method: 'POST',body: {},
-    headers: { cookie: completionCookie,'x-csrf-token': csrfToken } });
+  const complete=()=>request('customer','/api/v1/auth/delegation/complete',{ method: 'POST',form: { csrfToken },
+    headers: { cookie: completionCookie } });
   const results=await Promise.all([complete(),complete()]);assert.deepEqual(results.map(result=>result.status).sort(),[303,401]);
   assert.equal(await count(),before+1);const customerCookie=pair(results.find(result=>result.status===303).headers['set-cookie'][0]);
   assert.ok(await customer.sessionService.resolvePrincipal({ headers: { cookie: customerCookie } }));

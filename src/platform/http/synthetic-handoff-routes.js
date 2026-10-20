@@ -1,3 +1,5 @@
+import { BrowserNavigationFormError,isBrowserNavigationForm,readBrowserNavigationForm }
+  from '../../transport/browser-navigation-form.js';
 import { isInternalUuid,isOpaqueBrowserToken } from '../../domain/identifiers.js';
 import { normalizeSyntheticHandoffScope,requireSyntheticHandoffCustomerRedirect,SYNTHETIC_HANDOFF_ROLES,SYNTHETIC_HANDOFF_SLOTS }
   from '../../domain/synthetic-handoff.js';
@@ -25,6 +27,7 @@ function invalid() { throw new PlatformHttpError(500,'PLATFORM_SYNTHETIC_RESULT_
 function denied() { throw new PlatformHttpError(403,'PLATFORM_SYNTHETIC_ACCESS_DENIED',{ securityCategory: 'authorization' }); }
 async function callProtocol(work) {
   try { return await work(); } catch (error) {
+    if (error instanceof BrowserNavigationFormError) throw new PlatformHttpError(error.statusCode,`PLATFORM_${error.code}`);
     if (error?.message==='SYNTHETIC_HANDOFF_DENIED') denied();
     if (error?.message==='SYNTHETIC_HANDOFF_OWNER_CAPACITY'
       || ['PROTECTED_RUNTIME_BUSY','PROTECTED_RUNTIME_SCOPE_STALE'].includes(error?.code)) {
@@ -89,14 +92,23 @@ export function createPlatformSyntheticHandoffRouteModule({ protocol,intentCooki
           || request.headers.origin!==undefined && request.headers.origin!==scope.platformOrigin
           || mutation && request.headers.origin!==scope.platformOrigin) denied();
         if (!mutation) await assertNoPlatformRequestBody(request);
-        const principal=current(await platformPrincipalGuard.require(request,{ csrf: mutation,correlationId: requestId }),scope);
+        const approval=path===`${ROOT}/approve`;let form=null,payload=null;
+        if (approval && isBrowserNavigationForm(request.headers)) {
+          if (request.headers['x-csrf-token']!==undefined) throw new PlatformHttpError(400,'PLATFORM_VALIDATION_FAILED');
+          form=await callProtocol(()=>readBrowserNavigationForm(request,{ keys: ['csrfToken','payload'],
+            maxBytes: Math.min(maxBodyBytes,32768) }));
+          if (!isOpaqueBrowserToken(form.csrfToken) || form.payload.length>16384) denied();
+          try { payload=JSON.parse(form.payload); } catch { throw new PlatformHttpError(400,'PLATFORM_VALIDATION_FAILED'); }
+        }
+        const guardRequest=form ? { method: request.method,headers: { ...request.headers,'x-csrf-token': form.csrfToken } } : request;
+        const principal=current(await platformPrincipalGuard.require(guardRequest,{ csrf: mutation,correlationId: requestId }),scope);
         const pending=intentCookie.read(request.headers);if (!pending) denied();
         if (path===`${ROOT}/intent`) {
           sendPlatformJson(response,200,{ status: 'confirmation_required',slots: [...SYNTHETIC_HANDOFF_SLOTS],
             roles: [...SYNTHETIC_HANDOFF_ROLES],requestId },maxResponseBytes);return 200;
         }
-        const approval=path===`${ROOT}/approve`;
-        const body=requirePlatformExactObject(await readPlatformJsonObject(request,{ maxBytes: Math.min(maxBodyBytes,16384) }),
+        const body=requirePlatformExactObject(form ? payload
+          : await readPlatformJsonObject(request,{ maxBytes: Math.min(maxBodyBytes,16384) }),
           { required: { generationId: isInternalUuid,slot: value=>SYNTHETIC_HANDOFF_SLOTS.includes(value),
             role: value=>SYNTHETIC_HANDOFF_ROLES.includes(value),...(approval ? {
               state: isOpaqueBrowserToken,response: value=>value!==null && typeof value==='object' && !Array.isArray(value),
