@@ -31,9 +31,9 @@ export function readFixedDescriptorJson(descriptor = 3) {
   }
 }
 
-export function writeSecretToFixedDescriptor(secret, descriptor = 4) {
-  if (typeof secret !== 'string' || /[\r\n\u0000]/.test(secret)) {
-    descriptorError('PLATFORM_FIXED_DESCRIPTOR_SECRET_INVALID');
+export function validateSecretOutputDescriptor(descriptor = 4) {
+  if (!Number.isSafeInteger(descriptor) || descriptor < 3 || descriptor > 9) {
+    descriptorError('PLATFORM_FIXED_DESCRIPTOR_INVALID');
   }
   const stat = fstatSync(descriptor);
   if (stat.isFile() && (stat.mode & 0o077) !== 0) {
@@ -42,6 +42,13 @@ export function writeSecretToFixedDescriptor(secret, descriptor = 4) {
   if (stat.isCharacterDevice() || stat.isBlockDevice() || stat.isDirectory()) {
     descriptorError('PLATFORM_FIXED_DESCRIPTOR_TYPE_INVALID');
   }
+}
+
+export function writeSecretToFixedDescriptor(secret, descriptor = 4) {
+  if (typeof secret !== 'string' || /[\r\n\u0000]/.test(secret)) {
+    descriptorError('PLATFORM_FIXED_DESCRIPTOR_SECRET_INVALID');
+  }
+  validateSecretOutputDescriptor(descriptor);
   const payload = Buffer.from(`${secret}\n`, 'ascii');
   let offset = 0;
   while (offset < payload.length) offset += writeSync(descriptor, payload, offset);

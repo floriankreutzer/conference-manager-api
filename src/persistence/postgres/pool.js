@@ -30,7 +30,8 @@ const { Pool } = pg;
 // Schema 53 stores inactive Platform passkey credentials and browser-bound authentication ceremonies.
 // Schema 54 records immutable provider catalogue sources without publishing offers.
 // Schema 55 records atomic explicit Manager catalogue reviews and publication.
-export const CURRENT_SCHEMA_VERSION = 55;
+// Schema 56 stores independently authorized two-stage Platform passkey enrollment.
+export const CURRENT_SCHEMA_VERSION = 56;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',
