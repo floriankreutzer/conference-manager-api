@@ -3,7 +3,13 @@ import { normalizeCustomerInvitationIntent } from '../../authorization/customer-
 import { CustomerInvitationConflictError } from '../../domain/customer-invitation-errors.js';
 import { isPostgresTransactionActive } from './transaction.js';
 import { customerInvitationUuid as uuid,customerInvitationRecord,openCustomerMailbox,
-  CUSTOMER_INVITATION_COLUMNS,CUSTOMER_INVITATION_JOINS } from './customer-invitation-records.js';
+  CUSTOMER_INVITATION_COLUMNS,CUSTOMER_INVITATION_JOINS,customerInvitationDenied } from './customer-invitation-records.js';
+
+function auditIdentifier(value) {
+  if (!/^[1-9]\d{0,18}$/.test(String(value)) || BigInt(value)>9223372036854775807n) {
+    throw new Error('CUSTOMER_INVITATION_AUDIT_FAILED');
+  }
+}
 
 // Private custody only. Caller repositories must establish current Customer or
 // Platform authority and lock the Tenant before joining this same transaction.
@@ -70,9 +76,7 @@ export function createCustomerInvitationCustody(pool,{ environment,cipher,conten
       text: 'INSERT INTO customer_access_memberships(environment,tenant_id,id,mailbox_id,created_at) VALUES($1,$2,$3,$4,$5)',
       values: [environment,tenantId,membershipId,mailboxId,now] });
     const auditId = await recordAudit({ invitationId,now });
-    if (!/^[1-9]\d{0,18}$/.test(String(auditId)) || BigInt(auditId)>9223372036854775807n) {
-      throw new Error('CUSTOMER_INVITATION_AUDIT_FAILED');
-    }
+    auditIdentifier(auditId);
     await client.query({ name: 'customer-invitation-insert',
       text: `INSERT INTO customer_member_invitations(environment,tenant_id,id,membership_id,mailbox_id,elevated_roles,locale,
         created_at,issued_at,expires_at,last_audit_event_id)
@@ -82,5 +86,45 @@ export function createCustomerInvitationCustody(pool,{ environment,cipher,conten
       recipient: intent.recipient, tenantDisplayName, locale: intent.locale, now });
     return load(client, tenantId, invitationId);
   }
-  return Object.freeze({ load,delivery,issue });
+  async function mutate(client,{ tenantId,invitationId,expectedRevision: expected,operation,tenantDisplayName,now,recordAudit } = {}) {
+    transaction(client);uuid(tenantId);uuid(invitationId);
+    if (!Number.isSafeInteger(expected) || expected<1 || expected>=Number.MAX_SAFE_INTEGER
+      || !['reissue','revoke'].includes(operation) || !(now instanceof Date) || !Number.isFinite(now.getTime())
+      || typeof recordAudit!=='function') throw new TypeError('CUSTOMER_INVITATION_CUSTODY_INPUT_INVALID');
+    const result = await client.query({ name: 'customer-invitation-mutation-lock',
+      text: `SELECT invitation.revision,invitation.issued_at,invitation.accepted_at,invitation.revoked_at,
+        invitation.locale,invitation.mailbox_id,membership.user_id FROM customer_member_invitations invitation
+        JOIN customer_access_memberships membership ON membership.environment=invitation.environment
+          AND membership.tenant_id=invitation.tenant_id AND membership.id=invitation.membership_id
+        WHERE invitation.environment=$1 AND invitation.tenant_id=$2 AND invitation.id=$3
+        FOR UPDATE OF invitation,membership`, values: [environment,tenantId,invitationId] });
+    if (result.rowCount !== 1) customerInvitationDenied();
+    const current = result.rows[0];
+    if (Number(current.revision) !== expected || current.accepted_at !== null || current.revoked_at !== null
+      || current.user_id !== null || expected >= Number.MAX_SAFE_INTEGER - 1) throw new CustomerInvitationConflictError();
+    if (operation === 'reissue' && now.getTime() - current.issued_at.getTime() < 60000) {
+      throw new CustomerInvitationConflictError();
+    }
+    const nextRevision = expected + 1, auditId = await recordAudit({ invitationId,nextRevision,now });
+    auditIdentifier(auditId);
+    await client.query({ name: 'customer-invitation-cancel-queued',
+      text: `UPDATE customer_access_deliveries SET status='cancelled' WHERE environment=$1 AND tenant_id=$2
+        AND invitation_id=$3 AND status='queued'`, values: [environment,tenantId,invitationId] });
+    if (operation === 'reissue') {
+      await client.query({ name: 'customer-invitation-reissue',
+        text: `UPDATE customer_member_invitations SET revision=$4,issued_at=$5,expires_at=$5::timestamptz+interval '7 days',
+          last_audit_event_id=$6 WHERE environment=$1 AND tenant_id=$2 AND id=$3`,
+        values: [environment,tenantId,invitationId,nextRevision,now,auditId] });
+      const value = await load(client, tenantId, invitationId);
+      await delivery(client, { tenantId: tenantId, invitationId, invitationRevision: nextRevision,
+        mailboxId: current.mailbox_id, recipient: value.recipient, tenantDisplayName, locale: current.locale, now });
+    } else {
+      await client.query({ name: 'customer-invitation-revoke',
+        text: `UPDATE customer_member_invitations SET revision=$4,revoked_at=$5,last_audit_event_id=$6
+          WHERE environment=$1 AND tenant_id=$2 AND id=$3`,
+        values: [environment,tenantId,invitationId,nextRevision,now,auditId] });
+    }
+    return load(client, tenantId, invitationId);
+  }
+  return Object.freeze({ load,delivery,issue,mutate });
 }

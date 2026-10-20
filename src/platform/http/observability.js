@@ -24,6 +24,8 @@ export const PLATFORM_HTTP_ROUTE = Object.freeze({
   DEMO_STATIC: 'platform_demo_static',
   TENANT_DIRECTORY: 'platform_tenant_directory',
   TENANT_CREATE: 'platform_tenant_create',
+  INVITATION_LIST: 'platform_invitation_list',
+  INVITATION_ISSUE: 'platform_invitation_issue',
   INVITATION_REVOKE: 'platform_invitation_revoke',
   INVITATION_REISSUE: 'platform_invitation_reissue',
   LIFECYCLE_TRANSITION: 'platform_lifecycle_transition',

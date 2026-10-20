@@ -101,3 +101,45 @@ physical-key acceptance evidence.
 The port is not selected by a process entrypoint in this preparation. Platform
 list/resend/revoke and directory projection for the new custody remain follow-on
 work before activating this create path in protected INT.
+
+## Platform invitation administration preparation
+
+The optional `createPlatformTenantRoutes({ invitationAdministration: true })`
+replaces the default Tenant route module in a protected composition. It requires
+both real onboarding and real invitation-administration ports at startup. It
+claims the scoped invitation collection for bounded GET listing and POST batch
+issuance, and sends existing per-invitation resend/revoke routes only to the new
+custody service. There is no fallback after a business or persistence failure.
+The default route module does not claim the new collection. No entrypoint selects
+this mode yet.
+
+The new service requires the existing Platform invitation-management permission
+and current target policy. Even listing recipients requires fresh proof and CSRF;
+its exact query and pagination join the request hash. The minimized Platform
+directory-read audit names the invitation collection and operation, without
+recipient details. List output is ordered, cursor-fenced and limited to100 rows.
+Additional invitation batches are limited to20 and do not re-add the owner already
+included by initial onboarding. Customer role/locale intent uses the same injected
+contract as onboarding; it cannot carry Platform roles or browser Tenant authority.
+
+Existing-Tenant commands use environment/operator/Tenant/command-bound HMAC
+receipts and reauthorize before replay. The repository locks current Platform
+operator/session authority, command receipt and eligible Tenant before accessing
+custody. Customer and Platform management use one private mutation primitive for
+invitation/member locking, revision fencing, the sixty-second resend cooldown,
+terminal-state denial, queued-only cancellation and a fresh encrypted delivery
+revision. A provider acceptance or active claimed lease survives revocation as a
+recorded external fact; revocation does not grant access. Both audit domains,
+receipt and outbox effects remain atomic with the exact proof transaction.
+
+Focused tests cover actual permission/target decisions, absent strong assurance,
+closed inputs, public scope/result fences, private-field denial, query/body proof
+substitutions and explicit route composition. Native acceptance extends the same
+real PostgreSQL fixture with additional batch/replay, foreign invitation IDs,
+concurrent revocation, retained acceptance observations and a positive resend of a
+legitimately aged initial invitation. That initial fixture is inserted through
+normal custody/audit guards with database-derived historical timestamps; it does
+not patch a clock, edit immutable existing rows, disable a guard or sleep.
+Writing these cases does not claim native execution; actual current CI remains
+required before acceptance. Directory projection, UI and protected INT activation
+remain follow-on work.
