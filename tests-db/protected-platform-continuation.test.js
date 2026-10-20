@@ -25,7 +25,7 @@ test('native signed continuation uses the protected max1 RR scope and rolls proo
   t.after(async()=>{ await Promise.all([pool.end(),leasePool.end()]); });await migrateUp(pool);
   const operatorId=randomUUID(),epoch=randomUUID(),roles=['platform_security_admin'];
   await pool.query(`INSERT INTO platform_operators(id,provider,provider_tenant_reference,provider_subject_reference,scope_mode,roles)
-    VALUES($1,$2,'directory',$1::text,'all',$3)`,[operatorId,PLATFORM_ENTRA_PROVIDER,roles]);
+    VALUES($1::uuid,$2,'directory',$1::text,'all',$3)`,[operatorId,PLATFORM_ENTRA_PROVIDER,roles]);
   const keys=[platformPasskeyFixture({ operatorId }),platformPasskeyFixture({ operatorId })];
   for (const key of keys) await pool.query(`INSERT INTO platform_passkey_credentials
     (id,operator_id,environment,credential_id,public_key,user_handle,signature_counter,backup_eligible,backed_up)
