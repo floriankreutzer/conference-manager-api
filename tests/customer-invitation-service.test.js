@@ -180,5 +180,6 @@ test('Tenant-visible audit distinguishes issue, reissue and revocation without r
   assert.deepEqual(page.events.map(event => event.change.after), [
     { revision: 1, status: 'issued' }, { revision: 2, status: 'reissued' }, { revision: 2, status: 'revoked' },
   ]);
+  assert.deepEqual(page.events.map(event => event.change.before), [null, { revision: 1 }, { revision: 1 }]);
   assert.doesNotMatch(JSON.stringify(page), /recipient|person@example|metadata|operation|token|secret/);
 });
