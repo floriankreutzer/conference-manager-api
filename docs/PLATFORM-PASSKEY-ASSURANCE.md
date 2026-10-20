@@ -472,3 +472,17 @@ all overlays through22 (Customer descendants extend through23). Four other expli
 current-schema assertions were advanced to the exact integrated version as well;
 the historical schema21/33/etc. rollback expectations are unchanged. This is a test
 contract correction, not a waived failure, and requires fresh current-head checks.
+
+### Expected nonce at the actual SDK code exchange
+
+The existing CA flow and prepared primary/passkey flow recover the original
+nonce from the transaction secret and random state in the distinct
+`platform-oidc-nonce:v1` HMAC domain. Only its hash remains in transaction custody.
+Code redemption verifies that expectation before provider I/O and supplies the
+raw expected nonce to the pinned SDK, as well as retaining independent hash and
+claim validation. This fixes the actual SDK's `nonce_mismatch` rejection when no
+expected nonce was supplied. It does not relax issuer, audience, context,
+freshness, epoch, target/session binding, key count or one-use proof controls.
+Old random-nonce pending transactions must restart; ordinary business sessions
+and registered keys are preserved. Actual SDK round-trip tests use isolated
+synthetic provider responses and do not claim real owner/device acceptance.

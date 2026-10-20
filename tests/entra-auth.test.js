@@ -159,7 +159,7 @@ test('validated Entra claims are minimized and do not import provider roles, gro
   const identity = await entraClient().redeemAuthorizationCode({
     code: 'valid-code',
     codeVerifier: 'V'.repeat(43),
-    expectedNonceHash: hash(NONCE),
+    expectedNonce: NONCE,expectedNonceHash: hash(NONCE),
   });
   assert.deepEqual(identity, {
     provider: ENTRA_IDENTITY_PROVIDER,
@@ -173,7 +173,7 @@ test('optional Entra display names beyond the local profile bound never block a 
   const bounded = await entraClient(providerApplication({ name: 'N'.repeat(160) })).redeemAuthorizationCode({
     code: 'bounded-name-code',
     codeVerifier: 'V'.repeat(43),
-    expectedNonceHash: hash(NONCE),
+    expectedNonce: NONCE,expectedNonceHash: hash(NONCE),
   });
   assert.equal(bounded.displayName, 'N'.repeat(160));
 
@@ -181,7 +181,7 @@ test('optional Entra display names beyond the local profile bound never block a 
     const identity = await entraClient(providerApplication({ name: 'N'.repeat(length) })).redeemAuthorizationCode({
       code: `long-name-${length}`,
       codeVerifier: 'V'.repeat(43),
-      expectedNonceHash: hash(NONCE),
+      expectedNonce: NONCE,expectedNonceHash: hash(NONCE),
     });
     assert.equal(identity.tenantReference, TENANT_ID);
     assert.equal(identity.userReference, USER_ID);
@@ -198,7 +198,7 @@ test('optional Entra display names beyond the local profile bound never block a 
     const identity = await entraClient(providerApplication({ name })).redeemAuthorizationCode({
       code: 'unsafe-format-name',
       codeVerifier: 'V'.repeat(43),
-      expectedNonceHash: hash(NONCE),
+      expectedNonce: NONCE,expectedNonceHash: hash(NONCE),
     });
     assert.equal(identity.displayName, null);
   }
@@ -207,7 +207,7 @@ test('optional Entra display names beyond the local profile bound never block a 
     .redeemAuthorizationCode({
       code: 'unicode-name',
       codeVerifier: 'V'.repeat(43),
-      expectedNonceHash: hash(NONCE),
+      expectedNonce: NONCE,expectedNonceHash: hash(NONCE),
     });
   assert.equal(unicode.displayName, 'José 山田');
 });
@@ -216,7 +216,7 @@ test('two Entra organizations resolve to distinct provider-neutral tenant refere
   const first = await entraClient().redeemAuthorizationCode({
     code: 'first-code',
     codeVerifier: 'V'.repeat(43),
-    expectedNonceHash: hash(NONCE),
+    expectedNonce: NONCE,expectedNonceHash: hash(NONCE),
   });
   const secondClient = entraClient(providerApplication({
     tid: OTHER_TENANT_ID,
@@ -225,7 +225,7 @@ test('two Entra organizations resolve to distinct provider-neutral tenant refere
   const second = await secondClient.redeemAuthorizationCode({
     code: 'second-code',
     codeVerifier: 'V'.repeat(43),
-    expectedNonceHash: hash(NONCE),
+    expectedNonce: NONCE,expectedNonceHash: hash(NONCE),
   });
   assert.notEqual(first.tenantReference, second.tenantReference);
   assert.equal(first.userReference, second.userReference);
@@ -245,7 +245,7 @@ test('Entra claims fail closed for audience, issuer, nonce, expiry, tenant, and 
       entraClient(providerApplication(overrides)).redeemAuthorizationCode({
         code: 'valid-code',
         codeVerifier: 'V'.repeat(43),
-        expectedNonceHash: hash(NONCE),
+        expectedNonce: NONCE,expectedNonceHash: hash(NONCE),
       }),
       (error) => error instanceof EntraAuthenticationError,
     );
@@ -261,7 +261,7 @@ test('provider token validation or signature failure is normalized to a safe aut
     entraClient(application).redeemAuthorizationCode({
       code: 'invalid-signature-code',
       codeVerifier: 'V'.repeat(43),
-      expectedNonceHash: hash(NONCE),
+      expectedNonce: NONCE,expectedNonceHash: hash(NONCE),
     }),
     (error) => (
       error instanceof EntraAuthenticationError
@@ -288,7 +288,9 @@ test('auth service stores hashed state/nonce, creates PKCE, and binds the initia
 
   const started = await service.start({ correlationId: 'corr-1' });
   assert.equal(captured.state, STATE);
-  assert.equal(captured.nonce, NONCE);
+  assert.match(captured.nonce,/^[A-Za-z0-9_-]{43}$/);
+  assert.notEqual(captured.nonce,STATE);
+  assert.notEqual(captured.nonce,cookieValue(started.setCookie));
   assert.match(captured.codeChallenge, /^[A-Za-z0-9_-]{43}$/);
   const transactionCookiePattern = new RegExp([
     '^cm_oidc_tx=[A-Za-z0-9_-]{43}',
@@ -303,9 +305,9 @@ test('auth service stores hashed state/nonce, creates PKCE, and binds the initia
   );
   const stored = [...repository.records.values()][0];
   assert.equal(stored.stateHash, hash(STATE));
-  assert.equal(stored.nonceHash, hash(NONCE));
+  assert.equal(stored.nonceHash, hash(captured.nonce));
   assert.equal(JSON.stringify(stored).includes(STATE), false);
-  assert.equal(JSON.stringify(stored).includes(NONCE), false);
+  assert.equal(JSON.stringify(stored).includes(captured.nonce), false);
   assert.equal(JSON.stringify(stored).includes(cookieValue(started.setCookie)), false);
   const clearCookiePattern = /^cm_oidc_tx=; .*Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT$/;
   assert.match(service.clearCookie(), clearCookiePattern);

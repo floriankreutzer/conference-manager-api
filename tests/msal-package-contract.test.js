@@ -116,6 +116,7 @@ for (const [name, platform, authenticationContext] of [
     const { client, authority, redirectUri, calls, request, codeVerifier } = fixture(platform);
     await assert.rejects(client.redeemAuthorizationCode({
       code: 'synthetic-rejected-code', codeVerifier,
+      expectedNonce: request.nonce,
       expectedNonceHash: createHash('sha256').update(request.nonce).digest('hex'),
       authenticationContext,
     }), { code: platform ? 'PLATFORM_ENTRA_CODE_REDEMPTION_FAILED' : 'ENTRA_CODE_REDEMPTION_FAILED' });

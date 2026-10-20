@@ -157,7 +157,7 @@ function createAuthService({
       if (purpose === 'step_up') principal = normalizePlatformPrincipal(principalValue);
       if (purpose === 'login' && principalValue !== null) throw new TypeError('PLATFORM_OIDC_LOGIN_PRINCIPAL_FORBIDDEN');
       const state = opaque(randomToken(), 'PLATFORM_OIDC_STATE_FACTORY_INVALID');
-      const nonce = opaque(randomToken(), 'PLATFORM_OIDC_NONCE_FACTORY_INVALID');
+      const nonce = hmac(secret,'platform-oidc-nonce:v1',state);
       const authenticationContext = primaryOnly ? 'cm:pk:primary:v1'
         : purpose === 'step_up' ? stepUpAuthenticationContext : mfaAuthenticationContext;
       const flowCorrelationId = correlationId === undefined ? idFactory() : correlationId;
@@ -238,6 +238,7 @@ function createAuthService({
         assertion = await entraClient.redeemAuthorizationCode({
           code: code(codeValue),
           codeVerifier: verifier,
+          expectedNonce: hmac(secret,'platform-oidc-nonce:v1',state),
           expectedNonceHash: transaction.nonceHash,
           ...(!primaryOnly ? { authenticationContext: transaction.authenticationContext } : {}),
         });
