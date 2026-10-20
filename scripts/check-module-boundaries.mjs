@@ -21,6 +21,9 @@ const PRODUCTION_COMPOSITION_ROOTS = new Set([
   'src/platform/app.js',
 ]);
 const CUSTOMER_EMAIL_AUTHORITY_MODULES = new Set([
+  'src/application/customer-access-delivery-worker.js',
+  'src/persistence/postgres/customer-access-delivery-repository.js',
+  'src/persistence/postgres/customer-access-delivery-eligibility.js',
   'src/http/customer-invitation-routes.js',
   'src/http/customer-email-authentication-routes.js',
   'src/identity/customer-email-authentication-service.js',

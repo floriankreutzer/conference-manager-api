@@ -12,6 +12,8 @@ import { createPostgresCustomerInvitationRepository } from '../src/persistence/p
 import { createPostgresSessionRepository } from '../src/persistence/postgres/session-repository.js';
 import { createPostgresPool, isPostgresSchemaReady } from '../src/persistence/postgres/pool.js';
 import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
+import { createPostgresCustomerAccessDeliveryRepository } from '../src/persistence/postgres/customer-access-delivery-repository.js';
+import { createCustomerAccessDeliveryWorker } from '../src/application/customer-access-delivery-worker.js';
 
 const id = number => `c0000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
 const intent = (recipient = 'Invited+pilot@example.com', roles = ['tenant_admin']) => ({ recipient, roles, locale: 'de' });
@@ -163,5 +165,37 @@ test('Customer invitation custody is scoped, encrypted, audit-atomic, single-com
       WHERE environment='int' AND tenant_id=$2 AND id=$3`,[id(2),id(1),membership.id]),/CUSTOMER_MEMBERSHIP_ACCEPTANCE_REQUIRED/);
     assert.equal((await pool.query('SELECT user_id FROM customer_access_memberships WHERE id=$1',[membership.id])).rows[0].user_id,null);
     await assert.rejects(rollbackLatest(pool), /CUSTOMER_ACCESS_REQUIRES_VERIFIED_RECOVERY/);
+  });
+  await t.test('real outbox claims fence concurrent workers and retain honest acceptance, failure and revoked eligibility',async () => {
+    const dispatch=createPostgresCustomerAccessDeliveryRepository(pool,{ environment: 'int',cipher });
+    const otherEnvironment=createPostgresCustomerAccessDeliveryRepository(pool,{ environment: 'prod',cipher });
+    assert.equal(await otherEnvironment.claim(),null);
+    // Earlier cancelled/accepted/in-flight rows remain unchanged. Only the
+    // second original, still eligible invitation is available to these workers.
+    const attempts=await Promise.all([dispatch.claim(),dispatch.claim()]);
+    assert.equal(attempts.filter(Boolean).length,1);
+    const claimed=attempts.find(Boolean);assert.equal(claimed.attemptCount,1);
+    assert.equal(claimed.message.recipient,'Second@example.com');assert.equal(claimed.message.deliveryId,claimed.deliveryId);
+    assert.equal(await dispatch.settle({ deliveryId: claimed.deliveryId,leaseId: id(150),status: 'accepted',
+      providerMessageId: id(151),retryDelayMs: null }),null);
+    assert.equal(await dispatch.settle({ deliveryId: claimed.deliveryId,leaseId: claimed.leaseId,status: 'accepted',
+      providerMessageId: id(151),retryDelayMs: null }),'accepted');
+    assert.equal(await dispatch.settle({ deliveryId: claimed.deliveryId,leaseId: claimed.leaseId,status: 'failed',
+      providerMessageId: null,retryDelayMs: null }),null);
+    await assert.rejects(service.list(a),/RESOURCE_NOT_AVAILABLE/); // The stale Admin stays denied.
+    const c=await prepareTenant(id(160),id(161));
+    const batch=await service.issueBatch(c,{ commandId: id(162),invitations: [intent('Dispatch@example.com',[])] });
+    let sends=0;
+    const worker=createCustomerAccessDeliveryWorker({ repository: dispatch,provider: { async send(message) {
+      sends++;assert.equal(message.recipient,'Dispatch@example.com');return { status: 'accepted',messageId: id(163) };
+    } } });
+    assert.equal((await worker.runOnce()).status,'accepted');assert.equal(sends,1);
+    assert.equal((await service.list(c)).find(row => row.id===batch[0].id).delivery,'accepted');
+    const blocked=await service.issueBatch(c,{ commandId: id(164),invitations: [intent('Suspended@example.com',[])] });
+    await pool.query("UPDATE tenants SET status='suspended' WHERE id=$1",[id(160)]);
+    assert.equal((await worker.runOnce()).status,'idle');assert.equal(sends,1);
+    const state=await pool.query("SELECT status FROM customer_access_deliveries WHERE invitation_id=$1",[blocked[0].id]);
+    assert.equal(state.rows[0].status,'cancelled');
+    assert.equal(await auditRepository.verifyTenantChain(id(160)),true);
   });
 });
