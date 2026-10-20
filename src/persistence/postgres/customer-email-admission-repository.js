@@ -18,10 +18,11 @@ function currentEntry(member,invitation,user) {
 }
 
 export function createPostgresCustomerEmailAdmissionRepository(pool,{ environment,flowBinding,auditRepository,
-  identifierFactory = randomUUID } = {}) {
+  identifierFactory = randomUUID,tenantEligibility = null } = {}) {
   if (!pool || typeof pool.connect !== 'function' || typeof pool.query !== 'function' || !['dev','int','prod'].includes(environment)
     || typeof flowBinding?.matchesBrowser !== 'function' || typeof flowBinding?.verifyCsrf !== 'function'
-    || typeof auditRepository?.appendWithClient !== 'function' || typeof identifierFactory !== 'function') {
+    || typeof auditRepository?.appendWithClient !== 'function' || typeof identifierFactory !== 'function'
+    || (tenantEligibility !== null && typeof tenantEligibility?.allowsWithClient !== 'function')) {
     throw new TypeError('CUSTOMER_EMAIL_ADMISSION_CONFIGURATION_INVALID');
   }
   function proof(value,browserToken,csrfToken,now) {
@@ -52,14 +53,13 @@ export function createPostgresCustomerEmailAdmissionRepository(pool,{ environmen
     }
     return String(stored.id);
   }
-  return Object.freeze({
-    async choices({ challengeId,browserToken } = {}) {
+  async function choicesWithClient(client,{ challengeId,browserToken } = {}) {
       if (!isCustomerEmailBrowserToken(browserToken)) return rejected();
-      const value = await challenge(pool,challengeId);
-      if (!proof(value,browserToken,undefined,await now(pool))) return rejected();
+      const value = await challenge(client,challengeId);
+      if (!proof(value,browserToken,undefined,await now(client))) return rejected();
       const snapshot = normalizeCustomerEmailAdmissionSnapshot(value.admission_snapshot),items = [];
       if (snapshot.length === 0) return rejected();
-      const result = await pool.query({ name: 'customer-email-choice-current',text: `SELECT member.id,member.tenant_id,
+      const result = await client.query({ name: 'customer-email-choice-current',text: `SELECT member.id,member.tenant_id,
           member.user_id,person.security_version,person.active,tenant.display_name,invitation.id AS invitation_id,
           invitation.revision,invitation.expires_at,invitation.accepted_at,invitation.revoked_at
           FROM customer_access_memberships member JOIN tenants tenant ON tenant.id=member.tenant_id
@@ -77,11 +77,17 @@ export function createPostgresCustomerEmailAdmissionRepository(pool,{ environmen
       for (const row of result.rows) {
         const candidate = currentEntry(row,{ id: row.invitation_id,revision: row.revision },row);
         if (!matchesCustomerEmailAdmission({ snapshot,current: candidate })) continue;
+        if (tenantEligibility !== null && await tenantEligibility.allowsWithClient(client,row.tenant_id) !== true) continue;
         if (typeof row.display_name !== 'string' || row.display_name.length<1 || row.display_name.length>160
           || /[\u0000-\u001f\u007f]/.test(row.display_name)) throw new Error('CUSTOMER_EMAIL_CHOICE_LABEL_INVALID');
         items.push(Object.freeze({ membershipId: row.id,displayName: row.display_name }));
       }
       return Object.freeze({ status: 'membership_required',items: Object.freeze(items) });
+    }
+  return Object.freeze({
+    choices(input) {
+      return tenantEligibility === null ? choicesWithClient(pool,input)
+        : withPostgresTransaction(pool,client => choicesWithClient(client,input));
     },
     async admit(input) {
       const { challengeId,browserToken,csrfToken,membershipId,correlationId,auditEventFor,issueSession } = input;
@@ -98,6 +104,8 @@ export function createPostgresCustomerEmailAdmissionRepository(pool,{ environmen
       const expected = snapshot.find(item => item.membershipId === membershipId.toLowerCase());
       if (!expected) return rejected();
       return withPostgresTransaction(pool,async client => {
+        if (tenantEligibility !== null
+          && await tenantEligibility.allowsWithClient(client,expected.tenantId) !== true) return rejected();
         // Tenant -> membership -> User/invitation -> challenge. No global challenge
         // or mailbox lock is held while waiting for a Tenant business lock.
         const tenant = await client.query({ name: 'customer-email-admission-tenant-lock',text: `SELECT id FROM tenants

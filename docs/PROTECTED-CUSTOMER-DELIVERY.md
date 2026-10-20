@@ -27,9 +27,10 @@ memberships never expand an older snapshot. Unknown, unclassified, synthetic,
 foreign, stale or unavailable custody cannot fall back to ordinary delivery.
 
 Ineligible outbox work follows the existing cancelled/failed contract without
-decryption or a provider request. This component does not implement the remaining
-real-only anonymous challenge capture/admission or root invitation/configuration
-mode guards. Those are required before full protected activation.
+decryption or a provider request. The separate owned
+[invited access composition](PROTECTED-INVITED-CUSTOMER-ACCESS.md) qualifies anonymous
+challenge capture, choices and admission. Root invitation/configuration mode guards
+and whole protected activation remain separate outstanding work.
 
 The claim transaction still commits its bounded lease before outbound work. A
 membership/lifecycle change after claim cannot retract a request already in flight;

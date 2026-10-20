@@ -27,13 +27,14 @@ const ADMISSIONS = `SELECT member.id AS "membershipId",member.tenant_id AS "tena
 // Preauthentication custody only. No method creates a User, changes roles, links
 // providers or issues a business session. Admission remains a separate transaction.
 export function createPostgresCustomerEmailChallengeRepository(pool, {
-  environment,cipher,proofFactory,flowBinding,content,identifierFactory = randomUUID,
+  environment,cipher,proofFactory,flowBinding,content,identifierFactory = randomUUID,tenantEligibility = null,
 } = {}) {
   if (!pool || typeof pool.connect !== 'function' || !['dev','int','prod'].includes(environment)
     || !cipher || ['recipientLookup','seal'].some(method => typeof cipher[method] !== 'function')
     || !proofFactory || ['issue','matches'].some(method => typeof proofFactory[method] !== 'function')
     || !flowBinding || ['issue','bind','matchesBrowser','csrfFor','verifyCsrf'].some(method => typeof flowBinding[method] !== 'function')
-    || typeof content?.mailboxSignInCode !== 'function' || typeof identifierFactory !== 'function') {
+    || typeof content?.mailboxSignInCode !== 'function' || typeof identifierFactory !== 'function'
+    || (tenantEligibility !== null && typeof tenantEligibility?.allowsWithClient !== 'function')) {
     throw new TypeError('CUSTOMER_EMAIL_CHALLENGE_CONFIGURATION_INVALID');
   }
   const nextId = () => uuid(identifierFactory());
@@ -71,6 +72,13 @@ export function createPostgresCustomerEmailChallengeRepository(pool, {
           if (found.rows.length<=100) snapshot = normalizeCustomerEmailAdmissionSnapshot(found.rows.map(item => ({ ...item,
             userSecurityVersion: item.userSecurityVersion === null ? null : Number(item.userSecurityVersion),
             invitationRevision: item.invitationRevision === null ? null : Number(item.invitationRevision) })));
+        }
+        if (tenantEligibility !== null) {
+          const eligible = [];
+          for (const entry of snapshot) {
+            if (await tenantEligibility.allowsWithClient(client,entry.tenantId) === true) eligible.push(entry);
+          }
+          snapshot = eligible;
         }
         const mailboxId = snapshot.length ? mailbox.id : null;
         const context = { challengeId,purpose: 'request' };
