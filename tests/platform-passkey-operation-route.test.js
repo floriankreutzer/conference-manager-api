@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
 import test from 'node:test';
 import { protectPlatformPasskeyRoute } from '../src/platform/http/passkey-operation-route.js';
-import { platformTenantRoutes } from '../src/platform/http/tenant-routes.js';
+import { platformTenantRoutes,createPlatformTenantRoutes } from '../src/platform/http/tenant-routes.js';
 import { platformAuditRoutes } from '../src/platform/http/audit-routes.js';
 import { PlatformIdentityError } from '../src/platform/identity/errors.js';
 import { permissionsForPlatformRoles } from '../src/platform/identity/policy.js';
@@ -34,7 +34,8 @@ function response() {
   return { headers: {}, statusCode: 200, body: null, setHeader(name, value) { this.headers[name.toLowerCase()] = value; },
     end(value) { this.body = JSON.parse(value); } };
 }
-function fixture(module = platformTenantRoutes,platformCustomerOnboardingService=null) {
+function fixture(module = platformTenantRoutes,platformCustomerOnboardingService=null,
+  platformCustomerInvitationAdministrationService=null) {
   let pending = null; let failCommit = false; let failMutation = false; let csrf = true; let denied = 0;
   const contexts = new WeakSet(); const mutations = []; const challenges = []; let current = principal;
   const authService = {
@@ -57,6 +58,7 @@ function fixture(module = platformTenantRoutes,platformCustomerOnboardingService
   };
   const runtime = {
     platformCustomerOnboardingService,
+    platformCustomerInvitationAdministrationService,
     maxBodyBytes: 32768, maxResponseBytes: 65536,
     platformPrincipalGuard: { async require(request, options) {
       if (!current || request.headers.cookie?.includes('cm_platform_session=') !== true) {
@@ -193,4 +195,47 @@ test('onboarding body mode is explicit, bounded and never falls back after servi
   assert.equal(calls,1);assert.equal(f.mutations.length,0);assert.equal(result.body,null);
   assert.equal(result.headers['set-cookie'],undefined);
   assert.throws(()=>fixture(platformTenantRoutes,{}),/ONBOARDING_SERVICE_REQUIRED/);
+});
+
+
+test('explicit invitation administration binds list pagination and additional invitees to fresh concrete proofs',async()=>{
+  const calls=[],module=createPlatformTenantRoutes({ invitationAdministration: true });
+  const admin={ async list(value){ calls.push(['list',value]);return { schemaVersion: 1,items: [] }; },
+    async issueBatch(value){ calls.push(['issue',value]);return { outcome: 'updated',invitations: [] }; },
+    async reissue(){},async revoke(){} };
+  const f=fixture(module,{ async createTenant(){} },admin),path=`/api/v1/platform/tenants/${ID}/invitations`;
+  f.setCsrf(false);assert.ok((await f.invoke({ method: 'GET',path })).error);assert.equal(calls.length,0);
+  f.setCsrf(true);assert.equal((await f.invoke({ method: 'GET',path: `${path}?limit=5` })).statusCode,428);
+  assert.equal((await f.invoke({ method: 'GET',path: `${path}?limit=6`,proof: encodedProof })).error.statusCode,403);
+  const listed=await f.invoke({ method: 'GET',path: `${path}?limit=5`,proof: encodedProof });
+  assert.equal(listed.statusCode,200);assert.equal(calls[0][0],'list');assert.equal(calls[0][1].tenantId,ID);
+  assert.equal(calls[0][1].limit,5);assert.equal(calls[0][1].afterInvitationId,null);
+  const value={ reason: body.reason,confirmation: { action: 'tenant.invitation.create',tenantId: ID },
+    invitations: [{ recipient: 'Additional@example.test',roles: ['tenant_admin'],locale: 'en' }] };
+  assert.equal((await f.invoke({ path,value })).statusCode,428);
+  assert.equal((await f.invoke({ path,value,proof: encodedProof })).statusCode,201);
+  assert.equal(calls[1][0],'issue');assert.deepEqual(calls[1][1].invitations,value.invitations);
+  assert.equal(calls[1][1].operatorContext.assurance.level,'step_up');assert.equal(f.mutations.length,0);
+  assert.equal(platformTenantRoutes.claim({ method: 'GET',path }),null);
+});
+
+test('explicit administration uses real-custody resend/revoke ports, closed queries and mandatory composition',async()=>{
+  const module=createPlatformTenantRoutes({ invitationAdministration: true }),calls=[];
+  const admin={ async list(){},async issueBatch(){},async reissue(value){ calls.push(['reissue',value]);return { outcome: 'updated' }; },
+    async revoke(value){ calls.push(['revoke',value]);return { outcome: 'updated' }; } };
+  const f=fixture(module,{ async createTenant(){} },admin),path=`/api/v1/platform/tenants/${ID}/invitations/${OTHER}`;
+  for (const [method,suffix,action] of [['POST','/reissue','reissue'],['DELETE','','revoke']]) {
+    const value={ expectedRevision: 1,reason: body.reason,confirmation: { action: `tenant.invitation.${action}`,tenantId: ID } };
+    assert.equal((await f.invoke({ method,path: path+suffix,value })).statusCode,428);
+    assert.equal((await f.invoke({ method,path: path+suffix,value,proof: encodedProof })).statusCode,200);
+  }
+  assert.deepEqual(calls.map(item=>item[0]),['reissue','revoke']);assert.equal(f.mutations.length,0);
+  assert.equal(calls[0][1].invitationId,OTHER);assert.equal(calls[1][1].expectedRevision,1);
+  for (const query of ['limit=0','limit=101','limit=1&limit=2','afterId=invalid','tenantId=foreign']) {
+    const invalid=fixture(module,{ async createTenant(){} },admin),url=`/api/v1/platform/tenants/${ID}/invitations?${query}`;
+    await invalid.invoke({ method: 'GET',path: url });
+    assert.equal((await invalid.invoke({ method: 'GET',path: url,proof: encodedProof })).error.statusCode,400);
+  }
+  assert.throws(()=>fixture(module,{ async createTenant(){} }),/ADMINISTRATION_REQUIRED/);
+  assert.throws(()=>createPlatformTenantRoutes({ invitationAdministration: 'true' }),/CONFIGURATION_INVALID/);
 });

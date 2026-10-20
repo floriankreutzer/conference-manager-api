@@ -26,7 +26,7 @@ export function createPostgresCustomerInvitationRepository(pool, {
     || !cipher || ['seal','open','recipientLookup','commandDigest'].some(method => typeof cipher[method] !== 'function')
     || !content || typeof content.invitation !== 'function' || !auditRepository || typeof auditRepository.appendWithClient !== 'function'
     || typeof identifierFactory !== 'function') throw new TypeError('CUSTOMER_INVITATION_REPOSITORY_CONFIGURATION_INVALID');
-  const { load,delivery,issue }=createCustomerInvitationCustody(pool,{ environment,cipher,content,identifierFactory });
+  const { load,issue,mutate: mutateCustody }=createCustomerInvitationCustody(pool,{ environment,cipher,content,identifierFactory });
   async function audit(client, input, invitationId, nextRevision, now) {
     if (typeof input.auditEventFor !== 'function') throw new TypeError('CUSTOMER_INVITATION_AUDIT_REQUIRED');
     const event = input.auditEventFor({ invitationId, nextRevision, occurredAt: now.toISOString() });
@@ -43,39 +43,9 @@ export function createPostgresCustomerInvitationRepository(pool, {
     const expected = revision(input.expectedRevision);
     return withPostgresTransaction(pool, async client => {
       const tenantDisplayName = await lockCustomerInvitationActor(client, actor), now = await databaseTime(client);
-      const result = await client.query({ name: 'customer-invitation-mutation-lock',
-        text: `SELECT invitation.revision,invitation.issued_at,invitation.accepted_at,invitation.revoked_at,
-          invitation.locale,invitation.mailbox_id,membership.user_id FROM customer_member_invitations invitation
-          JOIN customer_access_memberships membership ON membership.environment=invitation.environment
-            AND membership.tenant_id=invitation.tenant_id AND membership.id=invitation.membership_id
-          WHERE invitation.environment=$1 AND invitation.tenant_id=$2 AND invitation.id=$3
-          FOR UPDATE OF invitation,membership`, values: [environment,actor.tenantId,invitationId] });
-      if (result.rowCount !== 1) customerInvitationDenied();
-      const current = result.rows[0];
-      if (Number(current.revision) !== expected || current.accepted_at !== null || current.revoked_at !== null
-        || current.user_id !== null || expected >= Number.MAX_SAFE_INTEGER - 1) throw new CustomerInvitationConflictError();
-      if (operation === 'reissue' && now.getTime() - current.issued_at.getTime() < 60000) {
-        throw new CustomerInvitationConflictError();
-      }
-      const nextRevision = expected + 1, auditId = await audit(client, input, invitationId, nextRevision, now);
-      await client.query({ name: 'customer-invitation-cancel-queued',
-        text: `UPDATE customer_access_deliveries SET status='cancelled' WHERE environment=$1 AND tenant_id=$2
-          AND invitation_id=$3 AND status='queued'`, values: [environment,actor.tenantId,invitationId] });
-      if (operation === 'reissue') {
-        await client.query({ name: 'customer-invitation-reissue',
-          text: `UPDATE customer_member_invitations SET revision=$4,issued_at=$5,expires_at=$5::timestamptz+interval '7 days',
-            last_audit_event_id=$6 WHERE environment=$1 AND tenant_id=$2 AND id=$3`,
-          values: [environment,actor.tenantId,invitationId,nextRevision,now,auditId] });
-        const value = await load(client, actor.tenantId, invitationId);
-        await delivery(client, { tenantId: actor.tenantId, invitationId, invitationRevision: nextRevision,
-          mailboxId: current.mailbox_id, recipient: value.recipient, tenantDisplayName, locale: current.locale, now });
-      } else {
-        await client.query({ name: 'customer-invitation-revoke',
-          text: `UPDATE customer_member_invitations SET revision=$4,revoked_at=$5,last_audit_event_id=$6
-            WHERE environment=$1 AND tenant_id=$2 AND id=$3`,
-          values: [environment,actor.tenantId,invitationId,nextRevision,now,auditId] });
-      }
-      return load(client, actor.tenantId, invitationId);
+      return mutateCustody(client,{ tenantId: actor.tenantId,invitationId,expectedRevision: expected,
+        operation,tenantDisplayName,now,recordAudit: ({ invitationId: target,nextRevision,now: changedAt })=>
+          audit(client,input,target,nextRevision,changedAt) });
     });
   }
   return Object.freeze({
