@@ -124,11 +124,14 @@ test('REAL admission acquires the Tenant write lock directly under the exact sha
   const business=fakePool(respond),lease=fakePool(respond),scope={ environment,securityEpoch: epoch };
   const qualification=createPostgresProtectedRealTenantScope(business.pool,scope);
   const scopes=createPostgresProtectedRuntimeExecutionScopes({ pool: business.pool,leasePool: lease.pool,...scope });
+  await assert.rejects(withPostgresTransaction(business.pool,
+    client=>qualification.lockAdmissionWithClient(client,randomUUID())),{ code: 'PROTECTED_SHARED_EXECUTION_REQUIRED' });
   await scopes.withShared(()=>withPostgresTransaction(business.pool,async client=>{
     assert.equal(await qualification.lockAdmissionWithClient(client,randomUUID()),true);
   }));
   const query=business.queries.find(value=>value?.name==='protected-admission-real-tenant-lock');
-  assert.match(query.text,/FOR SHARE OF deployment FOR UPDATE OF tenant/);
+  assert.match(query.text,/FOR UPDATE OF tenant/);assert.doesNotMatch(query.text,/FOR SHARE OF deployment/);
+  assert.match(query.text,/deployment.security_epoch=\$2/);
 });
 
 test('owned anonymous entry points reject a stale deployment before any business read, budget or unknown-recipient allocation',async()=>{

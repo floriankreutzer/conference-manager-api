@@ -33,6 +33,16 @@ The schema038 attribution marker and schema041 maintenance procedure remain
 owner/maintenance-only and are not granted to either runtime. The existing
 SECURITY DEFINER attribution triggers call the marker without a direct grant.
 
+REAL admission/delivery qualification retains its required live outer shared
+deployment scope and exact current UUID predicate. It locks the Tenant directly
+for admission or shared for delivery. A redundant deployment FOR SHARE was
+removed because PostgreSQL would otherwise require forbidden Customer UPDATE
+rights. The canonical UUID-rotation trigger already requires the exclusive
+deployment advisory lock. Native acceptance also checks actual restricted REAL
+qualification while an actual UUID update is denied55P03 and leaves the epoch
+unchanged. Qualification without the live outer scope is still refused before
+any qualifying query.
+
 Customer business statements retain ordinary canonical authorization and Tenant
 scoping. Append-only history receives SELECT/INSERT rather than mutation rights.
 Customer cannot modify Platform identity, sessions, keys, proofs or audit, or the

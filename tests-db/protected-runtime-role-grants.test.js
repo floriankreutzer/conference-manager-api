@@ -5,6 +5,9 @@ import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool } from '../src/persistence/postgres/pool.js';
 import { createPostgresAuditRepository } from '../src/persistence/postgres/audit-repository.js';
 import { createPostgresProtectedRuntimeReadiness } from '../src/persistence/postgres/protected-runtime-readiness.js';
+import { createPostgresProtectedRealTenantScope } from '../src/persistence/postgres/protected-real-tenant-scope.js';
+import { createPostgresProtectedRuntimeExecutionScopes } from '../src/persistence/postgres/protected-runtime-execution-scopes.js';
+import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
 import { createPostgresSyntheticGenerationRepository } from '../src/persistence/postgres/platform-synthetic-generation-repository.js';
 import { createPostgresSyntheticHandoffRepository } from '../src/persistence/postgres/platform-synthetic-handoff-repository.js';
 import { createSyntheticGenerationService } from '../src/platform/application/synthetic-generation-service.js';
@@ -63,9 +66,26 @@ async t=>{
   for (const query of ['SELECT token_hash FROM platform_sessions','SELECT public_key FROM platform_passkey_credentials',
     'SELECT * FROM platform_operators','UPDATE platform_operators SET status=status','TRUNCATE rooms',
     'UPDATE tenant_runtime_registry SET mode=mode']) await assert.rejects(restricted.query(query),{ code: '42501' });
+  await assert.rejects(restricted.query('UPDATE protected_runtime_deployments SET updated_at=updated_at'),{ code: '42501' });
   for (const query of ['SELECT payload_envelope FROM customer_access_deliveries',
     'INSERT INTO platform_passkey_enrollment_grants DEFAULT VALUES','INSERT INTO sessions DEFAULT VALUES',
     'CREATE TABLE public.forbidden_fixture(id integer)']) await assert.rejects(platform.query(query),{ code: '42501' });
+
+  const realTenant=randomUUID();
+  await pool.query("INSERT INTO tenants(id,display_name,status) VALUES($1,'Isolated REAL admission fixture','onboarding')",[realTenant]);
+  await pool.query("INSERT INTO tenant_runtime_registry(environment,tenant_id,mode) VALUES('int',$1,'real')",[realTenant]);
+  const real=createPostgresProtectedRealTenantScope(restricted,protection);
+  const customerScopes=createPostgresProtectedRuntimeExecutionScopes({ ...protection,pool: restricted,leasePool: restrictedLease });
+  await customerScopes.withShared(async()=>{
+    await withPostgresTransaction(restricted,async client=>{
+      assert.equal(await real.allowsWithClient(client,realTenant),true);
+      assert.equal(await real.lockAdmissionWithClient(client,realTenant),true);
+    });
+    await assert.rejects(pool.query(`UPDATE protected_runtime_deployments SET security_epoch=$1,
+      revision=revision+1,updated_at=clock_timestamp() WHERE environment='int'`,[randomUUID()]),{ code: '55P03' });
+    assert.equal((await pool.query("SELECT security_epoch FROM protected_runtime_deployments WHERE environment='int'"))
+      .rows[0].security_epoch,epoch);
+  });
 
   const owner=await createProtectedSyntheticOperatorFixture(pool,ownerLease,{ epoch });
   const authorizationPolicy=createPlatformAuthorizationPolicy(),audit=createPostgresAuditRepository(pool,{ hmacSecret: 'a'.repeat(48) });
