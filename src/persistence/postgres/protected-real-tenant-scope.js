@@ -15,7 +15,10 @@ export function createPostgresProtectedRealTenantScope(pool,{ environment,securi
       if (!isPostgresTransactionActive(pool,client) || !isInternalUuid(tenantId)) {
         throw new TypeError('PROTECTED_DELIVERY_ELIGIBILITY_TRANSACTION_INVALID');
       }
-      const locking=admission ? 'FOR SHARE OF deployment FOR UPDATE OF tenant' : 'FOR SHARE OF deployment,tenant';
+      // The mandatory live outer shared deployment lease already excludes the
+      // canonical exclusive UUID-rotation trigger. Do not require Customer
+      // deployment UPDATE permission merely for a redundant FOR SHARE lock.
+      const locking=admission ? 'FOR UPDATE OF tenant' : 'FOR SHARE OF tenant';
       const result=await client.query({
         name: admission ? 'protected-admission-real-tenant-lock' : 'protected-delivery-real-tenant-lock',text: `SELECT tenant.id
         FROM tenant_runtime_registry registry JOIN protected_runtime_deployments deployment

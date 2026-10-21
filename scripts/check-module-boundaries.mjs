@@ -290,6 +290,10 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
 
   for (const [file, source] of sources) {
     const imports = moduleImports(source);
+    if (isInside(file,'src') && imports.some(({ specifier })=>specifier.startsWith('.')
+      && isInside(path.posix.join(path.posix.dirname(file),specifier),'scripts'))) {
+      violations.push(violation(file,'Runtime code must not import operator or build scripts.'));
+    }
     if (PRODUCTION_COMPOSITION_ROOTS.has(file) || isInside(file, 'src/http') || isInside(file, 'src/platform/http')
       || isInside(file, 'src/demo')) {
       const offlineIssuer = firstReachablePath(graph, file,
