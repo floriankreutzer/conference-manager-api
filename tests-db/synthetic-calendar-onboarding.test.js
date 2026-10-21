@@ -19,10 +19,10 @@ import { createProtectedPostgresTlsFixture } from './support/protected-postgres-
 import { createProtectedSyntheticOperatorFixture } from './support/protected-synthetic-operator-fixture.js';
 
 test('restricted current synthetic Admin imports gain technical ownership and local lifecycle never fabricates Microsoft',async t=>{
-  const fixture=await createProtectedPostgresTlsFixture();const pools=[];
+  const fixture=await createProtectedPostgresTlsFixture(t);const pools=[];
   function database(url,max=1) {
     const pool=new pg.Pool({ connectionString: url,ssl: { ca: fixture.certificate,rejectUnauthorized: true },max,
-      connectionTimeoutMillis: 2000,statement_timeout: 10000 });pools.push(pool);return pool;
+      connectionTimeoutMillis: 2000,statement_timeout: 10000 });pool.on('error',()=>{});pools.push(pool);return pool;
   }
   const pool=database(fixture.url.href,2),ownerLease=database(fixture.url.href);
   t.after(async()=>{ try { await Promise.all(pools.map(pool=>pool.end())); } finally { await fixture.destroy(); } });
