@@ -127,6 +127,7 @@ const REAL_PRODUCTION_IDENTITY_AND_PROVIDER_MODULES = new Set([
   'src/platform/identity/passkey-lifecycle-service.js',
   'src/platform/identity/passkey-enrollment-grant.js',
   'src/persistence/postgres/platform-passkey-grant-issuer.js',
+  'src/persistence/postgres/platform-owner-bootstrap-repository.js',
   'src/persistence/postgres/platform-passkey-enrollment-repository.js',
   'src/platform/identity/passkey-verifier.js',
   'src/persistence/postgres/platform-passkey-auth-repository.js',
@@ -313,9 +314,12 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
     if (PRODUCTION_COMPOSITION_ROOTS.has(file) || isInside(file, 'src/http') || isInside(file, 'src/platform/http')
       || isInside(file, 'src/demo')) {
       const offlineIssuer = firstReachablePath(graph, file,
-        dependency => dependency === 'src/persistence/postgres/platform-passkey-grant-issuer.js');
-      if (offlineIssuer) violations.push(violation(file,
-        `HTTP, runtime and Demo code must not reach offline passkey issuance (${offlineIssuer.join(' -> ')}).`));
+        dependency => ['src/persistence/postgres/platform-passkey-grant-issuer.js',
+          'src/persistence/postgres/platform-owner-bootstrap-repository.js'].includes(dependency));
+      if (offlineIssuer) {
+        const kind=offlineIssuer.at(-1).includes('owner-bootstrap') ? 'owner bootstrap' : 'passkey issuance';
+        violations.push(violation(file,`HTTP, runtime and Demo code must not reach offline ${kind} (${offlineIssuer.join(' -> ')}).`));
+      }
     }
     if (imports.some(({ specifier }) => specifier.startsWith('@simplewebauthn/'))
       && file !== 'src/platform/identity/passkey-verifier.js') {

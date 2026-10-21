@@ -38,7 +38,8 @@ const { Pool } = pg;
 // Schema 61 binds one-use synthetic browser handoffs to actual proof and source-session custody.
 // Schema 62 supplies the private source-row lock port without Customer Platform UPDATE rights.
 // Schema 64 adds scoped synthetic Room provisioning and local lifecycle readiness.
-export const CURRENT_SCHEMA_VERSION = 64;
+// Schema 65 admits owner-only, one-time initial operator audit without creating authority.
+export const CURRENT_SCHEMA_VERSION = 65;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

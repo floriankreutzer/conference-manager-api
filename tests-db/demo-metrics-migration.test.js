@@ -80,19 +80,20 @@ test('reviewed metrics upgrade preserves retained Demo data, excludes concurrent
   await assert.rejects(withDemoMetricsMigrationGate(pool, { ...expected, customer: 'cm_wrong_customer' }, upgrade), /PRECONDITIONS/);
   assert.equal(upgrades, 0);
   assert.deepEqual(await withDemoMetricsMigrationGate(pool, expected, upgrade), {
-    canonicalVersion: 64, demoVersion: 28, resetPerformed: false, retainedCountsMatch: true,
+    canonicalVersion: 65, demoVersion: 28, resetPerformed: false, retainedCountsMatch: true,
   });
   assert.equal(upgrades, 1);
   assert.equal((await raw.query('SELECT count(*)::integer AS count FROM tenants')).rows[0].count, 1);
   assert.equal((await withDemoMetricsMigrationGate(pool, expected, upgrade)).retainedCountsMatch, true);
   assert.equal(upgrades, 2);
-  for (const [table, version] of [['schema_migrations', 65], ['demo_schema_migrations', 29]]) {
+  for (const [table, version] of [['schema_migrations', 66], ['demo_schema_migrations', 29]]) {
     await raw.query(`INSERT INTO ${table}(version,name,checksum) VALUES ($1,'synthetic_future_schema',repeat('a',64))`, [version]);
     try {
       await assert.rejects(withDemoMetricsMigrationGate(pool, expected, upgrade), /PRECONDITIONS/);
       assert.equal(upgrades, 2);
     } finally { await raw.query(`DELETE FROM ${table} WHERE version=$1`, [version]); }
   }
+  const bootstrap = (await raw.query('DELETE FROM schema_migrations WHERE version=65 RETURNING *')).rows[0];
   const onboarding = (await raw.query('DELETE FROM schema_migrations WHERE version=64 RETURNING *')).rows[0];
   const calendar = (await raw.query('DELETE FROM schema_migrations WHERE version=63 RETURNING *')).rows[0];
   await assert.rejects(withDemoMetricsMigrationGate(pool,expected,upgrade),/PRECONDITIONS/); // Retained062 cannot admit028.
@@ -142,7 +143,8 @@ test('reviewed metrics upgrade preserves retained Demo data, excludes concurrent
       ['schema_migrations',protectedRuntime],['demo_schema_migrations',protectedOverlay],
       ['schema_migrations',syntheticMedia],['demo_schema_migrations',syntheticMediaOverlay],
       ['schema_migrations',handoff],['demo_schema_migrations',handoffOverlay],['schema_migrations',sourceLock],
-      ['schema_migrations',calendar],['demo_schema_migrations',calendarOverlay],['schema_migrations',onboarding]]) {
+      ['schema_migrations',calendar],['demo_schema_migrations',calendarOverlay],['schema_migrations',onboarding],
+      ['schema_migrations',bootstrap]]) {
       await raw.query(`INSERT INTO ${table}(version,name,checksum,applied_at) VALUES ($1,$2,$3,$4)`,
         [row.version,row.name,row.checksum,row.applied_at]);
     }

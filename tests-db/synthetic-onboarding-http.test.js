@@ -31,6 +31,7 @@ test('owned Customer HTTP imports and activates synthetic customers with current
   });
   await migrateUp(pool);
   const prior=(await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=63 ORDER BY version')).rows;
+  assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before original064 roundtrip.
   assert.equal(await rollbackLatest(pool),true);await migrateUp(pool);
   assert.deepEqual((await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=63 ORDER BY version')).rows,prior);
   const epoch=randomUUID(),protection={ environment: 'int',securityEpoch: epoch },scope={ ...protection,platformSecurityEpoch: 7,

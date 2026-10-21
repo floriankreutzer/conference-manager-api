@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 64;/.test(pool)) {
-  throw new Error('Production application requires scoped synthetic onboarding schema 64.');
+if (!/export const CURRENT_SCHEMA_VERSION = 65;/.test(pool)) {
+  throw new Error('Production application requires first-owner audit schema 65.');
 }
 
 const auditEvent = await readFile('src/audit/event.js', 'utf8');
