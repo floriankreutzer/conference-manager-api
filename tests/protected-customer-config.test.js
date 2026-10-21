@@ -114,6 +114,10 @@ test('mail configuration creates only the canonical bounded adapter and performs
     { PROTECTED_CUSTOMER_MAIL_API_KEY: 'invalid',PROTECTED_CUSTOMER_MAIL_SENDER: 'Sender@example.test' }]) {
     assert.throws(()=>loadProtectedCustomerConfiguration({ ...env,...changed }));
   }
+  const reused=`re_${'a'.repeat(29)}`;
+  assert.throws(()=>loadProtectedCustomerConfiguration({ ...env,PROTECTED_CUSTOMER_MAIL_API_KEY: reused,
+    PROTECTED_CUSTOMER_MAIL_SENDER: 'Sender@example.test',PROTECTED_CUSTODY_KEYRING: JSON.stringify([
+      { id: 'initial',key: Buffer.from(reused).toString('base64url') }]) }),/CUSTODY_CONFIGURATION_INVALID/);
   assert.ok(Object.isFrozen(protectedRuntimeConfigurationKeys('customer')));
   assert.throws(()=>protectedRuntimeConfigurationKeys('browser'),/SURFACE_INVALID/);
 });
