@@ -5,6 +5,7 @@ import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool } from '../src/persistence/postgres/pool.js';
 import { createPostgresPlatformAuditRepository } from '../src/persistence/postgres/platform-audit-repository.js';
 import { createPostgresPlatformAuditSegmentInitializer } from '../src/persistence/postgres/platform-audit-segment-initializer.js';
+import { createPostgresPlatformOwnerBootstrapRepository } from '../src/persistence/postgres/platform-owner-bootstrap-repository.js';
 import { migrateUp,rollbackLatest } from '../scripts/db-migrations.mjs';
 import { grantProtectedRuntimeRoles,grantPlatformAuditSegmentRuntimeRoles } from '../scripts/support/protected-runtime-role-grants.mjs';
 
@@ -68,7 +69,22 @@ test('native audit cutover preserves all legacy bytes, commits one genesis and a
   const runtime=createPostgresPlatformAuditRepository(restricted,{ hmacSecret: 'new-test-key-'.repeat(4),
     segment: { id: segmentId,environment: 'int',deploymentEpoch } });
   assert.equal(await runtime.isReady(),true);
-  for (let index=0;index<31;index++) await runtime.append(anonymous());
+  const ownerExpected={ environment: 'int',deploymentEpoch,directoryId: randomUUID(),subjectId: randomUUID() };
+  const ownerRequest={ ...ownerExpected,approvalReference: 'INT-OWNER-APPROVED',correlationId: randomUUID() };
+  const wrong=createPostgresPlatformAuditRepository(pool,{ hmacSecret: 'wrong-test-key-'.repeat(4),
+    segment: { id: segmentId,environment: 'int',deploymentEpoch } });
+  const bootstrap=repository=>createPostgresPlatformOwnerBootstrapRepository(pool,
+    { expected: ownerExpected,expectedOfflineRole: role,auditRepository: repository });
+  await assert.rejects(bootstrap(wrong).initialize(ownerRequest),/BOOTSTRAP_REFUSED/);
+  assert.equal((await pool.query("SELECT count(*)::int AS count FROM platform_operators WHERE provider<>'demo_platform'"))
+    .rows[0].count,0);
+  const owner=await bootstrap(audit).initialize(ownerRequest);
+  assert.equal((await pool.query("SELECT sequence FROM platform_audit_events WHERE target_type='platform_operator_bootstrap'"))
+    .rows[0].sequence,'126');
+  assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_operator_change_alert_outbox WHERE operator_id=$1',
+    [owner.operatorId])).rows[0].count,1);
+  await assert.rejects(bootstrap(audit).initialize({ ...ownerRequest,correlationId: randomUUID() }),/BOOTSTRAP_REFUSED/);
+  for (let index=0;index<30;index++) await runtime.append(anonymous());
   const checkpoint=(await pool.query('SELECT event_count,terminal_sequence FROM platform_audit_segment_checkpoints')).rows[0];
   assert.equal(Number(checkpoint.event_count),32);assert.equal(Number(checkpoint.terminal_sequence),156);
   await runtime.append(anonymous());
@@ -86,8 +102,11 @@ test('native audit cutover preserves all legacy bytes, commits one genesis and a
     assert.equal((await pool.query('SELECT has_table_privilege($1,$2,$3) AS allowed',
       ['cm_protected_int_platform',table,privilege])).rows[0].allowed,false);
   }
-  const wrong=createPostgresPlatformAuditRepository(pool,{ hmacSecret: 'wrong-test-key-'.repeat(4),
-    segment: { id: segmentId,environment: 'int',deploymentEpoch } });
+  for (const binding of [{ id: randomUUID(),environment: 'int',deploymentEpoch },
+    { id: segmentId,environment: 'int',deploymentEpoch: randomUUID() }]) {
+    const foreign=createPostgresPlatformAuditRepository(pool,{ hmacSecret: 'new-test-key-'.repeat(4),segment: binding });
+    assert.equal(await foreign.isReady(),false);
+  }
   assert.equal(await wrong.isReady(),false);await assert.rejects(wrong.append(anonymous()),/INTEGRITY/);
   await assert.rejects(legacy.append(anonymous()),/SEGMENT_EVENT_REFUSED/);
   for (const statement of [
@@ -104,7 +123,7 @@ test('native audit cutover preserves all legacy bytes, commits one genesis and a
   const retained=await pool.query(`SELECT to_jsonb(e) AS value FROM platform_audit_events e
     WHERE integrity_version=1 ORDER BY sequence`);
   assert.deepEqual(retained.rows,oldRows);
-  assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_operators')).rows[0].count,1);
+  assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_operators')).rows[0].count,2);
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_sessions')).rows[0].count,0);
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_passkey_credentials')).rows[0].count,0);
 });
