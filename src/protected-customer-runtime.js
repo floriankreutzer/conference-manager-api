@@ -13,6 +13,9 @@ import { createPostgresSyntheticOnboardingRepository } from './persistence/postg
 import { createSyntheticOnboardingService } from './application/synthetic-onboarding-service.js';
 import { createSyntheticOnboardingRouteModule } from './http/synthetic-onboarding-routes.js';
 import { createProtectedTenantRuntimeViewRouteModule } from './http/protected-tenant-runtime-view-routes.js';
+import { createProtectedCatalogueMediaRouteModule } from './http/protected-catalogue-media-routes.js';
+import { createProtectedCatalogueMediaService } from './application/protected-catalogue-media-service.js';
+import { createPostgresProtectedCatalogueMediaRepository } from './persistence/postgres/protected-catalogue-media-repository.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { createAuditService } from './audit/audit-service.js';
 import { createPostgresProtectedCalendarAuthorityGuard } from './persistence/postgres/protected-calendar-authority-guard.js';
@@ -87,7 +90,10 @@ export async function createProtectedCustomerRuntime(environment) {
       repository: createPostgresSyntheticCalendarRepository(base.pool,protection) }) : null;
     const calendarProviderFactory=createProtectedCalendarProviderFactory({ ...protection,runtimeRepository,realFactory,syntheticFactory });
     const additionalRouteModules=[...authentication.routeModules,
-      createProtectedTenantRuntimeViewRouteModule({ runtimeRepository,...protection })];
+      createProtectedTenantRuntimeViewRouteModule({ runtimeRepository,...protection }),
+      createProtectedCatalogueMediaRouteModule({ service: createProtectedCatalogueMediaService({
+        authorizationPolicy: createAuthorizationPolicy(),
+        repository: createPostgresProtectedCatalogueMediaRepository(base.pool,{ ...protection,syntheticScope }) }) })];
     if (syntheticScope!==null) {
       const authorizationPolicy=createAuthorizationPolicy();
       const repository=createPostgresSyntheticOnboardingRepository(base.pool,{ scope: syntheticScope,

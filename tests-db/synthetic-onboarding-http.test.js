@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { randomBytes,randomUUID } from 'node:crypto';
+import { createHash,randomBytes,randomUUID } from 'node:crypto';
+import { request as httpRequest } from 'node:http';
 import test from 'node:test';
 import pg from 'pg';
 import { migrateUp,rollbackLatest } from '../scripts/db-migrations.mjs';
@@ -150,8 +151,60 @@ test('owned Customer HTTP imports and activates synthetic customers with current
   assert.equal(activated.status,200,JSON.parse(activated.text).error?.code);
   assert.equal(JSON.parse(activated.text).tenantStatus,'active');
   assert.equal(await audit.verifyTenantChain(contoso.principal.tenantId),true);
+  const mediaSession=await admit('northwind','employee'),mediaCookie=mediaSession.setCookie.split(';')[0];
+  const mediaRoot='/api/v1/tenant/catalogue-media';
+  const listed=await exchange(mediaRoot,{ headers: { cookie: mediaCookie } });assert.equal(listed.status,200);
+  const assets=JSON.parse(listed.text).assets;assert.ok(assets.length>0 && assets.length<=40);
+  assert.ok(assets.some(asset=>asset.ownerKind==='room_plan' && asset.contentType==='image/png'));
+  assert.ok(assets.some(asset=>asset.ownerKind.startsWith('catering_') && asset.contentType==='image/webp'));
+  assert.equal(listed.text.includes('object_key'),false);assert.equal(listed.text.includes('content_sha256'),false);
+  async function image(path,cookie,headers={}) {
+    return new Promise((resolve,reject)=>{
+      const request=httpRequest({ hostname: '127.0.0.1',port: process.outcome.port,path,headers: {
+        host: 'app-int.example.test','sec-fetch-site': 'same-origin',...(cookie ? { cookie } : {}),...headers } },response=>{
+        const chunks=[];response.on('data',chunk=>chunks.push(chunk));
+        response.on('end',()=>resolve({ status: response.statusCode,headers: response.headers,bytes: Buffer.concat(chunks) }));
+      });request.on('error',reject);request.setTimeout(10000,()=>request.destroy(new Error('FIXTURE_HTTP_TIMEOUT')));request.end();
+    });
+  }
+  for (const asset of assets) {
+    assert.equal(asset.url,`${mediaRoot}/${asset.id}`);
+    const actual=await image(asset.url,mediaCookie);assert.equal(actual.status,200);
+    const expected=(await pool.query(`SELECT bytes,content_sha256 FROM synthetic_catalogue_media_assets
+      WHERE tenant_id=$1 AND id=$2`,[mediaSession.principal.tenantId,asset.id])).rows[0];
+    assert.deepEqual(actual.bytes,expected.bytes);
+    assert.deepEqual(createHash('sha256').update(actual.bytes).digest(),expected.content_sha256);
+    assert.equal(actual.headers['content-type'],asset.contentType);assert.equal(actual.headers['x-content-type-options'],'nosniff');
+    assert.match(actual.headers['cache-control'],/private.*must-revalidate/);assert.equal(actual.headers.vary,'Cookie');
+    const conditional={ 'if-none-match': actual.headers.etag };
+    assert.equal((await image(asset.url,mediaCookie,conditional)).status,304);
+    assert.equal((await image(asset.url,null,conditional)).status,401);
+    assert.equal((await image(asset.url,cookie,conditional)).status,401,'old source cannot reuse a private cached response');
+  }
+  const foreign=(await pool.query(`SELECT id FROM synthetic_catalogue_media_assets WHERE tenant_id<>$1 LIMIT 1`,
+    [mediaSession.principal.tenantId])).rows[0];assert.ok(foreign);
+  assert.equal((await image(`${mediaRoot}/${foreign.id}`,mediaCookie)).status,404);
+  assert.equal((await image(`${mediaRoot}/${randomUUID()}`,mediaCookie)).status,404);
+  assert.equal((await exchange(mediaRoot+'?tenantId='+tenantId,{ headers: { cookie: mediaCookie } })).status,400);
+  assert.equal((await exchange(mediaRoot,{ method: 'POST',body: {},headers: { cookie: mediaCookie } })).status,405);
+  const damaged=assets.find(asset=>asset.ownerKind==='catering_item');assert.ok(damaged);
+  await pool.query(`UPDATE synthetic_catalogue_media_assets SET object_key='v1/'||tenant_id::text||'/catalogue/'||id::text||'/'
+    ||encode(content_sha256,'hex') WHERE tenant_id=$1 AND id=$2`,[mediaSession.principal.tenantId,damaged.id]);
+  assert.equal((await image(damaged.url,mediaCookie)).status,503,'unprepared object mode cannot fall back to retained database bytes');
+  await pool.query(`UPDATE synthetic_catalogue_media_assets SET object_key=NULL,content_sha256=$3 WHERE tenant_id=$1 AND id=$2`,
+    [mediaSession.principal.tenantId,damaged.id,Buffer.alloc(32,9)]);
+  assert.equal((await image(damaged.url,mediaCookie)).status,503,'a corrupt digest cannot publish bytes or a 304');
+  const plan=assets.find(asset=>asset.ownerKind==='room_plan');
+  await pool.query(`UPDATE rooms SET details=details-'floorplanAssetId' WHERE tenant_id=$1 AND id=$2`,
+    [mediaSession.principal.tenantId,plan.ownerId]);
+  assert.equal((await image(plan.url,mediaCookie,{ 'if-none-match': '*' })).status,404,'detached plan stays concealed');
+  await pool.query(`UPDATE rooms SET details=jsonb_set(details,'{floorplanAssetId}',to_jsonb($3::text)),active=false
+    WHERE tenant_id=$1 AND id=$2`,[mediaSession.principal.tenantId,plan.ownerId,plan.id]);
+  assert.equal((await image(plan.url,mediaCookie)).status,404,'Employee cannot read an inactive Room plan');
+  const manager=await admit('northwind','conference_manager'),managerCookie=manager.setCookie.split(';')[0];
+  assert.equal((await image(plan.url,managerCookie)).status,200,'current Catalogue Manager can inspect inactive owned media');
   assert.equal((await process.stop()).code,0);
-  for (const secret of [fixture.password,...passwords,cookie,contosoCookie,csrf,'h'.repeat(48),'t'.repeat(48)]) {
+  for (const secret of [fixture.password,...passwords,cookie,contosoCookie,mediaCookie,managerCookie,csrf,'h'.repeat(48),'t'.repeat(48)]) {
     assert.equal(process.logs().includes(secret),false,'actual owned root cannot log custody values');
   }
 });
