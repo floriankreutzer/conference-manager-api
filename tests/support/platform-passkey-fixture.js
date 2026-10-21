@@ -39,6 +39,10 @@ export function platformPasskeyFixture({ operatorId = OPERATOR } = {}) {
     return { ...envelope, response: { clientDataJSON: encoded(data), authenticatorData: encoded(authData),
       signature: encoded(signature), userHandle } };
   }
-  return { credential, challenge, userHandle, response };
+  return { credential, challenge, userHandle, response,
+    // Ephemeral test material only, for importing this same generated key into
+    // Chromium's native virtual authenticator. Never logged or persisted.
+    exportPrivateKey: () => privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64'),
+  };
 }
 
