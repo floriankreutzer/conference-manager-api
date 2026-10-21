@@ -160,7 +160,9 @@ export function normalizeAuditSegment(value) {
 function segmentBinding(segment) {
   normalizeAuditSegment({ id: segment.id,environment: segment.environment,deploymentEpoch: segment.deploymentEpoch });
   if (!Number.isSafeInteger(segment.legacyEventCount) || segment.legacyEventCount < 0
-    || !/^[0-9a-f]{64}$/.test(segment.inventoryDigest)) throw new PlatformAuditIntegrityError();
+    || typeof segment.inventoryDigest!=='string' || !/^[0-9a-f]{64}$/.test(segment.inventoryDigest)) {
+    throw new PlatformAuditIntegrityError();
+  }
   return { integrityVersion: 2,segmentId: segment.id,environment: segment.environment,
     deploymentEpoch: segment.deploymentEpoch,legacyEventCount: segment.legacyEventCount,inventoryDigest: segment.inventoryDigest };
 }

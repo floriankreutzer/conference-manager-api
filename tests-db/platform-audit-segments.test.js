@@ -34,6 +34,11 @@ test('native audit cutover preserves all legacy bytes, commits one genesis and a
   for (let index=0;index<124;index++) await legacy.append(anonymous());
   const inventory=async()=>(await pool.query('SELECT platform_legacy_audit_inventory() AS inventory')).rows[0].inventory;
   const before=await inventory();assert.equal(Number(before.eventCount),124);
+  const timezone=await pool.connect();
+  try {
+    await timezone.query('BEGIN');await timezone.query("SET LOCAL TIME ZONE 'Pacific/Auckland'");
+    assert.deepEqual((await timezone.query('SELECT platform_legacy_audit_inventory() AS inventory')).rows[0].inventory,before);
+  } finally { await timezone.query('ROLLBACK');timezone.release(); }
   const oldRows=(await pool.query('SELECT to_jsonb(e) AS value FROM platform_audit_events e ORDER BY sequence')).rows;
   const audit=createPostgresPlatformAuditRepository(pool,{ hmacSecret: 'new-test-key-'.repeat(4),
     segment: { id: segmentId,environment: 'int',deploymentEpoch } });

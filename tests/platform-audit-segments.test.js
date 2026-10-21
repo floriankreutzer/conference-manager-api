@@ -67,7 +67,7 @@ test('offline request is exact, bounded, deployment-bound and never executes an 
   const request={ ...expected,approvalReference: 'INT-APPROVED',correlationId: randomUUID() };
   assert.deepEqual(normalizePlatformAuditSegmentRequest(request,expected),request);
   for (const mutation of [{ environment: 'prod' },{ legacyEventCount: 125 },{ deploymentEpoch: randomUUID() },
-    { inventoryDigest: 'b'.repeat(64) },{ approvalReference: 'no whitespace' },{ extra: true }]) {
+    { inventoryDigest: 'b'.repeat(64) },{ approvalReference: 'no whitespace' },{ approvalReference: 123 },{ extra: true }]) {
     assert.throws(()=>normalizePlatformAuditSegmentRequest({ ...request,...mutation },expected));
   }
   let accessed=false;
@@ -76,6 +76,10 @@ test('offline request is exact, bounded, deployment-bound and never executes an 
   assert.throws(()=>normalizePlatformAuditSegmentRequest(accessor,expected));assert.equal(accessed,false);
   assert.throws(()=>normalizePlatformAuditSegmentRequest({ ...request,legacyEventCount: 3201 },
     { ...expected,legacyEventCount: 3201 }));
+  const coerced={ toString() { throw new Error('COERCION_MUST_NOT_RUN'); } };
+  assert.throws(()=>normalizePlatformAuditSegmentRequest({ ...request,inventoryDigest: coerced },
+    { ...expected,inventoryDigest: coerced }),{ message: 'PLATFORM_AUDIT_SEGMENT_REQUEST_INVALID' });
+  assert.throws(()=>createSegmentSigners(secret,{ ...segment,inventoryDigest: coerced }),/INTEGRITY/);
   assert.throws(()=>normalizeAuditSegment({ id: segment.id,environment: 'int',deploymentEpoch: segment.deploymentEpoch,extra: true }));
 });
 

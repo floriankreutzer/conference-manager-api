@@ -46,7 +46,7 @@ CREATE TRIGGER platform_audit_segment_checkpoints_append_only BEFORE UPDATE OR D
   FOR EACH ROW EXECUTE FUNCTION reject_platform_audit_mutation();
 
 CREATE FUNCTION platform_legacy_audit_inventory() RETURNS jsonb LANGUAGE sql STABLE
-SET search_path = pg_catalog AS $$
+SET search_path = pg_catalog SET TimeZone = 'UTC' AS $$
   SELECT jsonb_build_object(
     'eventCount',(SELECT count(*) FROM public.platform_audit_events WHERE integrity_version=1),
     'terminalEventHash',(SELECT terminal_event_hash FROM public.platform_audit_chain_state WHERE singleton),

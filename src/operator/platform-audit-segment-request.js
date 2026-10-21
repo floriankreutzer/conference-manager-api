@@ -12,7 +12,8 @@ export function normalizePlatformAuditSegmentRequest(value,expected) {
   own(value,[...FIXED,'approvalReference','correlationId']);own(expected,FIXED);
   if (expected.environment!=='int' || !isInternalUuid(expected.segmentId) || !isInternalUuid(expected.deploymentEpoch)
     || !Number.isSafeInteger(expected.legacyEventCount) || expected.legacyEventCount<0 || expected.legacyEventCount>3200
-    || !/^[0-9a-f]{64}$/.test(expected.inventoryDigest ?? '') || FIXED.some(key=>value[key]!==expected[key])
-    || !isInternalUuid(value.correlationId) || !/^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/.test(value.approvalReference ?? '')) invalid();
+    || typeof expected.inventoryDigest!=='string' || !/^[0-9a-f]{64}$/.test(expected.inventoryDigest)
+    || FIXED.some(key=>value[key]!==expected[key]) || !isInternalUuid(value.correlationId)
+    || typeof value.approvalReference!=='string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/.test(value.approvalReference)) invalid();
   return Object.freeze({ ...value });
 }

@@ -10,9 +10,11 @@ let pool;
 try {
   if (process.argv.length!==2) throw new Error('REFUSED');
   const config=loadPlatformPasskeyOfflineConfig(process.env);
+  const legacyCount=process.env.PLATFORM_AUDIT_SEGMENT_LEGACY_EVENT_COUNT;
+  if (typeof legacyCount!=='string' || !/^(0|[1-9]\d{0,3})$/.test(legacyCount)) throw new Error('REFUSED');
   const expected={ environment: 'int',segmentId: process.env.PLATFORM_AUDIT_SEGMENT_ID,
     deploymentEpoch: process.env.PLATFORM_AUDIT_SEGMENT_DEPLOYMENT_EPOCH,
-    legacyEventCount: Number(process.env.PLATFORM_AUDIT_SEGMENT_LEGACY_EVENT_COUNT),
+    legacyEventCount: Number(legacyCount),
     inventoryDigest: process.env.PLATFORM_AUDIT_SEGMENT_INVENTORY_DIGEST };
   const request=normalizePlatformAuditSegmentRequest(readFixedDescriptorJson(3),expected);
   pool=createPostgresPool(config);
