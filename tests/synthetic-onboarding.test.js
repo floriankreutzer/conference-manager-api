@@ -6,6 +6,7 @@ import { normalizeSyntheticOnboardingCommand,syntheticOnboardingCandidates,Synth
   from '../src/domain/synthetic-onboarding.js';
 import { createSyntheticOnboardingService } from '../src/application/synthetic-onboarding-service.js';
 import { createSyntheticOnboardingRouteModule } from '../src/http/synthetic-onboarding-routes.js';
+import { createProtectedTenantRuntimeViewRouteModule } from '../src/http/protected-tenant-runtime-view-routes.js';
 import { createPostgresSyntheticOnboardingRepository } from '../src/persistence/postgres/synthetic-onboarding-repository.js';
 import { createAuthorizationPolicy,tenantAuthorizationSnapshot } from '../src/authorization/policy.js';
 import { createAuditHarness } from './support/audit-harness.js';
@@ -104,4 +105,26 @@ test('onboarding HTTP keeps exact paths, read-only GET, same-origin CSRF mutatio
   await assert.rejects(f.call(root,{ body: {} }),{ statusCode: 400 });
   assert.equal(f.calls.length,before+1,'a GET body may resolve its current principal but cannot call the service');
   assert.equal(f.module.routeKey(root+'/rooms/import/extra'),null);
+});
+
+
+test('presentation runtime mode is read-only current server classification with no caller mode or provider',async()=>{
+  let wrong=false,calls=0;
+  const module=createProtectedTenantRuntimeViewRouteModule({ environment: scope.environment,securityEpoch: scope.securityEpoch,
+    runtimeRepository: { async withCurrentTenantRuntime(input,work) {
+      calls++;assert.deepEqual(input,{ environment: scope.environment,securityEpoch: scope.securityEpoch,tenantId });
+      return work({ ...input,tenantId: wrong ? randomUUID() : tenantId,mode: 'real',
+        generationId: null,generationState: null,operatorId: null,slot: null });
+    } } });
+  const handler=module.createHandler({ principalGuard: { async require() { return context().principal; } },
+    tenantGuard: { async requireKnown() { return { tenantId,status: 'onboarding' }; } },maxResponseBytes: 4096 });
+  async function read(query='') {
+    const request=Readable.from([]);request.method='GET';request.headers={};
+    const response={ setHeader() {},end(value) { this.body=value; } };
+    await handler({ request,response,path: '/api/v1/tenant/runtime',parsedUrl: new URL('/api/v1/tenant/runtime'+query,
+      scope.customerOrigin),requestId: randomUUID() });return JSON.parse(response.body);
+  }
+  const value=await read();assert.equal(value.mode,'real');assert.equal(value.provider,'microsoft365');
+  await assert.rejects(read('?mode=synthetic'),{ statusCode: 400 });assert.equal(calls,1);
+  wrong=true;await assert.rejects(read());
 });

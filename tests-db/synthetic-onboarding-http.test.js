@@ -19,10 +19,10 @@ import { unusedProtectedRuntimePort,startProtectedRuntimeProcess,exchangeProtect
   from './support/protected-runtime-process-fixture.js';
 
 test('owned Customer HTTP imports and activates synthetic customers with current Admin custody and atomic history',async t=>{
-  const fixture=await createProtectedPostgresTlsFixture();const pools=[];let process;
+  const fixture=await createProtectedPostgresTlsFixture(t);const pools=[];let process;
   function database(url,max=1) {
     const pool=new pg.Pool({ connectionString: url,ssl: { ca: fixture.certificate,rejectUnauthorized: true },max,
-      connectionTimeoutMillis: 2000,statement_timeout: 10000 });pools.push(pool);return pool;
+      connectionTimeoutMillis: 2000,statement_timeout: 10000 });pool.on('error',()=>{});pools.push(pool);return pool;
   }
   const pool=database(fixture.url.href,2),ownerLease=database(fixture.url.href);
   t.after(async()=>{
@@ -95,6 +95,8 @@ test('owned Customer HTTP imports and activates synthetic customers with current
   const csrf=JSON.parse(session.text).csrfToken,tenantId=admin.principal.tenantId;
   const call=(path,{ method='GET',body,headers={} }={})=>exchange(path,{ method,body,
     headers: { cookie,...(method==='POST' ? { 'x-csrf-token': csrf } : {}),...headers } });
+  const mode=await call('/api/v1/tenant/runtime');assert.equal(mode.status,200);
+  assert.equal(JSON.parse(mode.text).mode,'synthetic');assert.equal(JSON.parse(mode.text).provider,'synthetic_calendar');
   const first=await call(root);assert.equal(first.status,200);const initial=JSON.parse(first.text);
   assert.equal(initial.mode,'synthetic');assert.equal(initial.provider,'synthetic_calendar');
   assert.equal(initial.microsoftConnection,'not_applicable');assert.equal(initial.tenantStatus,'onboarding');

@@ -8,6 +8,12 @@ listening and in health. No provider/issuer/clock/test override is exposed.
 REAL continues with existing Microsoft routes and operator-controlled lifecycle;
 PROD cannot compose synthetic admission or these routes.
 
+The read-only `/api/v1/tenant/runtime` endpoint projects only mode/provider from
+the current server registry in the compiled scope after actual Customer session
+and Tenant qualification. It accepts no caller mode/provider/query/body. It
+lets the protected UI choose truthful presentation for REAL or synthetic without
+falling back after an authorization error; metadata grants no capability.
+
 The Tenant Admin endpoint is `/api/v1/integrations/synthetic-calendar`. Its view
 reports actual current synthetic mode/provider, local Room/resource counts,
 location revision, license entitlements and explicit readiness checks. Microsoft
@@ -39,11 +45,13 @@ Closed commands reject extra/accessor values, mutable input aliases, foreign
 candidate keys and illegal lifecycle changes. SQL serialization/concurrency and
 permission/timeout failures map to fixed bounded domain errors.
 
-Nineteen focused new domain/service/HTTP/scope and existing both-root cases passed.
+Twenty focused new domain/service/HTTP/scope/runtime-view and existing both-root
+cases passed.
 An initial HTTP unit fixture omitted its JSON Content-Type; the fixture now sends
 the actual protocol headers/bytes, retaining the production media-type guard.
-The complete Node22 quality/security run passed2037 tests and both HTTP DAST
-suites. Native and actual-main acceptance remain pending for the final source.
+The final merged Node22 quality/security run passed2038 tests and both HTTP
+DAST suites, including the current-mode view and fixture cleanup correction.
+Native and actual-main acceptance remain required.
 
 The prepared new native case uses an actual separate closed Customer process,
 verified TLS/SCRAM restricted credentials, max1 business/lease pools, canonical
@@ -62,3 +70,12 @@ required. SaaS1 issue351 still tracks truthful frontend/capabilities, catalogue
 media/object staging, actual qualified two-site browser and operating acceptance.
 No schema, live Microsoft/mail/customer, cloud compute, paid capacity or runtime
 deployment is activated by this source preparation.
+
+
+The dependency's first native064 fixture omitted the existing TLS helper's test
+context before SQL executed. Both the dependency and this HTTP fixture now pass
+the actual context and retain canonical bounded teardown, including idle-pool
+error listeners as in the existing provider fixture. No query or assertion is
+suppressed. The metadata-view unit's first mock lacked the canonical REAL null
+custody fields; the fixture now returns the exact normal descriptor, retaining
+the production closed-shape and cross-Tenant refusal.

@@ -12,6 +12,7 @@ import { createPostgresSyntheticCalendarRepository } from './persistence/postgre
 import { createPostgresSyntheticOnboardingRepository } from './persistence/postgres/synthetic-onboarding-repository.js';
 import { createSyntheticOnboardingService } from './application/synthetic-onboarding-service.js';
 import { createSyntheticOnboardingRouteModule } from './http/synthetic-onboarding-routes.js';
+import { createProtectedTenantRuntimeViewRouteModule } from './http/protected-tenant-runtime-view-routes.js';
 import { createAuthorizationPolicy } from './authorization/policy.js';
 import { createAuditService } from './audit/audit-service.js';
 import { createPostgresProtectedCalendarAuthorityGuard } from './persistence/postgres/protected-calendar-authority-guard.js';
@@ -85,7 +86,8 @@ export async function createProtectedCustomerRuntime(environment) {
     const syntheticFactory=profile.syntheticEnabled ? createSyntheticCalendarProviderFactory({
       repository: createPostgresSyntheticCalendarRepository(base.pool,protection) }) : null;
     const calendarProviderFactory=createProtectedCalendarProviderFactory({ ...protection,runtimeRepository,realFactory,syntheticFactory });
-    const additionalRouteModules=[...authentication.routeModules];
+    const additionalRouteModules=[...authentication.routeModules,
+      createProtectedTenantRuntimeViewRouteModule({ runtimeRepository,...protection })];
     if (syntheticScope!==null) {
       const authorizationPolicy=createAuthorizationPolicy();
       const repository=createPostgresSyntheticOnboardingRepository(base.pool,{ scope: syntheticScope,
