@@ -10,6 +10,8 @@ import {
 } from './module-graph.mjs';
 
 const PRODUCTION_COMPOSITION_ROOTS = new Set([
+  'src/protected-customer-runtime.js',
+  'src/protected-customer-main.js',
   'src/protected-platform-config.js',
   'src/protected-custody-configuration.js',
   'src/protected-customer-config.js',
@@ -51,6 +53,8 @@ const CUSTOMER_EMAIL_AUTHORITY_MODULES = new Set([
   'src/persistence/postgres/customer-invitation-repository.js',
 ]);
 const PROTECTED_RUNTIME_AUTHORITY_MODULES = new Set([
+  'src/protected-customer-runtime.js',
+  'src/protected-customer-main.js',
   'src/protected-platform-config.js',
   'src/protected-custody-configuration.js',
   'src/persistence/postgres/protected-runtime-readiness.js',
@@ -123,6 +127,7 @@ const REAL_PRODUCTION_IDENTITY_AND_PROVIDER_MODULES = new Set([
   'src/platform/identity/identity-service.js',
 ]);
 const RUNTIME_ENVIRONMENT_AUTHORITY = new Set([
+  'src/protected-customer-main.js',
   'src/config.js',
   'src/platform/config.js',
   'src/platform-main.js',
