@@ -12,6 +12,10 @@ import { createPostgresAuditRepository } from '../src/persistence/postgres/audit
 import { createPostgresProtectedRuntimeExecutionScopes } from '../src/persistence/postgres/protected-runtime-execution-scopes.js';
 import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
 import { createPostgresProtectedCalendarAuthorityGuard } from '../src/persistence/postgres/protected-calendar-authority-guard.js';
+import { createPostgresProtectedTenantRuntimeRepository } from '../src/persistence/postgres/protected-tenant-runtime-repository.js';
+import { createPostgresSyntheticCalendarRepository } from '../src/persistence/postgres/synthetic-calendar-repository.js';
+import { createSyntheticCalendarProviderFactory } from '../src/integrations/synthetic-calendar-provider.js';
+import { createProtectedCalendarProviderFactory } from '../src/integrations/protected-calendar-provider-factory.js';
 import { createPostgresSyntheticGenerationDirectoryRepository }
   from '../src/persistence/postgres/platform-synthetic-generation-directory-repository.js';
 import { platformPasskeyFixture } from '../tests/support/platform-passkey-fixture.js';
@@ -233,6 +237,18 @@ async t=>{
   try {
     const protection={ environment: 'int',securityEpoch: epoch };
     const scopes=createPostgresProtectedRuntimeExecutionScopes({ ...protection,pool: calendarPool,leasePool: calendarLease });
+    const factory=createProtectedCalendarProviderFactory({ ...protection,
+      runtimeRepository: createPostgresProtectedTenantRuntimeRepository(calendarPool,{ ...protection,leasePool: calendarLease }),
+      syntheticFactory: createSyntheticCalendarProviderFactory({
+        repository: createPostgresSyntheticCalendarRepository(calendarPool,protection) }) });
+    const actual=(await pool.query(`SELECT id,room_id,starts_at,ends_at FROM requests
+      WHERE tenant_id=$1 AND status='In Review' ORDER BY id LIMIT 1`,[syntheticTenant])).rows[0];assert.ok(actual);
+    await scopes.withShared(async()=>{
+      const provider=await factory.forRoom({ tenantId: syntheticTenant,roomId: actual.room_id });
+      const checked=await provider.validateReservation({ tenantId: syntheticTenant,roomId: actual.room_id,requestId: actual.id,
+        startsAt: actual.starts_at.toISOString(),endsAt: actual.ends_at.toISOString(),phase: 'final',correlationId: randomUUID() });
+      assert.equal(typeof checked.valid,'boolean');
+    });
     const guard=createPostgresProtectedCalendarAuthorityGuard(calendarPool,{ ...protection,syntheticScope: { ...protection,
       platformSecurityEpoch: 7,customerOrigin: common.PROTECTED_CUSTOMER_ORIGIN,platformOrigin: common.PROTECTED_PLATFORM_ORIGIN } });
     let entered,release;const seen=new Promise(resolve=>{ entered=resolve; }),hold=new Promise(resolve=>{ release=resolve; });
@@ -262,8 +278,14 @@ async t=>{
     ORDER BY request.id LIMIT 1`,[syntheticTenant])).rows[0];assert.ok(candidate);
   const confirmed=await app(`/api/v1/requests/${candidate.id}/transitions`,{ method: 'POST',body: { transition: 'confirm' },
     headers: { cookie: customerCookie,'x-csrf-token': managerView.csrfToken,'if-match': `"${candidate.request_version}"` } });
-  if (confirmed.status!==200) t.diagnostic(`Calendar confirmation error: ${JSON.parse(confirmed.text).error?.code}; `
-    +`privilege failures: ${fixture.permissionFailures().join(',')}`);
+  if (confirmed.status!==200) {
+    const phases=(await pool.query(`SELECT metadata->>'reasonCode' AS phase FROM audit_events
+      WHERE tenant_id=$1 AND target_id=$2 ORDER BY sequence DESC LIMIT 5`,[syntheticTenant,candidate.id])).rows
+      .map(row=>row.phase).filter(value=>['provider_unavailable','calendar_write_unavailable','calendar_cleanup_unavailable',
+        'calendar_entitlement_unavailable','entitlement_denied'].includes(value));
+    t.diagnostic(`Calendar confirmation error: ${JSON.parse(confirmed.text).error?.code}; phases: ${phases.join(',')}; `
+      +`privilege failures: ${fixture.permissionFailures().join(',')}`);
+  }
   assert.equal(confirmed.status,200,JSON.parse(confirmed.text).error?.code);
   assert.equal(JSON.parse(confirmed.text).request.status,'Confirmed');
   assert.equal((await pool.query("SELECT count(*)::int AS count FROM synthetic_calendar_events WHERE tenant_id=$1 AND state='active'",
