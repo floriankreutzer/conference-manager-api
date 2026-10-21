@@ -1,3 +1,4 @@
+import { createProtectedPlatformTenantCustodySql } from './protected-platform-tenant-custody.js';
 import { createPostgresPlatformAuditRepository } from './platform-audit-repository.js';
 import { createPostgresPlatformBreakGlassRepository } from './platform-break-glass-repository.js';
 import { createPostgresPlatformOperatorRepository } from './platform-operator-repository.js';
@@ -26,7 +27,8 @@ import { createPostgresPlatformRuntimeStatusRepository } from './platform-runtim
 import { createPostgresPlatformProjectionRepository } from './platform-projection-repository.js';
 import { createPostgresPool, isPostgresSchemaReady } from './pool.js';
 
-export function createPostgresPlatformPersistence(config) {
+export function createPostgresPlatformPersistence(config,{ protectedRuntime=null }={}) {
+  protectedRuntime=createProtectedPlatformTenantCustodySql(protectedRuntime)?.cursorScope ?? null;
   const pool = createPostgresPool({
     ...config,
     applicationName: config.applicationName,
@@ -34,7 +36,7 @@ export function createPostgresPlatformPersistence(config) {
   const auditRepository = createPostgresPlatformAuditRepository(pool, {
     hmacSecret: config.auditHmacSecret,
   });
-  const operatorRepository = createPostgresPlatformOperatorRepository(pool, { auditRepository });
+  const operatorRepository = createPostgresPlatformOperatorRepository(pool, { auditRepository,protectedRuntime });
   const oidcTransactionRepository = createPostgresPlatformOidcTransactionRepository(pool);
   const sessionRepository = createPostgresPlatformSessionRepository(pool, { auditRepository });
   const breakGlassRepository = createPostgresPlatformBreakGlassRepository(pool, { auditRepository });
@@ -54,29 +56,30 @@ export function createPostgresPlatformPersistence(config) {
     platformAuditRepository: auditRepository,
     onboardingRepository: tenantOnboardingRepository,
     tenantLifecycleRepository: tenantRepository,
-    cursorSecret: config.cursorSecret,
+    customerInvitationEnvironment: protectedRuntime?.environment ?? null,
+    cursorSecret: config.cursorSecret,protectedRuntime,
   });
   const entitlementOperationsRepository = createPostgresPlatformEntitlementOperationsRepository(pool, {
     tenantAuditRepository,
     platformAuditRepository: auditRepository,
     entitlementRepository,
-    cursorSecret: config.cursorSecret,
+    cursorSecret: config.cursorSecret,protectedRuntime,
   });
   const recoveryRepository = createPostgresPlatformRecoveryRepository(pool, {
     tenantAuditRepository,
     platformAuditRepository: auditRepository,
     onboardingRepository: tenantOnboardingRepository,
     tenantLifecycleRepository: tenantRepository,
-    cursorSecret: config.cursorSecret,
+    cursorSecret: config.cursorSecret,protectedRuntime,
   });
   const readinessSnapshotRepository = createPostgresPlatformReadinessSnapshotRepository(pool, {
-    cursorSecret: config.cursorSecret,
+    cursorSecret: config.cursorSecret,protectedRuntime,
   });
   const microsoftHealthSnapshotRepository = createPostgresPlatformMicrosoftHealthSnapshotRepository(pool, {
-    cursorSecret: config.cursorSecret,
+    cursorSecret: config.cursorSecret,protectedRuntime,
   });
   const diagnosticRepository = createPostgresPlatformDiagnosticRepository(pool, {
-    platformAuditRepository: auditRepository,
+    platformAuditRepository: auditRepository,protectedRuntime,
   });
   const meteringRepository = createPostgresPlatformMeteringRepository(pool, {
     auditRepository,

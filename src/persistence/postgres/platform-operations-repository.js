@@ -1,3 +1,4 @@
+import { createProtectedPlatformTenantCustodySql } from './protected-platform-tenant-custody.js';
 import { isInternalUuid } from '../../domain/identifiers.js';
 import { withPostgresTransaction } from './transaction.js';
 import {
@@ -92,14 +93,17 @@ export async function requireCurrentPlatformMutationAuthorization(
   client,
   authorization,
   tenantId,
-  { creation = false } = {},
+  { creation = false,protectedRuntime=null } = {},
 ) {
+  const custody=createProtectedPlatformTenantCustodySql(protectedRuntime);
+  const restriction=custody?.predicate({ tenant: '$4',firstParameter: 12 });
   const operatorId = requirePlatformOperatorId(authorization);
   const securityVersion = operatorSecurityVersion(authorization);
   const principal = authorization.principal;
   const permission = authorization.permission;
   const result = await client.query({
-    name: creation ? 'platform-operation-authorize-creation' : 'platform-operation-authorize-target',
+    name: custody ? (creation ? 'platform-protected-operation-authorize-creation' : 'platform-protected-operation-authorize-target')
+      : creation ? 'platform-operation-authorize-creation' : 'platform-operation-authorize-target',
     text: `
       SELECT 1
       FROM platform_operators operator
@@ -129,6 +133,7 @@ export async function requireCurrentPlatformMutationAuthorization(
             $3::boolean = false
             AND (
               operator.scope_mode = 'all'
+              ${restriction ? `OR ${restriction.syntheticSql}` : ''}
               OR EXISTS (
                 SELECT 1
                 FROM platform_operator_tenant_scopes target_scope
@@ -138,6 +143,8 @@ export async function requireCurrentPlatformMutationAuthorization(
             )
           )
         )
+      ${restriction ? `AND (($3::boolean=true AND ${restriction.deploymentSql})
+        OR ($3::boolean=false AND ${restriction.sql}))` : ''}
       LIMIT 1
       FOR SHARE
     `,
@@ -153,6 +160,7 @@ export async function requireCurrentPlatformMutationAuthorization(
       permission,
       principal.assurance.level,
       principal.assurance.authenticatedAt,
+      ...(restriction?.values ?? []),
     ],
   });
   if (result.rowCount !== 1) {
@@ -282,6 +290,7 @@ export function createPostgresPlatformTenantOperationsRepository(pool, {
   tenantLifecycleRepository,
   cursorSecret,
   customerInvitationEnvironment=null,
+  protectedRuntime=null,
 } = {}) {
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
@@ -291,6 +300,8 @@ export function createPostgresPlatformTenantOperationsRepository(pool, {
     throw new TypeError('PLATFORM_CUSTOMER_DIRECTORY_ENVIRONMENT_INVALID');
   }
   const invitedCustomerAccess=customerInvitationEnvironment!==null;
+  const custody=createProtectedPlatformTenantCustodySql(protectedRuntime);
+  const restriction=custody?.predicate({ tenant: 'tenant.id',modeParameter: 3,firstParameter: invitedCustomerAccess ? 10 : 9 });
   if (
     !onboardingRepository
     || typeof onboardingRepository.findInvitationByTenantId !== 'function'
@@ -320,7 +331,7 @@ export function createPostgresPlatformTenantOperationsRepository(pool, {
         client,
         values.authorization,
         values.tenantId,
-        { creation },
+        { creation,protectedRuntime: custody?.cursorScope ?? null },
       );
       return work(client, operatorId);
     });
@@ -334,6 +345,7 @@ export function createPostgresPlatformTenantOperationsRepository(pool, {
           lifecycleStatus: query.lifecycleStatus,
           search: query.search === null ? null : query.search.toLowerCase(),
           ...(invitedCustomerAccess ? { customerInvitationEnvironment } : {}),
+          ...(custody ? { protectedRuntime: custody.cursorScope } : {}),
         });
         const cursor = query.cursor === null
           ? null
@@ -347,12 +359,15 @@ export function createPostgresPlatformTenantOperationsRepository(pool, {
           throw new TypeError('PLATFORM_OPERATION_CURSOR_INVALID');
         }
         const page = await pool.query({
-          name: invitedCustomerAccess ? 'platform-tenant-directory-invited-page' : 'platform-tenant-directory-page',
+          name: custody ? (invitedCustomerAccess
+            ? 'platform-protected-tenant-directory-invited-page' : 'platform-protected-tenant-directory-page')
+            : invitedCustomerAccess ? 'platform-tenant-directory-invited-page' : 'platform-tenant-directory-page',
           text: `
             WITH authorized_tenants AS MATERIALIZED (
               SELECT tenant.*
               FROM tenants tenant
-              WHERE ${DIRECTORY_SCOPE_SQL}
+              WHERE (${DIRECTORY_SCOPE_SQL} ${restriction ? `OR ${restriction.syntheticSql}` : ''})
+                ${restriction ? `AND ${restriction.sql}` : ''}
             )
             SELECT
               tenant.id AS tenant_id,
@@ -407,6 +422,7 @@ export function createPostgresPlatformTenantOperationsRepository(pool, {
             afterTenantId,
             query.limit + 1,
             ...(invitedCustomerAccess ? [customerInvitationEnvironment] : []),
+            ...(restriction?.values ?? []),
           ],
         });
         const hasMore = page.rows.length > query.limit;
@@ -571,6 +587,7 @@ export function createPostgresPlatformEntitlementOperationsRepository(pool, {
   platformAuditRepository,
   entitlementRepository,
   cursorSecret,
+  protectedRuntime=null,
 } = {}) {
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
@@ -581,6 +598,7 @@ export function createPostgresPlatformEntitlementOperationsRepository(pool, {
     || typeof entitlementRepository.findTenantState !== 'function'
     || typeof entitlementRepository.applyChangesWithClient !== 'function'
   ) throw new TypeError('ENTITLEMENT_REPOSITORY_REQUIRED');
+  const custody=createProtectedPlatformTenantCustodySql(protectedRuntime);
   const cursorCodec = createPlatformOperationCursorCodec({ secret: cursorSecret });
   const audit = { tenantAuditRepository, platformAuditRepository };
 
@@ -676,6 +694,7 @@ export function createPostgresPlatformEntitlementOperationsRepository(pool, {
             client,
             values.authorization,
             values.tenantId,
+            { protectedRuntime: custody?.cursorScope ?? null },
           );
           if (values.packageId !== null) {
             const packageResult = await client.query({

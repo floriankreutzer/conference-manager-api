@@ -172,3 +172,18 @@ test('native approval form preserves top-level303 and verifies its own session C
   assert.equal(f.calls.at(-1).input.intent.operatorId,f.principal.operatorId);
   assert.doesNotMatch(f.logs.join(''),new RegExp(`${CSRF}|${PASSKEY_STATE}|${STATE}`));
 });
+
+
+test('normal MFA startup can check for a pending intent after login without creating any grant or resetting a generation',async t=>{
+  const f=await fixture(t),headers={ cookie: f.normalCookie.split(';')[0] };
+  for (const cookie of [headers.cookie,`${headers.cookie}; cm_synthetic_intent=invalid`]) {
+    const result=await f.request('/intent',{ headers: { cookie } });assert.equal(result.status,200);
+    assert.deepEqual(Object.keys(JSON.parse(result.text)).sort(),['requestId','status']);
+    assert.equal(JSON.parse(result.text).status,'none');assert.equal(result.headers['set-cookie'],undefined);
+  }
+  assert.equal(f.calls.length,0);
+  assert.equal((await f.request('/intent')).status,401);
+  assert.equal((await f.request('/options',{ method: 'POST',headers: { ...headers,'x-csrf-token': CSRF },
+    body: { generationId: f.generationId,slot: 'northwind',role: 'employee' } })).status,403);
+  assert.equal(f.calls.length,0);
+});

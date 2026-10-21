@@ -1,3 +1,4 @@
+import { createProtectedPlatformTenantCustodySql } from './protected-platform-tenant-custody.js';
 import { withPostgresTransaction } from './transaction.js';
 import {
   createPlatformOperationCursorCodec,
@@ -18,9 +19,10 @@ function operatorSecurityVersion(authorization) {
   return value;
 }
 
-async function requireTarget(client, authorization, tenantId) {
+async function requireTarget(client, authorization, tenantId,custody) {
+  const restriction=custody?.predicate({ tenant: '$3',firstParameter: 4 });
   const result = await client.query({
-    name: 'platform-read-model-authorize-target',
+    name: custody ? 'platform-protected-read-model-authorize-target' : 'platform-read-model-authorize-target',
     text: `
       SELECT 1
       FROM platform_operators operator
@@ -29,15 +31,17 @@ async function requireTarget(client, authorization, tenantId) {
         AND operator.security_version = $2
         AND (
           operator.scope_mode = 'all'
+          ${restriction ? `OR ${restriction.syntheticSql}` : ''}
           OR EXISTS (
             SELECT 1 FROM platform_operator_tenant_scopes target_scope
             WHERE target_scope.operator_id = operator.id AND target_scope.tenant_id = $3
           )
         )
+      ${restriction ? `AND ${restriction.sql}` : ''}
       LIMIT 1
       FOR SHARE
     `,
-    values: [requirePlatformOperatorId(authorization), operatorSecurityVersion(authorization), tenantId],
+    values: [requirePlatformOperatorId(authorization), operatorSecurityVersion(authorization), tenantId,...(restriction?.values ?? [])],
   });
   if (result.rowCount !== 1) {
     const error = new Error('PLATFORM_TENANT_TARGET_DENIED');
@@ -129,13 +133,16 @@ async function snapshotClock(pool, name) {
   return instant(result.rows[0].snapshot_at);
 }
 
-export function createPostgresPlatformReadinessSnapshotRepository(pool, { cursorSecret } = {}) {
+export function createPostgresPlatformReadinessSnapshotRepository(pool, { cursorSecret,protectedRuntime=null } = {}) {
   if (!pool || typeof pool.query !== 'function') throw new TypeError('POSTGRES_POOL_REQUIRED');
+  const custody=createProtectedPlatformTenantCustodySql(protectedRuntime);
+  const restriction=custody?.predicate({ tenant: 'tenant.id',modeParameter: 3,firstParameter: 10 });
   const cursorCodec = createPlatformOperationCursorCodec({ secret: cursorSecret });
   return Object.freeze({
     async list({ query, authorization }) {
       const filters = Object.freeze({
         lifecycleStatus: query.lifecycleStatus,
+        ...(custody ? { protectedRuntime: custody.cursorScope } : {}),
         readinessState: query.readinessState,
         blockerCode: query.blockerCode,
       });
@@ -148,10 +155,11 @@ export function createPostgresPlatformReadinessSnapshotRepository(pool, { cursor
       });
       const snapshotAt = cursor?.snapshotAt ?? await snapshotClock(pool, 'platform-readiness-page-clock');
       const result = await pool.query({
-        name: 'platform-readiness-fleet-page',
+        name: custody ? 'platform-readiness-fleet-page-protected' : 'platform-readiness-fleet-page',
         text: `
           WITH authorized_tenants AS MATERIALIZED (
-            SELECT tenant.* FROM tenants tenant WHERE ${FLEET_SCOPE_SQL}
+            SELECT tenant.* FROM tenants tenant WHERE (${FLEET_SCOPE_SQL} ${restriction ? `OR ${restriction.syntheticSql}` : ''})
+              ${restriction ? `AND ${restriction.sql}` : ''}
           )
           SELECT tenant.id AS tenant_id, tenant.display_name,
             tenant.status AS lifecycle_status, tenant.lifecycle_revision,
@@ -199,6 +207,7 @@ export function createPostgresPlatformReadinessSnapshotRepository(pool, { cursor
           query.blockerCode,
           tenantId,
           query.limit + 1,
+          ...(restriction?.values ?? []),
         ],
       });
       const hasMore = result.rows.length > query.limit;
@@ -220,13 +229,16 @@ export function createPostgresPlatformReadinessSnapshotRepository(pool, { cursor
   });
 }
 
-export function createPostgresPlatformMicrosoftHealthSnapshotRepository(pool, { cursorSecret } = {}) {
+export function createPostgresPlatformMicrosoftHealthSnapshotRepository(pool, { cursorSecret,protectedRuntime=null } = {}) {
   if (!pool || typeof pool.query !== 'function') throw new TypeError('POSTGRES_POOL_REQUIRED');
+  const custody=createProtectedPlatformTenantCustodySql(protectedRuntime);
+  const restriction=custody?.predicate({ tenant: 'tenant.id',modeParameter: 3,firstParameter: 11 });
   const cursorCodec = createPlatformOperationCursorCodec({ secret: cursorSecret });
   return Object.freeze({
     async list({ query, authorization }) {
       const filters = Object.freeze({
         lifecycleStatus: query.lifecycleStatus,
+        ...(custody ? { protectedRuntime: custody.cursorScope } : {}),
         capability: query.capability,
         healthStatus: query.healthStatus,
         incidentScope: query.incidentScope,
@@ -240,10 +252,11 @@ export function createPostgresPlatformMicrosoftHealthSnapshotRepository(pool, { 
       });
       const snapshotAt = cursor?.snapshotAt ?? await snapshotClock(pool, 'platform-health-page-clock');
       const result = await pool.query({
-        name: 'platform-microsoft-health-fleet-page',
+        name: custody ? 'platform-microsoft-health-fleet-page-protected' : 'platform-microsoft-health-fleet-page',
         text: `
           WITH authorized_tenants AS MATERIALIZED (
-            SELECT tenant.* FROM tenants tenant WHERE ${FLEET_SCOPE_SQL}
+            SELECT tenant.* FROM tenants tenant WHERE (${FLEET_SCOPE_SQL} ${restriction ? `OR ${restriction.syntheticSql}` : ''})
+              ${restriction ? `AND ${restriction.sql}` : ''}
           )
           SELECT tenant.id AS tenant_id, tenant.display_name,
             tenant.status AS lifecycle_status, tenant.lifecycle_revision,
@@ -316,6 +329,7 @@ export function createPostgresPlatformMicrosoftHealthSnapshotRepository(pool, { 
           query.incidentScope,
           tenantId,
           query.limit + 1,
+          ...(restriction?.values ?? []),
         ],
       });
       const hasMore = result.rows.length > query.limit;
@@ -337,7 +351,8 @@ export function createPostgresPlatformMicrosoftHealthSnapshotRepository(pool, { 
   });
 }
 
-export function createPostgresPlatformDiagnosticRepository(pool, { platformAuditRepository } = {}) {
+export function createPostgresPlatformDiagnosticRepository(pool, { platformAuditRepository,protectedRuntime=null } = {}) {
+  const custody=createProtectedPlatformTenantCustodySql(protectedRuntime);
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
   }
@@ -345,7 +360,7 @@ export function createPostgresPlatformDiagnosticRepository(pool, { platformAudit
   return Object.freeze({
     async readSummaryAndRecordAccess({ tenantId, authorization, evidence }) {
       return withPostgresTransaction(pool, async (client) => {
-        await requireTarget(client, authorization, tenantId);
+        await requireTarget(client, authorization, tenantId,custody);
         const result = await client.query({
           name: 'platform-diagnostic-tenant-summary',
           text: `
@@ -437,7 +452,7 @@ export function createPostgresPlatformDiagnosticRepository(pool, { platformAudit
       evidence,
     }) {
       return withPostgresTransaction(pool, async (client) => {
-        await requireTarget(client, authorization, tenantId);
+        await requireTarget(client, authorization, tenantId,custody);
         const result = await client.query({
           name: 'platform-diagnostic-correlation-query',
           text: `

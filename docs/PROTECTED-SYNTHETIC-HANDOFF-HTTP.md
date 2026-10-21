@@ -150,3 +150,25 @@ sessions/identities and the short handoff cookies remain unchanged. No Customer
 session is issued and the handoff is not consumed by logout. The frontend may
 continue only after a successful acknowledgement and must not blindly replay an
 ambiguous logout. Expired flows require a new start and fresh exact approval.
+
+
+## Login continuation and document policy
+
+An authenticated normal-MFA startup may read intent once after Microsoft/passkey
+login has scrubbed the presentation query. GET intent returns only200
+`{status: 'none',requestId}` when no valid signed intent is present. This response
+creates no cookie, challenge, target, generation or grant. The same current MFA,
+provider/epoch, body and Origin/site checks still run first. Every mutation still
+requires a valid signed intent and exact operation proof; no query establishes
+continuation authority. An expired intent requires restarting from Customer.
+
+Actual native WebKit form acceptance requires the protected HTML document to use
+same-origin Referrer-Policy and matching meta, preserving the concrete Origin for
+same-origin POST while suppressing external Referer. A no-referrer document
+serializes native form Origin as null; the API deliberately continues denying it.
+API callbacks/redirects retain no-referrer and scrub code/state before HTML. Both
+protected documents must name only their fixed validated counterpart in CSP
+form-action; self-only meta and a broader header intersect, never loosen each
+other. Ordinary closed Demo HTML/CSP remains unchanged. Frontend365 prepares the
+Customer artifact helper and tested native local303; complete two-origin/static
+root/real-primary/browser/deployment acceptance remains outstanding.

@@ -186,7 +186,7 @@ export function createProtectedPlatformAuthentication({ env,pool,leasePool,prote
   const scopes=createPostgresProtectedRuntimeExecutionScopes({ pool,leasePool,environment,securityEpoch: protectedSecurityEpoch });
   const protection={ environment,securityEpoch: protectedSecurityEpoch };
   const auditRepository=createPostgresPlatformAuditRepository(pool,{ hmacSecret: config.auditHmacSecret });
-  const operatorRepository=createPostgresPlatformOperatorRepository(pool,{ auditRepository });
+  const operatorRepository=createPostgresPlatformOperatorRepository(pool,{ auditRepository,protectedRuntime: protection });
   const sessionRepository=createPostgresPlatformSessionRepository(pool,{ auditRepository });
   const oidcTransactionRepository=createPostgresPlatformOidcTransactionRepository(pool);
   const platformAuditService=createPlatformAuditService({ repository: auditRepository,
