@@ -88,3 +88,17 @@ Each existing Empty027 probe now first drains Empty028, just as canonical probes
 drain Empty063. Expected grants, immutable sources and historical recovery
 assertions remain unchanged. No production storage/privilege rule changed in
 this correction; native exact-source rerun is required.
+
+The same not-yet-accepted063 candidate also prepares a narrow boolean
+`protected_lock_synthetic_calendar_source` for the forthcoming owned final
+booking guard. It derives actor/source/User/session only from consumed current
+UUID custody and locks mutable rows in that order without granting Customer
+Platform UPDATE. NOWAIT contention returns false; RR serialization remains a
+failure. Exact environment/surface session_user or routine owner is required;
+PUBLIC/Demo execution is denied and only the protected Customer manifest grants
+EXECUTE. The caller must still validate the full current principal/proof/evidence
+before and after this lock under its mandatory live shared transaction. This
+port alone grants no admission or booking. Native unknown-custody/Demo denial
+are prepared here; positive consumed-session/concurrent revocation/final-write
+acceptance belongs to the forthcoming runtime integration and remains open.
+Accepted001–062 are untouched; this addition is to the unmerged063 candidate.

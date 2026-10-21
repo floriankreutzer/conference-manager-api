@@ -22,6 +22,8 @@ async t=>{
     try { await pool.query(`DROP OWNED BY ${role}`);await pool.query(`DROP ROLE ${role}`); }
     finally { await Promise.all([pool.end(),lease.end()]); }
   });await migrateUp(pool);
+  assert.equal((await pool.query("SELECT protected_lock_synthetic_calendar_source('int',$1,$2) AS allowed",
+    [randomUUID(),randomUUID()])).rows[0].allowed,false);
   const original=(await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=62 ORDER BY version')).rows;
   assert.equal(await rollbackLatest(pool),true);await migrateUp(pool);
   assert.deepEqual((await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=62 ORDER BY version')).rows,original);
@@ -49,6 +51,8 @@ async t=>{
     assert.equal(policy.prosecdef,true);assert.deepEqual(policy.proconfig,['search_path=pg_catalog']);
     assert.equal(policy.public_execute,false);
   }
+  await assert.rejects(asRole("SELECT protected_lock_synthetic_calendar_source('int',$1,$2)",
+    [randomUUID(),randomUUID()]),{ code: '42501' });
   const epoch=randomUUID(),scope={ environment: 'int',securityEpoch: epoch };
   await pool.query("INSERT INTO protected_runtime_deployments(environment,security_epoch) VALUES('int',$1)",[epoch]);
   const owner=await createProtectedSyntheticOperatorFixture(pool,lease,{ epoch });
