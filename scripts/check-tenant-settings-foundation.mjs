@@ -50,8 +50,8 @@ if (/repository|SELECT|UPDATE|INSERT INTO|DELETE FROM/i.test(revision)) {
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 61;/.test(pool)) {
-  throw new Error('Runtime schema readiness requires private synthetic handoff schema 61.');
+if (!/export const CURRENT_SCHEMA_VERSION = 62;/.test(pool)) {
+  throw new Error('Runtime schema readiness requires private synthetic source-lock schema 62.');
 }
 
 const migration = await readFile('migrations/020_tenant_settings_revisions.up.sql', 'utf8');
