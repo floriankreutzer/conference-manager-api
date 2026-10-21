@@ -264,7 +264,7 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
   protected provisioning consumers own their separate persistence/authority contracts.
 - `scripts/demo-db-migrations.mjs` owns the independent checksum-protected Demo overlay migration
   ledger after verifying the exact canonical schema `001..064`.
-- `scripts/platform-break-glass-grant.mjs` and `scripts/platform-recovery-fallback.mjs` retain the existing privileged Tenant-recovery mutation boundary; offline passkey enrollment/recovery has its separate reviewed issuer boundary. They accept credentials only through fixed descriptors and require live Platform sessions plus a dual-control, exact Tenant/permission-bound, one-use grant. The retired process-local Tenant-operator runtime and package entry point are prohibited.
+- `scripts/platform-break-glass-grant.mjs` and `scripts/platform-recovery-fallback.mjs` are the only local privileged mutation wrappers. They accept credentials only through fixed descriptors and require live Platform sessions plus a dual-control, exact Tenant/permission-bound, one-use grant. The retired process-local Tenant-operator runtime and package entry point are prohibited. Independent offline passkey enrollment/recovery retains its separate reviewed issuer contract and cannot enter a runtime import graph.
 - `scripts/check-architecture.mjs` prevents architecture, migration and composition drift.
 - `scripts/check-security-baseline.mjs` prevents drift between the documented Pilot/Production security baseline and executable controls.
 - `scripts/security-dast.mjs` exercises the real HTTP server in isolated Test mode.
