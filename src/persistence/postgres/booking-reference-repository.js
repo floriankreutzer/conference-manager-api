@@ -72,6 +72,7 @@ async function lockCurrentCreateAuthority(
   tenantId,
   integrationId,
   providerConnectionReference,
+  protectedAuthority=null,
 ) {
   const integration = await client.query({
     name: 'booking-lock-current-create-authority',
@@ -85,6 +86,12 @@ async function lockCurrentCreateAuthority(
     values: [tenantId, integrationId],
   });
   const row = integration.rows[0];
+  if (row?.provider==='synthetic_calendar') {
+    return row.provider_reference===providerConnectionReference && row.status==='active'
+      && typeof protectedAuthority?.guard?.lockBookingIntegration==='function'
+      && await protectedAuthority.guard.lockBookingIntegration(client,{ tenantId,integrationId,providerConnectionReference,
+        principal: protectedAuthority.principal });
+  }
   if (
     !row
     || row.provider_reference !== providerConnectionReference
@@ -114,11 +121,12 @@ async function lockCurrentCleanupAuthority(
   tenantId,
   integrationId,
   providerConnectionReference,
+  protectedAuthority=null,
 ) {
   const integration = await client.query({
     name: 'booking-lock-current-cleanup-authority',
     text: `
-      SELECT provider, provider_reference
+      SELECT provider, provider_reference, status
       FROM integrations
       WHERE tenant_id = $1
         AND id = $2
@@ -127,6 +135,12 @@ async function lockCurrentCleanupAuthority(
     values: [tenantId, integrationId],
   });
   const row = integration.rows[0];
+  if (row?.provider==='synthetic_calendar') {
+    return row.provider_reference===providerConnectionReference && row.status==='active'
+      && typeof protectedAuthority?.guard?.lockBookingIntegration==='function'
+      && await protectedAuthority.guard.lockBookingIntegration(client,{ tenantId,integrationId,providerConnectionReference,
+        principal: protectedAuthority.principal });
+  }
   if (!row || row.provider_reference !== providerConnectionReference) return false;
   if (row.provider !== 'microsoft365') return true;
   const binding = await client.query({
@@ -145,7 +159,10 @@ async function lockCurrentCleanupAuthority(
   return binding.rowCount === 1;
 }
 
-export function createPostgresBookingReferenceRepository(pool, { auditRepository } = {}) {
+export function createPostgresBookingReferenceRepository(pool, { auditRepository,calendarAuthorityGuard=null } = {}) {
+  if (calendarAuthorityGuard!==null && typeof calendarAuthorityGuard.lockBookingIntegration!=='function') {
+    throw new TypeError('BOOKING_REFERENCE_AUTHORITY_GUARD_INVALID');
+  }
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
   }
@@ -224,6 +241,7 @@ export function createPostgresBookingReferenceRepository(pool, { auditRepository
     },
 
     async reserveProviderResourceBinding({
+      principal=null,
       tenantId,
       requestId,
       integrationId,
@@ -254,6 +272,7 @@ export function createPostgresBookingReferenceRepository(pool, { auditRepository
           tenantId,
           integrationId,
           providerConnectionReference,
+          { guard: calendarAuthorityGuard,principal },
         )) throw new BookingReferenceConflictError();
         const existing = await findWithClient(client, tenantId, requestId, integrationId);
         if (existing) {
@@ -305,6 +324,7 @@ export function createPostgresBookingReferenceRepository(pool, { auditRepository
     },
 
     async retryProviderResourceBinding({
+      principal=null,
       tenantId,
       requestId,
       integrationId,
@@ -335,6 +355,7 @@ export function createPostgresBookingReferenceRepository(pool, { auditRepository
           tenantId,
           integrationId,
           providerConnectionReference,
+          { guard: calendarAuthorityGuard,principal },
         )) throw new BookingReferenceConflictError();
         const existing = await findWithClient(client, tenantId, requestId, integrationId);
         if (
@@ -390,6 +411,7 @@ export function createPostgresBookingReferenceRepository(pool, { auditRepository
     },
 
     async createProviderReference({
+      principal=null,
       tenantId,
       requestId,
       integrationId,
@@ -410,6 +432,7 @@ export function createPostgresBookingReferenceRepository(pool, { auditRepository
           tenantId,
           integrationId,
           providerConnectionReference,
+          { guard: calendarAuthorityGuard,principal },
         );
         const authorityCurrent = createAuthorityCurrent || (
           allowDisconnectedCleanup === true
@@ -418,6 +441,7 @@ export function createPostgresBookingReferenceRepository(pool, { auditRepository
             tenantId,
             integrationId,
             providerConnectionReference,
+          { guard: calendarAuthorityGuard,principal },
           )
         );
         const existing = await findWithClient(client, tenantId, requestId, integrationId);

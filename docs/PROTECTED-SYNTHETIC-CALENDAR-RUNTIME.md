@@ -76,3 +76,22 @@ are not physical credentials, live Microsoft authentication, mail delivery or
 production activation. No cloud, paid capacity, customer data or deployment is
 changed by preparing this source. All four permanent paired three-customer and
 two-reset journeys and all actual-main gates remain required.
+
+
+The first native owned HTTP confirmation failed503 after successful generation,
+fresh Conference Manager admission and actual source-lock concurrency proof.
+The canonical booking-reference preparation still required `connected` for every
+provider, whereas the synthetic Integration truthfully stores `active`. The
+correction gives only that provider a private protected guard port, passed by the
+owned persistence composition. Preparation/retry/final reference creation now
+carry the actual application principal; the private guard requalifies/locks full
+current source custody and exact active synthetic Integration. The old Microsoft
+and ordinary connected-provider rules remain. A `connected` synthetic record is
+not a substitute, and default composition cannot grant synthetic authority.
+Focused regressions cover absent/denied guard, actual principal forwarding,
+truthful active state, replay and unchanged ordinary provider behavior, as well
+as final source qualification. All34 focused booking/security/guard cases passed.
+A separate read-only actual compiled-provider diagnostic isolates selection and
+validation in the restricted native fixture; bounded failure diagnostics report
+only fixed audit phase codes. The first failed run remains historical. Fresh
+full quality and native acceptance of this correction are still required.

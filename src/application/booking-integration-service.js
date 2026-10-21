@@ -300,6 +300,7 @@ export function createBookingIntegrationService({
       'reconciliation_started',
     );
     const stored = await repository.createProviderReference({
+      principal: context.principal,
       tenantId: context.tenantContext.tenantId,
       requestId: request.id,
       integrationId: calendarProvider.integrationId,
@@ -509,6 +510,7 @@ export function createBookingIntegrationService({
             'retry_resource_bound',
           );
           const retried = await repository.retryProviderResourceBinding({
+            principal: context.principal,
             tenantId: context.tenantContext.tenantId,
             requestId: request.id,
             integrationId: calendarProvider.integrationId,
@@ -538,6 +540,7 @@ export function createBookingIntegrationService({
             'resource_bound',
           );
           const reserved = await repository.reserveProviderResourceBinding({
+            principal: context.principal,
             tenantId: context.tenantContext.tenantId,
             requestId: request.id,
             integrationId: calendarProvider.integrationId,

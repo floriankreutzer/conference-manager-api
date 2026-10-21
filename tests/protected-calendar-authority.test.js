@@ -41,6 +41,7 @@ function fixture({ synthetic=true,enabled=true }={}) {
       if (state.loseAccess) state.access=false;return result(true,[{ allowed: state.lock }]);
     }
     if (value?.name==='protected-calendar-real-customer-lock') return result(state.lock,[{ id: userId }]);
+    if (value?.name==='protected-calendar-booking-integration') return result(state.resource,[{ id: authority.integrationId }]);
     if (value?.name==='protected-calendar-final-synthetic-resource') return result(state.resource,[{ room_id: 'room-01' }]);
     if (value?.name==='protected-calendar-final-synthetic-event') return result(state.event,[{ id: randomUUID() }]);
     if (value?.name==='protected-calendar-final-synthetic-no-event') return result(state.active,[{ id: randomUUID() }]);
@@ -116,4 +117,17 @@ test('mutation fencing requires the live exact shared transaction and current pr
   assert.equal(await f.run(client=>f.guard.lockCustomerMutation(client,{ tenantId,principal: f.input.principal })),false);
   assert.throws(()=>createPostgresProtectedCalendarAuthorityGuard(f.pool,{ ...scope,environment: 'prod',syntheticScope }),
     /SYNTHETIC_HANDOFF_INVALID|CONFIGURATION_INVALID/);
+});
+
+
+test('pending booking references require current canonical synthetic custody and truthful active integration',async()=>{
+  const f=fixture(),input={ tenantId,integrationId: authority.integrationId,principal: f.input.principal,
+    providerConnectionReference: authority.providerConnectionReference };
+  assert.equal(await f.run(client=>f.guard.lockBookingIntegration(client,input)),true);
+  f.state.lock=false;assert.equal(await f.run(client=>f.guard.lockBookingIntegration(client,input)),false);
+  f.state.lock=true;assert.equal(await f.run(client=>f.guard.lockBookingIntegration(client,
+    { ...input,providerConnectionReference: `synthetic:${randomUUID()}` })),false);
+  f.state.resource=false;assert.equal(await f.run(client=>f.guard.lockBookingIntegration(client,input)),false);
+  const real=fixture({ synthetic: false });
+  assert.equal(await real.run(client=>real.guard.lockBookingIntegration(client,{ ...input,principal: real.input.principal })),false);
 });

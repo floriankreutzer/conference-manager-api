@@ -55,7 +55,8 @@ export function createPostgresPersistence(config, { mediaObjectStorage = null, i
   const applicationRepository = createPostgresApplicationRepository(pool, { auditRepository,requirePublishedCatering,cateringRegistry });
   const requestWorkflowRepository = createPostgresRequestDraftWorkflowRepository(pool, { auditRepository });
   const tenantRepository = createPostgresTenantRepository(pool, { auditRepository });
-  const bookingReferenceRepository = createPostgresBookingReferenceRepository(pool, { auditRepository });
+  const bookingReferenceRepository = createPostgresBookingReferenceRepository(pool, { auditRepository,
+    calendarAuthorityGuard: typeof calendarAuthorityGuard?.lockBookingIntegration==='function' ? calendarAuthorityGuard : null });
   const bookingChangeRepository = createPostgresBookingChangeRepository(pool, {
     auditRepository,requirePublishedCatering,cateringRegistry,
     calendarAuthorityGuard: typeof calendarAuthorityGuard?.lockCustomerMutation==='function' ? calendarAuthorityGuard : null,

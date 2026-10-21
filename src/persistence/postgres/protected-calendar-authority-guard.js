@@ -107,6 +107,15 @@ export function createPostgresProtectedCalendarAuthorityGuard(pool,{ environment
         return result.rows[0]?.allowed===true;
       } catch { return false; }
     },
+    async lockBookingIntegration(client,{ tenantId,integrationId,providerConnectionReference,principal }={}) {
+      if (!isInternalUuid(tenantId) || !isInternalUuid(integrationId)) return false;
+      const runtime=await access(client,tenantId,principal);
+      if (runtime?.mode!=='synthetic' || providerConnectionReference!==`synthetic:${runtime.generationId}`) return false;
+      const integration=await client.query({ name: 'protected-calendar-booking-integration',text: `SELECT id FROM integrations
+        WHERE tenant_id=$1 AND id=$2 AND provider='synthetic_calendar' AND status='active'
+          AND provider_reference=$3 FOR SHARE`,values: [tenantId,integrationId,providerConnectionReference] });
+      return integration.rowCount===1;
+    },
     async lockCustomerMutation(client,{ tenantId,principal }={}) {
       return isInternalUuid(tenantId) && await access(client,tenantId,principal)!==null;
     },
