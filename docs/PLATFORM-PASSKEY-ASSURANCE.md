@@ -1,5 +1,22 @@
 # Platform passkey assurance
 
+## Current source status — 21 October 2026
+
+The owned [protected Platform process](PROTECTED-PLATFORM-RUNTIME.md) now composes
+the primary, setup, enrollment, lifecycle and exact-operation contracts described
+below. The staged implementation notes and candidate schema numbers that follow
+are historical checkpoints, not current startup or deployment instructions.
+Current configuration and immutable schema authority are defined by
+[the protected profile](PROTECTED-RUNTIME-CONFIGURATION.md) and accepted migrations.
+Ordinary Conditional Access entrypoints remain unchanged. Actual Microsoft primary,
+owner-controlled keys/recovery and the coordinated deployed cutover remain open.
+
+The current MSAL confidential code exchange uses the fixed HTTPS provider endpoint
+and explicit protocol/claim checks; it does not independently verify the returned
+JWT signature. The historical target below must not be read as evidence of that
+verification, an IdP-asserted FAL, hardware attestation or NIST AAL/FAL conformance.
+WebAuthn assertion signatures are separately verified by the application adapter.
+
 ## Decision and implementation status
 
 Application issue #355 tracks the owner's 2026-10-19 decision to retain Microsoft

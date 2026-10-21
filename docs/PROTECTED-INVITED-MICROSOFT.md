@@ -1,5 +1,13 @@
 # Protected invited Microsoft access
 
+Current source status — 21 October 2026: the owned protected Customer root composes
+this optional Microsoft flow through its explicit validated configuration. The
+inactive-composition wording below records its earlier foundation stage. Use
+[the current Customer process contract](PROTECTED-CUSTOMER-RUNTIME.md) and
+[profile](PROTECTED-RUNTIME-CONFIGURATION.md) for startup authority. Source
+composition does not activate a registration, sender, primary login or deployment;
+the signature/provider evidence limits below remain applicable.
+
 The inactive invited-access composition optionally receives the server-owned fresh
 Microsoft client and an independent external protocol secret. With no client,
 Microsoft remains uncomposed. This installs no HTTP route or runtime flag and
