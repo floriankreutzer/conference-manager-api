@@ -9,6 +9,11 @@ import { createMicrosoft365CalendarProviderFactory } from './integrations/micros
 import { createProtectedCalendarProviderFactory } from './integrations/protected-calendar-provider-factory.js';
 import { createSyntheticCalendarProviderFactory } from './integrations/synthetic-calendar-provider.js';
 import { createPostgresSyntheticCalendarRepository } from './persistence/postgres/synthetic-calendar-repository.js';
+import { createPostgresSyntheticOnboardingRepository } from './persistence/postgres/synthetic-onboarding-repository.js';
+import { createSyntheticOnboardingService } from './application/synthetic-onboarding-service.js';
+import { createSyntheticOnboardingRouteModule } from './http/synthetic-onboarding-routes.js';
+import { createAuthorizationPolicy } from './authorization/policy.js';
+import { createAuditService } from './audit/audit-service.js';
 import { createPostgresProtectedCalendarAuthorityGuard } from './persistence/postgres/protected-calendar-authority-guard.js';
 import { createMicrosoft365CapabilityHealthService } from './application/microsoft365-capability-health-service.js';
 import { createPostgresPersistence } from './persistence/postgres/index.js';
@@ -57,9 +62,10 @@ export async function createProtectedCustomerRuntime(environment) {
     leasePool=createPostgresPool(profile.leaseDatabase);
     const base=persistence,readiness=createPostgresProtectedRuntimeReadiness(base.pool,
       { ...protection,leasePool,surface: 'customer' });
+    const additionalReadinessChecks=[];
     async function runtimeReady() {
       if (!await readiness.isReady()) return false;
-      for (const check of base.readinessChecks) if (await check()!==true) return false;
+      for (const check of [...base.readinessChecks,...additionalReadinessChecks]) if (await check()!==true) return false;
       return true;
     }
     persistence=Object.freeze({ ...base,readinessChecks: Object.freeze([runtimeReady]) });
@@ -79,8 +85,18 @@ export async function createProtectedCustomerRuntime(environment) {
     const syntheticFactory=profile.syntheticEnabled ? createSyntheticCalendarProviderFactory({
       repository: createPostgresSyntheticCalendarRepository(base.pool,protection) }) : null;
     const calendarProviderFactory=createProtectedCalendarProviderFactory({ ...protection,runtimeRepository,realFactory,syntheticFactory });
+    const additionalRouteModules=[...authentication.routeModules];
+    if (syntheticScope!==null) {
+      const authorizationPolicy=createAuthorizationPolicy();
+      const repository=createPostgresSyntheticOnboardingRepository(base.pool,{ scope: syntheticScope,
+        auditRepository: base.auditRepository });
+      additionalReadinessChecks.push(repository.isReady);
+      additionalRouteModules.push(createSyntheticOnboardingRouteModule({ publicOrigin: profile.customerOrigin,
+        service: createSyntheticOnboardingService({ authorizationPolicy,repository,
+          auditService: createAuditService({ repository: base.auditRepository,authorizationPolicy }) }) }));
+    }
     composition=createCustomerComposition({ config,persistence,microsoft365Client: graph,calendarProviderFactory,
-      authenticationFactory: authentication.authenticationFactory,additionalRouteModules: authentication.routeModules,logger,
+      authenticationFactory: authentication.authenticationFactory,additionalRouteModules,logger,
       httpServerFactory: options=>createHttpServer({ ...options,
         microsoft365ConnectionService: realMicrosoftService(options.microsoft365ConnectionService,realGate),
         requestHandlerFactory: app=>createProtectedHttpExecutionHandler({ config,surface: 'customer',executionScopes: scopes,app }),
