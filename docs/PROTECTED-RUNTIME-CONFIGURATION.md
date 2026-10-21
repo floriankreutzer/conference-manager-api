@@ -1,0 +1,94 @@
+# Protected runtime profile envelope
+
+Prepared SaaS1 configuration contract; no entrypoint, deployment, provider,
+Microsoft application, recipient, sender or security profile is activated.
+`loadProtectedRuntimeProfile` is a pure explicit-input validator. It does not read
+or mutate the inherited environment, open a pool, query a database, create an
+identity, run a migration or manufacture cutover evidence. Existing ordinary and
+closed Demo roots remain unchanged.
+
+## Prepared environment separation
+
+All protected processes use production security settings, including DEV and INT.
+Only INT is intended to operate initially. DEV and PROD remain unprovisioned until
+they are needed and must be separate before the first productive customer.
+
+| Environment | Customer database role | Platform database role | Synthetic data |
+| --- | --- | --- | --- |
+| DEV | cm_protected_dev_customer | cm_protected_dev_platform | Explicit opt-in |
+| INT | cm_protected_int_customer | cm_protected_int_platform | Explicit opt-in |
+| PROD | cm_protected_prod_customer | cm_protected_prod_platform | Forbidden |
+
+The selected surface receives only its own prefixed database credential. Wrong
+surface/environment roles, missing credentials, short/invalid passwords,
+connection-string parameters, insecure TLS and excessive pools fail closed.
+The validator returns separate immutable business/lease pool configurations;
+the owned root must actually instantiate distinct pools. Both use verify-full
+TLS and canonical application names. Defaults are2 business and1 lease connection;
+each bound is at most5 and their sum at most8. These are application bounds, not
+an assertion about a provider's plan or available quota.
+
+Customer and Platform origins are explicit distinct canonical HTTPS DNS origins
+on the default port. No IP, userinfo, path, query or fragment is accepted. Both
+origins must match the separately verified registration/artifact configuration.
+Customer/Platform API routing remains same-origin and cookies remain host-only;
+this envelope adds no CORS or browser token path.
+
+## Fixed profile inputs
+
+Required common inputs are NODE_ENV=production, PROTECTED_ENVIRONMENT,
+PROTECTED_SECURITY_EPOCH, PROTECTED_CUSTOMER_ORIGIN, PROTECTED_PLATFORM_ORIGIN,
+PROTECTED_PLATFORM_SECURITY_EPOCH, PROTECTED_API_COMMIT and
+PROTECTED_FRONTEND_COMMIT. The UUID is non-reusable deployment custody; the
+Platform integer epoch is independent and at least2. Commit inputs must be full
+lowercase40-character object IDs. Syntactic validation does not prove artifact
+integrity; existing source/counterpart inventory and digest evidence must verify
+the actual immutable pair before activation.
+
+The surface-specific database key is PROTECTED_CUSTOMER_DATABASE_URL or
+PROTECTED_PLATFORM_DATABASE_URL. URLs have no query parameters; TLS configuration
+is explicit and fixed to verify-full. PROTECTED_DATABASE_POOL_MAX and
+PROTECTED_LEASE_POOL_MAX are optional bounded decimal integers.
+PROTECTED_SYNTHETIC_ENABLED defaults to false; only exact true/false strings are
+accepted and true is rejected in PROD.
+
+Legacy DATABASE_URL, PLATFORM_*, DEMO_*, ENTRA_*, OIDC_* and ordinary origin/audit/
+CSRF names are forbidden even when empty. A Customer envelope rejects Platform
+secrets/credentials, while permitting the explicitly shared nonsecret Platform
+origin/integer epoch. The common-key list deliberately recognizes encrypted
+invitation custody, Tenant audit, handoff and immutable-build inputs required by
+both server compositions. It returns none of those secrets. Full authentication,
+provider, keyring, sender and recipient validation belongs to the existing owned
+factories and their future surface-specific composition, after this envelope.
+This envelope is not a complete application-secret configuration or issuer.
+
+## Coordinated operating cutover remains mandatory
+
+New prefixes prevent an old binary from consuming the new credential environment.
+Tests prove the existing Customer, Platform and both Demo config loaders reject
+these new-prefix fixtures. This does not revoke an old process's already loaded
+credentials or sessions. Before any REAL admission, operators must block traffic,
+drain both old entrypoints/workers, revoke or rotate old database credentials,
+terminate old connections, apply reviewed migrations explicitly, advance the
+UUID together with profile/integer epoch changes, and verify both new surfaces
+and the immutable artifact pair. Retain epoch history and all identity/business/
+audit data. Restore or rollback must keep traffic closed until compatible custody
+and fresh authentication are restored. No fallback or role/proof weakening is
+introduced to keep an old binary alive.
+
+Configured owner recipient and verified sender must be explicitly supplied;
+Microsoft/email claims do not select them. Actual Microsoft sign-in, keys and
+recovery, provider-mode isolation, full protected HTTP/browser progression,
+operational restore and zero-additional-spend deployment acceptance remain open.
+No resource, plan, paid compute or email is triggered by source preparation.
+
+## Evidence
+
+Eight local profile/negative cases cover all six surface/environment combinations,
+immutable verified-TLS pool settings, old-loader rejection, cross-surface/legacy
+keys, origins, deployment/artifact identity, unsafe connection parameters,
+role aliases, pool bounds and PROD synthetic denial. Module-boundary499, lint
+and whitespace1117 checks pass. The initial module-boundary false positive
+matched an environment-access phrase in a comment; wording was corrected without
+adding an exception. Full frozen local and fresh CI acceptance remain required.
+No deployed isolation or operational acceptance is inferred from these tests.
