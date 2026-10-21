@@ -52,7 +52,8 @@ test('target compositions run real PostgreSQL with separate restricted roles and
     await pool.query(`GRANT SELECT ON public.${identifier(table)} TO ${identifier(customer)},${identifier(platform)}`);
   }
   for (const table of ['tenants', 'tenant_identity_bindings', 'tenant_onboarding_invitations', 'integrations',
-    'tenant_entitlements', 'microsoft365_room_mappings', 'microsoft365_capability_health', 'platform_sessions', 'platform_operators']) {
+    'tenant_entitlements', 'microsoft365_room_mappings', 'microsoft365_capability_health', 'platform_sessions', 'platform_operators',
+    'platform_audit_segments']) {
     await pool.query(`GRANT SELECT ON public.${identifier(table)} TO ${identifier(platform)}`);
   }
   await pool.query(`GRANT UPDATE(id) ON public.tenants TO ${identifier(platform)}`);
@@ -134,6 +135,11 @@ test('target compositions run real PostgreSQL with separate restricted roles and
   }
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_tenant_readiness_snapshots')).rows[0].count, 10);
   await assert.rejects(scoped.customer.pool.query('SELECT * FROM public.platform_audit_events'), error => error.code === '42501');
+  await assert.rejects(scoped.customer.pool.query('SELECT * FROM public.platform_audit_segments'), error => error.code === '42501');
+  assert.equal((await scoped.platform.pool.query('SELECT count(*)::int AS count FROM public.platform_audit_segments'))
+    .rows[0].count, 0);
+  await assert.rejects(scoped.platform.pool.query('INSERT INTO public.platform_audit_segments DEFAULT VALUES'),
+    error => error.code === '42501');
   await assert.rejects(scoped.platform.pool.query('SELECT * FROM public.requests'), error => error.code === '42501');
   for (const surface of ['customer', 'platform']) {
     await assert.rejects(scoped[surface].pool.query("UPDATE public.saas38_load_scope SET release_sha='invalid'"),

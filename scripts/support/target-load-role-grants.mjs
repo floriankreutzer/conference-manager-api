@@ -18,7 +18,7 @@ const CUSTOMER_TABLES = Object.freeze([
 ]);
 const PLATFORM_SOURCE_TABLES = Object.freeze(['tenants', 'tenant_identity_bindings', 'tenant_onboarding_invitations',
   'integrations', 'tenant_entitlements', 'microsoft365_room_mappings', 'microsoft365_capability_health',
-  'platform_sessions', 'platform_operators']);
+  'platform_sessions', 'platform_operators', 'platform_audit_segments']);
 const PLATFORM_PROJECTION_TABLES = Object.freeze(['platform_projection_outbox', 'platform_tenant_readiness_snapshots',
   'platform_microsoft_fleet_snapshots', 'platform_microsoft_fleet_capabilities']);
 const APPEND_ONLY_CUSTOMER_TABLES = new Set(['audit_events', 'request_revisions', 'tenant_location_revisions',
