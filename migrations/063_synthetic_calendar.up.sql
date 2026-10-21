@@ -160,3 +160,41 @@ CREATE TRIGGER synthetic_calendar_truncate_guard BEFORE TRUNCATE ON synthetic_ca
   FOR EACH STATEMENT EXECUTE FUNCTION guard_synthetic_calendar_truncate();
 CREATE TRIGGER synthetic_calendar_resource_truncate_guard BEFORE TRUNCATE ON synthetic_calendar_resources
   FOR EACH STATEMENT EXECUTE FUNCTION guard_synthetic_calendar_truncate();
+
+-- Narrow final-write custody lock; a boolean is never session admission.
+CREATE FUNCTION protected_lock_synthetic_calendar_source(scope_environment text,scope_epoch uuid,customer_session uuid)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$
+DECLARE actor_id uuid;actor_version bigint;source_id uuid;person_id uuid;person_version bigint;tenant uuid;
+BEGIN
+  IF scope_environment IS NULL OR scope_environment NOT IN ('dev','int') OR scope_epoch IS NULL OR customer_session IS NULL
+    OR (session_user::text<>('cm_protected_'||scope_environment||'_customer') AND session_user::text<>current_user::text)
+    OR NOT pg_try_advisory_xact_lock_shared(740193,CASE scope_environment WHEN 'dev' THEN 1 ELSE 2 END) THEN RETURN false; END IF;
+  SELECT custody.operator_id,custody.operator_security_version,custody.source_platform_session_id,
+    custody.user_id,custody.user_security_version,custody.tenant_id
+    INTO actor_id,actor_version,source_id,person_id,person_version,tenant
+    FROM public.synthetic_customer_handoffs custody
+    JOIN public.protected_runtime_deployments deployment ON deployment.environment=custody.environment
+      AND deployment.security_epoch=custody.security_epoch
+    WHERE custody.environment=scope_environment AND custody.security_epoch=scope_epoch
+      AND custody.customer_session_id=customer_session AND custody.status='consumed';
+  IF NOT FOUND THEN RETURN false; END IF;
+  -- Avoid a Tenant -> actor blocking upgrade against an in-flight Platform
+  -- operation. Mutable custody locks are retained through the caller's commit;
+  -- contention/serialization cannot become a stale success or an implicit retry.
+  PERFORM id FROM public.platform_operators WHERE id=actor_id AND security_version=actor_version
+    AND provider='microsoft_entra_platform' AND status='active' FOR SHARE NOWAIT;
+  IF NOT FOUND THEN RETURN false; END IF;
+  PERFORM id FROM public.platform_sessions WHERE id=source_id AND operator_id=actor_id
+    AND principal_version=actor_version AND revoked_at IS NULL AND expires_at>clock_timestamp()
+    AND assurance_level='mfa' AND authentication_context='cm:pk:v1' FOR SHARE NOWAIT;
+  IF NOT FOUND THEN RETURN false; END IF;
+  PERFORM id FROM public.users WHERE tenant_id=tenant AND id=person_id AND active=true
+    AND security_version=person_version FOR SHARE NOWAIT;
+  IF NOT FOUND THEN RETURN false; END IF;
+  PERFORM id FROM public.sessions WHERE id=customer_session AND tenant_id=tenant AND user_id=person_id
+    AND principal_version=person_version AND provider='platform_delegation' AND revoked_at IS NULL
+    AND expires_at>clock_timestamp() FOR SHARE NOWAIT;
+  RETURN FOUND;
+EXCEPTION WHEN lock_not_available THEN RETURN false;
+END $$;
+REVOKE ALL ON FUNCTION protected_lock_synthetic_calendar_source(text,uuid,uuid) FROM PUBLIC;
