@@ -67,3 +67,14 @@ invalidation. That suite has not yet executed at this checkpoint. Native proof
 fixtures use software P256 and synthetic Microsoft-shaped authority; they do not
 prove live Microsoft, physical keys, full HTTP-root/browser or operating acceptance.
 The low-level target authorization probe is not an independent privileged grant.
+
+First native run on05311fb0 failed in CI39559128518/job119086439603:
+the new fixture nested the existing diagnostic RR transaction under its own RC
+mutation-authorization probe. The canonical transaction adapter correctly rejected
+that upgrade. The diagnostic denial check now owns its separate RR transaction
+under the same protected shared lease; the exact denial assertion and all
+production transaction/proof guards remain unchanged. Earlier native target,
+allowlist, pagination and actual projection assertions had executed, but reset,
+epoch and complete native acceptance remain pending on the corrected source.
+Frozen local e56c311/721751bd passed1961 and both DAST gates before this fixture-
+only correction. No native success or test stability is inferred from that run.

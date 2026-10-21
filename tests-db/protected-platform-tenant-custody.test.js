@@ -93,9 +93,10 @@ async t=>{
       owner.operatorId);
     await assert.rejects(requireCurrentPlatformMutationAuthorization(client,authorization(owner),foreignIds[0],{ protectedRuntime: scope }),
       /PLATFORM_TENANT_TARGET_DENIED/);
-    await assert.rejects(persistence.diagnosticRepository.readSummaryAndRecordAccess({ tenantId: foreignIds[0],
-      authorization: authorization(owner),evidence: null }),/PLATFORM_TENANT_TARGET_DENIED/);
   }));
+  // Diagnostics own their canonical RR transaction; do not nest it under an RC probe.
+  await assert.rejects(owner.scopes.withShared(()=>persistence.diagnosticRepository.readSummaryAndRecordAccess({
+    tenantId: foreignIds[0],authorization: authorization(owner),evidence: null })),/PLATFORM_TENANT_TARGET_DENIED/);
   const cursor=(await page(owner,directory,{ search: null })).nextCursor;assert.ok(cursor);
   const changed=createPostgresPlatformPersistence(config,{ protectedRuntime: { ...scope,securityEpoch: randomUUID() } });
   t.after(()=>changed.close());
