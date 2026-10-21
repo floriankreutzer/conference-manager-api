@@ -1,9 +1,6 @@
 import { isInternalUuid } from '../domain/identifiers.js';
 
-export const RESERVATION_PHASE = Object.freeze({
-  PROVISIONAL: 'provisional',
-  FINAL: 'final',
-});
+export { RESERVATION_PHASE,isReservationPhase,isCalendarRoomId,isIdempotencyKey } from '../domain/calendar-values.js';
 
 export const PROVIDER_ERROR_KIND = Object.freeze({
   TIMEOUT: 'timeout',
@@ -18,7 +15,6 @@ export const PROVIDER_ERROR_KIND = Object.freeze({
   UNKNOWN: 'unknown',
 });
 
-const RESERVATION_PHASES = new Set(Object.values(RESERVATION_PHASE));
 const PROVIDER_ERROR_KINDS = new Set(Object.values(PROVIDER_ERROR_KIND));
 const RETRYABLE_ERROR_KINDS = new Set([
   PROVIDER_ERROR_KIND.TIMEOUT,
@@ -27,7 +23,6 @@ const RETRYABLE_ERROR_KINDS = new Set([
 ]);
 const PROVIDER_REFERENCE_PATTERN = /^[^\u0000-\u001f\u007f]{1,255}$/;
 const PROVIDER_RESOURCE_REFERENCE_PATTERN = /^[^\u0000-\u001f\u007f]{3,320}$/;
-const IDEMPOTENCY_KEY_PATTERN = /^[0-9a-f]{64}$/;
 const MAX_CONFLICT_COUNT = 10_000;
 const MAX_RETRY_AFTER_MS = 300_000;
 
@@ -48,9 +43,6 @@ function invalidProviderResponse(operation) {
   return new CalendarProviderError(PROVIDER_ERROR_KIND.MALFORMED_RESPONSE, { operation });
 }
 
-export function isReservationPhase(value) {
-  return RESERVATION_PHASES.has(value);
-}
 
 export function isProviderReference(value) {
   return typeof value === 'string'
@@ -68,9 +60,6 @@ export function isProviderConnectionReference(value) {
   return isProviderResourceReference(value);
 }
 
-export function isIdempotencyKey(value) {
-  return typeof value === 'string' && IDEMPOTENCY_KEY_PATTERN.test(value);
-}
 
 export class CalendarProviderError extends Error {
   constructor(kind, { operation = 'unknown', retryAfterMs = null } = {}) {
@@ -175,9 +164,6 @@ export function normalizeCancelResult(value, expectedProviderReference) {
   });
 }
 
-export function isCalendarRoomId(value) {
-  return typeof value==='string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
-}
 
 // A server-owned factory has no HTTP/session/issuer or arbitrary provider port.
 export function assertCalendarProviderFactory(value) {
