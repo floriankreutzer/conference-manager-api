@@ -64,14 +64,10 @@ export function createPostgresSyntheticCustomerHandoffRepository(pool,{ scope,br
     return principal;
   }
   async function lock(client,row,previous) {
-    const actor=await client.query({ name: 'synthetic-handoff-redeem-operator-lock',text:
-      'SELECT id FROM platform_operators WHERE id=$1 AND security_version=$2 AND status=\'active\' FOR SHARE',
-    values: [row.operator_id,row.operator_security_version] });
-    if (actor.rowCount!==1) deny();
-    const source=await client.query({ name: 'synthetic-handoff-redeem-source-lock',text:
-      'SELECT id FROM platform_sessions WHERE id=$1 AND operator_id=$2 AND revoked_at IS NULL AND expires_at>clock_timestamp() FOR SHARE',
-    values: [row.source_platform_session_id,row.operator_id] });
-    if (source.rowCount!==1) deny();
+    const source=await client.query({ name: 'synthetic-handoff-redeem-source-custody-lock',text:
+      'SELECT public.protected_lock_synthetic_handoff_source($1,$2,$3) AS locked',
+    values: [scope.environment,scope.securityEpoch,row.id] });
+    if (source.rowCount!==1 || source.rows[0]?.locked!==true) deny();
     // Same-owner role/slot switches can span Tenants. Deterministic ordering
     // prevents A->B/B->A inversion while canonical revoke/issue joins this TX.
     const tenants=[...new Set([row.tenant_id,...(previous ? [previous.tenantId] : [])])].sort();

@@ -36,7 +36,8 @@ const { Pool } = pg;
 // Schema 59 adds private protected-runtime classification and retained synthetic generations.
 // Schema 60 adds private synthetic catalogue imagery with actual business-owner foreign keys.
 // Schema 61 binds one-use synthetic browser handoffs to actual proof and source-session custody.
-export const CURRENT_SCHEMA_VERSION = 61;
+// Schema 62 supplies the private source-row lock port without Customer Platform UPDATE rights.
+export const CURRENT_SCHEMA_VERSION = 62;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',
