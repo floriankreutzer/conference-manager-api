@@ -62,7 +62,9 @@ jobs:
             pool = createPostgresPool({ mode: 'production', ...loadDatabaseConfig(process.env, 'production') });
             const result = await grantProtectedRuntimeRoles(pool, scope);
             process.stdout.write(JSON.stringify({ schemaVersion: 1,
-              operation: 'install_protected_int_runtime_roles', ...result }) + '\n');
+              operation: 'install_protected_int_runtime_roles', environment: result.environment,
+              securityEpoch: result.securityEpoch, databaseSchemaVersion: result.schemaVersion,
+              roles: result.roles }) + '\n');
           } catch {
             process.stderr.write('PROTECTED_INT_ROLE_INSTALLATION_FAILED\n');
             process.exitCode = 1;
