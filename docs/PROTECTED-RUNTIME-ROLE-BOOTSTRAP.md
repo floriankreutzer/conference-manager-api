@@ -29,6 +29,10 @@ credential delivery/revocation and a coordinated process cutover remain external
 operating steps. Passwords must not be supplied through shell arguments or SQL
 captured in application logs.
 
+The schema038 attribution marker and schema041 maintenance procedure remain
+owner/maintenance-only and are not granted to either runtime. The existing
+SECURITY DEFINER attribution triggers call the marker without a direct grant.
+
 Customer business statements retain ordinary canonical authorization and Tenant
 scoping. Append-only history receives SELECT/INSERT rather than mutation rights.
 Customer cannot modify Platform identity, sessions, keys, proofs or audit, or the

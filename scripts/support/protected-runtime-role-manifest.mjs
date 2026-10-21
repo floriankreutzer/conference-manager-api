@@ -28,7 +28,6 @@ const READ = ['schema_migrations','protected_runtime_deployments','protected_run
 const MEMBERSHIP = ['customer_access_mailboxes','customer_access_memberships','customer_member_invitations'];
 const COMMON_FUNCTIONS = [
   'customer_access_envelope_valid(jsonb)','customer_invitation_receipt_valid(jsonb)',
-  'mark_request_attribution_used()',
   'catering_provider_catalogue_text_valid(jsonb,integer,boolean)','catering_provider_catalogue_money_valid(jsonb,boolean)',
   'catering_provider_catalogue_product_valid(jsonb)','catering_provider_catalogue_document_valid(jsonb)',
   'catering_catalogue_review_mapping_valid(jsonb,boolean,boolean)','catering_catalogue_review_command_valid(jsonb)',

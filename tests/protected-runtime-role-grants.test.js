@@ -21,6 +21,7 @@ test('operator plan preserves per-surface proof custody and offline enrollment w
     assert.doesNotMatch(platformSql,/GRANT [^\n]*INSERT[^\n]*ON public\."sessions"/);
     assert.doesNotMatch(platformSql,/payload_envelope|customer_email_challenges|customer_microsoft_flows/);
     assert.doesNotMatch(customerSql+'\n'+platformSql,/TRUNCATE|REFERENCES|TRIGGER|WITH GRANT OPTION|cm_demo/);
+    assert.doesNotMatch(customerSql+'\n'+platformSql,/mark_request_attribution_used|prune_expired_unreferenced_room_media/);
   }
 });
 

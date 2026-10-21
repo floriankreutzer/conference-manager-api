@@ -58,6 +58,7 @@ async t=>{
   for (const [surface,selected] of [['customer',restricted],['platform',platform]]) {
     assert.equal(await createPostgresProtectedRuntimeReadiness(selected,{ ...protection,surface,
       leasePool: restrictedPool(lease,`cm_protected_int_${surface}`) }).isReady(),true);
+    await assert.rejects(selected.query('SELECT public.mark_request_attribution_used()'),{ code: '42501' });
   }
   for (const query of ['SELECT token_hash FROM platform_sessions','SELECT public_key FROM platform_passkey_credentials',
     'SELECT * FROM platform_operators','UPDATE platform_operators SET status=status','TRUNCATE rooms',
