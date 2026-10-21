@@ -1,0 +1,74 @@
+name: Install protected INT runtime roles
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_main_sha:
+        description: Exact accepted API Main commit containing this operator workflow
+        required: true
+        type: string
+      security_epoch:
+        description: Exact independently prepared current INT deployment UUID
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosted-shared-demo-database-initialize
+  cancel-in-progress: false
+
+jobs:
+  install:
+    if: ${{ github.ref == 'refs/heads/main' && inputs.expected_main_sha == github.sha }}
+    environment:
+      name: hosted-demo-initialize
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require the exact accepted Main ref
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" || "$GITHUB_SHA" != "$EXPECTED_MAIN_SHA" ]]; then
+            echo "Role installation requires the exact accepted Main commit." >&2
+            exit 1
+          fi
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Apply the existing positive INT role installer
+        env:
+          DATABASE_URL: ${{ secrets.HOSTED_DEMO_MIGRATION_DATABASE_URL }}
+          DATABASE_SSL: verify-full
+          DATABASE_POOL_MAX: '1'
+          INT_SECURITY_EPOCH: ${{ inputs.security_epoch }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { loadDatabaseConfig } from './src/config.js';
+          import { createPostgresPool } from './src/persistence/postgres/pool.js';
+          import { protectedRuntimeRoleGrantPlan, grantProtectedRuntimeRoles } from './scripts/support/protected-runtime-role-grants.mjs';
+          let pool;
+          try {
+            const scope = { environment: 'int', securityEpoch: process.env.INT_SECURITY_EPOCH };
+            protectedRuntimeRoleGrantPlan(scope);
+            pool = createPostgresPool({ mode: 'production', ...loadDatabaseConfig(process.env, 'production') });
+            const result = await grantProtectedRuntimeRoles(pool, scope);
+            process.stdout.write(JSON.stringify({ schemaVersion: 1,
+              operation: 'install_protected_int_runtime_roles', environment: result.environment,
+              securityEpoch: result.securityEpoch, databaseSchemaVersion: result.schemaVersion,
+              roles: result.roles }) + '\n');
+          } catch {
+            process.stderr.write('PROTECTED_INT_ROLE_INSTALLATION_FAILED\n');
+            process.exitCode = 1;
+          } finally {
+            await pool?.end();
+          }
+          NODE
