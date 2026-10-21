@@ -10,6 +10,7 @@ import {
 } from './module-graph.mjs';
 
 const PRODUCTION_COMPOSITION_ROOTS = new Set([
+  'src/protected-customer-authentication-composition.js',
   'src/protected-customer-access-delivery-composition.js',
   'src/protected-invited-customer-access-composition.js',
   'src/protected-synthetic-customer-access-composition.js',
@@ -47,6 +48,7 @@ const CUSTOMER_EMAIL_AUTHORITY_MODULES = new Set([
   'src/persistence/postgres/customer-invitation-repository.js',
 ]);
 const PROTECTED_RUNTIME_AUTHORITY_MODULES = new Set([
+  'src/protected-customer-authentication-composition.js',
   'src/transport/protected-http-execution.js',
   'src/platform/http/protected-execution-boundary.js',
   'src/protected-customer-access-delivery-composition.js',
