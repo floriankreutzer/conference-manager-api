@@ -151,6 +151,7 @@ test('outbox commits atomically, rebuilds current state, survives lost notificat
       [NORTHWIND]);
   }
   assert.equal((await restarted.consumeBatch()).poisonCount, 0);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty027 before unchanged026.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty overlay026 before025.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Protected runtime025 before retained Microsoft024.
@@ -292,6 +293,7 @@ test('outbox commits atomically, rebuilds current state, survives lost notificat
   assert.equal((await pool.query('SELECT count(*)::integer AS count FROM catering_integration_configurations')).rows[0].count, 0);
   assert.equal((await pool.query('SELECT count(*)::integer AS count FROM catering_integration_configuration_revisions')).rows[0].count, 0);
   assert.equal((await restarted.consumeBatch()).refreshedCount, 3);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty027 before unchanged026.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty overlay026 before025.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Protected runtime025 before retained Microsoft024.

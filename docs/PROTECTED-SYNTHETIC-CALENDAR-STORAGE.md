@@ -80,3 +80,11 @@ acceptance and actual keys/recovery/sender/owner/artifact cutover remain open.
 Existing full native, real expiry, shared browser journey and four permanent
 three-customer/two-reset gates remain required. No live provider, email, cloud
 compute, paid capacity or migration is activated by this preparation.
+
+The first completed native run119185292573 failed at the historical publication
+role-grant assertion: its rollback stack had not drained the new empty Demo028,
+leaving the old publication overlay ledger applied after its table was recreated.
+Each existing Empty027 probe now first drains Empty028, just as canonical probes
+drain Empty063. Expected grants, immutable sources and historical recovery
+assertions remain unchanged. No production storage/privilege rule changed in
+this correction; native exact-source rerun is required.

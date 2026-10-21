@@ -223,6 +223,7 @@ test('delivery schema fences actual Customer leases, immutable attempts and exac
     outcome: 'not_sent', retryable: false, status: 'failed' }));
   assert.equal((await row(permanentJob)).status, 'failed');
   assert.equal((await row(permanentJob)).dispatch_attempts, 1);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty027 before unchanged026.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty overlay026 before025.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Protected runtime025 before retained Microsoft024.
@@ -261,6 +262,7 @@ test('delivery schema fences actual Customer leases, immutable attempts and exac
   await customer((client) => fixture.auditRepository.appendWithClient(client, event));
   await pool.query(`TRUNCATE catering_unsent_replacements,catering_order_withdrawals,
     catering_delivery_observations,catering_delivery_attempts,catering_delivery_jobs`);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty027 before unchanged026.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty overlay026 before025.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Protected runtime025 before retained Microsoft024.
@@ -308,6 +310,7 @@ test('delivery schema fences actual Customer leases, immutable attempts and exac
   for (const table of ['catering_delivery_jobs','catering_delivery_attempts','catering_delivery_observations']) {
     assert.equal((await pool.query(`SELECT count(*)::integer AS count FROM ${table}`)).rows[0].count, 0);
   }
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty027 before unchanged026.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty overlay026 before025.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Protected runtime025 before retained Microsoft024.
