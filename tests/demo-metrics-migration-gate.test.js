@@ -17,21 +17,21 @@ function fixture(canonical=59,overlay=25) {
     queries.push(value);return { rowCount: 1,rows: typeof value==='object' ? [{ ...row }] : [] };
   },release() { released=true; } }; } };
   return { pool,row,queries,released: ()=>released,upgrades: ()=>upgrades,
-    async upgrade() { upgrades++;row.canonical_versions=sequence(63);row.demo_versions=sequence(28); } };
+    async upgrade() { upgrades++;row.canonical_versions=sequence(64);row.demo_versions=sequence(28); } };
 }
 
-test('reviewed Demo upgrade accepts retained historical ledgers and current63/28 without resetting retained data',async()=>{
-  for (const [canonical,overlay] of [[44,9],[58,24],[59,25],[60,26],[61,26],[61,27],[62,27],[63,28]]) {
+test('reviewed Demo upgrade accepts retained historical ledgers and current64/28 without resetting retained data',async()=>{
+  for (const [canonical,overlay] of [[44,9],[58,24],[59,25],[60,26],[61,26],[61,27],[62,27],[63,28],[64,28]]) {
     const f=fixture(canonical,overlay);
     assert.deepEqual(await withDemoMetricsMigrationGate(f.pool,expected,f.upgrade),
-      { canonicalVersion: 63,demoVersion: 28,resetPerformed: false,retainedCountsMatch: true });
+      { canonicalVersion: 64,demoVersion: 28,resetPerformed: false,retainedCountsMatch: true });
     assert.equal(f.upgrades(),1);assert.equal(f.released(),true);
     assert.ok(f.queries.some(query=>typeof query==='string' && query.startsWith('SELECT pg_advisory_unlock')));
   }
 });
 
 test('future, incomplete and incompatible older schema/overlay ledgers fail before upgrade, preserving the exclusive gate',async()=>{
-  for (const [canonical,overlay] of [[59,26],[58,25],[57,24],[56,23],[55,22],[54,21],[53,20],[60,27],[64,28],[61,28],[62,28],[63,29]]) {
+  for (const [canonical,overlay] of [[59,26],[58,25],[57,24],[56,23],[55,22],[54,21],[53,20],[60,27],[65,28],[61,28],[62,28],[63,29]]) {
     const f=fixture(canonical,overlay);
     await assert.rejects(withDemoMetricsMigrationGate(f.pool,expected,f.upgrade),/PRECONDITIONS_FAILED/);
     assert.equal(f.upgrades(),0);assert.equal(f.released(),true);

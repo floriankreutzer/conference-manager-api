@@ -50,8 +50,8 @@ if (/repository|SELECT|UPDATE|INSERT INTO|DELETE FROM/i.test(revision)) {
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 63;/.test(pool)) {
-  throw new Error('Runtime schema readiness requires private durable synthetic calendar schema 63.');
+if (!/export const CURRENT_SCHEMA_VERSION = 64;/.test(pool)) {
+  throw new Error('Runtime schema readiness requires scoped synthetic onboarding schema 64.');
 }
 
 const migration = await readFile('migrations/020_tenant_settings_revisions.up.sql', 'utf8');

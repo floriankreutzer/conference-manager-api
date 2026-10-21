@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 63;/.test(pool)) {
-  throw new Error('Pilot activation requires current schema including private durable synthetic calendar schema 63.');
+if (!/export const CURRENT_SCHEMA_VERSION = 64;/.test(pool)) {
+  throw new Error('Pilot activation requires current schema including scoped synthetic onboarding schema 64.');
 }
 
 const service = await readFile('src/application/tenant-pilot-service.js', 'utf8');

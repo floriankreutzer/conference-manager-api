@@ -64,7 +64,8 @@ export function protectedRuntimeRoleManifest(surface) {
       +'operation_hash,expected_session_id,consumed_at,expires_at'),
     columns('platform_audit_events','SELECT','sequence,operator_id,action,target_tenant_id,outcome,assurance_level,metadata'));
     functions.push('customer_microsoft_snapshot_valid(jsonb)','protected_lock_synthetic_handoff_source(text,uuid,uuid)',
-      'protected_lock_synthetic_calendar_source(text,uuid,uuid)');
+      'protected_lock_synthetic_calendar_source(text,uuid,uuid)',
+      'protected_synthetic_lifecycle(text,uuid,uuid,text,text,bigint)');
   } else {
     tables.push(table('tenants',CRUD),table('platform_operators','SELECT,UPDATE'),
     ...['platform_operator_tenant_scopes','platform_sessions','platform_oidc_auth_transactions',

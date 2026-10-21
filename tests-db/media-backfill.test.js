@@ -50,6 +50,7 @@ test('bounded backfill, idempotent copy, guarded purge and verified rollback pre
   assert.equal((await repository.runBatch({ phase: 'copy', kind: 'room' })).changed, 0);
   const projections = createPostgresPlatformProjectionRepository(pool);
   assert.deepEqual(await projections.consumeBatch(), { refreshedCount: 1, retryCount: 0, poisonCount: 0 });
+  assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty source-lock062 before unchanged061/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.

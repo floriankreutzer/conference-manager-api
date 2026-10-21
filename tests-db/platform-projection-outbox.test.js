@@ -170,6 +170,7 @@ test('outbox commits atomically, rebuilds current state, survives lost notificat
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catering grants overlay 012.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Product-source overlay 011.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Lifecycle grants overlay 010.
+  assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty source-lock062 before unchanged061/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
@@ -312,6 +313,7 @@ test('outbox commits atomically, rebuilds current state, survives lost notificat
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catering grants overlay 012.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
+  assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty source-lock062 before unchanged061/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.

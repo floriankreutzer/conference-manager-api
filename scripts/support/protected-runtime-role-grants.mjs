@@ -18,7 +18,7 @@ function scope(input) {
 // Pure, redacted review plan. No implicit environment, connection or mutation.
 export function protectedRuntimeRoleGrantPlan(input) {
   const fixed=scope(input);
-  return Object.freeze({ ...fixed,schemaVersion: 63,roles: Object.freeze(['customer','platform'].map(surface=>{
+  return Object.freeze({ ...fixed,schemaVersion: 64,roles: Object.freeze(['customer','platform'].map(surface=>{
     const role=`cm_protected_${fixed.environment}_${surface}`,manifest=protectedRuntimeRoleManifest(surface);
     const statements=[`GRANT USAGE ON SCHEMA public TO ${identifier(role)}`,
       ...manifest.tables.map(entry=>`GRANT ${entry.privileges} ON public.${identifier(entry.name)} TO ${identifier(role)}`),
