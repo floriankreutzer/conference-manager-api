@@ -113,7 +113,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
 
   await migrateUp(pool);
   await createRoles(pool);
-  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 27);
+  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 28);
 
   await t.test('fresh install records all Demo overlays and permits the real reset sequence', async () => {
     await migrateDemoUp(pool, { roles: ROLES });
@@ -145,12 +145,14 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
       { version: 25, name: 'protected_runtime_reset_privileges', checksum_length: 64 },
       { version: 26, name: 'synthetic_catalogue_media_reset_privileges', checksum_length: 64 },
       { version: 27, name: 'synthetic_handoff_reset_privileges', checksum_length: 64 },
+      { version: 28, name: 'synthetic_calendar_reset_privileges', checksum_length: 64 },
     ]);
     for (const table of ['platform_passkey_credentials', 'platform_passkey_auth_transactions',
       'platform_passkey_enrollment_grants', 'platform_passkey_enrollment_transactions',
       'customer_microsoft_flows','customer_microsoft_start_budgets',
       'tenant_runtime_registry','synthetic_tenant_generations','protected_runtime_deployments','protected_runtime_epoch_history',
-      'synthetic_catalogue_media_assets','synthetic_customer_handoffs','synthetic_handoff_start_budgets']) {
+      'synthetic_calendar_events','synthetic_calendar_resources','synthetic_catalogue_media_assets',
+      'synthetic_customer_handoffs','synthetic_handoff_start_budgets']) {
       for (const [surface, role] of Object.entries(ROLES)) {
         for (const privilege of ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) {
           const grant = await pool.query('SELECT has_table_privilege($1, $2, $3) AS permitted', [role, table, privilege]);
@@ -227,7 +229,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
     );
     await migrateDemoUp(pool, { roles: ROLES });
     assert.deepEqual((await overlayVersions(pool)).map(({ version }) => version),
-      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27]);
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28]);
     await resetAttributionStateAsRole(pool, ROLES.reset);
   });
 

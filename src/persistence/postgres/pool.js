@@ -37,7 +37,8 @@ const { Pool } = pg;
 // Schema 60 adds private synthetic catalogue imagery with actual business-owner foreign keys.
 // Schema 61 binds one-use synthetic browser handoffs to actual proof and source-session custody.
 // Schema 62 supplies the private source-row lock port without Customer Platform UPDATE rights.
-export const CURRENT_SCHEMA_VERSION = 62;
+// Schema 63 adds private durable synthetic calendar resources/events; no activation.
+export const CURRENT_SCHEMA_VERSION = 63;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

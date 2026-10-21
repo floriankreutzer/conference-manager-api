@@ -39,6 +39,7 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
   pool = createPostgresPool({ mode: 'test', ...database, databaseUrl: url.toString(), databasePoolMax: 6 });
   await migrateUp(pool); await migrateDemoUp(pool, { roles });
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty027 before unchanged026.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty overlay026 before025.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Protected runtime025 before retained Microsoft024.
@@ -51,6 +52,7 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Unsent grants018 before schema052.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Version grants017.
   await rollbackLatestDemoMigration(pool, { roles });
+  assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty source-lock062 before unchanged061/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty060 before059.
@@ -161,6 +163,7 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
     await assert.rejects(customer.query(sql), (error) => error.code === '42501');
     await assert.rejects(pool.query(sql), /CATERING_ORDER_HISTORY_APPEND_ONLY/);
   }
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty027 before unchanged026.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty overlay026 before025.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Protected runtime025 before retained Microsoft024.
@@ -172,6 +175,7 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
   await rollbackLatestDemoMigration(pool, { roles }); // Platform passkey reset grants019 before schema053.
   await rollbackLatestDemoMigration(pool, { roles }); // Unsent grants018 before schema052.
   await rollbackLatestDemoMigration(pool, { roles }); // Revoke017 before recreating051.
+  assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty source-lock062 before unchanged061/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty060 before059.
@@ -248,6 +252,7 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
   assert.equal((await request(fixture.manager)).status, 401);
   assert.equal((await pool.query('SELECT count(*)::integer AS n FROM catering_manual_delivery_facts')).rows[0].n, 22);
   await pool.query('TRUNCATE catering_manual_delivery_heads,catering_manual_delivery_facts');
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty027 before unchanged026.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty overlay026 before025.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Protected runtime025 before retained Microsoft024.
@@ -259,6 +264,7 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
   await rollbackLatestDemoMigration(pool, { roles }); // Platform passkey reset grants019 before schema053.
   await rollbackLatestDemoMigration(pool, { roles }); // Unsent grants018 before schema052.
   await rollbackLatestDemoMigration(pool, { roles }); // Revoke017 before recreating051.
+  assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty source-lock062 before unchanged061/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty060 before059.
@@ -286,6 +292,7 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
   for (const table of ['catering_manual_delivery_facts','catering_manual_delivery_heads']) {
     assert.equal((await pool.query(`SELECT count(*)::integer AS n FROM ${table}`)).rows[0].n, 0);
   }
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty027 before unchanged026.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty overlay026 before025.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Protected runtime025 before retained Microsoft024.
@@ -298,6 +305,7 @@ test('actual Customer manual facts are immutable, atomic, session-fenced and ind
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Unsent grants018 before schema052.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Version grants017.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
+  assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty source-lock062 before unchanged061/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty060 before059.

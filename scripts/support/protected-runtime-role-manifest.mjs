@@ -52,7 +52,8 @@ export function protectedRuntimeRoleManifest(surface) {
         +'booking_policies_revision,cost_allocation_revision'),
     ...['sessions','customer_email_challenges','customer_access_deliveries','customer_access_abuse_budgets',
       'customer_microsoft_flows','customer_microsoft_start_budgets','synthetic_customer_handoffs','synthetic_handoff_start_budgets']
-      .map(name=>table(name,CRUD)),table('synthetic_catalogue_media_assets','SELECT'),
+      .map(name=>table(name,CRUD)),table('synthetic_catalogue_media_assets','SELECT'),table('synthetic_calendar_resources','SELECT'),
+    table('synthetic_calendar_events','SELECT,INSERT,UPDATE'),
     columns('platform_operators','SELECT','id,provider,provider_tenant_reference,provider_subject_reference,'
       +'status,security_version,roles,scope_mode'),
     columns('platform_sessions','SELECT','id,operator_id,provider,provider_tenant_reference,provider_subject_reference,roles,permissions,'
@@ -62,7 +63,8 @@ export function protectedRuntimeRoleManifest(surface) {
     columns('platform_passkey_auth_transactions','SELECT','id,operator_id,environment,security_epoch,operator_security_version,purpose,'
       +'operation_hash,expected_session_id,consumed_at,expires_at'),
     columns('platform_audit_events','SELECT','sequence,operator_id,action,target_tenant_id,outcome,assurance_level,metadata'));
-    functions.push('customer_microsoft_snapshot_valid(jsonb)','protected_lock_synthetic_handoff_source(text,uuid,uuid)');
+    functions.push('customer_microsoft_snapshot_valid(jsonb)','protected_lock_synthetic_handoff_source(text,uuid,uuid)',
+      'protected_lock_synthetic_calendar_source(text,uuid,uuid)');
   } else {
     tables.push(table('tenants',CRUD),table('platform_operators','SELECT,UPDATE'),
     ...['platform_operator_tenant_scopes','platform_sessions','platform_oidc_auth_transactions',
@@ -78,6 +80,7 @@ export function protectedRuntimeRoleManifest(surface) {
     columns('tenant_entitlements','INSERT','tenant_id,capability_id,enabled,updated_at'),
     columns('tenant_entitlements','UPDATE','enabled,updated_at'),
     table('tenant_onboarding_invitations','SELECT'),table('synthetic_catalogue_media_assets','SELECT,INSERT'),
+    table('synthetic_calendar_resources','SELECT,INSERT'),
     columns('protected_runtime_deployments','UPDATE','updated_at'),table('tenant_runtime_registry','INSERT'),
     table('synthetic_tenant_generations','INSERT,UPDATE'),table('synthetic_customer_handoffs','SELECT,UPDATE'),
     columns('sessions','SELECT','id,tenant_id,user_id,issued_at,revoked_at,expires_at,principal_version'),

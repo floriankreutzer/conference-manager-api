@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 62;/.test(pool)) {
-  throw new Error('Production application requires private synthetic source-lock schema 62.');
+if (!/export const CURRENT_SCHEMA_VERSION = 63;/.test(pool)) {
+  throw new Error('Production application requires private durable synthetic calendar schema 63.');
 }
 
 const auditEvent = await readFile('src/audit/event.js', 'utf8');

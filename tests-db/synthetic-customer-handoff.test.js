@@ -148,6 +148,7 @@ async t=>{
     assert.equal((await customer.start('127.0.0.3')).status,'limited');
     assert.equal((await pool.query('SELECT count(*)::int AS count FROM synthetic_customer_handoffs')).rows[0].count,rows);
     assert.deepEqual(await count(),before);
+    assert.equal(await rollbackLatest(pool),true); // Empty private calendar063; retain the populated062 recovery guard.
     await assert.rejects(rollbackLatest(pool),/SYNTHETIC_HANDOFF_HISTORY_REQUIRES_VERIFIED_RECOVERY/);
     await assert.rejects(pool.query('TRUNCATE synthetic_customer_handoffs'),/SYNTHETIC_HANDOFF_HISTORY_REQUIRES_VERIFIED_RECOVERY/);
     await assert.rejects(pool.query('DELETE FROM synthetic_customer_handoffs WHERE id=$1',[first.flowId]),
