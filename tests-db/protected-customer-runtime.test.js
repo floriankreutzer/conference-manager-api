@@ -1,8 +1,5 @@
 import assert from 'node:assert/strict';
 import { randomBytes,randomUUID } from 'node:crypto';
-import { fork } from 'node:child_process';
-import { createServer } from 'node:net';
-import { request } from 'node:http';
 import test from 'node:test';
 import pg from 'pg';
 import { loadProtectedCustomerConfiguration } from '../src/protected-customer-config.js';
@@ -13,46 +10,12 @@ import { grantProtectedRuntimeRoles } from '../scripts/support/protected-runtime
 import { migrateUp } from '../scripts/db-migrations.mjs';
 import { createInvitedCustomerFixture } from './support/invited-customer-fixture.js';
 import { createProtectedPostgresTlsFixture } from './support/protected-postgres-tls-fixture.js';
+import { unusedProtectedRuntimePort,startProtectedRuntimeProcess,exchangeProtectedRuntime }
+  from './support/protected-runtime-process-fixture.js';
 
-async function unusedPort() {
-  const server=createServer();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  const port=server.address().port;await new Promise(resolve=>server.close(resolve));return port;
-}
-async function childRuntime(environment) {
-  const child=fork('tests-db/support/protected-customer-runtime-child.mjs',[],{
-    execArgv: [],env: environment,stdio: ['ignore','pipe','pipe','ipc'] });let logs='';
-  for (const output of [child.stdout,child.stderr]) output.on('data',chunk=>{
-    if (logs.length+chunk.length>65536) { child.kill();return; }logs+=chunk.toString('utf8');
-  });
-  const exited=new Promise(resolve=>child.once('exit',(code,signal)=>resolve({ code,signal })));
-  const outcome=await new Promise((resolve,reject)=>{
-    const timeout=setTimeout(()=>{ child.kill();reject(new Error('PROTECTED_CHILD_START_TIMEOUT')); },15000);
-    child.once('error',()=>{ clearTimeout(timeout);reject(new Error('PROTECTED_CHILD_FAILED')); });
-    child.once('message',message=>{ clearTimeout(timeout);resolve(message); });
-    exited.then(()=>{ clearTimeout(timeout);resolve({ type: 'exited' }); });
-  });
-  return { outcome,logs: ()=>logs,async stop() {
-    let timeout;
-    try {
-      if (child.connected) child.send('stop');
-      return await Promise.race([exited,new Promise((_,reject)=>{
-        timeout=setTimeout(()=>{ child.kill('SIGKILL');reject(new Error('PROTECTED_CHILD_STOP_TIMEOUT')); },12000);
-      })]);
-    } finally { clearTimeout(timeout); }
-  } };
-}
-function exchange(port,path,{ method='GET',body,headers={} }={}) {
-  const raw=body===undefined ? '' : JSON.stringify(body);
-  return new Promise((resolve,reject)=>{
-    const call=request({ hostname: '127.0.0.1',port,path,method,headers: {
-      host: 'app-int.example.test',origin: 'https://app-int.example.test','sec-fetch-site': 'same-origin',
-      ...(body===undefined ? {} : { 'content-type': 'application/json','content-length': Buffer.byteLength(raw) }),...headers,
-    } },response=>{
-      let text='';response.setEncoding('utf8');response.on('data',chunk=>{ text+=chunk; });
-      response.once('end',()=>resolve({ status: response.statusCode,headers: response.headers,text }));
-    });call.once('error',reject);call.setTimeout(10000,()=>call.destroy(new Error('FIXTURE_HTTP_TIMEOUT')));call.end(raw);
-  });
-}
+const unusedPort=unusedProtectedRuntimePort;
+const childRuntime=environment=>startProtectedRuntimeProcess('customer',environment);
+const exchange=(...args)=>exchangeProtectedRuntime('customer',...args);
 const pair=value=>value.split(';')[0];
 
 test('native owned Customer root verifies TLS/SCRAM, refuses bad credentials/CA and admits invited email through restricted HTTP',
@@ -84,6 +47,7 @@ async t=>{
   try { await assert.rejects(wrongName.connect(),{ code: 'ERR_TLS_CERT_ALTNAME_INVALID' }); } finally { await wrongName.end(); }
   const environment={ NODE_ENV: 'production',NODE_EXTRA_CA_CERTS: fixture.caPath,
     PROTECTED_ENVIRONMENT: 'int',PROTECTED_SECURITY_EPOCH: epoch,PROTECTED_PLATFORM_SECURITY_EPOCH: '7',
+    PROTECTED_DATABASE_POOL_MAX: '1',PROTECTED_LEASE_POOL_MAX: '1',
     PROTECTED_CUSTOMER_ORIGIN: 'https://app-int.example.test',PROTECTED_PLATFORM_ORIGIN: 'https://ops-int.example.com',
     PROTECTED_API_COMMIT: 'a'.repeat(40),PROTECTED_FRONTEND_COMMIT: 'b'.repeat(40),PROTECTED_SERVICE_VERSION: '1.0.0',
     PROTECTED_CUSTOMER_DATABASE_URL: customerUrl.href,PROTECTED_CUSTOMER_HOST: '127.0.0.1',

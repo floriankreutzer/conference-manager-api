@@ -50,9 +50,11 @@ export function createPlatformComposition({
   routeModules,
   routeModulesFactory,
   projectionRunGate,
+  projectionEnabled=true,
   shutdownTimeoutMs,
   metrics,
 } = {}) {
+  if (typeof projectionEnabled!=='boolean') throw new TypeError('PLATFORM_PROJECTION_CONFIGURATION_INVALID');
   const selectedMetrics = metrics || createMetricsRegistry();
   const authorizationPolicy = createPlatformAuthorizationPolicy();
   const tenantTargetPolicy = createPlatformTenantTargetPolicy({
@@ -158,12 +160,12 @@ export function createPlatformComposition({
     readinessChecks: persistence.readinessChecks,
     timeoutMs: config.readinessTimeoutMs,
   });
-  const projectionWorker = createPlatformProjectionWorker({
+  const projectionWorker = projectionEnabled ? createPlatformProjectionWorker({
     repository: persistence.projectionRepository,
     ...(config.projectionIntervalMs ? { intervalMs: config.projectionIntervalMs } : {}),
     ...(projectionRunGate ? { runGate: projectionRunGate } : {}),
     onResult: (result) => selectedMetrics.recordProjectionBatch?.(result),
-  });
+  }) : null;
   const selectedRouteModules = typeof routeModulesFactory === 'function'
     ? routeModulesFactory({ platformSessionService: sessionService })
     : routeModules ?? platformAuthService?.routeModules;
@@ -199,13 +201,13 @@ export function createPlatformComposition({
       recoveryService: platformRecoveryOperationsService,
     }),
     async start() {
-      await projectionWorker.runOnce();
-      await projectionWorker.start();
+      await projectionWorker?.runOnce();
+      await projectionWorker?.start();
       return platformProcess.start();
     },
     async stop() {
       try {
-        await projectionWorker.stop();
+        await projectionWorker?.stop();
         await platformProcess.stop();
       } finally {
         await persistence.close();

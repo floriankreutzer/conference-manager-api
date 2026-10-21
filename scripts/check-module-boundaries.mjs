@@ -10,6 +10,8 @@ import {
 } from './module-graph.mjs';
 
 const PRODUCTION_COMPOSITION_ROOTS = new Set([
+  'src/protected-platform-runtime.js',
+  'src/protected-platform-main.js',
   'src/protected-customer-runtime.js',
   'src/protected-customer-main.js',
   'src/protected-platform-config.js',
@@ -53,6 +55,8 @@ const CUSTOMER_EMAIL_AUTHORITY_MODULES = new Set([
   'src/persistence/postgres/customer-invitation-repository.js',
 ]);
 const PROTECTED_RUNTIME_AUTHORITY_MODULES = new Set([
+  'src/protected-platform-runtime.js',
+  'src/protected-platform-main.js',
   'src/protected-customer-runtime.js',
   'src/protected-customer-main.js',
   'src/protected-platform-config.js',
@@ -127,6 +131,7 @@ const REAL_PRODUCTION_IDENTITY_AND_PROVIDER_MODULES = new Set([
   'src/platform/identity/identity-service.js',
 ]);
 const RUNTIME_ENVIRONMENT_AUTHORITY = new Set([
+  'src/protected-platform-main.js',
   'src/protected-customer-main.js',
   'src/config.js',
   'src/platform/config.js',
@@ -188,6 +193,8 @@ function approvedPlatformCompositionDependencyViolation(item) {
   const sourceFile = item.slice(0, separator);
   return sourceFile === 'src/platform-production-authentication.js'
     || sourceFile === 'src/protected-platform-config.js'
+    || sourceFile === 'src/protected-platform-runtime.js'
+    || sourceFile === 'src/protected-platform-main.js'
     || demoSurfaceFile(sourceFile, 'platform');
 }
 

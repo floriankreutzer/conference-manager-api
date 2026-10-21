@@ -26,6 +26,8 @@ const GENERIC_SETTINGS_MODULES = new Set([
   'tenant-settings-routes.js',
 ]);
 const COMPOSITION_FILES = new Set([
+  'src/protected-platform-runtime.js',
+  'src/protected-platform-main.js',
   'src/protected-customer-runtime.js',
   'src/protected-customer-main.js',
   'src/protected-platform-config.js',
@@ -271,7 +273,8 @@ export function backendSaas2BoundaryViolations(sourceEntries) {
         !isInside(sourceFile, 'src/platform')
         && !['src/platform-composition.js', 'src/platform-main.js'].includes(sourceFile)
         && !isPlatformPersistence(sourceFile)
-        && (isInside(dependency, 'src/platform') || dependency === 'src/protected-platform-config.js')
+        && (isInside(dependency, 'src/platform') || ['src/protected-platform-config.js',
+          'src/protected-platform-runtime.js','src/protected-platform-main.js'].includes(dependency))
       ) {
         violations.push(violation(
           sourceFile,

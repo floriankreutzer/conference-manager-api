@@ -9,6 +9,7 @@
   "scripts": {
     "start": "node src/index.js",
     "start:protected:customer": "node src/protected-customer-main.js",
+    "start:protected:platform": "node src/protected-platform-main.js",
     "start:platform": "node src/platform-main.js",
     "start:demo:customer": "node src/demo/customer-main.js",
     "start:demo:platform": "node src/demo/platform-main.js",

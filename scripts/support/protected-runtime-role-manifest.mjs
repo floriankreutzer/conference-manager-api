@@ -80,9 +80,11 @@ export function protectedRuntimeRoleManifest(surface) {
     table('tenant_onboarding_invitations','SELECT'),table('synthetic_catalogue_media_assets','SELECT,INSERT'),
     columns('protected_runtime_deployments','UPDATE','updated_at'),table('tenant_runtime_registry','INSERT'),
     table('synthetic_tenant_generations','INSERT,UPDATE'),table('synthetic_customer_handoffs','SELECT,UPDATE'),
-    columns('sessions','SELECT','id,tenant_id,user_id,revoked_at,expires_at,principal_version'),columns('sessions','UPDATE','revoked_at'),
+    columns('sessions','SELECT','id,tenant_id,user_id,issued_at,revoked_at,expires_at,principal_version'),
+    columns('sessions','UPDATE','revoked_at'),
     table('customer_access_deliveries','INSERT'),
-    columns('customer_access_deliveries','SELECT','environment,id,tenant_id,invitation_id,invitation_revision,created_at,status'),
+    columns('customer_access_deliveries','SELECT',
+      'environment,id,tenant_id,mailbox_id,invitation_id,invitation_revision,created_at,status,purpose'),
     columns('customer_access_deliveries','UPDATE','status'));
     functions.push('protected_runtime_acquire_exclusive(text)');
   }

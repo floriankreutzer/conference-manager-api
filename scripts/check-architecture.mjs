@@ -23,6 +23,7 @@ const approvedRuntimeDependencies = {
   sharp: '0.35.5',
 };
 const runtimeEnvironmentAuthority = new Set([
+  'src/protected-platform-main.js',
   'src/protected-customer-main.js',
   'src/config.js',
   'src/platform/config.js',
