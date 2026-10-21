@@ -26,6 +26,8 @@ const GENERIC_SETTINGS_MODULES = new Set([
   'tenant-settings-routes.js',
 ]);
 const COMPOSITION_FILES = new Set([
+  'src/protected-customer-runtime.js',
+  'src/protected-customer-main.js',
   'src/protected-platform-config.js',
   'src/protected-custody-configuration.js',
   'src/protected-customer-config.js',
