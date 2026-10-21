@@ -28,13 +28,24 @@ HTTP listener is not itself a public TLS edge.
 The root's canonical Microsoft business facade is qualified against the current
 server-owned REAL Tenant for the complete consent/discovery/mapping/verification/
 connection operation. It never chooses a mode from provider IDs or browser input.
-Calendar operations use the separately accepted current-mode factory and REAL
-cleanup rules. No synthetic calendar factory exists in this change: synthetic
-calendar work remains unavailable and cannot fall through to Microsoft. Durable
-SIM state and its truthful discovery/media/UI/booking integration remain required.
-The existing canonical final calendar-write authority also still needs the
-reviewed synthetic branch before such writes may be enabled. Current catering
-provider configuration remains the existing explicit, inactive/manual baseline.
+Calendar operations use the current-mode factory and separate REAL cleanup rules.
+With explicit DEV/INT synthetic configuration, the root owns the network-free
+durable synthetic calendar provider and full current-source write authority.
+The private discovery/import/lifecycle module supports Fabrikam setup through
+ready to active without inventing Microsoft mappings or a connected status.
+The current-mode view and same-Tenant private catalogue routes expose only
+qualified metadata and verified PNG/WebP bytes. Synthetic catalogue storage is
+PostgreSQL-only; object pointers cannot fall back to database bytes. Current
+catering configuration remains the explicit inactive/manual baseline. See
+`PROTECTED-SYNTHETIC-CALENDAR-RUNTIME.md`,
+`PROTECTED-SYNTHETIC-ONBOARDING-RUNTIME.md` and `PROTECTED-CATALOGUE-MEDIA.md`.
+
+Optional hosted frontend delivery is default-off. When enabled, the root verifies
+its fixed surface artifact and externally pinned manifest before pool creation.
+Only public immutable browser files bypass database leases; every API target
+retains the protected transport/authentication/whole-request scope. No caller
+filesystem/handler/issuer/provider replacement port is added. See
+`PROTECTED-HOSTED-FRONTEND.md` for bounds and independent artifact qualification.
 
 Only an explicitly configured transactional mail adapter starts the bounded
 single-flight worker. It owns current REAL eligibility and the enclosing lease
@@ -44,7 +55,7 @@ recipient is inferred. Shutdown stops scheduling and waits for the bounded
 in-flight run before releasing persistence. Existing provider timeout/retry and
 one-use proof/custody controls remain unchanged.
 
-Seven local cases cover all three environments, closed output/no replacement
+The original root foundation's seven local cases cover all three environments, closed output/no replacement
 ports, configuration refusal/redaction, actual unavailable loopback DB plus
 concurrent stop, canonical HTTP wrapping/limits and architecture direction.
 The new native test starts a fresh, bounded, loopback-published PostgreSQL
@@ -64,7 +75,8 @@ queue code, CSRF, one-use invitation admission, current normal session/directory
 legacy-cookie denial, audit verification, redacted logs and graceful shutdown.
 Queue decryption is explicit test-fixture access, not proof of email delivery.
 The primary identity/provider adapters are never replaced; live Microsoft is not
-invoked. No physical-device, cross-site browser, deployed immutable artifact-pair,
-real sender, recovery or credential-cutover proof is implied. Exact-source native
+invoked. These native fixtures do not replace the separately pinned qualified
+different-site browser journey, and neither proves physical keys, real primary
+identity, sender receipt, recovery or credential cutover. Exact-source native
 execution, all four unchanged permanent full Demo pairs, then actual-main all9
 contexts remain mandatory. Whole SaaS1/INT acceptance remains open in issue351.

@@ -6,7 +6,7 @@ This is the implementation contract for replacing the public Shared Demo with
 the protected integration runtime. It is not deployment or migration evidence.
 The existing closed Demo and permanent three-customer acceptance remain intact.
 The `dev`/`int`/`prod` mapping in `DEPLOYMENT-ENVIRONMENTS.md` is authoritative.
-Only INT is initially operated; DEV and PROD are prepared without provisioning
+Only INT is the initial operating target; DEV and PROD are prepared without provisioning
 additional resources. Separate them before the first productive customer.
 
 The pure `src/tenancy/protected-tenant-runtime.js` policy validates a closed
@@ -16,27 +16,33 @@ synthetic generations and every synthetic Tenant in PROD. Real and synthetic
 provider branches are disjoint. This classifier itself creates no registry row,
 session, role, provider connection or production composition.
 
-The prepared `src/identity/protected-customer-session-service.js` composes the
+The owned `src/identity/protected-customer-session-service.js` composes the
 ordinary session service with a mandatory current-access repository port. It
 re-reads custody on every resolution, validates registry scope, permits only
 invited email/Microsoft access for real Tenants and a separate operator-delegation
 kind/provider for synthetic Tenants. Unknown custody fails closed; repository
 availability errors propagate without fallback. Existing issue/CSRF/revoke/rotate
-contracts remain with the ordinary service. API252 added an owned protected invited
-factory and authoritative same-transaction real membership/session qualification.
-Its corrected103d9156/tree47f74da passed all nine contexts including native protected
-email/Microsoft linking, epoch invalidation and rollback in CI39451839534 before
-mergef973c48. Synthetic delegation and whole-root activation remain unimplemented.
+contracts remain with the ordinary service. The explicit Customer root composes
+invited real access, fresh Microsoft/linking and current signed delegation with
+authoritative same-transaction membership/session qualification. The explicit
+Platform root owns Microsoft primary/passkeys, real creation/invitations and
+DEV/INT generation/reset/handoff. Runtime factories accept only their complete
+per-surface configuration and return start/stop; no external issuer, verifier,
+clock, driver, handler, grant or provider implementation can replace this chain.
+Source composition does not activate either hosted process or external identity.
 The architecture gate excludes the guard from both closed Demo import graphs.
 
-The prepared protected provider gate fixes one adapter mode at composition,
+The protected provider gate fixes one adapter mode at composition,
 validates current scope inside a mandatory locked-registry callback, permits only
 one operation invocation and never retries or falls back. Its repository port
 must retain the protected shared lease for the entire bounded provider callback.
-The prepared PostgreSQL runtime repository implements that mode-lookup port with
+The PostgreSQL runtime repository implements that mode-lookup port with
 current deployment epoch, immutable registry, Tenant lifecycle, generation and
-real operator status/version checks. It is not composed with concrete outbound
-adapters. Native tripwire evidence must identify its exact source/run separately;
+real operator status/version checks. The Customer root uses it for the real
+Microsoft facade, the guarded real/local calendar selector and current real
+mail eligibility. Synthetic calendar work is network-free and never falls through
+to Microsoft; current Catering configuration retains its inactive/manual baseline.
+Native tripwire evidence identifies its exact source/run separately;
 unit evidence does not establish deployed outbound isolation.
 
 The private PostgreSQL protected-runtime gate provides transaction-scoped shared
@@ -49,7 +55,7 @@ by detached descendants after release are denied. The existing transaction
 adapter owns commit/rollback/connection release. The original gate and registry
 native suites passed on corrected1dd7530 in CI39445946024 before mergee498b88;
 that component evidence is not protected runtime deployment or reset acceptance.
-The new uncomposed execution-scope adapter separates shared lease/business pools
+The execution-scope adapter composed by both roots separates shared lease/business pools
 and adds an explicit repeatable-exclusive path with locked current-custody checks.
 Its MVCC/max1 contract requires its own exact-source evidence independently of
 the older gate tests. See
@@ -62,7 +68,8 @@ migrated into a generation. Former epochs cannot be reused; generation owner,
 epoch and identity are immutable, only forward lifecycle transitions are allowed,
 activation requires all three unique slots and archival requires archived Tenant
 rows. Retained generations have a hard32-per-operator/environment bound; the
-application reset cooldown and provisioning/audit service remain unimplemented.
+owned writer enforces its actual10-second cooldown and bounded generation
+archival/provisioning/audit transaction. No quota/history is deleted to make room.
 Synthetic generation ownership requires a current Microsoft Platform operator,
 not a Demo operator. This metadata is not authentication or operation authority.
 
@@ -89,16 +96,16 @@ CI39445946024:1843 tests/both DAST, full native118709406859 and all four permane
 paired progression/two-reset jobs, plus dependency/secret/source gates. PR251
 merged ate498b88. Frontend SaaS1 issue351 retains acceptance and failure history.
 
-## Persistent authority to implement
+## Persistent authority
 
-Prepared060 adds private synthetic catalogue imagery and additively aligns the
+Frozen060 adds private synthetic catalogue imagery and additively aligns the
 generation-owner guard with the actual `microsoft_entra_platform` provider rather
 than the Customer label used in059. Accepted059 source remains frozen. New native
 fixtures reject the Customer label and use the Platform-primary contract. Separate
 proof transaction/continuation ports prepare atomic delegation without reusing a
 revoked old or temporary session. See `SYNTHETIC-RUNTIME-CUSTODY.md`; these new
-native cases require their own exact-source evidence; whole-root acceptance
-remains outstanding, with no live activation.
+native cases require their own exact-source evidence. The owned roots now bind
+these component contracts themselves. Actual hosted activation remains separate.
 
 Each protected Tenant has one immutable deployment/mode classification. Current
 deployment epochs rotate through monotonic revisions with retained non-reuse
@@ -169,6 +176,28 @@ only explicitly composed network-free simulators. Real Microsoft365, catering,
 mail or other outbound adapters cannot receive synthetic Tenant operations.
 Missing real-provider configuration reports unavailable rather than connected
 simulation. Archived/unknown generations fail closed even on delayed jobs.
+
+## Local onboarding, current media and hosted browser bytes
+
+The Customer root's session-qualified current-mode view exposes only the registry
+mode/provider; browser metadata selects no authority. Its synthetic Admin module
+owns fixed local discovery, bounded Fabrikam Room import and exact revision/status
+onboarding-to-ready-to-active transitions. Narrow064 SQL guards retain current
+Admin/source custody without direct Customer Tenant-status or private-resource
+mutation grants. REAL continues through its separate Microsoft/Platform lifecycle.
+
+Current private catalogue reads qualify the exact Tenant and Room attachment,
+verify PNG/WebP bytes and retain private conditional304 behavior only after current
+authorization/integrity. Synthetic catalogue storage is PostgreSQL-only; object
+pre-staging is unimplemented and unactivated, with no object-pointer fallback.
+See `PROTECTED-SYNTHETIC-ONBOARDING-RUNTIME.md` and `PROTECTED-CATALOGUE-MEDIA.md`.
+
+Optional hosted delivery is default-off and verifies the externally pinned own
+manifest, source pair, origins/environment and every allowed byte before pool
+construction. Fixed directories keep both browser graphs separate. No build/test/
+manifest/foreign-plane file is a public route. Public immutable browser reads
+acquire no Tenant/database authority; every API request keeps the owned whole-
+transport lease/authentication path. See `PROTECTED-HOSTED-FRONTEND.md`.
 
 ## Whole-fleet activation and evidence
 

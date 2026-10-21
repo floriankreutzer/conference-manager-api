@@ -1,7 +1,8 @@
 # Protected runtime profile envelope
 
-Prepared SaaS1 configuration contract; no entrypoint, deployment, provider,
-Microsoft application, recipient, sender or security profile is activated.
+The shared profile is composed by the explicit protected Customer and Platform
+startup loaders. This source contract activates no deployment, provider,
+Microsoft application, recipient, sender or security profile by itself.
 `loadProtectedRuntimeProfile` is a pure explicit-input validator. It does not read
 or mutate the inherited environment, open a pool, query a database, create an
 identity, run a migration or manufacture cutover evidence. Existing ordinary and
@@ -19,11 +20,12 @@ they are needed and must be separate before the first productive customer.
 | INT | cm_protected_int_customer | cm_protected_int_platform | Explicit opt-in |
 | PROD | cm_protected_prod_customer | cm_protected_prod_platform | Forbidden |
 
-The selected surface receives only its own prefixed database credential. Wrong
-surface/environment roles, missing credentials, short/invalid passwords,
-connection-string parameters, insecure TLS and excessive pools fail closed.
+The selected surface receives only its own prefixed database credential.
+Roles must match the selected surface and environment. Missing credentials or
+invalid passwords are rejected, as are connection parameters, unsafe TLS and
+excessive pool limits.
 The validator returns separate immutable business/lease pool configurations;
-the owned root must actually instantiate distinct pools. Both use verify-full
+both owned roots instantiate distinct pools. Both use verify-full
 TLS and canonical application names. Defaults are2 business and1 lease connection;
 each bound is at most5 and their sum at most8. These are application bounds, not
 an assertion about a provider's plan or available quota.
@@ -52,6 +54,15 @@ PROTECTED_LEASE_POOL_MAX are optional bounded decimal integers.
 PROTECTED_SYNTHETIC_ENABLED defaults to false; only exact true/false strings are
 accepted and true is rejected in PROD.
 
+PROTECTED_HOSTED_FRONTEND_ENABLED also defaults to false. Exact true requires
+the selected surface's externally reviewed PROTECTED_HOSTED_FRONTEND_SHA256;
+inactive delivery rejects a stray digest. The fixed artifact manifest must match
+the complete source pair, environment, both origins and synthetic flag, and every
+allowed file must match its sealed length/hash before pool construction. Runtime
+configuration accepts no artifact path, handler or source-repository override.
+See `PROTECTED-HOSTED-FRONTEND.md`. Presentation-only Microsoft/invitation flags
+belong to the isolated frontend build command, not this runtime environment.
+
 Legacy DATABASE_URL, PLATFORM_*, DEMO_*, ENTRA_*, OIDC_* and ordinary origin/audit/
 CSRF names are forbidden even when empty. A Customer envelope rejects Platform
 secrets/credentials, while permitting the explicitly shared nonsecret Platform
@@ -59,7 +70,9 @@ origin/integer epoch. The common-key list deliberately recognizes encrypted
 invitation custody, Tenant audit, handoff and immutable-build inputs required by
 both server compositions. It returns none of those secrets. Full authentication,
 provider, keyring, sender and recipient validation belongs to the existing owned
-factories and their future surface-specific composition, after this envelope.
+Customer/Platform startup loaders after this envelope. The loaders and owned
+roots construct the authentication, provider and cipher adapters; callers cannot replace
+their dependencies with a supplied issuer, verifier, clock, driver or provider.
 This envelope is not a complete application-secret configuration or issuer.
 
 ## Coordinated operating cutover remains mandatory
@@ -77,18 +90,21 @@ and fresh authentication are restored. No fallback or role/proof weakening is
 introduced to keep an old binary alive.
 
 Configured owner recipient and verified sender must be explicitly supplied;
-Microsoft/email claims do not select them. Actual Microsoft sign-in, keys and
-recovery, provider-mode isolation, full protected HTTP/browser progression,
-operational restore and zero-additional-spend deployment acceptance remain open.
+Microsoft/email claims do not select them. Source/runtime fixtures qualify
+current provider-mode isolation and whole-HTTP progression; separately pinned
+qualified browser tests cover their stated software scope. Actual Microsoft
+primary, physical keys and recovery, sender receipt, operational restore and
+zero-additional-spend deployed cutover still require independent evidence.
 No resource, plan, paid compute or email is triggered by source preparation.
 
 ## Evidence
 
-Eight local profile/negative cases cover all six surface/environment combinations,
+The profile/negative cases cover all six surface/environment combinations,
 immutable verified-TLS pool settings, old-loader rejection, cross-surface/legacy
 keys, origins, deployment/artifact identity, unsafe connection parameters,
-role aliases, pool bounds and PROD synthetic denial. Module-boundary499, lint
-and whitespace1117 checks pass. The initial module-boundary false positive
-matched an environment-access phrase in a comment; wording was corrected without
-adding an exception. Full frozen local and fresh CI acceptance remain required.
-No deployed isolation or operational acceptance is inferred from these tests.
+role aliases, pool bounds and PROD synthetic denial. Hosted artifact cases add
+external digest/profile/byte qualification, path/symlink/foreign-plane refusal,
+captured-buffer isolation, transport bounds and unchanged API routing. Required
+exact-source quality/native/browser/permanent/security gates and reviews remain
+mandatory; their current status belongs to the PRs and SaaS1 issue351. None is
+deployed isolation or operating acceptance by itself.
