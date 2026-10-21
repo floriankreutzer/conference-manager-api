@@ -87,5 +87,15 @@ application SaaS1 issue351/milestone2.
 
 The review-only CLI is `node scripts/protected-runtime-roles.mjs plan ENV UUID`.
 It emits `applied:false` and the redacted fixed manifest; no apply command exists.
+The separate `Install protected INT runtime roles` manual Actions workflow invokes
+the existing checked `grantProtectedRuntimeRoles` operator port for INT only. It
+requires the exact accepted Main SHA, the independently prepared current deployment
+UUID, the existing protected migration-secret environment and fresh LOGIN roles.
+It validates scope before constructing a verified-TLS, max1 pool, serializes with
+the existing hosted database operator workflows, and logs only a bounded receipt
+or fixed failure code. It creates no role, password, deployment epoch, operator,
+enrollment grant or Tenant; it performs no migration/reset and starts no runtime.
+The installer retains its full exact-ledger, epoch, role-posture and atomic grant
+checks. Its deliberate fresh-role refusal also makes a repeat run fail closed.
 The module gate rejects every source-runtime import of operator/build scripts,
 including static, re-export and literal dynamic paths outside the runtime graph.
