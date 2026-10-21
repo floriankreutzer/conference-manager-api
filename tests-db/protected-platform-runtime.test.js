@@ -9,6 +9,9 @@ import { createProtectedPlatformSessions } from '../src/platform/identity/protec
 import { createPostgresPlatformSessionRepository } from '../src/persistence/postgres/platform-session-repository.js';
 import { createPostgresPlatformAuditRepository } from '../src/persistence/postgres/platform-audit-repository.js';
 import { createPostgresAuditRepository } from '../src/persistence/postgres/audit-repository.js';
+import { createPostgresProtectedRuntimeExecutionScopes } from '../src/persistence/postgres/protected-runtime-execution-scopes.js';
+import { createPostgresSyntheticGenerationDirectoryRepository }
+  from '../src/persistence/postgres/platform-synthetic-generation-directory-repository.js';
 import { platformPasskeyFixture } from '../tests/support/platform-passkey-fixture.js';
 import { grantProtectedRuntimeRoles } from '../scripts/support/protected-runtime-role-grants.mjs';
 import { migrateUp } from '../scripts/db-migrations.mjs';
@@ -122,10 +125,24 @@ async t=>{
   const tenantId=real.tenant.id;
   assert.equal((await pool.query("SELECT mode FROM tenant_runtime_registry WHERE tenant_id=$1",[tenantId])).rows[0].mode,'real');
   const generationPath='/api/v1/platform/synthetic/generation';
+  const probePool=new pg.Pool({ connectionString: database(1),ssl: { ca: fixture.certificate,rejectUnauthorized: true },
+    max: 1,connectionTimeoutMillis: 2000,statement_timeout: 10000 });
+  const probeLease=new pg.Pool({ connectionString: database(1),ssl: { ca: fixture.certificate,rejectUnauthorized: true },
+    max: 1,connectionTimeoutMillis: 2000,statement_timeout: 10000 });
+  try {
+    const scope={ environment: 'int',securityEpoch: epoch };
+    const execution=createPostgresProtectedRuntimeExecutionScopes({ ...scope,pool: probePool,leasePool: probeLease });
+    const directory=createPostgresSyntheticGenerationDirectoryRepository(probePool,{ ...scope,platformSecurityEpoch: 7 });
+    const principal=await sessions.resolvePrincipal({ headers: { cookie } });assert.ok(principal);
+    assert.deepEqual(await execution.withShared(()=>directory.current(principal)),
+      { generation: null,retainedGenerations: 0,replaceAfter: null,canReplace: true });
+  } finally { await Promise.all([probePool.end(),probeLease.end()]); }
   async function replace(expectedGenerationId,expectedRevision) {
     const intent={ expectedGenerationId,expectedRevision };
     const options=await ops(generationPath+'/options',{ method: 'POST',body: intent,
-      headers: { cookie,'x-csrf-token': csrfToken } });assert.equal(options.status,200);
+      headers: { cookie,'x-csrf-token': csrfToken } });
+    if (options.status!==200) t.diagnostic(`Restricted PostgreSQL privilege failures: ${fixture.permissionFailures().join(',')}`);
+    assert.equal(options.status,200,JSON.parse(options.text).error?.code);
     const value=JSON.parse(options.text);
     const result=await ops(generationPath+'/replace',{ method: 'POST',body: { ...intent,state: value.state,
       response: keys[0].response('get',{ counter: ++counter,client: { challenge: value.options.challenge } }) },
