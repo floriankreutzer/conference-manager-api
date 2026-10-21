@@ -57,3 +57,18 @@ test('wrong mode, lookup failure, callback failure and malformed explicit lease 
     assert.throws(()=>createPostgresProtectedTenantRuntimeRepository(f.pool,{ ...scope,leasePool }),/CONFIGURATION_INVALID/);
   }
 });
+
+
+test('explicit cleanup lookup preserves the same max1 lease while binding a separate REAL-only inactive predicate',async()=>{
+  const f=fixture();await f.repository.findCurrent(tenantId);
+  assert.equal(f.queries.find(q=>q?.name==='protected-tenant-current-runtime').values.at(-1),false);
+  await f.repository.withCurrentTenantCleanupRuntime({ ...scope,tenantId },async value=>{
+    assert.equal(value.mode,'real');await f.pool.query('SELECT actual_cleanup_work');
+  });
+  const lookups=f.queries.filter(q=>q?.name==='protected-tenant-current-runtime');
+  assert.equal(lookups.at(-1).values.at(-1),true);
+  assert.match(lookups.at(-1).text,/registry.mode='real' AND tenant.status IN \('suspended','archived'\)/);
+  const leases=f.leaseQueries.length;
+  assert.throws(()=>f.repository.withCurrentTenantCleanupRuntime({ ...scope,securityEpoch: tenantId,tenantId },()=>{}),
+    /PROTECTED_TENANT_RUNTIME_SCOPE_INVALID/);assert.equal(f.leaseQueries.length,leases);
+});
