@@ -1,3 +1,4 @@
+import { assertCalendarProviderFactory } from './integrations/calendar-contract.js';
 import { createCustomerAuthenticationComposition } from './customer-authentication-composition.js';
 import { createCateringConfigurationRegistry } from './integrations/catering-provider-registration.js';
 import { createFinalRoomConfirmationService } from './application/final-room-confirmation-service.js';
@@ -50,6 +51,7 @@ export function createCustomerComposition({
   persistence = config?.databaseUrl ? createPostgresPersistence(config,{cateringRegistry:createCateringConfigurationRegistry()}) : null,
   entraClient = null,
   microsoft365Client = null,
+  calendarProviderFactory = null,
   logger = createLogger(),
   metrics = createMetricsRegistry(),
   httpServerFactory = createHttpServer,
@@ -67,6 +69,8 @@ if (!Array.isArray(additionalRouteModules)) throw new TypeError('CUSTOMER_ROUTE_
 if (routeModulesFactory !== undefined && typeof routeModulesFactory !== 'function') {
   throw new TypeError('CUSTOMER_ROUTE_MODULES_FACTORY_INVALID');
 }
+if (calendarProviderFactory!==null && !persistence) throw new TypeError('CUSTOMER_CALENDAR_PERSISTENCE_REQUIRED');
+const ownedCalendarFactory=calendarProviderFactory===null ? null : assertCalendarProviderFactory(calendarProviderFactory);
 const authorizationPolicy = createAuthorizationPolicy();
 const auditService = persistence
   ? createAuditService({
@@ -88,7 +92,7 @@ const capabilityHealthService = persistence
 const { sessionService,onboardingService,entraAuthService }=createCustomerAuthenticationComposition({
   config,persistence,auditService,entraClient,authenticationFactory,
 });
-const microsoft365CalendarProviderFactory = persistence && microsoft365Client
+const microsoft365CalendarProviderFactory = ownedCalendarFactory ?? (persistence && microsoft365Client
   ? createMicrosoft365CalendarProviderFactory({
     connectionRepository: persistence.microsoft365ConnectionRepository,
     bindingRepository: persistence.tenantOnboardingRepository,
@@ -97,7 +101,7 @@ const microsoft365CalendarProviderFactory = persistence && microsoft365Client
     capabilityHealthService,
     observationRepository: persistence.microsoft365RoomObservationRepository,
   })
-  : null;
+  : null);
 const microsoft365BookingServiceFactory = persistence
   && auditService
   && entitlementService

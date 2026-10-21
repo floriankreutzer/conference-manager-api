@@ -175,6 +175,23 @@ export function normalizeCancelResult(value, expectedProviderReference) {
   });
 }
 
+export function isCalendarRoomId(value) {
+  return typeof value==='string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
+}
+
+// A server-owned factory has no HTTP/session/issuer or arbitrary provider port.
+export function assertCalendarProviderFactory(value) {
+  const names=['forRoom','forPersistedReference'];
+  if (!value || ![Object.prototype,null].includes(Object.getPrototypeOf(value))
+    || Reflect.ownKeys(value).length!==2 || Reflect.ownKeys(value).some(name=>{
+      const field=Object.getOwnPropertyDescriptor(value,name);
+      return !names.includes(name) || !Object.hasOwn(field,'value') || typeof field.value!=='function';
+    })) throw new TypeError('CALENDAR_PROVIDER_FACTORY_INVALID');
+  const room=Object.getOwnPropertyDescriptor(value,'forRoom').value;
+  const persisted=Object.getOwnPropertyDescriptor(value,'forPersistedReference').value;
+  return Object.freeze({ forRoom: input=>room.call(value,input),forPersistedReference: input=>persisted.call(value,input) });
+}
+
 export function assertCalendarProvider(provider) {
   if (!provider || typeof provider !== 'object' || Array.isArray(provider)) {
     throw new TypeError('CALENDAR_PROVIDER_REQUIRED');

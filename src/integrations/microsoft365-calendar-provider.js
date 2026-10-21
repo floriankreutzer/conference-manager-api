@@ -3,12 +3,12 @@ import {
   CalendarProviderError,
   PROVIDER_ERROR_KIND,
   isProviderConnectionReference,
+  isCalendarRoomId,
   isProviderResourceReference,
 } from './calendar-contract.js';
 import { Microsoft365ProviderError } from './microsoft365-contract.js';
 import { executeSafeProviderOperation } from './provider-retry.js';
 
-const ROOM_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const ENTRA_IDENTITY_PROVIDER = 'microsoft_entra';
 const HEALTH_CAPABILITY = Object.freeze({
   FREE_BUSY: 'free_busy',
@@ -269,7 +269,7 @@ export function createMicrosoft365CalendarProviderFactory({
   return Object.freeze({
     async forRoom({ tenantId, roomId } = {}) {
       if (!isInternalUuid(tenantId)) throw new TypeError('TENANT_ID_INVALID');
-      if (typeof roomId !== 'string' || !ROOM_ID_PATTERN.test(roomId)) {
+      if (!isCalendarRoomId(roomId)) {
         throw new TypeError('ROOM_ID_INVALID');
       }
       const connection = await findBoundConnection(tenantId, 'availability');
@@ -317,7 +317,7 @@ export function createMicrosoft365CalendarProviderFactory({
       providerResourceReference,
     } = {}) {
       if (!isInternalUuid(tenantId)) throw new TypeError('TENANT_ID_INVALID');
-      if (typeof roomId !== 'string' || !ROOM_ID_PATTERN.test(roomId)) {
+      if (!isCalendarRoomId(roomId)) {
         throw new TypeError('ROOM_ID_INVALID');
       }
       if (!isInternalUuid(integrationId)) throw new TypeError('INTEGRATION_ID_INVALID');
