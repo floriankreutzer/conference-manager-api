@@ -216,6 +216,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 60, name: 'synthetic_catalogue_media' },
       { version: 61, name: 'synthetic_customer_handoff' },
       { version: 62, name: 'synthetic_customer_source_lock' },
+      { version: 63, name: 'synthetic_calendar' },
     ]);
   });
 

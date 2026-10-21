@@ -24,6 +24,7 @@ test('Customer invitation custody is scoped, encrypted, audit-atomic, single-com
   const pool = createPostgresPool({ mode: 'test', ...database });
   t.after(() => pool.end());
   await migrateUp(pool); assert.equal(await isPostgresSchemaReady(pool, 62), true);
+  assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty source-lock062 before unchanged061/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty060 before059.
@@ -169,6 +170,7 @@ test('Customer invitation custody is scoped, encrypted, audit-atomic, single-com
     await assert.rejects(pool.query(`UPDATE customer_access_memberships SET user_id=$1,accepted_at=clock_timestamp()
       WHERE environment='int' AND tenant_id=$2 AND id=$3`,[id(2),id(1),membership.id]),/CUSTOMER_MEMBERSHIP_ACCEPTANCE_REQUIRED/);
     assert.equal((await pool.query('SELECT user_id FROM customer_access_memberships WHERE id=$1',[membership.id])).rows[0].user_id,null);
+    assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty source-lock062 before unchanged061/older guard.
     assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
     assert.equal(await rollbackLatest(pool),true); // Empty060 before059.

@@ -558,8 +558,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 62;/.test(pool)) {
-  throw new Error('Runtime schema readiness requires private synthetic source-lock schema 62.');
+if (!/export const CURRENT_SCHEMA_VERSION = 63;/.test(pool)) {
+  throw new Error('Runtime schema readiness requires private durable synthetic calendar schema 63.');
 }
 const retentionPrivilegeMigration = await readFile(
   'migrations/041_room_media_retention_privileges.up.sql',

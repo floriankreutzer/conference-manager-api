@@ -186,6 +186,7 @@ test('versioned Catering ownership is canonical, scoped, sealed, CAS/audit atomi
   await assert.rejects(rawRevision(assignments().map((entry) => ({ ...entry, integrationId: id(13) }))),
     (error) => error.code === '23503');
   assert.equal(await count('catering_catalogue_assignment_revisions'), 3);
+  assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty source-lock062 before unchanged061/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty060 before059.
@@ -294,6 +295,7 @@ test('versioned Catering ownership is canonical, scoped, sealed, CAS/audit atomi
     catalogueRevision: 2, assignments: fullAssignments })).assignments.length, 400);
   assert.equal(await count('catering_catalogue_assignment_seals', 30), 2);
   assert.equal(await auditRepository.verifyTenantChain(id(30)), true);
+  assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty source-lock062 before unchanged061/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty060 before059.

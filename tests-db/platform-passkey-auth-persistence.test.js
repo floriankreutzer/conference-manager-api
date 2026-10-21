@@ -35,6 +35,7 @@ test('durable Platform passkey authentication is bounded, single-use, audited an
   await migrateUp(pool);
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty source-lock062 before unchanged061/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty060 before059.
@@ -381,6 +382,7 @@ test('durable Platform passkey authentication is bounded, single-use, audited an
       [other.credentialRecordId]), /IMMUTABLE/);
     await assert.rejects(pool.query('UPDATE platform_passkey_credentials SET operator_id = $1 WHERE id = $2',
       [f.operatorId, other.credentialRecordId]), /IMMUTABLE/);
+    assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty source-lock062 before unchanged061/older guard.
     assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
     assert.equal(await rollbackLatest(pool),true); // Empty060 before059.
