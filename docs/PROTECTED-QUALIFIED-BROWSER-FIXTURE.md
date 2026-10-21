@@ -40,3 +40,14 @@ pinned SDK selected decodeFirst instead, preserving byte-equality assertions.
 Native bootstrap, fresh full CI/permanent unchanged four paired three-customer/
 two-reset journeys and actual-main gates remain pending. Local Docker/browser
 executables are absent; no native/browser pass is claimed. SaaS1 issue351.
+
+Initial feature8e2e64b2/CI39609445762 passed quality2046/both DAST and all four
+complete permanent browser pairs. Native119254807732 passed the entire migration/
+persistence step, including the new actual outside-cwd two-root bootstrap, then
+the 15-minute aggregate job deadline cancelled the separate actual elapsed
+proof-expiry step. That cancellation is retained and is not an expiry pass.
+The bounded orchestration budget is now20 minutes for the expanded complete
+native suite. Individual test deadlines, real expiry interval/clocks, cleanup,
+all assertions and every required gate remain unchanged. This prevents repeated
+full native executions merely to fit variable runner speed; fresh entire native
+and all counterpart checks remain mandatory. No paid runner/quota is enabled.
