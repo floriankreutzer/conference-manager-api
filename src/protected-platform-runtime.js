@@ -40,6 +40,7 @@ import { platformSessionRoutes } from './platform/http/session-routes.js';
 import { createPlatformHttpServer } from './platform/server.js';
 import { protectedPlatformExecutionBoundary } from './platform/http/protected-execution-boundary.js';
 import { createProtectedHttpExecutionHandler } from './transport/protected-http-execution.js';
+import { loadProtectedHostedFrontend,withProtectedHostedFrontend } from './protected-hosted-frontend.js';
 import { createMetricsRegistry } from './observability/metrics.js';
 import { assertPlatformRouteKey } from './platform/http/observability.js';
 
@@ -76,6 +77,7 @@ export async function createProtectedPlatformRuntime(environment) {
   try {
     bundle=loadProtectedPlatformConfiguration(environment);
     const { profile,config,cipher }=bundle,protection={ environment: profile.environment,securityEpoch: profile.securityEpoch };
+    const frontend=await loadProtectedHostedFrontend(profile);
     persistence=createPostgresPlatformPersistence(config,{ protectedRuntime: protection });
     leasePool=createPostgresPool(profile.leaseDatabase);const base=persistence;
     const scopes=createPostgresProtectedRuntimeExecutionScopes({ ...protection,pool: base.pool,leasePool });
@@ -121,8 +123,9 @@ export async function createProtectedPlatformRuntime(environment) {
       }),
       httpServerFactory: options=>createPlatformHttpServer({ ...options,
         platformCustomerOnboardingService: onboarding,platformCustomerInvitationAdministrationService: invitations,
-        requestHandlerFactory: app=>createProtectedHttpExecutionHandler({ config,surface: 'platform',executionScopes: scopes,app,
-          platformBoundary: protectedPlatformExecutionBoundary }),
+        requestHandlerFactory: app=>withProtectedHostedFrontend({ profile,config,artifact: frontend,
+          apiHandler: createProtectedHttpExecutionHandler({ config,surface: 'platform',executionScopes: scopes,app,
+            platformBoundary: protectedPlatformExecutionBoundary }) }),
       }) });
     let closed=false,started=false,starting=false,startTask=null,stopping=null;
     const stop=()=>{

@@ -28,6 +28,7 @@ import { createPostgresProtectedTenantRuntimeRepository } from './persistence/po
 import { createProtectedTenantProviderGate } from './tenancy/protected-tenant-provider-gate.js';
 import { ProtectedTenantRuntimeError } from './tenancy/protected-tenant-runtime.js';
 import { createProtectedHttpExecutionHandler } from './transport/protected-http-execution.js';
+import { loadProtectedHostedFrontend,withProtectedHostedFrontend } from './protected-hosted-frontend.js';
 import { createHttpServer } from './server.js';
 import { createLogger } from './logger.js';
 
@@ -58,6 +59,7 @@ export async function createProtectedCustomerRuntime(environment) {
   try {
     bundle=loadProtectedCustomerConfiguration(environment);
     const { config,profile,cipher }=bundle,protection={ environment: profile.environment,securityEpoch: profile.securityEpoch };
+    const frontend=await loadProtectedHostedFrontend(profile);
     const logger=createLogger();
     const syntheticScope=profile.syntheticEnabled ? { ...protection,platformSecurityEpoch: profile.platformSecurityEpoch,
       customerOrigin: profile.customerOrigin,platformOrigin: profile.platformOrigin } : null;
@@ -107,7 +109,8 @@ export async function createProtectedCustomerRuntime(environment) {
       authenticationFactory: authentication.authenticationFactory,additionalRouteModules,logger,
       httpServerFactory: options=>createHttpServer({ ...options,
         microsoft365ConnectionService: realMicrosoftService(options.microsoft365ConnectionService,realGate),
-        requestHandlerFactory: app=>createProtectedHttpExecutionHandler({ config,surface: 'customer',executionScopes: scopes,app }),
+        requestHandlerFactory: app=>withProtectedHostedFrontend({ profile,config,artifact: frontend,
+          apiHandler: createProtectedHttpExecutionHandler({ config,surface: 'customer',executionScopes: scopes,app }) }),
       }) });
     const worker=bundle.mailProvider===null ? null : createProtectedCustomerAccessDeliveryWorker({ ...protection,
       pool: base.pool,leasePool,cipher,provider: bundle.mailProvider });

@@ -1,4 +1,5 @@
 node_modules/
+.protected-frontend/
 .env
 .env.*
 !.env.example

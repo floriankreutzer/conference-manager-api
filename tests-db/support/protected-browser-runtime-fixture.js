@@ -20,8 +20,11 @@ export const PROTECTED_BROWSER_ORIGINS=Object.freeze({ customer: 'https://app-in
 // Only the initial canonical MFA session/two software keys are fixture state;
 // Microsoft primary, physical keys and operator recovery are not proved here.
 export async function createProtectedBrowserRuntimeFixture(input) {
-  if (!input || Object.keys(input).sort().join(',')!=='apiCommit,frontendCommit'
-    || ![input.apiCommit,input.frontendCommit].every(value=>typeof value==='string' && /^[a-f0-9]{40}$/.test(value))) {
+  if (!input || !['apiCommit,frontendCommit','apiCommit,frontendCommit,hostedFrontend'].includes(Object.keys(input).sort().join(','))
+    || ![input.apiCommit,input.frontendCommit].every(value=>typeof value==='string' && /^[a-f0-9]{40}$/.test(value))
+    || Object.hasOwn(input,'hostedFrontend') && (!input.hostedFrontend
+      || Object.keys(input.hostedFrontend).sort().join(',')!=='customer,platform'
+      || !Object.values(input.hostedFrontend).every(value=>typeof value==='string' && /^[a-f0-9]{64}$/.test(value)))) {
     throw new TypeError('PROTECTED_BROWSER_FIXTURE_REFS_REQUIRED');
   }
   const cleanups=[],children=[];let pool,closed=false;
@@ -81,11 +84,14 @@ export async function createProtectedBrowserRuntimeFixture(input) {
       PROTECTED_CUSTODY_ACTIVE_KEY_ID: 'initial',
       PROTECTED_CUSTODY_KEYRING: JSON.stringify([{ id: 'initial',key: Buffer.alloc(32,3).toString('base64url') }]),
       PROTECTED_SYNTHETIC_ENABLED: 'true',PROTECTED_HANDOFF_SECRET: 'h'.repeat(48) };
+    const hosted=surface=>input.hostedFrontend ? { PROTECTED_HOSTED_FRONTEND_ENABLED: 'true',
+      PROTECTED_HOSTED_FRONTEND_SHA256: input.hostedFrontend[surface] } : {};
     const customerClientId=randomUUID(),platformClientId=randomUUID();
     function connection(index) {
       const url=new URL(database.url);url.username=roles[index];url.password=passwords[index];return url.href;
     }
-    const platform=await startProtectedRuntimeProcess('platform',{ ...common,PROTECTED_PLATFORM_DATABASE_URL: connection(1),
+    const platform=await startProtectedRuntimeProcess('platform',{ ...common,...hosted('platform'),
+      PROTECTED_PLATFORM_DATABASE_URL: connection(1),
       PROTECTED_PEER_ENTRA_CLIENT_ID: customerClientId,PROTECTED_PLATFORM_ENTRA_CLIENT_ID: platformClientId,
       PROTECTED_PLATFORM_ENTRA_TENANT_ID: directoryId,PROTECTED_PLATFORM_ENTRA_CLIENT_SECRET: 'e'.repeat(48),
       PROTECTED_PLATFORM_OIDC_TRANSACTION_SECRET: 'o'.repeat(48),PROTECTED_PLATFORM_CSRF_SECRET: 'c'.repeat(48),
@@ -94,7 +100,8 @@ export async function createProtectedBrowserRuntimeFixture(input) {
       PROTECTED_PLATFORM_HOST: '127.0.0.1',PROTECTED_PLATFORM_PORT: String(await unusedProtectedRuntimePort()),
       PROTECTED_PLATFORM_ASSURANCE_MODE: 'application_passkey',PROTECTED_PLATFORM_HANDOFF_INTENT_SECRET: 'i'.repeat(48) });
     children.push(platform);if (platform.outcome.type!=='listening') throw new Error('PROTECTED_BROWSER_PLATFORM_NOT_READY');
-    const customer=await startProtectedRuntimeProcess('customer',{ ...common,PROTECTED_CUSTOMER_DATABASE_URL: connection(0),
+    const customer=await startProtectedRuntimeProcess('customer',{ ...common,...hosted('customer'),
+      PROTECTED_CUSTOMER_DATABASE_URL: connection(0),
       PROTECTED_CUSTOMER_ENTRA_CLIENT_ID: customerClientId,PROTECTED_PEER_ENTRA_CLIENT_ID: platformClientId,
       PROTECTED_CUSTOMER_ENTRA_CLIENT_SECRET: 'g'.repeat(48),PROTECTED_CUSTOMER_CSRF_SECRET: 's'.repeat(48),
       PROTECTED_CUSTOMER_EMAIL_FLOW_SECRET: 'f'.repeat(48),PROTECTED_CUSTOMER_EMAIL_CODE_SECRET: 'n'.repeat(48),
@@ -116,7 +123,7 @@ export async function createProtectedBrowserRuntimeFixture(input) {
         if (children.some(child=>leaks.some(secret=>child.logs().includes(secret)))) {
           throw new Error('PROTECTED_BROWSER_ROOT_LOG_REDACTION_FAILED');
         }
-        return Object.freeze({ refs: { ...input },tenantChainsVerified: rows.length,
+        return Object.freeze({ refs: { apiCommit: input.apiCommit,frontendCommit: input.frontendCommit },tenantChainsVerified: rows.length,
           tenants: rows.map(({ slot,status,rooms,media })=>({ slot,status,rooms,media })) });
       },
     });
