@@ -7,7 +7,7 @@ const epoch='be000000-0000-4000-8000-000000000001';
 test('operator plan preserves per-surface proof custody and offline enrollment without connecting or creating credentials',()=>{
   for (const environment of ['dev','int','prod']) {
     const plan=protectedRuntimeRoleGrantPlan({ environment,securityEpoch: epoch });
-    assert.ok(Object.isFrozen(plan));assert.equal(plan.schemaVersion,64);
+    assert.ok(Object.isFrozen(plan));assert.equal(plan.schemaVersion,65);
     const customer=plan.roles[0],platform=plan.roles[1];
     assert.equal(customer.role,`cm_protected_${environment}_customer`);
     assert.equal(platform.role,`cm_protected_${environment}_platform`);

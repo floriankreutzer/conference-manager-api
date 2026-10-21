@@ -612,3 +612,11 @@ media/reset. No HTTP write method or Production/Customer persistence is added.
 private-object feed. When enabled, it supplies both views without daily redeploys.
 The legacy environment snapshots above remain rollout fallback; their original
 contracts and limitations still apply. Daily Demo stock is not Pilot outcomes.
+
+## Offline first-owner initialization
+
+The INT-only operator CLI and owner repository in `PLATFORM-FIRST-OWNER-BOOTSTRAP.md`
+create the first real operator under independent catalog-owner authority. They are
+excluded from HTTP/runtime/Demo graphs by the module gate. Schema065 adds only
+the non-principal offline audit target and guard. Normal two-operator lifecycle,
+Microsoft/session/CSRF and two-key enrollment contracts are unchanged.
