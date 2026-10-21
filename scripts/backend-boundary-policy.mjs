@@ -34,6 +34,7 @@ const COMPOSITION_FILES = new Set([
   'src/platform-composition.js',
   'src/platform-main.js',
   'src/customer-composition.js',
+  'src/customer-authentication-composition.js',
   'src/catering-configuration-composition.js',
   'src/catering-order-composition.js',
 ]);
