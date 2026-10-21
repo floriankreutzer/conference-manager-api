@@ -19,9 +19,10 @@ they are needed and must be separate before the first productive customer.
 | INT | cm_protected_int_customer | cm_protected_int_platform | Explicit opt-in |
 | PROD | cm_protected_prod_customer | cm_protected_prod_platform | Forbidden |
 
-The selected surface receives only its own prefixed database credential. Wrong
-surface/environment roles, missing credentials, short/invalid passwords,
-connection-string parameters, insecure TLS and excessive pools fail closed.
+The selected surface receives only its own prefixed database credential.
+Roles must match the selected surface and environment. Missing credentials or
+invalid passwords are rejected, as are connection parameters, unsafe TLS and
+excessive pool limits.
 The validator returns separate immutable business/lease pool configurations;
 the owned root must actually instantiate distinct pools. Both use verify-full
 TLS and canonical application names. Defaults are2 business and1 lease connection;
