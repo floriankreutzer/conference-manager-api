@@ -637,6 +637,7 @@ export function createRequestService({
         })
         : null;
       const updated = await repository.transitionByTenantIdAndId({
+        principal,
         tenantId: tenantContext.tenantId,
         requestId,
         actorUserId: principal.userId,

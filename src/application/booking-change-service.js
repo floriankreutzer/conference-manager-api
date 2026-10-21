@@ -826,6 +826,7 @@ export function createBookingChangeService({
         const finishedAt = now(clock);
         finishAttempted = true;
         const finished = await repository.finishApproval({
+          principal,
           tenantId: tenantContext.tenantId,
           requestId,
           changeId,

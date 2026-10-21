@@ -197,8 +197,11 @@ function calendarRestoration(value) {
 }
 
 export function createPostgresBookingChangeRepository(pool, {
-  auditRepository,requirePublishedCatering = false,cateringRegistry = null,
+  auditRepository,requirePublishedCatering = false,cateringRegistry = null,calendarAuthorityGuard=null,
 } = {}) {
+  if (calendarAuthorityGuard!==null && typeof calendarAuthorityGuard.lockCustomerMutation!=='function') {
+    throw new TypeError('BOOKING_CHANGE_AUTHORITY_GUARD_INVALID');
+  }
   if (typeof requirePublishedCatering !== 'boolean') throw new TypeError('CATERING_PUBLICATION_POLICY_REQUIRED');
   if (requirePublishedCatering && typeof cateringRegistry?.get !== 'function') throw new TypeError('CATERING_REGISTRY_REQUIRED');
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
@@ -758,7 +761,7 @@ export function createPostgresBookingChangeRepository(pool, {
       });
     },
 
-    async finishApproval({ tenantId, requestId, changeId, changedAt, auditEvent, calendarReplacement = null }) {
+    async finishApproval({ tenantId, requestId, changeId, changedAt, auditEvent, calendarReplacement = null,principal=null }) {
       return withPostgresTransaction(pool, async (client) => {
         if (!await lockTenantLocationAuthority(client, tenantId)) {
           return Object.freeze({ status: 'conflict' });
@@ -831,6 +834,10 @@ export function createPostgresBookingChangeRepository(pool, {
           values: [tenantId, change.roomId, requestId, change.startsAt, change.endsAt],
         });
         if (overlap.rowCount > 0) return Object.freeze({ status: 'blocked' });
+        if (calendarAuthorityGuard!==null
+          && !await calendarAuthorityGuard.lockCustomerMutation(client,{ tenantId,principal })) {
+          return Object.freeze({ status: 'conflict' });
+        }
         const updated = isSupportedRequestCompositionSchemaVersion(change.requestSchemaVersion)
           ? await client.query({
             name: 'booking-change-apply-v2-request',

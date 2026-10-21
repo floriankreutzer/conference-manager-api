@@ -10,6 +10,8 @@ import { createPostgresPlatformSessionRepository } from '../src/persistence/post
 import { createPostgresPlatformAuditRepository } from '../src/persistence/postgres/platform-audit-repository.js';
 import { createPostgresAuditRepository } from '../src/persistence/postgres/audit-repository.js';
 import { createPostgresProtectedRuntimeExecutionScopes } from '../src/persistence/postgres/protected-runtime-execution-scopes.js';
+import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
+import { createPostgresProtectedCalendarAuthorityGuard } from '../src/persistence/postgres/protected-calendar-authority-guard.js';
 import { createPostgresSyntheticGenerationDirectoryRepository }
   from '../src/persistence/postgres/platform-synthetic-generation-directory-repository.js';
 import { platformPasskeyFixture } from '../tests/support/platform-passkey-fixture.js';
@@ -175,10 +177,99 @@ async t=>{
   assert.equal(confirmation.status,200);
   const completed=await app('/api/v1/auth/delegation/complete',{ method: 'POST',
     form: { csrfToken: JSON.parse(confirmation.text).csrfToken },headers: { cookie: completionCookies } });
-  assert.equal(completed.status,303);const customerCookie=pair(completed.headers['set-cookie'][0]);
+  assert.equal(completed.status,303);let customerCookie=pair(completed.headers['set-cookie'][0]);
   assert.equal((await app('/api/v1/session',{ headers: { cookie: customerCookie } })).status,200);
   const guarded=await app('/api/v1/integrations/microsoft365',{ headers: { cookie: customerCookie } });
   assert.equal(guarded.status,409);assert.equal(JSON.parse(guarded.text).error.code,'MICROSOFT365_REAL_TENANT_REQUIRED');
+  const adminCookie=customerCookie,adminView=JSON.parse((await app('/api/v1/session',{ headers: { cookie: adminCookie } })).text);
+  assert.equal((await app('/api/v1/session',{ method: 'DELETE',headers: { cookie: adminCookie,
+    'x-csrf-token': adminView.csrfToken } })).status,204);
+  assert.equal((await app('/api/v1/session',{ headers: { cookie: adminCookie } })).status,401);
+  // A second fresh assertion selects the actual Conference Manager persona.
+  const managerStart=await app('/api/v1/auth/delegation/start',{ method: 'POST',form: {} });assert.equal(managerStart.status,303);
+  const managerTarget=new URL(managerStart.headers.location),managerBrowser=pair(managerStart.headers['set-cookie'][0]);
+  const managerArrival=await ops(managerTarget.pathname+managerTarget.search,
+    { headers: { origin: null,'sec-fetch-site': 'cross-site' } });assert.equal(managerArrival.status,303);
+  const managerIntent=pair(managerArrival.headers['set-cookie'][0]);
+  const managerSelection={ generationId: generation.generationId,slot: 'northwind',role: 'conference_manager' };
+  const managerOptions=await ops('/api/v1/platform/auth/delegation/options',{ method: 'POST',body: managerSelection,
+    headers: { cookie: `${cookie}; ${managerIntent}`,'x-csrf-token': csrfToken } });assert.equal(managerOptions.status,200);
+  const managerChallenge=JSON.parse(managerOptions.text);
+  const managerApproved=await ops('/api/v1/platform/auth/delegation/approve',{ method: 'POST',form: { csrfToken,
+    payload: JSON.stringify({ ...managerSelection,state: managerChallenge.state,response: keys[0].response('get',{
+      counter: ++counter,client: { challenge: managerChallenge.options.challenge } }) }) },
+  headers: { cookie: `${cookie}; ${managerIntent}; ${pair(managerOptions.headers['set-cookie'][0])}` } });
+  assert.equal(managerApproved.status,303);await current(managerApproved);
+  const managerCallback=new URL(managerApproved.headers.location);
+  const managerArrived=await app(managerCallback.pathname+managerCallback.search,
+    { headers: { cookie: managerBrowser,origin: null,'sec-fetch-site': 'cross-site' } });assert.equal(managerArrived.status,303);
+  const managerCompletion=`${managerBrowser}; ${pair(managerArrived.headers['set-cookie'][0])}`;
+  const managerConfirmation=await app('/api/v1/auth/delegation/confirmation',{ headers: { cookie: managerCompletion } });
+  assert.equal(managerConfirmation.status,200);
+  const managerCompleted=await app('/api/v1/auth/delegation/complete',{ method: 'POST',
+    form: { csrfToken: JSON.parse(managerConfirmation.text).csrfToken },headers: { cookie: managerCompletion } });
+  assert.equal(managerCompleted.status,303);customerCookie=pair(managerCompleted.headers['set-cookie'][0]);
+  const managerSession=await app('/api/v1/session',{ headers: { cookie: customerCookie } });assert.equal(managerSession.status,200);
+  const managerView=JSON.parse(managerSession.text),syntheticTenant=managerView.tenant.id;
+  const resources=(await pool.query(`SELECT count(*)::int AS count FROM synthetic_calendar_resources WHERE tenant_id=$1`,
+    [syntheticTenant])).rows[0].count;assert.equal(resources,10);
+  const integration=(await pool.query('SELECT provider,status FROM integrations WHERE tenant_id=$1',[syntheticTenant])).rows;
+  assert.deepEqual(integration,[{ provider: 'synthetic_calendar',status: 'active' }]);
+  assert.equal((await pool.query('SELECT count(*)::int AS count FROM tenant_identity_bindings WHERE tenant_id=$1',
+    [syntheticTenant])).rows[0].count,0);
+  const source=(await pool.query(`SELECT session.id,session.tenant_id,session.user_id,session.provider,
+    session.provider_identity_reference,session.roles,session.permissions,session.principal_version,session.issued_at,session.expires_at,
+    custody.source_platform_session_id FROM sessions session JOIN synthetic_customer_handoffs custody
+      ON custody.customer_session_id=session.id WHERE session.tenant_id=$1 AND session.user_id=$2 AND session.revoked_at IS NULL`,
+  [syntheticTenant,managerView.user.id])).rows[0];assert.ok(source);
+  const guardedPrincipal={ tenantId: source.tenant_id,userId: source.user_id,roles: source.roles,permissions: source.permissions,
+    providerIdentity: { provider: source.provider,reference: source.provider_identity_reference },session: { id: source.id,
+      issuedAt: source.issued_at.toISOString(),expiresAt: source.expires_at.toISOString(),
+      securityVersion: Number(source.principal_version) } };
+  const calendarPool=new pg.Pool({ connectionString: database(0),ssl: { ca: fixture.certificate,rejectUnauthorized: true },
+    max: 1,connectionTimeoutMillis: 2000,statement_timeout: 10000 });
+  const calendarLease=new pg.Pool({ connectionString: database(0),ssl: { ca: fixture.certificate,rejectUnauthorized: true },
+    max: 1,connectionTimeoutMillis: 2000,statement_timeout: 10000 });
+  try {
+    const protection={ environment: 'int',securityEpoch: epoch };
+    const scopes=createPostgresProtectedRuntimeExecutionScopes({ ...protection,pool: calendarPool,leasePool: calendarLease });
+    const guard=createPostgresProtectedCalendarAuthorityGuard(calendarPool,{ ...protection,syntheticScope: { ...protection,
+      platformSecurityEpoch: 7,customerOrigin: common.PROTECTED_CUSTOMER_ORIGIN,platformOrigin: common.PROTECTED_PLATFORM_ORIGIN } });
+    let entered,release;const seen=new Promise(resolve=>{ entered=resolve; }),hold=new Promise(resolve=>{ release=resolve; });
+    const locked=scopes.withShared(()=>withPostgresTransaction(calendarPool,async client=>{
+      assert.equal(await guard.lockCustomerMutation(client,{ tenantId: syntheticTenant,principal: guardedPrincipal }),true);
+      entered((await client.query('SELECT pg_backend_pid() AS pid')).rows[0].pid);await hold;
+    }));
+    const holderPid=await Promise.race([seen,locked.then(()=>{ throw new Error('FINAL_SOURCE_LOCK_NOT_ENTERED'); })]);
+    const revoker=await pool.connect();let revoking;
+    try {
+      await revoker.query('BEGIN');const pid=(await revoker.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      revoking=revoker.query('UPDATE platform_sessions SET revoked_at=clock_timestamp() WHERE id=$1',
+        [source.source_platform_session_id]);
+      let blocked=false;
+      for (let attempt=0;attempt<100;attempt++) {
+        const probe=await pool.query('SELECT $2::integer=ANY(pg_blocking_pids($1)) AS blocked',[pid,holderPid]);
+        if (probe.rows[0].blocked) { blocked=true;break; }await new Promise(resolve=>setTimeout(resolve,10));
+      }
+      assert.equal(blocked,true,'final source lock must block real concurrent source revocation');
+    } finally { release();await locked;try { await revoking;await revoker.query('ROLLBACK'); } finally { revoker.release(); } }
+  } finally { await Promise.all([calendarPool.end(),calendarLease.end()]); }
+  assert.equal((await app('/api/v1/session',{ headers: { cookie: customerCookie } })).status,200);
+  const candidate=(await pool.query(`SELECT request.id,request.request_version FROM requests request
+    WHERE request.tenant_id=$1 AND request.status='In Review' AND NOT EXISTS(SELECT 1 FROM requests other
+      WHERE other.tenant_id=request.tenant_id AND other.room_id=request.room_id AND other.id<>request.id
+        AND other.status='Confirmed' AND other.starts_at<request.ends_at AND other.ends_at>request.starts_at)
+    ORDER BY request.id LIMIT 1`,[syntheticTenant])).rows[0];assert.ok(candidate);
+  const confirmed=await app(`/api/v1/requests/${candidate.id}/transitions`,{ method: 'POST',body: { transition: 'confirm' },
+    headers: { cookie: customerCookie,'x-csrf-token': managerView.csrfToken,'if-match': `"${candidate.request_version}"` } });
+  if (confirmed.status!==200) t.diagnostic(`Calendar confirmation error: ${JSON.parse(confirmed.text).error?.code}; `
+    +`privilege failures: ${fixture.permissionFailures().join(',')}`);
+  assert.equal(confirmed.status,200,JSON.parse(confirmed.text).error?.code);
+  assert.equal(JSON.parse(confirmed.text).request.status,'Confirmed');
+  assert.equal((await pool.query("SELECT count(*)::int AS count FROM synthetic_calendar_events WHERE tenant_id=$1 AND state='active'",
+    [syntheticTenant])).rows[0].count,1);
+  assert.equal((await pool.query("SELECT count(*)::int AS count FROM booking_provider_references WHERE tenant_id=$1 AND state='active'",
+    [syntheticTenant])).rows[0].count,1);
   // Actual clock/cooldown, then an independent exact assertion. No time rewrite.
   await new Promise(resolve=>setTimeout(resolve,10100));
   const reset=await replace(generation.generationId,generation.revision);assert.notEqual(reset.generationId,generation.generationId);
@@ -187,13 +278,18 @@ async t=>{
   const preserved=(await pool.query(`SELECT status,(SELECT count(*)::int FROM rooms WHERE tenant_id=tenants.id) AS rooms,
     (SELECT count(*)::int FROM requests WHERE tenant_id=tenants.id) AS requests FROM tenants WHERE id=$1`,[old])).rows[0];
   assert.deepEqual(preserved,{ status: 'archived',rooms: 10,requests: 20 });
+  assert.equal((await pool.query('SELECT count(*)::int AS count FROM synthetic_calendar_resources WHERE tenant_id=$1',[old]))
+    .rows[0].count,10);
+  assert.equal((await pool.query('SELECT count(*)::int AS count FROM synthetic_calendar_events WHERE tenant_id=$1',[old]))
+    .rows[0].count,1);
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM customer_member_invitations WHERE tenant_id=$1',[tenantId]))
     .rows[0].count,2);
   assert.equal((await pool.query('SELECT mode FROM tenant_runtime_registry WHERE tenant_id=$1',[tenantId])).rows[0].mode,'real');
   const tenantAudit=createPostgresAuditRepository(pool,{ hmacSecret: 't'.repeat(48) });
   assert.equal(await tenantAudit.verifyTenantChain(tenantId),true);assert.equal(await tenantAudit.verifyTenantChain(old),true);
   assert.equal((await customer.stop()).code,0);assert.equal((await platform.stop()).code,0);
-  for (const value of [fixture.password,...passwords,proof,customerCookie,browser,completionCookie,callback.searchParams.get('code')]) {
+  for (const value of [fixture.password,...passwords,proof,customerCookie,adminCookie,managerBrowser,browser,completionCookie,
+    callback.searchParams.get('code')]) {
     assert.equal(children.some(child=>child.logs().includes(value)),false,'owned runtime logs cannot expose proof/custody values');
   }
 });

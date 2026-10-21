@@ -37,7 +37,10 @@ import { createPostgresRoomMediaRepository } from './room-media-repository.js';
 import { createPostgresMediaObjectRepository } from './media-object-repository.js';
 
 export function createPostgresPersistence(config, { mediaObjectStorage = null, includeDemoCatalogue = false,
-  cateringRegistry = null } = {}) {
+  cateringRegistry = null,calendarAuthorityGuardFactory=null } = {}) {
+  if (calendarAuthorityGuardFactory!==null && typeof calendarAuthorityGuardFactory!=='function') {
+    throw new TypeError('CALENDAR_AUTHORITY_FACTORY_INVALID');
+  }
   const requirePublishedCatering=cateringConfigurationEnabled(config.featureFlags);
   if (requirePublishedCatering && typeof cateringRegistry?.get !== 'function') throw new TypeError('CATERING_REGISTRY_REQUIRED');
   const pool = createPostgresPool(config);
@@ -47,13 +50,15 @@ export function createPostgresPersistence(config, { mediaObjectStorage = null, i
   const auditRepository = createPostgresAuditRepository(pool, {
     hmacSecret: config.auditHmacSecret,
   });
-  const calendarAuthorityGuard = createPostgresMicrosoft365CalendarAuthorityGuard();
+  const calendarAuthorityGuard = calendarAuthorityGuardFactory===null ? createPostgresMicrosoft365CalendarAuthorityGuard()
+    : calendarAuthorityGuardFactory(pool);
   const applicationRepository = createPostgresApplicationRepository(pool, { auditRepository,requirePublishedCatering,cateringRegistry });
   const requestWorkflowRepository = createPostgresRequestDraftWorkflowRepository(pool, { auditRepository });
   const tenantRepository = createPostgresTenantRepository(pool, { auditRepository });
   const bookingReferenceRepository = createPostgresBookingReferenceRepository(pool, { auditRepository });
   const bookingChangeRepository = createPostgresBookingChangeRepository(pool, {
     auditRepository,requirePublishedCatering,cateringRegistry,
+    calendarAuthorityGuard: typeof calendarAuthorityGuard?.lockCustomerMutation==='function' ? calendarAuthorityGuard : null,
   });
   const entitlementRepository = createPostgresEntitlementRepository(pool, { auditRepository });
   const jitUserRepository = createPostgresJitUserRepository(pool, { auditRepository });
@@ -120,6 +125,7 @@ export function createPostgresPersistence(config, { mediaObjectStorage = null, i
     loadTenant: (tenantId) => tenantRepository.findById(tenantId),
     readinessChecks: [
       () => isPostgresSchemaReady(pool),
+      ...(typeof calendarAuthorityGuard?.isReady==='function' ? [calendarAuthorityGuard.isReady] : []),
     ],
     close: () => pool.end(),
   });
