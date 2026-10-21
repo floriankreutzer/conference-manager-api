@@ -80,3 +80,15 @@ fixtures, not browser SameSite/document/RP, live Microsoft, physical-key recover
 real email delivery or deployed artifact-pair/cutover acceptance. All unchanged
 permanent four-pair full Demo progression/two-reset gates and fresh actual-main
 all9 contexts remain mandatory. SaaS1 issue351/milestone2 remains open.
+
+The first completed native run reached generation creation but failed at handoff
+options500. The diagnostic rerun independently passed the restricted generation
+directory and reproduced that handoff failure. The immutable059 registry needs
+no UPDATE-capable row lock under the already retained shared/exclusive scope;
+selection now locks all original mutable custody rows while retaining every
+current registry predicate. Registry UPDATE stays absent from the role manifest
+and is checked as a table/column privilege negative in the native fixture. No
+row data or trigger policy is weakened. The HTTP fixture also now carries both
+normal browser and completion cookies, matching their required browser paths.
+Exact-source native rerun remains pending; neither original failure is accepted
+as a success.

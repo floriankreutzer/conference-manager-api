@@ -130,6 +130,8 @@ async t=>{
   const probeLease=new pg.Pool({ connectionString: database(1),ssl: { ca: fixture.certificate,rejectUnauthorized: true },
     max: 1,connectionTimeoutMillis: 2000,statement_timeout: 10000 });
   try {
+    assert.equal((await probePool.query(`SELECT has_table_privilege(current_user,'tenant_runtime_registry','UPDATE')
+      OR has_any_column_privilege(current_user,'tenant_runtime_registry','UPDATE') AS allowed`)).rows[0].allowed,false);
     const scope={ environment: 'int',securityEpoch: epoch };
     const execution=createPostgresProtectedRuntimeExecutionScopes({ ...scope,pool: probePool,leasePool: probeLease });
     const directory=createPostgresSyntheticGenerationDirectoryRepository(probePool,{ ...scope,platformSecurityEpoch: 7 });
@@ -156,7 +158,9 @@ async t=>{
   assert.equal(arrival.status,303);const intentCookie=pair(arrival.headers['set-cookie'][0]);
   const selection={ generationId: generation.generationId,slot: 'northwind',role: 'tenant_admin' };
   const options=await ops('/api/v1/platform/auth/delegation/options',{ method: 'POST',body: selection,
-    headers: { cookie: `${cookie}; ${intentCookie}`,'x-csrf-token': csrfToken } });assert.equal(options.status,200);
+    headers: { cookie: `${cookie}; ${intentCookie}`,'x-csrf-token': csrfToken } });
+  if (options.status!==200) t.diagnostic(`Restricted PostgreSQL privilege failures: ${fixture.permissionFailures().join(',')}`);
+  assert.equal(options.status,200,JSON.parse(options.text).error?.code);
   const handoff=JSON.parse(options.text);
   const approved=await ops('/api/v1/platform/auth/delegation/approve',{ method: 'POST',form: { csrfToken,
     payload: JSON.stringify({ ...selection,state: handoff.state,response: keys[0].response('get',{
@@ -166,10 +170,11 @@ async t=>{
   const callback=new URL(approved.headers.location);
   const arrived=await app(callback.pathname+callback.search,{ headers: { cookie: browser,origin: null,'sec-fetch-site': 'cross-site' } });
   assert.equal(arrived.status,303);const completionCookie=pair(arrived.headers['set-cookie'][0]);
-  const confirmation=await app('/api/v1/auth/delegation/confirmation',{ headers: { cookie: completionCookie } });
+  const completionCookies=`${browser}; ${completionCookie}`;
+  const confirmation=await app('/api/v1/auth/delegation/confirmation',{ headers: { cookie: completionCookies } });
   assert.equal(confirmation.status,200);
   const completed=await app('/api/v1/auth/delegation/complete',{ method: 'POST',
-    form: { csrfToken: JSON.parse(confirmation.text).csrfToken },headers: { cookie: completionCookie } });
+    form: { csrfToken: JSON.parse(confirmation.text).csrfToken },headers: { cookie: completionCookies } });
   assert.equal(completed.status,303);const customerCookie=pair(completed.headers['set-cookie'][0]);
   assert.equal((await app('/api/v1/session',{ headers: { cookie: customerCookie } })).status,200);
   const guarded=await app('/api/v1/integrations/microsoft365',{ headers: { cookie: customerCookie } });

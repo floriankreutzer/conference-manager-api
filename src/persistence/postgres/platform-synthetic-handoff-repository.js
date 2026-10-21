@@ -47,6 +47,9 @@ export function createPostgresSyntheticHandoffRepository(pool,{ scope,browserBin
     if (principal.operatorId!==selection.operatorId || principal.providerIdentity.provider!==PLATFORM_ENTRA_PROVIDER
       || principal.assurance.level!=='mfa' || principal.assurance.authenticationContext!=='cm:pk:v1'
       || principal.session.securityEpoch!==scope.platformSecurityEpoch) denied();
+    // Registry classification is INSERT-only under059; shared preparation or
+    // stamped exclusive completion already fences its deployment. Lock mutable
+    // custody rows without inventing a Platform registry UPDATE privilege.
     const result=await client.query({ name: 'synthetic-handoff-current-selection',text: `SELECT registry.tenant_id,person.id AS user_id,
         person.security_version,clock_timestamp() AS now
       FROM platform_operators actor JOIN platform_sessions source ON source.operator_id=actor.id
@@ -77,7 +80,7 @@ export function createPostgresSyntheticHandoffRepository(pool,{ scope,browserBin
             WHERE elevation.tenant_id=person.tenant_id AND elevation.user_id=person.id))
           OR ($9<>'employee' AND EXISTS(SELECT 1 FROM tenant_user_roles elevation
             WHERE elevation.tenant_id=person.tenant_id AND elevation.user_id=person.id AND elevation.role=$9)))
-      FOR SHARE OF actor,source,deployment,generation,registry,tenant,person,identity`,
+      FOR SHARE OF actor,source,deployment,generation,tenant,person,identity`,
     values: [scope.environment,scope.securityEpoch,principal.operatorId,principal.securityVersion,scope.platformSecurityEpoch,
       principal.session.id,selection.generationId,selection.slot,selection.role,principal.roles,principal.permissions,
       principal.targetScope.mode,principal.providerIdentity.tenantReference,principal.providerIdentity.subjectReference,
