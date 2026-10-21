@@ -59,3 +59,14 @@ The separately pinned frontend qualified journey must forward static as well
 as API requests to the real roots; a test-edge static server is insufficient
 evidence for this addition. Native/qualified CI remains required. No physical
 key, real Microsoft/mail, operating restore or deployment acceptance follows.
+
+Initial actual hosted qualified CI39617252870 failed both engines because the
+new static1000-request/minute/address budget truncated legitimate repeated cold
+native-module navigations at HTTP429. This is retained as a product failure,
+not an infrastructure-only failure. The corrected budget admits sixteen complete
+sealed graphs per minute/address, capped at4096 requests with2000 bounded keys.
+API/auth/database limits and the test-edge2000-event bound remain unchanged.
+An additional actual-HTTP case admits sixteen complete minimal graph loads,
+then requires429 for the next static file while API routing remains unaffected.
+The earlier local2052/both-DAST result does not prove this correction; fresh
+complete CI including both qualified engines is required.

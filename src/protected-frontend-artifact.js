@@ -72,7 +72,7 @@ export async function readProtectedFrontendArtifact(root,profile) {
     const policies=[...html.matchAll(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/g)];
     if (policies.length!==1 || policies[0][1].length>4096 || /[\r\n]/.test(policies[0][1])) fail();
     const csp=`${policies[0][1]}; frame-ancestors 'none'`;
-    return Object.freeze({ entry,csp,get(name) {
+    return Object.freeze({ entry,csp,fileCount: files.size,get(name) {
       const file=files.get(name);return file ? Object.freeze({ bytes: Buffer.from(file.bytes),type: file.type }) : null;
     } });
   } catch { throw new TypeError('PROTECTED_FRONTEND_ARTIFACT_INVALID'); }

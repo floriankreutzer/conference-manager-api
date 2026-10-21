@@ -14,7 +14,9 @@ export async function loadProtectedHostedFrontend(profile) {
 // the whole protected transport/authentication/lease pipeline, including errors.
 export function withProtectedHostedFrontend({ profile,config,artifact,apiHandler }) {
   if (artifact===null) return apiHandler;
-  const limiter=createRateLimiter({ max: 1000,windowMs: 60_000,maxKeys: 2000 });
+  // Native-module cold navigations request the whole sealed graph. Admit up
+  // to sixteen such loads/minute/address, capped independently of API limits.
+  const limiter=createRateLimiter({ max: Math.min(4096,artifact.fileCount*16),windowMs: 60_000,maxKeys: 2000 });
   return (request,response)=>{
     if (typeof request.url!=='string' || /^\/api(?:\/|\?|$)/.test(request.url)) return apiHandler(request,response);
     try {

@@ -114,3 +114,26 @@ test('protected artifact and serving modules cannot enter lower layers or closed
     }
   }
 });
+
+test('static budget admits complete cold graph navigations and then limits assets without blocking protected API routing',async t=>{
+  const { root,selected }=await fixture(t),artifact=await readProtectedFrontendArtifact(root,selected);let apiCalls=0;
+  const server=createServer(withProtectedHostedFrontend({ profile: selected,config: {
+    mode: 'production',publicOrigin: selected.customerOrigin },artifact,apiHandler: (_request,response)=>{
+    apiCalls++;response.writeHead(418);response.end();
+  } }));
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(()=>new Promise(resolve=>server.close(resolve)));
+  async function status(target) {
+    return new Promise((resolve,reject)=>{
+      const call=request({ hostname: '127.0.0.1',port: server.address().port,path: target,
+        headers: { host: 'app-int.example.test' } },response=>{
+        response.resume();response.once('end',()=>resolve(response.statusCode));
+      });call.once('error',reject);call.end();
+    });
+  }
+  for (let navigation=0;navigation<16;navigation++) {
+    assert.equal(await status('/'),200);assert.equal(await status('/assets/fixture.css'),200);
+  }
+  assert.equal(await status('/assets/fixture.css'),429);
+  assert.equal(await status('/api/v1/session'),418);assert.equal(apiCalls,1);
+});
