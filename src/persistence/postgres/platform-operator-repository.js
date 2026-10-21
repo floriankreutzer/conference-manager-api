@@ -1,3 +1,4 @@
+import { createProtectedPlatformTenantCustodySql } from './protected-platform-tenant-custody.js';
 import { isInternalUuid } from '../../domain/identifiers.js';
 import {
   PLATFORM_AUDIT_ACTION,
@@ -259,7 +260,9 @@ async function enqueueChangeAlert(client, operatorId, action, correlationId) {
   });
 }
 
-export function createPostgresPlatformOperatorRepository(pool, { auditRepository } = {}) {
+export function createPostgresPlatformOperatorRepository(pool, { auditRepository,protectedRuntime=null } = {}) {
+  const custody=createProtectedPlatformTenantCustodySql(protectedRuntime);
+  const restriction=custody?.predicate({ tenant: '$2',securityVersionParameter: 3,firstParameter: 4 });
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
   }
@@ -292,7 +295,7 @@ export function createPostgresPlatformOperatorRepository(pool, { auditRepository
     async isTenantAllowed({ operatorId, tenantId, securityVersion, client }) {
       return withTargetReader(client,async reader=>{
         const result = await reader.query({
-          name: 'platform-operator-target-authorize',
+          name: custody ? 'platform-operator-protected-target-authorize' : 'platform-operator-target-authorize',
           text: `
             SELECT 1
             FROM platform_operators o
@@ -301,15 +304,17 @@ export function createPostgresPlatformOperatorRepository(pool, { auditRepository
               AND o.security_version = $3
               AND (
                 o.scope_mode = 'all'
+                ${restriction ? `OR ${restriction.syntheticSql}` : ''}
                 OR (o.scope_mode = 'allowlist' AND EXISTS (
                   SELECT 1
                   FROM platform_operator_tenant_scopes scope
                   WHERE scope.operator_id = o.id AND scope.tenant_id = $2
                 ))
               )
+              ${restriction ? `AND ${restriction.sql}` : ''}
             LIMIT 1
           `,
-          values: [operatorId, tenantId, securityVersion],
+          values: [operatorId, tenantId, securityVersion,...(restriction?.values ?? [])],
         });
         return result.rowCount === 1;
       });

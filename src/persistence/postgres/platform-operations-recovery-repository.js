@@ -1,3 +1,4 @@
+import { createProtectedPlatformTenantCustodySql } from './protected-platform-tenant-custody.js';
 import { randomUUID } from 'node:crypto';
 import { withPostgresTransaction } from './transaction.js';
 import {
@@ -55,6 +56,7 @@ export function createPostgresPlatformRecoveryRepository(pool, {
   onboardingRepository,
   tenantLifecycleRepository,
   cursorSecret,
+  protectedRuntime=null,
   idFactory = randomUUID,
 } = {}) {
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
@@ -69,6 +71,7 @@ export function createPostgresPlatformRecoveryRepository(pool, {
     || typeof tenantLifecycleRepository.changeStatusWithClient !== 'function'
   ) throw new TypeError('TENANT_LIFECYCLE_REPOSITORY_REQUIRED');
   if (typeof idFactory !== 'function') throw new TypeError('ID_FACTORY_REQUIRED');
+  const custody=createProtectedPlatformTenantCustodySql(protectedRuntime);
   const cursorCodec = createPlatformOperationCursorCodec({ secret: cursorSecret });
   const audit = { tenantAuditRepository, platformAuditRepository };
 
@@ -97,7 +100,8 @@ export function createPostgresPlatformRecoveryRepository(pool, {
           ? Object.freeze({ outcome: 'idempotent', result: replay.result })
           : Object.freeze({ outcome: 'idempotency_conflict' });
       }
-      await requireCurrentPlatformMutationAuthorization(client, values.authorization, values.tenantId);
+      await requireCurrentPlatformMutationAuthorization(client, values.authorization, values.tenantId,
+        { protectedRuntime: custody?.cursorScope ?? null });
       const context = await findContext(client, { operatorId, contextId: values.contextId, lock: true });
       if (!context) return Object.freeze({ outcome: 'not_found' });
       if (context.used) return Object.freeze({ outcome: 'used' });
@@ -474,6 +478,7 @@ export function createPostgresPlatformRecoveryRepository(pool, {
           client,
           values.authorization,
           values.tenantId,
+          { protectedRuntime: custody?.cursorScope ?? null },
         );
         const contextId = idFactory();
         const principal = values.authorization.principal;
