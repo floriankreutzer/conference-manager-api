@@ -40,6 +40,13 @@ function databaseUrl(value,environment,surface) {
   return value;
 }
 
+// Full owned configuration loaders add their exact surface-specific keys to
+// this immutable public key inventory. It contains names only, never values.
+export function protectedRuntimeConfigurationKeys(surface) {
+  if (!['customer','platform'].includes(surface)) fail('SURFACE_INVALID');
+  return Object.freeze([...COMMON_KEYS,`PROTECTED_${surface.toUpperCase()}_DATABASE_URL`]);
+}
+
 // Shared immutable profile envelope, not an authentication/provider factory.
 // Each process receives only its surface's prefixed credentials; compatibility
 // names exist solely in local validator input; the inherited environment is never mutated.
