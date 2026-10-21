@@ -54,6 +54,9 @@ async t=>{
   }
   await assert.rejects(grantProtectedRuntimeRoles(pool,{ ...protection,securityEpoch: randomUUID() }),
     { message: 'PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED' });
+  await pool.query('GRANT USAGE ON SEQUENCE audit_events_id_seq TO cm_protected_int_customer');
+  await assert.rejects(grantProtectedRuntimeRoles(pool,protection),{ message: 'PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED' });
+  await pool.query('REVOKE USAGE ON SEQUENCE audit_events_id_seq FROM cm_protected_int_customer');
   const installed=await grantProtectedRuntimeRoles(pool,protection);assert.deepEqual(installed.roles,created);
   await assert.rejects(grantProtectedRuntimeRoles(pool,protection),{ message: 'PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED' });
   const restricted=restrictedPool(business,created[0]),restrictedLease=restrictedPool(lease,created[0]);

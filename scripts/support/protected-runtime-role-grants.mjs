@@ -70,7 +70,8 @@ export async function grantProtectedRuntimeRoles(pool,input) {
               OR pg_catalog.has_any_column_privilege(role.oid,relation.oid,'SELECT,INSERT,UPDATE,REFERENCES')))
           OR EXISTS(SELECT 1 FROM pg_catalog.pg_class relation JOIN pg_catalog.pg_namespace namespace
             ON namespace.oid=relation.relnamespace WHERE namespace.nspname='public' AND relation.relkind='S'
-            AND pg_catalog.has_sequence_privilege(role.oid,relation.oid,'USAGE,SELECT,UPDATE')))
+            AND CASE WHEN relation.relkind='S'
+              THEN pg_catalog.has_sequence_privilege(role.oid,relation.oid,'USAGE,SELECT,UPDATE') ELSE false END))
           AS forbidden FROM pg_catalog.pg_roles role WHERE role.rolname=ANY($1::text[])`,[roles]);
       if (posture.rowCount!==2 || new Set(posture.rows.map(row=>row.rolname)).size!==2
         || posture.rows.some(row=>!roles.includes(row.rolname) || row.rolcanlogin!==true || row.forbidden!==false)) failed();

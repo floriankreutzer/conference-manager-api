@@ -12,8 +12,15 @@ DEV/INT/PROD derive their exact Customer and Platform role names. Both must lack
 memberships, elevated attributes, object ownership, existing table/column/
 sequence grants, explicit function grants and default privileges. Existing roles
 with permissions are refused rather than adopted, repaired or reset. This is a
-one-time fresh-role operation; repeat invocation deliberately fails. Current
-schema ledger names/checksums and the independent current deployment UUID must
+one-time fresh-role operation; repeat invocation deliberately fails.
+
+The sequence-right check uses a CASE on the actual relation kind before calling
+PostgreSQL's sequence-only privilege function. A plain WHERE filter cannot
+guarantee function evaluation order. Existing sequence grants remain a refusal;
+the native test explicitly grants/revokes only one fresh fixture permission to
+prove that refusal before the real installation.
+
+Current schema ledger names/checksums and the independent current deployment UUID must
 match the checked-out canonical source exactly. A bounded transaction takes the
 existing exclusive deployment advisory lock, refuses active role connections,
 and rolls all changes back on any error. It does not prove that older binaries
