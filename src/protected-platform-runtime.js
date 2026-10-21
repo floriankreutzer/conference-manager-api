@@ -54,7 +54,7 @@ function syntheticRoutes(bundle,persistence,authentication,authorizationPolicy,d
   const intentCookie=createPlatformSyntheticHandoffIntentCookie({ scope,secret: bundle.synthetic.intentSecret });
   disposables.push(()=>browserBinding.destroy(),()=>intentCookie.destroy());
   const generationService=createSyntheticGenerationService({ ...protection,passkeyService,authorizationPolicy,
-    repository: createPostgresSyntheticGenerationRepository(persistence.pool,{ ...protection,
+    repository: createPostgresSyntheticGenerationRepository(persistence.pool,{ ...protection,calendarEnabled: true,
       tenantAuditRepository: persistence.tenantAuditRepository,platformAuditRepository: persistence.auditRepository }) });
   const directory=createPostgresSyntheticGenerationDirectoryRepository(persistence.pool,
     { ...protection,platformSecurityEpoch: profile.platformSecurityEpoch });

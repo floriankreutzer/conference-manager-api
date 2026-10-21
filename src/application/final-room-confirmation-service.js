@@ -441,6 +441,7 @@ export function createFinalRoomConfirmationService({
       let result;
       try {
         result = await repository.confirmIfRoomAvailable({
+          principal,
           tenantId: tenantContext.tenantId,
           requestId,
           expectedStatus: decision.expectedStatus,

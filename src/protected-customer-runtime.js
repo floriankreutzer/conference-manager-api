@@ -7,6 +7,9 @@ import { createFreshCustomerEntraClient } from './identity/entra-client.js';
 import { createMicrosoft365Client } from './integrations/microsoft365-client.js';
 import { createMicrosoft365CalendarProviderFactory } from './integrations/microsoft365-calendar-provider.js';
 import { createProtectedCalendarProviderFactory } from './integrations/protected-calendar-provider-factory.js';
+import { createSyntheticCalendarProviderFactory } from './integrations/synthetic-calendar-provider.js';
+import { createPostgresSyntheticCalendarRepository } from './persistence/postgres/synthetic-calendar-repository.js';
+import { createPostgresProtectedCalendarAuthorityGuard } from './persistence/postgres/protected-calendar-authority-guard.js';
 import { createMicrosoft365CapabilityHealthService } from './application/microsoft365-capability-health-service.js';
 import { createPostgresPersistence } from './persistence/postgres/index.js';
 import { createPostgresPool } from './persistence/postgres/pool.js';
@@ -47,11 +50,19 @@ export async function createProtectedCustomerRuntime(environment) {
     bundle=loadProtectedCustomerConfiguration(environment);
     const { config,profile,cipher }=bundle,protection={ environment: profile.environment,securityEpoch: profile.securityEpoch };
     const logger=createLogger();
-    persistence=createPostgresPersistence(config);
+    const syntheticScope=profile.syntheticEnabled ? { ...protection,platformSecurityEpoch: profile.platformSecurityEpoch,
+      customerOrigin: profile.customerOrigin,platformOrigin: profile.platformOrigin } : null;
+    persistence=createPostgresPersistence(config,{ calendarAuthorityGuardFactory: pool=>
+      createPostgresProtectedCalendarAuthorityGuard(pool,{ ...protection,syntheticScope }) });
     leasePool=createPostgresPool(profile.leaseDatabase);
     const base=persistence,readiness=createPostgresProtectedRuntimeReadiness(base.pool,
       { ...protection,leasePool,surface: 'customer' });
-    persistence=Object.freeze({ ...base,readinessChecks: Object.freeze([readiness.isReady]) });
+    async function runtimeReady() {
+      if (!await readiness.isReady()) return false;
+      for (const check of base.readinessChecks) if (await check()!==true) return false;
+      return true;
+    }
+    persistence=Object.freeze({ ...base,readinessChecks: Object.freeze([runtimeReady]) });
     const scopes=createPostgresProtectedRuntimeExecutionScopes({ ...protection,pool: base.pool,leasePool });
     const runtimeRepository=createPostgresProtectedTenantRuntimeRepository(base.pool,{ ...protection,leasePool });
     const realGate=createProtectedTenantProviderGate({ ...protection,repository: runtimeRepository,mode: 'real' });
@@ -65,7 +76,9 @@ export async function createProtectedCustomerRuntime(environment) {
       bindingRepository: base.tenantOnboardingRepository,mappingRepository: base.microsoft365RoomMappingRepository,
       providerClient: graph,capabilityHealthService: createMicrosoft365CapabilityHealthService({
         repository: base.microsoft365CapabilityHealthRepository }) });
-    const calendarProviderFactory=createProtectedCalendarProviderFactory({ ...protection,runtimeRepository,realFactory });
+    const syntheticFactory=profile.syntheticEnabled ? createSyntheticCalendarProviderFactory({
+      repository: createPostgresSyntheticCalendarRepository(base.pool,protection) }) : null;
+    const calendarProviderFactory=createProtectedCalendarProviderFactory({ ...protection,runtimeRepository,realFactory,syntheticFactory });
     composition=createCustomerComposition({ config,persistence,microsoft365Client: graph,calendarProviderFactory,
       authenticationFactory: authentication.authenticationFactory,additionalRouteModules: authentication.routeModules,logger,
       httpServerFactory: options=>createHttpServer({ ...options,
@@ -102,7 +115,7 @@ export async function createProtectedCustomerRuntime(environment) {
         if (closed || starting || started) return Promise.reject(new Error('PROTECTED_CUSTOMER_RUNTIME_STATE_INVALID'));
         starting=true;
         startTask=(async()=>{
-          if (!await readiness.isReady()) throw new Error('PROTECTED_CUSTOMER_RUNTIME_NOT_READY');
+          if (!await runtimeReady()) throw new Error('PROTECTED_CUSTOMER_RUNTIME_NOT_READY');
           if (closed) throw new Error('PROTECTED_CUSTOMER_RUNTIME_STATE_INVALID');
           const address=await composition.start();started=true;
           if (closed) throw new Error('PROTECTED_CUSTOMER_RUNTIME_STATE_INVALID');

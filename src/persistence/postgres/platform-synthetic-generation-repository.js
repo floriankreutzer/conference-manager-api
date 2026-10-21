@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { isInternalUuid } from '../../domain/identifiers.js';
 import { PLATFORM_ENTRA_PROVIDER } from '../../domain/identity-provider.js';
 import { createSyntheticGenerationPlanner } from '../../tenancy/synthetic-generation-plan.js';
@@ -43,8 +44,9 @@ async function writeCatalogueMedia(client,{ tenantId,media,bytes,objectKey,creat
 // object-storage port/fallback: independently durable upload intents need their
 // own reviewed preparation phase before a max1 proof transaction is held.
 export function createPostgresSyntheticGenerationRepository(pool,{ environment,securityEpoch,
-  tenantAuditRepository,platformAuditRepository }={}) {
-  if (!pool || typeof pool.connect!=='function' || !['dev','int'].includes(environment) || !isInternalUuid(securityEpoch)
+  tenantAuditRepository,platformAuditRepository,calendarEnabled=false }={}) {
+  if (typeof calendarEnabled!=='boolean' || !pool || typeof pool.connect!=='function' || !['dev','int'].includes(environment)
+    || !isInternalUuid(securityEpoch)
     || typeof tenantAuditRepository?.appendWithClient!=='function' || typeof platformAuditRepository?.appendWithClient!=='function') {
     throw new TypeError('SYNTHETIC_GENERATION_REPOSITORY_CONFIGURATION_INVALID');
   }
@@ -150,6 +152,17 @@ export function createPostgresSyntheticGenerationRepository(pool,{ environment,s
     catalogueMediaBytes: media=>mediaBytes(media,'catalogue'),writeCatalogueMedia,
     mediaCreatorForTenant: tenantId=>plan.tenants.find(tenant=>tenant.business.id===tenantId)
       ?.users.find(user=>user.role==='tenant_admin') });
+    if (calendarEnabled) for (const { business } of plan.tenants) {
+      const integrationId=randomUUID();
+      await client.query({ name: 'synthetic-generation-calendar-integration',text: `INSERT INTO integrations
+        (tenant_id,id,provider,provider_reference,status,created_at,updated_at)
+        VALUES($1,$2,'synthetic_calendar',$3,'active',$4,$4)`,
+      values: [business.id,integrationId,`synthetic:${plan.generationId}`,now] });
+      await client.query({ name: 'synthetic-generation-calendar-resources',text: `INSERT INTO synthetic_calendar_resources
+        (environment,security_epoch,tenant_id,generation_id,integration_id,room_id,created_at)
+        SELECT $1,$2,$3,$4,$5,id,$6 FROM rooms WHERE tenant_id=$3 AND active=true ORDER BY id`,
+      values: [environment,epoch,business.id,plan.generationId,integrationId,now] });
+    }
     const activated=await client.query({ name: 'synthetic-generation-activate',text: `UPDATE synthetic_tenant_generations
       SET state='active',revision=revision+1,activated_at=clock_timestamp() WHERE environment=$1 AND id=$2
       AND operator_id=$3 AND state='preparing' RETURNING revision`,values: [environment,plan.generationId,principal.operatorId] });

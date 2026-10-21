@@ -1239,6 +1239,7 @@ export function createPostgresRequestRepository(
     },
 
     async transitionByTenantIdAndId({
+      principal=null,
       tenantId,
       requestId,
       actorUserId,
@@ -1269,6 +1270,8 @@ export function createPostgresRequestRepository(
           || current.status !== expectedStatus
           || current.version !== expectedVersion
         ) return null;
+        if (typeof calendarAuthorityGuard.lockCustomerMutation==='function'
+          && !await calendarAuthorityGuard.lockCustomerMutation(client,{ tenantId,principal })) return null;
         const openChange = await client.query({
           name: 'request-transition-lock-open-booking-change',
           text: `
@@ -1351,6 +1354,7 @@ export function createPostgresRequestRepository(
     },
 
     async confirmIfRoomAvailable({
+      principal=null,
       tenantId,
       requestId,
       expectedStatus,
@@ -1394,6 +1398,7 @@ export function createPostgresRequestRepository(
             tenantId,
             requestId,
             authority: calendarAuthority,
+            principal,currentRequest: current,
             cleanupReference: calendarCleanup?.reference ?? null,
           },
         )) {
