@@ -10,8 +10,8 @@ export async function unusedProtectedRuntimePort() {
 }
 export async function startProtectedRuntimeProcess(selected,environment) {
   surface(selected);
-  const child=fork(`tests-db/support/protected-${selected}-runtime-child.mjs`,[],{
-    execArgv: [],env: environment,stdio: ['ignore','pipe','pipe','ipc'] });let logs='';
+  const child=fork(new URL(`./protected-${selected}-runtime-child.mjs`,import.meta.url),[],{
+    cwd: new URL('../../',import.meta.url),execArgv: [],env: environment,stdio: ['ignore','pipe','pipe','ipc'] });let logs='';
   for (const output of [child.stdout,child.stderr]) output.on('data',chunk=>{
     if (logs.length+chunk.length>65536) { child.kill();return; }logs+=chunk.toString('utf8');
   });
