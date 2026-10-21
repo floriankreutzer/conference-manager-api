@@ -25,6 +25,7 @@ async t=>{
   assert.equal((await pool.query("SELECT protected_lock_synthetic_calendar_source('int',$1,$2) AS allowed",
     [randomUUID(),randomUUID()])).rows[0].allowed,false);
   const original=(await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=62 ORDER BY version')).rows;
+  assert.equal(await rollbackLatest(pool),true); // Empty064 before original063 proof.
   assert.equal(await rollbackLatest(pool),true);await migrateUp(pool);
   assert.deepEqual((await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=62 ORDER BY version')).rows,original);
   await pool.query(`CREATE ROLE ${role} NOLOGIN`);
@@ -118,7 +119,9 @@ async t=>{
   assert.equal(concurrent.find(row=>row.status==='rejected').reason.code,'23P01');
   const retained=(await pool.query('SELECT id,state,revision,starts_at,ends_at FROM synthetic_calendar_events ORDER BY id')).rows;
   await assert.rejects(asRole('TRUNCATE synthetic_calendar_events,synthetic_calendar_resources'),{ code: '55000' });
-  await assert.rejects(rollbackLatest(pool),/SYNTHETIC_CALENDAR_HISTORY_REQUIRES_VERIFIED_RECOVERY/);
+  const calendarDown=(await loadMigrations()).find(row=>row.version===63).down;
+  await assert.rejects(withPostgresTransaction(pool,client=>client.query(calendarDown)),
+    /SYNTHETIC_CALENDAR_HISTORY_REQUIRES_VERIFIED_RECOVERY/); // Preserve the actual063 populated down proof.
   await assert.rejects(pool.query('DELETE FROM synthetic_calendar_events WHERE tenant_id=$1',[tenantId]),{ code: '42501' });
   await pool.query("UPDATE platform_operators SET status='disabled' WHERE id=$1",[owner.operatorId]);
   await assert.rejects(asRole(eventSql,eventValues(2,'2028-01-03T10:00:00.000Z','2028-01-03T11:00:00.000Z')),

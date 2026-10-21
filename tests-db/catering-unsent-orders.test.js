@@ -60,6 +60,7 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   await rollbackLatestDemoMigration(pool, { roles }); // Passkey reset grants019.
   await rollbackLatestDemoMigration(pool, { roles }); // Unsent grants018 while canonical053 is still ready.
+  assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty source-lock062 before unchanged061/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
@@ -308,6 +309,7 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Publication grants021 before source grants020.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   await rollbackLatestDemoMigration(pool, { roles }); // Remove grants019 before empty053.
+  assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty source-lock062 before unchanged061/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
@@ -348,6 +350,7 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   await rollbackLatestDemoMigration(pool, { roles }); //019 before changing canonical readiness.
   await rollbackLatestDemoMigration(pool, { roles }); //018 before changing canonical readiness.
+  assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty source-lock062 before unchanged061/older guard.
   assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.

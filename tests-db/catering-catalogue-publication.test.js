@@ -67,6 +67,7 @@ test('actual Customer publication atomically fences reviewed content, ownership,
     await rollbackLatestDemoMigration(pool,{ roles }); // Customer023 before retained enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Original empty publication021.
+    assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty source-lock062 before unchanged061/older guard.
     assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
@@ -356,6 +357,7 @@ test('actual Customer publication atomically fences reviewed content, ownership,
     await rollbackLatestDemoMigration(pool,{ roles }); // Microsoft flow024 before retained Customer023.
     await rollbackLatestDemoMigration(pool,{ roles }); // Customer023 before retained enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Enrollment022 before056.
+    assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty source-lock062 before unchanged061/older guard.
     assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
@@ -384,6 +386,7 @@ test('actual Customer publication atomically fences reviewed content, ownership,
     await rollbackLatestDemoMigration(pool,{ roles }); // Microsoft flow024 before retained Customer023.
     await rollbackLatestDemoMigration(pool,{ roles }); // Customer023 before retained enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Enrollment022 before056.
+    assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty source-lock062 before unchanged061/older guard.
     assert.equal(await rollbackLatest(pool),true); // Empty handoff061 before unchanged060/older guard.
