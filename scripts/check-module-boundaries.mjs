@@ -10,6 +10,8 @@ import {
 } from './module-graph.mjs';
 
 const PRODUCTION_COMPOSITION_ROOTS = new Set([
+  'src/protected-platform-config.js',
+  'src/protected-custody-configuration.js',
   'src/protected-customer-config.js',
   'src/protected-customer-authentication-composition.js',
   'src/protected-customer-access-delivery-composition.js',
@@ -49,6 +51,8 @@ const CUSTOMER_EMAIL_AUTHORITY_MODULES = new Set([
   'src/persistence/postgres/customer-invitation-repository.js',
 ]);
 const PROTECTED_RUNTIME_AUTHORITY_MODULES = new Set([
+  'src/protected-platform-config.js',
+  'src/protected-custody-configuration.js',
   'src/persistence/postgres/protected-runtime-readiness.js',
   'src/persistence/postgres/protected-runtime-role-requirements.js',
   'src/protected-customer-config.js',
@@ -173,11 +177,12 @@ function demoSurfaceFile(file, surface) {
     || name.startsWith(`${surface}-`);
 }
 
-function approvedLegacyPlatformDependencyViolation(item) {
+function approvedPlatformCompositionDependencyViolation(item) {
   const separator = item.indexOf(LEGACY_PLATFORM_BOUNDARY_MESSAGE);
   if (separator < 0) return false;
   const sourceFile = item.slice(0, separator);
   return sourceFile === 'src/platform-production-authentication.js'
+    || sourceFile === 'src/protected-platform-config.js'
     || demoSurfaceFile(sourceFile, 'platform');
 }
 
@@ -414,7 +419,7 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
 export function moduleBoundaryViolations(sourceEntries) {
   const sources = sourcesMap(sourceEntries);
   const establishedViolations = backendSaas2BoundaryViolations(sources)
-    .filter((item) => !approvedLegacyPlatformDependencyViolation(item));
+    .filter((item) => !approvedPlatformCompositionDependencyViolation(item));
   return Object.freeze([
     ...new Set([
       ...establishedViolations,

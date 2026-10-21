@@ -1,7 +1,7 @@
 import { loadConfig } from './config.js';
 import { loadProtectedRuntimeProfile,protectedRuntimeConfigurationKeys } from './protected-runtime-config.js';
 import { isInternalUuid } from './domain/identifiers.js';
-import { createCustomerAccessCipher } from './persistence/customer-access-cipher.js';
+import { createProtectedCustodyCipher } from './protected-custody-configuration.js';
 import { createResendEmailClient } from './integrations/resend-email-client.js';
 
 const PREFIX='PROTECTED_CUSTOMER_';
@@ -17,25 +17,6 @@ function read(env,key,optional=false) {
 }
 function secret(env,key) {
   const value=read(env,key);if (Buffer.byteLength(value)<32 || Buffer.byteLength(value)>512) fail('SECRET_INVALID');return value;
-}
-function keyring(env,values) {
-  const encoded=read(env,'PROTECTED_CUSTODY_KEYRING');if (encoded.length>4096) fail('CUSTODY_INVALID');
-  let rows;try { rows=JSON.parse(encoded); } catch { fail('CUSTODY_INVALID'); }
-  if (!Array.isArray(rows) || rows.length<1 || rows.length>8) fail('CUSTODY_INVALID');
-  const keys=new Map();
-  try {
-  for (const row of rows) {
-    if (!row || typeof row!=='object' || Array.isArray(row) || Object.keys(row).sort().join(',')!=='id,key'
-      || typeof row.id!=='string' || keys.has(row.id) || typeof row.key!=='string'
-      || !/^[A-Za-z0-9_-]{43}$/.test(row.key)) fail('CUSTODY_INVALID');
-    const key=Buffer.from(row.key,'base64url');
-    if (key.length!==32 || key.toString('base64url')!==row.key || values.some(value=>key.equals(Buffer.from(value)))) {
-      key.fill(0);fail('CUSTODY_INVALID');
-    }
-    keys.set(row.id,key);
-  }
-  return keys;
-  } catch (error) { for (const key of keys.values()) key.fill(0);throw error; }
 }
 
 // Explicit owned startup input only. Compatibility names are constructed in a
@@ -72,10 +53,9 @@ export function loadProtectedCustomerConfiguration(env) {
   if ((mailKey===undefined)!==(sender===undefined)) fail('MAIL_CONFIGURATION_INCOMPLETE');
   if (mailKey!==undefined && material.includes(mailKey)) fail('SECRET_ALIAS_FORBIDDEN');
   const mailProvider=mailKey===undefined ? null : createResendEmailClient({ apiKey: mailKey,sender,environment: profile.environment });
-  const keys=keyring(env,material);let cipher;
-  try { cipher=createCustomerAccessCipher({ environment: profile.environment,keys,
-    activeKeyId: read(env,'PROTECTED_CUSTODY_ACTIVE_KEY_ID'),lookupSecret: values.lookupSecret }); }
-  finally { for (const key of keys.values()) key.fill(0); }
+  const cipher=createProtectedCustodyCipher({ environment: profile.environment,
+    activeKeyId: read(env,'PROTECTED_CUSTODY_ACTIVE_KEY_ID'),keyring: read(env,'PROTECTED_CUSTODY_KEYRING'),
+    lookupSecret: values.lookupSecret,forbiddenSecrets: mailKey===undefined ? material : [...material,mailKey] });
   return Object.freeze({ profile,config,cipher,mailProvider,
     authentication: Object.freeze({ emailFlowSecret: values.emailFlowSecret,emailCodeSecret: values.emailCodeSecret,
       emailSourceSecret: values.emailSourceSecret,microsoftFlowSecret: values.microsoftFlowSecret,

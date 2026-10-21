@@ -178,8 +178,14 @@ export function createProductionPlatformAuthentication({
 // UUID leases, protected session namespace, minimum-two-key policy and both
 // pending-flow MAC purposes are fixed here. No arbitrary legacy session/auth
 // instance or caller repository can replace them. No route/process is started.
-export function createProtectedPlatformAuthentication({ env,pool,leasePool,protectedSecurityEpoch }={}) {
-  const config=loadPlatformConfig(env),environment=config.deploymentEnvironment;
+export function createProtectedPlatformAuthentication({ env,pool,leasePool,protectedSecurityEpoch,protectedEnvironment=null }={}) {
+  if (protectedEnvironment!==null && (!['dev','int','prod'].includes(protectedEnvironment)
+    || env?.NODE_ENV!=='production' || Object.hasOwn(env,'DEPLOYMENT_ENVIRONMENT'))) {
+    throw new TypeError('PROTECTED_PLATFORM_ENVIRONMENT_CONFIGURATION_INVALID');
+  }
+  const canonical=loadPlatformConfig(env),config=protectedEnvironment===null ? canonical
+    : Object.freeze({ ...canonical,deploymentEnvironment: protectedEnvironment });
+  const environment=config.deploymentEnvironment;
   if (!['passkey_setup','application_passkey'].includes(config.assuranceMode)) {
     throw new TypeError('PROTECTED_PLATFORM_PASSKEY_PROFILE_REQUIRED');
   }
