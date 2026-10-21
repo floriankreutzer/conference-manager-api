@@ -115,9 +115,6 @@ test('restricted current synthetic Admin imports gain technical ownership and lo
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM tenant_identity_bindings WHERE tenant_id=$1',[tenantId])).rows[0].n,0);
   assert.deepEqual((await pool.query('SELECT provider,status FROM integrations WHERE tenant_id=$1',[tenantId])).rows,
     [{ provider: 'synthetic_calendar',status: 'active' }]);
-  assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
-  assert.equal(await rollbackLatest(pool),true); // Empty owner audit065; retain the populated064 guard.
-  await assert.rejects(rollbackLatest(pool),/SYNTHETIC_CALENDAR_HISTORY_REQUIRES_VERIFIED_RECOVERY/);
   const employee=await admit('contoso','employee');
   assert.equal((await customerPool.query(lifecycle,
     ['int',epoch,employee.principal.session.id,'ready','active',1])).rows[0].allowed,false);
@@ -134,4 +131,8 @@ test('restricted current synthetic Admin imports gain technical ownership and lo
     assert.equal(policy.prosecdef,true);assert.deepEqual(policy.proconfig,['search_path=pg_catalog']);
     assert.equal(policy.public_execute,false);
   }
+  // Exercise current runtime paths before intentionally removing their schema dependencies.
+  assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
+  assert.equal(await rollbackLatest(pool),true); // Empty owner audit065; retain the populated064 guard.
+  await assert.rejects(rollbackLatest(pool),/SYNTHETIC_CALENDAR_HISTORY_REQUIRES_VERIFIED_RECOVERY/);
 });
