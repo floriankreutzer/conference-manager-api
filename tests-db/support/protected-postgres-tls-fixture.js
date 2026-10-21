@@ -47,5 +47,15 @@ export async function createProtectedPostgresTlsFixture(t) {
     finally { await client.end(); }
   }
   assert.equal(ready,true,'isolated PostgreSQL must start with actual verified TLS and SCRAM');
-  return { url,certificate,caPath: `${directory}/server.crt`,password,destroy };
+  function permissionFailures() {
+    const logs=spawnSync('docker',['logs','--tail','300',container],{ encoding: 'utf8',timeout: 5000,maxBuffer: 65536 });
+    // Only fixed PostgreSQL privilege metadata may reach a failing test log.
+    // Never return SQL statements, parameters, provider payloads or raw errors.
+    const text=`${logs.stdout ?? ''}\n${logs.stderr ?? ''}`;
+    return [...new Set(text.split('\n').flatMap(line=>{
+      const denied=line.match(/ERROR:  permission denied for (table|sequence|function|schema) ([a-z_][a-z0-9_]*)(?:$|\()/);
+      return denied ? [`${denied[1]}:${denied[2]}`] : [];
+    }))].slice(0,10);
+  }
+  return { url,certificate,caPath: `${directory}/server.crt`,password,destroy,permissionFailures };
 }
