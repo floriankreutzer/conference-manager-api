@@ -93,6 +93,8 @@ test('owned Customer HTTP imports and activates synthetic customers with current
   const admin=await admit('fabrikam','tenant_admin'),cookie=admin.setCookie.split(';')[0];
   const session=await exchange('/api/v1/session',{ headers: { cookie } });assert.equal(session.status,200);
   const csrf=JSON.parse(session.text).csrfToken,tenantId=admin.principal.tenantId;
+  const lifecycleBaseline=(await pool.query(`SELECT count(*)::int AS count FROM audit_events
+    WHERE tenant_id=$1 AND action='tenant.lifecycle.changed'`,[tenantId])).rows[0].count;assert.ok(lifecycleBaseline>=1);
   const call=(path,{ method='GET',body,headers={} }={})=>exchange(path,{ method,body,
     headers: { cookie,...(method==='POST' ? { 'x-csrf-token': csrf } : {}),...headers } });
   const mode=await call('/api/v1/tenant/runtime');assert.equal(mode.status,200);
@@ -133,7 +135,8 @@ test('owned Customer HTTP imports and activates synthetic customers with current
     (SELECT count(*)::int FROM synthetic_calendar_resources WHERE tenant_id=$1) AS resources,
     (SELECT count(*)::int FROM audit_events WHERE tenant_id=$1 AND action='tenant.configuration.changed'
       AND (new_state->>'importedCount')::int=2) AS imports,
-    (SELECT count(*)::int FROM audit_events WHERE tenant_id=$1 AND action='tenant.lifecycle.changed') AS lifecycle`,[tenantId])).rows[0];
+    (SELECT count(*)::int-$2::int FROM audit_events WHERE tenant_id=$1 AND action='tenant.lifecycle.changed') AS lifecycle`,
+  [tenantId,lifecycleBaseline])).rows[0];
   assert.deepEqual(counts,{ rooms: 2,resources: 2,imports: 1,lifecycle: 2 });
   const audit=createPostgresAuditRepository(pool,{ hmacSecret: 't'.repeat(48) });assert.equal(await audit.verifyTenantChain(tenantId),true);
   const contoso=await admit('contoso','tenant_admin'),contosoCookie=contoso.setCookie.split(';')[0];
