@@ -42,7 +42,8 @@ Native acceptance extends the existing actual owned Customer TLS/SCRAM/max1
 onboarding case with a fresh canonical Northwind Employee handoff. It is prepared
 to verify all seeded PNG plans and WebP catering bytes/digests, ETags/private
 headers, anonymous/stale-source conditional refusal, foreign/missing404,
-query/method rejection, object-pointer no fallback and corrupt digest503. Local
+query/method rejection, object-pointer no fallback, corrupt digest503, detached
+plan404 and Employee inactive-owner404 versus fresh current Manager200. Local
 Docker is unavailable; this new native proof and fresh full unchanged four paired
 permanent three-customer/two-reset browser gates remain pending CI. Existing285
 onboarding native feature proof passed separately; it does not prove these new

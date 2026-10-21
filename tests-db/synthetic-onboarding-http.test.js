@@ -187,15 +187,24 @@ test('owned Customer HTTP imports and activates synthetic customers with current
   assert.equal((await image(`${mediaRoot}/${randomUUID()}`,mediaCookie)).status,404);
   assert.equal((await exchange(mediaRoot+'?tenantId='+tenantId,{ headers: { cookie: mediaCookie } })).status,400);
   assert.equal((await exchange(mediaRoot,{ method: 'POST',body: {},headers: { cookie: mediaCookie } })).status,405);
-  const damaged=assets[0];
+  const damaged=assets.find(asset=>asset.ownerKind==='catering_item');assert.ok(damaged);
   await pool.query(`UPDATE synthetic_catalogue_media_assets SET object_key='v1/'||tenant_id::text||'/catalogue/'||id::text||'/'
     ||encode(content_sha256,'hex') WHERE tenant_id=$1 AND id=$2`,[mediaSession.principal.tenantId,damaged.id]);
   assert.equal((await image(damaged.url,mediaCookie)).status,503,'unprepared object mode cannot fall back to retained database bytes');
   await pool.query(`UPDATE synthetic_catalogue_media_assets SET object_key=NULL,content_sha256=$3 WHERE tenant_id=$1 AND id=$2`,
     [mediaSession.principal.tenantId,damaged.id,Buffer.alloc(32,9)]);
   assert.equal((await image(damaged.url,mediaCookie)).status,503,'a corrupt digest cannot publish bytes or a 304');
+  const plan=assets.find(asset=>asset.ownerKind==='room_plan');
+  await pool.query(`UPDATE rooms SET details=details-'floorplanAssetId' WHERE tenant_id=$1 AND id=$2`,
+    [mediaSession.principal.tenantId,plan.ownerId]);
+  assert.equal((await image(plan.url,mediaCookie,{ 'if-none-match': '*' })).status,404,'detached plan stays concealed');
+  await pool.query(`UPDATE rooms SET details=jsonb_set(details,'{floorplanAssetId}',to_jsonb($3::text)),active=false
+    WHERE tenant_id=$1 AND id=$2`,[mediaSession.principal.tenantId,plan.ownerId,plan.id]);
+  assert.equal((await image(plan.url,mediaCookie)).status,404,'Employee cannot read an inactive Room plan');
+  const manager=await admit('northwind','conference_manager'),managerCookie=manager.setCookie.split(';')[0];
+  assert.equal((await image(plan.url,managerCookie)).status,200,'current Catalogue Manager can inspect inactive owned media');
   assert.equal((await process.stop()).code,0);
-  for (const secret of [fixture.password,...passwords,cookie,contosoCookie,mediaCookie,csrf,'h'.repeat(48),'t'.repeat(48)]) {
+  for (const secret of [fixture.password,...passwords,cookie,contosoCookie,mediaCookie,managerCookie,csrf,'h'.repeat(48),'t'.repeat(48)]) {
     assert.equal(process.logs().includes(secret),false,'actual owned root cannot log custody values');
   }
 });
