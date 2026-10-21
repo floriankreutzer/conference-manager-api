@@ -121,8 +121,14 @@ async t=>{
   }
   // Actual email HTTP proof/admission uses the same owned normal resolver as the
   // later signed delegation. No test-only generic issuer enters the HTTP port.
+  // The setup fixture has already consumed its own mailbox's request cooldown.
+  // Create a fresh recipient through the actual authorized invitation endpoint;
+  // neither stored budgets nor database time are changed for this new proof.
+  const invitation=await request('customer','/api/v1/tenant/invitations',{ method: 'POST',
+    body: { commandId: randomUUID(),invitations: [{ recipient: 'Assembly@example.test',roles: ['tenant_admin'],locale: 'de' }] },
+    headers: { cookie: pair(realSession.setCookie),'x-csrf-token': realSession.csrfToken } });assert.equal(invitation.status,201);
   const email=await request('customer','/api/v1/auth/email/challenges',{ method: 'POST',
-    body: { recipient: 'Invited@example.test',locale: 'de' } });assert.equal(email.status,202);
+    body: { recipient: 'Assembly@example.test',locale: 'de' } });assert.equal(email.status,202);
   const emailCookie=pair(email.headers['set-cookie'][0]);
   const delivery=(await pool.query(`SELECT * FROM customer_access_deliveries WHERE purpose='mailbox_code'
     ORDER BY created_at DESC,id DESC LIMIT 1`)).rows[0];
