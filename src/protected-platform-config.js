@@ -9,7 +9,7 @@ import { APPROVED_OUTBOUND_ORIGINS } from './config.js';
 const PREFIX='PROTECTED_PLATFORM_';
 const KEYS=['ENTRA_TENANT_ID','ENTRA_CLIENT_ID','ENTRA_CLIENT_SECRET','OIDC_TRANSACTION_SECRET','CSRF_SECRET',
   'AUDIT_HMAC_SECRET','CURSOR_SECRET','PASSKEY_TRANSACTION_SECRET','ASSURANCE_MODE','OWNER_RECIPIENT','OWNER_LOCALE',
-  'SESSION_TTL_SECONDS','HOST','PORT','HANDOFF_INTENT_SECRET'];
+  'SESSION_TTL_SECONDS','HOST','PORT','HANDOFF_INTENT_SECRET','AUDIT_SEGMENT_ID'];
 const fail=code=>{ throw new TypeError(`PROTECTED_PLATFORM_CONFIG_${code}`); };
 function read(env,key,optional=false) {
   if (optional && !Object.hasOwn(env,key)) return undefined;
@@ -29,6 +29,8 @@ export function loadProtectedPlatformConfiguration(env) {
   if (Reflect.ownKeys(env).some(key=>key.startsWith('PROTECTED_') && !allowed.has(key))) fail('UNKNOWN_KEY');
   const own=key=>read(env,PREFIX+key),optional=key=>read(env,PREFIX+key,true);
   const mode=own('ASSURANCE_MODE');if (!['passkey_setup','application_passkey'].includes(mode)) fail('PASSKEY_PROFILE_REQUIRED');
+  const segmentId=optional('AUDIT_SEGMENT_ID');
+  if (segmentId!==undefined && (profile.environment!=='int' || !isInternalUuid(segmentId))) fail('AUDIT_SEGMENT_INVALID');
   const values={ entraClientSecret: secret(env,PREFIX+'ENTRA_CLIENT_SECRET'),
     oidcTransactionSecret: secret(env,PREFIX+'OIDC_TRANSACTION_SECRET'),
     csrfSecret: secret(env,PREFIX+'CSRF_SECRET'),auditHmacSecret: secret(env,PREFIX+'AUDIT_HMAC_SECRET'),
@@ -61,7 +63,9 @@ export function loadProtectedPlatformConfiguration(env) {
     PLATFORM_SESSION_TTL_SECONDS: optional('SESSION_TTL_SECONDS'),PLATFORM_AUTHENTICATION_MAX_AGE_SECONDS: '300',
     PLATFORM_OIDC_TRANSACTION_TTL_SECONDS: '300' });
   const base=loadPlatformConfig(authenticationEnvironment);
-  const config=Object.freeze({ ...base,...profile.database,deploymentEnvironment: profile.environment });
+  const auditSegment=segmentId===undefined ? null : Object.freeze({ id: segmentId,environment: 'int',
+    deploymentEpoch: profile.securityEpoch });
+  const config=Object.freeze({ ...base,...profile.database,deploymentEnvironment: profile.environment,auditSegment });
   const cipher=createProtectedCustodyCipher({ environment: profile.environment,
     activeKeyId: read(env,'PROTECTED_CUSTODY_ACTIVE_KEY_ID'),keyring: read(env,'PROTECTED_CUSTODY_KEYRING'),
     lookupSecret: values.lookupSecret,forbiddenSecrets: material });
@@ -73,7 +77,7 @@ export function loadProtectedPlatformConfiguration(env) {
           return !['pool','leasePool'].includes(key) || !Object.hasOwn(field,'value');
         })) fail('AUTHENTICATION_CONTEXT_INVALID');
       return createProtectedPlatformAuthentication({ env: authenticationEnvironment,pool: context.pool,leasePool: context.leasePool,
-        protectedEnvironment: profile.environment,protectedSecurityEpoch: profile.securityEpoch });
+        protectedEnvironment: profile.environment,protectedSecurityEpoch: profile.securityEpoch,auditSegment });
     },
     synthetic: handoff===null ? null : Object.freeze({ browserSecret: handoff,intentSecret: intent }) });
 }

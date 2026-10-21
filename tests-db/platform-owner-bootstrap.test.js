@@ -42,6 +42,7 @@ test('native first owner bootstrap is atomic, one-winner, audited, owner-only an
   assert.equal(events[0].assuranceLevel,'offline_owner');assert.deepEqual(events[0].roles,[]);
   assert.doesNotMatch(JSON.stringify(events),new RegExp(expected.subjectId));
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_operator_change_alert_outbox')).rows[0].count,1);
+  assert.equal(await rollbackLatest(pool),true); // Empty segment066 leaves the original065 owner guard intact.
   await assert.rejects(rollbackLatest(pool),{ code: '55000' });
   assert.equal((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version,65);
   await pool.query("UPDATE platform_operators SET status='disabled' WHERE id=$1",[operator.id]);

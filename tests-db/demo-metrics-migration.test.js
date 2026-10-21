@@ -80,19 +80,21 @@ test('reviewed metrics upgrade preserves retained Demo data, excludes concurrent
   await assert.rejects(withDemoMetricsMigrationGate(pool, { ...expected, customer: 'cm_wrong_customer' }, upgrade), /PRECONDITIONS/);
   assert.equal(upgrades, 0);
   assert.deepEqual(await withDemoMetricsMigrationGate(pool, expected, upgrade), {
-    canonicalVersion: 65, demoVersion: 28, resetPerformed: false, retainedCountsMatch: true,
+    canonicalVersion: 66, demoVersion: 29, resetPerformed: false, retainedCountsMatch: true,
   });
   assert.equal(upgrades, 1);
   assert.equal((await raw.query('SELECT count(*)::integer AS count FROM tenants')).rows[0].count, 1);
   assert.equal((await withDemoMetricsMigrationGate(pool, expected, upgrade)).retainedCountsMatch, true);
   assert.equal(upgrades, 2);
-  for (const [table, version] of [['schema_migrations', 66], ['demo_schema_migrations', 29]]) {
+  for (const [table, version] of [['schema_migrations', 67], ['demo_schema_migrations', 30]]) {
     await raw.query(`INSERT INTO ${table}(version,name,checksum) VALUES ($1,'synthetic_future_schema',repeat('a',64))`, [version]);
     try {
       await assert.rejects(withDemoMetricsMigrationGate(pool, expected, upgrade), /PRECONDITIONS/);
       assert.equal(upgrades, 2);
     } finally { await raw.query(`DELETE FROM ${table} WHERE version=$1`, [version]); }
   }
+  const segment = (await raw.query('DELETE FROM schema_migrations WHERE version=66 RETURNING *')).rows[0];
+  const segmentOverlay = (await raw.query('DELETE FROM demo_schema_migrations WHERE version=29 RETURNING *')).rows[0];
   const bootstrap = (await raw.query('DELETE FROM schema_migrations WHERE version=65 RETURNING *')).rows[0];
   const onboarding = (await raw.query('DELETE FROM schema_migrations WHERE version=64 RETURNING *')).rows[0];
   const calendar = (await raw.query('DELETE FROM schema_migrations WHERE version=63 RETURNING *')).rows[0];
@@ -137,7 +139,8 @@ test('reviewed metrics upgrade preserves retained Demo data, excludes concurrent
   } finally {
     await raw.query('INSERT INTO schema_migrations(version,name,checksum,applied_at) VALUES ($1,$2,$3,$4)',
       [removed.version,removed.name,removed.checksum,removed.applied_at]);
-    for (const [table,row] of [['schema_migrations',enrollment],['demo_schema_migrations',enrollmentOverlay],
+    for (const [table,row] of [['schema_migrations',segment],['demo_schema_migrations',segmentOverlay],
+      ['schema_migrations',enrollment],['demo_schema_migrations',enrollmentOverlay],
       ['schema_migrations',customer],['demo_schema_migrations',customerOverlay],
       ['schema_migrations',microsoft],['demo_schema_migrations',microsoftOverlay],
       ['schema_migrations',protectedRuntime],['demo_schema_migrations',protectedOverlay],

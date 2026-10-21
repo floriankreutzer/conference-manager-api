@@ -148,6 +148,7 @@ async t=>{
     assert.equal((await customer.start('127.0.0.3')).status,'limited');
     assert.equal((await pool.query('SELECT count(*)::int AS count FROM synthetic_customer_handoffs')).rows[0].count,rows);
     assert.deepEqual(await count(),before);
+    assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before original064/063/062 proof.
     assert.equal(await rollbackLatest(pool),true); // Empty private calendar063; retain the populated062 recovery guard.
     assert.equal(await rollbackLatest(pool),true); // Empty private calendar063; retain the populated062 recovery guard.

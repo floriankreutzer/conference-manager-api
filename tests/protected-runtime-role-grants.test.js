@@ -1,13 +1,32 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { protectedRuntimeRoleGrantPlan,grantProtectedRuntimeRoles } from '../scripts/support/protected-runtime-role-grants.mjs';
+import { protectedRuntimeRoleGrantPlan,grantProtectedRuntimeRoles,platformAuditSegmentRoleGrantPlan,
+  grantPlatformAuditSegmentRuntimeRoles } from '../scripts/support/protected-runtime-role-grants.mjs';
 import { architectureConsolidationBoundaryViolations } from '../scripts/check-module-boundaries.mjs';
 
 const epoch='be000000-0000-4000-8000-000000000001';
+test('existing INT audit role delta is fixed, minimal and removes legacy writing privileges',async()=>{
+  const input={ environment: 'int',securityEpoch: epoch,segmentId: 'be000000-0000-4000-8000-000000000002' };
+  const plan=platformAuditSegmentRoleGrantPlan(input),sql=plan.statements.join('\n');
+  assert.equal(plan.statements.length,7);assert.ok(Object.isFrozen(plan.statements));
+  assert.match(sql,/REVOKE UPDATE ON public.platform_audit_chain_state/);
+  assert.match(sql,/REVOKE INSERT ON public.platform_audit_checkpoints/);
+  assert.doesNotMatch(sql,/GRANT (?:INSERT|UPDATE)[^\n]*ON public.platform_audit_segments/);
+  assert.doesNotMatch(sql,/TRUNCATE|CREATE|PASSWORD|WITH GRANT OPTION|DEFAULT PRIVILEGES|cm_demo|cm_protected_prod/);
+  let connected=false;
+  const pool={ async connect() { connected=true;throw new Error('private-driver-detail'); } };
+  for (const invalid of [{ ...input,environment: 'prod' },{ ...input,role: 'arbitrary' },{ ...input,segmentId: 'private' },
+    { ...input,get securityEpoch() { throw new Error('private-accessor'); } }]) {
+    assert.throws(()=>platformAuditSegmentRoleGrantPlan(invalid),{ message: 'PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED' });
+    await assert.rejects(grantPlatformAuditSegmentRuntimeRoles(pool,invalid),
+      { message: 'PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED' });
+  }
+  assert.equal(connected,false);
+});
 test('operator plan preserves per-surface proof custody and offline enrollment without connecting or creating credentials',()=>{
   for (const environment of ['dev','int','prod']) {
     const plan=protectedRuntimeRoleGrantPlan({ environment,securityEpoch: epoch });
-    assert.ok(Object.isFrozen(plan));assert.equal(plan.schemaVersion,65);
+    assert.ok(Object.isFrozen(plan));assert.equal(plan.schemaVersion,66);
     const customer=plan.roles[0],platform=plan.roles[1];
     assert.equal(customer.role,`cm_protected_${environment}_customer`);
     assert.equal(platform.role,`cm_protected_${environment}_platform`);

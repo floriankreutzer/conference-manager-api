@@ -39,7 +39,8 @@ const { Pool } = pg;
 // Schema 62 supplies the private source-row lock port without Customer Platform UPDATE rights.
 // Schema 64 adds scoped synthetic Room provisioning and local lifecycle readiness.
 // Schema 65 admits owner-only, one-time initial operator audit without creating authority.
-export const CURRENT_SCHEMA_VERSION = 65;
+// Schema 66 preserves the legacy audit prefix and introduces independently signed INT segments.
+export const CURRENT_SCHEMA_VERSION = 66;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

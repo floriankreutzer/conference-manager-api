@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { PLATFORM_PERMISSION } from '../identity/policy.js';
 import { normalizePlatformPrincipal } from '../identity/principal.js';
 import { PlatformAuthorizationError } from '../identity/errors.js';
+import { projectPlatformAuditVerification } from './verification-context.js';
 import { createPlatformBreakGlassAuthorizationContext } from '../identity/break-glass.js';
 import {
   PLATFORM_AUDIT_ACTION,
@@ -126,6 +127,15 @@ export function createPlatformAuditService({
   }
 
   return Object.freeze({
+    async verificationContext({ principal,exporting=false }={}) {
+      const permission=exporting ? PLATFORM_PERMISSION.AUDIT_EXPORT : PLATFORM_PERMISSION.AUDIT_READ;
+      if (typeof exporting!=='boolean'
+        || await authorizationPolicy.authorize(normalizePlatformPrincipal(principal),permission)!==true) {
+        throw new PlatformAuthorizationError();
+      }
+      if (typeof repository.verificationContext!=='function') return null;
+      return projectPlatformAuditVerification(await repository.verificationContext());
+    },
     createEvent(values) {
       return actorEvent(values, PLATFORM_AUDIT_OUTCOME.SUCCESS);
     },

@@ -219,6 +219,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 63, name: 'synthetic_calendar' },
       { version: 64, name: 'synthetic_calendar_onboarding' },
       { version: 65, name: 'platform_owner_bootstrap' },
+      { version: 66, name: 'platform_audit_segments' },
     ]);
   });
 

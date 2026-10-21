@@ -32,6 +32,17 @@ function noIo() {
   return { query() { assert.fail('NO_CONSTRUCTION_DATABASE_ACCESS'); },connect() { assert.fail('NO_CONSTRUCTION_CONNECT'); } };
 }
 
+test('INT audit segment is bound only by the owned profile and cannot configure another environment',t=>{
+  const env=fixture('int'),id=randomUUID(),bundle=load(t,{ ...env,PROTECTED_PLATFORM_AUDIT_SEGMENT_ID: id });
+  assert.deepEqual(bundle.config.auditSegment,{ id,environment: 'int',deploymentEpoch: env.PROTECTED_SECURITY_EPOCH });
+  for (const environment of ['dev','prod']) {
+    assert.throws(()=>loadProtectedPlatformConfiguration({ ...fixture(environment),PROTECTED_PLATFORM_AUDIT_SEGMENT_ID: id }),
+      /AUDIT_SEGMENT_INVALID/);
+  }
+  assert.throws(()=>loadProtectedPlatformConfiguration({ ...env,PROTECTED_PLATFORM_AUDIT_SEGMENT_ID: 'not-a-segment' }),
+    /AUDIT_SEGMENT_INVALID/);
+});
+
 for (const environment of ['dev','int','prod']) {
   test(`${environment} Operations retain production security, explicit passkey profile and exact owned authentication namespace`,t=>{
     const env=fixture(environment),before={ ...env },inherited=Object.keys(process.env),bundle=load(t,env);

@@ -558,8 +558,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 65;/.test(pool)) {
-  throw new Error('Runtime schema readiness requires first-owner audit schema 65.');
+if (!/export const CURRENT_SCHEMA_VERSION = 66;/.test(pool)) {
+  throw new Error('Runtime schema readiness requires independent INT audit segment schema 66.');
 }
 const retentionPrivilegeMigration = await readFile(
   'migrations/041_room_media_retention_privileges.up.sql',
@@ -805,6 +805,7 @@ const platformAuditRepository = await readFile(
   'src/persistence/postgres/platform-audit-repository.js',
   'utf8',
 );
+const platformAuditIntegrity = await readFile('src/persistence/postgres/platform-audit-integrity.js','utf8');
 for (const required of ['security_epoch = $2', 'clock_timestamp()', 'appendWithClient']) {
   if (!platformSessionRepository.includes(required)) {
     throw new Error(`Platform session persistence is missing boundary ${required}.`);
@@ -816,7 +817,7 @@ for (const required of [
   'expectedTargetTenantId',
   'MAX_VERIFICATION_EVENTS',
 ]) {
-  if (!platformAuditRepository.includes(required)) {
+  if (!(platformAuditRepository+'\n'+platformAuditIntegrity).includes(required)) {
     throw new Error(`Platform audit persistence is missing boundary ${required}.`);
   }
 }

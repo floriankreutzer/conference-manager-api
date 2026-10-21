@@ -28,6 +28,7 @@ test('restricted current synthetic Admin imports gain technical ownership and lo
   t.after(async()=>{ try { await Promise.all(pools.map(pool=>pool.end())); } finally { await fixture.destroy(); } });
   await migrateUp(pool);
   const prior=(await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=63 ORDER BY version')).rows;
+  assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before original064 roundtrip.
   assert.equal(await rollbackLatest(pool),true);await migrateUp(pool);
   assert.deepEqual((await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=63 ORDER BY version')).rows,prior);
@@ -114,6 +115,7 @@ test('restricted current synthetic Admin imports gain technical ownership and lo
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM tenant_identity_bindings WHERE tenant_id=$1',[tenantId])).rows[0].n,0);
   assert.deepEqual((await pool.query('SELECT provider,status FROM integrations WHERE tenant_id=$1',[tenantId])).rows,
     [{ provider: 'synthetic_calendar',status: 'active' }]);
+  assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065; retain the populated064 guard.
   await assert.rejects(rollbackLatest(pool),/SYNTHETIC_CALENDAR_HISTORY_REQUIRES_VERIFIED_RECOVERY/);
   const employee=await admit('contoso','employee');

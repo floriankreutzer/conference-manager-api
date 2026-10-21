@@ -178,7 +178,8 @@ export function createProductionPlatformAuthentication({
 // UUID leases, protected session namespace, minimum-two-key policy and both
 // pending-flow MAC purposes are fixed here. No arbitrary legacy session/auth
 // instance or caller repository can replace them. No route/process is started.
-export function createProtectedPlatformAuthentication({ env,pool,leasePool,protectedSecurityEpoch,protectedEnvironment=null }={}) {
+export function createProtectedPlatformAuthentication({ env,pool,leasePool,protectedSecurityEpoch,protectedEnvironment=null,
+  auditSegment=null }={}) {
   if (protectedEnvironment!==null && (!['dev','int','prod'].includes(protectedEnvironment)
     || env?.NODE_ENV!=='production' || Object.hasOwn(env,'DEPLOYMENT_ENVIRONMENT'))) {
     throw new TypeError('PROTECTED_PLATFORM_ENVIRONMENT_CONFIGURATION_INVALID');
@@ -191,7 +192,7 @@ export function createProtectedPlatformAuthentication({ env,pool,leasePool,prote
   }
   const scopes=createPostgresProtectedRuntimeExecutionScopes({ pool,leasePool,environment,securityEpoch: protectedSecurityEpoch });
   const protection={ environment,securityEpoch: protectedSecurityEpoch };
-  const auditRepository=createPostgresPlatformAuditRepository(pool,{ hmacSecret: config.auditHmacSecret });
+  const auditRepository=createPostgresPlatformAuditRepository(pool,{ hmacSecret: config.auditHmacSecret,segment: auditSegment });
   const operatorRepository=createPostgresPlatformOperatorRepository(pool,{ auditRepository,protectedRuntime: protection });
   const sessionRepository=createPostgresPlatformSessionRepository(pool,{ auditRepository });
   const oidcTransactionRepository=createPostgresPlatformOidcTransactionRepository(pool);

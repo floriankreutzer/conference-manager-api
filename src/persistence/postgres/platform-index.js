@@ -35,6 +35,7 @@ export function createPostgresPlatformPersistence(config,{ protectedRuntime=null
   });
   const auditRepository = createPostgresPlatformAuditRepository(pool, {
     hmacSecret: config.auditHmacSecret,
+    segment: config.auditSegment ?? null,
   });
   const operatorRepository = createPostgresPlatformOperatorRepository(pool, { auditRepository,protectedRuntime });
   const oidcTransactionRepository = createPostgresPlatformOidcTransactionRepository(pool);
