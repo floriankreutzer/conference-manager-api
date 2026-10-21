@@ -57,7 +57,7 @@ test('native owned Platform auth admits actual signed login and fences pending p
     assert.ok(await owned.platformHttpSessionService.resolvePrincipal(request));
   },{ isolationLevel: 'REPEATABLE READ' }));
   const pending=await start(),pendingCookie=pending.setCookie.split(';')[0].split('=')[1];
-  let oauthInput,redemptions=0;
+  let oauthInput;let redemptions=0;
   const oidc=createPlatformEntraPrimaryAuthService({ repository: createPostgresPlatformOidcTransactionRepository(pool),
     publicOrigin: env.PLATFORM_PUBLIC_ORIGIN,securityEpoch: 7,auditService: owned.platformAuditService,
     transactionSecret: deriveProtectedAuthenticationFlowSecret({ ...scope,secret: 'o'.repeat(48),purpose: 'platform-microsoft-flow' }),
