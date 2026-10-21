@@ -6,7 +6,8 @@ const COMMON_KEYS=new Set(['PROTECTED_ENVIRONMENT','PROTECTED_SECURITY_EPOCH','P
   'PROTECTED_API_COMMIT','PROTECTED_FRONTEND_COMMIT','PROTECTED_SYNTHETIC_ENABLED','PROTECTED_DATABASE_SSL',
   'PROTECTED_DATABASE_POOL_MAX','PROTECTED_LEASE_POOL_MAX','PROTECTED_PLATFORM_SECURITY_EPOCH','PROTECTED_HANDOFF_SECRET',
   'PROTECTED_CUSTODY_ACTIVE_KEY_ID','PROTECTED_CUSTODY_KEYRING','PROTECTED_CUSTODY_LOOKUP_SECRET','PROTECTED_TENANT_AUDIT_HMAC_SECRET',
-  'PROTECTED_PEER_ENTRA_CLIENT_ID','PROTECTED_SERVICE_VERSION']);
+  'PROTECTED_PEER_ENTRA_CLIENT_ID','PROTECTED_SERVICE_VERSION','PROTECTED_HOSTED_FRONTEND_ENABLED',
+  'PROTECTED_HOSTED_FRONTEND_SHA256']);
 const LEGACY=/^(?:DATABASE_URL|DATABASE_SSL|PUBLIC_ORIGIN|CSRF_SECRET|AUDIT_HMAC_SECRET|ENTRA_|OIDC_|PLATFORM_|DEMO_)/;
 const fail=code=>{ throw new TypeError(`PROTECTED_RUNTIME_CONFIG_${code}`); };
 function required(env,key) {
@@ -70,6 +71,10 @@ export function loadProtectedRuntimeProfile(env,{ surface }={}) {
   if (!['true','false'].includes(synthetic) || synthetic==='true' && environment==='prod') fail('SYNTHETIC_INVALID');
   const apiCommit=required(env,'PROTECTED_API_COMMIT'),frontendCommit=required(env,'PROTECTED_FRONTEND_COMMIT');
   if (![apiCommit,frontendCommit].every(value=>/^[a-f0-9]{40}$/.test(value))) fail('ARTIFACT_PAIR_INVALID');
+  const hosted=optional(env,'PROTECTED_HOSTED_FRONTEND_ENABLED') ?? 'false';
+  const frontendDigest=optional(env,'PROTECTED_HOSTED_FRONTEND_SHA256');
+  if (!['true','false'].includes(hosted) || (hosted==='true'
+    ? !/^[a-f0-9]{64}$/.test(frontendDigest ?? '') : frontendDigest!==undefined)) fail('HOSTED_FRONTEND_INVALID');
   if ((optional(env,'PROTECTED_DATABASE_SSL') ?? 'verify-full')!=='verify-full') fail('DATABASE_TLS_REQUIRED');
   const poolMax=integer(env,'PROTECTED_DATABASE_POOL_MAX',2,5),leaseMax=integer(env,'PROTECTED_LEASE_POOL_MAX',1,5);
   if (poolMax+leaseMax>8) fail('POOL_BOUND_INVALID');
@@ -80,6 +85,7 @@ export function loadProtectedRuntimeProfile(env,{ surface }={}) {
   const selected=Object.freeze({ ...database,mode: 'production',applicationName });
   return Object.freeze({ surface,environment,securityEpoch: securityEpoch.toLowerCase(),
     platformSecurityEpoch: Number(platformSecurityEpoch),customerOrigin,platformOrigin,syntheticEnabled: synthetic==='true',
-    apiCommit,frontendCommit,database: selected,leaseDatabase: Object.freeze({ ...selected,databasePoolMax: leaseMax }),
+    apiCommit,frontendCommit,hostedFrontendSha256: hosted==='true' ? frontendDigest : null,
+    database: selected,leaseDatabase: Object.freeze({ ...selected,databasePoolMax: leaseMax }),
   });
 }

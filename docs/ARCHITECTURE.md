@@ -1,12 +1,13 @@
 # Backend Architecture
 
-The uncomposed protected invited access factory owns REAL-qualified anonymous email
+The owned protected invited access factory owns REAL-qualified anonymous email
 capture, choices and atomic admission under the current deployment lease. Its flow
 and code MAC keys derive from independent external secrets plus purpose, environment
 and UUID epoch. Stable cipher, lookup, audit and source-budget keys are unchanged.
 The shared REAL predicate also serves dispatch; admission takes a direct Tenant
-write lock to avoid lock upgrades. This installs no route/provider/timer and adds no
-migration. Its optional Microsoft client composes canonical primary/link services
+write lock to avoid lock upgrades. The explicit protected Customer root installs
+its durable HTTP/session composition; importing a primitive creates no runtime.
+Its Microsoft client composes canonical primary/link services
 with the same REAL/session/audit boundary and an epoch-bound protocol MAC. Tenant
 locks precede protocol row locks in protected link reservation and login capture.
 See [protected Microsoft access](PROTECTED-INVITED-MICROSOFT.md) and [protected invited access](PROTECTED-INVITED-CUSTOMER-ACCESS.md).
@@ -15,7 +16,8 @@ Protected invitation administration reuses canonical Customer and Platform custo
 with fixed REAL qualification before recipient access or mutation. Customer service
 entries own the shared deployment lease; the Platform repository requires its
 already acquired exact scope and retains proof/receipt/audit ownership. See
-[protected invitations](PROTECTED-INVITATION-ADMINISTRATION.md). No route or send is activated.
+[protected invitations](PROTECTED-INVITATION-ADMINISTRATION.md). Actual mail requires
+the separately configured current REAL delivery worker and accepted sender.
 
 ## Authority
 
@@ -25,29 +27,43 @@ The cross-repository production topology is defined in `floriankreutzer/conferen
 
 ## Current foundation
 
-The uncomposed protected Platform session factory owns environment/UUID namespace
+The protected Platform session factory owns environment/UUID namespace
 construction while retaining the independent integer Platform epoch. It shares a
 pure namespace contract with Customer sessions and is excluded from both closed
-Demo graphs. See `PROTECTED-PLATFORM-SESSIONS.md` for its scope and acceptance limits.
+Demo graphs. The owned Platform root composes it with fresh Microsoft primary,
+application passkeys, independent offline enrollment/recovery and exact-operation
+proofs. See `PROTECTED-PLATFORM-SESSIONS.md` for scope and acceptance limits.
 
-The uncomposed own synthetic-generation service consumes exact operation proof
+The owned synthetic-generation service consumes exact operation proof
 and the canonical lifecycle permission. Its Platform persistence adapter requires
 the exact owner-stamped RR scope, archives through ordinary lifecycle persistence
 with both audit domains, and seeds fresh private business data. It grants no real
 Tenant target scope. See `SYNTHETIC-GENERATION-REPLACEMENT.md` for its PostgreSQL-only
-media contract, retained quota/cooldown and pending native/root acceptance.
+media contract and retained quota/cooldown. The protected Platform root installs
+its signed generation/reset and separate browser handoff routes only in DEV/INT.
 
-The uncomposed protected real Customer onboarding wrapper retains ordinary
+The protected real Customer onboarding wrapper retains ordinary
 creation/invitation authority and adds immutable REAL classification inside the
 same exact-proof transaction. Its enclosing deployment lease stays on the separate
 pool; unclassified historical command receipts cannot be retroactively admitted.
-See `PROTECTED-REAL-CUSTOMER-ONBOARDING.md` for atomicity and remaining acceptance.
+The owned Platform root composes this wrapper and invitation administration.
+See `PROTECTED-REAL-CUSTOMER-ONBOARDING.md` for atomicity and operating acceptance.
 
-The uncomposed protected access-email worker owns its immutable REAL qualification
+The protected access-email worker owns its immutable REAL qualification
 port and holds the current deployment lease across eligibility, provider work and
 settlement. Baseline outbox, lease, idempotency and provider contracts remain with
 the existing worker/repository. See `PROTECTED-CUSTOMER-DELIVERY.md` for boundaries
-and the remaining root/challenge/operating acceptance.
+and operating acceptance. The Customer root schedules it only with an explicitly
+configured real mail adapter; missing configuration starts no worker.
+
+Both protected roots own their verified TLS business/lease pools, current
+deployment/role readiness and whole-API execution scope, accepting explicit
+per-surface configuration only. Optional hosted delivery accepts externally
+pinned immutable browser bytes from fixed surface directories before any pool
+construction. It never replaces the protected API path. These alternative roots
+leave ordinary and closed Demo entrypoints unchanged; source composition is not
+live Microsoft, physical-key, sender, restore or deployment acceptance. See
+`PROTECTED-INT-RUNTIME.md` and `PROTECTED-HOSTED-FRONTEND.md`.
 
 The service uses Node.js 22 native HTTP and ECMAScript modules. The implemented foundation includes:
 
@@ -71,7 +87,7 @@ The service uses Node.js 22 native HTTP and ECMAScript modules. The implemented 
   network-free simulated Microsoft 365 adapter;
 - production observability, threat-model and secure-configuration gates.
 
-Runtime dependencies are limited to exact-pinned `pg`, `@azure/msal-node`, `sharp`, `@aws-sdk/client-s3` and `@simplewebauthn/server`. The WebAuthn SDK is restricted to the uncomposed private Platform passkey verifier; it is not active authentication. See `PLATFORM-PASSKEY-ASSURANCE.md` for the dependency assessment and activation gates. The image decoder is restricted to the managed Room media adapter, where bounded PNG/JPEG/WebP input is decoded and re-encoded without source metadata before storage. Provider-specific Microsoft handling uses bounded native HTTP plus a bounded MSAL transport isolated inside identity/integration adapters; Microsoft SDK types do not enter application or domain contracts. The S3 SDK is restricted to the private media storage adapter. Customer persistence accepts its provider-neutral port through explicit injection; Room and Demo Catalogue repositories authorize before accessing it and publish verified keys audit-atomically. The ordinary Customer and Platform Demo entrypoints support explicit Neon opt-in, with PostgreSQL as the default and storage-mode checks before activation. Runtime support is not evidence of a Hosted Demo cutover. See `PRIVATE-OBJECT-STORAGE.md` for its URL-free port, integrity checks and remaining cutover gates.
+Runtime dependencies are limited to exact-pinned `pg`, `@azure/msal-node`, `sharp`, `@aws-sdk/client-s3` and `@simplewebauthn/server`. The WebAuthn SDK is restricted to the private Platform passkey verifier composed by the protected Platform root; this does not activate a deployed assurance mode. See `PLATFORM-PASSKEY-ASSURANCE.md` for the dependency assessment and activation gates. The image decoder is restricted to the managed Room media adapter, where bounded PNG/JPEG/WebP input is decoded and re-encoded without source metadata before storage. Provider-specific Microsoft handling uses bounded native HTTP plus a bounded MSAL transport isolated inside identity/integration adapters; Microsoft SDK types do not enter application or domain contracts. The S3 SDK is restricted to the private media storage adapter. Customer persistence accepts its provider-neutral port through explicit injection; Room and Demo Catalogue repositories authorize before accessing it and publish verified keys audit-atomically. The ordinary Customer and Platform Demo entrypoints support explicit Neon opt-in, with PostgreSQL as the default and storage-mode checks before activation. Runtime support is not evidence of a Hosted Demo cutover. See `PRIVATE-OBJECT-STORAGE.md` for its URL-free port, integrity checks and remaining cutover gates.
 
 ```text
 Browser (untrusted)
@@ -111,10 +127,11 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
 
 ## Module responsibilities
 
-- The uncomposed invited-email foundation owns conservative recipient validation,
+- The invited-email primitives own conservative recipient validation,
   environment/Tenant/User/challenge-bound code proofs and a fixed-destination Resend
-  delivery port. It introduces no active login endpoint, persistence or membership
-  authority. See `INVITED-EMAIL-AUTHENTICATION.md` for owners and activation gates.
+  delivery port. The protected Customer root separately composes durable admission,
+  current invited membership, explicit linking, sessions and optional dispatch.
+  See `INVITED-EMAIL-AUTHENTICATION.md` and `PROTECTED-CUSTOMER-RUNTIME.md`.
 - `src/config.js` owns runtime, database, Entra, Microsoft 365, session and audit-secret configuration with fail-closed Pilot/Production validation.
 - `src/api-error.js` owns safe public error classification, including authorization concealment, audit-integrity failures, Tenant settings revision conflicts, Request composition failures and Microsoft 365 lifecycle errors.
 - `src/domain/identifiers.js` owns stable internal UUID validation.
@@ -232,20 +249,22 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
   three fixed business templates and three synthetic Customer roles per Tenant. It returns
   a data plan, grants no authority and is excluded from both closed Demo graphs. The shared
   pure scheduling module preserves the existing Demo's timezone-aware future-week behavior.
-- `persistence/postgres/protected-runtime-execution-scopes.js` prepares distinct bounded
+- `src/persistence/postgres/protected-runtime-execution-scopes.js` supplies distinct bounded
   lease/business pool scopes for protected shared work and same-client repeatable exclusive
   synthetic mutations. It rechecks deployment/owner custody but grants no authentication or
-  exact-operation proof. See `PROTECTED-RUNTIME-EXECUTION-SCOPES.md` for MVCC and integration limits.
-- `docs/SYNTHETIC-RUNTIME-CUSTODY.md` describes prepared060 private catalogue media, actual
-  Platform-provider alignment, proof-transaction injection and private continuing MFA session
-  contexts. None activates protected roots, generation reset or browser delegation.
+  exact-operation proof. Both owned roots compose it. See
+  `PROTECTED-RUNTIME-EXECUTION-SCOPES.md` for MVCC and integration limits.
+- `docs/SYNTHETIC-RUNTIME-CUSTODY.md` describes frozen060 private catalogue media,
+  Platform-provider alignment and private continuing MFA session contracts. The
+  protected roots compose signed generation/reset and browser delegation; custody
+  records alone still grant no session, role or operation authority.
 - `src/media/synthetic-template-media.js` resolves known fixed template asset IDs to packaged
   `src/synthetic/media` bytes, verifying source length, signature and checksum. It performs no
   network, provider, identity or database work and supplies no Tenant authorization. Demo and
-  future protected provisioning consumers own their separate persistence/authority contracts.
+  protected provisioning consumers own their separate persistence/authority contracts.
 - `scripts/demo-db-migrations.mjs` owns the independent checksum-protected Demo overlay migration
-  ledger after verifying the exact canonical schema `001..053`.
-- `scripts/platform-break-glass-grant.mjs` and `scripts/platform-recovery-fallback.mjs` are the only local privileged mutation wrappers. They accept credentials only through fixed descriptors and require live Platform sessions plus a dual-control, exact Tenant/permission-bound, one-use grant. The retired process-local Tenant-operator runtime and package entry point are prohibited.
+  ledger after verifying the exact canonical schema `001..064`.
+- `scripts/platform-break-glass-grant.mjs` and `scripts/platform-recovery-fallback.mjs` are the only local privileged mutation wrappers. They accept credentials only through fixed descriptors and require live Platform sessions plus a dual-control, exact Tenant/permission-bound, one-use grant. The retired process-local Tenant-operator runtime and package entry point are prohibited. Independent offline passkey enrollment/recovery retains its separate reviewed issuer contract and cannot enter a runtime import graph.
 - `scripts/check-architecture.mjs` prevents architecture, migration and composition drift.
 - `scripts/check-security-baseline.mjs` prevents drift between the documented Pilot/Production security baseline and executable controls.
 - `scripts/security-dast.mjs` exercises the real HTTP server in isolated Test mode.
@@ -272,8 +291,11 @@ PostgreSQL adapters implement repository contracts using fixed source-controlled
 
 Security governance and test scripts may inspect repository source and configuration, but they do not become runtime dependencies and must not introduce alternate business rules.
 
-Production composition roots must not import `src/demo/`, register Demo routes or instantiate the
-simulated provider. Demo composition roots must not instantiate Entra or the real Microsoft client.
+Production composition roots must not import `src/demo/` or register Demo routes.
+Ordinary production roots cannot instantiate the Demo simulated provider. The
+explicit protected DEV/INT root instead owns its independent network-free
+synthetic calendar branch, which imports no Demo authority. Demo composition
+roots must not instantiate Entra or the real Microsoft client.
 Architecture gates enforce both directions so a Production dependency failure cannot select Demo
 behavior and a Demo request cannot perform external provider I/O.
 
@@ -339,7 +361,10 @@ See `docs/AUDIT.md` for the normative event/integrity contract.
 
 Schema ownership lives in `migrations/`. Migrations are paired up/down files, numerically versioned, checksum protected and serialized by a PostgreSQL advisory lock.
 
-The application never auto-migrates at startup. Deployment automation runs migrations first. Runtime readiness requires database connectivity and exact expected schema version 53.
+The application never auto-migrates at startup. Deployment automation runs
+migrations first. Runtime readiness requires database connectivity and the exact
+source-owned complete checksummed ledger, currently canonical001..064. The list
+below records selected ownership milestones; it is not the migration inventory.
 
 - Migration 001 establishes Tenant-owned product structures.
 - Migration 002 adds User security-version state and server-side sessions.
@@ -421,8 +446,8 @@ listening. Its HTTP reset path performs the same bounded refresh after reset com
 returning success. Projection failure remains visible and is not represented as a rolled-back
 authoritative reset.
 
-The canonical schema now includes migrations `001..045`; the Demo-only overlay is independently tracked
-as `demo-migrations/001..011`. Neither application process auto-migrates or auto-seeds. See
+The complete canonical schema is `001..064`; the Demo-only overlay is independently tracked
+as `demo-migrations/001..028`. Neither application process auto-migrates or auto-seeds. See
 `docs/SHARED-DEMO-RUNTIME.md` for provisioning and operations.
 
 ## Request composition architecture

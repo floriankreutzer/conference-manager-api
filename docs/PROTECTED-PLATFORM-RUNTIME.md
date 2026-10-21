@@ -1,5 +1,17 @@
 # Owned protected Platform process
 
+Current source status — 21 October 2026: the root described here is composed in
+source. Its initial native-test pending/failure notes below are historical;
+exact accepted executions remain in the linked SaaS1 PRs and issue351. Durable
+synthetic calendar, local onboarding and private PostgreSQL catalogue delivery
+are now composed by the Customer root. Immutable browser delivery is separately
+qualified by [the hosted artifact contract](PROTECTED-HOSTED-FRONTEND.md), defaults
+off and requires its external manifest pin. Use
+[the current INT contract](PROTECTED-INT-RUNTIME.md) and
+[profile](PROTECTED-RUNTIME-CONFIGURATION.md) for current schema/startup authority.
+Actual primary, physical keys/recovery, email, restore and deployed cutover remain
+independent operating gates; none follows from these source additions.
+
 `npm run start:protected:platform` is an explicit additional entrypoint. It does
 not activate a deployment or alter ordinary conditional-access/closed Demo
 behavior. DEV/INT/PROD retain production security constraints and independent
