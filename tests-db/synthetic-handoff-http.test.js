@@ -13,7 +13,9 @@ import { createPostgresTenantRepository } from '../src/persistence/postgres/tena
 import { createPostgresPlatformOperatorRepository } from '../src/persistence/postgres/platform-operator-repository.js';
 import { createPostgresSyntheticHandoffRepository } from '../src/persistence/postgres/platform-synthetic-handoff-repository.js';
 import { createPostgresSyntheticGenerationRepository } from '../src/persistence/postgres/platform-synthetic-generation-repository.js';
-import { createProtectedSyntheticCustomerAccess } from '../src/protected-synthetic-customer-access-composition.js';
+import { createProtectedCustomerAuthentication } from '../src/protected-customer-authentication-composition.js';
+import { createCustomerAuthenticationComposition } from '../src/customer-authentication-composition.js';
+import { createCustomerAccessCipher } from '../src/persistence/customer-access-cipher.js';
 import { readPlatformPasskeyTransactionCookie } from '../src/platform/identity/passkey-auth-cookie.js';
 import { createSyntheticHandoffBrowserBinding } from '../src/identity/synthetic-handoff-browser-binding.js';
 import { createPlatformSyntheticHandoffIntentCookie } from '../src/platform/identity/synthetic-handoff-intent-cookie.js';
@@ -23,9 +25,9 @@ import { createSyntheticGenerationService } from '../src/platform/application/sy
 import { createPlatformAuthorizationPolicy } from '../src/platform/identity/policy.js';
 import { createPlatformTenantTargetPolicy } from '../src/platform/identity/tenant-target-policy.js';
 import { createPlatformAuditService } from '../src/platform/audit/audit-service.js';
-import { createSyntheticCustomerHandoffRouteModule } from '../src/http/synthetic-customer-handoff-routes.js';
 import { createPlatformSyntheticHandoffRouteModule } from '../src/platform/http/synthetic-handoff-routes.js';
-import { createHttpServer } from '../src/server.js';
+import { createApp } from '../src/app.js';
+import { createProtectedHttpExecutionHandler } from '../src/transport/protected-http-execution.js';
 import { createPlatformHttpServer } from '../src/platform/server.js';
 import { createLogger } from '../src/logger.js';
 import { createPlatformLogger } from '../src/platform/http/observability.js';
@@ -60,8 +62,19 @@ async t=>{
       { scope,browserBinding: binding,platformAuditRepository: owner.auditRepository }) });
   const protocol=createSyntheticHandoffProtocol({ handoffService,passkeyService: owner.auth,
     withPreparationScope: owner.scopes.withShared });
-  const customer=createProtectedSyntheticCustomerAccess({ pool,leasePool,scope,browserSecret: 'h'.repeat(48),sourceSecret: 'b'.repeat(48),
-    auditHmacSecret: 'a'.repeat(48),csrfSecret: 's'.repeat(48) });
+  const cipher=createCustomerAccessCipher({ environment: 'int',activeKeyId: 'initial',keys: new Map([['initial',Buffer.alloc(32,3)]]),
+    lookupSecret: 'l'.repeat(48) });t.after(()=>cipher.destroy());
+  const customerConfig=Object.freeze({ ...loadConfig({ NODE_ENV: 'test',PUBLIC_ORIGIN: scope.customerOrigin,
+    RATE_LIMIT_MAX: '120',CSRF_SECRET: 's'.repeat(48),AUDIT_HMAC_SECRET: 'a'.repeat(48) }),
+    deploymentEnvironment: 'int' }),customerPersistence={ pool };
+  const customer=createProtectedCustomerAuthentication({ config: customerConfig,persistence: customerPersistence,leasePool,
+    ...{ environment: 'int',securityEpoch: epoch },cipher,emailFlowSecret: 'f'.repeat(48),emailCodeSecret: 'p'.repeat(48),
+    emailSourceSecret: 'b'.repeat(48),synthetic: { platformOrigin: scope.platformOrigin,platformSecurityEpoch: 7,
+      browserSecret: 'h'.repeat(48),sourceSecret: 'b'.repeat(48) } });
+  const { sessionService: customerSessions,onboardingService,entraAuthService }=createCustomerAuthenticationComposition({
+    config: customerConfig,persistence: customerPersistence,authenticationFactory: customer.authenticationFactory });
+  assert.equal(onboardingService,null);assert.equal(entraAuthService,null);
+  assert.equal(customerSessions.issue,undefined);assert.equal(customerSessions.rotate,undefined);
   const real=await createInvitedCustomerFixture(pool,t),protection={ environment: 'int',securityEpoch: epoch };
   await pool.query("INSERT INTO tenant_runtime_registry(environment,tenant_id,mode) VALUES('int',$1,'real')",[real.tenantId]);
   const realSessions=createProtectedInvitedCustomerSessions({ ...protection,
@@ -73,10 +86,10 @@ async t=>{
   const realSession=await realSessions.issue(realIdentity,{ correlationId: randomUUID() });
   const sibling=await realSessions.issue(realIdentity,{ correlationId: randomUUID() });
   const tenants=createPostgresTenantRepository(pool);
-  const customerServer=createHttpServer({
-    config: loadConfig({ NODE_ENV: 'test',PUBLIC_ORIGIN: scope.customerOrigin,RATE_LIMIT_MAX: '120' }),
-    sessionService: customer.sessionService,loadTenant: id=>tenants.findById(id),logger: createLogger({ write: line=>logs.push(line) }),
-    additionalRouteModules: [createSyntheticCustomerHandoffRouteModule({ service: customer,scope })] });
+  const customerServer=http.createServer(createProtectedHttpExecutionHandler({ config: customerConfig,surface: 'customer',
+    executionScopes: owner.scopes,app: createApp({ config: customerConfig,
+      sessionService: customerSessions,loadTenant: id=>tenants.findById(id),logger: createLogger({ write: line=>logs.push(line) }),
+      additionalRouteModules: customer.routeModules }) }));
   const auditService=createPlatformAuditService({ repository: owner.auditRepository,authorizationPolicy,
     tenantTargetPolicy: createPlatformTenantTargetPolicy({
       operatorRepository: createPostgresPlatformOperatorRepository(pool,{ auditRepository: owner.auditRepository }) }) });
@@ -106,6 +119,31 @@ async t=>{
       });outgoing.on('error',reject);outgoing.end(raw);
     });
   }
+  // Actual email HTTP proof/admission uses the same owned normal resolver as the
+  // later signed delegation. No test-only generic issuer enters the HTTP port.
+  const email=await request('customer','/api/v1/auth/email/challenges',{ method: 'POST',
+    body: { recipient: 'Invited@example.test',locale: 'de' } });assert.equal(email.status,202);
+  const emailCookie=pair(email.headers['set-cookie'][0]);
+  const delivery=(await pool.query(`SELECT * FROM customer_access_deliveries WHERE purpose='mailbox_code'
+    ORDER BY created_at DESC,id DESC LIMIT 1`)).rows[0];
+  const bytes=cipher.open(delivery.payload_envelope,{ environment: 'int',mailboxId: delivery.mailbox_id,
+    recordId: delivery.id,purpose: 'mailbox_code',tenantId: null });
+  let code;try { code=JSON.parse(bytes.toString('utf8')).text.match(/\b\d{8}\b/)[0]; } finally { bytes.fill(0); }
+  const verified=await request('customer','/api/v1/auth/email/verify',{ method: 'POST',body: { code },
+    headers: { cookie: emailCookie,'x-csrf-token': JSON.parse(email.text).csrfToken } });assert.equal(verified.status,200);
+  const choiceCookie=pair(verified.headers['set-cookie'][0]);
+  const choices=await request('customer','/api/v1/auth/email/choices',{ headers: { cookie: choiceCookie } });
+  assert.equal(choices.status,200);assert.equal(JSON.parse(choices.text).items.length,1);
+  const admitted=await request('customer','/api/v1/auth/email/selection',{ method: 'POST',
+    body: { membershipId: JSON.parse(choices.text).items[0].membershipId },
+    headers: { cookie: choiceCookie,'x-csrf-token': JSON.parse(verified.text).csrfToken } });assert.equal(admitted.status,204);
+  const admittedCookie=pair(admitted.headers['set-cookie'][0]);
+  const invitedPrincipal=await customerSessions.resolvePrincipal({ headers: { cookie: admittedCookie } });
+  assert.equal(invitedPrincipal.providerIdentity.provider,'email_code');assert.equal(invitedPrincipal.tenantId,real.tenantId);
+  assert.equal((await request('customer','/api/v1/session',{ headers: { cookie: admittedCookie } })).status,200);
+  assert.equal((await request('customer','/api/v1/tenant/invitations',{ headers: { cookie: admittedCookie } })).status,200);
+  assert.equal((await request('customer','/api/v1/session',{ headers: { cookie: real.cookie } })).status,401);
+  assert.equal((await request('customer','/api/v1/auth/microsoft/login')).status,503);
   const count=async()=>(await pool.query('SELECT count(*)::int AS count FROM sessions')).rows[0].count,before=await count();
   const started=await request('customer','/api/v1/auth/delegation/start',{ method: 'POST',form: {} });assert.equal(started.status,303);
   const target=new URL(started.headers.location),original=pair(started.headers['set-cookie'][0]);
@@ -152,7 +190,7 @@ async t=>{
     headers: { cookie: completionCookie } });
   const results=await Promise.all([complete(),complete()]);assert.deepEqual(results.map(result=>result.status).sort(),[303,401]);
   assert.equal(await count(),before+1);const customerCookie=pair(results.find(result=>result.status===303).headers['set-cookie'][0]);
-  assert.ok(await customer.sessionService.resolvePrincipal({ headers: { cookie: customerCookie } }));
+  assert.ok(await customerSessions.resolvePrincipal({ headers: { cookie: customerCookie } }));
   assert.equal((await request('customer','/api/v1/session',{ headers: { cookie: customerCookie } })).status,200);
   assert.equal(await tenantAudit.verifyTenantChain(generation.tenants[0].tenantId),true);
   await owner.sessions.revoke(future,{ correlationId: randomUUID() });
@@ -181,7 +219,8 @@ async t=>{
     (SELECT count(*)::int FROM rooms WHERE tenant_id=tenant.id) AS rooms FROM tenants tenant WHERE id=$1`,
   [generation.tenants[0].tenantId])).rows[0];
   assert.deepEqual(history,{ status: 'archived',requests: 20,rooms: 10 });
-  const sensitive=[callbackUrl.searchParams.get('code'),target.searchParams.get('state'),csrfToken,
-    original.split('=')[1],customerCookie.split('=')[1],future.session.id];
+  assert.ok(await customerSessions.resolvePrincipal({ headers: { cookie: admittedCookie } }));
+  const sensitive=[callbackUrl.searchParams.get('code'),target.searchParams.get('state'),csrfToken,code,
+    emailCookie.split('=')[1],admittedCookie.split('=')[1],original.split('=')[1],customerCookie.split('=')[1],future.session.id];
   for (const value of sensitive) assert.equal(logs.join('').includes(value),false,'private protocol/session value is never logged');
 });
