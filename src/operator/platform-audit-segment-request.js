@@ -11,6 +11,7 @@ function own(value,keys) {
 export function normalizePlatformAuditSegmentRequest(value,expected) {
   own(value,[...FIXED,'approvalReference','correlationId']);own(expected,FIXED);
   if (expected.environment!=='int' || !isInternalUuid(expected.segmentId) || !isInternalUuid(expected.deploymentEpoch)
+    || expected.segmentId!==expected.segmentId.toLowerCase() || expected.deploymentEpoch!==expected.deploymentEpoch.toLowerCase()
     || !Number.isSafeInteger(expected.legacyEventCount) || expected.legacyEventCount<0 || expected.legacyEventCount>3200
     || typeof expected.inventoryDigest!=='string' || !/^[0-9a-f]{64}$/.test(expected.inventoryDigest)
     || FIXED.some(key=>value[key]!==expected[key]) || !isInternalUuid(value.correlationId)

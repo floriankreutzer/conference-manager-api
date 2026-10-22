@@ -15,6 +15,21 @@ const event=()=>normalizePlatformAuditEvent({ operatorId: null,roles: [],permiss
   previousState: null,newState: null,occurredAt: '2026-10-21T12:00:00.000Z',correlationId: randomUUID(),
   outcome: 'failure',metadata: { reasonCode: 'identity_unmapped' },retentionClass: 'security' });
 
+test('segment configuration rejects noncanonical UUIDs before signing or persistence',()=>{
+  const canonical={ id: 'abcdefab-1234-4123-8123-abcdefabcdef',environment: 'int',
+    deploymentEpoch: 'fedcbafe-1234-4123-8123-fedcbafedcba' };
+  assert.deepEqual(normalizeAuditSegment(canonical),canonical);
+  for (const key of ['id','deploymentEpoch']) {
+    const invalid={ ...canonical,[key]: canonical[key].toUpperCase() };
+    assert.throws(()=>normalizeAuditSegment(invalid),/SEGMENT_INVALID/);
+    assert.throws(()=>createSegmentSigners(secret,{ ...segment,...invalid }),/SEGMENT_INVALID/);
+    const expected={ environment: 'int',segmentId: invalid.id,deploymentEpoch: invalid.deploymentEpoch,
+      legacyEventCount: 124,inventoryDigest: segment.inventoryDigest };
+    assert.throws(()=>normalizePlatformAuditSegmentRequest({ ...expected,approvalReference: 'INT-APPROVED',
+      correlationId: canonical.id },expected),/REQUEST_INVALID/);
+  }
+});
+
 function row(value,count,previous=null) {
   return { sequence: segment.legacyEventCount+count,segment_id: segment.id,segment_sequence: count,integrity_version: 2,
     operator_id: value.operatorId,roles: value.roles,permissions: value.permissions,assurance_level: value.assuranceLevel,

@@ -151,12 +151,13 @@ export function normalizeAuditSegment(value) {
   if (!value || ![Object.prototype,null].includes(Object.getPrototypeOf(value))
     || Reflect.ownKeys(value).sort().join(',') !== 'deploymentEpoch,environment,id'
     || Reflect.ownKeys(value).some(key => !Object.hasOwn(Object.getOwnPropertyDescriptor(value,key),'value'))
-    || !isInternalUuid(value.id) || value.environment !== 'int' || !isInternalUuid(value.deploymentEpoch)) {
+    || !isInternalUuid(value.id) || value.id !== value.id.toLowerCase()
+    || value.environment !== 'int' || !isInternalUuid(value.deploymentEpoch)
+    || value.deploymentEpoch !== value.deploymentEpoch.toLowerCase()) {
     throw new PlatformAuditInputError('PLATFORM_AUDIT_SEGMENT_INVALID');
   }
   return Object.freeze({ ...value });
 }
-
 function segmentBinding(segment) {
   normalizeAuditSegment({ id: segment.id,environment: segment.environment,deploymentEpoch: segment.deploymentEpoch });
   if (!Number.isSafeInteger(segment.legacyEventCount) || segment.legacyEventCount < 0
