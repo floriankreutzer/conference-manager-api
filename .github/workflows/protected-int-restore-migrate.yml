@@ -1,0 +1,69 @@
+name: Protected INT restored database migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_main_sha:
+        description: Exact accepted Main; independently reconciled restore binding belongs in the protected environment
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosted-shared-demo-database-initialize
+  cancel-in-progress: false
+
+jobs:
+  rehearse:
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+      inputs.expected_main_sha == github.sha && github.actor == 'floriankreutzer' &&
+      github.triggering_actor == 'floriankreutzer' && github.run_attempt == 1
+    environment:
+      name: hosted-demo-initialize
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require ordinary logging before secret allocation
+        env:
+          ACTIONS_STEP_DEBUG: ${{ secrets.ACTIONS_STEP_DEBUG }}
+          ACTIONS_RUNNER_DEBUG: ${{ secrets.ACTIONS_RUNNER_DEBUG }}
+        run: test -z "${RUNNER_DEBUG:-}${ACTIONS_STEP_DEBUG:-}${ACTIONS_RUNNER_DEBUG:-}${NODE_OPTIONS:-}"
+      - name: Checkout exact accepted Main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify checkout before dependency installation
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_MAIN_SHA"
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Install locked dependencies without operator secrets
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Migrate only the independently bound restored target without private output
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          ACTIONS_STEP_DEBUG: ${{ secrets.ACTIONS_STEP_DEBUG }}
+          ACTIONS_RUNNER_DEBUG: ${{ secrets.ACTIONS_RUNNER_DEBUG }}
+          CM_INT_RESTORE_REQUEST_JSON: ${{ secrets.CM_INT_RESTORE_REQUEST_JSON }}
+          NODE_ENV: test
+          DEMO_RUNTIME: shared-postgres-v1
+          DEMO_SEED_VERSION: saas-3.7-three-demo-customers-v1
+          DEMO_CUSTOMER_ORIGIN: https://conference-manager-demo.onrender.com
+          DEMO_PLATFORM_ORIGIN: https://conference-manager-ops-demo.onrender.com
+          DEMO_DATABASE_SSL: verify-full
+          DEMO_CUSTOMER_DATABASE_URL: ${{ secrets.HOSTED_DEMO_CUSTOMER_DATABASE_URL }}
+          DEMO_PLATFORM_DATABASE_URL: ${{ secrets.HOSTED_DEMO_PLATFORM_DATABASE_URL }}
+          DEMO_RESET_DATABASE_URL: ${{ secrets.HOSTED_DEMO_RESET_DATABASE_URL }}
+          DEMO_MIGRATION_DATABASE_URL: ${{ secrets.HOSTED_DEMO_MIGRATION_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "${RUNNER_DEBUG:-}${ACTIONS_STEP_DEBUG:-}${ACTIONS_RUNNER_DEBUG:-}${NODE_OPTIONS:-}"
+          node scripts/restored-migration.mjs

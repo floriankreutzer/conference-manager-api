@@ -145,6 +145,47 @@ Keep the protected evidence separately and remove temporary operation-request
 secrets after the controlled operation. Do not remove a key's independent recovery
 custody or the runtime's required key merely as workflow cleanup.
 
+## Isolated restored-database migration rehearsal
+
+`.github/workflows/protected-int-restore-migrate.yml` uses the same inspected
+Main-only environment and serialized database-operation group. Owner dispatch,
+exact Main, attempt1, ordinary logging and locked dependencies remain required.
+It accepts only the Main SHA as public input. It never restores, finalizes,
+deletes, resets, initializes audit segments, grants runtime rights or starts a service.
+
+After an independently approved provider snapshot restore, provision environment
+secret `CM_INT_RESTORE_REQUEST_JSON` with exactly `sourceSha`, `sourceBranchId`,
+`targetBranchId`, `sourceHost`, `targetHost`, `snapshotId`, `servicesClosed`.
+Reconcile actual snapshot/branch/endpoint identities and absent child/runtime
+dependencies using the provider before saving this record. The binding validates
+the reviewed destination, not the truth of a provider restore or closed traffic.
+Source SHA must equal accepted Main and servicesClosed must be true. Branches
+must differ. Direct Neon endpoints must differ even through legacy/proxy aliases,
+belong to the same AWS region, and exclude pooled/arbitrary/redirect destinations.
+Keep this private metadata out of repository files, variables and dispatch inputs.
+
+The existing four `HOSTED_DEMO_*_DATABASE_URL` environment secrets remain unchanged.
+Only after configuration validation does the runner transiently retarget their
+hostnames to the independently reconciled restored endpoint. Inherited snapshot
+credentials must actually authenticate; never rotate or weaken them to conceal a
+failed rehearsal. Credentials, roles, database, port and verified TLS are preserved.
+Five independent ephemeral parser secrets satisfy only the existing migration
+configuration contract; they do not verify historical signatures or run a runtime.
+No credential is written to a file, command argument, Actions command file or log.
+
+The wrapper invokes only `scripts/migrate-demo-provider-metrics.mjs`. The existing
+native PostgreSQL gate remains authoritative for owner identity, exact ledgers,
+runtime advisory exclusion, versioned migrations and retained counts. The wrapper
+does not implement SQL or a second migration policy. A child error, timeout,
+incomplete/contradictory receipt or debug/PG override refuses with fixed output.
+No automatic retry occurs, including after a possible partial migration commit.
+Reconcile actual ledger/audit fingerprints and immutable source after execution;
+the fixed public success marker alone is not full recovery acceptance. Then remove
+the temporary binding secret and only the separately authorized test resources.
+Retain minimized recovery receipts and all historical failed attempts. Database
+restore/replay does not establish object recovery, original legacy authenticity,
+independent signing-key custody, physical devices or operating admission.
+
 ## Read/export contract
 
 Version 1 responses remain `{schemaVersion: 1, items}` for unchanged legacy/Demo

@@ -1,5 +1,6 @@
 import { normalizePlatformAuditSegmentRequest } from '../../src/operator/platform-audit-segment-request.js';
 import { platformAuditSegmentRoleGrantPlan } from './protected-runtime-role-grants.mjs';
+import { requireOwnerMainActionsContext } from './owner-main-actions-context.mjs';
 
 const refuse = () => { throw new Error('PLATFORM_AUDIT_ACTIONS_REFUSED'); };
 function json(value) {
@@ -15,14 +16,8 @@ function exact(value, keys) {
 // The existing offline CLIs remain the sole mutation and database authority.
 export function requirePlatformAuditActionsContext(env) {
   try {
-    const repository = 'floriankreutzer/conference-manager-api';
-    if (env.GITHUB_REPOSITORY !== repository || env.GITHUB_EVENT_NAME !== 'workflow_dispatch'
-      || env.GITHUB_REF !== 'refs/heads/main' || env.GITHUB_ACTOR !== 'floriankreutzer'
-      || env.GITHUB_TRIGGERING_ACTOR !== 'floriankreutzer' || env.GITHUB_RUN_ATTEMPT !== '1'
-      || env.GITHUB_WORKFLOW_REF !== `${repository}/.github/workflows/protected-int-audit-segment.yml@refs/heads/main`
-      || !/^[0-9a-f]{40}$/.test(env.GITHUB_SHA || '') || env.EXPECTED_MAIN_SHA !== env.GITHUB_SHA
-      || [env.RUNNER_DEBUG, env.ACTIONS_STEP_DEBUG, env.ACTIONS_RUNNER_DEBUG].some(Boolean)
-      || !['initialize', 'grants'].includes(env.INT_AUDIT_OPERATION)) refuse();
+    requireOwnerMainActionsContext(env, 'protected-int-audit-segment.yml');
+    if (!['initialize', 'grants'].includes(env.INT_AUDIT_OPERATION)) refuse();
     const expected = json(env.CM_INT_AUDIT_EXPECTED_JSON);
     // Reuse the canonical closed request validator for independent expected values.
     const request = json(env.CM_INT_AUDIT_REQUEST_JSON);
