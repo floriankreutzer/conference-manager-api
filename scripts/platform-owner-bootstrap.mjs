@@ -20,7 +20,9 @@ try {
   const ledger=await pool.query('SELECT version,name,checksum FROM schema_migrations ORDER BY version');
   if (ledger.rowCount!==migrations.length || ledger.rows.some((row,index)=>row.version!==migrations[index].version
     || row.name!==migrations[index].name || row.checksum!==migrations[index].checksum)) throw new Error('REFUSED');
-  const auditRepository=createPostgresPlatformAuditRepository(pool,{ hmacSecret: config.auditHmacSecret });
+  const auditRepository=createPostgresPlatformAuditRepository(pool,{ hmacSecret: config.auditHmacSecret,
+    segment: { id: process.env.PLATFORM_AUDIT_SEGMENT_ID,environment: 'int',deploymentEpoch: expected.deploymentEpoch } });
+  await auditRepository.verificationContext();
   const repository=createPostgresPlatformOwnerBootstrapRepository(pool,{ auditRepository,expected,
     expectedOfflineRole: config.expectedOfflineRole });
   process.stdout.write(JSON.stringify(await repository.initialize(request))+'\n');

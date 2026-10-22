@@ -18,6 +18,10 @@ verify-full TLS, max1 pool and the stable Platform audit HMAC key. Additionally 
 `PLATFORM_OWNER_BOOTSTRAP_DIRECTORY_ID`, `PLATFORM_OWNER_BOOTSTRAP_SUBJECT_ID` and
 `PLATFORM_OWNER_BOOTSTRAP_DEPLOYMENT_EPOCH` in the protected administrative process.
 The current UUID is independent of the integer Platform authentication epoch.
+The CLI also requires `PLATFORM_AUDIT_SEGMENT_ID`. Initialize and independently
+verify the matching INT segment using [the audit cutover procedure](PLATFORM-AUDIT-SEGMENTS.md)
+before bootstrap. The segment must bind that same deployment epoch; retained
+legacy signatures remain explicitly unavailable and must never be resigned.
 
 Run `node scripts/platform-owner-bootstrap.mjs` with a bounded JSON request on
 descriptor3 containing exactly `environment`, `deploymentEpoch`, `directoryId`,
@@ -25,12 +29,13 @@ descriptor3 containing exactly `environment`, `deploymentEpoch`, `directoryId`,
 must match the independently prepared configuration exactly. No command arguments,
 HTTP endpoint, runtime switch or Demo entrypoint exposes this operation.
 
-The command requires current schema65. The repository takes the existing INT
+The command requires current schema66 and verifies the configured signed segment
+before initialization. The repository takes the existing INT
 exclusive deployment lease and a nonwaiting operator-table write lock before
 checking actual SQL login/effective role/catalog ownership. It refuses any
 existing non-Demo operator, including disabled/history records, and any retained
 bootstrap audit. Existing Demo identities are preserved and never adopted.
-Operator insertion, the existing HMAC-chain audit and change-alert outbox append
+Operator insertion, the current segment's HMAC audit and change-alert outbox append
 commit together. Audit/constraint/commit failure returns a fixed refusal without
 partial authority. Concurrent calls can produce at most one initialization.
 

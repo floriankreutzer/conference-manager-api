@@ -1,151 +1,53 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
-import {
-  canonicalPlatformAuditCheckpoint,
-  canonicalPlatformAuditPayload,
-  normalizePlatformAuditEvent,
-} from '../../platform/audit/event.js';
+import { normalizePlatformAuditEvent } from '../../platform/audit/event.js';
 import { isInternalUuid } from '../../domain/identifiers.js';
 import { PlatformAuditIntegrityError, PlatformAuditInputError } from '../../platform/audit/errors.js';
 import { withPostgresTransaction } from './transaction.js';
-
-export const PLATFORM_AUDIT_CHECKPOINT_INTERVAL = 32;
+import { createPostgresPlatformAuditSegmentRepository } from './platform-audit-segment-repository.js';
+import { createSigners, createPlatformAuditRowVerifier, instant, mapEventRow, projectEvent,
+  PLATFORM_AUDIT_EVENT_COLUMNS as EVENT_COLUMNS, PLATFORM_AUDIT_CHECKPOINT_INTERVAL } from './platform-audit-integrity.js';
+export { createPlatformAuditRowVerifier, mapEventRow, PLATFORM_AUDIT_EVENT_COLUMNS,
+  PLATFORM_AUDIT_CHECKPOINT_INTERVAL } from './platform-audit-integrity.js';
 const MAX_PAGE_SIZE = 100;
 const MAX_VERIFICATION_EVENTS = MAX_PAGE_SIZE * PLATFORM_AUDIT_CHECKPOINT_INTERVAL;
 
-// A pure integrity primitive shared by the scoped audit reader and the closed
-// Demo aggregate collector. No operator scope or read authority is created here.
-export function createPlatformAuditRowVerifier({ hmacSecret } = {}) {
-  const sign = createSigners(hmacSecret);
-  return (rows, checkpointRow = null) => {
-    let previousHash = null;
-    let expectedSequence = 1;
-    try {
-      if (checkpointRow) {
-        const checkpoint = {
-          eventCount: Number(checkpointRow.event_count),
-          terminalEventHash: checkpointRow.terminal_event_hash,
-          previousCheckpointHash: checkpointRow.previous_checkpoint_hash,
-          createdAt: instant(checkpointRow.created_at),
-        };
-        if (Number(checkpointRow.integrity_version) !== 1
-          || !secureEqual(checkpointRow.checkpoint_hash, sign.checkpoint(checkpoint))) return false;
-        previousHash = checkpoint.terminalEventHash;
-        expectedSequence = checkpoint.eventCount + 1;
-      }
-      if (rows.length > MAX_VERIFICATION_EVENTS) return false;
-      for (const row of rows) {
-        const stored = mapEventRow(row);
-        const event = normalizePlatformAuditEvent(stored);
-        if (stored.integrityVersion !== 1 || stored.sequence !== expectedSequence
-          || stored.previousHash !== previousHash
-          || !secureEqual(stored.eventHash, sign.event(event, stored.sequence, previousHash))) return false;
-        previousHash = stored.eventHash;
-        expectedSequence += 1;
-      }
-      return true;
-    } catch { return false; }
-  };
-}
-
-const EVENT_COLUMNS = `
-  sequence,
-  operator_id,
-  roles,
-  permissions,
-  assurance_level,
-  target_tenant_id,
-  action,
-  target_type,
-  target_id,
-  previous_state,
-  new_state,
-  occurred_at,
-  correlation_id,
-  outcome,
-  metadata,
-  retention_class,
-  previous_hash,
-  event_hash,
-  integrity_version
-`;
-export { EVENT_COLUMNS as PLATFORM_AUDIT_EVENT_COLUMNS };
-
-function secureEqual(left, right) {
-  if (typeof left !== 'string' || typeof right !== 'string') return false;
-  const leftBuffer = Buffer.from(left, 'ascii');
-  const rightBuffer = Buffer.from(right, 'ascii');
-  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
-}
-
-function instant(value) {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
-}
-
-export function mapEventRow(row) {
-  if (!row) return null;
-  return Object.freeze({
-    sequence: Number(row.sequence),
-    operatorId: row.operator_id,
-    roles: Object.freeze([...row.roles]),
-    permissions: Object.freeze([...row.permissions]),
-    assuranceLevel: row.assurance_level,
-    targetTenantId: row.target_tenant_id,
-    action: row.action,
-    targetType: row.target_type,
-    targetId: row.target_id,
-    previousState: row.previous_state,
-    newState: row.new_state,
-    occurredAt: instant(row.occurred_at),
-    correlationId: row.correlation_id,
-    outcome: row.outcome,
-    metadata: row.metadata,
-    retentionClass: row.retention_class,
-    previousHash: row.previous_hash,
-    eventHash: row.event_hash,
-    integrityVersion: Number(row.integrity_version),
-  });
-}
-
-function projectEvent(event) {
-  return Object.freeze({
-    sequence: event.sequence,
-    operatorId: event.operatorId,
-    roles: event.roles,
-    permissions: event.permissions,
-    assuranceLevel: event.assuranceLevel,
-    targetTenantId: event.targetTenantId,
-    action: event.action,
-    targetType: event.targetType,
-    targetId: event.targetId,
-    previousState: event.previousState,
-    newState: event.newState,
-    occurredAt: event.occurredAt,
-    correlationId: event.correlationId,
-    outcome: event.outcome,
-    metadata: event.metadata,
-    retentionClass: event.retentionClass,
-  });
-}
-
-function createSigners(secretValue) {
-  if (typeof secretValue !== 'string') throw new TypeError('PLATFORM_AUDIT_HMAC_SECRET_REQUIRED');
-  const secret = Buffer.from(secretValue, 'utf8');
-  if (secret.byteLength < 32 || secret.byteLength > 512) {
-    throw new TypeError('PLATFORM_AUDIT_HMAC_SECRET_INVALID');
-  }
-  function hmac(domain, payload) {
-    return createHmac('sha256', secret).update(domain, 'utf8').update('\0', 'utf8').update(payload, 'utf8').digest('hex');
-  }
-  return Object.freeze({
-    event: (event, sequence, previousHash) => hmac(
-      'conference-manager:platform-audit:event:v1',
-      canonicalPlatformAuditPayload(event, { sequence, previousHash }),
-    ),
-    checkpoint: (checkpoint) => hmac(
-      'conference-manager:platform-audit:checkpoint:v1',
-      canonicalPlatformAuditCheckpoint(checkpoint),
-    ),
-  });
+async function readScopedPage(pool, { limit, beforeSequence, scope: scopeValue, from, to }, segmentId = null) {
+  validatePage({ limit, beforeSequence, from, to });
+  const scope = validateScope(scopeValue);
+  return pool.query({
+        name: 'platform-audit-page',
+        text: `
+          SELECT ${EVENT_COLUMNS}
+          FROM platform_audit_events
+          WHERE ($8::uuid IS NULL OR segment_id = $8)
+            AND ($1::bigint IS NULL OR sequence < $1::bigint)
+            AND ($6::timestamptz IS NULL OR occurred_at >= $6::timestamptz)
+            AND ($7::timestamptz IS NULL OR occurred_at < $7::timestamptz)
+            AND EXISTS (
+              SELECT 1
+              FROM platform_operators operator
+              WHERE operator.id = $3
+                AND operator.status = 'active'
+                AND operator.security_version = $4
+                AND operator.scope_mode = $5
+                AND (
+                  operator.scope_mode = 'all'
+                  OR (
+                    platform_audit_events.target_tenant_id IS NULL
+                    AND platform_audit_events.operator_id = operator.id
+                  )
+                  OR EXISTS (
+                    SELECT 1
+                    FROM platform_operator_tenant_scopes target_scope
+                    WHERE target_scope.operator_id = operator.id
+                      AND target_scope.tenant_id = platform_audit_events.target_tenant_id
+                  )
+                )
+            )
+          ORDER BY sequence DESC
+          LIMIT $2
+        `,
+        values: [beforeSequence, limit, scope.operatorId, scope.securityVersion, scope.mode, from, to, segmentId],
+      });
 }
 
 function validatePage({ limit, beforeSequence, from, to }) {
@@ -189,16 +91,19 @@ function authoritativeTarget(event, expectedTargetTenantId) {
   }
 }
 
-export function createPostgresPlatformAuditRepository(pool, { hmacSecret } = {}) {
+export function createPostgresPlatformAuditRepository(pool, { hmacSecret, segment = null } = {}) {
   if (!pool || typeof pool.query !== 'function' || typeof pool.connect !== 'function') {
     throw new TypeError('POSTGRES_POOL_REQUIRED');
   }
+  if (segment !== null) return createPostgresPlatformAuditSegmentRepository(pool, { hmacSecret, segment,
+    readPage: (values,client=pool) => readScopedPage(client, values, segment.id) });
   const sign = createSigners(hmacSecret);
   const verifyRows = createPlatformAuditRowVerifier({ hmacSecret });
 
   async function appendWithClient(client, eventValue, { expectedTargetTenantId } = {}) {
     let event = normalizePlatformAuditEvent(eventValue);
     authoritativeTarget(event, expectedTargetTenantId);
+    await client.query('LOCK TABLE platform_audit_segments IN ACCESS SHARE MODE');
     const chain = await client.query({
       name: 'platform-audit-chain-lock',
       text: `
@@ -298,48 +203,26 @@ export function createPostgresPlatformAuditRepository(pool, { hmacSecret } = {})
 
   return Object.freeze({
     appendWithClient,
+    async isReady() {
+      try {
+        return await withPostgresTransaction(pool,async client=>{
+          await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+          const active=await client.query('SELECT EXISTS(SELECT 1 FROM platform_audit_segments) AS active');
+          if (active.rows[0]?.active!==false) return false;
+          const rows=await client.query(`SELECT ${EVENT_COLUMNS} FROM platform_audit_events ORDER BY sequence LIMIT 3201`);
+          const head=await client.query('SELECT event_count,terminal_event_hash FROM platform_audit_chain_state WHERE singleton');
+          return head.rowCount===1 && Number(head.rows[0].event_count)===rows.rowCount
+            && head.rows[0].terminal_event_hash===(rows.rows.at(-1)?.event_hash ?? null) && verifyRows(rows.rows);
+        });
+      } catch { return false; }
+    },
 
     async append(event, options) {
       return withPostgresTransaction(pool, (client) => appendWithClient(client, event, options));
     },
 
     async listVerified({ limit = 50, beforeSequence = null, scope: scopeValue, from = null, to = null } = {}) {
-      validatePage({ limit, beforeSequence, from, to });
-      const scope = validateScope(scopeValue);
-      const page = await pool.query({
-        name: 'platform-audit-page',
-        text: `
-          SELECT ${EVENT_COLUMNS}
-          FROM platform_audit_events
-          WHERE ($1::bigint IS NULL OR sequence < $1::bigint)
-            AND ($6::timestamptz IS NULL OR occurred_at >= $6::timestamptz)
-            AND ($7::timestamptz IS NULL OR occurred_at < $7::timestamptz)
-            AND EXISTS (
-              SELECT 1
-              FROM platform_operators operator
-              WHERE operator.id = $3
-                AND operator.status = 'active'
-                AND operator.security_version = $4
-                AND operator.scope_mode = $5
-                AND (
-                  operator.scope_mode = 'all'
-                  OR (
-                    platform_audit_events.target_tenant_id IS NULL
-                    AND platform_audit_events.operator_id = operator.id
-                  )
-                  OR EXISTS (
-                    SELECT 1
-                    FROM platform_operator_tenant_scopes target_scope
-                    WHERE target_scope.operator_id = operator.id
-                      AND target_scope.tenant_id = platform_audit_events.target_tenant_id
-                  )
-                )
-            )
-          ORDER BY sequence DESC
-          LIMIT $2
-        `,
-        values: [beforeSequence, limit, scope.operatorId, scope.securityVersion, scope.mode, from, to],
-      });
+      const page = await readScopedPage(pool, { limit, beforeSequence, scope: scopeValue, from, to });
       if (page.rowCount === 0) return Object.freeze([]);
       const verificationBuckets = new Map();
       for (const row of page.rows) {

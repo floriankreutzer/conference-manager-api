@@ -14,6 +14,9 @@ import {
 const OPERATOR_ID = '31000000-0000-4000-8000-000000000004';
 const SESSION_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const META_TABLES = Object.freeze([
+  'platform_audit_segments',
+  'platform_audit_segment_heads',
+  'platform_audit_segment_checkpoints',
   'schema_migrations',
   'demo_schema_migrations',
   'demo_database_sentinel',
@@ -54,7 +57,7 @@ function fakeResetPool({ failQueryName = null, failCommit = false, failTransacti
                 reset_role: 'demo_reset',
                 current_database: 'conference_manager_demo_test',
                 current_role: 'demo_reset',
-                production_schema_versions: Array.from({ length: 65 }, (_, index) => index + 1),
+                production_schema_versions: Array.from({ length: 66 }, (_, index) => index + 1),
               }],
             };
           }

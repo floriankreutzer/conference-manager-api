@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 65;/.test(pool)) {
-  throw new Error('Production application requires first-owner audit schema 65.');
+if (!/export const CURRENT_SCHEMA_VERSION = 66;/.test(pool)) {
+  throw new Error('Production application requires independent INT audit segment schema 66.');
 }
 
 const auditEvent = await readFile('src/audit/event.js', 'utf8');

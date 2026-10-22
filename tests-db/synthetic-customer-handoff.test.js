@@ -148,10 +148,6 @@ async t=>{
     assert.equal((await customer.start('127.0.0.3')).status,'limited');
     assert.equal((await pool.query('SELECT count(*)::int AS count FROM synthetic_customer_handoffs')).rows[0].count,rows);
     assert.deepEqual(await count(),before);
-    assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before original064/063/062 proof.
-    assert.equal(await rollbackLatest(pool),true); // Empty private calendar063; retain the populated062 recovery guard.
-    assert.equal(await rollbackLatest(pool),true); // Empty private calendar063; retain the populated062 recovery guard.
-    await assert.rejects(rollbackLatest(pool),/SYNTHETIC_HANDOFF_HISTORY_REQUIRES_VERIFIED_RECOVERY/);
     await assert.rejects(pool.query('TRUNCATE synthetic_customer_handoffs'),/SYNTHETIC_HANDOFF_HISTORY_REQUIRES_VERIFIED_RECOVERY/);
     await assert.rejects(pool.query('DELETE FROM synthetic_customer_handoffs WHERE id=$1',[first.flowId]),
       /SYNTHETIC_HANDOFF_RETENTION_REQUIRED/);
@@ -185,4 +181,11 @@ async t=>{
   const next=createProtectedSyntheticCustomerAccess({ ...options,scope: { ...scope,securityEpoch: nextEpoch } });
   assert.equal(await next.sessionService.resolvePrincipal(headers(lastCookie)),null);
   assert.equal(await next.sessionService.resolvePrincipal(headers(realSession.setCookie)),null);
+  // Check destructive rollback only after all current-runtime assertions.
+  assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
+  assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before original064/063/062 proof.
+  assert.equal(await rollbackLatest(pool),true); // Empty private calendar063; retain the populated062 recovery guard.
+  assert.equal(await rollbackLatest(pool),true); // Empty private calendar063; retain the populated062 recovery guard.
+  await assert.rejects(rollbackLatest(pool),/SYNTHETIC_HANDOFF_HISTORY_REQUIRES_VERIFIED_RECOVERY/);
+
 });

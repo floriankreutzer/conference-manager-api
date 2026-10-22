@@ -49,6 +49,7 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
   pool = createPostgresPool({ mode: 'test', ...database, databaseUrl: url.toString(), databasePoolMax: 6 });
   await migrateUp(pool); await migrateDemoUp(pool, { roles });
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty029 before unchanged028/older guards.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty027 before unchanged026.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty overlay026 before025.
@@ -60,6 +61,7 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   await rollbackLatestDemoMigration(pool, { roles }); // Passkey reset grants019.
   await rollbackLatestDemoMigration(pool, { roles }); // Unsent grants018 while canonical053 is still ready.
+  assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
@@ -300,6 +302,7 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
     await assert.rejects(customer.query(sql), (error) => error.code === '42501');
     await assert.rejects(pool.query(sql), /CATERING_ORDER_HISTORY_APPEND_ONLY/);
   }
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty029 before unchanged028/older guards.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty027 before unchanged026.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty overlay026 before025.
@@ -310,6 +313,7 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Publication grants021 before source grants020.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   await rollbackLatestDemoMigration(pool, { roles }); // Remove grants019 before empty053.
+  assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
@@ -341,6 +345,7 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
   assert.equal((await reset.reset({ fixture: DEMO_FIXTURE, checksum: DEMO_FIXTURE_CHECKSUM })).checksum, DEMO_FIXTURE_CHECKSUM);
   assert.equal((await pool.query('SELECT count(*)::integer AS n FROM catering_order_withdrawals')).rows[0].n, 0);
   assert.equal((await pool.query('SELECT count(*)::integer AS n FROM catering_unsent_replacements')).rows[0].n, 0);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty029 before unchanged028/older guards.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty027 before unchanged026.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty overlay026 before025.
@@ -352,6 +357,7 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   await rollbackLatestDemoMigration(pool, { roles }); //019 before changing canonical readiness.
   await rollbackLatestDemoMigration(pool, { roles }); //018 before changing canonical readiness.
+  assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.

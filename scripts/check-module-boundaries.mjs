@@ -128,6 +128,7 @@ const REAL_PRODUCTION_IDENTITY_AND_PROVIDER_MODULES = new Set([
   'src/platform/identity/passkey-enrollment-grant.js',
   'src/persistence/postgres/platform-passkey-grant-issuer.js',
   'src/persistence/postgres/platform-owner-bootstrap-repository.js',
+  'src/persistence/postgres/platform-audit-segment-initializer.js',
   'src/persistence/postgres/platform-passkey-enrollment-repository.js',
   'src/platform/identity/passkey-verifier.js',
   'src/persistence/postgres/platform-passkey-auth-repository.js',
@@ -315,9 +316,11 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
       || isInside(file, 'src/demo')) {
       const offlineIssuer = firstReachablePath(graph, file,
         dependency => ['src/persistence/postgres/platform-passkey-grant-issuer.js',
-          'src/persistence/postgres/platform-owner-bootstrap-repository.js'].includes(dependency));
+          'src/persistence/postgres/platform-owner-bootstrap-repository.js',
+          'src/persistence/postgres/platform-audit-segment-initializer.js'].includes(dependency));
       if (offlineIssuer) {
-        const kind=offlineIssuer.at(-1).includes('owner-bootstrap') ? 'owner bootstrap' : 'passkey issuance';
+        const kind=offlineIssuer.at(-1).includes('owner-bootstrap') ? 'owner bootstrap'
+          : offlineIssuer.at(-1).includes('segment-initializer') ? 'audit segment initialization' : 'passkey issuance';
         violations.push(violation(file,`HTTP, runtime and Demo code must not reach offline ${kind} (${offlineIssuer.join(' -> ')}).`));
       }
     }

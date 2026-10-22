@@ -15,7 +15,10 @@ try {
   }
   pool = createPostgresPool(config);
   if (!await isPostgresSchemaReady(pool)) throw new Error('PLATFORM_PASSKEY_OFFLINE_SCHEMA_NOT_READY');
-  const auditRepository = createPostgresPlatformAuditRepository(pool, { hmacSecret: config.auditHmacSecret });
+  const segment=process.env.PLATFORM_AUDIT_SEGMENT_ID===undefined ? null : {
+    id: process.env.PLATFORM_AUDIT_SEGMENT_ID,environment: 'int',deploymentEpoch: process.env.PLATFORM_AUDIT_SEGMENT_DEPLOYMENT_EPOCH };
+  const auditRepository = createPostgresPlatformAuditRepository(pool, { hmacSecret: config.auditHmacSecret,segment });
+  if (segment!==null) await auditRepository.verificationContext();
   const issuer = createPostgresPlatformPasskeyGrantIssuer(pool, { auditRepository, expectedOfflineRole: config.expectedOfflineRole });
   const issued = await issuer.issueOffline(request);
   writeSecretToFixedDescriptor(JSON.stringify(issued.grant), 4);

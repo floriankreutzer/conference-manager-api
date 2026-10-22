@@ -62,7 +62,9 @@ export function protectedRuntimeRoleManifest(surface) {
     columns('platform_passkey_credentials','SELECT','operator_id,environment,revoked_at'),
     columns('platform_passkey_auth_transactions','SELECT','id,operator_id,environment,security_epoch,operator_security_version,purpose,'
       +'operation_hash,expected_session_id,consumed_at,expires_at'),
-    columns('platform_audit_events','SELECT','sequence,operator_id,action,target_tenant_id,outcome,assurance_level,metadata'));
+    columns('platform_audit_events','SELECT','sequence,operator_id,action,target_tenant_id,outcome,assurance_level,metadata,'
+      +'segment_id,integrity_version'),
+    columns('platform_audit_segments','SELECT','id,environment,deployment_epoch'));
     functions.push('customer_microsoft_snapshot_valid(jsonb)','protected_lock_synthetic_handoff_source(text,uuid,uuid)',
       'protected_lock_synthetic_calendar_source(text,uuid,uuid)',
       'protected_synthetic_lifecycle(text,uuid,uuid,text,text,bigint)');
@@ -75,6 +77,8 @@ export function protectedRuntimeRoleManifest(surface) {
     table('platform_passkey_enrollment_grants','SELECT'),
     columns('platform_passkey_enrollment_grants','UPDATE','consumed_at,revoked_at'),
     table('platform_audit_events','SELECT,INSERT'),table('platform_audit_checkpoints','SELECT,INSERT'),
+    table('platform_audit_segments','SELECT'),table('platform_audit_segment_heads','SELECT,UPDATE'),
+    table('platform_audit_segment_checkpoints','SELECT,INSERT'),
     table('platform_audit_chain_state','SELECT,UPDATE'),table('platform_tenant_readiness_evidence','SELECT,INSERT'),
     table('platform_entitlement_packages','SELECT,INSERT,UPDATE'),table('platform_entitlement_package_revisions','SELECT,INSERT'),
     table('platform_entitlement_change_history','SELECT,INSERT'),

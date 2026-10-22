@@ -18,7 +18,7 @@ function scope(input) {
 // Pure, redacted review plan. No implicit environment, connection or mutation.
 export function protectedRuntimeRoleGrantPlan(input) {
   const fixed=scope(input);
-  return Object.freeze({ ...fixed,schemaVersion: 65,roles: Object.freeze(['customer','platform'].map(surface=>{
+  return Object.freeze({ ...fixed,schemaVersion: 66,roles: Object.freeze(['customer','platform'].map(surface=>{
     const role=`cm_protected_${fixed.environment}_${surface}`,manifest=protectedRuntimeRoleManifest(surface);
     const statements=[`GRANT USAGE ON SCHEMA public TO ${identifier(role)}`,
       ...manifest.tables.map(entry=>`GRANT ${entry.privileges} ON public.${identifier(entry.name)} TO ${identifier(role)}`),
@@ -92,5 +92,71 @@ export async function grantProtectedRuntimeRoles(pool,input) {
     });
     return Object.freeze({ environment: plan.environment,securityEpoch: plan.securityEpoch,
       schemaVersion: plan.schemaVersion,roles: Object.freeze(roles) });
+  } catch { failed(); }
+}
+
+// Incremental transition for existing INT roles. Never reruns the fresh-role
+// installer, grants segment administration, or accepts caller-supplied SQL.
+export function platformAuditSegmentRoleGrantPlan(input) {
+  if (!input || Reflect.ownKeys(input).length!==3
+    || Object.keys(input).sort().join(',')!=='environment,securityEpoch,segmentId'
+    || Object.values(Object.getOwnPropertyDescriptors(input)).some(field=>!Object.hasOwn(field,'value'))) failed();
+  const fixed=scope({ environment: input.environment,securityEpoch: input.securityEpoch });
+  if (fixed.environment!=='int' || !isInternalUuid(input.segmentId)) failed();
+  const customer=identifier('cm_protected_int_customer'),platform=identifier('cm_protected_int_platform');
+  return Object.freeze({ ...fixed,segmentId: input.segmentId,schemaVersion: 66,
+    roles: Object.freeze(['cm_protected_int_customer','cm_protected_int_platform']),statements: Object.freeze([
+      `GRANT SELECT(id,environment,deployment_epoch) ON public.platform_audit_segments TO ${customer}`,
+      `GRANT SELECT(segment_id,integrity_version) ON public.platform_audit_events TO ${customer}`,
+      `GRANT SELECT ON public.platform_audit_segments TO ${platform}`,
+      `GRANT SELECT,UPDATE ON public.platform_audit_segment_heads TO ${platform}`,
+      `GRANT SELECT,INSERT ON public.platform_audit_segment_checkpoints TO ${platform}`,
+      `REVOKE UPDATE ON public.platform_audit_chain_state FROM ${platform}`,
+      `REVOKE INSERT ON public.platform_audit_checkpoints FROM ${platform}`,
+    ]) });
+}
+
+export async function grantPlatformAuditSegmentRuntimeRoles(pool,input,{ expectedOfflineRole,auditRepository }={}) {
+  try {
+    const plan=platformAuditSegmentRoleGrantPlan(input);
+    identifier(expectedOfflineRole);
+    if (typeof auditRepository?.verifyWithClient!=='function') failed();
+    const migrations=await loadMigrations();
+    if (migrations.length!==plan.schemaVersion) failed();
+    await withPostgresTransaction(pool,async client=>{
+      await client.query("SET LOCAL statement_timeout='10s'");
+      await client.query("SET LOCAL lock_timeout='2s'");
+      const lock=await client.query('SELECT pg_try_advisory_xact_lock(740193,2) AS locked');
+      if (lock.rows[0]?.locked!==true) failed();
+      const owner=await client.query(`SELECT current_user AS active_role,session_user AS authenticated_role,
+        pg_get_userbyid(relowner) AS owner_role FROM pg_class WHERE oid='public.platform_operators'::regclass`);
+      if (owner.rowCount!==1 || ['active_role','authenticated_role','owner_role']
+        .some(key=>owner.rows[0][key]!==expectedOfflineRole)) failed();
+      const ledger=await client.query('SELECT version,name,checksum FROM schema_migrations ORDER BY version');
+      if (ledger.rowCount!==migrations.length || ledger.rows.some((row,index)=>row.version!==migrations[index].version
+        || row.name!==migrations[index].name || row.checksum!==migrations[index].checksum)) failed();
+      const segment=await client.query(`SELECT s.id FROM platform_audit_segments s JOIN protected_runtime_deployments d
+        ON d.environment=s.environment AND d.security_epoch=s.deployment_epoch
+        WHERE s.id=$1 AND s.environment='int' AND s.deployment_epoch=$2 FOR SHARE OF s,d`,[plan.segmentId,plan.securityEpoch]);
+      if (segment.rowCount!==1) failed();
+      const active=await client.query('SELECT count(*)::int AS count FROM pg_stat_activity WHERE usename=ANY($1::text[])',[plan.roles]);
+      if (active.rows[0]?.count!==0) failed();
+      const roles=await client.query(`SELECT rolname,rolcanlogin,
+        (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls
+          OR EXISTS(SELECT 1 FROM pg_auth_members m WHERE m.member=r.oid)
+          OR EXISTS(SELECT 1 FROM pg_class c WHERE c.relowner=r.oid)
+          OR EXISTS(SELECT 1 FROM pg_proc p WHERE p.proowner=r.oid)
+          OR EXISTS(SELECT 1 FROM pg_namespace n WHERE n.nspowner=r.oid)
+          OR EXISTS(SELECT 1 FROM pg_database d WHERE d.datdba=r.oid)
+          OR EXISTS(SELECT 1 FROM pg_default_acl a WHERE a.defaclrole=r.oid)
+          OR has_database_privilege(r.oid,current_database(),'CREATE,TEMPORARY')
+          OR has_schema_privilege(r.oid,'public','CREATE')) AS forbidden
+        FROM pg_roles r WHERE rolname=ANY($1::text[])`,[plan.roles]);
+      if (roles.rowCount!==2 || roles.rows.some(row=>row.rolcanlogin!==true || row.forbidden!==false)) failed();
+      await auditRepository.verifyWithClient(client);
+      for (const statement of plan.statements) await client.query(statement);
+    });
+    return Object.freeze({ environment: 'int',segmentId: plan.segmentId,schemaVersion: plan.schemaVersion,
+      roles: plan.roles,status: 'granted' });
   } catch { failed(); }
 }

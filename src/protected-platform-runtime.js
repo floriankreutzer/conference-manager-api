@@ -84,7 +84,8 @@ export async function createProtectedPlatformRuntime(environment) {
     const readiness=createPostgresProtectedRuntimeReadiness(base.pool,{ ...protection,leasePool,surface: 'platform' });
     // Periodic durable projection work uses no persistent LISTEN connection on
     // the bounded business pool, preserving max1 business/lease configurations.
-    persistence=Object.freeze({ ...base,readinessChecks: Object.freeze([readiness.isReady]),projectionRepository: Object.freeze({
+    persistence=Object.freeze({ ...base,readinessChecks: Object.freeze([readiness.isReady,
+      ()=>base.auditRepository.isReady()]),projectionRepository: Object.freeze({
       refreshBatch: input=>base.projectionRepository.refreshBatch(input),
       consumeBatch: input=>base.projectionRepository.consumeBatch(input),
     }) });

@@ -47,6 +47,7 @@ test('actual Customer reviewed versions retain the confirmed order until replace
   pool = createPostgresPool({ mode: 'test', ...database, databaseUrl: url.toString(), databasePoolMax: 6 });
   await migrateUp(pool); await migrateDemoUp(pool, { roles });
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty029 before unchanged028/older guards.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty027 before unchanged026.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty overlay026 before025.
@@ -59,6 +60,7 @@ test('actual Customer reviewed versions retain the confirmed order until replace
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Passkey reset grants019.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Unsent grants018.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
+  assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
@@ -162,6 +164,7 @@ test('actual Customer reviewed versions retain the confirmed order until replace
   const originalSnapshot = JSON.stringify(original.order);
   assert.equal((await versionContext(orderId)).basis.orderVersion, 1);
   // All overlays require exact runtime readiness; revoke019/018/017 before canonical rollback.
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty029 before unchanged028/older guards.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty027 before unchanged026.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty overlay026 before025.
@@ -173,6 +176,7 @@ test('actual Customer reviewed versions retain the confirmed order until replace
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   await rollbackLatestDemoMigration(pool, { roles }); //019.
   await rollbackLatestDemoMigration(pool, { roles }); await rollbackLatestDemoMigration(pool, { roles }); //018/017.
+  assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
@@ -308,6 +312,7 @@ test('actual Customer reviewed versions retain the confirmed order until replace
     await assert.rejects(customer.query(statement), (error) => error.code === '42501');
     await assert.rejects(pool.query(statement), /CATERING_ORDER_HISTORY_APPEND_ONLY/);
   }
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty029 before unchanged028/older guards.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty027 before unchanged026.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty overlay026 before025.
@@ -319,6 +324,7 @@ test('actual Customer reviewed versions retain the confirmed order until replace
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   await rollbackLatestDemoMigration(pool, { roles }); //019 while canonical053 is ready.
   await rollbackLatestDemoMigration(pool, { roles }); //018 while canonical053 is ready.
+  assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
@@ -381,6 +387,7 @@ test('actual Customer reviewed versions retain the confirmed order until replace
     catering_delivery_observations,catering_delivery_attempts,catering_delivery_jobs,catering_order_version_states,
     catering_order_decisions,catering_order_quotes,catering_order_heads,catering_order_version_seals,catering_order_positions,
     catering_order_versions,catering_orders`);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty029 before unchanged028/older guards.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty027 before unchanged026.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty overlay026 before025.
@@ -392,6 +399,7 @@ test('actual Customer reviewed versions retain the confirmed order until replace
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   await rollbackLatestDemoMigration(pool, { roles }); //019 while canonical053 is ready.
   await rollbackLatestDemoMigration(pool, { roles }); //018 while canonical053 is ready.
+  assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
@@ -419,6 +427,7 @@ test('actual Customer reviewed versions retain the confirmed order until replace
   const reset = createPostgresDemoResetRepository({ pool: resetPool, expectedDatabaseName: name, expectedResetRole: roles.reset });
   assert.equal((await reset.reset({ fixture: DEMO_FIXTURE, checksum: DEMO_FIXTURE_CHECKSUM })).checksum, DEMO_FIXTURE_CHECKSUM);
   assert.equal((await pool.query('SELECT count(*)::integer AS n FROM catering_version_proposals')).rows[0].n, 0);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty029 before unchanged028/older guards.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty027 before unchanged026.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty overlay026 before025.
@@ -430,6 +439,7 @@ test('actual Customer reviewed versions retain the confirmed order until replace
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   await rollbackLatestDemoMigration(pool, { roles }); //019 before canonical rollback.
   await rollbackLatestDemoMigration(pool, { roles }); await rollbackLatestDemoMigration(pool, { roles }); //018/017.
+  assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.

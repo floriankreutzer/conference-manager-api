@@ -20,6 +20,9 @@ import {
 } from '../src/persistence/postgres/demo-reset-repository.js';
 
 const META_TABLES = Object.freeze([
+  'platform_audit_segments',
+  'platform_audit_segment_heads',
+  'platform_audit_segment_checkpoints',
   'schema_migrations',
   'demo_schema_migrations',
   'demo_database_sentinel',
@@ -37,7 +40,7 @@ function validSentinel(overrides = {}) {
     reset_role: 'demo_reset',
     current_database: 'conference_manager_demo_test',
     current_role: 'demo_reset',
-    production_schema_versions: Array.from({ length: 65 }, (_, index) => index + 1),
+    production_schema_versions: Array.from({ length: 66 }, (_, index) => index + 1),
     ...overrides,
   };
 }

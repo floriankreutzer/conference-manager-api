@@ -3,6 +3,7 @@ import { PLATFORM_HTTP_ROUTE } from './observability.js';
 import { definePlatformRouteModule } from './route-module.js';
 import { sendPlatformJson } from './response.js';
 import { assertNoPlatformRequestBody } from './security.js';
+import { projectPlatformAuditVerification } from '../audit/verification-context.js';
 
 export const PLATFORM_AUDIT_EVENTS_PATH = '/api/v1/platform/audit/events';
 export const PLATFORM_AUDIT_EXPORTS_PATH = '/api/v1/platform/audit/exports';
@@ -18,7 +19,8 @@ function auditQuery(parsedUrl) {
   const limit = parsedUrl.searchParams.get('limit');
   const beforeSequence = parsedUrl.searchParams.get('beforeSequence');
   if (limit !== null && (!/^[1-9]\d{0,2}$/.test(limit) || Number(limit) > 100)) invalid();
-  if (beforeSequence !== null && (!/^[2-9]\d*$/.test(beforeSequence) || !Number.isSafeInteger(Number(beforeSequence)))) {
+  if (beforeSequence !== null && (!/^[1-9]\d*$/.test(beforeSequence)
+    || !Number.isSafeInteger(Number(beforeSequence)) || Number(beforeSequence)<2)) {
     invalid();
   }
   return Object.freeze({
@@ -59,7 +61,11 @@ export const platformAuditRoutes = definePlatformRouteModule({
       if (!Array.isArray(items) || items.length > 100) {
         throw new PlatformHttpError(500, 'PLATFORM_AUDIT_RESULT_INVALID');
       }
-      sendPlatformJson(response, 200, Object.freeze({ schemaVersion: 1, items }), maxResponseBytes);
+      const verification=typeof platformAuditService.verificationContext==='function'
+        ? await platformAuditService.verificationContext({ principal,exporting: path===PLATFORM_AUDIT_EXPORTS_PATH }) : null;
+      const body=verification===null ? { schemaVersion: 1,items }
+        : { schemaVersion: 2,audit: projectPlatformAuditVerification(verification),items };
+      sendPlatformJson(response, 200, Object.freeze(body), maxResponseBytes);
       return 200;
     };
   },
