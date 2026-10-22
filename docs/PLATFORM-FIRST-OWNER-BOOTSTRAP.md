@@ -55,3 +55,48 @@ remain separate mandatory ceremonies. No business session or credential is issue
 Keep both services and business admission closed until the coordinated cutover
 requirements in `PROTECTED-INT-RUNTIME.md` are met. This document and software
 fixtures are source preparation, not live owner/device or restore acceptance.
+
+## Protected Actions execution option
+
+The owner may use `.github/workflows/protected-int-first-owner.yml` with the
+existing inspected Main-only `hosted-demo-initialize` environment and serialized
+database-operation group. This uses the previously approved signing-key custody;
+it does not establish or widen an approval, identity verification or release claim.
+Accept the exact immutable source and all required gates before dispatch.
+Independently verify the actual Microsoft directory/object identity, matching
+Platform profile, signed audit segment and incremental runtime grants first.
+Keep both services closed. Never infer the identity from email or a portal label.
+
+The only public input is `expected_main_sha`. Owner actor and triggering actor,
+Main, attempt1, ordinary logging, pinned actions, checkout without credentials,
+Node22 and locked installation before operation secrets remain mandatory.
+The guard binds an exact private request to independently configured identity,
+deployment, segment and a protected identity-evidence reference. It attests only
+binding/presence, not the truth of identity verification or closed services.
+The existing canonical offline CLI remains the only writer and rechecks the
+source ledger, owner login/catalog, current deployment, signed segment and absent
+real-operator/bootstrap history before its atomic operator/audit/outbox commit.
+
+Reuse environment secrets `HOSTED_DEMO_MIGRATION_DATABASE_URL` and
+`CM_INT_AUDIT_PLATFORM_DATABASE_URL`, `CM_INT_AUDIT_HMAC_SECRET`,
+`CM_INT_AUDIT_OFFLINE_ROLE`, `CM_INT_AUDIT_SECURITY_REVISION`,
+`CM_INT_AUDIT_SEGMENT_ID`, `CM_INT_AUDIT_DEPLOYMENT_EPOCH`. Add only environment
+secrets `CM_INT_OWNER_DIRECTORY_ID`, `CM_INT_OWNER_SUBJECT_ID`,
+`CM_INT_OWNER_REQUEST_JSON` (the canonical six-field request above) and
+`CM_INT_OWNER_EVIDENCE`. Evidence contains exactly `sourceSha`, `environment`,
+`deploymentEpoch`, `segmentId`, `identityReference`, `servicesClosed`;
+source/deployment/segment match this operation, environment is `int`, servicesClosed
+is true, and identityReference is an actually reviewed bounded evidence reference.
+Never put personal directory/object identifiers in source, workflow inputs,
+variables, logs or public artifacts. Never invent evidence or reuse it unchecked
+after a source/deployment/identity change.
+
+Private CLI output is suppressed; success emits only
+`PROTECTED_INT_FIRST_OWNER_SUCCEEDED`. A failure exposes fixed refusal codes.
+No automatic retry, migration, role installation, passkey grant, credential,
+business session, service start or traffic admission is provided. Inspect actual
+operator/audit/outbox state after every result, including failure or lost output,
+before any new dispatch; GitHub re-runs are refused. Remove temporary owner
+request/identity/evidence secrets after the controlled operation while preserving
+required runtime signing/recovery custody. Actual Microsoft application login,
+two owner-controlled keys and recovery remain separate mandatory ceremonies.
