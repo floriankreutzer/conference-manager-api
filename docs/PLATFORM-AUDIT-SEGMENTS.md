@@ -103,7 +103,7 @@ metadata. Do not use repository-wide secrets or public workflow variables:
 
 | Environment secret | Contract |
 | --- | --- |
-| `HOSTED_DEMO_MIGRATION_DATABASE_URL` | Existing independently authenticated catalog-owner URL; verified TLS |
+| `CM_INT_AUDIT_OFFLINE_DATABASE_URL` | Existing independently authenticated catalog-owner URL; verified TLS; dedicated INT operation carrier |
 | `CM_INT_AUDIT_PLATFORM_DATABASE_URL` | Existing restricted Platform runtime URL for the same database; distinct role |
 | `CM_INT_AUDIT_HMAC_SECRET` | Actual current Platform signing key; not a Tenant key or test/parser key |
 | `CM_INT_AUDIT_OFFLINE_ROLE` | Existing catalog-owner role |
@@ -115,6 +115,16 @@ metadata. Do not use repository-wide secrets or public workflow variables:
 | `CM_INT_AUDIT_EXPECTED_JSON` | Independent closed object: environment, segmentId, deploymentEpoch, legacyEventCount, inventoryDigest |
 | `CM_INT_AUDIT_REQUEST_JSON` | Exact canonical initializer or incremental-grants request, depending on the selected operation |
 | `CM_INT_AUDIT_RECOVERY_EVIDENCE` | Closed private attestation described below |
+
+Provision the dedicated offline URL and restricted Platform URL against the same
+independently verified direct endpoint/database. Their protocol, host (including
+any explicit port) and pathname must match exactly; their existing SQL roles must
+remain distinct. Do not substitute a pooled or differently formatted URL merely
+because it reaches the same provider endpoint. The unchanged native configuration
+validator refuses mismatches before connecting. A missing dedicated secret fails
+closed; there is no fallback to a Demo credential carrier. Preserve all four
+`HOSTED_DEMO_*_DATABASE_URL` secrets and their mutually bound Demo/recovery target.
+The dedicated carrier neither creates a SQL role nor grants any new permission.
 
 Recovery evidence contains exactly `sourceSha`, `environment`, `deploymentEpoch`,
 `restoreReference`, `custodyReference`, `servicesClosed`. Source and epoch must

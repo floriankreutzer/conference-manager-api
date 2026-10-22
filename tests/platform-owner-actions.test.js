@@ -82,6 +82,8 @@ test('first-owner workflow keeps identity on FD3, suppresses CLI receipts and re
     assert.doesNotMatch(workflow, /pull_request_target:|upload-artifact|GITHUB_ENV|GITHUB_OUTPUT|vars\.CM_INT_OWNER/);
     assert.ok(workflow.indexOf('Require ordinary logging') < workflow.indexOf('secrets.CM_INT_AUDIT_HMAC_SECRET'));
     assert.match(workflow, /persist-credentials: false/);
+    assert.match(workflow, /PLATFORM_PASSKEY_OFFLINE_DATABASE_URL: \$\{\{ secrets\.CM_INT_AUDIT_OFFLINE_DATABASE_URL \}\}/);
+    assert.doesNotMatch(workflow, /HOSTED_DEMO_.*DATABASE_URL/);
     assert.match(workflow, /group: hosted-shared-demo-database-initialize/);
     assert.doesNotMatch(workflow, /platform-passkey-offline-grant|db-migrate|demo-reset|start:protected/);
   } finally { rmSync(directory, { recursive: true, force: true }); }
