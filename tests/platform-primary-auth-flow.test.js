@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import test from 'node:test';
+import { PlatformIdentityError } from '../src/platform/identity/errors.js';
 import { createPlatformEntraPrimaryAuthService } from '../src/platform/identity/entra-auth-service.js';
 import { readPlatformEntraTransactionCookie } from '../src/platform/identity/entra-transaction-cookie.js';
 
-function fixture() {
+function fixture({ redeemFailure = null } = {}) {
   const transactions = new Map();
   const calls = { redeem: 0, startPasskey: 0, failures: [], contexts: [], consumed: 0 };
   let transaction = null; let result = { status: 'passkey_required', state: 'pending', options: {}, setCookie: 'preauth-cookie' };
@@ -30,6 +31,7 @@ function fixture() {
         calls.redeem += 1;
         assert.equal(value.authenticationContext, undefined);
         assert.equal(value.expectedNonceHash, transaction.nonceHash);
+        if (redeemFailure) throw redeemFailure;
         return primaryAssertion;
       },
     },
@@ -100,4 +102,36 @@ test('verified primary can return only pending independent enrollment when no ke
   f.setResult({ status: 'enrollment_required', state: 'pending', setCookie: 'preauth-cookie' });
   assert.equal((await f.service.complete(input)).status, 'enrollment_required');
   assert.equal(f.calls.startPasskey, 1);
+});
+
+test('primary redemption audit separates exchange, nonce and freshness failures without opening a passkey flow', async () => {
+  for (const [code, reasonCode] of [
+    ['PLATFORM_ENTRA_CODE_REDEMPTION_FAILED', 'provider_code_exchange_failed'],
+    ['PLATFORM_ENTRA_NONCE_INVALID', 'provider_nonce_invalid'],
+    ['PLATFORM_ENTRA_AUTHENTICATION_TIME_INVALID', 'provider_authentication_time_invalid'],
+    ['PLATFORM_ENTRA_AUTHENTICATION_NOT_FRESH', 'provider_authentication_not_fresh'],
+    ['PLATFORM_ISSUER_MISMATCH', 'provider_issuer_mismatch'],
+  ]) {
+    const failure = new PlatformIdentityError(code);
+    const f = fixture({ redeemFailure: failure }); const input = await f.start();
+    await assert.rejects(f.service.complete(input), error => error === failure);
+    assert.deepEqual(f.calls.failures, [{ correlationId: f.record().correlationId, reasonCode }]);
+    assert.equal(f.calls.startPasskey, 0);
+    assert.equal(f.calls.redeem, 1);
+    await assert.rejects(f.service.complete(input), /OIDC_STATE_INVALID/);
+    assert.equal(f.calls.redeem, 1);
+  }
+});
+
+test('unknown, forged and prototype-named provider errors retain only the fixed generic audit reason', async () => {
+  for (const failure of [new Error('SYNTHETIC_PRIVATE_PROVIDER_PAYLOAD'),
+    { code: 'PLATFORM_ENTRA_NONCE_INVALID', message: 'SYNTHETIC_PRIVATE_PROVIDER_PAYLOAD' },
+    new PlatformIdentityError('__proto__'), new PlatformIdentityError('constructor'),
+    new PlatformIdentityError('SYNTHETIC_PRIVATE_PROVIDER_PAYLOAD')]) {
+    const f = fixture({ redeemFailure: failure }); const input = await f.start();
+    await assert.rejects(f.service.complete(input), error => error === failure);
+    assert.deepEqual(f.calls.failures, [{ correlationId: f.record().correlationId, reasonCode: 'provider_redeem_failed' }]);
+    assert.equal(JSON.stringify(f.calls.failures).includes('SYNTHETIC_PRIVATE_PROVIDER_PAYLOAD'), false);
+    assert.equal(f.calls.startPasskey, 0);
+  }
 });
