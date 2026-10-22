@@ -1,5 +1,61 @@
 # Platform passkey assurance
 
+## Protected INT encrypted initial-grant transport
+
+The optional `protected-int-passkey-bootstrap.yml` workflow calls the unchanged
+canonical offline grant CLI for **bootstrap only**, after the first real owner
+exists. It does not implement recovery, create an owner, enroll a key, start a
+service or issue a business session. Actual Microsoft primary, two owner-controlled
+keys and recovery remain separate required operating evidence.
+
+Use the already inspected Main-only environment and serialized database-operation
+group. Owner/triggering owner, exact accepted Main, attempt1, ordinary logging,
+pinned actions, checkout without credentials and locked Node22 install before
+operation-secret allocation are required. Provision the existing dedicated owner
+and distinct Platform connections/signing/segment/epoch secrets; preserve Demo
+connection carriers. Temporary owner directory/subject bindings are reused.
+
+Add private environment secrets `CM_INT_PASSKEY_OPERATOR_ID`,
+`CM_INT_PASSKEY_OPERATOR_VERSION`, `CM_INT_PASSKEY_REQUEST_JSON`,
+`CM_INT_PASSKEY_EVIDENCE`, `CM_INT_PASSKEY_RECIPIENT_PUBLIC_KEY` and
+`CM_INT_PASSKEY_RECIPIENT_SHA256`. The canonical request is exact, INT, bootstrap,
+900 seconds and bound to the independently verified operator/provider identity
+and positive integer Platform epoch. Evidence contains exactly sourceSha,
+environment, deploymentEpoch, segmentId, operatorId, identityReference,
+custodyReference and servicesClosed; reconcile each with actual protected evidence
+and keep both services closed during issuance. Binding validation does not prove
+that an attested ceremony or closed-service observation actually occurred.
+
+Generate an ephemeral RSA4096 public/private pair in the approved recipient's
+private administrative custody. Independently retain its SHA256 SPKI DER fingerprint;
+only the public SPKI PEM and fingerprint enter the environment. No private
+recipient key enters Actions, source, logs or artifacts. The transport validates
+key type, size, exponent, fingerprint and encryption usability before any writer.
+RSA-OAEP/SHA256 binds its label to the fixed transport version, accepted source,
+request correlation, operator/version, INT/integer epoch, segment, deployment UUID
+and recipient fingerprint. Decryption must use that exact privately retained label
+and key, then feed the canonical grant only to the same-origin enrollment form.
+Never put the raw grant in URLs, browser storage, public logs, email or Confluence.
+Loss of the ephemeral private key makes the artifact unusable; it is not recovery
+custody or an authenticator.
+
+The canonical FD3 request and FD4 grant use bounded private subprocess pipes.
+Standard output/error from the native CLI are suppressed. No plaintext grant file
+is written. Only the RSA ciphertext and fixed format marker are written under the
+private runner temporary directory and uploaded as `protected-int-passkey-bootstrap`
+with one-day retention; the runner copy is removed afterwards. Public output has
+only a fixed success/refusal marker. Artifact name/existence or upload success is
+not enrollment, delivery to the intended browser, or private-key-possession proof.
+
+If issuance commits but encryption/upload/decryption/delivery fails, inspect actual
+grant/audit state first. Do not retry a GitHub run or claim rollback. A separately
+reviewed fresh issuance can revoke the older outstanding bootstrap grant through
+the existing CLI; it cannot recover or reactivate a credential. Remove temporary
+request/evidence/recipient bindings after the controlled ceremony while preserving
+required runtime and independent audit-key recovery custody. Dispatch only when
+the exact source and all required gates are accepted; source tests use synthetic
+transport keys and never establish an owner's real WebAuthn device enrollment.
+
 ## Current source status — 21 October 2026
 
 The owned [protected Platform process](PROTECTED-PLATFORM-RUNTIME.md) now composes
