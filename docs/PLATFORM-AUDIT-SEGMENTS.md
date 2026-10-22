@@ -141,6 +141,13 @@ Private CLI success payloads are suppressed; public logs expose only a fixed
 success marker or fixed refusal code. No request, environment dump, key file or
 private artifact is created. Success proves only the selected CLI returned
 success, not deployed readiness, actual identity/devices or release acceptance.
+The initializer preserves its generic refusal marker and adds one fixed
+`PLATFORM_AUDIT_STAGE_*_REFUSED` code for arguments, configuration (including
+mode, owner configuration, URL/binding, security revision or signing key),
+request, connection, schema, ledger or initialization. These codes identify a
+check boundary, never a raw exception, value or proof of the underlying cause.
+After any refusal, reconcile actual database state before a new dispatch;
+stage information never permits an automatic retry or relaxed validation.
 Keep the protected evidence separately and remove temporary operation-request
 secrets after the controlled operation. Do not remove a key's independent recovery
 custody or the runtime's required key merely as workflow cleanup.
