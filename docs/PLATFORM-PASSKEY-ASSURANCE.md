@@ -17,6 +17,14 @@ required auth_time ID-token output must be available from the identity provider;
 explicit Entra optional-claim configuration is operating evidence, not proof that
 a particular received token passed validation.
 
+Primary time diagnostics distinguish the existing 24-hour future-expiry bound,
+negative issuance/authentication timestamps, expiry versus issuance ordering and
+authentication versus issuance ordering. Each predicate and its original boundary
+remain unchanged, including the 60-second authentication/issuance allowance.
+Only fixed error/audit classes differ; no timestamp, delta, token or provider
+payload is logged. A general token-time rejection alone does not identify which
+predicate failed and must not justify changing freshness or clock-skew limits.
+
 ## Microsoft callback metadata
 
 The Platform Microsoft callback accepts optional success-response `client_info`

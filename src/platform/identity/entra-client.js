@@ -287,10 +287,11 @@ function createClient({
         clock,
       });
       if (primaryOnly) {
-        if (result.idTokenClaims.exp > Math.floor(clock() / 1000) + 86400
-          || result.idTokenClaims.iat < 0 || result.idTokenClaims.auth_time < 0
-          || result.idTokenClaims.exp <= result.idTokenClaims.iat
-          || result.idTokenClaims.auth_time > result.idTokenClaims.iat + 60) fail('PLATFORM_ENTRA_TOKEN_TIME_INVALID');
+        if (result.idTokenClaims.exp > Math.floor(clock() / 1000) + 86400) fail('PLATFORM_ENTRA_TOKEN_LIFETIME_INVALID');
+        if (result.idTokenClaims.iat < 0) fail('PLATFORM_ENTRA_ISSUED_AT_NEGATIVE');
+        if (result.idTokenClaims.auth_time < 0) fail('PLATFORM_ENTRA_AUTHENTICATION_TIME_NEGATIVE');
+        if (result.idTokenClaims.exp <= result.idTokenClaims.iat) fail('PLATFORM_ENTRA_TOKEN_EXPIRY_ORDER_INVALID');
+        if (result.idTokenClaims.auth_time > result.idTokenClaims.iat + 60) fail('PLATFORM_ENTRA_AUTHENTICATION_ORDER_INVALID');
         const assertion = Object.freeze({ status: 'primary_verified' });
         primaryAssertions.set(assertion, { identity: claims, expiresAt: result.idTokenClaims.exp * 1000 });
         return assertion;
