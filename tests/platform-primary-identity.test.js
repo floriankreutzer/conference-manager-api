@@ -147,7 +147,32 @@ test('primary provider errors reveal neither raw payload nor secrets and token e
   const assertion = await expiring.redeemAuthorizationCode(redeem);
   now += 11000;
   await assert.rejects(expiring.verifyPrimary(assertion), /EXPIRED/);
-  await assert.rejects(primary({ ...tokenClaims(), exp: NOW / 1000 + 86401 }).redeemAuthorizationCode(redeem), /TIME_INVALID/);
+  await assert.rejects(primary({ ...tokenClaims(), exp: NOW / 1000 + 86401 }).redeemAuthorizationCode(redeem),
+    { code: 'PLATFORM_ENTRA_TOKEN_LIFETIME_INVALID' });
+});
+
+test('primary time failures retain exact predicates, bounds and fixed non-secret error codes', async () => {
+  const seconds = NOW / 1000;
+  for (const [changes, code, clock] of [
+    [{ exp: seconds + 86401 }, 'PLATFORM_ENTRA_TOKEN_LIFETIME_INVALID'],
+    [{ iat: -1 }, 'PLATFORM_ENTRA_ISSUED_AT_NEGATIVE'],
+    [{ auth_time: -1, iat: 0, exp: 60 }, 'PLATFORM_ENTRA_AUTHENTICATION_TIME_NEGATIVE', () => 0],
+    [{ iat: seconds + 60, exp: seconds + 60 }, 'PLATFORM_ENTRA_TOKEN_EXPIRY_ORDER_INVALID'],
+    [{ iat: seconds - 91 }, 'PLATFORM_ENTRA_AUTHENTICATION_ORDER_INVALID'],
+  ]) {
+    await assert.rejects(primary({ ...tokenClaims(), ...changes }, clock ? { clock } : {})
+      .redeemAuthorizationCode(redeem), error => {
+      assert.equal(error.code, code); assert.equal(error.message, code);
+      assert.equal(error.cause, undefined); return true;
+    });
+  }
+  for (const changes of [{ exp: seconds + 86400 }, { iat: seconds - 90 }]) {
+    const client = primary({ ...tokenClaims(), ...changes });
+    assert.deepEqual(await client.verifyPrimary(await client.redeemAuthorizationCode(redeem)), {
+      provider: 'microsoft_entra_platform', issuer: `${AUTHORITY}/v2.0`, audience: CLIENT,
+      tenantReference: DIRECTORY, subjectReference: SUBJECT, authenticatedAt: new Date(NOW - 30_000).toISOString(),
+    });
+  }
 });
 
 test('Demo graphs cannot reach pending primary operator identity through an intermediary', () => {

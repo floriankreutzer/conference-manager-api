@@ -111,6 +111,11 @@ test('primary redemption audit separates exchange, nonce and freshness failures 
     ['PLATFORM_ENTRA_AUTHENTICATION_TIME_INVALID', 'provider_authentication_time_invalid'],
     ['PLATFORM_ENTRA_AUTHENTICATION_NOT_FRESH', 'provider_authentication_not_fresh'],
     ['PLATFORM_ISSUER_MISMATCH', 'provider_issuer_mismatch'],
+    ['PLATFORM_ENTRA_TOKEN_LIFETIME_INVALID', 'provider_token_lifetime_invalid'],
+    ['PLATFORM_ENTRA_ISSUED_AT_NEGATIVE', 'provider_issued_at_negative'],
+    ['PLATFORM_ENTRA_AUTHENTICATION_TIME_NEGATIVE', 'provider_authentication_time_negative'],
+    ['PLATFORM_ENTRA_TOKEN_EXPIRY_ORDER_INVALID', 'provider_token_expiry_order_invalid'],
+    ['PLATFORM_ENTRA_AUTHENTICATION_ORDER_INVALID', 'provider_authentication_order_invalid'],
   ]) {
     const failure = new PlatformIdentityError(code);
     const f = fixture({ redeemFailure: failure }); const input = await f.start();
