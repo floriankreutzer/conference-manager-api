@@ -82,6 +82,69 @@ cannot authorize a new protected synthetic handoff. Empty schema 66 can be
 rolled back; a populated segment refuses rollback and requires reviewed recovery.
 Do not reset the database or disable integrity triggers to make rollback pass.
 
+## Protected Actions execution option
+
+The owner may select `.github/workflows/protected-int-audit-segment.yml` instead
+of an owner-controlled Admin computer. This changes signing-secret custody and
+must be explicitly approved. It does not waive restore, independent key recovery,
+source qualification, retained migration or closed-traffic requirements.
+
+The manual workflow uses the existing `hosted-demo-initialize` protected
+environment and database-operation concurrency group. Before provisioning its
+secrets, independently inspect that environment's actual protection and Main-only
+deployment policy; workflow YAML alone does not establish those protections.
+Only the repository owner may dispatch attempt 1 on the exact accepted Main SHA.
+Pinned actions, disabled checkout credential persistence, Node22 and a locked
+install execute before allocation of the operation secrets. Debug logging refuses
+execution. Neither request JSON nor credentials are dispatch inputs.
+
+All following values belong in **environment secrets**, including private
+metadata. Do not use repository-wide secrets or public workflow variables:
+
+| Environment secret | Contract |
+| --- | --- |
+| `HOSTED_DEMO_MIGRATION_DATABASE_URL` | Existing independently authenticated catalog-owner URL; verified TLS |
+| `CM_INT_AUDIT_PLATFORM_DATABASE_URL` | Existing restricted Platform runtime URL for the same database; distinct role |
+| `CM_INT_AUDIT_HMAC_SECRET` | Actual current Platform signing key; not a Tenant key or test/parser key |
+| `CM_INT_AUDIT_OFFLINE_ROLE` | Existing catalog-owner role |
+| `CM_INT_AUDIT_SECURITY_REVISION` | Existing positive integer Platform security revision |
+| `CM_INT_AUDIT_SEGMENT_ID` | Reviewed lowercase UUID |
+| `CM_INT_AUDIT_DEPLOYMENT_EPOCH` | Exact existing INT deployment UUID |
+| `CM_INT_AUDIT_LEGACY_EVENT_COUNT` | Independently reconciled canonical decimal inventory count |
+| `CM_INT_AUDIT_INVENTORY_DIGEST` | Independently reconciled lowercase SHA256 inventory digest |
+| `CM_INT_AUDIT_EXPECTED_JSON` | Independent closed object: environment, segmentId, deploymentEpoch, legacyEventCount, inventoryDigest |
+| `CM_INT_AUDIT_REQUEST_JSON` | Exact canonical initializer or incremental-grants request, depending on the selected operation |
+| `CM_INT_AUDIT_RECOVERY_EVIDENCE` | Closed private attestation described below |
+
+Recovery evidence contains exactly `sourceSha`, `environment`, `deploymentEpoch`,
+`restoreReference`, `custodyReference`, `servicesClosed`. Source and epoch must
+match the accepted Main and reviewed operation, environment must be `int`,
+servicesClosed must be true and both references must identify actually reviewed
+protected evidence. References use the existing bounded approval-reference
+character set. The gate validates binding and presence, **not the truth of a
+restore**. Never populate this attestation from a snapshot receipt, CI fixture,
+empty claim or an unexecuted plan. A change in source/epoch requires renewed
+evidence reconciliation, not automatic rewriting of the references.
+
+First complete the existing retained66/29 migration and owner inventory gate.
+Dispatch `initialize` with only `expected_main_sha` and `operation`. The guard
+reuses the canonical closed request validator and invokes the existing initializer
+with the private request on FD3. Then reconcile the actual atomic result before
+preparing the separate exact three-field grants request and dispatching `grants`.
+No batch continuation, automatic retry, fresh-role installation, migration/reset,
+owner bootstrap, key generation or service start is performed by this workflow.
+The existing CLIs retain owner, ledger, signature, transaction and connection
+checks. GitHub re-runs are refused; an uncertain result requires independent
+state inspection before any new dispatch.
+
+Private CLI success payloads are suppressed; public logs expose only a fixed
+success marker or fixed refusal code. No request, environment dump, key file or
+private artifact is created. Success proves only the selected CLI returned
+success, not deployed readiness, actual identity/devices or release acceptance.
+Keep the protected evidence separately and remove temporary operation-request
+secrets after the controlled operation. Do not remove a key's independent recovery
+custody or the runtime's required key merely as workflow cleanup.
+
 ## Read/export contract
 
 Version 1 responses remain `{schemaVersion: 1, items}` for unchanged legacy/Demo

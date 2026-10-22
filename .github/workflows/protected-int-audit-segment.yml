@@ -1,0 +1,81 @@
+name: Protected INT audit segment
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_main_sha:
+        description: Exact accepted Main commit; private operation records belong in the protected environment
+        required: true
+        type: string
+      operation:
+        description: One operation only; initialization is never automatically retried
+        required: true
+        type: choice
+        options: [initialize, grants]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosted-shared-demo-database-initialize
+  cancel-in-progress: false
+
+jobs:
+  operate:
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+      inputs.expected_main_sha == github.sha && github.actor == 'floriankreutzer' &&
+      github.triggering_actor == 'floriankreutzer' && github.run_attempt == 1
+    environment:
+      name: hosted-demo-initialize
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require ordinary logging before secret allocation
+        env:
+          ACTIONS_STEP_DEBUG: ${{ secrets.ACTIONS_STEP_DEBUG }}
+          ACTIONS_RUNNER_DEBUG: ${{ secrets.ACTIONS_RUNNER_DEBUG }}
+        run: test -z "${RUNNER_DEBUG:-}${ACTIONS_STEP_DEBUG:-}${ACTIONS_RUNNER_DEBUG:-}"
+      - name: Checkout exact accepted Main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify checkout before dependency installation
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_MAIN_SHA"
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Install locked dependencies without operator secrets
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Execute one checked offline operation without private output
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          INT_AUDIT_OPERATION: ${{ inputs.operation }}
+          NODE_ENV: pilot
+          DEPLOYMENT_ENVIRONMENT: int
+          PLATFORM_SECURITY_EPOCH: ${{ secrets.CM_INT_AUDIT_SECURITY_REVISION }}
+          PLATFORM_PASSKEY_OFFLINE_ROLE: ${{ secrets.CM_INT_AUDIT_OFFLINE_ROLE }}
+          PLATFORM_PASSKEY_OFFLINE_DATABASE_URL: ${{ secrets.HOSTED_DEMO_MIGRATION_DATABASE_URL }}
+          PLATFORM_DATABASE_URL: ${{ secrets.CM_INT_AUDIT_PLATFORM_DATABASE_URL }}
+          PLATFORM_AUDIT_HMAC_SECRET: ${{ secrets.CM_INT_AUDIT_HMAC_SECRET }}
+          PLATFORM_AUDIT_SEGMENT_ID: ${{ secrets.CM_INT_AUDIT_SEGMENT_ID }}
+          PLATFORM_AUDIT_SEGMENT_DEPLOYMENT_EPOCH: ${{ secrets.CM_INT_AUDIT_DEPLOYMENT_EPOCH }}
+          PLATFORM_AUDIT_SEGMENT_LEGACY_EVENT_COUNT: ${{ secrets.CM_INT_AUDIT_LEGACY_EVENT_COUNT }}
+          PLATFORM_AUDIT_SEGMENT_INVENTORY_DIGEST: ${{ secrets.CM_INT_AUDIT_INVENTORY_DIGEST }}
+          CM_INT_AUDIT_EXPECTED_JSON: ${{ secrets.CM_INT_AUDIT_EXPECTED_JSON }}
+          CM_INT_AUDIT_REQUEST_JSON: ${{ secrets.CM_INT_AUDIT_REQUEST_JSON }}
+          CM_INT_AUDIT_RECOVERY_EVIDENCE: ${{ secrets.CM_INT_AUDIT_RECOVERY_EVIDENCE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/platform-audit-actions-guard.mjs
+          case "$INT_AUDIT_OPERATION" in
+            initialize) node scripts/platform-audit-segment-initialize.mjs 3<<<"$CM_INT_AUDIT_REQUEST_JSON" >/dev/null ;;
+            grants) node scripts/platform-audit-segment-runtime-grants.mjs 3<<<"$CM_INT_AUDIT_REQUEST_JSON" >/dev/null ;;
+            *) exit 1 ;;
+          esac
+          echo 'PROTECTED_INT_AUDIT_OPERATION_SUCCEEDED'
