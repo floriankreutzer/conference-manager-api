@@ -162,6 +162,12 @@ the reviewed destination, not the truth of a provider restore or closed traffic.
 Source SHA must equal accepted Main and servicesClosed must be true. Branches
 must differ. Direct Neon endpoints must differ even through legacy/proxy aliases,
 belong to the same AWS region, and exclude pooled/arbitrary/redirect destinations.
+The private source reference denotes the direct source endpoint. Previously saved
+source URL carriers may use its legacy, proxy or pooler alias; all four must still
+resolve to the same source target under the existing configuration validator.
+Endpoint ID and region must match the independent source reference. Retargeting
+always uses the different, independently reconciled direct destination. A pooled
+destination or any alias of the original endpoint still refuses before connection.
 Keep this private metadata out of repository files, variables and dispatch inputs.
 
 The existing four `HOSTED_DEMO_*_DATABASE_URL` environment secrets remain unchanged.
@@ -178,6 +184,15 @@ native PostgreSQL gate remains authoritative for owner identity, exact ledgers,
 runtime advisory exclusion, versioned migrations and retained counts. The wrapper
 does not implement SQL or a second migration policy. A child error, timeout,
 incomplete/contradictory receipt or debug/PG override refuses with fixed output.
+Refusals distinguish only the fixed context, binding, runner, source, target,
+native and receipt stages. No exception text, field value, URL or driver detail is
+forwarded. On success, two optional fixed markers identify same-source alias
+normalization and discarded runner toolchain metadata. These reveal no identifiers.
+Only `PG_CONFIG`, `PGBIN`, `PGROOT`, `PGDATA` and `PG_VERSION` are recognized as
+non-client toolchain metadata and removed before invoking the JavaScript driver.
+All other populated PG-prefixed environment values still refuse. The pinned
+driver's connection parameters do not consume those five toolchain keys; no
+client/SSL/credential override is permitted or forwarded.
 No automatic retry occurs, including after a possible partial migration commit.
 Reconcile actual ledger/audit fingerprints and immutable source after execution;
 the fixed public success marker alone is not full recovery acceptance. Then remove

@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { restoredMigrationEnvironment, runRestoredMigration } from '../scripts/support/restored-migration-environment.mjs';
+import { restoredMigrationEnvironment, runRestoredMigration,
+  restoredMigrationFailureCode } from '../scripts/support/restored-migration-environment.mjs';
 
 const sourceHost = 'ep-source-unit.eu-central-1.aws.neon.tech';
 const targetHost = 'ep-restored-unit.c-5.eu-central-1.aws.neon.tech';
@@ -28,7 +29,7 @@ function context() {
 
 test('restore transport retargets all four existing roles without mutating credentials or the source configuration', () => {
   const env = context(), original = structuredClone(env);
-  const prepared = restoredMigrationEnvironment(env);
+  const prepared = restoredMigrationEnvironment(env).env;
   for (const key of urlKeys) {
     const before = new URL(env[key]), after = new URL(prepared[key]);
     assert.equal(after.hostname, targetHost);
@@ -53,8 +54,11 @@ test('restore refuses other actors, reruns, source/debug overrides and malformed
     { DEMO_CUSTOMER_DATABASE_URL: context().DEMO_CUSTOMER_DATABASE_URL + '?sslmode=disable' }];
   for (const patch of invalid) {
     let invoked = false;
+    const key = Object.keys(patch)[0];
+    const stage = /^(?:GITHUB_|EXPECTED_|RUNNER_|ACTIONS_|NODE_OPTIONS)/.test(key) ? 'CONTEXT'
+      : key === 'PGSSLMODE' ? 'RUNNER' : key === 'CM_INT_RESTORE_REQUEST_JSON' ? 'BINDING' : 'SOURCE';
     assert.throws(() => runRestoredMigration({ ...context(), ...patch }, () => { invoked = true; }),
-      { message: 'RESTORED_MIGRATION_REFUSED' });
+      { message: `RESTORED_MIGRATION_${stage}_REFUSED` });
     assert.equal(invoked, false);
   }
 });
@@ -68,7 +72,8 @@ test('restore refuses the same endpoint through aliases, foreign regions, arbitr
     { targetHost: targetHost + ':5432' }, { targetHost: targetHost.toUpperCase() },
     { targetHost: 'ep-restored-unit-pooler.c-5.eu-central-1.aws.neon.tech' }]) {
     assert.throws(() => restoredMigrationEnvironment({ ...context(),
-      CM_INT_RESTORE_REQUEST_JSON: JSON.stringify({ ...request, ...patch }) }), { message: 'RESTORED_MIGRATION_REFUSED' });
+      CM_INT_RESTORE_REQUEST_JSON: JSON.stringify({ ...request, ...patch }) }),
+    { message: `RESTORED_MIGRATION_${Object.hasOwn(patch, 'sourceHost') ? 'SOURCE' : 'BINDING'}_REFUSED` });
   }
 });
 
@@ -90,16 +95,18 @@ test('restore delegates only to the canonical bounded migration and accepts only
     { status: 0, signal: 'SIGTERM' }, { status: 0, stdout: 'PRIVATE_PAYLOAD' }, { status: 0, stdout: 'null' },
     ...[{ retainedCountsMatch: false }, { resetPerformed: true }, { canonicalVersion: 65 }, { demoVersion: 28 },
       { extra: 'PRIVATE_DETAIL' }].map(patch => ({ status: 0, stdout: JSON.stringify({ ...receipt, ...patch }) }))]) {
-    assert.throws(() => runRestoredMigration(context(), () => result), { message: 'RESTORED_MIGRATION_REFUSED' });
+    const stage = result.error || result.signal || result.status !== 0 ? 'NATIVE' : 'RECEIPT';
+    assert.throws(() => runRestoredMigration(context(), () => result), { message: `RESTORED_MIGRATION_${stage}_REFUSED` });
   }
 });
 
 test('restore CLI emits only fixed refusal and workflow allocates no database secrets during install', () => {
-  for (const env of [{ ...context(), GITHUB_RUN_ATTEMPT: '2' }, { ...context(), CM_INT_RESTORE_REQUEST_JSON: 'PRIVATE_DETAIL' }]) {
+  for (const [env, stage] of [[{ ...context(), GITHUB_RUN_ATTEMPT: '2' }, 'CONTEXT'],
+    [{ ...context(), CM_INT_RESTORE_REQUEST_JSON: 'PRIVATE_DETAIL' }, 'BINDING']]) {
     const result = spawnSync(process.execPath, ['scripts/restored-migration.mjs'], { env, encoding: 'utf8' });
     assert.equal(result.status, 1);
     assert.equal(result.stdout, '');
-    assert.equal(result.stderr, 'RESTORED_MIGRATION_REFUSED\n');
+    assert.equal(result.stderr, `RESTORED_MIGRATION_${stage}_REFUSED\n`);
   }
   const workflow = readFileSync('.github/workflows/protected-int-restore-migrate.yml', 'utf8');
   assert.ok(workflow.indexOf('npm ci --ignore-scripts') < workflow.indexOf('secrets.HOSTED_DEMO_MIGRATION_DATABASE_URL'));
@@ -107,4 +114,47 @@ test('restore CLI emits only fixed refusal and workflow allocates no database se
   assert.match(workflow, /persist-credentials: false/);
   assert.match(workflow, /group: hosted-shared-demo-database-initialize/);
   assert.match(workflow, /name: hosted-demo-initialize/);
+});
+
+test('restore accepts only equivalent saved source aliases and always selects a different direct destination', () => {
+  for (const alias of [sourceHost, 'ep-source-unit.c-5.eu-central-1.aws.neon.tech',
+    'ep-source-unit-pooler.eu-central-1.aws.neon.tech', 'ep-source-unit-pooler.c-5.eu-central-1.aws.neon.tech']) {
+    const env = context();
+    for (const key of urlKeys) env[key] = env[key].replace(sourceHost, alias);
+    const prepared = restoredMigrationEnvironment(env);
+    assert.equal(prepared.normalizedSourceAlias, alias !== sourceHost);
+    for (const key of urlKeys) assert.equal(new URL(prepared.env[key]).hostname, targetHost);
+  }
+  for (const alias of ['ep-other-source.c-5.eu-central-1.aws.neon.tech',
+    'ep-source-unit-pooler.eu-west-1.aws.neon.tech', 'ep-source-unit.eu-central-1.aws.neon.tech.evil.invalid']) {
+    const env = context();
+    for (const key of urlKeys) env[key] = env[key].replace(sourceHost, alias);
+    assert.throws(() => restoredMigrationEnvironment(env), { message: 'RESTORED_MIGRATION_SOURCE_REFUSED' });
+  }
+});
+
+test('restore discards only known non-client toolchain metadata while client, SSL and unknown PG settings still refuse', () => {
+  const toolchain = { PG_CONFIG: '/usr/bin/pg_config', PGBIN: '/usr/bin', PGROOT: '/usr/lib/postgresql',
+    PGDATA: '/var/lib/postgresql', PG_VERSION: '18' };
+  const prepared = restoredMigrationEnvironment({ ...context(), ...toolchain });
+  assert.equal(prepared.discardedToolchainMetadata, true);
+  for (const key of Object.keys(toolchain)) assert.equal(prepared.env[key], undefined);
+  for (const key of ['PGHOST', 'PGPORT', 'PGUSER', 'PGPASSWORD', 'PGSSLMODE', 'PGOPTIONS', 'PGUNKNOWN']) {
+    let invoked = false;
+    assert.throws(() => runRestoredMigration({ ...context(), [key]: 'PRIVATE_VALUE' }, () => { invoked = true; }),
+      { message: 'RESTORED_MIGRATION_RUNNER_REFUSED' });
+    assert.equal(invoked, false);
+  }
+});
+
+test('restore diagnostics recognize only fixed safe stages and never forward arbitrary driver or exception content', () => {
+  for (const stage of ['CONTEXT', 'BINDING', 'RUNNER', 'SOURCE', 'TARGET', 'NATIVE', 'RECEIPT']) {
+    const code = `RESTORED_MIGRATION_${stage}_REFUSED`;
+    assert.equal(restoredMigrationFailureCode(new Error(code)), code);
+  }
+  for (const error of [undefined, new Error('PRIVATE_CREDENTIAL'), new Error('RESTORED_MIGRATION_PRIVATE_REFUSED')]) {
+    assert.equal(restoredMigrationFailureCode(error), 'RESTORED_MIGRATION_REFUSED');
+  }
+  assert.throws(() => runRestoredMigration(context(), () => { throw new Error('PRIVATE_DRIVER_DETAIL'); }),
+    { message: 'RESTORED_MIGRATION_NATIVE_REFUSED' });
 });
