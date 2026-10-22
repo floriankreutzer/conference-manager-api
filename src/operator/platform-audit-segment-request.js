@@ -15,6 +15,7 @@ export function normalizePlatformAuditSegmentRequest(value,expected) {
     || !Number.isSafeInteger(expected.legacyEventCount) || expected.legacyEventCount<0 || expected.legacyEventCount>3200
     || typeof expected.inventoryDigest!=='string' || !/^[0-9a-f]{64}$/.test(expected.inventoryDigest)
     || FIXED.some(key=>value[key]!==expected[key]) || !isInternalUuid(value.correlationId)
+    || value.correlationId!==value.correlationId.toLowerCase()
     || typeof value.approvalReference!=='string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/.test(value.approvalReference)) invalid();
   return Object.freeze({ ...value });
 }

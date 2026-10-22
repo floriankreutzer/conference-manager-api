@@ -5,7 +5,7 @@ Platform audit history whose original signing key is unavailable. It does not
 repair or authenticate that history. Customer/Tenant audit is a separate domain.
 No HTTP endpoint administers segments or accepts a caller-selected audit segment.
 Segment IDs and deployment epochs must use canonical lowercase UUIDs. Offline
-requests and runtime segment configuration reject uppercase spellings before
+requests (including correlation IDs) and runtime segment configuration reject uppercase spellings before
 signing or persistence so PostgreSQL UUID canonicalization cannot change a binding.
 
 ## Preserved evidence and signing boundary

@@ -19,6 +19,10 @@ test('segment configuration rejects noncanonical UUIDs before signing or persist
   const canonical={ id: 'abcdefab-1234-4123-8123-abcdefabcdef',environment: 'int',
     deploymentEpoch: 'fedcbafe-1234-4123-8123-fedcbafedcba' };
   assert.deepEqual(normalizeAuditSegment(canonical),canonical);
+  const expected={ environment: 'int',segmentId: canonical.id,deploymentEpoch: canonical.deploymentEpoch,
+    legacyEventCount: 124,inventoryDigest: segment.inventoryDigest };
+  assert.throws(()=>normalizePlatformAuditSegmentRequest({ ...expected,approvalReference: 'INT-APPROVED',
+    correlationId: canonical.id.toUpperCase() },expected),/REQUEST_INVALID/);
   for (const key of ['id','deploymentEpoch']) {
     const invalid={ ...canonical,[key]: canonical[key].toUpperCase() };
     assert.throws(()=>normalizeAuditSegment(invalid),/SEGMENT_INVALID/);
