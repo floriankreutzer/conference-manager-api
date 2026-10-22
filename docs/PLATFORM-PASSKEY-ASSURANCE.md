@@ -1,5 +1,17 @@
 # Platform passkey assurance
 
+## Microsoft callback metadata
+
+The Platform Microsoft callback accepts optional success-response `client_info`
+(1–2048 base64url characters) and `session_state` (1–256 base64url characters,
+including UUID hyphens). Duplicate, empty, malformed, oversized and unknown fields
+remain rejected. Metadata is discarded at the transport boundary: it is never
+forwarded to the identity service, persisted, logged or used as operator/session
+authority. Required state/code and browser binding, one-time expiry, PKCE, nonce,
+provider exchange, exact operator mapping and the independent passkey gate remain
+unchanged. Metadata is not accepted on the separate provider-error response.
+This compatibility rule does not prove deployed Microsoft or device acceptance.
+
 ## Protected INT encrypted initial-grant transport
 
 The optional `protected-int-passkey-bootstrap.yml` workflow calls the unchanged
