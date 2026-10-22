@@ -1,0 +1,71 @@
+name: Protected INT first owner
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_main_sha:
+        description: Exact accepted Main commit; identity and request belong in the protected environment
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosted-shared-demo-database-initialize
+  cancel-in-progress: false
+
+jobs:
+  initialize:
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+      inputs.expected_main_sha == github.sha && github.actor == 'floriankreutzer' &&
+      github.triggering_actor == 'floriankreutzer' && github.run_attempt == 1
+    environment:
+      name: hosted-demo-initialize
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require ordinary logging before secret allocation
+        env:
+          ACTIONS_STEP_DEBUG: ${{ secrets.ACTIONS_STEP_DEBUG }}
+          ACTIONS_RUNNER_DEBUG: ${{ secrets.ACTIONS_RUNNER_DEBUG }}
+        run: test -z "${RUNNER_DEBUG:-}${ACTIONS_STEP_DEBUG:-}${ACTIONS_RUNNER_DEBUG:-}"
+      - name: Checkout exact accepted Main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify checkout before dependency installation
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_MAIN_SHA"
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Install locked dependencies without operator secrets
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Initialize first owner without private output
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          NODE_ENV: pilot
+          DEPLOYMENT_ENVIRONMENT: int
+          PLATFORM_SECURITY_EPOCH: ${{ secrets.CM_INT_AUDIT_SECURITY_REVISION }}
+          PLATFORM_PASSKEY_OFFLINE_ROLE: ${{ secrets.CM_INT_AUDIT_OFFLINE_ROLE }}
+          PLATFORM_PASSKEY_OFFLINE_DATABASE_URL: ${{ secrets.HOSTED_DEMO_MIGRATION_DATABASE_URL }}
+          PLATFORM_DATABASE_URL: ${{ secrets.CM_INT_AUDIT_PLATFORM_DATABASE_URL }}
+          PLATFORM_AUDIT_HMAC_SECRET: ${{ secrets.CM_INT_AUDIT_HMAC_SECRET }}
+          PLATFORM_AUDIT_SEGMENT_ID: ${{ secrets.CM_INT_AUDIT_SEGMENT_ID }}
+          PLATFORM_AUDIT_SEGMENT_DEPLOYMENT_EPOCH: ${{ secrets.CM_INT_AUDIT_DEPLOYMENT_EPOCH }}
+          PLATFORM_OWNER_BOOTSTRAP_DEPLOYMENT_EPOCH: ${{ secrets.CM_INT_AUDIT_DEPLOYMENT_EPOCH }}
+          PLATFORM_OWNER_BOOTSTRAP_DIRECTORY_ID: ${{ secrets.CM_INT_OWNER_DIRECTORY_ID }}
+          PLATFORM_OWNER_BOOTSTRAP_SUBJECT_ID: ${{ secrets.CM_INT_OWNER_SUBJECT_ID }}
+          CM_INT_OWNER_REQUEST_JSON: ${{ secrets.CM_INT_OWNER_REQUEST_JSON }}
+          CM_INT_OWNER_EVIDENCE: ${{ secrets.CM_INT_OWNER_EVIDENCE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/platform-owner-actions-guard.mjs
+          node scripts/platform-owner-bootstrap.mjs 3<<<"$CM_INT_OWNER_REQUEST_JSON" >/dev/null
+          echo 'PROTECTED_INT_FIRST_OWNER_SUCCEEDED'
