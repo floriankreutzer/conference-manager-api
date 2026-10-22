@@ -69,7 +69,8 @@ async function fixture(t, mode = 'application_passkey') {
     platformPasskeyService: passkeys, platformAuthService: {
       async start() { return { authorizationUrl: authorizationUrl(),
         setCookie: serializePlatformEntraTransactionCookie(browser, { maxAgeSeconds: 300 }) }; },
-      async complete() { return oidcResult ?? asserted(); }, clearCookie: serializeClearedPlatformEntraTransactionCookie,
+      async complete(value) { calls.push(['oidcComplete', value]); return oidcResult ?? asserted(); },
+      clearCookie: serializeClearedPlatformEntraTransactionCookie,
     }, platformSessionService: {
       async resolvePrincipal(request) { return readPlatformSessionToken(request.headers) === sessionToken ? principal : null; },
       verifyCsrf: request => request.headers['x-csrf-token'] === csrf,
@@ -111,6 +112,23 @@ test('Microsoft primary routes request only fresh identity and callback emits on
   assert.equal((await f.request(`/api/v1/platform/auth/microsoft/callback?state=${state}&code=code`)).status, 500);
   const invalid = await f.request(`/api/v1/platform/auth/microsoft/callback?state=${state}&code=code&error_description=private`);
   assert.equal(invalid.status, 400);
+});
+
+test('Microsoft SDK callback metadata reaches only pending setup and is not forwarded as identity', async t => {
+  const f = await fixture(t, 'passkey_setup');
+  const path = `/api/v1/platform/auth/microsoft/callback?state=${state}&code=code&client_info=c3ludGhldGlj&session_state=${ID}`;
+  const result = await f.request(path);
+  assert.equal(result.status, 303);
+  assert.equal(result.headers.location, `${ORIGIN}/`);
+  assert.ok(result.headers['set-cookie'].includes(authCookie));
+  assert.equal(result.headers['set-cookie'].some(value => value.startsWith('cm_platform_session=')), false);
+  const input = f.calls.find(([name]) => name === 'oidcComplete')[1];
+  assert.equal(Object.hasOwn(input, 'client_info'), false);
+  assert.equal(Object.hasOwn(input, 'session_state'), false);
+  for (const suffix of ['&client_info=duplicate', '&session_state=duplicate', '&tenantId=attacker']) {
+    assert.equal((await f.request(path + suffix)).status, 400);
+  }
+  assert.equal(f.calls.filter(([name]) => name === 'oidcComplete').length, 1);
 });
 
 test('preauthentication requires exact cookie, state CSRF, Origin and positive bodies before enrollment ports', async t => {
