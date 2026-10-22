@@ -11,7 +11,9 @@ export function loadPlatformPasskeyOfflineConfig(env = {}) {
   if (env.NODE_ENV !== 'pilot' || resolveDeploymentEnvironment(env.DEPLOYMENT_ENVIRONMENT, 'pilot') !== 'int') invalid('MODE');
   const databaseUrl = env.PLATFORM_PASSKEY_OFFLINE_DATABASE_URL;
   if (typeof databaseUrl !== 'string' || !databaseUrl || databaseUrl === env.PLATFORM_DATABASE_URL
-    || databaseUrl === env.DATABASE_URL || !/^[a-z][a-z0-9_]{2,62}$/.test(env.PLATFORM_PASSKEY_OFFLINE_ROLE || '')) invalid('OWNER_CONFIGURATION');
+    || databaseUrl === env.DATABASE_URL || !/^[a-z][a-z0-9_]{2,62}$/.test(env.PLATFORM_PASSKEY_OFFLINE_ROLE || '')) {
+    invalid('OWNER_CONFIGURATION');
+  }
   let offline; let runtime;
   try { offline = new URL(databaseUrl); runtime = new URL(env.PLATFORM_DATABASE_URL); } catch { invalid('DATABASE_URL'); }
   if (offline.protocol !== runtime.protocol || offline.host !== runtime.host || offline.pathname !== runtime.pathname
