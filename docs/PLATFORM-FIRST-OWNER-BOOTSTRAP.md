@@ -77,7 +77,7 @@ The existing canonical offline CLI remains the only writer and rechecks the
 source ledger, owner login/catalog, current deployment, signed segment and absent
 real-operator/bootstrap history before its atomic operator/audit/outbox commit.
 
-Reuse environment secrets `HOSTED_DEMO_MIGRATION_DATABASE_URL` and
+Reuse environment secrets `CM_INT_AUDIT_OFFLINE_DATABASE_URL` and
 `CM_INT_AUDIT_PLATFORM_DATABASE_URL`, `CM_INT_AUDIT_HMAC_SECRET`,
 `CM_INT_AUDIT_OFFLINE_ROLE`, `CM_INT_AUDIT_SECURITY_REVISION`,
 `CM_INT_AUDIT_SEGMENT_ID`, `CM_INT_AUDIT_DEPLOYMENT_EPOCH`. Add only environment
