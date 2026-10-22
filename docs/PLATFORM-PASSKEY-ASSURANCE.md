@@ -1,5 +1,22 @@
 # Platform passkey assurance
 
+## Bounded primary-failure diagnosis
+
+The server audit distinguishes confidential code-exchange failure from a fixed
+allowlist of already normalized token/claim validation failures (including nonce,
+issuer, audience, tenant, token times and authentication freshness). Only actual
+PlatformIdentityError instances with exact known codes select a fixed reason.
+Unknown errors, forged code-bearing objects and SDK/provider messages retain
+provider_redeem_failed. Raw tokens, claims, codes, cookies, provider payloads and
+exception messages never enter this audit classification or the browser response.
+
+The original exception is rethrown; browser-bound state remains one-use even on
+failure, and no retry, passkey flow or session is created. This diagnostic does
+not relax any validation or establish the actual deployed failure cause. The
+required auth_time ID-token output must be available from the identity provider;
+explicit Entra optional-claim configuration is operating evidence, not proof that
+a particular received token passed validation.
+
 ## Microsoft callback metadata
 
 The Platform Microsoft callback accepts optional success-response `client_info`

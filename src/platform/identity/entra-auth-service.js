@@ -21,6 +21,33 @@ const CODE_PATTERN = /^[A-Za-z0-9._~-]{1,4096}$/;
 const PROVIDER_ERROR_PATTERN = /^[a-z][a-z0-9_]{1,63}$/;
 const DEFAULT_TTL_SECONDS = 600;
 
+const REDEMPTION_FAILURE_REASONS = Object.freeze({
+  PLATFORM_ENTRA_CODE_REDEMPTION_FAILED: 'provider_code_exchange_failed',
+  PLATFORM_ENTRA_CLAIMS_INVALID: 'provider_claims_invalid',
+  PLATFORM_ENTRA_TENANT_INVALID: 'provider_tenant_invalid',
+  PLATFORM_OPERATOR_TENANT_MISMATCH: 'provider_tenant_mismatch',
+  PLATFORM_ENTRA_SUBJECT_INVALID: 'provider_subject_invalid',
+  PLATFORM_AUDIENCE_MISMATCH: 'provider_audience_mismatch',
+  PLATFORM_ISSUER_MISMATCH: 'provider_issuer_mismatch',
+  PLATFORM_ENTRA_NONCE_INVALID: 'provider_nonce_invalid',
+  PLATFORM_ENTRA_TOKEN_EXPIRED: 'provider_token_expired',
+  PLATFORM_ENTRA_ISSUED_AT_INVALID: 'provider_issued_at_invalid',
+  PLATFORM_ENTRA_AUTHENTICATION_TIME_INVALID: 'provider_authentication_time_invalid',
+  PLATFORM_ENTRA_AUTHENTICATION_NOT_FRESH: 'provider_authentication_not_fresh',
+  PLATFORM_ENTRA_NOT_YET_VALID: 'provider_not_yet_valid',
+  PLATFORM_ENTRA_TOKEN_VERSION_INVALID: 'provider_token_version_invalid',
+  PLATFORM_ENTRA_TOKEN_TIME_INVALID: 'provider_token_time_invalid',
+  PLATFORM_PRIMARY_CODE_INPUT_INVALID: 'provider_code_input_invalid',
+  PLATFORM_ASSURANCE_CONTEXT_REJECTED: 'provider_assurance_context_rejected',
+});
+
+function redemptionFailureReason(error) {
+  if (!(error instanceof PlatformIdentityError) || !Object.hasOwn(REDEMPTION_FAILURE_REASONS, error.code)) {
+    return 'provider_redeem_failed';
+  }
+  return REDEMPTION_FAILURE_REASONS[error.code];
+}
+
 function sha256(value) {
   return createHash('sha256').update(value, 'utf8').digest('hex');
 }
@@ -243,7 +270,7 @@ function createAuthService({
           ...(!primaryOnly ? { authenticationContext: transaction.authenticationContext } : {}),
         });
       } catch (error) {
-        await recordFailure('provider_redeem_failed', flowCorrelationId);
+        await recordFailure(redemptionFailureReason(error), flowCorrelationId);
         throw error;
       }
       if (primaryOnly) {
