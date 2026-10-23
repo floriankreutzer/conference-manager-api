@@ -1,4 +1,6 @@
 export const PLATFORM_HTTP_ROUTE = Object.freeze({
+  INSIGHT_PROVIDERS: 'platform_insight_providers',
+  INSIGHT_PRODUCT: 'platform_insight_product',
   SYNTHETIC_GENERATION_CURRENT: 'platform_synthetic_generation_current',
   SYNTHETIC_GENERATION_OPTIONS: 'platform_synthetic_generation_options',
   SYNTHETIC_GENERATION_REPLACE: 'platform_synthetic_generation_replace',

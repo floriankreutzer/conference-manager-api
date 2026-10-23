@@ -6,11 +6,13 @@ import { normalizeInvitationRecipient } from './domain/invitation-recipient.js';
 import { isInternalUuid } from './domain/identifiers.js';
 import { createProtectedPlatformAuthentication } from './platform-production-authentication.js';
 import { APPROVED_OUTBOUND_ORIGINS } from './config.js';
+import { loadProtectedPlatformInsightSnapshots } from './observability/platform-insight-snapshots.js';
 
 const PREFIX='PROTECTED_PLATFORM_';
 const KEYS=['ENTRA_TENANT_ID','ENTRA_CLIENT_ID','ENTRA_CLIENT_SECRET','OIDC_TRANSACTION_SECRET','CSRF_SECRET',
   'AUDIT_HMAC_SECRET','CURSOR_SECRET','PASSKEY_TRANSACTION_SECRET','ASSURANCE_MODE','OWNER_RECIPIENT','OWNER_LOCALE',
-  'MINIMUM_PASSKEYS','SESSION_TTL_SECONDS','HOST','PORT','HANDOFF_INTENT_SECRET','AUDIT_SEGMENT_ID'];
+  'MINIMUM_PASSKEYS','SESSION_TTL_SECONDS','HOST','PORT','HANDOFF_INTENT_SECRET','AUDIT_SEGMENT_ID',
+  'PROVIDER_USAGE_SNAPSHOT','PRODUCT_DELIVERY_SNAPSHOT'];
 const fail=code=>{ throw new TypeError(`PROTECTED_PLATFORM_CONFIG_${code}`); };
 function read(env,key,optional=false) {
   if (optional && !Object.hasOwn(env,key)) return undefined;
@@ -53,6 +55,8 @@ export function loadProtectedPlatformConfiguration(env) {
   const host=optional('HOST') ?? '0.0.0.0';if (!['0.0.0.0','127.0.0.1','::'].includes(host)) fail('HOST_INVALID');
   let ownerRecipient;try { ownerRecipient=normalizeInvitationRecipient(own('OWNER_RECIPIENT')); } catch { fail('OWNER_REQUIRED'); }
   const ownerLocale=optional('OWNER_LOCALE') ?? 'de';if (!['de','en'].includes(ownerLocale)) fail('OWNER_LOCALE_INVALID');
+  const insightSources=loadProtectedPlatformInsightSnapshots({ providerSnapshot: optional('PROVIDER_USAGE_SNAPSHOT'),
+    productSnapshot: optional('PRODUCT_DELIVERY_SNAPSHOT') });
   const authenticationEnvironment=Object.freeze({ NODE_ENV: 'production',PLATFORM_PUBLIC_ORIGIN: profile.platformOrigin,
     PUBLIC_ORIGIN: profile.customerOrigin,ENTRA_CLIENT_ID: peer,PLATFORM_ENTRA_CLIENT_ID: clientId,
     PLATFORM_ENTRA_TENANT_ID: tenantId,PLATFORM_ENTRA_CLIENT_SECRET: values.entraClientSecret,
@@ -74,7 +78,7 @@ export function loadProtectedPlatformConfiguration(env) {
   const cipher=createProtectedCustodyCipher({ environment: profile.environment,
     activeKeyId: read(env,'PROTECTED_CUSTODY_ACTIVE_KEY_ID'),keyring: read(env,'PROTECTED_CUSTODY_KEYRING'),
     lookupSecret: values.lookupSecret,forbiddenSecrets: material });
-  return Object.freeze({ profile,config,cipher,ownerRecipient,ownerLocale,
+  return Object.freeze({ profile,config,cipher,ownerRecipient,ownerLocale,insightSources,
     authenticationFactory(context) {
       if (!context || ![Object.prototype,null].includes(Object.getPrototypeOf(context))
         || Reflect.ownKeys(context).length!==2 || Reflect.ownKeys(context).some(key=>{

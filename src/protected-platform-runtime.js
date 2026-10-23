@@ -43,6 +43,8 @@ import { createProtectedHttpExecutionHandler } from './transport/protected-http-
 import { loadProtectedHostedFrontend,withProtectedHostedFrontend } from './protected-hosted-frontend.js';
 import { createMetricsRegistry } from './observability/metrics.js';
 import { assertPlatformRouteKey } from './platform/http/observability.js';
+import { createPlatformInsightService } from './platform/application/insight-service.js';
+import { createPlatformInsightRoutes } from './platform/http/insight-routes.js';
 
 function syntheticRoutes(bundle,persistence,authentication,authorizationPolicy,disposables) {
   if (bundle.synthetic===null) return [];
@@ -111,7 +113,9 @@ export async function createProtectedPlatformRuntime(environment) {
     const operational=active ? PLATFORM_OPERATIONAL_ROUTE_MODULES.map(module=>protectPlatformPasskeyRoute(
       module.id===tenantRoutes.id ? tenantRoutes : module,{ authService: authentication.normalPasskeyService,
         environment: profile.environment,securityEpoch: profile.platformSecurityEpoch })) : [platformHealthRoutes,platformSessionRoutes];
-    const routeModules=Object.freeze([...authentication.routeModules,...operational,
+    const insights=active ? [createPlatformInsightRoutes(createPlatformInsightService({
+      sources: bundle.insightSources,authorizationPolicy: platformAuthorizationPolicy }))] : [];
+    const routeModules=Object.freeze([...authentication.routeModules,...operational,...insights,
       ...syntheticRoutes(bundle,persistence,authentication,platformAuthorizationPolicy,disposables)]);
     composition=createPlatformComposition({ config,persistence,routeModules,projectionEnabled: active,
       metrics: createMetricsRegistry({ assertRouteKey: assertPlatformRouteKey }),
