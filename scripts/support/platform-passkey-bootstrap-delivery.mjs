@@ -14,10 +14,13 @@ function json(value) {
 // Transport binding only; canonical offline issuance remains the sole writer.
 export function requirePlatformPasskeyBootstrapDeliveryContext(env) {
   try {
-    requireOwnerMainActionsContext(env, 'protected-int-passkey-bootstrap.yml');
+    const recoveryWorkflow = 'protected-int-passkey-recovery.yml';
+    const recovery = env.GITHUB_WORKFLOW_REF ===
+      `floriankreutzer/conference-manager-api/.github/workflows/${recoveryWorkflow}@refs/heads/main`;
+    requireOwnerMainActionsContext(env, recovery ? recoveryWorkflow : 'protected-int-passkey-bootstrap.yml');
     const request = json(env.CM_INT_PASSKEY_REQUEST_JSON);
     const checked = createPlatformPasskeyEnrollmentGrant({ ...request, issuedFromSessionId: null }).record;
-    if (Object.hasOwn(request, 'issuedFromSessionId') || request.kind !== 'bootstrap'
+    if (Object.hasOwn(request, 'issuedFromSessionId') || request.kind !== (recovery ? 'recovery' : 'bootstrap')
       || request.environment !== 'int' || request.ttlSeconds !== 900
       || checked.operatorId !== env.CM_INT_PASSKEY_OPERATOR_ID
       || String(checked.operatorSecurityVersion) !== env.CM_INT_PASSKEY_OPERATOR_VERSION
@@ -50,7 +53,18 @@ export function requirePlatformPasskeyBootstrapDeliveryContext(env) {
     publicEncrypt(encryption, Buffer.from('transport-preflight'));
     const binding = { operatorId: checked.operatorId, operatorSecurityVersion: checked.operatorSecurityVersion,
       providerIdentity: checked.providerIdentity, environment: 'int', securityEpoch: checked.securityEpoch };
-    return Object.freeze({ request, encrypt(grant) {
+    const browserFormat = 'cm-int-passkey-browser-delivery:v1';
+    const browserLabel = createHash('sha256').update(Buffer.from(JSON.stringify([browserFormat,
+      env.GITHUB_SHA, request.correlationId, checked.operatorId, checked.operatorSecurityVersion, 'int', checked.securityEpoch,
+      evidence.segmentId, evidence.deploymentEpoch, fingerprint]))).digest();
+    return Object.freeze({ request, encryptForBrowser(grant) {
+      normalizePlatformPasskeyEnrollmentGrantClaim({ ...binding, ...grant });
+      const bytes = Buffer.from(JSON.stringify(grant));
+      try { return JSON.stringify({ format: browserFormat, requestId: request.correlationId, recipientSha256: fingerprint,
+        labelHash: browserLabel.toString('hex'),
+        ciphertext: publicEncrypt({ ...encryption, oaepLabel: browserLabel }, bytes).toString('base64url') }); }
+      finally { bytes.fill(0); }
+    }, encrypt(grant) {
       normalizePlatformPasskeyEnrollmentGrantClaim({ ...binding, ...grant });
       const bytes = Buffer.from(JSON.stringify(grant));
       try { return JSON.stringify({ format: FORMAT, ciphertext: publicEncrypt(encryption, bytes).toString('base64url') }); }

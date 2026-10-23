@@ -16,8 +16,8 @@ try {
   const child = spawn(process.execPath, [fileURLToPath(new URL('./platform-passkey-offline-grant.mjs', import.meta.url))],
     { env: process.env, stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'], timeout: 60_000, killSignal: 'SIGKILL' });
   const grant = await collectPrivateBootstrapGrant(child, context.request);
-  await writeFile(join(directory, 'grant.json'), context.encrypt(grant), { flag: 'wx', mode: 0o600 });
-  process.stdout.write('PROTECTED_INT_PASSKEY_BOOTSTRAP_ENCRYPTED\n');
+  await writeFile(join(directory, 'grant.json'), context.encryptForBrowser(grant), { flag: 'wx', mode: 0o600 });
+  process.stdout.write('PROTECTED_INT_PASSKEY_GRANT_ENCRYPTED\n');
 } catch {
   process.stderr.write('PLATFORM_PASSKEY_BOOTSTRAP_DELIVERY_REFUSED\n');
   process.exitCode = 1;

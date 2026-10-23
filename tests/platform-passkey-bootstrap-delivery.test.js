@@ -130,3 +130,42 @@ test('workflow retains only ciphertext after locked install; never exposes reque
   assert.doesNotMatch(workflow, /pull_request_target:|GITHUB_ENV|GITHUB_OUTPUT|HOSTED_DEMO_.*DATABASE_URL|vars\.CM_INT_/);
   assert.doesNotMatch(workflow, /platform-owner-bootstrap\.mjs|db-migrate|demo-reset|start:protected/);
 });
+
+
+test('browser ciphertext discloses only public recipient references and a context hash; actual OAEP decryption remains bound',()=>{
+  const env=context(),actual=requirePlatformPasskeyBootstrapDeliveryContext(env);
+  const bundle=JSON.parse(actual.encryptForBrowser(grant));
+  assert.deepEqual(Object.keys(bundle).sort(),['ciphertext','format','labelHash','recipientSha256','requestId']);
+  assert.equal(bundle.format,'cm-int-passkey-browser-delivery:v1');assert.equal(bundle.requestId,uuid('6'));
+  assert.equal(bundle.recipientSha256,fingerprint);assert.match(bundle.labelHash,/^[a-f0-9]{64}$/);
+  for (const value of [grant.token,grant.grantId,uuid('5'),uuid('2'),uuid('1')]) {
+    assert.equal(JSON.stringify(bundle).includes(value),false);
+  }
+  const parameters={ key: keys.privateKey,padding: constants.RSA_PKCS1_OAEP_PADDING,
+    oaepHash: 'sha256',oaepLabel: Buffer.from(bundle.labelHash,'hex') };
+  assert.deepEqual(JSON.parse(privateDecrypt(parameters,Buffer.from(bundle.ciphertext,'base64url'))),grant);
+  assert.throws(()=>privateDecrypt({ ...parameters,oaepLabel: label() },Buffer.from(bundle.ciphertext,'base64url')));
+});
+
+test('only the separate owner-main recovery workflow may request independently authorized canonical recovery',()=>{
+  const env=context();env.GITHUB_WORKFLOW_REF=env.GITHUB_WORKFLOW_REF.replace('passkey-bootstrap.yml','passkey-recovery.yml');
+  assert.throws(()=>requirePlatformPasskeyBootstrapDeliveryContext(env));
+  env.CM_INT_PASSKEY_REQUEST_JSON=JSON.stringify({ ...JSON.parse(env.CM_INT_PASSKEY_REQUEST_JSON),kind: 'recovery' });
+  const value=requirePlatformPasskeyBootstrapDeliveryContext(env);assert.equal(value.request.kind,'recovery');
+  assert.equal(JSON.parse(value.encryptForBrowser(grant)).format,'cm-int-passkey-browser-delivery:v1');
+  for (const patch of [{ GITHUB_ACTOR: 'other' },{ GITHUB_RUN_ATTEMPT: '2' },{ EXPECTED_MAIN_SHA: 'c'.repeat(40) },
+    { GITHUB_REF: 'refs/heads/other' },{ GITHUB_WORKFLOW_REF: env.GITHUB_WORKFLOW_REF.replace('main','other') }]) {
+    assert.throws(()=>requirePlatformPasskeyBootstrapDeliveryContext({ ...env,...patch }));
+  }
+  for (const kind of ['additional','bootstrap']) {
+    assert.throws(()=>requirePlatformPasskeyBootstrapDeliveryContext({ ...env,
+      CM_INT_PASSKEY_REQUEST_JSON: JSON.stringify({ ...JSON.parse(env.CM_INT_PASSKEY_REQUEST_JSON),kind }) }));
+  }
+  const workflow=readFileSync('.github/workflows/protected-int-passkey-recovery.yml','utf8');
+  for (const required of ['github.run_attempt == 1','github.actor == \'floriankreutzer\'',
+    'group: hosted-shared-demo-database-initialize','persist-credentials: false','retention-days: 1',
+    'environment:','name: hosted-demo-initialize','node scripts/platform-passkey-bootstrap-deliver.mjs']) {
+    assert.ok(workflow.includes(required));
+  }
+  assert.doesNotMatch(workflow,/pull_request_target:|GITHUB_OUTPUT|GITHUB_ENV|platform-owner-bootstrap|db-migrate|demo-reset/);
+});
