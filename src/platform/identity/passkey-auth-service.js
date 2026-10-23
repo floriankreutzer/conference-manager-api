@@ -2,6 +2,7 @@ import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import { isInternalUuid } from '../../domain/identifiers.js';
 import { normalizePlatformPrincipal, normalizeTrustedPlatformIdentity } from './principal.js';
 import { permissionsForPlatformRoles } from './policy.js';
+import { requirePlatformPasskeyMinimum } from './passkey-policy.js';
 import { PlatformIdentityError } from './errors.js';
 import { PLATFORM_ENTRA_PROVIDER } from '../../domain/identity-provider.js';
 import { serializePlatformPasskeyTransactionCookie, clearPlatformPasskeyTransactionCookie } from './passkey-auth-cookie.js';
@@ -21,7 +22,7 @@ function identityForProof(proof, level) {
 
 export function createPlatformPasskeyAuthService({ repository, primaryOperatorService, verifier, sessionService,
   environment, securityEpoch, transactionSecret, tokenFactory = () => randomBytes(32).toString('base64url'),
-  idFactory = () => randomUUID(), allowBusinessLogin = true, minimumCredentialCount = 1 } = {}) {
+  idFactory = () => randomUUID(), allowBusinessLogin = true, minimumCredentialCount = 2 } = {}) {
   if (!['create', 'findPending', 'listActiveCredentialIds', 'authenticate'].every(name => typeof repository?.[name] === 'function')) {
     throw new TypeError('PLATFORM_PASSKEY_AUTH_REPOSITORY_REQUIRED');
   }
@@ -35,6 +36,7 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
   if (!['dev', 'int', 'prod'].includes(environment) || !Number.isSafeInteger(securityEpoch) || securityEpoch < 1) {
     throw new TypeError('PLATFORM_PASSKEY_CONFIGURATION_INVALID');
   }
+  requirePlatformPasskeyMinimum(environment,minimumCredentialCount);
   const secret = Buffer.from(transactionSecret || '', 'utf8');
   if (typeof allowBusinessLogin !== 'boolean' || ![1, 2].includes(minimumCredentialCount)) {
     throw new TypeError('PLATFORM_PASSKEY_LOGIN_POLICY_INVALID');
@@ -59,8 +61,8 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
     return { state, stateHash: mac('state', state), browserHash: mac('browser-proof', signature), environment, securityEpoch };
   }
   async function activeIds(record) {
-    return repository.listActiveCredentialIds({ operatorId: record.operatorId,
-      operatorSecurityVersion: record.operatorSecurityVersion, environment });
+    return [...new Set(await repository.listActiveCredentialIds({ operatorId: record.operatorId,
+      operatorSecurityVersion: record.operatorSecurityVersion, environment }))];
   }
   async function options(record, ids = null) {
     ids ??= await activeIds(record);
@@ -109,7 +111,7 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
         return { issued: await sessionService.issue(identity, { correlationId: proof.correlationId }) };
       }
       if (requiresContinuation && new Set(await activeIds({ operatorId: proof.operatorId,
-        operatorSecurityVersion: proof.securityVersion })).size<2) {
+        operatorSecurityVersion: proof.securityVersion })).size<minimumCredentialCount) {
         throw new PlatformIdentityError('PLATFORM_PASSKEY_SETUP_REQUIRED');
       }
       // The strongly verified session exists only inside this transaction. Its
@@ -203,7 +205,9 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
       const { challenge, correlationId, ...binding } = pending;
       const result = await repository.authenticate({ ...lookup, ...binding, response }, async proof => {
         const ids = await activeIds({ operatorId: proof.operatorId, operatorSecurityVersion: proof.securityVersion });
-        if (ids.length >= 2) return Object.freeze({ status: 'setup_complete', setCookie: clearPlatformPasskeyTransactionCookie() });
+        if (ids.length >= minimumCredentialCount) {
+          return Object.freeze({ status: 'setup_complete', setCookie: clearPlatformPasskeyTransactionCookie() });
+        }
         if (ids.length !== 1) reject();
         const temporary = await sessionService.issue(identityForProof(proof, 'step_up'), { correlationId: proof.correlationId });
         const next = await mutation(Object.freeze({ principal: temporary.principal, correlationId: proof.correlationId }));
@@ -226,7 +230,7 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
     },
     async executeStepUpWithContinuation(input,mutation) {
       if (typeof mutation!=='function' || !HASH.test(input?.operationHash || '')) reject();
-      if (!allowBusinessLogin || minimumCredentialCount!==2) throw new PlatformIdentityError('PLATFORM_PASSKEY_SETUP_REQUIRED');
+      if (!allowBusinessLogin) throw new PlatformIdentityError('PLATFORM_PASSKEY_SETUP_REQUIRED');
       return finish(input,input.operationHash,mutation,false,true);
     },
     async executeCredentialLifecycle(input, mutation) {

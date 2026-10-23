@@ -1,3 +1,31 @@
+## Explicit INT single-passkey operating policy
+
+The protected Operations profile retains two distinct active passkeys by default.
+The optional server-owned `PROTECTED_PLATFORM_MINIMUM_PASSKEYS` accepts exactly
+`1` or `2`; `1` is permitted exclusively for INT and rejected for DEV/PROD. This
+selects a key-count policy only. It does not change the production security mode,
+Microsoft identity/nonce/freshness, user verification, CSRF, independent bootstrap
+or recovery authority, exact-operation proof, epoch fencing, audit or key custody.
+There is no browser, Customer, inherited legacy-environment or provider claim
+that selects the minimum. Ordinary CA configuration is unchanged.
+
+Setup completion, active login, protected session resolution and signed operation
+continuation use the same validated minimum. Setup still cannot issue a business
+session, including after one key completes. Default DEV/INT/PROD behavior remains
+two keys; explicit INT uses one actual key and still rejects missing keys,
+invalid signatures and replay. Key revocation must still leave another active
+key; single-key owners use the independently authorized recovery procedure.
+
+The INT-only reduction accepts loss of the reserve passkey for an Apple-only
+operator. A synced copy of the same credential is not a second distinct key.
+Before operational activation, actual owner enrollment and independent recovery
+must be verified. Automated software-key tests do not prove iPhone/iCloud custody
+or successful recovery. This source policy is not live deployment evidence.
+Enrollment must be completed in the owner's own trusted browser; a remote cloud
+browser cannot substitute for owner-held credential creation or device proximity.
+No new plan, authenticator vendor, credential-export or plaintext grant-delivery
+channel is introduced by this change.
+
 # Platform passkey assurance
 
 ## Bounded primary-failure diagnosis

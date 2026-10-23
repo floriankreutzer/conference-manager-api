@@ -137,3 +137,19 @@ test('only the explicit Operations config root crosses its config boundary; Cust
   const valid=moduleBoundaryViolations({ [root]: "import './platform/config.js';",'src/platform/config.js': 'export const config=true;' });
   assert.deepEqual(valid,[]);
 });
+
+
+test('one-key policy is explicit and confined to INT without changing the production security profile',t=>{
+  const env={ ...fixture(),PROTECTED_PLATFORM_MINIMUM_PASSKEYS: '1' },bundle=load(t,env);
+  assert.equal(bundle.config.mode,'production');assert.equal(bundle.config.minimumCredentialCount,1);
+  assert.equal(bundle.authenticationFactory({ pool: noIo(),leasePool: noIo() })
+    .platformPasskeyService.configuration().minimumPasskeys,1);
+  for (const environment of ['dev','prod']) {
+    assert.throws(()=>loadProtectedPlatformConfiguration({ ...fixture(environment),PROTECTED_PLATFORM_MINIMUM_PASSKEYS: '1' }),
+      /PASSKEY_MINIMUM_INVALID/);
+  }
+  for (const minimum of ['0','3','01','1.0',' 1','true','']) {
+    assert.throws(()=>loadProtectedPlatformConfiguration({ ...fixture(),PROTECTED_PLATFORM_MINIMUM_PASSKEYS: minimum }));
+  }
+  assert.equal(load(t,fixture()).config.minimumCredentialCount,2);
+});

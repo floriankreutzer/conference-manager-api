@@ -259,7 +259,8 @@ test('two completed keys finish setup without a session; active login separately
 test('setup callback cannot smuggle a session, another cookie scope or unknown response authority', async () => {
   for (const change of [{ principal: principal() }, { setCookie: 'cm_platform_session=forbidden' },
     { setCookie: `cm_platform_passkey_enroll=${'S'.repeat(43)}.${'B'.repeat(43)}; Domain=foreign.example.com` }]) {
-    const f = fixture({ allowBusinessLogin: false }); const started = await f.service.startLogin('verified-primary');
+    const f = fixture({ allowBusinessLogin: false,minimumCredentialCount: 2 });
+    const started = await f.service.startLogin('verified-primary');
     await assert.rejects(f.service.executeSetupLogin({ cookie: cookie(started), state: started.state, response: { valid: true } },
       async () => ({ status: 'registration_required', state: 'S'.repeat(43), options: {},
         setCookie: serializePlatformPasskeyEnrollmentCookie(`${'S'.repeat(43)}.${'B'.repeat(43)}`), ...change })), /REJECTED/);
@@ -301,8 +302,8 @@ test('explicit continuation binds the future normal session privately before mut
   assert.throws(()=>f.service.verifiedOperationWithContinuation(captured,operationHash),/REJECTED/);
 });
 
-test('continuation requires explicit active two-key policy and two distinct currently active credentials',async()=>{
-  for (const config of [{},{ allowBusinessLogin: false,minimumCredentialCount: 2 }]) {
+test('continuation rejects setup mode and enforces the configured two distinct active credentials',async()=>{
+  for (const config of [{ allowBusinessLogin: false,minimumCredentialCount: 1 },{ allowBusinessLogin: false,minimumCredentialCount: 2 }]) {
     const f=fixture(config);
     await assert.rejects(f.service.executeStepUpWithContinuation({ operationHash: 'f'.repeat(64) },async()=>({})),/SETUP_REQUIRED/);
     assert.equal(f.calls.authenticate,0);assert.equal(f.calls.issue.length,0);
@@ -330,4 +331,32 @@ test('ordinary step-up has no continuation authority and failed continuation mut
     captured=context;throw new Error('SYNTHETIC_MUTATION_FAILED');
   }),/SYNTHETIC_MUTATION_FAILED/);
   assert.throws(()=>f.service.verifiedOperationWithContinuation(captured,operationHash),/REJECTED/);
+});
+
+
+test('explicit INT one-key setup finishes only after a real proof and never issues a business session',async()=>{
+  const f=fixture({ allowBusinessLogin: false,minimumCredentialCount: 1 });
+  const started=await f.service.startLogin('verified-primary');
+  const input={ cookie: cookie(started),state: started.state,response: { valid: true } };
+  await assert.rejects(f.service.executeSetupLogin({ ...input,response: { valid: false } },()=>assert.fail()),/REJECTED/);
+  await assert.rejects(f.service.complete(input),/SETUP_REQUIRED/);
+  const result=await f.service.executeSetupLogin(input,()=>assert.fail('NO_SECOND_KEY_ISSUANCE'));
+  assert.equal(result.status,'setup_complete');assert.equal(f.calls.issue.length,0);
+  await assert.rejects(f.service.executeSetupLogin(input,()=>assert.fail()),/REJECTED/);
+});
+
+test('explicit INT one-key continuation still needs a current signed proof and expires its exact-operation authority',async()=>{
+  const f=fixture({ minimumCredentialCount: 1,withSessionState: true }),operationHash='e'.repeat(64);
+  const started=await f.service.startStepUp(principal(),{ operationHash });let captured;
+  const input={ cookie: cookie(started),state: started.state,response: { valid: false },request: {},operationHash };
+  await assert.rejects(f.service.executeStepUpWithContinuation(input,()=>assert.fail()),/REJECTED/);
+  assert.equal(f.calls.issue.length,0);
+  const result=await f.service.executeStepUpWithContinuation({ ...input,response: { valid: true } },async context=>{
+    captured=context;const authority=f.service.verifiedOperationWithContinuation(context,operationHash);
+    assert.equal(authority.principal.assurance.level,'step_up');
+    assert.equal(authority.continuationPrincipal.assurance.level,'mfa');return { completed: true };
+  });
+  assert.equal(result.status,'operation_completed');assert.equal(f.calls.revoke.length,1);
+  assert.throws(()=>f.service.verifiedOperationWithContinuation(captured,operationHash),/REJECTED/);
+  await assert.rejects(f.service.executeStepUpWithContinuation({ ...input,response: { valid: true } },()=>assert.fail()),/REJECTED/);
 });

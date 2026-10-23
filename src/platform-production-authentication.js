@@ -1,3 +1,4 @@
+import { requirePlatformPasskeyMinimum } from './platform/identity/passkey-policy.js';
 import { loadPlatformConfig } from './platform/config.js';
 import { createPlatformAuthorizationPolicy } from './platform/identity/policy.js';
 import { createPlatformTenantTargetPolicy } from './platform/identity/tenant-target-policy.js';
@@ -40,6 +41,7 @@ function passkeyAuthentication({ config, persistence, platformAuditService, plat
   const environment = config.deploymentEnvironment;
   const securityEpoch = config.securityEpoch;
   const active = config.assuranceMode === 'application_passkey';
+  const minimumCredentialCount=requirePlatformPasskeyMinimum(environment,config.minimumCredentialCount);
   if (!['dev','int','prod'].includes(environment) || !Number.isSafeInteger(securityEpoch) || securityEpoch < 2
     || config.authenticationMaxAgeSeconds !== 300 || config.oidcTransactionTtlSeconds !== 300
     || typeof config.passkeyTransactionSecret !== 'string'
@@ -61,7 +63,7 @@ function passkeyAuthentication({ config, persistence, platformAuditService, plat
     operatorRepository: persistence.operatorRepository, auditService: platformAuditService });
   const ordinaryAuthService = createPlatformPasskeyAuthService({ repository, primaryOperatorService, verifier,
     sessionService: platformSessionService, environment, securityEpoch, transactionSecret: config.passkeyTransactionSecret,
-    allowBusinessLogin: active, minimumCredentialCount: 2 });
+    allowBusinessLogin: active, minimumCredentialCount });
   const pureProofMethods=['verifiedOperationPrincipal','verifiedOperationWithContinuation'];
   const authService=protectedRuntime ? scopedFunctions(ordinaryAuthService,protectedRuntime.scopes,pureProofMethods) : ordinaryAuthService;
   const lifecycleService = createPlatformPasskeyLifecycleService({ authService, sessionService: platformSessionService,
@@ -69,7 +71,7 @@ function passkeyAuthentication({ config, persistence, platformAuditService, plat
   const enrollmentFlow = createPlatformPasskeyEnrollmentFlow({ authService, lifecycleService,
     repository: enrollmentRepository, verifier, environment, securityEpoch });
   const ordinaryHttp=createPlatformPasskeyHttpService({ authService,enrollmentFlow,lifecycleService,
-    assuranceMode: config.assuranceMode,environment });
+    assuranceMode: config.assuranceMode,environment,minimumCredentialCount });
   const platformPasskeyService=protectedRuntime ? scopedFunctions(ordinaryHttp,protectedRuntime.scopes,['configuration']) : ordinaryHttp;
   const oidc = createPlatformEntraPrimaryAuthService({ repository: persistence.oidcTransactionRepository,
     entraClient: primaryClient, passkeyAuthService: authService, auditService: platformAuditService,
@@ -93,7 +95,7 @@ function passkeyAuthentication({ config, persistence, platformAuditService, plat
       if (!principal || principal.assurance.level!=='mfa') return null;
       const ids=await repository.listActiveCredentialIds({ operatorId: principal.operatorId,
         operatorSecurityVersion: principal.securityVersion,environment });
-      return new Set(ids).size>=2 ? principal : null;
+      return new Set(ids).size>=minimumCredentialCount ? principal : null;
     }),
     revoke: (principal,options)=>scopes.withShared(()=>platformSessionService.revoke(principal,options)),
     verifyCsrf: platformSessionService.verifyCsrf,csrfTokenForPrincipal: platformSessionService.csrfTokenForPrincipal,
@@ -102,7 +104,7 @@ function passkeyAuthentication({ config, persistence, platformAuditService, plat
   let syntheticPasskeyService=null;
   if (active && environment!=='prod') {
     const exclusive=createPlatformPasskeyAuthService({ primaryOperatorService,verifier,sessionService: platformSessionService,
-      environment,securityEpoch,transactionSecret: config.passkeyTransactionSecret,allowBusinessLogin: active,minimumCredentialCount: 2,
+      environment,securityEpoch,transactionSecret: config.passkeyTransactionSecret,allowBusinessLogin: active,minimumCredentialCount,
       repository: createPostgresProtectedPlatformPasskeyAuthRepository(persistence.pool,{ verifier,
         auditRepository: persistence.auditRepository,environment,securityEpoch: protectedRuntime.securityEpoch,
         stepUpTransaction: scopes.withSyntheticExclusive }) });
@@ -175,11 +177,11 @@ export function createProductionPlatformAuthentication({
 
 
 // Inactive owned construction. Environment parsing, actual repositories, current
-// UUID leases, protected session namespace, minimum-two-key policy and both
+// UUID leases, protected session namespace, environment-bound key minimum and both
 // pending-flow MAC purposes are fixed here. No arbitrary legacy session/auth
 // instance or caller repository can replace them. No route/process is started.
 export function createProtectedPlatformAuthentication({ env,pool,leasePool,protectedSecurityEpoch,protectedEnvironment=null,
-  auditSegment=null }={}) {
+  auditSegment=null,minimumCredentialCount=2 }={}) {
   if (protectedEnvironment!==null && (!['dev','int','prod'].includes(protectedEnvironment)
     || env?.NODE_ENV!=='production' || Object.hasOwn(env,'DEPLOYMENT_ENVIRONMENT'))) {
     throw new TypeError('PROTECTED_PLATFORM_ENVIRONMENT_CONFIGURATION_INVALID');
@@ -187,6 +189,7 @@ export function createProtectedPlatformAuthentication({ env,pool,leasePool,prote
   const canonical=loadPlatformConfig(env),config=protectedEnvironment===null ? canonical
     : Object.freeze({ ...canonical,deploymentEnvironment: protectedEnvironment });
   const environment=config.deploymentEnvironment;
+  requirePlatformPasskeyMinimum(environment,minimumCredentialCount);
   if (!['passkey_setup','application_passkey'].includes(config.assuranceMode)) {
     throw new TypeError('PROTECTED_PLATFORM_PASSKEY_PROFILE_REQUIRED');
   }
@@ -203,7 +206,7 @@ export function createProtectedPlatformAuthentication({ env,pool,leasePool,prote
     publicOrigin: config.publicOrigin,csrfSecret: config.csrfSecret,securityEpoch: config.securityEpoch,
     sessionTtlSeconds: config.sessionTtlSeconds,stepUpTtlSeconds: config.stepUpTtlSeconds,
     authenticationMaxAgeSeconds: config.authenticationMaxAgeSeconds });
-  const scopedConfig={ ...config,
+  const scopedConfig={ ...config,minimumCredentialCount,
     passkeyTransactionSecret: deriveProtectedAuthenticationFlowSecret({ ...protection,secret: config.passkeyTransactionSecret,
       purpose: 'platform-passkey-flow' }),
     oidcTransactionSecret: deriveProtectedAuthenticationFlowSecret({ ...protection,secret: config.oidcTransactionSecret,
