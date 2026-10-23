@@ -113,11 +113,12 @@ connection carriers. Temporary owner directory/subject bindings are reused.
 Add private environment secrets `CM_INT_PASSKEY_OPERATOR_ID`,
 `CM_INT_PASSKEY_OPERATOR_VERSION`, `CM_INT_PASSKEY_REQUEST_JSON`,
 `CM_INT_PASSKEY_EVIDENCE`, `CM_INT_PASSKEY_RECIPIENT_PUBLIC_KEY` and
-`CM_INT_PASSKEY_RECIPIENT_SHA256`. The canonical request is exact, INT, bootstrap,
-900 seconds and bound to the independently verified operator/provider identity
+`CM_INT_PASSKEY_RECIPIENT_SHA256`. The canonical request is exact, INT, bootstrap
+or recovery according to its fixed workflow, 900 seconds and bound to the independently verified operator/provider identity
 and positive integer Platform epoch. Evidence contains exactly sourceSha,
 environment, deploymentEpoch, segmentId, operatorId, identityReference,
-custodyReference and servicesClosed; reconcile each with actual protected evidence
+custodyReference, servicesClosed, recipientCreatedAt and recipientExpiresAt;
+reconcile each with actual protected evidence
 and keep both services closed during issuance. Binding validation does not prove
 that an attested ceremony or closed-service observation actually occurred.
 
@@ -131,7 +132,8 @@ RSA-OAEP/SHA256 binds its label to the fixed transport version, accepted source,
 request correlation, operator/version, INT/integer epoch, segment, deployment UUID
 and recipient fingerprint. Decryption must use that exact privately retained label
 and key for historical legacy envelopes. New browser-delivery envelopes use a
-domain-separated SHA256 digest of that complete binding as the OAEP label; the
+domain-separated SHA256 digest of that complete binding plus the validated
+recipient creation/expiry window as the OAEP label; the
 artifact carries only the opaque label hash, public recipient fingerprint/request
 correlation and ciphertext. The browser decrypts locally and forwards the canonical
 grant only to the existing same-origin enrollment endpoint on explicit file use.
