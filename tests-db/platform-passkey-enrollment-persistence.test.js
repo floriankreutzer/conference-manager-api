@@ -195,7 +195,7 @@ test('independently granted enrollment stages public keys and atomically require
     const authService = createPlatformPasskeyAuthService({
       repository: createPostgresPlatformPasskeyAuthRepository(pool, { verifier, auditRepository }),
       primaryOperatorService: f.primaryOperatorService, verifier, sessionService: sessions,
-      environment: 'int', securityEpoch: 8, transactionSecret: 't'.repeat(48) });
+      environment: 'int', securityEpoch: 8, transactionSecret: 't'.repeat(48), minimumCredentialCount: 1 });
     const lifecycle = createPlatformPasskeyLifecycleService({ authService, sessionService: sessions, repository,
       environment: 'int', securityEpoch: 8 });
     function signed(started, key, counter) {

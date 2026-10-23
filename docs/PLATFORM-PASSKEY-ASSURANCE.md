@@ -9,8 +9,12 @@ or recovery authority, exact-operation proof, epoch fencing, audit or key custod
 There is no browser, Customer, inherited legacy-environment or provider claim
 that selects the minimum. Ordinary CA configuration is unchanged.
 
-Setup completion, active login, protected session resolution and signed operation
-continuation use the same validated minimum. Setup still cannot issue a business
+Setup completion, active login and protected session resolution use the same
+validated minimum. Ordinary sensitive operations still need a fresh exact signed
+proof. The separate optional synthetic generation/delegation custody retains its
+existing two-key SQL/continuation contract and remains disabled in the selected
+INT deployment. This exception does not activate or relax synthetic delegation.
+Setup still cannot issue a business
 session, including after one key completes. Default DEV/INT/PROD behavior remains
 two keys; explicit INT uses one actual key and still rejects missing keys,
 invalid signatures and replay. Key revocation must still leave another active

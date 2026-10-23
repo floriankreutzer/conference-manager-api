@@ -345,18 +345,8 @@ test('explicit INT one-key setup finishes only after a real proof and never issu
   await assert.rejects(f.service.executeSetupLogin(input,()=>assert.fail()),/REJECTED/);
 });
 
-test('explicit INT one-key continuation still needs a current signed proof and expires its exact-operation authority',async()=>{
-  const f=fixture({ minimumCredentialCount: 1,withSessionState: true }),operationHash='e'.repeat(64);
-  const started=await f.service.startStepUp(principal(),{ operationHash });let captured;
-  const input={ cookie: cookie(started),state: started.state,response: { valid: false },request: {},operationHash };
-  await assert.rejects(f.service.executeStepUpWithContinuation(input,()=>assert.fail()),/REJECTED/);
-  assert.equal(f.calls.issue.length,0);
-  const result=await f.service.executeStepUpWithContinuation({ ...input,response: { valid: true } },async context=>{
-    captured=context;const authority=f.service.verifiedOperationWithContinuation(context,operationHash);
-    assert.equal(authority.principal.assurance.level,'step_up');
-    assert.equal(authority.continuationPrincipal.assurance.level,'mfa');return { completed: true };
-  });
-  assert.equal(result.status,'operation_completed');assert.equal(f.calls.revoke.length,1);
-  assert.throws(()=>f.service.verifiedOperationWithContinuation(captured,operationHash),/REJECTED/);
-  await assert.rejects(f.service.executeStepUpWithContinuation({ ...input,response: { valid: true } },()=>assert.fail()),/REJECTED/);
+test('INT one-key login does not relax the separate synthetic continuation two-key contract',async()=>{
+  const f=fixture({ minimumCredentialCount: 1,withSessionState: true });
+  await assert.rejects(f.service.executeStepUpWithContinuation({ operationHash: 'e'.repeat(64) },()=>assert.fail()),/SETUP_REQUIRED/);
+  assert.equal(f.calls.authenticate,0);assert.equal(f.calls.issue.length,0);assert.equal(f.calls.rotate.length,0);
 });

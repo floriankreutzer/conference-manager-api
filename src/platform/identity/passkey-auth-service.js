@@ -111,7 +111,7 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
         return { issued: await sessionService.issue(identity, { correlationId: proof.correlationId }) };
       }
       if (requiresContinuation && new Set(await activeIds({ operatorId: proof.operatorId,
-        operatorSecurityVersion: proof.securityVersion })).size<minimumCredentialCount) {
+        operatorSecurityVersion: proof.securityVersion })).size<2) {
         throw new PlatformIdentityError('PLATFORM_PASSKEY_SETUP_REQUIRED');
       }
       // The strongly verified session exists only inside this transaction. Its
@@ -230,7 +230,7 @@ export function createPlatformPasskeyAuthService({ repository, primaryOperatorSe
     },
     async executeStepUpWithContinuation(input,mutation) {
       if (typeof mutation!=='function' || !HASH.test(input?.operationHash || '')) reject();
-      if (!allowBusinessLogin) throw new PlatformIdentityError('PLATFORM_PASSKEY_SETUP_REQUIRED');
+      if (!allowBusinessLogin || minimumCredentialCount!==2) throw new PlatformIdentityError('PLATFORM_PASSKEY_SETUP_REQUIRED');
       return finish(input,input.operationHash,mutation,false,true);
     },
     async executeCredentialLifecycle(input, mutation) {

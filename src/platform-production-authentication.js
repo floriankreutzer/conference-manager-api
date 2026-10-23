@@ -104,7 +104,7 @@ function passkeyAuthentication({ config, persistence, platformAuditService, plat
   let syntheticPasskeyService=null;
   if (active && environment!=='prod') {
     const exclusive=createPlatformPasskeyAuthService({ primaryOperatorService,verifier,sessionService: platformSessionService,
-      environment,securityEpoch,transactionSecret: config.passkeyTransactionSecret,allowBusinessLogin: active,minimumCredentialCount,
+      environment,securityEpoch,transactionSecret: config.passkeyTransactionSecret,allowBusinessLogin: active,minimumCredentialCount: 2,
       repository: createPostgresProtectedPlatformPasskeyAuthRepository(persistence.pool,{ verifier,
         auditRepository: persistence.auditRepository,environment,securityEpoch: protectedRuntime.securityEpoch,
         stepUpTransaction: scopes.withSyntheticExclusive }) });
