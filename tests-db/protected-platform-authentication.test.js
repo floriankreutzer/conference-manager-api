@@ -66,7 +66,7 @@ test('native owned Platform auth admits actual signed login and fences pending p
   const one=await start(),oneCookie=one.setCookie.split(';')[0].split('=')[1];
   const oneProof={ cookie: oneCookie,state: one.state,
     response: owner.keys[0].response('get',{ counter: 2,client: { challenge: one.options.challenge } }) };
-  await assert.rejects(owned.platformPasskeyService.authenticate(oneProof),/SETUP_REQUIRED/);
+  await assert.rejects(owned.normalPasskeyService.complete(oneProof),/SETUP_REQUIRED/);
   const accepted=await reduced.platformPasskeyService.authenticate(oneProof);
   const reducedRequest={ headers: { cookie: accepted.setCookies[0].split(';')[0] } };
   assert.ok(await reduced.platformHttpSessionService.resolvePrincipal(reducedRequest));
