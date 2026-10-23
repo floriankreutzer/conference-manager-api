@@ -17,13 +17,36 @@ required auth_time ID-token output must be available from the identity provider;
 explicit Entra optional-claim configuration is operating evidence, not proof that
 a particular received token passed validation.
 
-Primary time diagnostics distinguish the existing 24-hour future-expiry bound,
-negative issuance/authentication timestamps, expiry versus issuance ordering and
-authentication versus issuance ordering. Each predicate and its original boundary
-remain unchanged, including the 60-second authentication/issuance allowance.
-Only fixed error/audit classes differ; no timestamp, delta, token or provider
-payload is logged. A general token-time rejection alone does not identify which
-predicate failed and must not justify changing freshness or clock-skew limits.
+Primary time diagnostics use fixed classes for the 24-hour future-expiry bound,
+negative timestamps, expiry ordering and independent issuance/authentication age.
+No timestamp, delta, token or provider payload is logged. Historical general
+token-time and authentication/issuance-order reason mappings remain available;
+they do not describe the current independent-age predicates.
+
+### Independent primary token and authentication age
+
+[OIDC Core 3.1.3.7](https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation)
+checks issuance age and requested authentication freshness separately relative to
+the relying party's current time. It defines no 60-second maximum difference
+between `auth_time` and `iat`. Microsoft's
+[ID-token claims reference](https://learn.microsoft.com/en-us/entra/identity-platform/id-token-claims-reference)
+also does not promise that difference. Do not infer a specific provider backdating
+amount or clock defect from an ordering failure.
+
+The primary adapter therefore bounds each of `iat` and `auth_time` independently
+to `[now - authenticationMaxAgeSeconds - 60, now + 60]`, with the configured
+authentication age still limited to 60–300 seconds (300 in the protected runtime).
+The 60 seconds remains clock-skew allowance relative to the RP clock; it is not
+an enlarged cross-claim allowance. Issuance now has an explicit lower age bound.
+Both timestamps must be safe, nonnegative integers and strictly before `exp`;
+expiry must remain future and at most 24 hours ahead. Authentication freshness
+is rechecked when the opaque instance-bound assertion is consumed once.
+
+This replaces the extra `auth_time <= iat + 60` assumption, while preserving
+state/browser/PKCE/nonce binding, transaction expiry, exact operator mapping and
+independent passkey/enrollment authorization. A primary result remains incapable
+of issuing a business session. The CA adapter's existing validation is unchanged.
+Synthetic contract tests do not prove a real provider round trip or owner device.
 
 ## Microsoft callback metadata
 
