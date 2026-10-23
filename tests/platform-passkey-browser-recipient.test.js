@@ -13,7 +13,7 @@ const request = { format: 'cm-int-passkey-recipient:v1', origin, requestId: rand
 test('public recipient validation returns only delivery bindings, never identity or approval authority', () => {
   const result = requirePlatformPasskeyBrowserRecipient(JSON.stringify(request), { expectedOrigin: origin, now });
   assert.deepEqual(result, { correlationId: request.requestId, recipientPublicKey: request.recipientPublicKey,
-    recipientSha256: request.recipientSha256 });
+    recipientSha256: request.recipientSha256, recipientCreatedAt: request.createdAt, recipientExpiresAt: request.expiresAt });
   assert.ok(Object.isFrozen(result));
 });
 

@@ -13,6 +13,7 @@ try {
   const directory = join(temporaryRoot, 'protected-int-passkey-grant');
   // Refuse pre-existing paths before issuance; no overwrite or symlink reuse.
   await mkdir(directory, { mode: 0o700 });
+  context.assertRecipientFresh();
   const child = spawn(process.execPath, [fileURLToPath(new URL('./platform-passkey-offline-grant.mjs', import.meta.url))],
     { env: process.env, stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'], timeout: 60_000, killSignal: 'SIGKILL' });
   const grant = await collectPrivateBootstrapGrant(child, context.request);

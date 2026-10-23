@@ -2,6 +2,7 @@ import { constants, createHash, createPublicKey, publicEncrypt } from 'node:cryp
 import { createPlatformPasskeyEnrollmentGrant, normalizePlatformPasskeyEnrollmentGrantClaim }
   from '../../src/platform/identity/passkey-enrollment-grant.js';
 import { requireOwnerMainActionsContext } from './owner-main-actions-context.mjs';
+import { requirePlatformPasskeyRecipientWindow } from './platform-passkey-browser-recipient.mjs';
 
 const FORMAT = 'cm-int-passkey-bootstrap:v1';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -30,13 +31,21 @@ export function requirePlatformPasskeyBootstrapDeliveryContext(env) {
     const evidence = json(env.CM_INT_PASSKEY_EVIDENCE);
     if (!evidence || Array.isArray(evidence) || Object.keys(evidence).sort().join(',') !==
       ['sourceSha','environment','deploymentEpoch','segmentId','operatorId','identityReference',
-        'custodyReference','servicesClosed'].sort().join(',')
+        'custodyReference','servicesClosed','recipientCreatedAt','recipientExpiresAt'].sort().join(',')
       || evidence.sourceSha !== env.GITHUB_SHA || evidence.environment !== 'int' || evidence.servicesClosed !== true
       || evidence.operatorId !== checked.operatorId || evidence.segmentId !== env.PLATFORM_AUDIT_SEGMENT_ID
       || evidence.deploymentEpoch !== env.PLATFORM_AUDIT_SEGMENT_DEPLOYMENT_EPOCH
       || !UUID.test(evidence.segmentId || '') || !UUID.test(evidence.deploymentEpoch || '')
       || [evidence.identityReference, evidence.custodyReference].some(value =>
         typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/.test(value))) refuse();
+    const assertRecipientFresh = (now = Date.now()) => {
+      try {
+        // The canonical child has a 60-second deadline; retain a further minute
+        // for encrypted artifact delivery instead of revoking into an expired key.
+        requirePlatformPasskeyRecipientWindow(evidence.recipientCreatedAt, evidence.recipientExpiresAt, now, 120000);
+      } catch { refuse(); }
+    };
+    assertRecipientFresh();
     const pem = env.CM_INT_PASSKEY_RECIPIENT_PUBLIC_KEY;
     if (typeof pem !== 'string' || pem.length > 900
       || !/^-----BEGIN PUBLIC KEY-----\n[A-Za-z0-9+/=\n]+\n-----END PUBLIC KEY-----\n?$/.test(pem)) refuse();
@@ -56,8 +65,8 @@ export function requirePlatformPasskeyBootstrapDeliveryContext(env) {
     const browserFormat = 'cm-int-passkey-browser-delivery:v1';
     const browserLabel = createHash('sha256').update(Buffer.from(JSON.stringify([browserFormat,
       env.GITHUB_SHA, request.correlationId, checked.operatorId, checked.operatorSecurityVersion, 'int', checked.securityEpoch,
-      evidence.segmentId, evidence.deploymentEpoch, fingerprint]))).digest();
-    return Object.freeze({ request, encryptForBrowser(grant) {
+      evidence.segmentId, evidence.deploymentEpoch, fingerprint, evidence.recipientCreatedAt, evidence.recipientExpiresAt]))).digest();
+    return Object.freeze({ request, assertRecipientFresh, encryptForBrowser(grant) {
       normalizePlatformPasskeyEnrollmentGrantClaim({ ...binding, ...grant });
       const bytes = Buffer.from(JSON.stringify(grant));
       try { return JSON.stringify({ format: browserFormat, requestId: request.correlationId, recipientSha256: fingerprint,

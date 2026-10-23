@@ -677,7 +677,13 @@ integer epoch and audit segment. The public file never supplies identity or
 approval authority. `requirePlatformPasskeyBrowserRecipient` rejects unknown
 fields, another origin, malformed/stale/future requests, weak RSA and fingerprint
 mismatches. Preserve its correlationId as the canonical request correlation and
-use only the returned public recipient bindings. Never infer iPhone possession,
+use only the returned public recipient bindings. Preserve recipientCreatedAt and
+recipientExpiresAt in the private evidence object. Both workflow purposes reject
+missing, malformed or expired windows; the runner rechecks immediately before
+spawning the canonical issuer and requires over two minutes remaining for its
+60-second child deadline and delivery reserve. Dispatch/queue/install delay cannot
+turn an old recipient into a destructive recovery. This cannot prove the browser
+window has stayed open. Never infer iPhone possession,
 real Microsoft identity, service closure or owner approval from file contents.
 
 Both fixed workflow paths call the unchanged canonical offline issuer through
@@ -691,7 +697,7 @@ cannot revoke the last key through ordinary key management.
 New ciphertext files use `cm-int-passkey-browser-delivery:v1` with exactly format,
 requestId, recipientSha256, labelHash and ciphertext. The labelHash is SHA256 over
 the domain-separated canonical source/correlation/operator/request-version/INT/
-integer-epoch/segment/deployment/recipient tuple. Operator, deployment and audit
+integer-epoch/segment/deployment/recipient/window tuple. Operator, deployment and audit
 identifiers are not exposed as raw artifact metadata. The existing legacy v1
 RSA envelope remains available to its retained contract tests; newly issued
 workflow artifacts use only the browser envelope. No capability enters ordinary
