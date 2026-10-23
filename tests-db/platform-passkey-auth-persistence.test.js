@@ -123,7 +123,7 @@ test('durable Platform passkey authentication is bounded, single-use, audited an
       return { operatorId: f.operatorId, securityVersion: 2, primaryAuthenticatedAt: new Date().toISOString() };
     } };
     const service = createPlatformPasskeyAuthService({ repository, primaryOperatorService, verifier, sessionService: sessions,
-      environment: 'int', securityEpoch: 7, transactionSecret: 'p'.repeat(48) });
+      environment: 'int', securityEpoch: 7, transactionSecret: 'p'.repeat(48), minimumCredentialCount: 1 });
     const started = await service.startLogin('synthetic-verified-primary');
     assert.equal(started.status, 'passkey_required');
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM platform_sessions WHERE operator_id = $1',

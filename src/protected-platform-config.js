@@ -1,3 +1,4 @@
+import { requirePlatformPasskeyMinimum } from './platform/identity/passkey-policy.js';
 import { loadPlatformConfig } from './platform/config.js';
 import { loadProtectedRuntimeProfile,protectedRuntimeConfigurationKeys } from './protected-runtime-config.js';
 import { createProtectedCustodyCipher } from './protected-custody-configuration.js';
@@ -9,7 +10,7 @@ import { APPROVED_OUTBOUND_ORIGINS } from './config.js';
 const PREFIX='PROTECTED_PLATFORM_';
 const KEYS=['ENTRA_TENANT_ID','ENTRA_CLIENT_ID','ENTRA_CLIENT_SECRET','OIDC_TRANSACTION_SECRET','CSRF_SECRET',
   'AUDIT_HMAC_SECRET','CURSOR_SECRET','PASSKEY_TRANSACTION_SECRET','ASSURANCE_MODE','OWNER_RECIPIENT','OWNER_LOCALE',
-  'SESSION_TTL_SECONDS','HOST','PORT','HANDOFF_INTENT_SECRET','AUDIT_SEGMENT_ID'];
+  'MINIMUM_PASSKEYS','SESSION_TTL_SECONDS','HOST','PORT','HANDOFF_INTENT_SECRET','AUDIT_SEGMENT_ID'];
 const fail=code=>{ throw new TypeError(`PROTECTED_PLATFORM_CONFIG_${code}`); };
 function read(env,key,optional=false) {
   if (optional && !Object.hasOwn(env,key)) return undefined;
@@ -29,6 +30,9 @@ export function loadProtectedPlatformConfiguration(env) {
   if (Reflect.ownKeys(env).some(key=>key.startsWith('PROTECTED_') && !allowed.has(key))) fail('UNKNOWN_KEY');
   const own=key=>read(env,PREFIX+key),optional=key=>read(env,PREFIX+key,true);
   const mode=own('ASSURANCE_MODE');if (!['passkey_setup','application_passkey'].includes(mode)) fail('PASSKEY_PROFILE_REQUIRED');
+  const minimum=optional('MINIMUM_PASSKEYS') ?? '2';
+  if (!['1','2'].includes(minimum)) fail('PASSKEY_MINIMUM_INVALID');
+  const minimumCredentialCount=requirePlatformPasskeyMinimum(profile.environment,Number(minimum));
   const segmentId=optional('AUDIT_SEGMENT_ID');
   if (segmentId!==undefined && (profile.environment!=='int' || !isInternalUuid(segmentId))) fail('AUDIT_SEGMENT_INVALID');
   const values={ entraClientSecret: secret(env,PREFIX+'ENTRA_CLIENT_SECRET'),
@@ -65,7 +69,8 @@ export function loadProtectedPlatformConfiguration(env) {
   const base=loadPlatformConfig(authenticationEnvironment);
   const auditSegment=segmentId===undefined ? null : Object.freeze({ id: segmentId,environment: 'int',
     deploymentEpoch: profile.securityEpoch });
-  const config=Object.freeze({ ...base,...profile.database,deploymentEnvironment: profile.environment,auditSegment });
+  const config=Object.freeze({ ...base,...profile.database,deploymentEnvironment: profile.environment,
+    auditSegment,minimumCredentialCount });
   const cipher=createProtectedCustodyCipher({ environment: profile.environment,
     activeKeyId: read(env,'PROTECTED_CUSTODY_ACTIVE_KEY_ID'),keyring: read(env,'PROTECTED_CUSTODY_KEYRING'),
     lookupSecret: values.lookupSecret,forbiddenSecrets: material });
@@ -77,7 +82,7 @@ export function loadProtectedPlatformConfiguration(env) {
           return !['pool','leasePool'].includes(key) || !Object.hasOwn(field,'value');
         })) fail('AUTHENTICATION_CONTEXT_INVALID');
       return createProtectedPlatformAuthentication({ env: authenticationEnvironment,pool: context.pool,leasePool: context.leasePool,
-        protectedEnvironment: profile.environment,protectedSecurityEpoch: profile.securityEpoch,auditSegment });
+        protectedEnvironment: profile.environment,protectedSecurityEpoch: profile.securityEpoch,auditSegment,minimumCredentialCount });
     },
     synthetic: handoff===null ? null : Object.freeze({ browserSecret: handoff,intentSecret: intent }) });
 }

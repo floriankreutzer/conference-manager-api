@@ -1,6 +1,9 @@
+import { requirePlatformPasskeyMinimum } from './passkey-policy.js';
 import { PlatformIdentityError } from './errors.js';
 
-export function createPlatformPasskeyHttpService({ authService, enrollmentFlow, lifecycleService, assuranceMode, environment } = {}) {
+export function createPlatformPasskeyHttpService({ authService, enrollmentFlow, lifecycleService, assuranceMode, environment,
+  minimumCredentialCount = 2 } = {}) {
+  requirePlatformPasskeyMinimum(environment,minimumCredentialCount);
   if (!['passkey_setup','application_passkey'].includes(assuranceMode) || !['dev','int','prod'].includes(environment)
     || !['pendingAuthentication','complete'].every(name => typeof authService?.[name] === 'function')
     || !['start','continueSetup','pending','register','complete','beginAddition']
@@ -9,7 +12,7 @@ export function createPlatformPasskeyHttpService({ authService, enrollmentFlow, 
     throw new TypeError('PLATFORM_PASSKEY_HTTP_SERVICE_PORTS_REQUIRED');
   }
   return Object.freeze({
-    configuration() { return Object.freeze({ mode: assuranceMode, environment, minimumPasskeys: 2 }); },
+    configuration() { return Object.freeze({ mode: assuranceMode, environment, minimumPasskeys: minimumCredentialCount }); },
     async pendingAuthentication(cookie) { return authService.pendingAuthentication(cookie); },
     async authenticate(value) {
       const pending = await authService.pendingAuthentication(value.cookie);

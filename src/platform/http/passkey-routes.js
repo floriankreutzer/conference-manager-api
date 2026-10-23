@@ -113,8 +113,9 @@ export const platformPasskeyRoutes = definePlatformRouteModule({
         if (action === 'configuration') {
           const value = service.configuration();
           if (!value || !['passkey_setup','application_passkey'].includes(value.mode)
-            || !['dev','int','prod'].includes(value.environment) || value.minimumPasskeys !== 2) invalidResult();
-          payload = { mode: value.mode, environment: value.environment, minimumPasskeys: 2 };
+            || !['dev','int','prod'].includes(value.environment) || ![1,2].includes(value.minimumPasskeys)
+            || value.minimumPasskeys === 1 && value.environment !== 'int') invalidResult();
+          payload = { mode: value.mode, environment: value.environment, minimumPasskeys: value.minimumPasskeys };
         } else if (action === 'pending' || action === 'enrollment_pending') {
           const value = action === 'pending' ? await service.pendingAuthentication(authCookie)
             : await service.pendingEnrollment(enrollCookie);

@@ -56,6 +56,22 @@ test('native owned Platform auth admits actual signed login and fences pending p
   await owned.withPreparationScope(()=>withPostgresTransaction(pool,async()=>{
     assert.ok(await owned.platformHttpSessionService.resolvePrincipal(request));
   },{ isolationLevel: 'REPEATABLE READ' }));
+  // Preserve the default two-key scenario above, then remove its reserve key
+  // through the actual trigger. The explicit INT policy alone accepts one key;
+  // the default resolver and login still reject that same current identity.
+  await pool.query('UPDATE platform_passkey_credentials SET revoked_at=clock_timestamp() WHERE credential_id=$1',
+    [owner.keys[1].credential.id]);
+  await owner.freshSession();
+  const reduced=createProtectedPlatformAuthentication({ env,pool,leasePool,protectedSecurityEpoch: epoch,minimumCredentialCount: 1 });
+  const one=await start(),oneCookie=one.setCookie.split(';')[0].split('=')[1];
+  const oneProof={ cookie: oneCookie,state: one.state,
+    response: owner.keys[0].response('get',{ counter: 2,client: { challenge: one.options.challenge } }) };
+  await assert.rejects(owned.normalPasskeyService.complete(oneProof),/SETUP_REQUIRED/);
+  const accepted=await reduced.platformPasskeyService.authenticate(oneProof);
+  const reducedRequest={ headers: { cookie: accepted.setCookies[0].split(';')[0] } };
+  assert.ok(await reduced.platformHttpSessionService.resolvePrincipal(reducedRequest));
+  assert.equal(await owned.platformHttpSessionService.resolvePrincipal(reducedRequest),null);
+  await assert.rejects(reduced.platformPasskeyService.authenticate(oneProof),/REJECTED/);
   const pending=await start(),pendingCookie=pending.setCookie.split(';')[0].split('=')[1];
   let oauthInput;let redemptions=0;
   const oidc=createPlatformEntraPrimaryAuthService({ repository: createPostgresPlatformOidcTransactionRepository(pool),

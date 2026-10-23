@@ -61,7 +61,10 @@ Normal async authentication, enrollment/lifecycle, session resolution/revocation
 and operation proof entrypoints acquire/join current shared custody. Their pure
 cookie/CSRF/private verified-context functions retain their synchronous contracts.
 The public HTTP session service exposes no issuer/rotator and resolves only
-current normal application MFA with at least two distinct active credentials.
+current normal application MFA with the configured number of distinct active
+credentials: two by default; one only with the explicit protected INT exception.
+Optional synthetic generation/delegation remains subject to its separate two-key
+custody contract.
 It cannot establish independent physical devices with attestation none. Active DEV/INT
 add a separate server-only proof service whose mutation transaction uses the
 owner-stamped exclusive scope; no outer shared lease may surround that completion.

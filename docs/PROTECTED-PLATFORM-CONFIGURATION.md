@@ -21,9 +21,13 @@ Microsoft origin. Required assurance is explicitly `passkey_setup` or
 `application_passkey`; omitted/conditional-access/unknown values cannot silently
 select an alternative. Fresh-primary/protocol bounds remain300 seconds, the
 independent integer epoch remains mandatory, and the existing owned verifier and
-minimum two actual credentials remain unchanged. Attestation none does not prove
-two independent physical devices. Actual keys/recovery and live primary proof
-remain separate acceptance.
+default minimum of two actual credentials remains unchanged. The optional
+`PROTECTED_PLATFORM_MINIMUM_PASSKEYS` accepts exactly `1` or `2`; `1` is rejected
+outside INT. Setup completion, ordinary login and protected session resolution
+use that same validated minimum. Attestation none does not prove independent
+physical devices. Actual owner key/recovery and live primary proof remain separate
+acceptance. Optional synthetic generation/delegation retains its existing two-key
+SQL and signed-continuation policy; this input does not activate or relax it.
 
 ## Inputs and shared custody
 
@@ -35,6 +39,8 @@ In addition to the envelope, required `PROTECTED_PLATFORM_` suffixes are
 customer-onboarding input; it never grants Platform authority or comes from an
 email/Microsoft claim. No actual owner is supplied or inferred by source tests.
 Host, port and session lifetime have bounded optional inputs.
+`MINIMUM_PASSKEYS` is an optional Platform-only suffix with default `2`; only INT
+may explicitly select `1`. It is never selected by browser or Customer input.
 
 Common required input is the public peer ID/service version, Tenant audit value
 and retained encrypted-custody keyring/active ID/stable lookup value. The shared

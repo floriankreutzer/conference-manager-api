@@ -218,3 +218,15 @@ test('managed session loss after the HTTP guard is a fixed audited403 for key li
     assert.deepEqual(event.metadata, { reasonCode: 'passkey_rejected' });
   }
 });
+
+
+test('configuration exposes one key only for INT and rejects missing or foreign reduced minima',async t=>{
+  for (const [environment,minimumPasskeys,status] of [['int',1,200],['int',2,200],['dev',1,500],['prod',1,500],
+    ['int',undefined,500],['int','1',500],['int',0,500]]) {
+    const f=await fixture(t);
+    f.passkeys.configuration=()=>({ mode: 'passkey_setup',environment,minimumPasskeys });
+    const result=await f.request(`${BASE}/configuration`);assert.equal(result.status,status);
+    if (status===200) assert.equal(result.body.minimumPasskeys,minimumPasskeys);
+    else assert.equal(result.headers['set-cookie'],undefined);
+  }
+});
