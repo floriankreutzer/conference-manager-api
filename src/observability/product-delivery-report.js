@@ -411,12 +411,12 @@ export function compileProductDeliveryReport(input) {
   });
 }
 
-export function uncollectedProductDeliveryReport(now = Date.now()) {
-  requireCondition(Number.isSafeInteger(now) && now >= 28 * DAY_MS);
+export function uncollectedProductDeliveryReport(now = Date.now(), environment = 'demo') {
+  requireCondition(Number.isSafeInteger(now) && now >= 28 * DAY_MS && ['demo', 'production'].includes(environment));
   const end = Math.floor(now / DAY_MS) * DAY_MS;
   const report = compileProductDeliveryReport({
     schemaVersion: 1,
-    environment: 'demo',
+    environment,
     periodStart: new Date(end - 28 * DAY_MS).toISOString(),
     periodEnd: new Date(end).toISOString(),
     observedAt: new Date(now).toISOString(),
