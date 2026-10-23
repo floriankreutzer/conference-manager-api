@@ -13,6 +13,7 @@ const fingerprint = createHash('sha256').update(keys.publicKey.export({ type: 's
 const uuid = suffix => `a1000000-0000-4000-8000-${suffix.padStart(12, '0')}`;
 const grant = { grantId: uuid('9'), token: Buffer.alloc(32, 7).toString('base64url') };
 function context() {
+  const now = Date.now();
   return { GITHUB_REPOSITORY: 'floriankreutzer/conference-manager-api', GITHUB_EVENT_NAME: 'workflow_dispatch',
     GITHUB_REF: 'refs/heads/main', GITHUB_ACTOR: 'floriankreutzer', GITHUB_TRIGGERING_ACTOR: 'floriankreutzer',
     GITHUB_RUN_ATTEMPT: '1', GITHUB_SHA: 'b'.repeat(40), EXPECTED_MAIN_SHA: 'b'.repeat(40),
@@ -28,7 +29,8 @@ function context() {
       approvalReference: 'SYNTHETIC-OWNER-APPROVAL', correlationId: uuid('6') }),
     CM_INT_PASSKEY_EVIDENCE: JSON.stringify({ sourceSha: 'b'.repeat(40), environment: 'int', deploymentEpoch: uuid('1'),
       segmentId: uuid('2'), operatorId: uuid('5'), identityReference: 'synthetic-identity-proof',
-      custodyReference: 'synthetic-recipient-custody', servicesClosed: true }) };
+      custodyReference: 'synthetic-recipient-custody', servicesClosed: true,
+      recipientCreatedAt: new Date(now).toISOString(), recipientExpiresAt: new Date(now + 900000).toISOString() }) };
 }
 function label() {
   return Buffer.from(JSON.stringify(['cm-int-passkey-bootstrap:v1', 'b'.repeat(40), uuid('6'), uuid('5'), 1,
@@ -129,4 +131,64 @@ test('workflow retains only ciphertext after locked install; never exposes reque
   assert.ok(workflow.indexOf('Install locked dependencies') < workflow.indexOf('secrets.CM_INT_AUDIT_HMAC_SECRET'));
   assert.doesNotMatch(workflow, /pull_request_target:|GITHUB_ENV|GITHUB_OUTPUT|HOSTED_DEMO_.*DATABASE_URL|vars\.CM_INT_/);
   assert.doesNotMatch(workflow, /platform-owner-bootstrap\.mjs|db-migrate|demo-reset|start:protected/);
+});
+
+
+test('browser ciphertext discloses only public recipient references and a context hash; actual OAEP decryption remains bound',()=>{
+  const env=context(),actual=requirePlatformPasskeyBootstrapDeliveryContext(env);
+  const bundle=JSON.parse(actual.encryptForBrowser(grant));
+  assert.deepEqual(Object.keys(bundle).sort(),['ciphertext','format','labelHash','recipientSha256','requestId']);
+  assert.equal(bundle.format,'cm-int-passkey-browser-delivery:v1');assert.equal(bundle.requestId,uuid('6'));
+  assert.equal(bundle.recipientSha256,fingerprint);assert.match(bundle.labelHash,/^[a-f0-9]{64}$/);
+  const evidence=JSON.parse(env.CM_INT_PASSKEY_EVIDENCE);
+  assert.equal(bundle.labelHash,createHash('sha256').update(JSON.stringify(['cm-int-passkey-browser-delivery:v1',
+    env.GITHUB_SHA,uuid('6'),uuid('5'),1,'int',2,uuid('2'),uuid('1'),fingerprint,
+    evidence.recipientCreatedAt,evidence.recipientExpiresAt])).digest('hex'));
+  for (const value of [grant.token,grant.grantId,uuid('5'),uuid('2'),uuid('1')]) {
+    assert.equal(JSON.stringify(bundle).includes(value),false);
+  }
+  const parameters={ key: keys.privateKey,padding: constants.RSA_PKCS1_OAEP_PADDING,
+    oaepHash: 'sha256',oaepLabel: Buffer.from(bundle.labelHash,'hex') };
+  assert.deepEqual(JSON.parse(privateDecrypt(parameters,Buffer.from(bundle.ciphertext,'base64url'))),grant);
+  assert.throws(()=>privateDecrypt({ ...parameters,oaepLabel: label() },Buffer.from(bundle.ciphertext,'base64url')));
+});
+
+test('only the separate owner-main recovery workflow may request independently authorized canonical recovery',()=>{
+  const env=context();env.GITHUB_WORKFLOW_REF=env.GITHUB_WORKFLOW_REF.replace('passkey-bootstrap.yml','passkey-recovery.yml');
+  assert.throws(()=>requirePlatformPasskeyBootstrapDeliveryContext(env));
+  env.CM_INT_PASSKEY_REQUEST_JSON=JSON.stringify({ ...JSON.parse(env.CM_INT_PASSKEY_REQUEST_JSON),kind: 'recovery' });
+  const value=requirePlatformPasskeyBootstrapDeliveryContext(env);assert.equal(value.request.kind,'recovery');
+  assert.equal(JSON.parse(value.encryptForBrowser(grant)).format,'cm-int-passkey-browser-delivery:v1');
+  for (const patch of [{ GITHUB_ACTOR: 'other' },{ GITHUB_RUN_ATTEMPT: '2' },{ EXPECTED_MAIN_SHA: 'c'.repeat(40) },
+    { GITHUB_REF: 'refs/heads/other' },{ GITHUB_WORKFLOW_REF: env.GITHUB_WORKFLOW_REF.replace('main','other') }]) {
+    assert.throws(()=>requirePlatformPasskeyBootstrapDeliveryContext({ ...env,...patch }));
+  }
+  for (const kind of ['additional','bootstrap']) {
+    assert.throws(()=>requirePlatformPasskeyBootstrapDeliveryContext({ ...env,
+      CM_INT_PASSKEY_REQUEST_JSON: JSON.stringify({ ...JSON.parse(env.CM_INT_PASSKEY_REQUEST_JSON),kind }) }));
+  }
+  const workflow=readFileSync('.github/workflows/protected-int-passkey-recovery.yml','utf8');
+  for (const required of ['github.run_attempt == 1','github.actor == \'floriankreutzer\'',
+    'group: hosted-shared-demo-database-initialize','persist-credentials: false','retention-days: 1',
+    'environment:','name: hosted-demo-initialize','node scripts/platform-passkey-bootstrap-deliver.mjs']) {
+    assert.ok(workflow.includes(required));
+  }
+  assert.doesNotMatch(workflow,/pull_request_target:|GITHUB_OUTPUT|GITHUB_ENV|platform-owner-bootstrap|db-migrate|demo-reset/);
+});
+
+test('recovery recipient freshness is retained and rechecked at the writer boundary after dispatch delays',()=>{
+  const env=context();env.GITHUB_WORKFLOW_REF=env.GITHUB_WORKFLOW_REF.replace('passkey-bootstrap.yml','passkey-recovery.yml');
+  env.CM_INT_PASSKEY_REQUEST_JSON=JSON.stringify({ ...JSON.parse(env.CM_INT_PASSKEY_REQUEST_JSON),kind: 'recovery' });
+  const evidence=JSON.parse(env.CM_INT_PASSKEY_EVIDENCE),start=Date.parse(evidence.recipientCreatedAt);
+  const delivery=requirePlatformPasskeyBootstrapDeliveryContext(env);
+  delivery.assertRecipientFresh(start+779999);
+  for (const delayed of [start+780000,start+900000,start+1200000]) {
+    assert.throws(()=>delivery.assertRecipientFresh(delayed),{ message: 'PLATFORM_PASSKEY_BOOTSTRAP_DELIVERY_REFUSED' });
+  }
+  for (const patch of [{ recipientCreatedAt: undefined },{ recipientExpiresAt: undefined },
+    { recipientExpiresAt: new Date(start+899999).toISOString() },
+    { recipientCreatedAt: new Date(start-900000).toISOString(),recipientExpiresAt: new Date(start).toISOString() }]) {
+    assert.throws(()=>requirePlatformPasskeyBootstrapDeliveryContext({ ...env,
+      CM_INT_PASSKEY_EVIDENCE: JSON.stringify({ ...evidence,...patch }) }));
+  }
 });

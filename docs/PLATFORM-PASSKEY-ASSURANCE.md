@@ -96,9 +96,12 @@ This compatibility rule does not prove deployed Microsoft or device acceptance.
 
 The optional `protected-int-passkey-bootstrap.yml` workflow calls the unchanged
 canonical offline grant CLI for **bootstrap only**, after the first real owner
-exists. It does not implement recovery, create an owner, enroll a key, start a
-service or issue a business session. Actual Microsoft primary, two owner-controlled
-keys and recovery remain separate required operating evidence.
+exists. The separate `protected-int-passkey-recovery.yml` workflow permits only
+canonical `recovery`; neither workflow accepts the other purpose or an additional-key
+request. Both retain the same owner/Main/attempt1/protected-environment guards.
+Neither workflow creates an owner, enrolls a key, starts a service or issues a business session. Actual Microsoft primary, the configured minimum of owner-controlled
+keys and recovery remain separate required operating evidence. The accepted
+INT-only one-key exception does not waive the recovery rehearsal.
 
 Use the already inspected Main-only environment and serialized database-operation
 group. Owner/triggering owner, exact accepted Main, attempt1, ordinary logging,
@@ -110,32 +113,40 @@ connection carriers. Temporary owner directory/subject bindings are reused.
 Add private environment secrets `CM_INT_PASSKEY_OPERATOR_ID`,
 `CM_INT_PASSKEY_OPERATOR_VERSION`, `CM_INT_PASSKEY_REQUEST_JSON`,
 `CM_INT_PASSKEY_EVIDENCE`, `CM_INT_PASSKEY_RECIPIENT_PUBLIC_KEY` and
-`CM_INT_PASSKEY_RECIPIENT_SHA256`. The canonical request is exact, INT, bootstrap,
-900 seconds and bound to the independently verified operator/provider identity
+`CM_INT_PASSKEY_RECIPIENT_SHA256`. The canonical request is exact, INT, bootstrap
+or recovery according to its fixed workflow, 900 seconds and bound to the independently verified operator/provider identity
 and positive integer Platform epoch. Evidence contains exactly sourceSha,
 environment, deploymentEpoch, segmentId, operatorId, identityReference,
-custodyReference and servicesClosed; reconcile each with actual protected evidence
+custodyReference, servicesClosed, recipientCreatedAt and recipientExpiresAt;
+reconcile each with actual protected evidence
 and keep both services closed during issuance. Binding validation does not prove
 that an attested ceremony or closed-service observation actually occurred.
 
 Generate an ephemeral RSA4096 public/private pair in the approved recipient's
-private administrative custody. Independently retain its SHA256 SPKI DER fingerprint;
+private custody. The INT Safari file-delivery option generates a non-exportable
+private key in the owner's own browser window; no separate Admin computer is required. Independently retain its SHA256 SPKI DER fingerprint;
 only the public SPKI PEM and fingerprint enter the environment. No private
 recipient key enters Actions, source, logs or artifacts. The transport validates
 key type, size, exponent, fingerprint and encryption usability before any writer.
 RSA-OAEP/SHA256 binds its label to the fixed transport version, accepted source,
 request correlation, operator/version, INT/integer epoch, segment, deployment UUID
 and recipient fingerprint. Decryption must use that exact privately retained label
-and key, then feed the canonical grant only to the same-origin enrollment form.
+and key for historical legacy envelopes. New browser-delivery envelopes use a
+domain-separated SHA256 digest of that complete binding plus the validated
+recipient creation/expiry window as the OAEP label; the
+artifact carries only the opaque label hash, public recipient fingerprint/request
+correlation and ciphertext. The browser decrypts locally and forwards the canonical
+grant only to the existing same-origin enrollment endpoint on explicit file use.
 Never put the raw grant in URLs, browser storage, public logs, email or Confluence.
 Loss of the ephemeral private key makes the artifact unusable; it is not recovery
 custody or an authenticator.
 
 The canonical FD3 request and FD4 grant use bounded private subprocess pipes.
 Standard output/error from the native CLI are suppressed. No plaintext grant file
-is written. Only the RSA ciphertext and fixed format marker are written under the
+is written. Only the RSA ciphertext, fixed format marker, public recipient references and
+opaque binding hash are written under the
 private runner temporary directory and uploaded as `protected-int-passkey-bootstrap`
-with one-day retention; the runner copy is removed afterwards. Public output has
+or `protected-int-passkey-recovery`, respectively, with one-day retention; the runner copy is removed afterwards. Public output has
 only a fixed success/refusal marker. Artifact name/existence or upload success is
 not enrollment, delivery to the intended browser, or private-key-possession proof.
 
@@ -651,3 +662,62 @@ freshness, epoch, target/session binding, key count or one-use proof controls.
 Old random-nonce pending transactions must restart; ordinary business sessions
 and registered keys are preserved. Actual SDK round-trip tests use isolated
 synthetic provider responses and do not claim real owner/device acceptance.
+
+
+## INT recipient-window delivery and controlled recovery
+
+The optional browser path is confidential transport, not another authentication
+method. Its public recipient request contains only format, exact origin, a fresh
+UUID requestId, SPKI public key/fingerprint and a fifteen-minute window. The
+private RSA4096 key remains non-exportable in that window's memory; no browser
+storage, private-key download or plaintext grant file is introduced. Page close
+or expiry loses that recipient custody. This is not hardware attestation.
+
+Before dispatch, independently reconcile the owner/provider mapping, current
+operator version, accepted Main, actual closed-service posture, deployment UUID,
+integer epoch and audit segment. The public file never supplies identity or
+approval authority. `requirePlatformPasskeyBrowserRecipient` rejects unknown
+fields, another origin, malformed/stale/future requests, weak RSA and fingerprint
+mismatches. Preserve its correlationId as the canonical request correlation and
+use only the returned public recipient bindings. Preserve recipientCreatedAt and
+recipientExpiresAt in the private evidence object. Both workflow purposes reject
+missing, malformed or expired windows; the runner rechecks immediately before
+spawning the canonical issuer and requires over two minutes remaining for its
+60-second child deadline and delivery reserve. Dispatch/queue/install delay cannot
+turn an old recipient into a destructive recovery. This cannot prove the browser
+window has stayed open. Never infer iPhone possession,
+real Microsoft identity, service closure or owner approval from file contents.
+
+Both fixed workflow paths call the unchanged canonical offline issuer through
+private FD3/FD4. Bootstrap remains bootstrap-only; recovery remains recovery-only.
+Recovery uses the independently verified current pre-operation operator version;
+the canonical issuer revokes old keys/sessions and advances security authority.
+A fresh Microsoft pending proof after that recovery must use the new version.
+No old key, grant, transaction or session is reactivated. A single-key owner still
+cannot revoke the last key through ordinary key management.
+
+New ciphertext files use `cm-int-passkey-browser-delivery:v1` with exactly format,
+requestId, recipientSha256, labelHash and ciphertext. The labelHash is SHA256 over
+the domain-separated canonical source/correlation/operator/request-version/INT/
+integer-epoch/segment/deployment/recipient/window tuple. Operator, deployment and audit
+identifiers are not exposed as raw artifact metadata. The existing legacy v1
+RSA envelope remains available to its retained contract tests; newly issued
+workflow artifacts use only the browser envelope. No capability enters ordinary
+stdout/stderr, GITHUB_OUTPUT, URLs, clipboard, email, Confluence or browser storage.
+
+The owner saves the public request in their own Safari window and provides it to
+the independent operator. Only after actual source/state/custody reconciliation
+may that operator update the existing protected environment bindings and dispatch
+the matching workflow once. Deliver only its ciphertext JSON to that same window.
+The owner selects the file deliberately; local OAEP validation/decryption feeds
+the existing enrollment flow without displaying or filling the setup code. If
+Microsoft pending proof expired, renew it in a separate tab, keep the recipient
+window open and explicitly resume there. Never auto-replay an ambiguous write.
+Actual grant/audit state must be reconciled before replacement issuance.
+
+Actual acceptance requires first owner-controlled Apple enrollment and signed
+possession, then a separate controlled application-key recovery/re-enrollment
+rehearsal before business activation. The rehearsal assumes Microsoft and the
+independent owner execution account remain available; recovery of a lost iPhone,
+Apple Account and all external accounts together is not proven by it. Software
+crypto/DB/browser tests never substitute for those owner actions or custody.
