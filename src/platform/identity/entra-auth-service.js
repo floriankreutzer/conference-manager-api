@@ -42,6 +42,8 @@ const REDEMPTION_FAILURE_REASONS = Object.freeze({
   PLATFORM_ENTRA_AUTHENTICATION_TIME_NEGATIVE: 'provider_authentication_time_negative',
   PLATFORM_ENTRA_TOKEN_EXPIRY_ORDER_INVALID: 'provider_token_expiry_order_invalid',
   PLATFORM_ENTRA_AUTHENTICATION_ORDER_INVALID: 'provider_authentication_order_invalid',
+  PLATFORM_ENTRA_ISSUED_AT_NOT_FRESH: 'provider_issued_at_not_fresh',
+  PLATFORM_ENTRA_AUTHENTICATION_EXPIRY_ORDER_INVALID: 'provider_authentication_expiry_order_invalid',
   PLATFORM_PRIMARY_CODE_INPUT_INVALID: 'provider_code_input_invalid',
   PLATFORM_ASSURANCE_CONTEXT_REJECTED: 'provider_assurance_context_rejected',
 });

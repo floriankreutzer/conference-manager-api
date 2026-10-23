@@ -3,9 +3,10 @@ import { randomBytes } from 'node:crypto';
 import test from 'node:test';
 import { PlatformIdentityError } from '../src/platform/identity/errors.js';
 import { createPlatformEntraPrimaryAuthService } from '../src/platform/identity/entra-auth-service.js';
+import { createPlatformEntraPrimaryClient } from '../src/platform/identity/entra-client.js';
 import { readPlatformEntraTransactionCookie } from '../src/platform/identity/entra-transaction-cookie.js';
 
-function fixture({ redeemFailure = null } = {}) {
+function fixture({ redeemFailure = null, realPrimaryClient = null } = {}) {
   const transactions = new Map();
   const calls = { redeem: 0, startPasskey: 0, failures: [], contexts: [], consumed: 0 };
   let transaction = null; let result = { status: 'passkey_required', state: 'pending', options: {}, setCookie: 'preauth-cookie' };
@@ -20,7 +21,7 @@ function fixture({ redeemFailure = null } = {}) {
         transactions.delete(value.stateHash); return record;
       },
     },
-    entraClient: {
+    entraClient: realPrimaryClient || {
       verifyPrimary() {},
       async authorizationUrl(value) {
         calls.contexts.push(value.authenticationContext);
@@ -37,7 +38,12 @@ function fixture({ redeemFailure = null } = {}) {
     },
     passkeyAuthService: { async startLogin(assertion, context) {
       calls.startPasskey += 1;
-      assert.equal(assertion, primaryAssertion);
+      if (realPrimaryClient) {
+        const identity = await realPrimaryClient.verifyPrimary(assertion);
+        assert.equal(identity.provider, 'microsoft_entra_platform');
+        assert.equal(identity.roles, undefined);
+        await assert.rejects(realPrimaryClient.verifyPrimary(assertion), /NOT_VERIFIED/);
+      } else assert.equal(assertion, primaryAssertion);
       assert.equal(context.correlationId, transaction.correlationId);
       return result;
     } },
@@ -65,6 +71,53 @@ test('Microsoft primary callback consumes browser-bound OIDC state and returns o
   await assert.rejects(f.service.complete(input), /OIDC_STATE_INVALID/);
   assert.equal(f.calls.redeem, 1);
   await assert.rejects(f.service.start({ purpose: 'step_up' }), /OIDC_PURPOSE_INVALID/);
+});
+
+test('real primary adapter and callback accept independent fresh times but reject stale claims without a pending flow', async () => {
+  const seconds = Date.parse('2026-10-23T00:00:00Z') / 1000;
+  const directory = '22222222-2222-4222-8222-222222222222';
+  const clientId = '11111111-1111-4111-8111-111111111111';
+  const authority = `https://login.microsoftonline.com/${directory}`;
+  const redirect = 'https://platform.example.com/api/v1/platform/auth/microsoft/callback';
+  for (const [changes, reasonCode] of [
+    [{ iat: seconds - 300, auth_time: seconds }, null],
+    [{ iat: seconds - 361, auth_time: seconds }, 'provider_issued_at_not_fresh'],
+    [{ iat: seconds, auth_time: seconds - 361 }, 'provider_authentication_not_fresh'],
+    [{ iat: seconds, auth_time: seconds + 60, exp: seconds + 60 }, 'provider_authentication_expiry_order_invalid'],
+  ]) {
+    const realPrimaryClient = createPlatformEntraPrimaryClient({
+      clientId, clientSecret: 's'.repeat(48), tenantReference: directory, authority,
+      redirectUri: redirect, publicOrigin: 'https://platform.example.com', clock: () => seconds * 1000,
+      application: {
+        async getAuthCodeUrl(request) {
+          const url = new URL(`${authority}/oauth2/v2.0/authorize`);
+          for (const [key, value] of Object.entries({ client_id: clientId, redirect_uri: redirect,
+            response_type: 'code', response_mode: 'query', scope: 'openid profile', max_age: '300',
+            state: request.state, nonce: request.nonce, code_challenge: request.codeChallenge,
+            code_challenge_method: 'S256', claims: request.claims })) url.searchParams.set(key, value);
+          return url.toString();
+        },
+        async acquireTokenByCode(request) {
+          return { idTokenClaims: { aud: clientId, tid: directory,
+            oid: '33333333-3333-4333-8333-333333333333', iss: `${authority}/v2.0`,
+            nonce: request.nonce, ver: '2.0', exp: seconds + 3600, ...changes } };
+        },
+      },
+    });
+    const f = fixture({ realPrimaryClient }); const input = await f.start();
+    if (reasonCode === null) {
+      const pending = await f.service.complete(input);
+      assert.equal(pending.status, 'passkey_required');
+      assert.equal(pending.principal, undefined);
+      assert.equal(f.calls.startPasskey, 1);
+      assert.deepEqual(f.calls.failures, []);
+    } else {
+      await assert.rejects(f.service.complete(input), /PLATFORM_ENTRA_/);
+      assert.equal(f.calls.startPasskey, 0);
+      assert.deepEqual(f.calls.failures, [{ correlationId: f.record().correlationId, reasonCode }]);
+    }
+    await assert.rejects(f.service.complete(input), /OIDC_STATE_INVALID/);
+  }
 });
 
 test('primary callback rejects a foreign browser before state consumption or provider exchange', async () => {
@@ -116,6 +169,8 @@ test('primary redemption audit separates exchange, nonce and freshness failures 
     ['PLATFORM_ENTRA_AUTHENTICATION_TIME_NEGATIVE', 'provider_authentication_time_negative'],
     ['PLATFORM_ENTRA_TOKEN_EXPIRY_ORDER_INVALID', 'provider_token_expiry_order_invalid'],
     ['PLATFORM_ENTRA_AUTHENTICATION_ORDER_INVALID', 'provider_authentication_order_invalid'],
+    ['PLATFORM_ENTRA_ISSUED_AT_NOT_FRESH', 'provider_issued_at_not_fresh'],
+    ['PLATFORM_ENTRA_AUTHENTICATION_EXPIRY_ORDER_INVALID', 'provider_authentication_expiry_order_invalid'],
   ]) {
     const failure = new PlatformIdentityError(code);
     const f = fixture({ redeemFailure: failure }); const input = await f.start();

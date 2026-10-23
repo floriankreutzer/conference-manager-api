@@ -151,14 +151,16 @@ test('primary provider errors reveal neither raw payload nor secrets and token e
     { code: 'PLATFORM_ENTRA_TOKEN_LIFETIME_INVALID' });
 });
 
-test('primary time failures retain exact predicates, bounds and fixed non-secret error codes', async () => {
+test('primary time failures enforce independent freshness, expiry ordering and fixed non-secret error codes', async () => {
   const seconds = NOW / 1000;
   for (const [changes, code, clock] of [
     [{ exp: seconds + 86401 }, 'PLATFORM_ENTRA_TOKEN_LIFETIME_INVALID'],
     [{ iat: -1 }, 'PLATFORM_ENTRA_ISSUED_AT_NEGATIVE'],
     [{ auth_time: -1, iat: 0, exp: 60 }, 'PLATFORM_ENTRA_AUTHENTICATION_TIME_NEGATIVE', () => 0],
     [{ iat: seconds + 60, exp: seconds + 60 }, 'PLATFORM_ENTRA_TOKEN_EXPIRY_ORDER_INVALID'],
-    [{ iat: seconds - 91 }, 'PLATFORM_ENTRA_AUTHENTICATION_ORDER_INVALID'],
+    [{ iat: seconds - 361 }, 'PLATFORM_ENTRA_ISSUED_AT_NOT_FRESH'],
+    [{ auth_time: seconds + 60, exp: seconds + 60 }, 'PLATFORM_ENTRA_AUTHENTICATION_EXPIRY_ORDER_INVALID'],
+    [{ auth_time: seconds + 60, exp: seconds + 59 }, 'PLATFORM_ENTRA_AUTHENTICATION_EXPIRY_ORDER_INVALID'],
   ]) {
     await assert.rejects(primary({ ...tokenClaims(), ...changes }, clock ? { clock } : {})
       .redeemAuthorizationCode(redeem), error => {
@@ -166,12 +168,49 @@ test('primary time failures retain exact predicates, bounds and fixed non-secret
       assert.equal(error.cause, undefined); return true;
     });
   }
-  for (const changes of [{ exp: seconds + 86400 }, { iat: seconds - 90 }]) {
+  for (const changes of [{ exp: seconds + 86400 }, { iat: seconds - 90 }, { iat: seconds - 91 },
+    { iat: seconds - 300 }, { iat: seconds - 360 }]) {
     const client = primary({ ...tokenClaims(), ...changes });
     assert.deepEqual(await client.verifyPrimary(await client.redeemAuthorizationCode(redeem)), {
       provider: 'microsoft_entra_platform', issuer: `${AUTHORITY}/v2.0`, audience: CLIENT,
       tenantReference: DIRECTORY, subjectReference: SUBJECT, authenticatedAt: new Date(NOW - 30_000).toISOString(),
     });
+  }
+});
+
+test('independent token and authentication freshness retains exact boundaries and opaque one-use assertions', async () => {
+  const seconds = NOW / 1000;
+  for (const maxAge of [60, 300]) {
+    for (const changes of [
+      { iat: seconds - maxAge - 60, auth_time: seconds },
+      { iat: seconds + 60, auth_time: seconds - maxAge - 60 },
+      { iat: seconds, auth_time: seconds + 60 },
+    ]) {
+      let now = NOW;
+      const client = primary({ ...tokenClaims(), ...changes }, {
+        authenticationMaxAgeSeconds: maxAge, clock: () => now,
+      });
+      const assertion = await client.redeemAuthorizationCode(redeem);
+      assert.deepEqual(assertion, { status: 'primary_verified' });
+      const identity = await client.verifyPrimary(assertion);
+      assert.equal(identity.authenticatedAt, new Date(changes.auth_time * 1000).toISOString());
+      await assert.rejects(client.verifyPrimary(assertion), /NOT_VERIFIED/);
+      const pending = await client.redeemAuthorizationCode(redeem);
+      now += (maxAge + 121) * 1000;
+      await assert.rejects(client.verifyPrimary(pending), /EXPIRED/);
+      await assert.rejects(client.verifyPrimary(pending), /NOT_VERIFIED/);
+    }
+    for (const [changes, code] of [
+      [{ iat: seconds - maxAge - 61 }, 'PLATFORM_ENTRA_ISSUED_AT_NOT_FRESH'],
+      [{ auth_time: seconds - maxAge - 61 }, 'PLATFORM_ENTRA_AUTHENTICATION_NOT_FRESH'],
+      [{ iat: seconds + 61 }, 'PLATFORM_ENTRA_ISSUED_AT_INVALID'],
+      [{ auth_time: seconds + 61 }, 'PLATFORM_ENTRA_AUTHENTICATION_TIME_INVALID'],
+      [{ iat: '123' }, 'PLATFORM_ENTRA_ISSUED_AT_INVALID'],
+      [{ auth_time: null }, 'PLATFORM_ENTRA_AUTHENTICATION_TIME_INVALID'],
+    ]) {
+      await assert.rejects(primary({ ...tokenClaims(), ...changes }, { authenticationMaxAgeSeconds: maxAge })
+        .redeemAuthorizationCode(redeem), { code });
+    }
   }
 });
 

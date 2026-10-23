@@ -291,7 +291,13 @@ function createClient({
         if (result.idTokenClaims.iat < 0) fail('PLATFORM_ENTRA_ISSUED_AT_NEGATIVE');
         if (result.idTokenClaims.auth_time < 0) fail('PLATFORM_ENTRA_AUTHENTICATION_TIME_NEGATIVE');
         if (result.idTokenClaims.exp <= result.idTokenClaims.iat) fail('PLATFORM_ENTRA_TOKEN_EXPIRY_ORDER_INVALID');
-        if (result.idTokenClaims.auth_time > result.idTokenClaims.iat + 60) fail('PLATFORM_ENTRA_AUTHENTICATION_ORDER_INVALID');
+        // OIDC validates issuance age and authentication freshness against the RP clock independently.
+        if (result.idTokenClaims.iat < Math.floor(clock() / 1000) - requestedMaxAge - 60) {
+          fail('PLATFORM_ENTRA_ISSUED_AT_NOT_FRESH');
+        }
+        if (result.idTokenClaims.auth_time >= result.idTokenClaims.exp) {
+          fail('PLATFORM_ENTRA_AUTHENTICATION_EXPIRY_ORDER_INVALID');
+        }
         const assertion = Object.freeze({ status: 'primary_verified' });
         primaryAssertions.set(assertion, { identity: claims, expiresAt: result.idTokenClaims.exp * 1000 });
         return assertion;
