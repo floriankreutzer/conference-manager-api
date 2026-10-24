@@ -65,3 +65,13 @@ Customer account. Source/Customer lifetime uses existing session limits. Additiv
 migration, rollback/retention, minimal existing-role delta, signed attribution,
 cross-Tenant/replay/concurrency tests and real paired browser qualification remain
 required before runtime composition or any live acceptance claim.
+
+
+The first native source run40139063843 failed the positive owner read because
+Platform sessions use database microsecond timestamps but canonical Principals
+expose millisecond ISO values. The source comparison now uses that existing
+canonical precision for issued/expiry snapshot equality; actual revocation and
+expiry against clock_timestamp() remain exact. Native coverage verifies the
+mapper's precision and denies even a one-millisecond change in either supplied
+snapshot. No timestamp, TTL, provider, role or receipt check is removed. The
+failed run is retained and renewed native execution remains required.

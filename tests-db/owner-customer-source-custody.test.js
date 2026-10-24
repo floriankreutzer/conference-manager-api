@@ -53,12 +53,23 @@ async t=>{
   const current=await issue(boot.operatorId,roles,2),principal=current.principal;
   await assert.rejects(custody.currentWithClient(pool,{ principal,selection }),/PROTECTED_SHARED_EXECUTION_REQUIRED/);
   await assert.rejects(scopes.withShared(()=>custody.currentWithClient(pool,{ principal,selection })),/TRANSACTION_REQUIRED/);
+  // Platform persistence uses database clock_timestamp() (microseconds), while
+  // its canonical Principal mapper exposes JS Date ISO values (milliseconds).
+  const precision=(await pool.query(`SELECT date_trunc('milliseconds',issued_at)=$2 AS issued_matches,
+    date_trunc('milliseconds',expires_at)=$3 AS expires_matches FROM platform_sessions WHERE id=$1`,
+  [principal.session.id,principal.session.issuedAt,principal.session.expiresAt])).rows[0];
+  assert.deepEqual(precision,{ issued_matches: true,expires_matches: true });
   const accepted=await read(principal);
+  assert.ok(accepted,'OWNER_CURRENT_SOURCE_REQUIRED');
   assert.equal(accepted.operatorId,boot.operatorId);assert.equal(accepted.tenantId,tenantId);
   assert.equal(accepted.sourceSessionId,principal.session.id);assert.equal(accepted.sourceExpiresAt,principal.session.expiresAt);
   assert.notEqual(accepted.bootstrapAuditSequence,accepted.ownerRolesAuditSequence);
   assert.equal(await read(principal,{ ...selection,tenantId: randomUUID() }),null);
   assert.equal(await read({ ...principal,session: { ...principal.session,id: randomUUID() } }),null);
+  for (const field of ['issuedAt','expiresAt']) {
+    const altered=new Date(Date.parse(principal.session[field])+1).toISOString();
+    assert.equal(await read({ ...principal,session: { ...principal.session,[field]: altered } }),null);
+  }
   assert.equal(await read({ ...principal,providerIdentity: { ...principal.providerIdentity,subjectReference: randomUUID() } }),null);
   await pool.query("UPDATE tenants SET status='suspended' WHERE id=$1",[tenantId]);
   assert.equal(await read(principal),null);

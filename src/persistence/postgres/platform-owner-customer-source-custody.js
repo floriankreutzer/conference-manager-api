@@ -47,7 +47,8 @@ export function createPostgresOwnerCustomerSourceCustody(pool,{ scope: rawScope 
           AND source.scope_mode=actor.scope_mode AND source.permissions=$11::text[]
           AND source.assurance_level='mfa' AND source.authentication_context='cm:ms:mfa:v1'
           AND source.step_up_expires_at IS NULL AND source.authenticated_at=$12
-          AND source.issued_at=$13 AND source.expires_at=$14 AND source.revoked_at IS NULL
+          AND date_trunc('milliseconds',source.issued_at)=$13
+          AND date_trunc('milliseconds',source.expires_at)=$14 AND source.revoked_at IS NULL
           AND source.expires_at>clock_timestamp() AND source.issued_at<=clock_timestamp()+interval '1 minute'
         FOR SHARE OF actor,source,deployment,tenant`,
       values: [scope.environment,scope.securityEpoch,selection.tenantId,principal.operatorId,
