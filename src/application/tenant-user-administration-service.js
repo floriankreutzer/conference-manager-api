@@ -10,29 +10,14 @@ import {
 import {
   PERMISSION,
   TENANT_ROLE,
-  tenantAuthorizationSnapshot,
 } from '../authorization/policy.js';
+import { normalizeTenantElevatedRoles } from '../authorization/tenant-role-sources.js';
+import { tenantUserRolePresentation } from './tenant-user-role-presentation.js';
 import { isInternalUuid } from '../domain/identifiers.js';
 import { TenantUserRoleConflictError } from './tenant-user-errors.js';
 
-const ELEVATED_ROLE_ORDER = Object.freeze([
-  TENANT_ROLE.CONFERENCE_MANAGER,
-  TENANT_ROLE.TENANT_ADMIN,
-]);
-const ELEVATED_ROLES = new Set(ELEVATED_ROLE_ORDER);
-
 function concealedNotFound() {
   return new AuthorizationDeniedError('RESOURCE_NOT_AVAILABLE', { conceal: true });
-}
-
-function normalizeElevatedRoles(value) {
-  if (!Array.isArray(value) || value.length > ELEVATED_ROLE_ORDER.length) {
-    throw new AuthorizationInputError('TENANT_USER_ROLES_INVALID');
-  }
-  if (new Set(value).size !== value.length || value.some((role) => !ELEVATED_ROLES.has(role))) {
-    throw new AuthorizationInputError('TENANT_USER_ROLES_INVALID');
-  }
-  return Object.freeze(ELEVATED_ROLE_ORDER.filter((role) => value.includes(role)));
 }
 
 function assertCorrelationId(value) {
@@ -44,15 +29,11 @@ function assertTargetUserId(value) {
 }
 
 function publicUser(user) {
-  const snapshot = tenantAuthorizationSnapshot([
-    TENANT_ROLE.EMPLOYEE,
-    ...user.elevatedRoles,
-  ]);
   return Object.freeze({
     id: user.userId,
     displayName: user.displayName,
     active: user.active,
-    roles: snapshot.roles,
+    ...tenantUserRolePresentation(user),
   });
 }
 
@@ -163,7 +144,7 @@ export function createTenantUserAdministrationService({
     }) {
       assertCorrelationId(correlationId);
       assertTargetUserId(targetUserId);
-      const elevatedRoles = normalizeElevatedRoles(roles);
+      const elevatedRoles = normalizeTenantElevatedRoles(roles);
       await authorize({
         principal,
         tenantContext,

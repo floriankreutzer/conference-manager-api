@@ -10,10 +10,10 @@ import {
 import {
   PERMISSION,
   TENANT_ROLE,
-  tenantAuthorizationSnapshot,
 } from '../authorization/policy.js';
 import { isInternalUuid } from '../domain/identifiers.js';
 import { TenantUserLifecycleConflictError } from './tenant-user-lifecycle-errors.js';
+import { tenantUserRolePresentation } from './tenant-user-role-presentation.js';
 
 const STATUS_FILTER = new Set(['all', 'active', 'disabled']);
 const ROLE_FILTER = new Set([
@@ -112,15 +112,11 @@ function publicUser(user, expectedTenantId) {
   ) {
     throw new TypeError('TENANT_USER_LIFECYCLE_RESULT_INVALID');
   }
-  const snapshot = tenantAuthorizationSnapshot([
-    TENANT_ROLE.EMPLOYEE,
-    ...user.elevatedRoles,
-  ]);
   return Object.freeze({
     id: user.userId,
     displayName: user.displayName,
     active: user.active,
-    roles: snapshot.roles,
+    ...tenantUserRolePresentation(user),
     lifecycle: Object.freeze({
       status: user.active ? 'active' : 'disabled',
       version: user.lifecycleVersion,

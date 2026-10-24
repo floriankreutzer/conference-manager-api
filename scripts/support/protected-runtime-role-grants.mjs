@@ -18,7 +18,7 @@ function scope(input) {
 // Pure, redacted review plan. No implicit environment, connection or mutation.
 export function protectedRuntimeRoleGrantPlan(input) {
   const fixed=scope(input);
-  return Object.freeze({ ...fixed,schemaVersion: 66,roles: Object.freeze(['customer','platform'].map(surface=>{
+  return Object.freeze({ ...fixed,schemaVersion: 68,roles: Object.freeze(['customer','platform'].map(surface=>{
     const role=`cm_protected_${fixed.environment}_${surface}`,manifest=protectedRuntimeRoleManifest(surface);
     const statements=[`GRANT USAGE ON SCHEMA public TO ${identifier(role)}`,
       ...manifest.tables.map(entry=>`GRANT ${entry.privileges} ON public.${identifier(entry.name)} TO ${identifier(role)}`),
@@ -104,7 +104,7 @@ export function platformAuditSegmentRoleGrantPlan(input) {
   const fixed=scope({ environment: input.environment,securityEpoch: input.securityEpoch });
   if (fixed.environment!=='int' || !isInternalUuid(input.segmentId)) failed();
   const customer=identifier('cm_protected_int_customer'),platform=identifier('cm_protected_int_platform');
-  return Object.freeze({ ...fixed,segmentId: input.segmentId,schemaVersion: 66,
+  return Object.freeze({ ...fixed,segmentId: input.segmentId,schemaVersion: 68,
     roles: Object.freeze(['cm_protected_int_customer','cm_protected_int_platform']),statements: Object.freeze([
       `GRANT SELECT(id,environment,deployment_epoch) ON public.platform_audit_segments TO ${customer}`,
       `GRANT SELECT(segment_id,integrity_version) ON public.platform_audit_events TO ${customer}`,

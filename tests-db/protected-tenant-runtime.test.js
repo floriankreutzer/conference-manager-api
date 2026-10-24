@@ -29,6 +29,8 @@ test('private protected registry preserves immutable mode, current owner/epoch, 
       VALUES('int',$1,$2,$3,$4)`,[id,owner,version,epoch]);
   }
   await t.test('empty059 rollback preserves accepted058/057 checksums and restores exact current readiness',async()=>{
+    assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
+    assert.equal(await rollbackLatest(pool),true); // Empty owner roles067.
     assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
@@ -40,7 +42,7 @@ test('private protected registry preserves immutable mode, current owner/epoch, 
     assert.equal(await rollbackLatest(pool),true);
     assert.equal((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version,58);
     await migrateUp(pool);
-    assert.equal((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version,66);
+    assert.equal((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version,68);
     assert.deepEqual((await pool.query('SELECT version,checksum FROM schema_migrations WHERE version IN (57,58) ORDER BY version')).rows,
       before);
     const guard=(await pool.query(`SELECT procedure.prosecdef,procedure.proconfig,
@@ -142,6 +144,8 @@ test('private protected registry preserves immutable mode, current owner/epoch, 
       [generation])).rows[0].count,3);
     await assert.rejects(pool.query("UPDATE synthetic_tenant_generations SET state='active',revision=4 WHERE id=$1",[generation]),
       /SYNTHETIC_GENERATION_TRANSITION_INVALID/);
+    assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
+    assert.equal(await rollbackLatest(pool),true); // Empty owner roles067.
     assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.

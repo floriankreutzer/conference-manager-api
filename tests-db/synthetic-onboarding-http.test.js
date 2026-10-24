@@ -31,6 +31,8 @@ test('owned Customer HTTP imports and activates synthetic customers with current
   });
   await migrateUp(pool);
   const prior=(await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=63 ORDER BY version')).rows;
+  assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
+  assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before original064 roundtrip.
   assert.equal(await rollbackLatest(pool),true);await migrateUp(pool);

@@ -28,6 +28,8 @@ test('restricted current synthetic Admin imports gain technical ownership and lo
   t.after(async()=>{ try { await Promise.all(pools.map(pool=>pool.end())); } finally { await fixture.destroy(); } });
   await migrateUp(pool);
   const prior=(await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=63 ORDER BY version')).rows;
+  assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
+  assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before original064 roundtrip.
   assert.equal(await rollbackLatest(pool),true);await migrateUp(pool);
@@ -132,6 +134,8 @@ test('restricted current synthetic Admin imports gain technical ownership and lo
     assert.equal(policy.public_execute,false);
   }
   // Exercise current runtime paths before intentionally removing their schema dependencies.
+  assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
+  assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065; retain the populated064 guard.
   await assert.rejects(rollbackLatest(pool),/SYNTHETIC_CALENDAR_HISTORY_REQUIRES_VERIFIED_RECOVERY/);

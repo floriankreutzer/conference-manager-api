@@ -24,7 +24,7 @@ function normalizeElevatedRoles(value) {
   return Object.freeze(ELEVATED_ROLE_ORDER.filter((role) => value.includes(role)));
 }
 
-function mapUser(row, elevatedRoles) {
+function mapUser(row, elevatedRoles, microsoftGroupRoles=[]) {
   if (!row) return null;
   return Object.freeze({
     tenantId: row.tenant_id,
@@ -33,6 +33,7 @@ function mapUser(row, elevatedRoles) {
     active: row.active,
     securityVersion: Number(row.security_version),
     elevatedRoles: normalizeElevatedRoles(elevatedRoles || []),
+    ...(microsoftGroupRoles.length ? { microsoftGroupRoles: normalizeElevatedRoles(microsoftGroupRoles) } : {}),
   });
 }
 
@@ -46,7 +47,7 @@ async function loadElevatedRoles(client, tenantId, userId) {
     text: `
       SELECT role
       FROM tenant_user_roles
-      WHERE tenant_id = $1 AND user_id = $2
+      WHERE tenant_id = $1 AND user_id = $2 AND direct_grant=true
       ORDER BY CASE role
         WHEN 'conference_manager' THEN 1
         WHEN 'tenant_admin' THEN 2
@@ -56,6 +57,12 @@ async function loadElevatedRoles(client, tenantId, userId) {
     values: [tenantId, userId],
   });
   return normalizeElevatedRoles(result.rows.map((row) => row.role));
+}
+
+async function loadMicrosoftRoles(client,tenantId,userId) {
+  const result=await client.query({ name: 'tenant-user-load-microsoft-roles',text: `SELECT role FROM tenant_user_roles
+    WHERE tenant_id=$1 AND user_id=$2 AND cardinality(microsoft_group_ids)>0 ORDER BY role`,values: [tenantId,userId] });
+  return normalizeElevatedRoles(result.rows.map(row=>row.role));
 }
 
 export function createPostgresTenantUserAdminRepository(pool, { auditRepository } = {}) {
@@ -83,9 +90,11 @@ export function createPostgresTenantUserAdminRepository(pool, { auditRepository 
             u.active,
             u.security_version,
             COALESCE(
-              array_agg(r.role ORDER BY r.role) FILTER (WHERE r.role IS NOT NULL),
+              array_agg(r.role ORDER BY r.role) FILTER (WHERE r.role IS NOT NULL AND r.direct_grant=true),
               ARRAY[]::varchar[]
-            ) AS elevated_roles
+            ) AS elevated_roles,
+            COALESCE(array_agg(r.role ORDER BY r.role) FILTER (WHERE cardinality(r.microsoft_group_ids)>0),
+              ARRAY[]::varchar[]) AS microsoft_roles
           FROM users u
           LEFT JOIN tenant_user_roles r
             ON r.tenant_id = u.tenant_id
@@ -98,7 +107,7 @@ export function createPostgresTenantUserAdminRepository(pool, { auditRepository 
         `,
         values: [tenantId, afterUserId, limit],
       });
-      return Object.freeze(result.rows.map((row) => mapUser(row, row.elevated_roles)));
+      return Object.freeze(result.rows.map((row) => mapUser(row, row.elevated_roles,row.microsoft_roles)));
     },
 
     async setElevatedRoles({
@@ -134,15 +143,17 @@ export function createPostgresTenantUserAdminRepository(pool, { auditRepository 
         if (!user) return Object.freeze({ status: 'not_found' });
 
         const currentRoles = await loadElevatedRoles(client, tenantId, targetUserId);
+        const microsoftRoles=await loadMicrosoftRoles(client,tenantId,targetUserId);
         if (sameRoles(currentRoles, desiredRoles)) {
-          return Object.freeze({ status: 'unchanged', user: mapUser(user, currentRoles) });
+          return Object.freeze({ status: 'unchanged', user: mapUser(user, currentRoles,microsoftRoles) });
         }
         const addsElevatedRole = desiredRoles.some((role) => !currentRoles.includes(role));
         if (user.active !== true && addsElevatedRole) {
           return Object.freeze({ status: 'user_inactive' });
         }
 
-        const removesTenantAdmin = currentRoles.includes('tenant_admin') && !desiredRoles.includes('tenant_admin');
+        const removesTenantAdmin = currentRoles.includes('tenant_admin') && !desiredRoles.includes('tenant_admin')
+          && !microsoftRoles.includes('tenant_admin');
         if (removesTenantAdmin) {
           const viableAdmins = await client.query({
             name: 'tenant-user-count-other-viable-admins',
@@ -166,15 +177,20 @@ export function createPostgresTenantUserAdminRepository(pool, { auditRepository 
 
         await client.query({
           name: 'tenant-user-delete-elevated-roles',
-          text: 'DELETE FROM tenant_user_roles WHERE tenant_id = $1 AND user_id = $2',
+          text: `DELETE FROM tenant_user_roles WHERE tenant_id=$1 AND user_id=$2
+            AND direct_grant=true AND cardinality(microsoft_group_ids)=0`,
           values: [tenantId, targetUserId],
         });
+        await client.query({ name: 'tenant-user-remove-direct-source',text: `UPDATE tenant_user_roles
+          SET direct_grant=false,updated_at=$3 WHERE tenant_id=$1 AND user_id=$2 AND direct_grant=true
+            AND cardinality(microsoft_group_ids)>0`,values: [tenantId,targetUserId,changedAt] });
         for (const role of desiredRoles) {
           await client.query({
             name: 'tenant-user-insert-elevated-role',
             text: `
               INSERT INTO tenant_user_roles (tenant_id, user_id, role, created_at, updated_at)
               VALUES ($1, $2, $3, $4, $4)
+              ON CONFLICT (tenant_id,user_id,role) DO UPDATE SET direct_grant=true,updated_at=EXCLUDED.updated_at
             `,
             values: [tenantId, targetUserId, role, changedAt],
           });
@@ -199,7 +215,7 @@ export function createPostgresTenantUserAdminRepository(pool, { auditRepository 
         if (!audit) throw new Error('AUDIT_APPEND_FAILED');
         return Object.freeze({
           status: 'updated',
-          user: mapUser(updated.rows[0], desiredRoles),
+          user: mapUser(updated.rows[0], desiredRoles,microsoftRoles),
         });
       });
     },

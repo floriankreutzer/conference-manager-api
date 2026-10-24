@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
-import { normalizePlatformOwnerBootstrapRequest } from '../src/operator/platform-owner-bootstrap-request.js';
+import {
+  normalizePlatformOwnerBootstrapRequest,normalizePlatformOwnerRolesRequest,
+} from '../src/operator/platform-owner-bootstrap-request.js';
 import { architectureConsolidationBoundaryViolations } from '../scripts/check-module-boundaries.mjs';
 import { normalizePlatformAuditEvent } from '../src/platform/audit/event.js';
 
@@ -51,5 +53,37 @@ test('HTTP, process roots and both Demo surfaces cannot transitively reach offli
       'src/integrations/offline.js': "import '../persistence/postgres/platform-owner-bootstrap-repository.js';",
       'src/persistence/postgres/platform-owner-bootstrap-repository.js': 'export const bootstrap=true;' });
     assert.ok(violations.some(value=>value.includes('must not reach offline owner bootstrap')));
+  }
+});
+
+test('owner all-role request is exact, version-bound and cannot choose roles or a foreign identity',()=>{
+  const input={ ...request(),expectedSecurityVersion: 3 };
+  assert.deepEqual(normalizePlatformOwnerRolesRequest(input,expected),input);
+  for (const change of [{ expectedSecurityVersion: 0 },{ expectedSecurityVersion: 1.5 },{ roles: [] },
+    { subjectId: randomUUID() },{ deploymentEpoch: randomUUID() },{ operatorId: randomUUID() }]) {
+    assert.throws(()=>normalizePlatformOwnerRolesRequest({ ...input,...change },expected));
+  }
+  const getter={ ...input };Object.defineProperty(getter,'expectedSecurityVersion',{ get() { throw new Error('GETTER_CALLED'); } });
+  assert.throws(()=>normalizePlatformOwnerRolesRequest(getter,expected),/REQUEST_INVALID/);
+});
+test('owner role CLI refuses unsupported configuration without reflecting private input',()=>{
+  const result=spawnSync(process.execPath,['scripts/platform-owner-roles.mjs'],{
+    env: { PATH: process.env.PATH,NODE_ENV: 'test' },encoding: 'utf8' });
+  assert.equal(result.status,1);assert.equal(result.stdout,'');assert.equal(result.stderr,'PLATFORM_OWNER_ROLES_REFUSED\n');
+});
+
+test('owner-role receipt stays offline and rejects fabricated MFA, scope and approval evidence',()=>{
+  const value={ operatorId: null,roles: [],permissions: [],assuranceLevel: 'offline_owner',targetTenantId: null,
+    action: 'platform.operator.changed',targetType: 'platform_owner_roles',targetId: randomUUID(),
+    previousState: { roleCount: 2 },newState: { roleCount: 4 },occurredAt: new Date().toISOString(),
+    correlationId: randomUUID(),outcome: 'success',retentionClass: 'recovery',metadata: {
+      operation: 'owner_all_platform_roles',environment: 'int',deploymentEpoch: expected.deploymentEpoch,
+      approvalReference: 'OWNER-ALL-ROLES',
+    } };
+  assert.equal(normalizePlatformAuditEvent(value).assuranceLevel,'offline_owner');
+  for (const patch of [{ assuranceLevel: 'mfa' },{ operatorId: randomUUID() },{ targetTenantId: randomUUID() },
+    { roles: ['platform_security_admin'] },{ metadata: {} },{ metadata: { ...value.metadata,environment: 'prod' } },
+    { metadata: { ...value.metadata,deploymentEpoch: 'invalid' } },{ metadata: { ...value.metadata,approvalReference: '' } }]) {
+    assert.throws(()=>normalizePlatformAuditEvent({ ...value,...patch }));
   }
 });

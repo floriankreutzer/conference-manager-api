@@ -19,7 +19,9 @@ test('native synthetic media preserves actual ownership, private privileges and 
     finally { await pool.end(); }
   });await migrateUp(pool);
   const accepted=(await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=59 ORDER BY version')).rows;
-  assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
+  assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
+  assert.equal(await rollbackLatest(pool),true); // Empty owner roles067.
+    assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
@@ -120,7 +122,9 @@ test('native synthetic media preserves actual ownership, private privileges and 
   const removable=await insert(owner,{ ownerId: spareRoom });
   assert.equal((await pool.query('DELETE FROM synthetic_catalogue_media_assets WHERE id=$1',[removable])).rowCount,1);
   await assert.rejects(asRole(roles[2],'TRUNCATE synthetic_catalogue_media_assets'),{ code: '55000' });
-  assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
+  assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
+  assert.equal(await rollbackLatest(pool),true); // Empty owner roles067.
+    assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.
@@ -146,5 +150,5 @@ test('native synthetic media preserves actual ownership, private privileges and 
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM synthetic_catalogue_media_assets')).rows[0].count,3);
   assert.deepEqual(await realState(),preserved);
   await migrateUp(pool); // Restore061 after the unchanged populated060 rollback probe.
-  assert.equal((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version,66);
+  assert.equal((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version,68);
 });
