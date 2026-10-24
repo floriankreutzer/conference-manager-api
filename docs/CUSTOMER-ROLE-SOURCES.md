@@ -34,8 +34,8 @@ acceptance. Session security versions advance on group-source mutations. Before 
 - Tenant/directory/group-ID/role mappings with Tenant Admin authority and audit.
 - Validated, identity-bound provider membership observations including absent,
   incomplete/overage and revoked membership handling; no arbitrary Graph URL.
-- Durable separate provenance, atomic effective-role reconciliation, session
-  invalidation and last-admin safeguards across both sources.
+- Provider-driven atomic source reconciliation and last-admin/recovery safeguards
+  across both sources, using the durable provenance and invalidation below.
 - Consistent authoritative reads for Microsoft and email-code sessions, User
   lifecycle/suspension, invitation onboarding and protected real membership.
 - Administration presentation showing source and effective roles, without letting

@@ -51,7 +51,7 @@ if (/repository|SELECT|UPDATE|INSERT INTO|DELETE FROM/i.test(revision)) {
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
 if (!/export const CURRENT_SCHEMA_VERSION = 68;/.test(pool)) {
-  throw new Error('Runtime schema readiness requires owner role grant schema 68.');
+  throw new Error('Runtime schema readiness requires Customer role provenance schema 68.');
 }
 
 const migration = await readFile('migrations/020_tenant_settings_revisions.up.sql', 'utf8');

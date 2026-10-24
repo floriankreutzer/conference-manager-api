@@ -40,7 +40,8 @@ const { Pool } = pg;
 // Schema 64 adds scoped synthetic Room provisioning and local lifecycle readiness.
 // Schema 65 admits owner-only, one-time initial operator audit without creating authority.
 // Schema 66 preserves the legacy audit prefix and introduces independently signed INT segments.
-// Schema 68 adds the owner-only, one-time all-role audit receipt.
+// Schema 67 adds the owner-only, one-time all-role audit receipt.
+// Schema 68 tracks independent direct and Microsoft-derived Customer grants.
 export const CURRENT_SCHEMA_VERSION = 68;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([

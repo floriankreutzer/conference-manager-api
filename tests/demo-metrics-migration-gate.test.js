@@ -20,7 +20,7 @@ function fixture(canonical=59,overlay=25) {
     async upgrade() { upgrades++;row.canonical_versions=sequence(68);row.demo_versions=sequence(29); } };
 }
 
-test('reviewed Demo upgrade accepts retained historical ledgers and current66/29 without resetting retained data',async()=>{
+test('reviewed Demo upgrade accepts retained historical ledgers and current68/29 without resetting retained data',async()=>{
   for (const [canonical,overlay] of [[44,9],[58,24],[59,25],[60,26],[61,26],[61,27],[62,27],
     [63,28],[64,28],[65,28],[66,28],[66,29],[67,29],[68,29]]) {
     const f=fixture(canonical,overlay);

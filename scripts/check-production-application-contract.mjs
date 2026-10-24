@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
 if (!/export const CURRENT_SCHEMA_VERSION = 68;/.test(pool)) {
-  throw new Error('Production application requires owner role grant schema 68.');
+  throw new Error('Production application requires Customer role provenance schema 68.');
 }
 
 const auditEvent = await readFile('src/audit/event.js', 'utf8');
