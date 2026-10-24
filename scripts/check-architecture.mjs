@@ -558,8 +558,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 67;/.test(pool)) {
-  throw new Error('Runtime schema readiness requires owner role grant schema 67.');
+if (!/export const CURRENT_SCHEMA_VERSION = 68;/.test(pool)) {
+  throw new Error('Runtime schema readiness requires owner role grant schema 68.');
 }
 const retentionPrivilegeMigration = await readFile(
   'migrations/041_room_media_retention_privileges.up.sql',

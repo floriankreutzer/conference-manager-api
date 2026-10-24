@@ -45,6 +45,7 @@ test('native first owner bootstrap is atomic, one-winner, audited, owner-only an
   assert.equal(events[0].assuranceLevel,'offline_owner');assert.deepEqual(events[0].roles,[]);
   assert.doesNotMatch(JSON.stringify(events),new RegExp(expected.subjectId));
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_operator_change_alert_outbox')).rows[0].count,1);
+  assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
   assert.equal(await rollbackLatest(pool),true); // Empty owner-role067.
   assert.equal(await rollbackLatest(pool),true); // Empty segment066 leaves the original065 owner guard intact.
   await assert.rejects(rollbackLatest(pool),{ code: '55000' });

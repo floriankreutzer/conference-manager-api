@@ -221,6 +221,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 65, name: 'platform_owner_bootstrap' },
       { version: 66, name: 'platform_audit_segments' },
       { version: 67, name: 'platform_owner_roles' },
+      { version: 68, name: 'customer_role_provenance' },
     ]);
   });
 

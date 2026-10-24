@@ -62,5 +62,6 @@ test('native owner role upgrade is exact, one-winner, audited and rolls back ato
   assert.equal(receipts[0].newState.roleCount,4);assert.equal(receipts[0].previousState.roleCount,2);
   assert.doesNotMatch(JSON.stringify(receipts),new RegExp(expected.subjectId));
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_operator_change_alert_outbox')).rows[0].count,2);
+  assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before retained owner067.
   await assert.rejects(rollbackLatest(pool),{ code: '55000' });
 });

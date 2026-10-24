@@ -60,6 +60,7 @@ test('actual Customer reviewed versions retain the confirmed order until replace
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Passkey reset grants019.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Unsent grants018.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
+  assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
   assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
@@ -177,6 +178,7 @@ test('actual Customer reviewed versions retain the confirmed order until replace
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   await rollbackLatestDemoMigration(pool, { roles }); //019.
   await rollbackLatestDemoMigration(pool, { roles }); await rollbackLatestDemoMigration(pool, { roles }); //018/017.
+  assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
   assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
@@ -326,6 +328,7 @@ test('actual Customer reviewed versions retain the confirmed order until replace
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   await rollbackLatestDemoMigration(pool, { roles }); //019 while canonical053 is ready.
   await rollbackLatestDemoMigration(pool, { roles }); //018 while canonical053 is ready.
+  assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
   assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
@@ -402,6 +405,7 @@ test('actual Customer reviewed versions retain the confirmed order until replace
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   await rollbackLatestDemoMigration(pool, { roles }); //019 while canonical053 is ready.
   await rollbackLatestDemoMigration(pool, { roles }); //018 while canonical053 is ready.
+  assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
   assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
@@ -443,6 +447,7 @@ test('actual Customer reviewed versions retain the confirmed order until replace
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   await rollbackLatestDemoMigration(pool, { roles }); //019 before canonical rollback.
   await rollbackLatestDemoMigration(pool, { roles }); await rollbackLatestDemoMigration(pool, { roles }); //018/017.
+  assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
   assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.

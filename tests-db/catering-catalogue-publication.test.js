@@ -68,6 +68,7 @@ test('actual Customer publication atomically fences reviewed content, ownership,
     await rollbackLatestDemoMigration(pool,{ roles }); // Customer023 before retained enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Original empty publication021.
+    assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
     assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
@@ -362,6 +363,7 @@ test('actual Customer publication atomically fences reviewed content, ownership,
     await rollbackLatestDemoMigration(pool,{ roles }); // Microsoft flow024 before retained Customer023.
     await rollbackLatestDemoMigration(pool,{ roles }); // Customer023 before retained enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Enrollment022 before056.
+    assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
     assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
@@ -395,6 +397,7 @@ test('actual Customer publication atomically fences reviewed content, ownership,
     await rollbackLatestDemoMigration(pool,{ roles }); // Microsoft flow024 before retained Customer023.
     await rollbackLatestDemoMigration(pool,{ roles }); // Customer023 before retained enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Enrollment022 before056.
+    assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
     assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
