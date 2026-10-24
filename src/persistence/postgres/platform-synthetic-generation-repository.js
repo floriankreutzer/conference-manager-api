@@ -1,3 +1,4 @@
+import { syntheticOperationAssurance } from '../../domain/synthetic-operation-assurance.js';
 import { randomUUID } from 'node:crypto';
 import { isInternalUuid } from '../../domain/identifiers.js';
 import { PLATFORM_ENTRA_PROVIDER } from '../../domain/identity-provider.js';
@@ -44,7 +45,8 @@ async function writeCatalogueMedia(client,{ tenantId,media,bytes,objectKey,creat
 // object-storage port/fallback: independently durable upload intents need their
 // own reviewed preparation phase before a max1 proof transaction is held.
 export function createPostgresSyntheticGenerationRepository(pool,{ environment,securityEpoch,
-  tenantAuditRepository,platformAuditRepository,calendarEnabled=false }={}) {
+  tenantAuditRepository,platformAuditRepository,calendarEnabled=false,assuranceMode='application_passkey' }={}) {
+  const assurance=syntheticOperationAssurance(assuranceMode);
   if (typeof calendarEnabled!=='boolean' || !pool || typeof pool.connect!=='function' || !['dev','int'].includes(environment)
     || !isInternalUuid(securityEpoch)
     || typeof tenantAuditRepository?.appendWithClient!=='function' || typeof platformAuditRepository?.appendWithClient!=='function') {
@@ -55,7 +57,7 @@ export function createPostgresSyntheticGenerationRepository(pool,{ environment,s
 
   async function currentAuthority(client,principal) {
     if (principal.providerIdentity.provider!==PLATFORM_ENTRA_PROVIDER || principal.assurance.level!=='step_up'
-      || principal.assurance.authenticationContext!=='cm:pk:v1') denied();
+      || principal.assurance.authenticationContext!==assurance.freshContext) denied();
     const result=await client.query({ name: 'synthetic-generation-current-authority',text: `SELECT clock_timestamp() AS now
       FROM platform_operators actor JOIN platform_sessions session ON session.operator_id=actor.id
       JOIN protected_runtime_deployments deployment ON deployment.environment=$1 AND deployment.security_epoch=$2
@@ -66,14 +68,14 @@ export function createPostgresSyntheticGenerationRepository(pool,{ environment,s
         AND session.provider=actor.provider AND session.provider_tenant_reference=actor.provider_tenant_reference
         AND session.provider_subject_reference=actor.provider_subject_reference AND session.roles=actor.roles
         AND session.scope_mode=actor.scope_mode AND session.permissions=$11::text[] AND $12=ANY(session.permissions)
-        AND session.security_epoch=$13 AND session.assurance_level='step_up' AND session.authentication_context='cm:pk:v1'
+        AND session.security_epoch=$13 AND session.assurance_level='step_up' AND session.authentication_context=$15
         AND session.authenticated_at=$14 AND session.step_up_expires_at>clock_timestamp()
-        AND (SELECT count(*) FROM platform_passkey_credentials key
-          WHERE key.operator_id=actor.id AND key.environment=$1 AND key.revoked_at IS NULL)>=2
+        AND ($16::boolean OR (SELECT count(*) FROM platform_passkey_credentials key
+          WHERE key.operator_id=actor.id AND key.environment=$1 AND key.revoked_at IS NULL)>=2)
       FOR SHARE OF actor,session,deployment`,values: [environment,epoch,principal.operatorId,PLATFORM_ENTRA_PROVIDER,
     principal.securityVersion,principal.providerIdentity.tenantReference,principal.providerIdentity.subjectReference,
     principal.roles,principal.targetScope.mode,principal.session.id,principal.permissions,PLATFORM_PERMISSION.LIFECYCLE_MANAGE,
-    principal.session.securityEpoch,principal.assurance.authenticatedAt] });
+    principal.session.securityEpoch,principal.assurance.authenticatedAt,assurance.freshContext,assuranceMode==='microsoft_mfa'] });
     const now=result.rows[0]?.now;
     if (result.rowCount!==1 || !(now instanceof Date) || !Number.isFinite(now.getTime())) denied();
     createPlatformAuthorizationPolicy({ clock: ()=>now.getTime() }).authorize(principal,PLATFORM_PERMISSION.LIFECYCLE_MANAGE);

@@ -1,5 +1,6 @@
 import { normalizePlatformAuditSegmentRequest } from '../../src/operator/platform-audit-segment-request.js';
-import { platformAuditSegmentRoleGrantPlan,customerMicrosoftGroupRoleGrantPlan,platformMicrosoftOperationRoleGrantPlan }
+import { platformAuditSegmentRoleGrantPlan,customerMicrosoftGroupRoleGrantPlan,platformMicrosoftOperationRoleGrantPlan,
+  syntheticMicrosoftCustodyRoleGrantPlan }
   from './protected-runtime-role-grants.mjs';
 import { requireOwnerMainActionsContext } from './owner-main-actions-context.mjs';
 
@@ -18,7 +19,8 @@ function exact(value, keys) {
 export function requirePlatformAuditActionsContext(env) {
   try {
     requireOwnerMainActionsContext(env, 'protected-int-audit-segment.yml');
-    if (!['initialize', 'grants', 'customer_groups', 'microsoft_operations'].includes(env.INT_AUDIT_OPERATION)) refuse();
+    if (!['initialize', 'grants', 'customer_groups', 'microsoft_operations', 'synthetic_microsoft']
+      .includes(env.INT_AUDIT_OPERATION)) refuse();
     const expected = json(env.CM_INT_AUDIT_EXPECTED_JSON);
     // Reuse the canonical closed request validator for independent expected values.
     const request = json(env.CM_INT_AUDIT_REQUEST_JSON);
@@ -27,7 +29,7 @@ export function requirePlatformAuditActionsContext(env) {
       normalizePlatformAuditSegmentRequest({ ...expected, approvalReference: 'grant-context',
         correlationId: expected.segmentId }, expected);
       const plans={ customer_groups: customerMicrosoftGroupRoleGrantPlan,grants: platformAuditSegmentRoleGrantPlan,
-        microsoft_operations: platformMicrosoftOperationRoleGrantPlan };
+        microsoft_operations: platformMicrosoftOperationRoleGrantPlan,synthetic_microsoft: syntheticMicrosoftCustodyRoleGrantPlan };
       const plan=plans[env.INT_AUDIT_OPERATION](request);
       if (request.environment !== 'int' || plan.segmentId !== expected.segmentId
         || request.securityEpoch !== expected.deploymentEpoch) refuse();

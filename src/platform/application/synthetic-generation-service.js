@@ -4,10 +4,13 @@ import { normalizeSyntheticGenerationIntent,syntheticGenerationOperationHash } f
 import { normalizePlatformPrincipal } from '../identity/principal.js';
 import { PLATFORM_PERMISSION } from '../identity/policy.js';
 import { PlatformAuthorizationError } from '../identity/errors.js';
+import { syntheticOperationAssurance } from '../../domain/synthetic-operation-assurance.js';
 
 // The opaque proof context is issued/consumed by the existing exact-operation
 // passkey service. An intent, hash or ordinary elevated principal is not proof.
-export function createSyntheticGenerationService({ repository,passkeyService,authorizationPolicy,environment,securityEpoch }={}) {
+export function createSyntheticGenerationService({ repository,passkeyService,authorizationPolicy,environment,securityEpoch,
+  assuranceMode='application_passkey' }={}) {
+  const assurance=syntheticOperationAssurance(assuranceMode);
   if (!['dev','int'].includes(environment) || !isInternalUuid(securityEpoch)
     || typeof repository?.replace!=='function' || typeof passkeyService?.verifiedOperationPrincipal!=='function'
     || typeof authorizationPolicy?.authorize!=='function') throw new TypeError('SYNTHETIC_GENERATION_SERVICE_CONFIGURATION_INVALID');
@@ -24,7 +27,7 @@ export function createSyntheticGenerationService({ repository,passkeyService,aut
       const hash=syntheticGenerationOperationHash(scope,intent);
       const principal=normalizePlatformPrincipal(passkeyService.verifiedOperationPrincipal(proofContext,hash));
       if (principal.operatorId!==intent.operatorId || principal.providerIdentity.provider!==PLATFORM_ENTRA_PROVIDER
-        || principal.assurance.level!=='step_up' || principal.assurance.authenticationContext!=='cm:pk:v1'
+        || principal.assurance.level!=='step_up' || principal.assurance.authenticationContext!==assurance.freshContext
         || await authorizationPolicy.authorize(principal,PLATFORM_PERMISSION.LIFECYCLE_MANAGE)!==true) {
         throw new PlatformAuthorizationError();
       }

@@ -55,6 +55,7 @@ test('actual Customer source fences authority, preserves reviewed state, enforce
     await rollbackLatestDemoMigration(pool,{ roles }); // Enrollment grants022 before retained publication021.
     await rollbackLatestDemoMigration(pool,{ roles }); // Publication grants021 while canonical055 is ready.
     await rollbackLatestDemoMigration(pool,{ roles }); // Original source grants020 before either schema rollback.
+    assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
     assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
     assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
     assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
@@ -263,6 +264,7 @@ test('actual Customer source fences authority, preserves reviewed state, enforce
     await rollbackLatestDemoMigration(pool,{ roles }); // Customer023 before retained enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Retained publication021.
+    assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
     assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
     assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
     assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
@@ -302,6 +304,7 @@ test('actual Customer source fences authority, preserves reviewed state, enforce
     await rollbackLatestDemoMigration(pool,{ roles }); // Customer023 before retained enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Retained publication021.
+    assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
     assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
     assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
     assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.

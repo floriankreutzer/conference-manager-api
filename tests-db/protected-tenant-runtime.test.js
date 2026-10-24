@@ -29,6 +29,7 @@ test('private protected registry preserves immutable mode, current owner/epoch, 
       VALUES('int',$1,$2,$3,$4)`,[id,owner,version,epoch]);
   }
   await t.test('empty059 rollback preserves accepted058/057 checksums and restores exact current readiness',async()=>{
+    assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
     assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
     assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
     assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
@@ -44,7 +45,7 @@ test('private protected registry preserves immutable mode, current owner/epoch, 
     assert.equal(await rollbackLatest(pool),true);
     assert.equal((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version,58);
     await migrateUp(pool);
-    assert.equal((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version,70);
+    assert.equal((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version,71);
     assert.deepEqual((await pool.query('SELECT version,checksum FROM schema_migrations WHERE version IN (57,58) ORDER BY version')).rows,
       before);
     const guard=(await pool.query(`SELECT procedure.prosecdef,procedure.proconfig,
@@ -146,6 +147,7 @@ test('private protected registry preserves immutable mode, current owner/epoch, 
       [generation])).rows[0].count,3);
     await assert.rejects(pool.query("UPDATE synthetic_tenant_generations SET state='active',revision=4 WHERE id=$1",[generation]),
       /SYNTHETIC_GENERATION_TRANSITION_INVALID/);
+    assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
     assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
     assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
     assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.

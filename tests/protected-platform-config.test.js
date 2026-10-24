@@ -180,3 +180,16 @@ test('one-key policy is explicit and confined to INT without changing the produc
   }
   assert.equal(load(t,fixture()).config.minimumCredentialCount,2);
 });
+
+test('synthetic Microsoft profile constructs without application keys or a credential minimum',t=>{
+  const env={ ...fixture(),PROTECTED_SYNTHETIC_ENABLED: 'true',PROTECTED_HANDOFF_SECRET: 'h'.repeat(48),
+    PROTECTED_PLATFORM_HANDOFF_INTENT_SECRET: 'i'.repeat(48),PROTECTED_PLATFORM_ASSURANCE_MODE: 'microsoft_mfa' };
+  delete env.PROTECTED_PLATFORM_PASSKEY_TRANSACTION_SECRET;
+  const bundle=load(t,env);assert.equal(bundle.config.minimumCredentialCount,null);
+  const authentication=bundle.authenticationFactory({ pool: noIo(),leasePool: noIo() });
+  assert.equal(authentication.platformPasskeyService,undefined);
+  assert.equal(typeof authentication.syntheticMicrosoftService.executeStepUpWithContinuation,'function');
+  for (const key of ['PROTECTED_PLATFORM_MINIMUM_PASSKEYS','PROTECTED_PLATFORM_PASSKEY_TRANSACTION_SECRET']) {
+    assert.throws(()=>loadProtectedPlatformConfiguration({ ...env,[key]: '' }),/MICROSOFT_MFA_PASSKEY_INPUT_FORBIDDEN/);
+  }
+});

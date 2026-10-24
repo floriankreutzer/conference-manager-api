@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { protectedRuntimeRoleGrantPlan,grantProtectedRuntimeRoles,platformAuditSegmentRoleGrantPlan,
   grantPlatformAuditSegmentRuntimeRoles,customerMicrosoftGroupRoleGrantPlan,grantCustomerMicrosoftGroupRuntimeRoles,
-  platformMicrosoftOperationRoleGrantPlan,grantPlatformMicrosoftOperationRuntimeRoles }
+  platformMicrosoftOperationRoleGrantPlan,grantPlatformMicrosoftOperationRuntimeRoles,syntheticMicrosoftCustodyRoleGrantPlan }
   from '../scripts/support/protected-runtime-role-grants.mjs';
 import { architectureConsolidationBoundaryViolations } from '../scripts/check-module-boundaries.mjs';
 
@@ -61,7 +61,7 @@ test('existing INT audit role delta is fixed, minimal and removes legacy writing
 test('operator plan preserves per-surface proof custody and offline enrollment without connecting or creating credentials',()=>{
   for (const environment of ['dev','int','prod']) {
     const plan=protectedRuntimeRoleGrantPlan({ environment,securityEpoch: epoch });
-    assert.ok(Object.isFrozen(plan));assert.equal(plan.schemaVersion,70);
+    assert.ok(Object.isFrozen(plan));assert.equal(plan.schemaVersion,71);
     const customer=plan.roles[0],platform=plan.roles[1];
     assert.equal(customer.role,`cm_protected_${environment}_customer`);
     assert.equal(platform.role,`cm_protected_${environment}_platform`);
@@ -102,4 +102,14 @@ test('runtime and Demo imports cannot reach operator grants even when script fil
       assert.ok(violations.some(message=>message.includes('Runtime code must not import operator or build scripts.')));
     }
   }
+});
+
+test('synthetic Microsoft Customer grant delta exposes only custody predicate columns',()=>{
+  const plan=syntheticMicrosoftCustodyRoleGrantPlan({ environment: 'int',securityEpoch: epoch,
+    segmentId: 'be000000-0000-4000-8000-000000000002' });
+  assert.equal(plan.schemaVersion,71);assert.equal(plan.statements.length,2);
+  assert.match(plan.statements[0],/^GRANT SELECT\(id,operator_id,environment,protected_security_epoch,/);
+  assert.match(plan.statements[0],/authenticated_at\) ON public.platform_microsoft_operation_proofs TO "cm_protected_int_customer"$/);
+  assert.doesNotMatch(plan.statements.join('\n'),/state_hash|browser_hash|nonce_hash|INSERT|UPDATE|DELETE|TRUNCATE|EXECUTE/);
+  assert.equal(plan.statements[1],'GRANT SELECT(step_up_expires_at) ON public.platform_sessions TO "cm_protected_int_customer"');
 });

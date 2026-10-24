@@ -60,7 +60,10 @@ export function protectedRuntimeRoleManifest(surface) {
       +'status,security_version,roles,scope_mode'),
     columns('platform_sessions','SELECT','id,operator_id,provider,provider_tenant_reference,provider_subject_reference,roles,permissions,'
       +'scope_mode,principal_version,security_epoch,assurance_level,authentication_context,'
-      +'revoked_at,issued_at,expires_at,authenticated_at'),
+      +'revoked_at,issued_at,expires_at,authenticated_at,step_up_expires_at'),
+    columns('platform_microsoft_operation_proofs','SELECT','id,operator_id,environment,protected_security_epoch,security_epoch,'
+      +'operator_security_version,provider_tenant_reference,provider_subject_reference,execution_scope,status,operation_hash,'
+      +'expected_session_id,consumed_at,expires_at,authenticated_at'),
     columns('platform_passkey_credentials','SELECT','operator_id,environment,revoked_at'),
     columns('platform_passkey_auth_transactions','SELECT','id,operator_id,environment,security_epoch,operator_security_version,purpose,'
       +'operation_hash,expected_session_id,consumed_at,expires_at'),
