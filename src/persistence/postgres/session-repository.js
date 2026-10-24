@@ -150,6 +150,9 @@ export function createPostgresSessionRepository(pool, { auditRepository } = {}) 
             AND s.expires_at > $2
             AND u.active = true
             AND u.security_version = s.principal_version
+            AND NOT EXISTS(SELECT 1 FROM tenant_user_roles authority WHERE authority.tenant_id=s.tenant_id
+              AND authority.user_id=s.user_id AND authority.role=ANY(s.roles) AND NOT authority.direct_grant
+              AND authority.microsoft_verified_until<=clock_timestamp())
             AND t.status = ANY($3::text[])
           LIMIT 1
         `,

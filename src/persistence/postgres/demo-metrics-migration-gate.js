@@ -24,10 +24,11 @@ async function state(client, expected) {
     || row.database_name !== expected.database || row.actual_database !== expected.database
     || row.actual_role !== expected.migration || row.canonical_owner !== expected.migration || row.demo_owner !== expected.migration
     || row.customer_role !== expected.customer || row.platform_role !== expected.platform || row.reset_role !== expected.reset
-    || ![44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68]
+    || ![44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69]
       .some((version) => sequence(row.canonical_versions, version))
-    || ![9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]
+    || ![9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
       .some((version) => sequence(row.demo_versions, version))
+    || (row.canonical_versions.length < 69 && row.demo_versions.length > 29)
     || (row.canonical_versions.length < 66 && row.demo_versions.length > 28)
     || (row.canonical_versions.length === 44 && row.demo_versions.length !== 9)
     || (row.canonical_versions.length === 45 && row.demo_versions.length > 11)
@@ -70,7 +71,7 @@ export async function withDemoMetricsMigrationGate(pool, expected, upgrade) {
     const before = await state(client, expected);
     await upgrade();
     const after = await state(client, expected);
-    if (after.canonicalVersion !== 68 || after.demoVersion !== 29
+    if (after.canonicalVersion !== 69 || after.demoVersion !== 30
       || after.retained.some((count, index) => count !== before.retained[index])) {
       throw new Error('DEMO_METRICS_MIGRATION_READBACK_FAILED');
     }

@@ -60,8 +60,9 @@ This is not full implementation of the approved target. In particular:
   live. General two-administrator operator lifecycle remains unchanged; broader
   sole-owner administration is not yet implemented.
 - Auditable owner-to-real-Customer support access and administrative Microsoft
-  group-to-role mapping are not yet composed. Customer direct role administration
-  remains unchanged. Never simulate these features by broadening ordinary User
+  group-to-role mapping require final paired/provider qualification. The schema069
+  candidate implements approved mapping, bounded observation and independent
+  source reconciliation; see CUSTOMER-ROLE-SOURCES.md. Never simulate these features by broadening ordinary User
   roles or linking a real identity to a synthetic persona.
 - Runtime roles, schema/custody, source pair, browser manifests, deployment UUID
   and integer epoch, actual MFA claims, invitation sender/delivery and all three
@@ -103,5 +104,6 @@ no Microsoft MFA or independent second approver is fabricated. Required receipt
 failure rolls back the change. Existing key records and audit history are retained.
 Migration067 adds this narrowly guarded audit vocabulary; it grants no role by
 itself. Its rollback refuses once an upgrade receipt exists, preserving signed
-history. This source mechanism still needs native database/CI qualification and
-explicit coordinated operating evidence; no actual owner role grant is claimed.
+history. The source mechanism passed native database and complete Demo/browser CI at
+API307 and the cumulative API310 candidate. Explicit coordinated operating
+evidence is still required; no actual owner role grant is claimed.

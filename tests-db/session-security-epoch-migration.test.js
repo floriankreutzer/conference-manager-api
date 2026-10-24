@@ -44,6 +44,21 @@ function cookiePair(setCookie) {
   return setCookie.split(';', 1)[0];
 }
 
+// Observe the actual033 storage contract, before provenance columns existed.
+// The current runtime must refuse that schema; no production fallback is added.
+// Forward-migrated checks below still use the actual current session repository.
+async function resolveHistorical033Session(pool,hash,now) {
+  assert.equal(await isPostgresSchemaReady(pool,33),true);
+  assert.equal(await isPostgresSchemaReady(pool),false);
+  const result=await pool.query(`SELECT session.id FROM sessions session
+    JOIN users person ON person.tenant_id=session.tenant_id AND person.id=session.user_id
+    JOIN tenants tenant ON tenant.id=session.tenant_id
+    WHERE session.token_hash=$1 AND session.revoked_at IS NULL AND session.expires_at>$2
+      AND person.active=true AND person.security_version=session.principal_version
+      AND tenant.status=ANY($3::text[]) LIMIT 1`,[hash,now,['pending','onboarding','ready','active']]);
+  return result.rows[0] ?? null;
+}
+
 async function clean(pool) {
   await pool.query('DELETE FROM sessions WHERE tenant_id = $1', [TENANT_ID]);
   await pool.query('ALTER TABLE audit_events DISABLE TRIGGER audit_events_append_only');
@@ -67,7 +82,7 @@ test('migration 034 prevents legacy Customer-session resurrection across rollbac
 
   await migrateUp(pool);
   await clean(pool);
-  assert.equal(CURRENT_SCHEMA_VERSION, 68);
+  assert.equal(CURRENT_SCHEMA_VERSION, 69);
   assert.equal(await rollbackToVersion(pool, 34), true);
   assert.equal(await isPostgresSchemaReady(pool, 33), true);
 
@@ -106,7 +121,7 @@ test('migration 034 prevents legacy Customer-session resurrection across rollbac
 
   const auditRepository = createPostgresAuditRepository(pool, { hmacSecret: AUDIT_KEY });
   const sessionRepository = createPostgresSessionRepository(pool, { auditRepository });
-  assert.ok(await sessionRepository.resolveByTokenHash(legacyHash, NOW));
+  assert.ok(await resolveHistorical033Session(pool,legacyHash,NOW));
 
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
@@ -128,7 +143,7 @@ test('migration 034 prevents legacy Customer-session resurrection across rollbac
     [LEGACY_SESSION_ID],
   );
   assert.ok(afterRollback.rows[0].revoked_at);
-  assert.equal(await sessionRepository.resolveByTokenHash(legacyHash, NOW), null);
+  assert.equal(await resolveHistorical033Session(pool,legacyHash,NOW), null);
 
   await migrateUp(pool);
   const authorizationPolicy = createAuthorizationPolicy();
@@ -166,7 +181,7 @@ test('migration 034 prevents legacy Customer-session resurrection across rollbac
   assert.equal(await rollbackToVersion(pool, 34), true);
   assert.equal(await isPostgresSchemaReady(pool, 33), true);
   assert.equal(
-    await sessionRepository.resolveByTokenHash(tokenHash(EPOCH_TOKEN), NOW),
+    await resolveHistorical033Session(pool,tokenHash(EPOCH_TOKEN),NOW),
     null,
   );
 });

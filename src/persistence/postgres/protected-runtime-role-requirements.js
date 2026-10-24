@@ -1,5 +1,6 @@
 const COMMON_READ=['schema_migrations','protected_runtime_deployments','tenant_runtime_registry','synthetic_tenant_generations'];
-const CUSTOMER_READ=['tenants','users','tenant_user_roles','user_identity_bindings','audit_events','sessions',
+const CUSTOMER_READ=['tenants','users','tenant_user_roles','tenant_microsoft_role_settings',
+  'customer_microsoft_group_observations','user_identity_bindings','audit_events','sessions',
   'customer_access_mailboxes','customer_access_memberships','customer_member_invitations','customer_email_challenges',
   'customer_access_deliveries','customer_access_abuse_budgets','customer_microsoft_flows','customer_microsoft_start_budgets'];
 const CUSTOMER_WRITE=['sessions','customer_email_challenges','customer_access_deliveries','customer_access_abuse_budgets',

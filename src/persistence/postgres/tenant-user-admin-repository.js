@@ -60,8 +60,11 @@ async function loadElevatedRoles(client, tenantId, userId) {
 }
 
 async function loadMicrosoftRoles(client,tenantId,userId) {
-  const result=await client.query({ name: 'tenant-user-load-microsoft-roles',text: `SELECT role FROM tenant_user_roles
-    WHERE tenant_id=$1 AND user_id=$2 AND cardinality(microsoft_group_ids)>0 ORDER BY role`,values: [tenantId,userId] });
+  const result=await client.query({ name: 'tenant-user-load-microsoft-roles',text: `
+    SELECT role FROM (SELECT * FROM tenant_user_roles
+      WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS effective_role_source
+    WHERE tenant_id=$1 AND user_id=$2 AND cardinality(microsoft_group_ids)>0 AND microsoft_verified_until>clock_timestamp() ORDER BY role`,
+    values: [tenantId,userId] });
   return normalizeElevatedRoles(result.rows.map(row=>row.role));
 }
 
@@ -93,10 +96,12 @@ export function createPostgresTenantUserAdminRepository(pool, { auditRepository 
               array_agg(r.role ORDER BY r.role) FILTER (WHERE r.role IS NOT NULL AND r.direct_grant=true),
               ARRAY[]::varchar[]
             ) AS elevated_roles,
-            COALESCE(array_agg(r.role ORDER BY r.role) FILTER (WHERE cardinality(r.microsoft_group_ids)>0),
+            COALESCE(array_agg(r.role ORDER BY r.role) FILTER (WHERE cardinality(r.microsoft_group_ids)>0
+              AND r.microsoft_verified_until>clock_timestamp()),
               ARRAY[]::varchar[]) AS microsoft_roles
           FROM users u
-          LEFT JOIN tenant_user_roles r
+          LEFT JOIN (SELECT * FROM tenant_user_roles
+      WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS r
             ON r.tenant_id = u.tenant_id
            AND r.user_id = u.id
           WHERE u.tenant_id = $1
@@ -124,6 +129,8 @@ export function createPostgresTenantUserAdminRepository(pool, { auditRepository 
       if (typeof auditEventFor !== 'function') throw new TypeError('TENANT_USER_AUDIT_FACTORY_REQUIRED');
 
       return withPostgresTransaction(pool, async (client) => {
+        await client.query({ name: 'tenant-user-role-parent-lock',
+          text: 'SELECT id FROM tenants WHERE id=$1 FOR KEY SHARE',values: [tenantId] });
         await client.query({
           name: 'tenant-user-role-admin-lock',
           text: 'SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))',
@@ -159,7 +166,8 @@ export function createPostgresTenantUserAdminRepository(pool, { auditRepository 
             name: 'tenant-user-count-other-viable-admins',
             text: `
               SELECT count(*)::int AS count
-              FROM tenant_user_roles r
+              FROM (SELECT * FROM tenant_user_roles
+      WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS r
               JOIN users u
                 ON u.tenant_id = r.tenant_id
                AND u.id = r.user_id

@@ -78,8 +78,10 @@ const USER_PRESENTATION_JOINS = `
       ELSE 99
     END) AS elevated_roles,
     array_agg(role ORDER BY role) FILTER(WHERE direct_grant) AS direct_roles,
-    array_agg(role ORDER BY role) FILTER(WHERE cardinality(microsoft_group_ids)>0) AS microsoft_group_roles
-    FROM tenant_user_roles
+    array_agg(role ORDER BY role) FILTER(WHERE cardinality(microsoft_group_ids)>0
+      AND microsoft_verified_until>clock_timestamp()) AS microsoft_group_roles
+    FROM (SELECT * FROM tenant_user_roles
+      WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS effective_role_source
     WHERE tenant_id = u.tenant_id AND user_id = u.id
   ) role_state ON true
   LEFT JOIN LATERAL (
@@ -195,6 +197,8 @@ export function createPostgresTenantUserLifecycleRepository(pool, { auditReposit
       if (typeof auditEventFor !== 'function') throw new TypeError('TENANT_USER_AUDIT_FACTORY_REQUIRED');
 
       return withPostgresTransaction(pool, async (client) => {
+        await client.query({ name: 'tenant-user-lifecycle-parent-lock',
+          text: 'SELECT id FROM tenants WHERE id=$1 FOR KEY SHARE',values: [tenantId] });
         await client.query({
           name: 'tenant-user-lifecycle-admin-lock',
           text: 'SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))',
@@ -227,7 +231,8 @@ export function createPostgresTenantUserLifecycleRepository(pool, { auditReposit
           name: 'tenant-user-lifecycle-load-roles',
           text: `
             SELECT role
-            FROM tenant_user_roles
+            FROM (SELECT * FROM tenant_user_roles
+      WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS effective_role_source
             WHERE tenant_id = $1 AND user_id = $2
             ORDER BY CASE role
               WHEN 'conference_manager' THEN 1
@@ -243,7 +248,8 @@ export function createPostgresTenantUserLifecycleRepository(pool, { auditReposit
             name: 'tenant-user-lifecycle-count-other-admins',
             text: `
               SELECT count(*)::int AS count
-              FROM tenant_user_roles r
+              FROM (SELECT * FROM tenant_user_roles
+      WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS r
               JOIN users u
                 ON u.tenant_id = r.tenant_id
                AND u.id = r.user_id

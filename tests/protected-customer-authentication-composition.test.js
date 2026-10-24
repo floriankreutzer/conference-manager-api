@@ -25,7 +25,7 @@ test('owned Customer assembly exposes only normal HTTP sessions and opt-in route
   const options=fixture(t),assembly=createProtectedCustomerAuthentication(options);
   assert.ok(Object.isFrozen(assembly));assert.ok(Object.isFrozen(assembly.routeModules));
   assert.deepEqual(assembly.routeModules.map(route=>route.id),
-    ['customer-email-authentication','customer-invitations','synthetic-customer-handoff']);
+    ['microsoft-role-mappings','customer-email-authentication','customer-invitations','synthetic-customer-handoff']);
   const context={ config: options.config,persistence: options.persistence,authenticationFactory: assembly.authenticationFactory };
   const result=createCustomerAuthenticationComposition(context);
   assert.equal(result.entraAuthService,null);assert.equal(result.onboardingService,null);
@@ -42,7 +42,8 @@ test('owned Customer assembly exposes only normal HTTP sessions and opt-in route
 test('REAL-only Customer assembly supports every environment and does not install a delegation route',t=>{
   for (const environment of ['dev','int','prod']) {
     const options=fixture(t,environment),assembly=createProtectedCustomerAuthentication({ ...options,synthetic: null });
-    assert.deepEqual(assembly.routeModules.map(route=>route.id),['customer-email-authentication','customer-invitations']);
+    assert.deepEqual(assembly.routeModules.map(route=>route.id),
+      ['microsoft-role-mappings','customer-email-authentication','customer-invitations']);
   }
 });
 
@@ -50,7 +51,8 @@ test('explicit Microsoft admission is added with the same owned HTTP session fac
   const options=fixture(t),unused=()=>assert.fail('NO_CONSTRUCTION_PROVIDER_CALL');
   const assembly=createProtectedCustomerAuthentication({ ...options,microsoftFlowSecret: 'm'.repeat(48),
     microsoftClient: { authorizationUrl: unused,redeemAuthorizationCode: unused,verifyPrimary: unused } });
-  assert.deepEqual(assembly.routeModules.map(route=>route.id),['customer-email-authentication','customer-invitations',
+  assert.deepEqual(assembly.routeModules.map(route=>route.id),
+    ['microsoft-role-mappings','customer-email-authentication','customer-invitations',
     'customer-microsoft-authentication','synthetic-customer-handoff']);
 });
 

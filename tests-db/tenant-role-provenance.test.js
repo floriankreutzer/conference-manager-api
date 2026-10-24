@@ -27,8 +27,9 @@ test('native role provenance preserves independent grants, fences sessions and r
     changedAt: new Date(),auditEventFor: ()=>audit.createActorEvent({ tenantId,actorUserId: actor,
       correlationId: randomUUID(),action: 'tenant.user_permissions.changed',targetType: 'user',targetId: userId,
       outcome: 'success',retentionClass: 'administrative',metadata: { operation: 'direct_role_fixture' } }) });
-  await pool.query(`INSERT INTO tenant_user_roles(tenant_id,user_id,role,direct_grant,microsoft_directory_id,microsoft_group_ids)
-    VALUES($1,$2,'conference_manager',false,$3,ARRAY[$4]::uuid[])`,[tenantId,userId,directory,group]);
+  await pool.query(`INSERT INTO tenant_user_roles(tenant_id,user_id,role,direct_grant,microsoft_directory_id,
+    microsoft_group_ids,microsoft_verified_until)
+    VALUES($1,$2,'conference_manager',false,$3,ARRAY[$4]::uuid[],clock_timestamp()+interval '1 hour')`,[tenantId,userId,directory,group]);
   const listed=(await repo.listByTenantId({ tenantId })).find(row=>row.userId===userId);
   assert.deepEqual(listed.elevatedRoles,[]);assert.deepEqual(listed.microsoftGroupRoles,['conference_manager']);
   const lifecycle=createPostgresTenantUserLifecycleRepository(pool,{ auditRepository });
@@ -73,8 +74,9 @@ test('native role provenance preserves independent grants, fences sessions and r
   assert.equal(cross.status,'not_found');
   await assert.rejects(pool.query('UPDATE tenant_user_roles SET microsoft_group_ids=ARRAY[$3,$3]::uuid[] WHERE tenant_id=$1 AND user_id=$2',
     [tenantId,userId,group]),{ code: '23514' });
-  await pool.query(`INSERT INTO tenant_user_roles(tenant_id,user_id,role,direct_grant,microsoft_directory_id,microsoft_group_ids)
-    VALUES($1,$2,'tenant_admin',false,$3,ARRAY[$4]::uuid[])`,[tenantId,userId,directory,group]);
+  await pool.query(`INSERT INTO tenant_user_roles(tenant_id,user_id,role,direct_grant,microsoft_directory_id,
+    microsoft_group_ids,microsoft_verified_until)
+    VALUES($1,$2,'tenant_admin',false,$3,ARRAY[$4]::uuid[],clock_timestamp()+interval '1 hour')`,[tenantId,userId,directory,group]);
   await mutate(['tenant_admin']);
   const retainedAdmin=await mutate([]);
   assert.equal(retainedAdmin.status,'updated');
@@ -84,5 +86,6 @@ test('native role provenance preserves independent grants, fences sessions and r
   await assert.rejects(rollbackLatest(pool),{ code: '55000' });
   await pool.query('DELETE FROM tenant_user_roles WHERE tenant_id=$1 AND user_id=$2',[tenantId,userId]);
   assert.deepEqual((await repo.listByTenantId({ tenantId })).find(row=>row.userId===userId).elevatedRoles,[]);
-  assert.equal(await rollbackLatest(pool),true);
+  assert.equal(await rollbackLatest(pool),true); // Empty069.
+  assert.equal(await rollbackLatest(pool),true); // Original068 downgrade remains covered.
 });

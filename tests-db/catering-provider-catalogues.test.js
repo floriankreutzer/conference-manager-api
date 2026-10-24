@@ -43,6 +43,7 @@ test('actual Customer source fences authority, preserves reviewed state, enforce
     pool = createPostgresPool({ mode: 'test', ...database, databaseUrl: url.toString(), databasePoolMax: 6 });
     await migrateUp(pool); await migrateDemoUp(pool, { roles });
     assert.equal(await isPostgresSchemaReady(pool),true);
+    await rollbackLatestDemoMigration(pool,{ roles }); // Empty030 before unchanged029/older grants.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty029 before unchanged028/older guards.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty028 before unchanged027.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty027 before unchanged026.
@@ -53,6 +54,7 @@ test('actual Customer source fences authority, preserves reviewed state, enforce
     await rollbackLatestDemoMigration(pool,{ roles }); // Enrollment grants022 before retained publication021.
     await rollbackLatestDemoMigration(pool,{ roles }); // Publication grants021 while canonical055 is ready.
     await rollbackLatestDemoMigration(pool,{ roles }); // Original source grants020 before either schema rollback.
+    assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
     assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
     assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
@@ -248,6 +250,7 @@ test('actual Customer source fences authority, preserves reviewed state, enforce
       [fixture.tenantId,manager.principal.session.id]);
     assert.equal((await request(manager)).status,401);
     await assert.rejects(receive(command(22,3)),(error) => error.code === 'PRINCIPAL_NOT_AUTHORIZED');
+    await rollbackLatestDemoMigration(pool,{ roles }); // Empty030 before unchanged029/older grants.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty029 before unchanged028/older guards.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty028 before unchanged027.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty027 before unchanged026.
@@ -257,6 +260,7 @@ test('actual Customer source fences authority, preserves reviewed state, enforce
     await rollbackLatestDemoMigration(pool,{ roles }); // Customer023 before retained enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Retained publication021.
+    assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
     assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
     assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
@@ -283,6 +287,7 @@ test('actual Customer source fences authority, preserves reviewed state, enforce
       tenantContext: { tenantId: persona.tenantId },correlationId: id(90),action: 'catering.catalogue.received',
       targetType: 'integration',targetId: fixture.integrationId,outcome: 'success',retentionClass: 'business',
       previousState: { revision: 0 },newState: { revision: 1 },metadata: { operation: 'synthetic_audit_only_rollback_probe' } });
+    await rollbackLatestDemoMigration(pool,{ roles }); // Empty030 before unchanged029/older grants.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty029 before unchanged028/older guards.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty028 before unchanged027.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty027 before unchanged026.
@@ -292,6 +297,7 @@ test('actual Customer source fences authority, preserves reviewed state, enforce
     await rollbackLatestDemoMigration(pool,{ roles }); // Customer023 before retained enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty enrollment022.
     await rollbackLatestDemoMigration(pool,{ roles }); // Retained publication021.
+    assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
     assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
     assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.

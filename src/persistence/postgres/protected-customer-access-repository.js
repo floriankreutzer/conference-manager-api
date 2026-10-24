@@ -22,7 +22,9 @@ export function createPostgresProtectedCustomerAccessRepository(pool,{ environme
       let principal;try { principal=normalizePrincipal(input.principal); } catch { return null; }
       if (!['email_code','microsoft_entra'].includes(principal.providerIdentity.provider)) return null;
       const result=await query.query({ name: 'protected-customer-current-invited-access',text: `SELECT
-          ARRAY(SELECT role FROM tenant_user_roles WHERE tenant_id=person.tenant_id AND user_id=person.id ORDER BY role) AS roles
+          ARRAY(SELECT role FROM (SELECT * FROM tenant_user_roles
+      WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS effective_role_source
+      WHERE tenant_id=person.tenant_id AND user_id=person.id ORDER BY role) AS roles
         FROM tenant_runtime_registry registry JOIN protected_runtime_deployments deployment
           ON deployment.environment=registry.environment AND deployment.security_epoch=$2
         JOIN tenants tenant ON tenant.id=registry.tenant_id

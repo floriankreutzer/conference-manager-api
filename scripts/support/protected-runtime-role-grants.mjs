@@ -18,7 +18,7 @@ function scope(input) {
 // Pure, redacted review plan. No implicit environment, connection or mutation.
 export function protectedRuntimeRoleGrantPlan(input) {
   const fixed=scope(input);
-  return Object.freeze({ ...fixed,schemaVersion: 68,roles: Object.freeze(['customer','platform'].map(surface=>{
+  return Object.freeze({ ...fixed,schemaVersion: 69,roles: Object.freeze(['customer','platform'].map(surface=>{
     const role=`cm_protected_${fixed.environment}_${surface}`,manifest=protectedRuntimeRoleManifest(surface);
     const statements=[`GRANT USAGE ON SCHEMA public TO ${identifier(role)}`,
       ...manifest.tables.map(entry=>`GRANT ${entry.privileges} ON public.${identifier(entry.name)} TO ${identifier(role)}`),
@@ -104,7 +104,7 @@ export function platformAuditSegmentRoleGrantPlan(input) {
   const fixed=scope({ environment: input.environment,securityEpoch: input.securityEpoch });
   if (fixed.environment!=='int' || !isInternalUuid(input.segmentId)) failed();
   const customer=identifier('cm_protected_int_customer'),platform=identifier('cm_protected_int_platform');
-  return Object.freeze({ ...fixed,segmentId: input.segmentId,schemaVersion: 68,
+  return Object.freeze({ ...fixed,segmentId: input.segmentId,schemaVersion: 69,
     roles: Object.freeze(['cm_protected_int_customer','cm_protected_int_platform']),statements: Object.freeze([
       `GRANT SELECT(id,environment,deployment_epoch) ON public.platform_audit_segments TO ${customer}`,
       `GRANT SELECT(segment_id,integrity_version) ON public.platform_audit_events TO ${customer}`,
@@ -116,9 +116,29 @@ export function platformAuditSegmentRoleGrantPlan(input) {
     ]) });
 }
 
-export async function grantPlatformAuditSegmentRuntimeRoles(pool,input,{ expectedOfflineRole,auditRepository }={}) {
+// Existing INT roles need only these two Customer authority tables after069.
+// The fixed segment/deployment binding and both-role drain remain mandatory.
+export function customerMicrosoftGroupRoleGrantPlan(input) {
+  const base=platformAuditSegmentRoleGrantPlan(input),customer=identifier('cm_protected_int_customer');
+  const entries=protectedRuntimeRoleManifest('customer').tables.filter(entry=>
+    ['tenant_microsoft_role_settings','customer_microsoft_group_observations'].includes(entry.name));
+  if (entries.length!==2) failed();
+  return Object.freeze({ ...base,statements: Object.freeze(entries.map(entry=>
+    `GRANT ${entry.privileges} ON public.${identifier(entry.name)} TO ${customer}`)) });
+}
+
+export async function grantPlatformAuditSegmentRuntimeRoles(pool,input,options={}) {
+  try { return await grantIncrementalRuntimeRoles(pool,platformAuditSegmentRoleGrantPlan(input),options); }
+  catch { failed(); }
+}
+
+export async function grantCustomerMicrosoftGroupRuntimeRoles(pool,input,options={}) {
+  try { return await grantIncrementalRuntimeRoles(pool,customerMicrosoftGroupRoleGrantPlan(input),options); }
+  catch { failed(); }
+}
+
+async function grantIncrementalRuntimeRoles(pool,plan,{ expectedOfflineRole,auditRepository }={}) {
   try {
-    const plan=platformAuditSegmentRoleGrantPlan(input);
     identifier(expectedOfflineRole);
     if (typeof auditRepository?.verifyWithClient!=='function') failed();
     const migrations=await loadMigrations();

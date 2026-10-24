@@ -7,6 +7,7 @@ import { createCustomerEmailAuthenticationRouteModule } from './http/customer-em
 import { createCustomerMicrosoftAuthenticationRouteModule } from './http/customer-microsoft-authentication-routes.js';
 import { createCustomerInvitationRouteModule } from './http/customer-invitation-routes.js';
 import { createSyntheticCustomerHandoffRouteModule } from './http/synthetic-customer-handoff-routes.js';
+import { createMicrosoftRoleMappingRouteModule } from './http/settings/microsoft-role-mapping-routes.js';
 
 const HTTP_METHODS=['resolvePrincipal','revoke','verifyCsrf','csrfTokenForPrincipal','clearCookie'];
 function syntheticConfiguration(value,environment,securityEpoch,customerOrigin) {
@@ -45,6 +46,7 @@ export function createProtectedCustomerAuthentication({ config,persistence,lease
     ['resolvePrincipal','revoke'].includes(name) ? (...args)=>scopes.withShared(()=>resolver[name](...args))
       : resolver[name].bind(resolver)])));
   const routeModules=Object.freeze([
+    createMicrosoftRoleMappingRouteModule({ service: invited.groupRoleService,publicOrigin: config.publicOrigin }),
     createCustomerEmailAuthenticationRouteModule({ service: invited.service,publicOrigin: config.publicOrigin }),
     createCustomerInvitationRouteModule({ service: invited.invitationService,publicOrigin: config.publicOrigin }),
     ...(invited.microsoft===null ? [] : [createCustomerMicrosoftAuthenticationRouteModule({ ...invited.microsoft,

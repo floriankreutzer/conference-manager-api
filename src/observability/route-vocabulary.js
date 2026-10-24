@@ -27,6 +27,7 @@ export const TELEMETRY_ROUTE_KEYS = Object.freeze([
   'audit',
   'tenant_users',
   'tenant_user_roles',
+  'microsoft_role_mappings',
   'application_profile',
   'application_catalog',
   'application_site_info',

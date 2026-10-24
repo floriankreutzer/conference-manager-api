@@ -21,6 +21,7 @@ test('durable invited Microsoft primary flow preserves browser/state custody bef
   await t.test('empty Microsoft migration rolls back without rewriting accepted057 and restores its exact checksum',async()=>{
     const checksum=(await pool.query('SELECT checksum FROM schema_migrations WHERE version=58')).rows[0].checksum;
     const accepted=(await pool.query('SELECT checksum FROM schema_migrations WHERE version=57')).rows[0].checksum;
+    assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
     assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
     assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
@@ -34,7 +35,7 @@ test('durable invited Microsoft primary flow preserves browser/state custody bef
     assert.equal(await rollbackLatest(pool),true);
     assert.equal(Number((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version),57);
     await migrateUp(pool);
-    assert.equal(Number((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version),68);
+    assert.equal(Number((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version),69);
     assert.equal((await pool.query('SELECT checksum FROM schema_migrations WHERE version=58')).rows[0].checksum,checksum);
     assert.equal((await pool.query('SELECT checksum FROM schema_migrations WHERE version=57')).rows[0].checksum,accepted);
   });
@@ -119,6 +120,7 @@ test('durable invited Microsoft primary flow preserves browser/state custody bef
       principal: customer.principal })).status,'rejected');
     assert.equal(await customer.auditRepository.verifyTenantChain(customer.tenantId),true);
   });
+  assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
   assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
   assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.

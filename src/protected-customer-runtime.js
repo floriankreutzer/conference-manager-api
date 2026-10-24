@@ -79,7 +79,7 @@ export async function createProtectedCustomerRuntime(environment) {
     const runtimeRepository=createPostgresProtectedTenantRuntimeRepository(base.pool,{ ...protection,leasePool });
     const realGate=createProtectedTenantProviderGate({ ...protection,repository: runtimeRepository,mode: 'real' });
     const microsoftClient=createFreshCustomerEntraClient({ clientId: config.entraClientId,clientSecret: config.entraClientSecret,
-      authority: config.entraAuthority,publicOrigin: config.publicOrigin });
+      authority: config.entraAuthority,publicOrigin: config.publicOrigin,includeGroupMembership: true });
     const authentication=createProtectedCustomerAuthentication({ config,persistence,leasePool,...protection,cipher,
       microsoftClient,...bundle.authentication });
     const graph=createMicrosoft365Client({ clientId: config.entraClientId,clientSecret: config.entraClientSecret,

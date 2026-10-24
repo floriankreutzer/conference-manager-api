@@ -162,7 +162,9 @@ export function createPostgresCustomerEmailAdmissionRepository(pool,{ environmen
             FROM user_identity_bindings WHERE tenant_id=$1 AND provider='email_code' AND provider_tenant_reference=$2
             AND provider_user_reference=$3 AND user_id=$4 FOR SHARE`,values: [expected.tenantId,environment,member.mailbox_id,user.id] });
           if (binding.rowCount !== 1) return rejected();
-          const result = await client.query({ name: 'customer-email-admission-current-roles',text: `SELECT role FROM tenant_user_roles
+          const result = await client.query({ name: 'customer-email-admission-current-roles',text: `
+            SELECT role FROM (SELECT * FROM tenant_user_roles
+      WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS effective_role_source
             WHERE tenant_id=$1 AND user_id=$2 ORDER BY role`,values: [expected.tenantId,user.id] });
           roles = result.rows.map(item => item.role);
         }
