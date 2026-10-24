@@ -1,10 +1,28 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { protectedRuntimeRoleGrantPlan,grantProtectedRuntimeRoles,platformAuditSegmentRoleGrantPlan,
-  grantPlatformAuditSegmentRuntimeRoles } from '../scripts/support/protected-runtime-role-grants.mjs';
+  grantPlatformAuditSegmentRuntimeRoles,customerMicrosoftGroupRoleGrantPlan,grantCustomerMicrosoftGroupRuntimeRoles }
+  from '../scripts/support/protected-runtime-role-grants.mjs';
 import { architectureConsolidationBoundaryViolations } from '../scripts/check-module-boundaries.mjs';
 
 const epoch='be000000-0000-4000-8000-000000000001';
+test('existing INT Microsoft group role delta grants only Customer table authority and refuses caller authority',async()=>{
+  const input={ environment: 'int',securityEpoch: epoch,segmentId: 'be000000-0000-4000-8000-000000000002' };
+  const plan=customerMicrosoftGroupRoleGrantPlan(input);
+  assert.deepEqual(plan.statements,[
+    'GRANT SELECT,INSERT,UPDATE ON public."tenant_microsoft_role_settings" TO "cm_protected_int_customer"',
+    'GRANT SELECT,INSERT,DELETE ON public."customer_microsoft_group_observations" TO "cm_protected_int_customer"',
+  ]);
+  assert.ok(Object.isFrozen(plan));assert.ok(Object.isFrozen(plan.statements));
+  let connected=false;const pool={ async connect() { connected=true;throw new Error('private-driver-detail'); } };
+  for (const invalid of [{ ...input,environment: 'prod' },{ ...input,role: 'arbitrary' },{ ...input,statements: [] },
+    { ...input,segmentId: 'private' },{ ...input,get securityEpoch() { throw new Error('private-accessor'); } }]) {
+    assert.throws(()=>customerMicrosoftGroupRoleGrantPlan(invalid),{ message: 'PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED' });
+    await assert.rejects(grantCustomerMicrosoftGroupRuntimeRoles(pool,invalid),
+      { message: 'PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED' });
+  }
+  assert.equal(connected,false);
+});
 test('existing INT audit role delta is fixed, minimal and removes legacy writing privileges',async()=>{
   const input={ environment: 'int',securityEpoch: epoch,segmentId: 'be000000-0000-4000-8000-000000000002' };
   const plan=platformAuditSegmentRoleGrantPlan(input),sql=plan.statements.join('\n');

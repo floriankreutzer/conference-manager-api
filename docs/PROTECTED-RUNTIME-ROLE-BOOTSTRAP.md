@@ -99,3 +99,30 @@ The installer retains its full exact-ledger, epoch, role-posture and atomic gran
 checks. Its deliberate fresh-role refusal also makes a repeat run fail closed.
 The module gate rejects every source-runtime import of operator/build scripts,
 including static, re-export and literal dynamic paths outside the runtime graph.
+
+## Existing INT roles after Microsoft group authority069
+
+The fresh installer must not be rerun on existing roles. The separate operator
+port `grantCustomerMicrosoftGroupRuntimeRoles` and CLI
+`scripts/customer-microsoft-group-runtime-grants.mjs` apply only the current
+Customer manifest entries for `tenant_microsoft_role_settings` (SELECT/INSERT/
+UPDATE) and `customer_microsoft_group_observations` (SELECT/INSERT/DELETE).
+No Platform, Demo, TRUNCATE, function, ownership or credential rights are added.
+
+The descriptor3 request contains exactly `environment`, `securityEpoch` and
+`segmentId`. INT and both fixed runtime role names are source-owned. The same
+checked incremental-grant transaction used by audit-segment grants requires the
+exact canonical ledger, current deployment and signed segment, catalog-owner
+session, nonelevated existing roles and zero connections from both roles. A
+wrong epoch/key, failed verification, active connection or malformed request
+refuses the operation before grants commit. Environment segment/epoch bindings
+must independently match the request. This command performs no migration, reset,
+bootstrap, provider operation or runtime activation. Its native fixture checks
+actual absent-to-minimal grants, untouched Platform exclusions and rollback on
+an audit-verification failure; CI evidence is required before operational use.
+
+The existing Main-only `protected-int-audit-segment.yml` manual workflow exposes
+the separate `customer_groups` operation through the same protected environment,
+descriptor3 request carrier, exact-source gate and source-bound real recovery/
+custody evidence. It neither repeats segment genesis nor changes that workflow's
+secret allocation, owner restriction, serialization or private-output policy.

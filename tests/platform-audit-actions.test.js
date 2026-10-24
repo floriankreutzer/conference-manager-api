@@ -25,7 +25,9 @@ function context(operation = 'initialize') {
 }
 
 test('Actions gate accepts each separate operation only with exact source, independent context and evidence references', () => {
-  for (const operation of ['initialize', 'grants']) assert.equal(requirePlatformAuditActionsContext(context(operation)), operation);
+  for (const operation of ['initialize', 'grants', 'customer_groups']) {
+    assert.equal(requirePlatformAuditActionsContext(context(operation)), operation);
+  }
 });
 
 test('Actions gate refuses replay, other actors, source, debug logging, environment and malformed private metadata', () => {
@@ -39,7 +41,7 @@ test('Actions gate refuses replay, other actors, source, debug logging, environm
     { CM_INT_AUDIT_RECOVERY_EVIDENCE: '{}' }, { PLATFORM_AUDIT_SEGMENT_LEGACY_EVENT_COUNT: '0124' },
     { PLATFORM_AUDIT_SEGMENT_ID: expected.segmentId.toUpperCase() },
   ];
-  for (const operation of ['initialize', 'grants']) {
+  for (const operation of ['initialize', 'grants', 'customer_groups']) {
     for (const patch of invalid) assert.throws(() => requirePlatformAuditActionsContext({ ...context(operation), ...patch }),
       { message: 'PLATFORM_AUDIT_ACTIONS_REFUSED' });
     for (const patch of [{ sourceSha: 'c'.repeat(40) }, { environment: 'prod' }, { servicesClosed: false },
@@ -72,14 +74,15 @@ test('public workflow logs omit actual FD3 metadata and private CLI output; a re
     writeFileSync(join(directory, 'node'), '#!/bin/bash\n' +
       'if [[ "$1" == scripts/platform-audit-actions-guard.mjs ]]; then exec "$REAL_NODE" "$@"; fi\n' +
       'exec "$REAL_NODE" "$TEST_OFFLINE" "$@"\n', { mode: 0o700 });
-    for (const operation of ['initialize', 'grants']) {
+    for (const operation of ['initialize', 'grants', 'customer_groups']) {
       const env = { ...context(operation), PATH: `${directory}:/usr/bin:/bin`, REAL_NODE: process.execPath,
         TEST_OFFLINE: fake, TEST_MARKER: marker };
       const result = spawnSync('bash', ['-c', command], { env, encoding: 'utf8' });
       assert.equal(result.status, 0, result.stderr);
       assert.equal(result.stdout, 'PROTECTED_INT_AUDIT_OPERATION_SUCCEEDED\n');
       assert.equal(result.stderr, '');
-      assert.match(readFileSync(marker, 'utf8'), operation === 'initialize' ? /segment-initialize/ : /segment-runtime-grants/);
+      assert.match(readFileSync(marker, 'utf8'), operation === 'initialize' ? /segment-initialize/
+        : operation === 'grants' ? /segment-runtime-grants/ : /customer-microsoft-group-runtime-grants/);
       rmSync(marker);
       const failed = spawnSync('bash', ['-c', command], { env: { ...env, TEST_EXIT: '1' }, encoding: 'utf8' });
       assert.equal(failed.status, 1); assert.equal(failed.stdout, ''); rmSync(marker);

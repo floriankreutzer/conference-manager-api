@@ -7,7 +7,8 @@ import { createPostgresPlatformAuditRepository } from '../src/persistence/postgr
 import { createPostgresPlatformAuditSegmentInitializer } from '../src/persistence/postgres/platform-audit-segment-initializer.js';
 import { createPostgresPlatformOwnerBootstrapRepository } from '../src/persistence/postgres/platform-owner-bootstrap-repository.js';
 import { migrateUp,rollbackLatest } from '../scripts/db-migrations.mjs';
-import { grantProtectedRuntimeRoles,grantPlatformAuditSegmentRuntimeRoles } from '../scripts/support/protected-runtime-role-grants.mjs';
+import { grantProtectedRuntimeRoles,grantPlatformAuditSegmentRuntimeRoles,grantCustomerMicrosoftGroupRuntimeRoles }
+  from '../scripts/support/protected-runtime-role-grants.mjs';
 
 const anonymous=()=>({ operatorId: null,roles: [],permissions: [],assuranceLevel: 'unverified',targetTenantId: null,
   action: 'platform.authentication.failed',targetType: 'authentication',targetId: 'platform',previousState: null,newState: null,
@@ -67,6 +68,29 @@ test('native audit cutover preserves all legacy bytes, commits one genesis and a
   await grantProtectedRuntimeRoles(pool,{ environment: 'int',securityEpoch: deploymentEpoch });
   await grantPlatformAuditSegmentRuntimeRoles(pool,{ environment: 'int',securityEpoch: deploymentEpoch,segmentId },
     { expectedOfflineRole: role,auditRepository: audit });
+  // Reproduce pre069 existing-role posture without rerunning the fresh installer.
+  for (const table of ['tenant_microsoft_role_settings','customer_microsoft_group_observations']) {
+    await pool.query(`REVOKE ALL ON ${table} FROM cm_protected_int_customer`);
+  }
+  const groupScope={ environment: 'int',securityEpoch: deploymentEpoch,segmentId };
+  const allowed=async(table,privilege)=>(await pool.query('SELECT has_table_privilege($1,$2,$3) AS allowed',
+    ['cm_protected_int_customer',table,privilege])).rows[0].allowed;
+  await assert.rejects(grantCustomerMicrosoftGroupRuntimeRoles(pool,groupScope,{ expectedOfflineRole: role,
+    auditRepository: { async verifyWithClient() { throw new Error('private-integrity-detail'); } } }),
+  { message: 'PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED' });
+  assert.equal(await allowed('tenant_microsoft_role_settings','SELECT'),false);
+  await assert.rejects(grantCustomerMicrosoftGroupRuntimeRoles(pool,{ ...groupScope,securityEpoch: randomUUID() },
+    { expectedOfflineRole: role,auditRepository: audit }),{ message: 'PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED' });
+  const granted=await grantCustomerMicrosoftGroupRuntimeRoles(pool,groupScope,{ expectedOfflineRole: role,auditRepository: audit });
+  assert.equal(granted.status,'granted');
+  for (const [table,privileges] of [['tenant_microsoft_role_settings',['SELECT','INSERT','UPDATE']],
+    ['customer_microsoft_group_observations',['SELECT','INSERT','DELETE']]]) {
+    for (const privilege of ['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) {
+      assert.equal(await allowed(table,privilege),privileges.includes(privilege));
+      assert.equal((await pool.query('SELECT has_table_privilege($1,$2,$3) AS allowed',
+        ['cm_protected_int_platform',table,privilege])).rows[0].allowed,false);
+    }
+  }
   const restricted={ async connect() {
     const client=await pool.connect();
     await client.query('SET SESSION AUTHORIZATION cm_protected_int_platform');

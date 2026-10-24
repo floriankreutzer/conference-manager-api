@@ -116,9 +116,29 @@ export function platformAuditSegmentRoleGrantPlan(input) {
     ]) });
 }
 
-export async function grantPlatformAuditSegmentRuntimeRoles(pool,input,{ expectedOfflineRole,auditRepository }={}) {
+// Existing INT roles need only these two Customer authority tables after069.
+// The fixed segment/deployment binding and both-role drain remain mandatory.
+export function customerMicrosoftGroupRoleGrantPlan(input) {
+  const base=platformAuditSegmentRoleGrantPlan(input),customer=identifier('cm_protected_int_customer');
+  const entries=protectedRuntimeRoleManifest('customer').tables.filter(entry=>
+    ['tenant_microsoft_role_settings','customer_microsoft_group_observations'].includes(entry.name));
+  if (entries.length!==2) failed();
+  return Object.freeze({ ...base,statements: Object.freeze(entries.map(entry=>
+    `GRANT ${entry.privileges} ON public.${identifier(entry.name)} TO ${customer}`)) });
+}
+
+export async function grantPlatformAuditSegmentRuntimeRoles(pool,input,options={}) {
+  try { return await grantIncrementalRuntimeRoles(pool,platformAuditSegmentRoleGrantPlan(input),options); }
+  catch { failed(); }
+}
+
+export async function grantCustomerMicrosoftGroupRuntimeRoles(pool,input,options={}) {
+  try { return await grantIncrementalRuntimeRoles(pool,customerMicrosoftGroupRoleGrantPlan(input),options); }
+  catch { failed(); }
+}
+
+async function grantIncrementalRuntimeRoles(pool,plan,{ expectedOfflineRole,auditRepository }={}) {
   try {
-    const plan=platformAuditSegmentRoleGrantPlan(input);
     identifier(expectedOfflineRole);
     if (typeof auditRepository?.verifyWithClient!=='function') failed();
     const migrations=await loadMigrations();
