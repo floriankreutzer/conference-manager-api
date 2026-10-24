@@ -53,7 +53,10 @@ test('native Microsoft-MFA sessions require no keys and retain CSRF, old-mode, o
   const old=await issue('cm:pk:v1');
   assert.equal(await owned.platformHttpSessionService.resolvePrincipal(request(old)),null);
   const fresh=await issue('cm:ms:fresh:v1');
-  assert.equal((await owned.platformHttpSessionService.resolvePrincipal(request(fresh))).assurance.level,'step_up');
+  // Fresh sessions remain internal operation custody and must never become a browser authority.
+  assert.equal((await owned.withPreparationScope(()=>sessions.resolvePrincipal(request(fresh)))).assurance.level,'step_up');
+  assert.equal(await owned.platformHttpSessionService.resolvePrincipal(request(fresh)),null);
+  assert.equal((await owned.platformHttpSessionService.resolvePrincipal(request(issued))).assurance.level,'mfa');
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_passkey_credentials')).rows[0].count,0);
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_passkey_auth_transactions')).rows[0].count,0);
   await pool.query("UPDATE platform_operators SET status='disabled' WHERE id=$1",[operatorId]);
