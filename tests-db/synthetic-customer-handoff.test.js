@@ -182,6 +182,7 @@ async t=>{
   assert.equal(await next.sessionService.resolvePrincipal(headers(lastCookie)),null);
   assert.equal(await next.sessionService.resolvePrincipal(headers(realSession.setCookie)),null);
   // Check destructive rollback only after all current-runtime assertions.
+  assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
   assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
   assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.

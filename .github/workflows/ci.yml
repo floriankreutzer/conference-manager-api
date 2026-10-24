@@ -87,6 +87,14 @@ jobs:
         run: npm ci --ignore-scripts --no-fund
       - name: Verify Microsoft group authority in the fresh service database
         run: node --test --test-concurrency=1 tests-db/microsoft-group-authority.test.js
+      - name: Verify Microsoft exact-operation custody in a separate ephemeral database
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE conference_manager_operation_proof'
+          trap 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "DROP DATABASE conference_manager_operation_proof WITH (FORCE)"' EXIT
+          DATABASE_URL=postgresql://conference_manager@127.0.0.1:5432/conference_manager_operation_proof \
+            node --test --test-concurrency=1 tests-db/platform-microsoft-operation.test.js
       - name: Run PostgreSQL migration and persistence integration tests
         run: npm run test:db
       - name: Verify synthetic session after actual proof expiry

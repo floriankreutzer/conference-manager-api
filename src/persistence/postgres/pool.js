@@ -43,7 +43,8 @@ const { Pool } = pg;
 // Schema 67 adds the owner-only, one-time all-role audit receipt.
 // Schema 68 tracks independent direct and Microsoft-derived Customer grants.
 // Schema 69 adds approved mappings and expiring identity-bound membership.
-export const CURRENT_SCHEMA_VERSION = 69;
+// Schema 70 adds retained, source-bound Microsoft exact-operation proofs.
+export const CURRENT_SCHEMA_VERSION = 70;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

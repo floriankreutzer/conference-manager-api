@@ -558,8 +558,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 69;/.test(pool)) {
-  throw new Error('Runtime schema readiness requires Microsoft group authority schema 69.');
+if (!/export const CURRENT_SCHEMA_VERSION = 70;/.test(pool)) {
+  throw new Error('Runtime schema readiness requires Microsoft operation proof schema 70.');
 }
 const retentionPrivilegeMigration = await readFile(
   'migrations/041_room_media_retention_privileges.up.sql',

@@ -223,6 +223,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 67, name: 'platform_owner_roles' },
       { version: 68, name: 'customer_role_provenance' },
       { version: 69, name: 'microsoft_group_authority' },
+      { version: 70, name: 'platform_microsoft_operation_proofs' },
     ]);
   });
 

@@ -172,6 +172,7 @@ test('independently granted enrollment stages public keys and atomically require
     await assert.rejects(pool.query(`UPDATE platform_passkey_credentials SET revoked_at=NULL
       WHERE operator_id=$1 AND revoked_at IS NOT NULL`,
       [f.operatorId]), /IMMUTABLE/);
+    assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
     assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
     assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
     assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.
