@@ -265,9 +265,11 @@ function createClient({
         || !hashMatches(expectedNonce,expectedNonceHash)) {
         fail(primaryOnly ? 'PLATFORM_PRIMARY_CODE_INPUT_INVALID' : 'PLATFORM_ENTRA_NONCE_INVALID');
       }
-      if (primaryOnly && (typeof code !== 'string' || !/^[A-Za-z0-9._~-]{1,4096}$/.test(code)
+      if ((primaryOnly || microsoftMfa) && (typeof code !== 'string' || !/^[A-Za-z0-9._~-]{1,4096}$/.test(code)
         || typeof codeVerifier !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(codeVerifier)
-        || !/^[0-9a-f]{64}$/.test(expectedNonceHash || ''))) fail('PLATFORM_PRIMARY_CODE_INPUT_INVALID');
+        || !/^[0-9a-f]{64}$/.test(expectedNonceHash || ''))) {
+        fail(primaryOnly ? 'PLATFORM_PRIMARY_CODE_INPUT_INVALID' : 'PLATFORM_MICROSOFT_MFA_CODE_INPUT_INVALID');
+      }
       let result;
       try {
         result = await msal.acquireTokenByCode({

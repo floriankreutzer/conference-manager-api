@@ -106,3 +106,19 @@ test('Microsoft MFA preserves tenant/audience/issuer/nonce/time checks and stric
     assert.throws(() => validatePlatformEntraMfaAuthorizationUrl(changed.toString(), contract), /AUTHORIZATION_URL_INVALID/);
   }
 });
+
+test('malformed Microsoft MFA code exchange fails before provider I/O and never exposes private input', async () => {
+  let calls = 0;
+  const mfa = client(claims(), { application: { async getAuthCodeUrl() {},
+    async acquireTokenByCode() { calls++; assert.fail('MALFORMED_INPUT_MUST_NOT_REACH_PROVIDER'); },
+  } });
+  for (const change of [{ code: '' }, { code: 'private-input-'.repeat(400) }, { code: 'invalid/code' },
+    { codeVerifier: 'invalid-verifier' }, { expectedNonce: '' }, { expectedNonceHash: 'invalid-hash' },
+    { authenticationContext: 'c1' }]) {
+    await assert.rejects(mfa.redeemAuthorizationCode({ ...redeem, ...change }), error => {
+      assert.doesNotMatch(error.message, /private-input|invalid-verifier|invalid-hash|invalid\/code/);
+      return true;
+    });
+  }
+  assert.equal(calls, 0);
+});
