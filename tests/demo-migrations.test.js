@@ -6,6 +6,8 @@ import {
   migrateDemoUp,
 } from '../scripts/demo-db-migrations.mjs';
 import { loadMigrations } from '../scripts/db-migrations.mjs';
+import { DEMO_OVERLAY_MIGRATION_VERSION } from '../src/demo/runtime-contract.js';
+import { CURRENT_SCHEMA_VERSION } from '../src/persistence/postgres/pool.js';
 
 const ROLES = Object.freeze({
   customer: 'demo_customer',
@@ -17,6 +19,8 @@ test('Demo migration stream is versioned independently from Production', async (
   const [production, demo] = await Promise.all([loadMigrations(), loadDemoMigrations()]);
   assert.equal(production.at(-1).version, 72);
   assert.equal(demo.length, 32);
+  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION,demo.at(-1).version);
+  assert.equal(CURRENT_SCHEMA_VERSION,production.at(-1).version);
   assert.deepEqual(production.map(({ version }) => version),Array.from({ length: 72 },(_,index) => index+1));
   assert.deepEqual(demo.map(({ version }) => version),Array.from({ length: 32 },(_,index) => index+1));
   assert.equal(demo[0].version, 1);

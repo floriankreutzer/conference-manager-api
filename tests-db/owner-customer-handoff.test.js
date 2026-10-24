@@ -64,6 +64,11 @@ test('native designated owner REAL handoff creates only own identity, preserves 
     'INSERT INTO platform_owner_customer_users DEFAULT VALUES']) {
     await assert.rejects(customerPool.query(sql),{ code: '42501' });
   }
+  const immutableRights=(await platformPool.query(`SELECT
+    has_table_privilege(current_user,'platform_owner_customer_users','SELECT') AS readable,
+    has_table_privilege(current_user,'platform_owner_customer_users','INSERT') AS creatable,
+    has_table_privilege(current_user,'platform_owner_customer_users','UPDATE') AS mutable`)).rows[0];
+  assert.deepEqual(immutableRights,{ readable: true,creatable: true,mutable: false });
   const owner=await createProtectedOwnerMicrosoftFixture(pool,leasePool,{ epoch,runtimePool: platformPool,
     runtimeLeasePool: platformLease });
   const customerScopes=createPostgresProtectedRuntimeExecutionScopes({ pool: customerPool,leasePool: customerLease,...protection });

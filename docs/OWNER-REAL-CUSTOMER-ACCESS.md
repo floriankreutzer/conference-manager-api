@@ -137,3 +137,24 @@ persistence/Demo regression remain required. The early native owner CI step is
 additional coverage in the existing job; it replaces no complete release gate.
 No live migration, role grant, User/session creation, provider setting or deployment
 is established by this source work.
+
+
+The first072 native CI40143761367/job121020948319 failed at the Platform
+own-binding lookup: PostgreSQL SELECT FOR SHARE requires an UPDATE privilege,
+while that table deliberately grants only SELECT/INSERT. The lookup now uses a
+plain SELECT on the immutable attribution row. Its UPDATE/DELETE/TRUNCATE guards
+and enclosing owner advisory/current-target locks already serialize creation;
+actual mutable source/User/session locks and current qualification remain. The
+native fixture explicitly requires readable/creatable but not mutable rights.
+No privilege or negative assertion is widened. Renewed native qualification is
+required; this failed run remains historical evidence.
+
+
+The same candidate's four permanent Demo jobs stopped before browser execution
+because the independent Demo startup constant still required overlay031 while
+migration032 had been applied. The runtime now requires032, retaining exact-ledger
+fail-closed readiness. The migration-stream test compares both actual independent
+migration tails against their runtime readiness constants, in addition to the
+existing explicit version assertions. No startup assertion, wait budget, browser
+suite or reset case is relaxed. Those failed startup jobs do not establish any
+browser acceptance; all four complete jobs must run again against the correction.

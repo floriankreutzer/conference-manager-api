@@ -24,9 +24,12 @@ export function createPostgresPlatformOwnerCustomerUser(pool,{ scope: rawScope,t
       const selection=normalizeOwnerCustomerAccessSelection(rawSelection),principal=policy.prepare(rawPrincipal,selection);
       if (!(time instanceof Date) || !Number.isFinite(time.getTime())) deny();
       const userId=ownerCustomerUserId({ environment: scope.environment,tenantId: selection.tenantId,operatorId: principal.operatorId });
+      // The attribution row is immutable: UPDATE/DELETE/TRUNCATE guards deny
+      // changes. The enclosing owner advisory/target locks serialize creation;
+      // SELECT FOR SHARE would unnecessarily require an UPDATE grant here.
       const binding=await client.query({ name: 'owner-customer-own-user-binding',text: `SELECT user_id,
           provider_tenant_reference,provider_subject_reference FROM platform_owner_customer_users
-        WHERE environment=$1 AND operator_id=$2 AND tenant_id=$3 FOR SHARE`,
+        WHERE environment=$1 AND operator_id=$2 AND tenant_id=$3`,
       values: [scope.environment,principal.operatorId,selection.tenantId] });
       if (binding.rowCount>1) deny();
       if (binding.rowCount===1) {
