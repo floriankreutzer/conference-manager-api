@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { isInternalUuid } from '../domain/identifiers.js';
 import { normalizePrincipal } from './principal.js';
 import { EntraAuthenticationError } from './entra-errors.js';
+import { resolveMicrosoftMappedGroups } from '../authorization/microsoft-group-mapping.js';
 import { serializeCustomerMicrosoftTransactionCookie,clearCustomerMicrosoftTransactionCookie } from './customer-microsoft-cookie.js';
 
 const TOKEN=/^[A-Za-z0-9_-]{43}$/,HASH=/^[a-f0-9]{64}$/;
@@ -92,9 +93,17 @@ export function createCustomerMicrosoftAuthenticationService({ repository,entraC
         const assertion=await entraClient.redeemAuthorizationCode({ code: input.code,codeVerifier: protocol.codeVerifier,
           expectedNonce: protocol.nonce,expectedNonceHash: reserved.nonceHash,startedAt: reserved.startedAt });
         identity=await entraClient.verifyPrimary(assertion,{ expectedNonceHash: reserved.nonceHash });
-        exact(identity,['provider','tenantReference','userReference','authenticatedAt']);
+        const grouped=identity!==null && typeof identity==='object' && Object.hasOwn(identity,'groupMembership');
+        exact(identity,['provider','tenantReference','userReference','authenticatedAt',
+          ...(grouped ? ['groupMembership','groupValidUntil'] : [])]);
         if (identity.provider!=='microsoft_entra') invalid();
         uuid(identity.tenantReference);uuid(identity.userReference);instant(identity.authenticatedAt);
+        if (grouped) {
+          resolveMicrosoftMappedGroups({ directoryId: identity.tenantReference,providerDirectoryId: identity.tenantReference,
+            mappings: [],membership: identity.groupMembership });
+          instant(identity.groupValidUntil);
+          if (Date.parse(identity.groupValidUntil)<=Date.parse(identity.authenticatedAt)) invalid();
+        }
       } catch {
         await repository.fail({ flowId,browserToken: input.browserToken,correlationId });
         throw new EntraAuthenticationError('CUSTOMER_MICROSOFT_PRIMARY_REJECTED');

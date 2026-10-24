@@ -9,7 +9,8 @@ const id=n=>`b2000000-0000-4000-8000-${String(n).padStart(12,'0')}`,state='S'.re
 const principal={ tenantId: id(1),userId: id(2),providerIdentity: { provider: 'email_code',reference: id(3) },roles: ['employee'],
   permissions: [],
   session: { id: id(4),securityVersion: 7,issuedAt: now,expiresAt: '2026-10-20T13:00:00.000Z' } };
-function fixture({ providerReject=false,extraClaims=false,creationDenied=false,verificationDenied=false }={}) {
+function fixture({ providerReject=false,extraClaims=false,creationDenied=false,verificationDenied=false,groupMembership,
+  groupValidUntil='2026-10-20T13:00:00.000Z' }={}) {
   const records=new Map(),calls={ redeem: [],verified: [],failed: [],created: [] };let tokens=0;
   const binding=()=>createCustomerMicrosoftFlowBinding({ environment: 'int',secret: 's'.repeat(48),
     randomToken: ()=>++tokens===1 ? state : Buffer.alloc(32,tokens).toString('base64url') });
@@ -34,6 +35,7 @@ function fixture({ providerReject=false,extraClaims=false,creationDenied=false,v
       assert.equal(createHash('sha256').update(value.codeVerifier).digest('base64url'),sent.codeChallenge);
       if (providerReject) throw new Error('PRIVATE_PROVIDER_TOKEN');return Object.freeze({});
     },async verifyPrimary() { return { provider: 'microsoft_entra',tenantReference: id(8),userReference: id(9),authenticatedAt: now,
+      ...(groupMembership===undefined ? {} : { groupMembership,groupValidUntil }),
       ...(extraClaims ? { email: 'Untrusted@example.test' } : {}) }; } };
   const service=()=>createCustomerMicrosoftAuthenticationService({ repository,entraClient,flowBinding: binding(),idFactory: ()=>id(5) });
   const start=async(link=false)=>{
@@ -56,6 +58,31 @@ for (const link of [false,true]) test(
   assert.deepEqual(Object.keys(f.calls.verified[0].identity).sort(),['authenticatedAt','provider','tenantReference','userReference']);
   assert.equal((await f.service().complete({ ...f.complete(cookie),principal: link ? principal : null })).status,'rejected');
   assert.equal(f.calls.redeem.length,1);assert.equal(f.calls.created[0].nonce,undefined);assert.equal(f.calls.created[0].state,undefined);
+});
+test('verified bounded group observations cross primary login and link without granting a local identity',async()=>{
+  for (const link of [false,true]) for (const groupMembership of [{ status: 'complete',groupIds: [id(10)] },
+    { status: 'unavailable',groupIds: [] },{ status: 'overage',groupIds: [] }]) {
+    const f=fixture({ groupMembership }),{ cookie }=await f.start(link);
+    const result=await f.service().complete({ ...f.complete(cookie),principal: link ? principal : null });
+    assert.equal(result.status,link ? 'link_confirmation_required' : 'membership_required');
+    assert.deepEqual(f.calls.verified[0].identity.groupMembership,groupMembership);
+    assert.equal(f.calls.verified[0].identity.groupValidUntil,'2026-10-20T13:00:00.000Z');
+    assert.equal(result.principal,undefined);assert.equal(result.roles,undefined);
+  }
+});
+test('malformed group evidence consumes primary exchange without persistence or local authority',async()=>{
+  let accessed=false;
+  const getter={ groupIds: [] };Object.defineProperty(getter,'status',{ enumerable: true,get() { accessed=true;return 'complete'; } });
+  for (const options of [{ groupMembership: { status: 'complete',groupIds: ['not-a-group'] } },
+    { groupMembership: { status: 'overage',groupIds: [id(10)] } },{ groupMembership: getter },
+    { groupMembership: { status: 'complete',groupIds: [id(10)],roles: ['tenant_admin'] } },
+    { groupMembership: { status: 'complete',groupIds: [] },groupValidUntil: now },
+    { groupMembership: { status: 'complete',groupIds: [] },groupValidUntil: 'private-invalid' }]) {
+    const f=fixture(options),{ cookie }=await f.start();
+    await assert.rejects(f.service().complete(f.complete(cookie)),{ code: 'CUSTOMER_MICROSOFT_PRIMARY_REJECTED' });
+    assert.equal(f.calls.verified.length,0);assert.equal(f.calls.failed.length,1);
+  }
+  assert.equal(accessed,false);
 });
 test('foreign browser/state and throttled allocation never exchange a code or grant local identity',async()=>{
   const f=fixture(),{ cookie }=await f.start();
