@@ -1,3 +1,4 @@
+import { createSyntheticOperationTransport } from './synthetic-operation-transport.js';
 import { BrowserNavigationFormError,isBrowserNavigationForm,readBrowserNavigationForm }
   from '../../transport/browser-navigation-form.js';
 import { isInternalUuid,isOpaqueBrowserToken } from '../../domain/identifiers.js';
@@ -5,11 +6,6 @@ import { normalizeSyntheticHandoffScope,requireSyntheticHandoffCustomerRedirect,
   from '../../domain/synthetic-handoff.js';
 import { PLATFORM_ENTRA_PROVIDER } from '../../domain/identity-provider.js';
 import { normalizePlatformPrincipal } from '../identity/principal.js';
-import { readPlatformPasskeyTransactionCookie,serializePlatformPasskeyTransactionCookie,clearPlatformPasskeyTransactionCookie }
-  from '../identity/passkey-auth-cookie.js';
-import { readPlatformPasskeyOperationCookie,serializePlatformPasskeyOperationCookie,clearPlatformPasskeyOperationCookie }
-  from '../identity/passkey-operation-cookie.js';
-import { requireCommittedPlatformPasskeyOperation } from './passkey-operation-result.js';
 import { definePlatformRouteModule } from './route-module.js';
 import { PLATFORM_HTTP_ROUTE as ROUTE } from './observability.js';
 import { PlatformHttpError } from './errors.js';
@@ -36,10 +32,10 @@ async function callProtocol(work) {
     throw error;
   }
 }
-function current(value,scope) {
+function current(value,scope,normalContext) {
   const principal=normalizePlatformPrincipal(value);
   if (principal.providerIdentity.provider!==PLATFORM_ENTRA_PROVIDER || principal.assurance.level!=='mfa'
-    || principal.assurance.authenticationContext!=='cm:pk:v1' || principal.session.securityEpoch!==scope.platformSecurityEpoch) denied();
+    || principal.assurance.authenticationContext!==normalContext || principal.session.securityEpoch!==scope.platformSecurityEpoch) denied();
   return principal;
 }
 function customerRedirect(value,intent,scope) {
@@ -51,15 +47,18 @@ function customerRedirect(value,intent,scope) {
 // current normal passkey MFA, and mutations also require normal session CSRF.
 // Protocol ports must be supplied by the owned protected composition; no route,
 // fake provider, shared lease or privileged authority is activated by default.
-export function createPlatformSyntheticHandoffRouteModule({ protocol,intentCookie,scope }={}) {
+export function createPlatformSyntheticHandoffRouteModule({ protocol,intentCookie,scope,assuranceMode='application_passkey' }={}) {
   scope=normalizeSyntheticHandoffScope(scope);
+  const transport=createSyntheticOperationTransport({ assuranceMode,platformOrigin: scope.platformOrigin,
+    securityEpoch: scope.platformSecurityEpoch });
   if (['options','approve'].some(name=>typeof protocol?.[name]!=='function')
     || ['issue','read','clear'].some(name=>typeof intentCookie?.[name]!=='function')) {
     throw new TypeError('PLATFORM_SYNTHETIC_HTTP_CONFIGURATION_INVALID');
   }
   return definePlatformRouteModule({ id: 'platform-synthetic-handoff',
     claim: ({ path })=>Object.hasOwn(ROUTES,path) ? ROUTES[path][1] : null,
-    createHandler({ platformPrincipalGuard,maxBodyBytes,maxResponseBytes }={}) {
+    createHandler(runtime={}) {
+      const { platformPrincipalGuard,maxBodyBytes,maxResponseBytes }=runtime;
       if (typeof platformPrincipalGuard?.require!=='function' || !Number.isSafeInteger(maxBodyBytes) || maxBodyBytes<1024
         || !Number.isSafeInteger(maxResponseBytes) || maxResponseBytes<1024) {
         throw new TypeError('PLATFORM_SYNTHETIC_HTTP_CONFIGURATION_INVALID');
@@ -95,7 +94,8 @@ export function createPlatformSyntheticHandoffRouteModule({ protocol,intentCooki
           try { payload=JSON.parse(form.payload); } catch { throw new PlatformHttpError(400,'PLATFORM_VALIDATION_FAILED'); }
         }
         const guardRequest=form ? { method: request.method,headers: { ...request.headers,'x-csrf-token': form.csrfToken } } : request;
-        const principal=current(await platformPrincipalGuard.require(guardRequest,{ csrf: mutation,correlationId: requestId }),scope);
+        const principal=current(await platformPrincipalGuard.require(guardRequest,{ csrf: mutation,correlationId: requestId }),
+          scope,transport.normalContext);
         const pending=intentCookie.read(request.headers);
         if (path===`${ROOT}/intent`) {
           // A normal authenticated startup can resume a signed intent after
@@ -110,30 +110,25 @@ export function createPlatformSyntheticHandoffRouteModule({ protocol,intentCooki
           : await readPlatformJsonObject(request,{ maxBytes: Math.min(maxBodyBytes,16384) }),
           { required: { generationId: isInternalUuid,slot: value=>SYNTHETIC_HANDOFF_SLOTS.includes(value),
             role: value=>SYNTHETIC_HANDOFF_ROLES.includes(value),...(approval ? {
-              state: isOpaqueBrowserToken,response: value=>value!==null && typeof value==='object' && !Array.isArray(value),
+              state: isOpaqueBrowserToken,
+              ...(!transport.microsoft ? { response: value=>value!==null && typeof value==='object' && !Array.isArray(value) } : {}),
             } : {}) } });
         const intent={ ...pending,operatorId: principal.operatorId,generationId: body.generationId.toLowerCase(),
           slot: body.slot,role: body.role };
         if (!approval) {
           const result=await callProtocol(()=>protocol.options({ principal,intent,correlationId: requestId }));
-          if (result?.status!=='passkey_required' || !isOpaqueBrowserToken(result.state)
-            || !result.options || typeof result.options!=='object' || Array.isArray(result.options)
-            || typeof result.setCookie!=='string') invalid();
-          const cookie=readPlatformPasskeyTransactionCookie({ cookie: result.setCookie.split(';')[0] });
-          if (!cookie || cookie.split('.')[0]!==result.state
-            || result.setCookie!==serializePlatformPasskeyTransactionCookie(cookie,120)) invalid();
-          response.setHeader('Set-Cookie',serializePlatformPasskeyOperationCookie(cookie));
-          sendPlatformJson(response,200,{ status: result.status,state: result.state,options: result.options,requestId },maxResponseBytes);
+          const challenge=transport.challenge(result,requestId,runtime);
+          response.setHeader('Set-Cookie',challenge.cookies);
+          sendPlatformJson(response,200,challenge.payload,maxResponseBytes);
           return 200;
         }
-        const cookie=readPlatformPasskeyOperationCookie(request.headers);if (!cookie) denied();
+        const cookie=transport.readCookie(request.headers);if (!cookie) denied();
         const completed=await callProtocol(()=>protocol.approve({ principal,intent,correlationId: requestId,cookie,state: body.state,
           response: body.response,request }));
-        const committed=requireCommittedPlatformPasskeyOperation(completed,{ principal,securityEpoch: scope.platformSecurityEpoch });
+        const committed=transport.committed(completed,principal);
         if (committed.result?.status!=='redirect') invalid();
         const location=customerRedirect(committed.result.location,intent,scope),normal=committed.normalCookie;
-        response.setHeader('Set-Cookie',[normal,clearPlatformPasskeyTransactionCookie(),
-          clearPlatformPasskeyOperationCookie(),intentCookie.clear()]);
+        response.setHeader('Set-Cookie',[normal,...transport.clearCookies(),intentCookie.clear()]);
         sendPlatformRedirect(response,location);return 303;
       };
     },

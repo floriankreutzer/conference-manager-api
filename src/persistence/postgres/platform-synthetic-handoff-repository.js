@@ -1,3 +1,4 @@
+import { syntheticOperationAssurance } from '../../domain/synthetic-operation-assurance.js';
 import { isInternalUuid } from '../../domain/identifiers.js';
 import { PLATFORM_ENTRA_PROVIDER } from '../../domain/identity-provider.js';
 import { normalizeSyntheticHandoffScope,normalizeSyntheticHandoffSelection,syntheticHandoffOperationHash,
@@ -17,7 +18,9 @@ function instant(value) { if (!(value instanceof Date) || !Number.isFinite(value
 // Private exact-proof Platform approval, separate from anonymous start custody.
 // No method creates a Customer session. The private root owns cryptography,
 // current execution scopes and the approving browser's final redirect.
-export function createPostgresSyntheticHandoffRepository(pool,{ scope,browserBinding,platformAuditRepository }={}) {
+export function createPostgresSyntheticHandoffRepository(pool,{ scope,browserBinding,platformAuditRepository,
+  assuranceMode='application_passkey' }={}) {
+  const assurance=syntheticOperationAssurance(assuranceMode);
   scope=normalizeSyntheticHandoffScope(scope);
   if (typeof pool?.connect!=='function' || typeof pool?.query!=='function'
     || typeof browserBinding?.issueCode!=='function'
@@ -45,7 +48,7 @@ export function createPostgresSyntheticHandoffRepository(pool,{ scope,browserBin
   async function currentSelection(client,principal,selection) {
     principal=normalizePlatformPrincipal(principal);
     if (principal.operatorId!==selection.operatorId || principal.providerIdentity.provider!==PLATFORM_ENTRA_PROVIDER
-      || principal.assurance.level!=='mfa' || principal.assurance.authenticationContext!=='cm:pk:v1'
+      || principal.assurance.level!=='mfa' || principal.assurance.authenticationContext!==assurance.normalContext
       || principal.session.securityEpoch!==scope.platformSecurityEpoch) denied();
     // Registry classification is INSERT-only under059; shared preparation or
     // stamped exclusive completion already fences its deployment. Lock mutable
@@ -70,10 +73,10 @@ export function createPostgresSyntheticHandoffRepository(pool,{ scope,browserBin
         AND source.provider=actor.provider AND source.provider_tenant_reference=actor.provider_tenant_reference
         AND source.provider_subject_reference=actor.provider_subject_reference AND source.roles=actor.roles
         AND source.scope_mode=actor.scope_mode AND source.permissions=$11::text[] AND $17=ANY(source.permissions)
-        AND source.assurance_level='mfa' AND source.authentication_context='cm:pk:v1' AND source.authenticated_at=$15
+        AND source.assurance_level='mfa' AND source.authentication_context=$18 AND source.authenticated_at=$15
         AND source.revoked_at IS NULL AND source.expires_at>clock_timestamp() AND source.issued_at<=clock_timestamp()+interval '1 minute'
-        AND (SELECT count(*) FROM platform_passkey_credentials key
-          WHERE key.operator_id=actor.id AND key.environment=$1 AND key.revoked_at IS NULL)>=2
+        AND ($19::boolean OR (SELECT count(*) FROM platform_passkey_credentials key
+          WHERE key.operator_id=actor.id AND key.environment=$1 AND key.revoked_at IS NULL)>=2)
         AND NOT EXISTS(SELECT 1 FROM tenant_user_roles elevation WHERE elevation.tenant_id=person.tenant_id
           AND elevation.user_id=person.id AND elevation.role<>$9)
         AND (($9='employee' AND NOT EXISTS(SELECT 1 FROM tenant_user_roles elevation
@@ -84,7 +87,8 @@ export function createPostgresSyntheticHandoffRepository(pool,{ scope,browserBin
     values: [scope.environment,scope.securityEpoch,principal.operatorId,principal.securityVersion,scope.platformSecurityEpoch,
       principal.session.id,selection.generationId,selection.slot,selection.role,principal.roles,principal.permissions,
       principal.targetScope.mode,principal.providerIdentity.tenantReference,principal.providerIdentity.subjectReference,
-      principal.assurance.authenticatedAt,PLATFORM_ENTRA_PROVIDER,PLATFORM_PERMISSION.LIFECYCLE_MANAGE] });
+      principal.assurance.authenticatedAt,PLATFORM_ENTRA_PROVIDER,PLATFORM_PERMISSION.LIFECYCLE_MANAGE,
+      assurance.normalContext,assuranceMode==='microsoft_mfa'] });
     if (result.rowCount!==1) denied();
     const row=result.rows[0],version=Number(row.security_version);
     instant(row.now);uuid(row.tenant_id);uuid(row.user_id);
@@ -109,7 +113,7 @@ export function createPostgresSyntheticHandoffRepository(pool,{ scope,browserBin
       const selection=normalizeSyntheticHandoffSelection(value);correlationId=uuid(correlationId);
       if (principal.operatorId!==selection.operatorId || future.operatorId!==principal.operatorId
         || future.securityVersion!==principal.securityVersion || principal.providerIdentity.provider!==PLATFORM_ENTRA_PROVIDER
-        || principal.assurance.level!=='step_up' || principal.assurance.authenticationContext!=='cm:pk:v1'
+        || principal.assurance.level!=='step_up' || principal.assurance.authenticationContext!==assurance.freshContext
         || principal.assurance.authenticatedAt!==future.assurance.authenticatedAt || principal.session.id===future.session.id
         || principal.session.securityEpoch!==scope.platformSecurityEpoch) denied();
       return withPostgresTransaction(pool,async client=>{
@@ -122,7 +126,17 @@ export function createPostgresSyntheticHandoffRepository(pool,{ scope,browserBin
         const time=await now(client),expiresAt=new Date(Math.min(instant(row.expires_at).getTime(),
           time.getTime()+SYNTHETIC_HANDOFF_CODE_SECONDS*1000));
         if (expiresAt<=time) denied();
-        const proof=await client.query({ name: 'synthetic-handoff-current-consumed-proof',text: `SELECT id
+        const proof=assuranceMode==='microsoft_mfa'
+          ? await client.query({ name: 'synthetic-handoff-current-consumed-microsoft-proof',text: `SELECT id
+            FROM platform_microsoft_operation_proofs WHERE environment=$1 AND security_epoch=$2 AND operator_id=$3
+              AND operator_security_version=$4 AND status='consumed' AND execution_scope='synthetic'
+              AND operation_hash=$5 AND expected_session_id<>$6 AND authenticated_at=$7 AND protected_security_epoch=$8
+              AND provider_tenant_reference::text=$9 AND provider_subject_reference::text=$10
+              AND consumed_at IS NOT NULL AND consumed_at<expires_at AND $11>=consumed_at AND $11<=consumed_at+interval '30 seconds'
+            ORDER BY id LIMIT 2 FOR SHARE`,values: [scope.environment,scope.platformSecurityEpoch,principal.operatorId,
+          principal.securityVersion,operationHash,future.session.id,future.assurance.authenticatedAt,scope.securityEpoch,
+          principal.providerIdentity.tenantReference,principal.providerIdentity.subjectReference,time] })
+          : await client.query({ name: 'synthetic-handoff-current-consumed-proof',text: `SELECT id
           FROM platform_passkey_auth_transactions WHERE environment=$1 AND security_epoch=$2 AND operator_id=$3
             AND operator_security_version=$4 AND purpose='step_up' AND operation_hash=$5 AND expected_session_id<>$6
             AND consumed_at IS NOT NULL AND consumed_at<expires_at AND date_trunc('milliseconds',consumed_at)=$7
@@ -148,11 +162,12 @@ export function createPostgresSyntheticHandoffRepository(pool,{ scope,browserBin
         const updated=await client.query({ name: 'synthetic-handoff-approve',text: `UPDATE synthetic_customer_handoffs
           SET status='approved',owner_slot=$3,
           operator_id=$4,operator_security_version=$5,generation_id=$6,slot=$7,selected_role=$8,tenant_id=$9,user_id=$10,
-          user_security_version=$11,source_platform_session_id=$12,approval_proof_id=$13,operation_hash=$14,
+          user_security_version=$11,source_platform_session_id=$12,approval_proof_id=$13,approval_microsoft_proof_id=$19,operation_hash=$14,
           approval_audit_sequence=$15,code_verifier=$16,approved_at=$17,code_expires_at=$18 WHERE environment=$1 AND id=$2 RETURNING id`,
         values: [scope.environment,selection.flowId,free.rows[0].slot,principal.operatorId,principal.securityVersion,
           selection.generationId,selection.slot,selection.role,current.tenant_id,current.user_id,Number(current.security_version),
-          future.session.id,proof.rows[0].id,operationHash,String(stored.sequence),approval.codeVerifier,time,expiresAt] });
+          future.session.id,assuranceMode==='microsoft_mfa' ? null : proof.rows[0].id,operationHash,String(stored.sequence),
+          approval.codeVerifier,time,expiresAt,assuranceMode==='microsoft_mfa' ? proof.rows[0].id : null] });
         if (updated.rowCount!==1 || updated.rows[0]?.id!==selection.flowId) denied('SYNTHETIC_HANDOFF_APPROVAL_FAILED');
         // Raw code stays only in the callback result. The HTTP root may redirect
         // only after the enclosing exact-proof transaction has committed.

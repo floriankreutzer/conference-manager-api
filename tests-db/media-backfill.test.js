@@ -50,6 +50,7 @@ test('bounded backfill, idempotent copy, guarded purge and verified rollback pre
   assert.equal((await repository.runBatch({ phase: 'copy', kind: 'room' })).changed, 0);
   const projections = createPostgresPlatformProjectionRepository(pool);
   assert.deepEqual(await projections.consumeBatch(), { refreshedCount: 1, retryCount: 0, poisonCount: 0 });
+  assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
   assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.

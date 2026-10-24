@@ -37,8 +37,8 @@ application to emit the optional `amr` and `auth_time` ID-token claims and verif
 an actual successful MFA and rejected non-MFA round trip before cutover.
 
 The owned protected configuration accepts this mode without a passkey secret or
-minimum count; supplying those inputs is rejected. Its session resolver accepts
-only the new Microsoft contexts. The selected authentication composition exposes
+minimum count; supplying those inputs is rejected. Its browser session resolver accepts
+only normal Microsoft MFA; fresh authority stays inside exact operation custody. The selected authentication composition exposes
 no passkey, enrollment, key-management or offline-recovery route. UUID/integer
 epoch fences, TLS, session cookies, CSRF, server-side permissions, target scope,
 security-version invalidation and audit remain mandatory. Operational routes use
@@ -53,9 +53,10 @@ References:
 
 This is not full implementation of the approved target. In particular:
 
-- Synthetic generation/handoff still has its separate passkey/continuation SQL
-  custody. The new mode refuses that incompatible opt-in; replacing it requires
-  additive custody, expiry/replay/concurrency and real reset/browser qualification.
+- The071 source candidate composes fixed Microsoft generation/handoff/calendar
+  custody with zero application keys while retaining historical legacy custody.
+  See SYNTHETIC-MICROSOFT-CUSTODY.md. Its native/elapsed-expiry and final paired
+  browser/reset qualification remain required before activation.
 - The one-time owner-role upgrade is implemented below but has not been executed
   live. General two-administrator operator lifecycle remains unchanged; broader
   sole-owner administration is not yet implemented.

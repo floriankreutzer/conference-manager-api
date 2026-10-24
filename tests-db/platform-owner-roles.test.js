@@ -62,6 +62,7 @@ test('native owner role upgrade is exact, one-winner, audited and rolls back ato
   assert.equal(receipts[0].newState.roleCount,4);assert.equal(receipts[0].previousState.roleCount,2);
   assert.doesNotMatch(JSON.stringify(receipts),new RegExp(expected.subjectId));
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_operator_change_alert_outbox')).rows[0].count,2);
+  assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
   assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before retained owner067.

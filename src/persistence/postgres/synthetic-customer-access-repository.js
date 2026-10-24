@@ -40,7 +40,9 @@ export function createPostgresSyntheticCustomerAccessRepository(pool,{ scope }={
       JOIN user_identity_bindings identity ON identity.tenant_id=person.tenant_id AND identity.user_id=person.id
         AND identity.provider='platform_delegation' AND identity.provider_tenant_reference=generation.id::text
         AND identity.provider_user_reference=actor.id::text||':'||custody.selected_role
-      JOIN platform_passkey_auth_transactions proof ON proof.id=custody.approval_proof_id AND proof.operator_id=actor.id
+      LEFT JOIN platform_passkey_auth_transactions proof ON proof.id=custody.approval_proof_id AND proof.operator_id=actor.id
+      LEFT JOIN platform_microsoft_operation_proofs microsoft_proof
+        ON microsoft_proof.id=custody.approval_microsoft_proof_id AND microsoft_proof.operator_id=actor.id
       JOIN platform_audit_events evidence ON evidence.sequence=custody.approval_audit_sequence AND evidence.operator_id=actor.id
       WHERE custody.environment=$1 AND custody.security_epoch=$2 AND custody.platform_security_epoch=$3
         AND custody.customer_origin=$4 AND custody.platform_origin=$5 AND custody.id=$6 AND custody.status IN ('approved','consumed')
@@ -55,10 +57,11 @@ export function createPostgresSyntheticCustomerAccessRepository(pool,{ scope }={
         AND source.provider_subject_reference=actor.provider_subject_reference AND source.roles=actor.roles
         AND source.scope_mode=actor.scope_mode
         AND source.principal_version=actor.security_version AND source.security_epoch=custody.platform_security_epoch
-        AND source.assurance_level='mfa' AND source.authentication_context='cm:pk:v1' AND source.revoked_at IS NULL
+        AND source.assurance_level='mfa' AND source.revoked_at IS NULL
         AND source.issued_at<=clock_timestamp()+interval '1 minute' AND source.expires_at>clock_timestamp()
         AND 'platform:lifecycle:manage'=ANY(source.permissions)
-        AND (SELECT count(*) FROM platform_passkey_credentials key
+        AND ((custody.approval_proof_id IS NOT NULL AND custody.approval_microsoft_proof_id IS NULL
+          AND source.authentication_context='cm:pk:v1' AND (SELECT count(*) FROM platform_passkey_credentials key
           WHERE key.operator_id=actor.id AND key.environment=custody.environment AND key.revoked_at IS NULL)>=2
         AND proof.environment=custody.environment AND proof.security_epoch=custody.platform_security_epoch
         AND proof.operator_security_version=custody.operator_security_version AND proof.purpose='step_up'
@@ -66,7 +69,20 @@ export function createPostgresSyntheticCustomerAccessRepository(pool,{ scope }={
         AND proof.consumed_at IS NOT NULL AND proof.consumed_at<proof.expires_at
         AND date_trunc('milliseconds',proof.consumed_at)=source.authenticated_at
         AND custody.approved_at>=date_trunc('milliseconds',proof.consumed_at)
-        AND custody.approved_at<=date_trunc('milliseconds',proof.consumed_at)+interval '30 seconds'
+        AND custody.approved_at<=date_trunc('milliseconds',proof.consumed_at)+interval '30 seconds')
+          OR (custody.approval_microsoft_proof_id IS NOT NULL AND custody.approval_proof_id IS NULL
+          AND source.authentication_context='cm:ms:mfa:v1' AND source.step_up_expires_at IS NULL
+          AND microsoft_proof.environment=custody.environment AND microsoft_proof.protected_security_epoch=custody.security_epoch
+          AND microsoft_proof.security_epoch=custody.platform_security_epoch
+          AND microsoft_proof.operator_security_version=custody.operator_security_version
+          AND microsoft_proof.provider_tenant_reference::text=actor.provider_tenant_reference
+          AND microsoft_proof.provider_subject_reference::text=actor.provider_subject_reference
+          AND microsoft_proof.execution_scope='synthetic' AND microsoft_proof.status='consumed'
+          AND microsoft_proof.operation_hash=custody.operation_hash AND microsoft_proof.expected_session_id<>source.id
+          AND microsoft_proof.consumed_at IS NOT NULL AND microsoft_proof.consumed_at<microsoft_proof.expires_at
+          AND microsoft_proof.authenticated_at=source.authenticated_at
+          AND custody.approved_at>=date_trunc('milliseconds',microsoft_proof.consumed_at)
+          AND custody.approved_at<=date_trunc('milliseconds',microsoft_proof.consumed_at)+interval '30 seconds'))
         AND evidence.action='platform.synthetic_access.approved' AND evidence.target_tenant_id=tenant.id
         AND evidence.outcome='success' AND evidence.assurance_level='step_up'
         AND evidence.metadata=jsonb_build_object('mode','synthetic','generationId',generation.id::text,

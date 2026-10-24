@@ -18,7 +18,7 @@ function scope(input) {
 // Pure, redacted review plan. No implicit environment, connection or mutation.
 export function protectedRuntimeRoleGrantPlan(input) {
   const fixed=scope(input);
-  return Object.freeze({ ...fixed,schemaVersion: 70,roles: Object.freeze(['customer','platform'].map(surface=>{
+  return Object.freeze({ ...fixed,schemaVersion: 71,roles: Object.freeze(['customer','platform'].map(surface=>{
     const role=`cm_protected_${fixed.environment}_${surface}`,manifest=protectedRuntimeRoleManifest(surface);
     const statements=[`GRANT USAGE ON SCHEMA public TO ${identifier(role)}`,
       ...manifest.tables.map(entry=>`GRANT ${entry.privileges} ON public.${identifier(entry.name)} TO ${identifier(role)}`),
@@ -104,7 +104,7 @@ export function platformAuditSegmentRoleGrantPlan(input) {
   const fixed=scope({ environment: input.environment,securityEpoch: input.securityEpoch });
   if (fixed.environment!=='int' || !isInternalUuid(input.segmentId)) failed();
   const customer=identifier('cm_protected_int_customer'),platform=identifier('cm_protected_int_platform');
-  return Object.freeze({ ...fixed,segmentId: input.segmentId,schemaVersion: 70,
+  return Object.freeze({ ...fixed,segmentId: input.segmentId,schemaVersion: 71,
     roles: Object.freeze(['cm_protected_int_customer','cm_protected_int_platform']),statements: Object.freeze([
       `GRANT SELECT(id,environment,deployment_epoch) ON public.platform_audit_segments TO ${customer}`,
       `GRANT SELECT(segment_id,integrity_version) ON public.platform_audit_events TO ${customer}`,
@@ -147,6 +147,23 @@ export function platformMicrosoftOperationRoleGrantPlan(input) {
 
 export async function grantPlatformMicrosoftOperationRuntimeRoles(pool,input,options={}) {
   try { return await grantIncrementalRuntimeRoles(pool,platformMicrosoftOperationRoleGrantPlan(input),options); }
+  catch { failed(); }
+}
+
+// Existing INT Customer receives only current-custody predicate columns; no
+// browser binding, nonce/state MAC, full-table read, mutation or function grant.
+export function syntheticMicrosoftCustodyRoleGrantPlan(input) {
+  const base=platformAuditSegmentRoleGrantPlan(input),customer=identifier('cm_protected_int_customer');
+  const entries=protectedRuntimeRoleManifest('customer').tables.filter(entry=>entry.name==='platform_microsoft_operation_proofs');
+  if (entries.length!==1 || !entries[0].privileges.startsWith('SELECT(')) failed();
+  return Object.freeze({ ...base,statements: Object.freeze([
+    `GRANT ${entries[0].privileges} ON public.platform_microsoft_operation_proofs TO ${customer}`,
+    `GRANT SELECT(step_up_expires_at) ON public.platform_sessions TO ${customer}`,
+  ]) });
+}
+
+export async function grantSyntheticMicrosoftCustodyRuntimeRoles(pool,input,options={}) {
+  try { return await grantIncrementalRuntimeRoles(pool,syntheticMicrosoftCustodyRoleGrantPlan(input),options); }
   catch { failed(); }
 }
 

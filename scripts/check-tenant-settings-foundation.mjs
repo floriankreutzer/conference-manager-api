@@ -50,8 +50,8 @@ if (/repository|SELECT|UPDATE|INSERT INTO|DELETE FROM/i.test(revision)) {
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 70;/.test(pool)) {
-  throw new Error('Runtime schema readiness requires Microsoft operation proof schema 70.');
+if (!/export const CURRENT_SCHEMA_VERSION = 71;/.test(pool)) {
+  throw new Error('Runtime schema readiness requires synthetic Microsoft custody schema 71.');
 }
 
 const migration = await readFile('migrations/020_tenant_settings_revisions.up.sql', 'utf8');

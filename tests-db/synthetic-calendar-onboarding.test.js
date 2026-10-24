@@ -17,8 +17,10 @@ import { createPostgresSyntheticCustomerAccessRepository } from '../src/persiste
 import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
 import { createProtectedPostgresTlsFixture } from './support/protected-postgres-tls-fixture.js';
 import { createProtectedSyntheticOperatorFixture } from './support/protected-synthetic-operator-fixture.js';
+import { createProtectedSyntheticMicrosoftFixture } from './support/protected-synthetic-microsoft-fixture.js';
 
-test('restricted current synthetic Admin imports gain technical ownership and local lifecycle never fabricates Microsoft',async t=>{
+for (const assuranceMode of ['application_passkey','microsoft_mfa']) {
+test(`restricted current synthetic Admin imports preserve local lifecycle and ${assuranceMode} custody`,async t=>{
   const fixture=await createProtectedPostgresTlsFixture(t);const pools=[];
   function database(url,max=1) {
     const pool=new pg.Pool({ connectionString: url,ssl: { ca: fixture.certificate,rejectUnauthorized: true },max,
@@ -28,6 +30,7 @@ test('restricted current synthetic Admin imports gain technical ownership and lo
   t.after(async()=>{ try { await Promise.all(pools.map(pool=>pool.end())); } finally { await fixture.destroy(); } });
   await migrateUp(pool);
   const prior=(await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=63 ORDER BY version')).rows;
+  assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
   assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
@@ -45,10 +48,14 @@ test('restricted current synthetic Admin imports gain technical ownership and lo
     await pool.query(`CREATE ROLE "cm_protected_int_${surface}" LOGIN PASSWORD '${passwords[index]}'`);
   }
   await grantProtectedRuntimeRoles(pool,protection);
-  const owner=await createProtectedSyntheticOperatorFixture(pool,ownerLease,{ epoch });
-  const generationService=createSyntheticGenerationService({ ...protection,passkeyService: owner.auth,
+  const createOperator=assuranceMode==='microsoft_mfa' ? createProtectedSyntheticMicrosoftFixture : createProtectedSyntheticOperatorFixture;
+  const owner=await createOperator(pool,ownerLease,{ epoch });
+  if (assuranceMode==='microsoft_mfa') assert.equal((await pool.query(
+    'SELECT count(*)::int AS n FROM platform_passkey_credentials')).rows[0].n,0);
+  const generationService=createSyntheticGenerationService({ ...protection,passkeyService: owner.auth,assuranceMode,
     authorizationPolicy: createPlatformAuthorizationPolicy(),repository: createPostgresSyntheticGenerationRepository(pool,
-      { ...protection,calendarEnabled: true,tenantAuditRepository: createPostgresAuditRepository(pool,{ hmacSecret: 'a'.repeat(48) }),
+      { ...protection,calendarEnabled: true,assuranceMode,
+        tenantAuditRepository: createPostgresAuditRepository(pool,{ hmacSecret: 'a'.repeat(48) }),
         platformAuditRepository: owner.auditRepository }) });
   const intent={ operatorId: owner.operatorId,expectedGenerationId: null,expectedRevision: 0 };
   const generation=await owner.execute(generationService.operationHash(intent),proofContext=>generationService.replace({
@@ -59,9 +66,9 @@ test('restricted current synthetic Admin imports gain technical ownership and lo
   const customer=createProtectedSyntheticCustomerAccess({ pool: customerPool,leasePool,scope,browserSecret: 'h'.repeat(48),
     sourceSecret: 'b'.repeat(48),auditHmacSecret: 'a'.repeat(48),csrfSecret: 's'.repeat(48) });
   const binding=createSyntheticHandoffBrowserBinding({ scope,secret: 'h'.repeat(48) });t.after(()=>binding.destroy());
-  const handoff=createSyntheticHandoffService({ scope,browserBinding: binding,passkeyService: owner.auth,
+  const handoff=createSyntheticHandoffService({ scope,browserBinding: binding,passkeyService: owner.auth,assuranceMode,
     authorizationPolicy: createPlatformAuthorizationPolicy(),repository: createPostgresSyntheticHandoffRepository(pool,
-      { scope,browserBinding: binding,platformAuditRepository: owner.auditRepository }) });
+      { scope,browserBinding: binding,assuranceMode,platformAuditRepository: owner.auditRepository }) });
   async function admit(slot,role) {
     const start=await customer.start('127.0.0.1');assert.equal(start.status,'started');
     const intent={ flowId: start.flowId,state: start.state,operatorId: owner.operatorId,generationId: generation.generationId,slot,role };
@@ -119,6 +126,12 @@ test('restricted current synthetic Admin imports gain technical ownership and lo
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM tenant_identity_bindings WHERE tenant_id=$1',[tenantId])).rows[0].n,0);
   assert.deepEqual((await pool.query('SELECT provider,status FROM integrations WHERE tenant_id=$1',[tenantId])).rows,
     [{ provider: 'synthetic_calendar',status: 'active' }]);
+  const manager=await admit('contoso','conference_manager');
+  assert.deepEqual(manager.principal.roles,['employee','conference_manager']);
+  assert.equal((await customerPool.query('SELECT protected_lock_synthetic_calendar_source($1,$2,$3) AS allowed',
+    ['int',epoch,manager.principal.session.id])).rows[0].allowed,true);
+  await assert.rejects(customerPool.query('SELECT state_hash FROM platform_microsoft_operation_proofs'),{ code: '42501' });
+  await assert.rejects(customerPool.query('UPDATE platform_microsoft_operation_proofs SET status=status'),{ code: '42501' });
   const employee=await admit('contoso','employee');
   assert.equal((await customerPool.query(lifecycle,
     ['int',epoch,employee.principal.session.id,'ready','active',1])).rows[0].allowed,false);
@@ -135,7 +148,16 @@ test('restricted current synthetic Admin imports gain technical ownership and lo
     assert.equal(policy.prosecdef,true);assert.deepEqual(policy.proconfig,['search_path=pg_catalog']);
     assert.equal(policy.public_execute,false);
   }
+  if (assuranceMode==='microsoft_mfa') {
+    const custody=(await pool.query(`SELECT approval_proof_id,approval_microsoft_proof_id
+      FROM synthetic_customer_handoffs WHERE status='consumed'`)).rows;
+    assert.equal(custody.length,3);assert.ok(custody.every(row=>row.approval_proof_id===null && row.approval_microsoft_proof_id));
+    await assert.rejects(rollbackLatest(pool),/SYNTHETIC_MICROSOFT_HISTORY_REQUIRES_VERIFIED_RECOVERY/);
+    assert.equal(await owner.auditRepository.isReady(),true);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM platform_passkey_credentials')).rows[0].n,0);
+  } else {
   // Exercise current runtime paths before intentionally removing their schema dependencies.
+  assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
   assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
@@ -143,4 +165,6 @@ test('restricted current synthetic Admin imports gain technical ownership and lo
   assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065; retain the populated064 guard.
   await assert.rejects(rollbackLatest(pool),/SYNTHETIC_CALENDAR_HISTORY_REQUIRES_VERIFIED_RECOVERY/);
+  }
 });
+}

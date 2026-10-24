@@ -21,10 +21,11 @@ function principal(patch={}) {
       issuedAt: new Date(NOW).toISOString(),expiresAt: new Date(NOW+3_600_000).toISOString(),
       stepUpExpiresAt: new Date(NOW+300_000).toISOString() },...patch };
 }
-function fixture(identity=principal()) {
+function fixture(identity=principal(),assuranceMode='application_passkey') {
   const context=Object.freeze({}),expected=syntheticGenerationOperationHash(scope,intent),calls=[];
   let consumed=false;
-  const service=createSyntheticGenerationService({ ...scope,authorizationPolicy: createPlatformAuthorizationPolicy({ clock: ()=>NOW }),
+  const service=createSyntheticGenerationService({ ...scope,assuranceMode,
+    authorizationPolicy: createPlatformAuthorizationPolicy({ clock: ()=>NOW }),
     passkeyService: { verifiedOperationPrincipal(value,hash) {
       if (value!==context || hash!==expected || consumed) throw new Error('EXACT_PROOF_DENIED');
       consumed=true;return identity;
@@ -47,6 +48,23 @@ test('generation intent is canonical, bounded and proof-bound to environment, ep
   }
   assert.throws(()=>syntheticGenerationOperationHash({ ...scope,environment: 'prod' },intent),/INTENT_INVALID/);
   assert.equal(SYNTHETIC_GENERATION_RETENTION_LIMIT,32);assert.equal(SYNTHETIC_GENERATION_COOLDOWN_MS,10_000);
+});
+
+test('Microsoft generation service requires its own private fresh-context proof and retains all permission/owner checks',async()=>{
+  const base=principal(),microsoft={ ...base,assurance: { ...base.assurance,authenticationContext: 'cm:ms:fresh:v1' } };
+  const accepted=fixture(microsoft,'microsoft_mfa');
+  assert.deepEqual(await accepted.service.replace({ proofContext: accepted.context,intent,correlationId }),{ generationId });
+  assert.equal(accepted.calls.length,1);
+  await assert.rejects(accepted.service.replace({ proofContext: accepted.context,intent,correlationId }),/EXACT_PROOF_DENIED/);
+  for (const candidate of [base,{ ...microsoft,operatorId: randomUUID() },
+    { ...microsoft,assurance: { ...microsoft.assurance,authenticationContext: 'cm:ms:mfa:v1' } },
+    { ...microsoft,roles: ['platform_support_reader'],permissions: permissionsForPlatformRoles(['platform_support_reader']) }]) {
+    const denied=fixture(candidate,'microsoft_mfa');
+    await assert.rejects(denied.service.replace({ proofContext: denied.context,intent,correlationId }));
+    assert.equal(denied.calls.length,0);
+  }
+  const legacy=fixture(microsoft);await assert.rejects(legacy.service.replace({ proofContext: legacy.context,intent,correlationId }));
+  assert.throws(()=>fixture(microsoft,'unknown'),/ASSURANCE_MODE_INVALID/);
 });
 
 test('exact proof and canonical permission reach the own generation transaction without expanding an allowlist',async()=>{

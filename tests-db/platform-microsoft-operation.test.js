@@ -27,6 +27,7 @@ test('native Microsoft exact proof retains callback separation, one-use atomic c
   const configuration={ mode: 'test',...loadDatabaseConfig(process.env,'test'),databasePoolMax: 1 };
   const pool=createPostgresPool(configuration),leasePool=createPostgresPool(configuration);
   t.after(async()=>{ await leasePool.end();await pool.end(); });await migrateUp(pool);
+  assert.equal(await rollbackLatest(pool),true); // Empty071 is reversible.
   assert.equal(await rollbackLatest(pool),true);await migrateUp(pool); // Empty070 is reversible.
   const epoch=randomUUID(),directory=randomUUID(),subject=randomUUID(),clientId=randomUUID();
   await pool.query('INSERT INTO protected_runtime_deployments(environment,security_epoch) VALUES($1,$2)',['int',epoch]);
@@ -121,6 +122,9 @@ test('native Microsoft exact proof retains callback separation, one-use atomic c
     'DELETE FROM platform_microsoft_operation_proofs','TRUNCATE platform_microsoft_operation_proofs']) {
     await assert.rejects(pool.query(sql));
   }
+  // Name the new dependent table so the retained-proof guard itself also runs.
+  await assert.rejects(pool.query('TRUNCATE synthetic_customer_handoffs,platform_microsoft_operation_proofs'),{ code: '55000' });
+  assert.equal(await rollbackLatest(pool),true); // Empty071 before retained070 proof history.
   await assert.rejects(rollbackLatest(pool),{ code: '55000' });
   assert.deepEqual(await audit.listVerified({ scope: { mode: 'all',operatorId: boot.operatorId,securityVersion: 1 } }),[]);
   assert.equal(await audit.isReady(),true); // Actual legacy adapter verifies every retained row and terminal hash.

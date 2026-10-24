@@ -52,7 +52,7 @@ export function loadProtectedPlatformConfiguration(env) {
   const intent=profile.syntheticEnabled ? secret(env,PREFIX+'HANDOFF_INTENT_SECRET') : null;
   if (!profile.syntheticEnabled && (Object.hasOwn(env,'PROTECTED_HANDOFF_SECRET')
     || Object.hasOwn(env,PREFIX+'HANDOFF_INTENT_SECRET'))) fail('INACTIVE_HANDOFF_FORBIDDEN');
-  if (profile.syntheticEnabled && mode!=='application_passkey') fail('SYNTHETIC_ACTIVE_PASSKEY_REQUIRED');
+  if (profile.syntheticEnabled && !['application_passkey','microsoft_mfa'].includes(mode)) fail('SYNTHETIC_ACTIVE_PASSKEY_REQUIRED');
   const material=[...Object.values(values),...(handoff===null ? [] : [handoff,intent])];
   if (new Set(material).size!==material.length
     || material.includes(decodeURIComponent(new URL(profile.database.databaseUrl).password))) fail('SECRET_ALIAS_FORBIDDEN');

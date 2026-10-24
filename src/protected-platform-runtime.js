@@ -50,26 +50,27 @@ import { createPlatformInsightRoutes } from './platform/http/insight-routes.js';
 function syntheticRoutes(bundle,persistence,authentication,authorizationPolicy,disposables) {
   if (bundle.synthetic===null) return [];
   const { profile }=bundle,protection={ environment: profile.environment,securityEpoch: profile.securityEpoch };
-  const passkeyService=authentication.syntheticPasskeyService;
+  const assuranceMode=bundle.config.assuranceMode,passkeyService=assuranceMode==='microsoft_mfa'
+    ? authentication.syntheticMicrosoftService : authentication.syntheticPasskeyService;
   if (!passkeyService) throw new TypeError('PROTECTED_PLATFORM_SYNTHETIC_AUTHENTICATION_REQUIRED');
   const scope={ ...protection,platformSecurityEpoch: profile.platformSecurityEpoch,
     customerOrigin: profile.customerOrigin,platformOrigin: profile.platformOrigin };
   const browserBinding=createSyntheticHandoffBrowserBinding({ scope,secret: bundle.synthetic.browserSecret });
   const intentCookie=createPlatformSyntheticHandoffIntentCookie({ scope,secret: bundle.synthetic.intentSecret });
   disposables.push(()=>browserBinding.destroy(),()=>intentCookie.destroy());
-  const generationService=createSyntheticGenerationService({ ...protection,passkeyService,authorizationPolicy,
-    repository: createPostgresSyntheticGenerationRepository(persistence.pool,{ ...protection,calendarEnabled: true,
+  const generationService=createSyntheticGenerationService({ ...protection,passkeyService,authorizationPolicy,assuranceMode,
+    repository: createPostgresSyntheticGenerationRepository(persistence.pool,{ ...protection,calendarEnabled: true,assuranceMode,
       tenantAuditRepository: persistence.tenantAuditRepository,platformAuditRepository: persistence.auditRepository }) });
   const directory=createPostgresSyntheticGenerationDirectoryRepository(persistence.pool,
-    { ...protection,platformSecurityEpoch: profile.platformSecurityEpoch });
+    { ...protection,platformSecurityEpoch: profile.platformSecurityEpoch,assuranceMode });
   const generationProtocol=createSyntheticGenerationProtocol({ generationService,directory,passkeyService,
     withPreparationScope: authentication.withPreparationScope });
-  const handoffService=createSyntheticHandoffService({ scope,passkeyService,authorizationPolicy,browserBinding,
-    repository: createPostgresSyntheticHandoffRepository(persistence.pool,{ scope,browserBinding,
+  const handoffService=createSyntheticHandoffService({ scope,passkeyService,authorizationPolicy,browserBinding,assuranceMode,
+    repository: createPostgresSyntheticHandoffRepository(persistence.pool,{ scope,browserBinding,assuranceMode,
       platformAuditRepository: persistence.auditRepository }) });
-  return [createPlatformSyntheticGenerationRouteModule({ protocol: generationProtocol,scope: {
+  return [createPlatformSyntheticGenerationRouteModule({ protocol: generationProtocol,assuranceMode,scope: {
     ...protection,platformOrigin: profile.platformOrigin,platformSecurityEpoch: profile.platformSecurityEpoch } }),
-  createPlatformSyntheticHandoffRouteModule({ scope,intentCookie,protocol: createSyntheticHandoffProtocol({ handoffService,
+  createPlatformSyntheticHandoffRouteModule({ scope,intentCookie,assuranceMode,protocol: createSyntheticHandoffProtocol({ handoffService,
     passkeyService,withPreparationScope: authentication.withPreparationScope }) })];
 }
 
