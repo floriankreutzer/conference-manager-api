@@ -39,9 +39,11 @@ test('native owner role upgrade is exact, one-winner, audited and rolls back ato
   await assert.rejects(create({ auditRepository: {
     async appendWithClient() { throw new Error('private-cause'); },
   } }).grantAllOwnerRoles(grant));
+  await assert.rejects(create({ auditRepository: { async appendWithClient() { return null; } } }).grantAllOwnerRoles(grant));
   const read=async()=>(await pool.query('SELECT roles,security_version FROM platform_operators WHERE id=$1',[boot.operatorId])).rows[0];
   assert.equal(Number((await read()).security_version),1);
   assert.equal((await read()).roles.length,2);
+  assert.ok(await sessions.resolvePrincipal(sessionRequest(prior)));
   const results=await Promise.allSettled([create().grantAllOwnerRoles(grant),create().grantAllOwnerRoles(grant)]);
   assert.equal(results.filter(row=>row.status==='fulfilled').length,1);
   assert.deepEqual((await read()).roles,[

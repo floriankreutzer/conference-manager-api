@@ -40,7 +40,7 @@ export function createPostgresPlatformOwnerBootstrapRepository(pool,{ auditRepos
           const sessions=await client.query(`UPDATE platform_sessions SET revoked_at=clock_timestamp()
             WHERE operator_id=$1 AND revoked_at IS NULL`,[previous.id]);
           const transactions=await client.query('DELETE FROM platform_oidc_auth_transactions WHERE expected_operator_id=$1',[previous.id]);
-          await auditRepository.appendWithClient(client,{
+          const receipt=await auditRepository.appendWithClient(client,{
             operatorId: null,roles: [],permissions: [],assuranceLevel: 'offline_owner',targetTenantId: null,
             action: 'platform.operator.changed',targetType: 'platform_owner_roles',targetId: previous.id,
             previousState: { roleCount: previous.roles.length,securityVersion: request.expectedSecurityVersion },
@@ -50,6 +50,7 @@ export function createPostgresPlatformOwnerBootstrapRepository(pool,{ auditRepos
               approvalReference: request.approvalReference,sessionsRevoked: sessions.rowCount,transactionsRevoked: transactions.rowCount },
             retentionClass: 'recovery',
           });
+          if (!receipt) refuse();
           await client.query(`INSERT INTO platform_operator_change_alert_outbox(operator_id,change_type,correlation_id,created_at)
             VALUES($1,'access_changed',$2,clock_timestamp())`,[previous.id,request.correlationId]);
           return Object.freeze({ status: 'owner_roles_granted',operatorId: previous.id,
@@ -83,7 +84,7 @@ export function createPostgresPlatformOwnerBootstrapRepository(pool,{ auditRepos
             VALUES($1,'microsoft_entra_platform',$2,$3,'active','all',
               ARRAY['platform_security_admin','platform_tenant_operator']::text[])`,
           [operatorId,request.directoryId,request.subjectId]);
-          await auditRepository.appendWithClient(client,{
+          const receipt=await auditRepository.appendWithClient(client,{
             operatorId: null,roles: [],permissions: [],assuranceLevel: 'offline_owner',targetTenantId: null,
             action: 'platform.operator.changed',targetType: 'platform_operator_bootstrap',targetId: operatorId,
             previousState: null,newState: { status: 'active',scopeMode: 'all',roleCount: 2,securityVersion: 1 },
@@ -91,6 +92,7 @@ export function createPostgresPlatformOwnerBootstrapRepository(pool,{ auditRepos
             metadata: { operation: 'first_owner_bootstrap',environment: 'int',deploymentEpoch: request.deploymentEpoch,
               approvalReference: request.approvalReference },retentionClass: 'recovery',
           });
+          if (!receipt) refuse();
           await client.query(`INSERT INTO platform_operator_change_alert_outbox
             (operator_id,change_type,correlation_id,created_at) VALUES($1,'created',$2,clock_timestamp())`,
           [operatorId,request.correlationId]);

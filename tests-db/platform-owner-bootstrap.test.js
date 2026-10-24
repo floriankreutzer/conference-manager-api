@@ -28,6 +28,9 @@ test('native first owner bootstrap is atomic, one-winner, audited, owner-only an
   await assert.rejects(create({ auditRepository: { async appendWithClient() { throw new Error('private-cause'); } } })
     .initialize(request),{ message: 'PLATFORM_OWNER_BOOTSTRAP_REFUSED' });
   assert.equal(await count(),0);
+  await assert.rejects(create({ auditRepository: { async appendWithClient() { return null; } } })
+    .initialize(request),{ message: 'PLATFORM_OWNER_BOOTSTRAP_REFUSED' });
+  assert.equal(await count(),0);
   const other={ ...expected,deploymentEpoch: randomUUID() };
   await assert.rejects(create({ expected: other }).initialize({ ...request,...other }),/BOOTSTRAP_REFUSED/);
   const outcomes=await Promise.allSettled([create().initialize(request),create().initialize(request)]);
