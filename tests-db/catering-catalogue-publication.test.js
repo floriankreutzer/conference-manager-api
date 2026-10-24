@@ -59,6 +59,7 @@ test('actual Customer publication atomically fences reviewed content, ownership,
     pool = createPostgresPool({ mode: 'test',...database,databaseUrl: url.toString(),databasePoolMax: 6 });
     await migrateUp(pool); await migrateDemoUp(pool,{ roles });
     assert.equal(await isPostgresSchemaReady(pool),true);
+    await rollbackLatestDemoMigration(pool,{ roles }); // Empty030 before unchanged029/older grants.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty029 before unchanged028/older guards.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty028 before unchanged027.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty027 before unchanged026.
@@ -356,6 +357,7 @@ test('actual Customer publication atomically fences reviewed content, ownership,
       [fixture.tenantId,manager.principal.session.id]);
     await assert.rejects(review(first),(error) => error.code === 'PRINCIPAL_NOT_AUTHORIZED');
     assert.equal((await request(manager)).status,401);
+    await rollbackLatestDemoMigration(pool,{ roles }); // Empty030 before unchanged029/older grants.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty029 before unchanged028/older guards.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty028 before unchanged027.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty027 before unchanged026.
@@ -391,6 +393,7 @@ test('actual Customer publication atomically fences reviewed content, ownership,
       tenantContext: { tenantId: persona.tenantId },correlationId: id(90),action: 'catering.catalogue.rejected',
       targetType: 'integration',targetId: fixture.integrationId,outcome: 'success',retentionClass: 'business',
       previousState: { revision: 0 },newState: { revision: 1 },metadata: { operation: 'synthetic_audit_only_rollback_probe' } });
+    await rollbackLatestDemoMigration(pool,{ roles }); // Empty030 before unchanged029/older grants.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty029 before unchanged028/older guards.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty028 before unchanged027.
     await rollbackLatestDemoMigration(pool,{ roles }); // Empty027 before unchanged026.

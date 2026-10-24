@@ -49,6 +49,7 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
   pool = createPostgresPool({ mode: 'test', ...database, databaseUrl: url.toString(), databasePoolMax: 6 });
   await migrateUp(pool); await migrateDemoUp(pool, { roles });
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty030 before unchanged029/older grants.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty029 before unchanged028/older guards.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty027 before unchanged026.
@@ -305,6 +306,7 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
     await assert.rejects(customer.query(sql), (error) => error.code === '42501');
     await assert.rejects(pool.query(sql), /CATERING_ORDER_HISTORY_APPEND_ONLY/);
   }
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty030 before unchanged029/older grants.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty029 before unchanged028/older guards.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty027 before unchanged026.
@@ -351,6 +353,7 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
   assert.equal((await reset.reset({ fixture: DEMO_FIXTURE, checksum: DEMO_FIXTURE_CHECKSUM })).checksum, DEMO_FIXTURE_CHECKSUM);
   assert.equal((await pool.query('SELECT count(*)::integer AS n FROM catering_order_withdrawals')).rows[0].n, 0);
   assert.equal((await pool.query('SELECT count(*)::integer AS n FROM catering_unsent_replacements')).rows[0].n, 0);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty030 before unchanged029/older grants.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty029 before unchanged028/older guards.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty028 before unchanged027.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty027 before unchanged026.
