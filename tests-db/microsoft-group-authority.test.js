@@ -27,8 +27,9 @@ test('native Microsoft groups require approved REAL mapping and verified flow; r
   const epoch=randomUUID();
   await pool.query("INSERT INTO protected_runtime_deployments(environment,security_epoch) VALUES('int',$1)",[epoch]);
   await pool.query("INSERT INTO tenant_runtime_registry(environment,tenant_id,mode) VALUES('int',$1,'real')",[real.tenantId]);
+  let providerTime=null;
   const provider=microsoftCodeSdkFixture({ clientId: CLIENT,authority: AUTHORITY,tenantId: DIRECTORY,
-    userId: SUBJECT,clock: ()=>Date.now() });provider.state.groups=[GROUP];
+    userId: SUBJECT,clock: ()=>providerTime ?? Date.now() });provider.state.groups=[GROUP];
   const microsoftClient=createFreshCustomerEntraClient({ clientId: CLIENT,clientSecret: 's'.repeat(48),authority: AUTHORITY,
     publicOrigin: 'https://127.0.0.1',applicationFactory: ()=>provider.application(),includeGroupMembership: true });
   const cipher=createCustomerAccessCipher({ environment: 'int',activeKeyId: 'initial',keys: new Map([['initial',Buffer.alloc(32,3)]]),
@@ -133,7 +134,11 @@ test('native Microsoft groups require approved REAL mapping and verified flow; r
   provider.state.groups=[GROUP];signed=await signIn();
   // Refreshing the cache cannot revive an older session. Deadline denial is
   // independently tested after issuing a current-version email session.
-  const before=signed.cookie;signed=await signIn();assert.equal(await resolve(before),null);
+  providerTime=Date.now();signed=await signIn();
+  const deadline=async()=>(await pool.query(`SELECT microsoft_verified_until FROM tenant_user_roles
+    WHERE tenant_id=$1 AND user_id=$2 AND role='conference_manager'`,[real.tenantId,userId])).rows[0].microsoft_verified_until;
+  const unchangedDeadline=await deadline(),before=signed.cookie;signed=await signIn();
+  assert.deepEqual(await deadline(),unchangedDeadline);assert.equal(await resolve(before),null);providerTime=null;
   await pool.query(`UPDATE tenant_user_roles SET microsoft_verified_until=clock_timestamp()+interval '5 seconds'
     WHERE tenant_id=$1 AND user_id=$2 AND role='conference_manager'`,[real.tenantId,userId]);
   const version=Number((await pool.query('SELECT security_version FROM users WHERE tenant_id=$1 AND id=$2',

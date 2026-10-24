@@ -22,7 +22,10 @@ LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$
 BEGIN
   IF (OLD.microsoft_directory_id,OLD.microsoft_group_ids) IS NOT DISTINCT FROM
     (NEW.microsoft_directory_id,NEW.microsoft_group_ids)
-    AND OLD.microsoft_verified_until IS DISTINCT FROM NEW.microsoft_verified_until THEN
+    AND (OLD.microsoft_verified_until IS DISTINCT FROM NEW.microsoft_verified_until
+      OR cardinality(NEW.microsoft_group_ids)>0) THEN
+    -- A verified refresh is a new source snapshot even if second-granularity
+    -- provider expiry and identical membership produce the same deadline.
     UPDATE public.users SET security_version=security_version+1,updated_at=clock_timestamp()
       WHERE tenant_id=NEW.tenant_id AND id=NEW.user_id;
   END IF;
