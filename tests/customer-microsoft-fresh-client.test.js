@@ -56,6 +56,27 @@ test('opaque proofs cannot be cloned, moved between clients/nonce contexts or us
   const expired=await a.client.redeemAuthorizationCode(redemption);a.setClock(now+300001);
   await assert.rejects(a.client.verifyPrimary(expired,{ expectedNonceHash: nonceHash }),/EXPIRED/);
 });
+
+test('selected group observation remains inside the one-use identity proof and is bounded by token expiry',async()=>{
+  const f=fixture({ claims: { groups: [subject],exp: seconds+600 },configuration: { includeGroupMembership: true } });
+  const assertion=await f.client.redeemAuthorizationCode(redemption);
+  assert.equal(JSON.stringify(assertion),'{}');
+  const identity=await f.client.verifyPrimary(assertion,{ expectedNonceHash: nonceHash });
+  assert.deepEqual(identity.groupMembership,{ status: 'complete',groupIds: [subject] });
+  assert.equal(identity.groupValidUntil,new Date(now+600000).toISOString());
+  assert.equal(identity.tenantReference,tenant);assert.equal(identity.userReference,subject);
+  await assert.rejects(f.client.verifyPrimary(assertion,{ expectedNonceHash: nonceHash }),/NOT_VERIFIED/);
+});
+
+test('group observations never treat absent claims or overage as complete membership',async()=>{
+  for (const [extra,status] of [[{},'unavailable'],[{ hasgroups: true },'overage'],
+    [{ _claim_names: { groups: 'src1' },_claim_sources: { src1: { endpoint: 'http://127.0.0.1/private' } } },'overage']]) {
+    const f=fixture({ claims: extra,configuration: { includeGroupMembership: true } });
+    const proof=await f.client.redeemAuthorizationCode(redemption);
+    const identity=await f.client.verifyPrimary(proof,{ expectedNonceHash: nonceHash });
+    assert.deepEqual(identity.groupMembership,{ status,groupIds: [] });
+  }
+});
 test('stale/missing freshness and wrong issuer/audience/nonce/consumer identity fail before producing a proof',async()=>{
   for (const change of [{ auth_time: undefined },{ auth_time: seconds-361 },{ auth_time: seconds-62 },
     { auth_time: seconds+61 },{ iat: undefined },{ iat: seconds+61 },{ exp: seconds },{ nbf: seconds+61 },

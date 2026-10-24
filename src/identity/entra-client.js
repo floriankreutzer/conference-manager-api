@@ -4,6 +4,7 @@ import { normalizeAttributionSourceDisplayName } from '../domain/request-attribu
 import { createBoundedMicrosoftIdentityNetworkClient } from '../integrations/microsoft365-client.js';
 import { customerMicrosoftEndpoints,normalizeFreshCustomerMicrosoftUrl } from './customer-microsoft-authorization-url.js';
 import { EntraAuthenticationError } from './entra-errors.js';
+import { microsoftGroupObservation } from './microsoft-group-observation.js';
 
 const ENTRA_PROVIDER = 'microsoft_entra';
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -194,11 +195,11 @@ async function beforeMicrosoftDeadline(work,signal) {
 // Fresh organizational primary proof only, not membership, account linking, MFA
 // or a business session. Legacy createEntraClient semantics are unchanged.
 export function createFreshCustomerEntraClient({ clientId,clientSecret,authority,publicOrigin,
-  clock=()=>Date.now(),fetchImpl=globalThis.fetch,applicationFactory,timeoutMs=10000 } = {}) {
+  clock=()=>Date.now(),fetchImpl=globalThis.fetch,applicationFactory,timeoutMs=10000,includeGroupMembership=false } = {}) {
   if (!GUID_PATTERN.test(clientId ?? '') || typeof clientSecret!=='string'
     || Buffer.byteLength(clientSecret)<32 || Buffer.byteLength(clientSecret)>512
     || clientSecret.trim()!==clientSecret || /[\u0000-\u001f\u007f]/.test(clientSecret)
-    || typeof clock!=='function' || typeof fetchImpl!=='function'
+    || typeof clock!=='function' || typeof fetchImpl!=='function' || typeof includeGroupMembership!=='boolean'
     || (applicationFactory!==undefined && typeof applicationFactory!=='function')
     || !Number.isSafeInteger(timeoutMs) || timeoutMs<1000 || timeoutMs>15000) {
     throw new TypeError('ENTRA_FRESH_CLIENT_CONFIGURATION_INVALID');
@@ -292,7 +293,9 @@ export function createFreshCustomerEntraClient({ clientId,clientSecret,authority
       proofs.set(assertion,{ nonceHash: expectedNonceHash,verifiedAt,expiresAt: Math.min(claims.exp*1000,verifiedAt+300000),
         identity: Object.freeze({ provider: identity.provider,tenantReference: identity.tenantReference,
           userReference: identity.userReference,
-          authenticatedAt: new Date(auth*1000).toISOString() }) });
+          authenticatedAt: new Date(auth*1000).toISOString(),
+          ...(includeGroupMembership ? { groupMembership: microsoftGroupObservation(claims),
+            groupValidUntil: new Date(Math.min(claims.exp*1000,verifiedAt+3600000)).toISOString() } : {}) }) });
       return assertion;
     },
     async verifyPrimary(assertion,input) {

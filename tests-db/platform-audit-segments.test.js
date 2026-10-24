@@ -24,6 +24,7 @@ test('native audit cutover preserves all legacy bytes, commits one genesis and a
       }
     } finally { await pool.end(); }
   });await migrateUp(pool);
+  assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
   assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
   assert.equal(await rollbackLatest(pool),true); // Empty owner roles067.
   assert.equal(await rollbackLatest(pool),true);await migrateUp(pool);
@@ -125,6 +126,7 @@ test('native audit cutover preserves all legacy bytes, commits one genesis and a
     'TRUNCATE platform_audit_events CASCADE',
     'TRUNCATE platform_audit_segments CASCADE',
   ]) await assert.rejects(pool.query(statement));
+  assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
   assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
   assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before populated segment066.
   await assert.rejects(rollbackLatest(pool),{ code: '55000' });

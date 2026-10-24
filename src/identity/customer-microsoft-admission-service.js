@@ -46,6 +46,13 @@ export function createCustomerMicrosoftAdmissionService({ repository,auditServic
       exact(input,['flowId','browserToken','csrfToken','correlationId']);exact(command,['membershipId']);
       const correlationId=uuid(input.correlationId);
       return repository.admit({ ...input,flowId: uuid(input.flowId),correlationId,membershipId: uuid(command.membershipId),
+        groupAuditEventFor({ tenantId,userId,conferenceManager,tenantAdmin }) {
+          uuid(tenantId);uuid(userId);
+          return auditService.createActorEvent({ tenantId,actorUserId: userId,correlationId,
+            action: AUDIT_ACTION.TENANT_USER_PERMISSIONS_CHANGED,targetType: 'user',targetId: userId,
+            outcome: AUDIT_OUTCOME.SUCCESS,retentionClass: AUDIT_RETENTION_CLASS.SECURITY,
+            newState: { conferenceManager,tenantAdmin },metadata: { operation: 'microsoft_group_sync' } });
+        },
         issueSession: identity=>sessionService.issue(identity,{ correlationId }) });
     },
     linkConfirmation(input) {
