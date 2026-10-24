@@ -32,6 +32,29 @@ function noIo() {
   return { query() { assert.fail('NO_CONSTRUCTION_DATABASE_ACCESS'); },connect() { assert.fail('NO_CONSTRUCTION_CONNECT'); } };
 }
 
+test('explicit Microsoft MFA uses protected sessions without any passkey secret, count, verifier or enrollment route',t=>{
+  for (const environment of ['dev','int','prod']) {
+    const env={ ...fixture(environment),PROTECTED_PLATFORM_ASSURANCE_MODE: 'microsoft_mfa' };
+    delete env.PROTECTED_PLATFORM_PASSKEY_TRANSACTION_SECRET;
+    const bundle=load(t,env),owned=bundle.authenticationFactory({ pool: noIo(),leasePool: noIo() });
+    assert.equal(bundle.config.assuranceMode,'microsoft_mfa');
+    assert.equal(bundle.config.passkeyTransactionSecret,null);
+    assert.equal(bundle.config.minimumCredentialCount,null);
+    assert.equal(bundle.config.mfaAuthenticationContext,'cm:ms:mfa:v1');
+    assert.equal(bundle.config.stepUpAuthenticationContext,'cm:ms:fresh:v1');
+    assert.equal(owned.platformPasskeyService,undefined);
+    assert.equal(owned.normalPasskeyService,undefined);
+    assert.equal(owned.syntheticPasskeyService,undefined);
+    assert.equal(owned.platformHttpSessionService.issue,undefined);
+    assert.deepEqual(owned.routeModules.map(route=>route.id),['platform-authentication']);
+    for (const change of [{ PROTECTED_PLATFORM_MINIMUM_PASSKEYS: '1' },
+      { PROTECTED_PLATFORM_PASSKEY_TRANSACTION_SECRET: 'p'.repeat(48) },
+      { PROTECTED_PLATFORM_ENTRA_MFA_AUTHENTICATION_CONTEXT: 'c1' }]) {
+      assert.throws(()=>loadProtectedPlatformConfiguration({ ...env,...change }));
+    }
+  }
+});
+
 test('INT audit segment is bound only by the owned profile and cannot configure another environment',t=>{
   const env=fixture('int'),id=randomUUID(),bundle=load(t,{ ...env,PROTECTED_PLATFORM_AUDIT_SEGMENT_ID: id });
   assert.deepEqual(bundle.config.auditSegment,{ id,environment: 'int',deploymentEpoch: env.PROTECTED_SECURITY_EPOCH });

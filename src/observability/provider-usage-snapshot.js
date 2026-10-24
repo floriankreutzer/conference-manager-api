@@ -9,7 +9,9 @@ function exact(value, keys) {
 
 // Shared private aggregate projection; the caller owns its authentication perimeter.
 export function loadProviderUsageSnapshot(raw, { accessMode } = {}) {
-  if (!['shared_owner_password', 'application_passkey'].includes(accessMode)) throw new TypeError('PLATFORM_PROVIDER_USAGE_CONFIG_INVALID');
+  if (!['shared_owner_password', 'application_passkey', 'microsoft_mfa'].includes(accessMode)) {
+    throw new TypeError('PLATFORM_PROVIDER_USAGE_CONFIG_INVALID');
+  }
   if (raw === undefined) return null;
   if (typeof raw !== 'string' || Buffer.byteLength(raw) > 24000) throw new TypeError('PLATFORM_PROVIDER_USAGE_CONFIG_INVALID');
   let snapshot;

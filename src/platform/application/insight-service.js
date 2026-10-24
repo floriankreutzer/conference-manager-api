@@ -11,7 +11,9 @@ export function createPlatformInsightService({ sources, authorizationPolicy, clo
     if (!['providers','product-delivery'].includes(kind)) throw new TypeError('PLATFORM_INSIGHT_KIND_INVALID');
     const principal = normalizePlatformPrincipal(operatorContext);
     if (authorizationPolicy.authorize(principal, PLATFORM_PERMISSION.RUNTIME_READ) !== true
-      || principal.assurance.authenticationContext !== 'cm:pk:v1') throw new PlatformAuthorizationError();
+      || !['cm:pk:v1','cm:ms:mfa:v1','cm:ms:fresh:v1'].includes(principal.assurance.authenticationContext)) {
+      throw new PlatformAuthorizationError();
+    }
     // Global provider/product aggregates must never reveal a foreign Tenant
     // through an allowlisted operator's otherwise valid runtime-read access.
     if (principal.targetScope.mode !== 'all') throw new PlatformAuthorizationError();

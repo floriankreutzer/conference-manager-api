@@ -71,14 +71,16 @@ function exactClaims(value, authenticationContext) {
     && acrs.values[0] === authenticationContext;
 }
 
-function exactPrimaryClaims(value) {
+function exactPrimaryClaims(value, microsoftMfa = false) {
   if (typeof value !== 'string' || value.length > 4096) return false;
   try {
     const claims = JSON.parse(value);
     return claims && Object.keys(claims).join(',') === 'id_token'
-      && claims.id_token && Object.keys(claims.id_token).join(',') === 'auth_time'
+      && claims.id_token && Object.keys(claims.id_token).sort().join(',') === (microsoftMfa ? 'amr,auth_time' : 'auth_time')
       && claims.id_token.auth_time && Object.keys(claims.id_token.auth_time).join(',') === 'essential'
-      && claims.id_token.auth_time.essential === true;
+      && claims.id_token.auth_time.essential === true
+      && (!microsoftMfa || claims.id_token.amr && Object.keys(claims.id_token.amr).join(',') === 'essential'
+        && claims.id_token.amr.essential === true);
   } catch { return false; }
 }
 
@@ -103,7 +105,7 @@ function validateAuthorizationUrl(value, {
   expectedState,
   expectedNonce,
   expectedCodeChallenge,
-} = {}, primaryOnly = false) {
+} = {}, primaryOnly = false, microsoftMfa = false) {
   let parsed;
   let expectedAuthority;
   try {
@@ -129,7 +131,7 @@ function validateAuthorizationUrl(value, {
     || !Number.isSafeInteger(authenticationMaxAgeSeconds)
     || authenticationMaxAgeSeconds < 0
     || authenticationMaxAgeSeconds > (primaryOnly ? 300 : 1_800)
-    || (primaryOnly && authenticationMaxAgeSeconds < 60)
+    || (primaryOnly && !microsoftMfa && authenticationMaxAgeSeconds < 60)
   ) invalid();
   const keys = [...parsed.searchParams.keys()];
   if (
@@ -152,7 +154,7 @@ function validateAuthorizationUrl(value, {
     || !exactOrOpaque(parsed.searchParams.get('nonce'), expectedNonce)
     || !exactOrOpaque(parsed.searchParams.get('code_challenge'), expectedCodeChallenge)
     || !exactScopes(parsed.searchParams.get('scope'))
-    || !(primaryOnly ? exactPrimaryClaims(parsed.searchParams.get('claims'))
+    || !(primaryOnly ? exactPrimaryClaims(parsed.searchParams.get('claims'), microsoftMfa)
       : exactClaims(parsed.searchParams.get('claims'), authenticationContext))
     || ![null, '1'].includes(parsed.searchParams.get('client_info'))
     || (clientRequestId !== null && !GUID_PATTERN.test(clientRequestId))
@@ -172,4 +174,8 @@ export function validatePlatformEntraAuthorizationUrl(value, contract) {
 
 export function validatePlatformEntraPrimaryAuthorizationUrl(value, contract) {
   return validateAuthorizationUrl(value, contract, true);
+}
+
+export function validatePlatformEntraMfaAuthorizationUrl(value, contract) {
+  return validateAuthorizationUrl(value, contract, true, true);
 }

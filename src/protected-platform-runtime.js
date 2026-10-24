@@ -109,10 +109,13 @@ export async function createProtectedPlatformRuntime(environment) {
       repository: createPostgresProtectedPlatformCustomerOnboardingRepository(base.pool,custody) });
     const invitations=createPlatformCustomerInvitationAdministrationService({ ...common,
       repository: createPostgresProtectedPlatformCustomerInvitationRepository(base.pool,custody) });
-    const active=config.assuranceMode==='application_passkey',tenantRoutes=createPlatformTenantRoutes({ invitationAdministration: true });
-    const operational=active ? PLATFORM_OPERATIONAL_ROUTE_MODULES.map(module=>protectPlatformPasskeyRoute(
-      module.id===tenantRoutes.id ? tenantRoutes : module,{ authService: authentication.normalPasskeyService,
-        environment: profile.environment,securityEpoch: profile.platformSecurityEpoch })) : [platformHealthRoutes,platformSessionRoutes];
+    const active=['application_passkey','microsoft_mfa'].includes(config.assuranceMode);
+    const tenantRoutes=createPlatformTenantRoutes({ invitationAdministration: true });
+    const operational=active ? PLATFORM_OPERATIONAL_ROUTE_MODULES.map(module=>{
+      const selected=module.id===tenantRoutes.id ? tenantRoutes : module;
+      return config.assuranceMode==='microsoft_mfa' ? selected : protectPlatformPasskeyRoute(selected,
+        { authService: authentication.normalPasskeyService,environment: profile.environment,securityEpoch: profile.platformSecurityEpoch });
+    }) : [platformHealthRoutes,platformSessionRoutes];
     const insights=active ? [createPlatformInsightRoutes(createPlatformInsightService({
       sources: bundle.insightSources,authorizationPolicy: platformAuthorizationPolicy }))] : [];
     const routeModules=Object.freeze([...authentication.routeModules,...operational,...insights,

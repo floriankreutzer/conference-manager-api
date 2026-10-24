@@ -7,6 +7,7 @@ import {
   PLATFORM_ENTRA_SCOPES,
   validatePlatformEntraAuthorizationUrl,
   validatePlatformEntraPrimaryAuthorizationUrl,
+  validatePlatformEntraMfaAuthorizationUrl,
 } from './entra-authorization-url.js';
 
 export { PLATFORM_ENTRA_PROVIDER } from '../../domain/identity-provider.js';
@@ -146,11 +147,12 @@ function createClient({
   authenticationMaxAgeSeconds = 15 * 60,
   clock = () => Date.now(),
   application,
-} = {}, primaryOnly = false) {
+} = {}, primaryOnly = false, microsoftMfa = false) {
   const tenantReference = requireGuid(tenantValue, 'PLATFORM_ENTRA_TENANT_INVALID');
   if (!GUID_PATTERN.test(clientId || '')) throw new TypeError('PLATFORM_ENTRA_CLIENT_ID_INVALID');
   const normalizedClientId = clientId.toLowerCase();
-  if (typeof clientSecret !== 'string' || clientSecret.length < 32 || (primaryOnly && clientSecret.length > 512)) {
+  if (typeof clientSecret !== 'string' || clientSecret.length < 32
+    || ((primaryOnly || microsoftMfa) && clientSecret.length > 512)) {
     throw new TypeError('PLATFORM_ENTRA_CLIENT_SECRET_INVALID');
   }
   const authority = fixedAuthority(authorityValue, tenantReference);
@@ -164,7 +166,7 @@ function createClient({
   if (
     !Number.isSafeInteger(authenticationMaxAgeSeconds)
     || authenticationMaxAgeSeconds < 60
-    || authenticationMaxAgeSeconds > (primaryOnly ? 300 : 1_800)
+    || authenticationMaxAgeSeconds > (primaryOnly || microsoftMfa ? 300 : 1_800)
   ) throw new TypeError('PLATFORM_AUTHENTICATION_MAX_AGE_INVALID');
   if (primaryOnly && (mfaAuthenticationContext !== undefined || stepUpAuthenticationContext !== undefined)) {
     throw new TypeError('PLATFORM_PRIMARY_CONTEXT_CONFIGURATION_FORBIDDEN');
@@ -212,7 +214,8 @@ function createClient({
       const requested = primaryOnly ? undefined : context(authenticationContext);
       const requestedMaxAge = primaryOnly ? authenticationMaxAgeSeconds : maxAge(requested);
       try {
-        const claims = JSON.stringify({ id_token: primaryOnly
+        const claims = JSON.stringify({ id_token: microsoftMfa
+          ? { auth_time: { essential: true }, amr: { essential: true } } : primaryOnly
           ? { auth_time: { essential: true } } : { acrs: { essential: true, values: [requested] } } });
         const value = await msal.getAuthCodeUrl({
           scopes: PLATFORM_ENTRA_SCOPES,
@@ -227,12 +230,13 @@ function createClient({
           extraQueryParameters: { max_age: String(requestedMaxAge) },
           claims,
         });
-        const validateUrl = primaryOnly ? validatePlatformEntraPrimaryAuthorizationUrl : validatePlatformEntraAuthorizationUrl;
+        const validateUrl = microsoftMfa ? validatePlatformEntraMfaAuthorizationUrl
+          : primaryOnly ? validatePlatformEntraPrimaryAuthorizationUrl : validatePlatformEntraAuthorizationUrl;
         return validateUrl(canonicalizePlatformEntraSdkUrl(value), {
           authority: authority.toString(),
           clientId: normalizedClientId,
           redirectUri,
-          authenticationContext: requested,
+          authenticationContext: microsoftMfa ? undefined : requested,
           authenticationMaxAgeSeconds: requestedMaxAge,
           expectedState: state,
           expectedNonce: nonce,
@@ -261,9 +265,11 @@ function createClient({
         || !hashMatches(expectedNonce,expectedNonceHash)) {
         fail(primaryOnly ? 'PLATFORM_PRIMARY_CODE_INPUT_INVALID' : 'PLATFORM_ENTRA_NONCE_INVALID');
       }
-      if (primaryOnly && (typeof code !== 'string' || !/^[A-Za-z0-9._~-]{1,4096}$/.test(code)
+      if ((primaryOnly || microsoftMfa) && (typeof code !== 'string' || !/^[A-Za-z0-9._~-]{1,4096}$/.test(code)
         || typeof codeVerifier !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(codeVerifier)
-        || !/^[0-9a-f]{64}$/.test(expectedNonceHash || ''))) fail('PLATFORM_PRIMARY_CODE_INPUT_INVALID');
+        || !/^[0-9a-f]{64}$/.test(expectedNonceHash || ''))) {
+        fail(primaryOnly ? 'PLATFORM_PRIMARY_CODE_INPUT_INVALID' : 'PLATFORM_MICROSOFT_MFA_CODE_INPUT_INVALID');
+      }
       let result;
       try {
         result = await msal.acquireTokenByCode({
@@ -276,7 +282,7 @@ function createClient({
       } catch {
         fail('PLATFORM_ENTRA_CODE_REDEMPTION_FAILED');
       }
-      const validate = primaryOnly ? validateTokenIdentity : validateClaims;
+      const validate = primaryOnly || microsoftMfa ? validateTokenIdentity : validateClaims;
       const claims = validate(result?.idTokenClaims, {
         clientId: normalizedClientId,
         tenantReference,
@@ -286,7 +292,7 @@ function createClient({
         requestedAuthenticationMaxAgeSeconds: requestedMaxAge,
         clock,
       });
-      if (primaryOnly) {
+      if (primaryOnly || microsoftMfa) {
         if (result.idTokenClaims.exp > Math.floor(clock() / 1000) + 86400) fail('PLATFORM_ENTRA_TOKEN_LIFETIME_INVALID');
         if (result.idTokenClaims.iat < 0) fail('PLATFORM_ENTRA_ISSUED_AT_NEGATIVE');
         if (result.idTokenClaims.auth_time < 0) fail('PLATFORM_ENTRA_AUTHENTICATION_TIME_NEGATIVE');
@@ -298,6 +304,18 @@ function createClient({
         if (result.idTokenClaims.auth_time >= result.idTokenClaims.exp) {
           fail('PLATFORM_ENTRA_AUTHENTICATION_EXPIRY_ORDER_INVALID');
         }
+        if (microsoftMfa) {
+          const methods = result.idTokenClaims.amr;
+          if (!Array.isArray(methods) || methods.length < 1 || methods.length > 16
+            || methods.some(method => typeof method !== 'string' || !/^[a-z][a-z0-9_]{0,31}$/.test(method))
+            || new Set(methods).size !== methods.length || !methods.includes('mfa')) {
+            fail('PLATFORM_MICROSOFT_MFA_REQUIRED');
+          }
+          const assertion = Object.freeze({ status: 'microsoft_mfa_verified' });
+          primaryAssertions.set(assertion, { identity: Object.freeze({ ...claims, authenticationContext: requested }),
+            expiresAt: result.idTokenClaims.exp * 1000, maxAgeSeconds: requestedMaxAge });
+          return assertion;
+        }
         const assertion = Object.freeze({ status: 'primary_verified' });
         primaryAssertions.set(assertion, { identity: claims, expiresAt: result.idTokenClaims.exp * 1000 });
         return assertion;
@@ -305,7 +323,16 @@ function createClient({
       return Object.freeze({ [VERIFIED_ASSERTION]: true, claims });
     },
 
-    ...(primaryOnly ? primaryVerifier : assuranceVerifier),
+    ...(microsoftMfa ? { async verify(assertion) {
+      const verified = assertion && primaryAssertions.get(assertion);
+      if (!verified) fail('PLATFORM_ASSERTION_NOT_VERIFIED');
+      primaryAssertions.delete(assertion);
+      if (verified.expiresAt <= clock()
+        || Date.parse(verified.identity.authenticatedAt) < clock() - (verified.maxAgeSeconds + 60) * 1000) {
+        fail('PLATFORM_MICROSOFT_MFA_EXPIRED');
+      }
+      return Object.freeze({ verified: true, claims: verified.identity });
+    } } : primaryOnly ? primaryVerifier : assuranceVerifier),
   });
 }
 
@@ -317,4 +344,10 @@ export function createPlatformEntraClient(configuration) {
 // The result cannot satisfy the existing Platform identity/session model.
 export function createPlatformEntraPrimaryClient(configuration = {}) {
   return createClient({ authenticationMaxAgeSeconds: 300, ...configuration }, true);
+}
+
+// Microsoft-issued MFA evidence is mandatory. Primary identity and a requested
+// claim alone never establish assurance. Assertions are instance-bound/one-use.
+export function createPlatformEntraMfaClient(configuration = {}) {
+  return createClient({ authenticationMaxAgeSeconds: 300, ...configuration }, false, true);
 }

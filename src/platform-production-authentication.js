@@ -15,7 +15,8 @@ import { createPostgresPlatformOidcTransactionRepository } from './persistence/p
 
 import { createPlatformClaimPolicy } from './platform/identity/claim-policy.js';
 import { createPlatformEntraAuthService } from './platform/identity/entra-auth-service.js';
-import { createPlatformEntraClient } from './platform/identity/entra-client.js';
+import { createPlatformEntraClient, createPlatformEntraMfaClient } from './platform/identity/entra-client.js';
+import { platformAuthenticationRoutes } from './platform/http/authentication-routes.js';
 import { createPlatformIdentityService } from './platform/identity/identity-service.js';
 import { createPlatformEntraPrimaryClient } from './platform/identity/entra-client.js';
 import { createPlatformEntraPrimaryAuthService } from './platform/identity/entra-auth-service.js';
@@ -134,8 +135,9 @@ export function createProductionPlatformAuthentication({
   if (['passkey_setup','application_passkey'].includes(assuranceMode)) {
     return passkeyAuthentication({ config, persistence, platformAuditService, platformSessionService });
   }
-  if (assuranceMode !== 'conditional_access') throw new TypeError('PLATFORM_ASSURANCE_MODE_INVALID');
-  const entraClient = createPlatformEntraClient({
+  if (!['conditional_access','microsoft_mfa'].includes(assuranceMode)) throw new TypeError('PLATFORM_ASSURANCE_MODE_INVALID');
+  const clientFactory = assuranceMode === 'microsoft_mfa' ? createPlatformEntraMfaClient : createPlatformEntraClient;
+  const entraClient = clientFactory({
     clientId: config.entraClientId,
     clientSecret: config.entraClientSecret,
     tenantReference: config.entraTenantId,
@@ -147,7 +149,7 @@ export function createProductionPlatformAuthentication({
     authenticationMaxAgeSeconds: config.authenticationMaxAgeSeconds,
   });
   const claimPolicy = createPlatformClaimPolicy({
-    provider: 'microsoft_entra',
+    provider: assuranceMode === 'microsoft_mfa' ? 'microsoft_entra_platform' : 'microsoft_entra',
     issuer: `${config.entraAuthority}/v2.0`,
     audience: config.entraClientId,
     tenantReference: config.entraTenantId,
@@ -160,7 +162,7 @@ export function createProductionPlatformAuthentication({
     operatorRepository: persistence.operatorRepository,
     auditService: platformAuditService,
   });
-  return createPlatformEntraAuthService({
+  const authentication = createPlatformEntraAuthService({
     repository: persistence.oidcTransactionRepository,
     entraClient,
     identityService,
@@ -173,6 +175,16 @@ export function createProductionPlatformAuthentication({
     stepUpAuthenticationContext: config.stepUpAuthenticationContext,
     transactionTtlSeconds: config.oidcTransactionTtlSeconds,
   });
+  return assuranceMode === 'microsoft_mfa' ? Object.freeze({ ...authentication,
+    platformHttpSessionService: Object.freeze({
+      async resolvePrincipal(request) {
+        const principal = await platformSessionService.resolvePrincipal(request);
+        return ['cm:ms:mfa:v1','cm:ms:fresh:v1'].includes(principal?.assurance.authenticationContext) ? principal : null;
+      },
+      revoke: platformSessionService.revoke, verifyCsrf: platformSessionService.verifyCsrf,
+      csrfTokenForPrincipal: platformSessionService.csrfTokenForPrincipal, clearCookie: platformSessionService.clearCookie,
+    }), routeModules: Object.freeze([platformAuthenticationRoutes]),
+  }) : authentication;
 }
 
 
@@ -189,8 +201,8 @@ export function createProtectedPlatformAuthentication({ env,pool,leasePool,prote
   const canonical=loadPlatformConfig(env),config=protectedEnvironment===null ? canonical
     : Object.freeze({ ...canonical,deploymentEnvironment: protectedEnvironment });
   const environment=config.deploymentEnvironment;
-  requirePlatformPasskeyMinimum(environment,minimumCredentialCount);
-  if (!['passkey_setup','application_passkey'].includes(config.assuranceMode)) {
+  if (config.assuranceMode !== 'microsoft_mfa') requirePlatformPasskeyMinimum(environment,minimumCredentialCount);
+  if (!['passkey_setup','application_passkey','microsoft_mfa'].includes(config.assuranceMode)) {
     throw new TypeError('PROTECTED_PLATFORM_PASSKEY_PROFILE_REQUIRED');
   }
   const scopes=createPostgresProtectedRuntimeExecutionScopes({ pool,leasePool,environment,securityEpoch: protectedSecurityEpoch });
@@ -206,6 +218,18 @@ export function createProtectedPlatformAuthentication({ env,pool,leasePool,prote
     publicOrigin: config.publicOrigin,csrfSecret: config.csrfSecret,securityEpoch: config.securityEpoch,
     sessionTtlSeconds: config.sessionTtlSeconds,stepUpTtlSeconds: config.stepUpTtlSeconds,
     authenticationMaxAgeSeconds: config.authenticationMaxAgeSeconds });
+  if (config.assuranceMode === 'microsoft_mfa') {
+    const scopedConfig = Object.freeze({ ...config,
+      oidcTransactionSecret: deriveProtectedAuthenticationFlowSecret({ ...protection,secret: config.oidcTransactionSecret,
+        purpose: 'platform-microsoft-flow' }),
+    });
+    const authentication = createProductionPlatformAuthentication({ config: scopedConfig,
+      persistence: { pool,auditRepository,operatorRepository,sessionRepository,oidcTransactionRepository },
+      platformAuditService,platformSessionService: sessions });
+    return Object.freeze({ ...scopedFunctions(authentication,scopes,['clearCookie']),
+      platformHttpSessionService: scopedFunctions(authentication.platformHttpSessionService,scopes,
+        ['clearCookie','csrfTokenForPrincipal']), platformAuditService,withPreparationScope: scopes.withShared });
+  }
   const scopedConfig={ ...config,minimumCredentialCount,
     passkeyTransactionSecret: deriveProtectedAuthenticationFlowSecret({ ...protection,secret: config.passkeyTransactionSecret,
       purpose: 'platform-passkey-flow' }),
