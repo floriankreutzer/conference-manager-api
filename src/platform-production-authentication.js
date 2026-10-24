@@ -14,9 +14,10 @@ import { createPostgresPlatformSessionRepository } from './persistence/postgres/
 import { createPostgresPlatformOidcTransactionRepository } from './persistence/postgres/platform-oidc-transaction-repository.js';
 
 import { createPlatformClaimPolicy } from './platform/identity/claim-policy.js';
-import { createPlatformEntraAuthService } from './platform/identity/entra-auth-service.js';
-import { createPlatformEntraClient, createPlatformEntraMfaClient } from './platform/identity/entra-client.js';
-import { platformAuthenticationRoutes } from './platform/http/authentication-routes.js';
+import { createPlatformEntraAuthService,createPlatformEntraLoginAuthService } from './platform/identity/entra-auth-service.js';
+import { createPlatformEntraClient,createPlatformEntraMfaClient,createPlatformEntraOperationClient }
+  from './platform/identity/entra-client.js';
+import { platformAuthenticationRoutes,platformMicrosoftLoginRoutes } from './platform/http/authentication-routes.js';
 import { createPlatformIdentityService } from './platform/identity/identity-service.js';
 import { createPlatformEntraPrimaryClient } from './platform/identity/entra-client.js';
 import { createPlatformEntraPrimaryAuthService } from './platform/identity/entra-auth-service.js';
@@ -32,6 +33,34 @@ import { PLATFORM_OPERATIONAL_ROUTE_MODULES } from './platform/app.js';
 import { platformPasskeyAuthenticationRoutes } from './platform/http/passkey-authentication-routes.js';
 import { platformPasskeyRoutes } from './platform/http/passkey-routes.js';
 import { protectPlatformPasskeyRoute } from './platform/http/passkey-operation-route.js';
+import { createPlatformMicrosoftOperationService } from './platform/identity/microsoft-operation-service.js';
+import { createPostgresPlatformMicrosoftOperationRepository }
+  from './persistence/postgres/platform-microsoft-operation-repository.js';
+import { PLATFORM_MICROSOFT_OPERATION_CALLBACK } from './platform/identity/microsoft-operation-cookie.js';
+import { createPlatformMicrosoftOperationAuthenticationRoutes } from './platform/http/microsoft-operation-authentication-routes.js';
+
+// Invoked only by the existing closed protected Platform composition. Actual
+// repositories own the fixed execution scopes; browser input selects neither.
+function createProtectedPlatformMicrosoftOperations({ config,pool,scopes,auditRepository,sessions,protectedSecurityEpoch }) {
+  const entraClient=createPlatformEntraOperationClient({ clientId: config.entraClientId,clientSecret: config.entraClientSecret,
+    tenantReference: config.entraTenantId,authority: config.entraAuthority,publicOrigin: config.publicOrigin,
+    redirectUri: config.publicOrigin+PLATFORM_MICROSOFT_OPERATION_CALLBACK,
+    mfaAuthenticationContext: config.mfaAuthenticationContext,stepUpAuthenticationContext: config.stepUpAuthenticationContext,
+    authenticationMaxAgeSeconds: config.authenticationMaxAgeSeconds });
+  const claimPolicy=createPlatformClaimPolicy({ provider: 'microsoft_entra_platform',issuer: `${config.entraAuthority}/v2.0`,
+    audience: config.entraClientId,tenantReference: config.entraTenantId,
+    mfaAuthenticationContext: config.mfaAuthenticationContext,stepUpAuthenticationContext: config.stepUpAuthenticationContext });
+  const create=executionScope=>createPlatformMicrosoftOperationService({ entraClient,claimPolicy,sessionService: sessions,
+    environment: config.deploymentEnvironment,protectedSecurityEpoch,securityEpoch: config.securityEpoch,
+    transactionSecret: config.oidcTransactionSecret,
+    repository: createPostgresPlatformMicrosoftOperationRepository(pool,{ environment: config.deploymentEnvironment,
+      protectedSecurityEpoch,securityEpoch: config.securityEpoch,executionScope,scopes,auditRepository }) });
+  const normalMicrosoftService=create('shared');
+  return Object.freeze({ normalMicrosoftService,
+    syntheticMicrosoftService: config.deploymentEnvironment==='prod' ? null : create('synthetic'),
+    microsoftOperationRoutes: createPlatformMicrosoftOperationAuthenticationRoutes(normalMicrosoftService,
+      { environment: config.deploymentEnvironment }) });
+}
 
 function scopedFunctions(service,scopes,synchronous=[]) {
   return Object.freeze(Object.fromEntries(Object.entries(service).map(([name,value])=>[name,
@@ -162,7 +191,8 @@ export function createProductionPlatformAuthentication({
     operatorRepository: persistence.operatorRepository,
     auditService: platformAuditService,
   });
-  const authentication = createPlatformEntraAuthService({
+  const authenticationFactory=assuranceMode==='microsoft_mfa' ? createPlatformEntraLoginAuthService : createPlatformEntraAuthService;
+  const authentication = authenticationFactory({
     repository: persistence.oidcTransactionRepository,
     entraClient,
     identityService,
@@ -179,11 +209,11 @@ export function createProductionPlatformAuthentication({
     platformHttpSessionService: Object.freeze({
       async resolvePrincipal(request) {
         const principal = await platformSessionService.resolvePrincipal(request);
-        return ['cm:ms:mfa:v1','cm:ms:fresh:v1'].includes(principal?.assurance.authenticationContext) ? principal : null;
+        return principal?.assurance.level==='mfa' && principal.assurance.authenticationContext==='cm:ms:mfa:v1' ? principal : null;
       },
       revoke: platformSessionService.revoke, verifyCsrf: platformSessionService.verifyCsrf,
       csrfTokenForPrincipal: platformSessionService.csrfTokenForPrincipal, clearCookie: platformSessionService.clearCookie,
-    }), routeModules: Object.freeze([platformAuthenticationRoutes]),
+    }), routeModules: Object.freeze([platformMicrosoftLoginRoutes]),
   }) : authentication;
 }
 
@@ -226,7 +256,10 @@ export function createProtectedPlatformAuthentication({ env,pool,leasePool,prote
     const authentication = createProductionPlatformAuthentication({ config: scopedConfig,
       persistence: { pool,auditRepository,operatorRepository,sessionRepository,oidcTransactionRepository },
       platformAuditService,platformSessionService: sessions });
+    const operations=createProtectedPlatformMicrosoftOperations({ config: scopedConfig,pool,scopes,auditRepository,
+      sessions,protectedSecurityEpoch });
     return Object.freeze({ ...scopedFunctions(authentication,scopes,['clearCookie']),
+      ...operations,routeModules: Object.freeze([...authentication.routeModules,operations.microsoftOperationRoutes]),
       platformHttpSessionService: scopedFunctions(authentication.platformHttpSessionService,scopes,
         ['clearCookie','csrfTokenForPrincipal']), platformAuditService,withPreparationScope: scopes.withShared });
   }

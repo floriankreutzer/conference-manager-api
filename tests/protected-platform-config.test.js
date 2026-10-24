@@ -46,7 +46,11 @@ test('explicit Microsoft MFA uses protected sessions without any passkey secret,
     assert.equal(owned.normalPasskeyService,undefined);
     assert.equal(owned.syntheticPasskeyService,undefined);
     assert.equal(owned.platformHttpSessionService.issue,undefined);
-    assert.deepEqual(owned.routeModules.map(route=>route.id),['platform-authentication']);
+    assert.deepEqual(owned.routeModules.map(route=>route.id),['platform-authentication','platform-microsoft-operation-authentication']);
+    assert.equal(typeof owned.normalMicrosoftService.executeStepUp,'function');
+    assert.equal(owned.routeModules[0].claim({ path: '/api/v1/platform/auth/microsoft/step-up' }),null);
+    assert.equal(environment==='prod' ? owned.syntheticMicrosoftService===null
+      : typeof owned.syntheticMicrosoftService.executeStepUpWithContinuation==='function',true);
     for (const change of [{ PROTECTED_PLATFORM_MINIMUM_PASSKEYS: '1' },
       { PROTECTED_PLATFORM_PASSKEY_TRANSACTION_SECRET: 'p'.repeat(48) },
       { PROTECTED_PLATFORM_ENTRA_MFA_AUTHENTICATION_CONTEXT: 'c1' }]) {

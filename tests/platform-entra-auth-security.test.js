@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
-import { createPlatformEntraAuthService } from '../src/platform/identity/entra-auth-service.js';
+import { createPlatformEntraAuthService,createPlatformEntraLoginAuthService } from '../src/platform/identity/entra-auth-service.js';
 import { createPlatformEntraClient } from '../src/platform/identity/entra-client.js';
 import {
   PLATFORM_ENTRA_TRANSACTION_COOKIE_NAME,
@@ -146,21 +146,23 @@ function tokens() {
   return () => values.shift();
 }
 
-function authHarness({ repository = memoryRepository(), currentPrincipal = principal() } = {}) {
+function authHarness({ repository = memoryRepository(), currentPrincipal = principal(),factory=createPlatformEntraAuthService,
+  identityOverride=null } = {}) {
   const failures = [];
-  const calls = { issued: 0, rotated: 0 };
+  const calls = { issued: 0, rotated: 0,redeemed: 0 };
   const provider = {
     async authorizationUrl({ state,nonce }) { calls.nonce=nonce;return `${AUTHORITY}/oauth2/v2.0/authorize?state=${state}`; },
     async redeemAuthorizationCode({ code: codeValue, authenticationContext,expectedNonce,expectedNonceHash }) {
+      calls.redeemed++;
       assert.equal(expectedNonce,calls.nonce);assert.equal(hash(expectedNonce),expectedNonceHash);
       return { code: codeValue, assurance: authenticationContext === STEP_UP_CONTEXT ? 'step_up' : 'mfa' };
     },
   };
-  const service = createPlatformEntraAuthService({
+  const service = factory({
     repository,
     entraClient: provider,
     identityService: {
-      async verify(assertion) { return platformIdentity({ assurance: assertion.assurance }); },
+      async verify(assertion) { return identityOverride ?? platformIdentity({ assurance: assertion.assurance }); },
     },
     sessionService: {
       async issue(identity) {
@@ -411,4 +413,24 @@ test('step-up transaction binds operator, current session, version, epoch, and v
     browserBinding: binding(switchedStart.setCookie),
   }), /PLATFORM_OIDC_STEP_UP_BINDING_INVALID/);
   assert.equal(switched.calls.rotated, 0);
+});
+
+test('login-only Microsoft profile cannot start or redeem a reusable step-up session',async()=>{
+  const f=authHarness({ factory: createPlatformEntraLoginAuthService });
+  await assert.rejects(f.service.start({ purpose: 'step_up',principal: principal() }),/OIDC_PURPOSE_INVALID/);
+  assert.equal(f.repository.records.size,0);assert.equal(f.calls.redeemed,0);
+  const started=await f.service.start();
+  const row=f.repository.records.get(hash(STATE));row.purpose='step_up';row.authenticationContext=STEP_UP_CONTEXT;
+  await assert.rejects(f.service.complete({ state: STATE,code: 'step-up-code',browserBinding: binding(started.setCookie) }),
+    { code: 'PLATFORM_OIDC_LOGIN_TRANSACTION_REQUIRED' });
+  assert.equal(f.calls.redeemed,0);assert.equal(f.calls.issued,0);assert.equal(f.calls.rotated,0);
+  const invalid=authHarness({ factory: createPlatformEntraLoginAuthService,identityOverride: platformIdentity({ assurance: 'step_up' }) });
+  const pending=await invalid.service.start();
+  await assert.rejects(invalid.service.complete({ state: STATE,code: 'login-code',browserBinding: binding(pending.setCookie) }),
+    { code: 'PLATFORM_OIDC_LOGIN_ASSURANCE_REQUIRED' });
+  assert.equal(invalid.calls.issued,0);assert.equal(invalid.calls.rotated,0);
+  const normal=authHarness({ factory: createPlatformEntraLoginAuthService }),login=await normal.service.start();
+  assert.equal((await normal.service.complete({ state: STATE,code: 'login-code',browserBinding: binding(login.setCookie) })).status,
+    'authenticated');
+  assert.equal(normal.calls.issued,1);assert.equal(normal.calls.rotated,0);
 });
