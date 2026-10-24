@@ -5,6 +5,8 @@ import { normalizeCustomerMicrosoftAdmissionSnapshot,matchesCustomerMicrosoftAdm
   from '../../identity/customer-microsoft-admission.js';
 import { tenantAuthorizationSnapshot } from '../../authorization/policy.js';
 import { withPostgresTransaction } from './transaction.js';
+import { createPostgresTenantMicrosoftRoleRepository,lockTenantMicrosoftRoleAdministration } from './tenant-microsoft-role-repository.js';
+import { resolveMicrosoftMappedGroups } from '../../authorization/microsoft-group-mapping.js';
 const HASH=/^[a-f0-9]{64}$/,TOKEN=/^[A-Za-z0-9_-]{43}$/;
 const invalid=()=>{ throw new TypeError('CUSTOMER_MICROSOFT_FLOW_INPUT_INVALID'); };
 const rejected=()=>Object.freeze({ status: 'rejected' });
@@ -28,6 +30,7 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
     throw new TypeError('CUSTOMER_MICROSOFT_FLOW_CONFIGURATION_INVALID');
   }
   const globalKey=createHash('sha256').update(`customer-microsoft-global-start:v1:${environment}`).digest('hex');
+  const groupRoles=auditRepository===null ? null : createPostgresTenantMicrosoftRoleRepository(pool,{ auditRepository });
   function browser(row,browserToken) {
     return row && typeof browserToken==='string' && TOKEN.test(browserToken) && flowBinding.matchesBrowser({
       context: { flowId: row.id,purpose: row.purpose,stage: 'authorization' },browserToken,browserVerifier: row.browser_verifier });
@@ -128,7 +131,9 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
   }
   async function issueCurrentSession(client,entry,flow,issueSession) {
     const result=await client.query({ name: 'customer-microsoft-admission-current-roles',text:
-      'SELECT role FROM tenant_user_roles WHERE tenant_id=$1 AND user_id=$2 ORDER BY role',values: [entry.tenantId,entry.userId] });
+      `SELECT role FROM (SELECT * FROM tenant_user_roles
+      WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS effective_role_source
+      WHERE tenant_id=$1 AND user_id=$2 ORDER BY role`,values: [entry.tenantId,entry.userId] });
     const issued=await issueSession(Object.freeze({ tenantId: entry.tenantId,userId: entry.userId,
       securityVersion: entry.userSecurityVersion,...tenantAuthorizationSnapshot(['employee',...result.rows.map(row=>row.role)]),
       providerIdentity: Object.freeze({ provider: 'microsoft_entra',
@@ -237,7 +242,7 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
       return tenantEligibility===null ? choicesWithClient(pool,input)
         : withPostgresTransaction(pool,client=>choicesWithClient(client,input));
     },
-    async admit({ flowId,browserToken,csrfToken,membershipId,correlationId,issueSession }={}) {
+    async admit({ flowId,browserToken,csrfToken,membershipId,correlationId,issueSession,groupAuditEventFor }={}) {
       uuid(flowId);uuid(membershipId);uuid(correlationId);
       if (typeof issueSession!=='function') invalid();
       if (typeof csrfToken!=='string' || !HASH.test(csrfToken)) return rejected();
@@ -254,6 +259,7 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
         const tenant=await client.query({ name: 'customer-microsoft-admission-tenant-lock',text:
           "SELECT id FROM tenants WHERE id=$1 AND status IN ('pending','onboarding','ready','active') FOR UPDATE",
         values: [expectedEntry.tenantId] });if (tenant.rowCount!==1) return rejected();
+        await lockTenantMicrosoftRoleAdministration(client,expectedEntry.tenantId);
         const member=await client.query({ name: 'customer-microsoft-admission-member-lock',text: `SELECT id
           FROM customer_access_memberships WHERE environment=$1 AND tenant_id=$2 AND id=$3 AND user_id=$4
             AND accepted_at IS NOT NULL FOR UPDATE`,
@@ -266,8 +272,12 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
         if (!verifiedProof(row,{ browserToken,csrfToken },time,'login')
           || !matchesCustomerMicrosoftAdmission({ snapshot: row.admission_snapshot,current: expectedEntry })
           || !await identityMatches(client,row,expectedEntry)) return rejected();
-        const setCookie=await issueCurrentSession(client,expectedEntry,row,issueSession);
-        await consume(client,row,expectedEntry,time);
+        const entry=groupRoles===null || typeof groupAuditEventFor!=='function' ? expectedEntry : {
+          ...expectedEntry,userSecurityVersion: await groupRoles.reconcileWithClient(client,{ tenantId: expectedEntry.tenantId,
+            userId: expectedEntry.userId,environment,flow: row,auditEventFor: groupAuditEventFor }),
+        };
+        const setCookie=await issueCurrentSession(client,entry,row,issueSession);
+        await consume(client,row,entry,time);
         return Object.freeze({ status: 'authenticated',setCookie });
       });
     },
@@ -366,11 +376,22 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
     },
     async verified({ flowId,identity,choiceVerifier,browserToken,correlationId,principal }={}) {
       uuid(flowId);uuid(correlationId);digest(choiceVerifier);
-      if (!identity || identity.provider!=='microsoft_entra' || Object.keys(identity).sort().join(',')
-        !=='authenticatedAt,provider,tenantReference,userReference') invalid();
+      const identityFields=Object.keys(identity ?? {}).sort().join(',');
+      if (!identity || identity.provider!=='microsoft_entra' || ![
+        'authenticatedAt,provider,tenantReference,userReference',
+        'authenticatedAt,groupMembership,groupValidUntil,provider,tenantReference,userReference',
+      ].includes(identityFields)) invalid();
       const providerTenant=uuid(identity.tenantReference),providerUser=uuid(identity.userReference);
       const authenticated=typeof identity.authenticatedAt==='string' ? new Date(identity.authenticatedAt) : null;
       if (!authenticated || !Number.isFinite(authenticated.getTime()) || authenticated.toISOString()!==identity.authenticatedAt) invalid();
+      let membership=null,groupUntil=null;
+      if (identity.groupMembership!==undefined) {
+        // The mapping policy also validates the provider-neutral bounded shape.
+        resolveMicrosoftMappedGroups({ directoryId: providerTenant,providerDirectoryId: providerTenant,
+          mappings: [],membership: identity.groupMembership });
+        membership=identity.groupMembership;groupUntil=new Date(identity.groupValidUntil);
+        if (!Number.isFinite(groupUntil.getTime()) || groupUntil.toISOString()!==identity.groupValidUntil) invalid();
+      }
       return withPostgresTransaction(pool,async client=>{
         const initial=await load(client,flowId);
         if (!browser(initial,browserToken) || initial.status!=='redeeming') return false;
@@ -383,7 +404,16 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
         await client.query({ name: 'customer-microsoft-flow-verified',text: `UPDATE customer_microsoft_flows
           SET status='verified',verified_at=$3,choice_verifier=$4,provider_tenant_reference=$5,provider_user_reference=$6,
             authenticated_at=$7,admission_snapshot=$8::jsonb WHERE environment=$1 AND id=$2`,
-        values: [environment,flowId,time,choiceVerifier,providerTenant,providerUser,authenticated,JSON.stringify(snapshot)] });return true;
+        values: [environment,flowId,time,choiceVerifier,providerTenant,providerUser,authenticated,JSON.stringify(snapshot)] });
+        if (membership!==null && flow.purpose==='login') {
+          if (groupUntil<=time || groupUntil.getTime()>time.getTime()+3660000) invalid();
+          const deadline=new Date(Math.min(groupUntil.getTime(),time.getTime()+3600000));
+          await client.query({ name: 'customer-microsoft-flow-group-observation',text: `INSERT INTO customer_microsoft_group_observations
+            (environment,flow_id,directory_id,provider_user_id,status,group_ids,verified_at,valid_until)
+            VALUES($1,$2,$3,$4,$5,$6::uuid[],$7,$8)`,
+          values: [environment,flowId,providerTenant,providerUser,membership.status,membership.groupIds,time,deadline] });
+        }
+        return true;
       });
     },
   });

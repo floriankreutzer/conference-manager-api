@@ -113,7 +113,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
 
   await migrateUp(pool);
   await createRoles(pool);
-  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 29);
+  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION, 30);
 
   await t.test('fresh install records all Demo overlays and permits the real reset sequence', async () => {
     await migrateDemoUp(pool, { roles: ROLES });
@@ -147,10 +147,12 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
       { version: 27, name: 'synthetic_handoff_reset_privileges', checksum_length: 64 },
       { version: 28, name: 'synthetic_calendar_reset_privileges', checksum_length: 64 },
       { version: 29, name: 'platform_audit_segment_guard_privileges', checksum_length: 64 },
+      { version: 30, name: 'microsoft_role_authority_empty_reset', checksum_length: 64 },
     ]);
     for (const table of ['platform_passkey_credentials', 'platform_passkey_auth_transactions',
       'platform_passkey_enrollment_grants', 'platform_passkey_enrollment_transactions',
       'customer_microsoft_flows','customer_microsoft_start_budgets',
+      'tenant_microsoft_role_settings','customer_microsoft_group_observations',
       'tenant_runtime_registry','synthetic_tenant_generations','protected_runtime_deployments','protected_runtime_epoch_history',
       'synthetic_calendar_events','synthetic_calendar_resources','synthetic_catalogue_media_assets',
       'synthetic_customer_handoffs','synthetic_handoff_start_budgets']) {
@@ -176,6 +178,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
       'guard_catering_catalogue_review_head()','verify_catering_catalogue_review()',
       'customer_microsoft_snapshot_valid(jsonb)','guard_customer_microsoft_flow()','verify_customer_microsoft_link()',
       'guard_customer_microsoft_identity_link()','guard_customer_microsoft_start_budget()',
+      'guard_empty_microsoft_role_authority_truncate()',
       'protected_runtime_acquire_exclusive(text)','guard_protected_runtime_deployment()',
       'guard_protected_runtime_epoch_history()','guard_synthetic_tenant_generation()',
       'guard_tenant_runtime_registry()','guard_protected_runtime_truncate()',
@@ -230,7 +233,7 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
     );
     await migrateDemoUp(pool, { roles: ROLES });
     assert.deepEqual((await overlayVersions(pool)).map(({ version }) => version),
-      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]);
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]);
     await resetAttributionStateAsRole(pool, ROLES.reset);
   });
 

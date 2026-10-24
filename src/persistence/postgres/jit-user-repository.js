@@ -66,7 +66,8 @@ async function loadElevatedRoles(client, tenantId, userId) {
     name: 'jit-load-elevated-roles',
     text: `
       SELECT role
-      FROM tenant_user_roles
+      FROM (SELECT * FROM tenant_user_roles
+      WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS effective_role_source
       WHERE tenant_id = $1 AND user_id = $2
       ORDER BY CASE role
         WHEN 'conference_manager' THEN 1
@@ -211,7 +212,8 @@ export function createPostgresJitUserRepository(pool, { auditRepository } = {}) 
             name: 'jit-find-existing-tenant-admin',
             text: `
               SELECT 1
-              FROM tenant_user_roles r
+              FROM (SELECT * FROM tenant_user_roles
+      WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS r
               JOIN users u
                 ON u.tenant_id = r.tenant_id
                AND u.id = r.user_id

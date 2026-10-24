@@ -151,7 +151,8 @@ export function createPostgresPlatformRecoveryRepository(pool, {
                  target.security_version AS user_revision,
                  CASE WHEN target.active THEN 'active' ELSE 'disabled' END AS user_state,
                  CASE WHEN identity.user_id IS NULL THEN 'missing' ELSE 'active' END AS identity_state,
-                 (SELECT count(*)::integer FROM tenant_user_roles
+                 (SELECT count(*)::integer FROM (SELECT * FROM tenant_user_roles
+      WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS effective_role_source
                   WHERE tenant_id = tenant.id AND role = 'tenant_admin') AS admin_count
           FROM tenants tenant
           JOIN users target ON target.tenant_id = tenant.id AND target.id = $2
@@ -179,7 +180,8 @@ export function createPostgresPlatformRecoveryRepository(pool, {
         name: 'platform-recovery-inspect-microsoft-reconsent',
         text: `
           SELECT integration.connection_version, integration.status,
-                 EXISTS (SELECT 1 FROM tenant_user_roles
+                 EXISTS (SELECT 1 FROM (SELECT * FROM tenant_user_roles
+      WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS effective_role_source
                          WHERE tenant_id = $1 AND role = 'tenant_admin') AS customer_admin_available
           FROM integrations integration
           WHERE integration.tenant_id = $1 AND integration.provider = 'microsoft365'
@@ -360,10 +362,12 @@ export function createPostgresPlatformRecoveryRepository(pool, {
                    EXISTS (SELECT 1 FROM user_identity_bindings identity
                            WHERE identity.tenant_id = target.tenant_id
                              AND identity.user_id = target.id) AS identity_active,
-                   EXISTS (SELECT 1 FROM tenant_user_roles role
+                   EXISTS (SELECT 1 FROM (SELECT * FROM tenant_user_roles
+      WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS role
                            WHERE role.tenant_id = target.tenant_id AND role.user_id = target.id
                              AND role.role = 'tenant_admin') AS already_admin,
-                   (SELECT count(*)::integer FROM tenant_user_roles role
+                   (SELECT count(*)::integer FROM (SELECT * FROM tenant_user_roles
+      WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS role
                     WHERE role.tenant_id = target.tenant_id AND role.role = 'tenant_admin') AS admin_count,
                    (SELECT count(*)::integer FROM sessions session
                     WHERE session.tenant_id = target.tenant_id AND session.user_id = target.id
@@ -522,7 +526,8 @@ export function createPostgresPlatformRecoveryRepository(pool, {
                    EXISTS (SELECT 1 FROM user_identity_bindings identity
                            WHERE identity.tenant_id = target.tenant_id
                              AND identity.user_id = target.id) AS identity_active,
-                   (SELECT count(*)::integer FROM tenant_user_roles role
+                   (SELECT count(*)::integer FROM (SELECT * FROM tenant_user_roles
+      WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS role
                     WHERE role.tenant_id = tenant.id AND role.role = 'tenant_admin') AS admin_count
             FROM tenants tenant
             JOIN users target ON target.tenant_id = tenant.id AND target.id = $2
@@ -542,7 +547,8 @@ export function createPostgresPlatformRecoveryRepository(pool, {
         await client.query({
           name: 'platform-recovery-restore-last-admin-role',
           text: `INSERT INTO tenant_user_roles (tenant_id, user_id, role, created_at, updated_at)
-                 VALUES ($1, $2, 'tenant_admin', $3, $3)`,
+                 VALUES ($1, $2, 'tenant_admin', $3, $3) ON CONFLICT(tenant_id,user_id,role)
+                   DO UPDATE SET direct_grant=true,updated_at=EXCLUDED.updated_at`,
           values: [values.tenantId, values.targetId, values.occurredAt],
         });
         const revoked = await client.query({

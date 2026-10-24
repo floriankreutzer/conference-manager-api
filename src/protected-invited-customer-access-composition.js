@@ -21,6 +21,8 @@ import { createPostgresProtectedCustomerAccessRepository } from './persistence/p
 import { createPostgresProtectedInvitedSessionRepository } from './persistence/postgres/protected-invited-session-repository.js';
 import { createPostgresProtectedRealTenantScope } from './persistence/postgres/protected-real-tenant-scope.js';
 import { createPostgresProtectedRuntimeExecutionScopes } from './persistence/postgres/protected-runtime-execution-scopes.js';
+import { createPostgresTenantMicrosoftRoleRepository } from './persistence/postgres/tenant-microsoft-role-repository.js';
+import { createTenantMicrosoftRoleService } from './application/tenant-microsoft-role-service.js';
 
 // Inactive owned composition: no route installation, provider call or timer.
 // Every anonymous entry acquires current deployment custody, including neutral
@@ -33,6 +35,12 @@ export function createProtectedInvitedCustomerAccess({ pool,leasePool,environmen
   const tenantScope=createPostgresProtectedRealTenantScope(pool,protection);
   const auditRepository=createPostgresAuditRepository(pool,{ hmacSecret: auditHmacSecret });
   const auditService=createAuditService({ repository: auditRepository,authorizationPolicy: createAuthorizationPolicy(),clock });
+  const groupRoleAdministration=createTenantMicrosoftRoleService({
+    repository: createPostgresTenantMicrosoftRoleRepository(pool,{ auditRepository,tenantEligibility: tenantScope }),
+    authorizationPolicy: createAuthorizationPolicy(),auditService,
+  });
+  const groupRoleService=Object.freeze({ get: context=>scopes.withShared(()=>groupRoleAdministration.get(context)),
+    replace: (context,command)=>scopes.withShared(()=>groupRoleAdministration.replace(context,command)) });
   const sessionRepository=createPostgresProtectedInvitedSessionRepository(pool,{ ...protection,auditRepository });
   const accessRepository=createPostgresProtectedCustomerAccessRepository(pool,protection);
   const sessionService=createProtectedInvitedCustomerSessions({ ...protection,sessionRepository,accessRepository,
@@ -94,5 +102,5 @@ export function createProtectedInvitedCustomerAccess({ pool,leasePool,environmen
     reissue: (context,command)=>scopes.withShared(()=>invitations.reissue(context,command)),
     revoke: (context,command)=>scopes.withShared(()=>invitations.revoke(context,command)),
   });
-  return Object.freeze({ service,sessionService,microsoft,invitationService });
+  return Object.freeze({ service,sessionService,microsoft,invitationService,groupRoleService });
 }

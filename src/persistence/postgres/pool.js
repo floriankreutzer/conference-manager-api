@@ -42,7 +42,8 @@ const { Pool } = pg;
 // Schema 66 preserves the legacy audit prefix and introduces independently signed INT segments.
 // Schema 67 adds the owner-only, one-time all-role audit receipt.
 // Schema 68 tracks independent direct and Microsoft-derived Customer grants.
-export const CURRENT_SCHEMA_VERSION = 68;
+// Schema 69 adds approved mappings and expiring identity-bound membership.
+export const CURRENT_SCHEMA_VERSION = 69;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

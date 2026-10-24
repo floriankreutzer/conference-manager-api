@@ -47,6 +47,8 @@ export function protectedRuntimeRoleManifest(surface) {
     table('platform_diagnostic_events','INSERT')];
   const functions=[...COMMON_FUNCTIONS];
   if (surface==='customer') {
+    tables.push(table('tenant_microsoft_role_settings','SELECT,INSERT,UPDATE'),
+      table('customer_microsoft_group_observations','SELECT,INSERT,DELETE'));
     tables.push(table('tenants','SELECT'),columns('tenants','UPDATE',
       'display_name,updated_at,locations_revision,organization_revision,catalog_revision,'
         +'booking_policies_revision,cost_allocation_revision'),
