@@ -34,6 +34,7 @@ import { createPlatformSyntheticGenerationRouteModule } from './platform/http/sy
 import { createPlatformSyntheticHandoffRouteModule } from './platform/http/synthetic-handoff-routes.js';
 import { createPlatformTenantRoutes } from './platform/http/tenant-routes.js';
 import { protectPlatformPasskeyRoute } from './platform/http/passkey-operation-route.js';
+import { protectPlatformMicrosoftRoute } from './platform/http/microsoft-operation-route.js';
 import { PLATFORM_OPERATIONAL_ROUTE_MODULES } from './platform/app.js';
 import { platformHealthRoutes } from './platform/http/health-routes.js';
 import { platformSessionRoutes } from './platform/http/session-routes.js';
@@ -113,8 +114,10 @@ export async function createProtectedPlatformRuntime(environment) {
     const tenantRoutes=createPlatformTenantRoutes({ invitationAdministration: true });
     const operational=active ? PLATFORM_OPERATIONAL_ROUTE_MODULES.map(module=>{
       const selected=module.id===tenantRoutes.id ? tenantRoutes : module;
-      return config.assuranceMode==='microsoft_mfa' ? selected : protectPlatformPasskeyRoute(selected,
-        { authService: authentication.normalPasskeyService,environment: profile.environment,securityEpoch: profile.platformSecurityEpoch });
+      const protect=config.assuranceMode==='microsoft_mfa' ? protectPlatformMicrosoftRoute : protectPlatformPasskeyRoute;
+      return protect(selected,{ authService: config.assuranceMode==='microsoft_mfa'
+        ? authentication.normalMicrosoftService : authentication.normalPasskeyService,
+      environment: profile.environment,securityEpoch: profile.platformSecurityEpoch });
     }) : [platformHealthRoutes,platformSessionRoutes];
     const insights=active ? [createPlatformInsightRoutes(createPlatformInsightService({
       sources: bundle.insightSources,authorizationPolicy: platformAuthorizationPolicy }))] : [];

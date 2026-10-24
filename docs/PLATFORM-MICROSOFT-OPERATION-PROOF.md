@@ -1,4 +1,4 @@
-# Microsoft exact-operation proof (uncomposed source candidate)
+# Microsoft exact-operation proof (source candidate)
 
 The owner-selected target removes application passkeys from the active Platform
 runtime. Microsoft-issued MFA remains mandatory. The accepted Microsoft login
@@ -43,10 +43,43 @@ continuation variant prepares a distinct normal session inside the same commit
 for Customer delegation. No strong cookie or mutation result leaves the service
 before that transaction returns successfully.
 
+## Owned HTTP composition
+
+The candidate closed protected Microsoft profile installs the ordinary operation
+service and decorates the existing concrete Platform route families. Canonical
+bounded request hashing, buffering, original body/target/permission policies and
+commit-before-output now share one transport implementation with the unchanged
+legacy passkey profile. The Microsoft profile accepts only its own state header;
+an application-passkey header cannot substitute. An explicit428 response carries
+only status, state, fixed-provider authorization URL and request ID. A final
+request uses `X-Platform-Microsoft-Proof` with exactly that state and its original
+method, URL, body, idempotency key and source session. It is never retried blindly.
+
+Fixed authentication endpoints under `/api/v1/platform/auth/microsoft/operation`:
+
+- `GET /configuration`: current authenticated capability, mode and environment.
+- `GET /callback`: bounded provider response plus callback-only Lax cookie;
+  no source Strict cookie is required or elevated application session issued.
+- `GET /complete`: fixed neutral script-free bilingual page after query scrub;
+  reaching this page makes no verification or business-success claim.
+- `POST /status`: exact `{state}` body, current normal Strict source session,
+  CSRF/origin and separate Strict operation cookie; only pending/verified plus
+  request ID is returned. No generic command is accepted.
+
+The Microsoft login factory permits only normal MFA login transactions and
+rejects old/generic step-up transactions before provider exchange. Its route
+registry does not expose generic step-up, and its HTTP session resolver accepts
+only normal Microsoft MFA. Temporary fresh authority stays inside final owned
+transactions. No active WebAuthn service, enrollment route, key secret or
+minimum-credential requirement is constructed in this profile. CSP, COOP,
+same-origin, no-store and no-referrer policies remain unchanged.
+
 ## Required integration before activation
 
-This source component is not yet a complete or deployable Microsoft operation
-path. The draft070/031 custody schema has not received native qualification.
+The complete requested release is not yet deployable. The draft070/031 custody
+progression passed actual PostgreSQL in CI40130784451 on source
+c080dfa14900f0694ade608f218e15c616bd9e20; complete native/browser qualification
+is still pending, and this HTTP follow-up requires its own exact-source gates.
 The PostgreSQL adapter now implements current-source and expiry/CAS checks,
 fixed ordinary/shared versus synthetic owner-exclusive transaction selection,
 bounded retention and mandatory audit receipts. Schema070 and Demo031 add the
@@ -55,17 +88,16 @@ The fixed Platform-only incremental grant uses the existing exact-source,
 epoch/segment, offline-owner, signed-chain and two-role-drain gate. It never
 replays fresh-role installation or adds Customer proof access.
 
-An actual-PostgreSQL progression is prepared for the real session and audit
+The actual-PostgreSQL progression uses the real session and audit
 repositories with independent max-one business/lease pools and isolated actual
 MSAL responses. It covers inert callbacks, ordinary and synthetic execution
 classes, one-use proof, wrong digest/class, rolled-back business/session writes,
 mandatory audit, password-only denial, logout, operator disabling, capacity and retained
-history. These are pending execution; synthetic SDK tokens do not prove real
-provider signatures or physical MFA. Callback routes and redirect registration,
-business-route protection, browser integration and both native and
-different-site browser acceptance remain required. Actual provider registration
+history. Synthetic SDK tokens do not prove real provider signatures or physical
+MFA. Browser integration and different-site browser acceptance remain required.
+Actual provider registration
 of the separate fixed callback is operating evidence, not implied by its client
-validator. The new module is not installed in any runtime or closed Demo graph.
+validator. No deployed profile or closed Demo graph has been activated by this change.
 
 The legacy synthetic handoff proof foreign key, approval trigger, calendar-source
 lock and delegated-session reader still require their existing legacy proof.
@@ -78,8 +110,10 @@ minimum-credential requirement.
 Focused in-memory service-port tests cover inert callback, separate cookies,
 exact digest/browser/source/version/expiry checks, provider mismatch, callback
 replay, private context one-use/instance scope and withheld results on mutation
-or simulated commit failure. These are component evidence only, not PostgreSQL
-atomicity, real Microsoft/device MFA or deployed acceptance. Full exact-source
+or simulated commit failure. The HTTP follow-up adds original-route exact binding,
+source/CSRF/claim-shape failures, withheld output, login-only rejection and real
+HTTP host/origin/cookie/CSP/COOP/redaction checks. These are component/transport
+evidence only, not real Microsoft/device MFA or deployed acceptance. Full exact-source
 quality/security/native, all permanent three-customer/two-reset browser/storage
 gates, actual provider evidence and coordinated live acceptance remain mandatory.
 

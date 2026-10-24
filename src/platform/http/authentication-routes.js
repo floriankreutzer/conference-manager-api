@@ -154,3 +154,14 @@ export const platformAuthenticationRoutes = definePlatformRouteModule({
     };
   },
 });
+
+export const platformMicrosoftLoginRoutes=definePlatformRouteModule({
+  id: 'platform-authentication',
+  claim(context) {
+    return context.path===PLATFORM_AUTH_STEP_UP_PATH ? null : platformAuthenticationRoutes.claim(context);
+  },
+  createHandler(runtime) {
+    const handle=platformAuthenticationRoutes.createHandler(runtime);
+    return context=>context.path===PLATFORM_AUTH_STEP_UP_PATH ? null : handle(context);
+  },
+});
