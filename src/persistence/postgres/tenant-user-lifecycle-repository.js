@@ -45,7 +45,8 @@ function mapUser(row) {
     active: row.active,
     securityVersion: Number(row.security_version),
     lifecycleVersion,
-    elevatedRoles: normalizeRoles(row.elevated_roles || []),
+    elevatedRoles: normalizeRoles(row.direct_roles || []),
+    ...(row.microsoft_group_roles?.length>0 ? { microsoftGroupRoles: normalizeRoles(row.microsoft_group_roles) } : {}),
     identityLinked: row.identity_linked === true,
     identityLinkedAt: iso(row.identity_linked_at),
     lastSignInAt: iso(row.last_sign_in_at),
@@ -61,6 +62,8 @@ const USER_PRESENTATION_COLUMNS = `
   u.security_version,
   u.lifecycle_revision,
   COALESCE(role_state.elevated_roles, ARRAY[]::varchar[]) AS elevated_roles,
+  COALESCE(role_state.direct_roles, ARRAY[]::varchar[]) AS direct_roles,
+  COALESCE(role_state.microsoft_group_roles, ARRAY[]::varchar[]) AS microsoft_group_roles,
   (identity_state.identity_linked_at IS NOT NULL) AS identity_linked,
   identity_state.identity_linked_at,
   session_state.last_sign_in_at,
@@ -73,7 +76,9 @@ const USER_PRESENTATION_JOINS = `
       WHEN 'conference_manager' THEN 1
       WHEN 'tenant_admin' THEN 2
       ELSE 99
-    END) AS elevated_roles
+    END) AS elevated_roles,
+    array_agg(role ORDER BY role) FILTER(WHERE direct_grant) AS direct_roles,
+    array_agg(role ORDER BY role) FILTER(WHERE cardinality(microsoft_group_ids)>0) AS microsoft_group_roles
     FROM tenant_user_roles
     WHERE tenant_id = u.tenant_id AND user_id = u.id
   ) role_state ON true

@@ -9,6 +9,7 @@ import { createAuditService } from '../src/audit/audit-service.js';
 import { createAuthorizationPolicy,tenantAuthorizationSnapshot } from '../src/authorization/policy.js';
 import { createSessionService } from '../src/identity/session-service.js';
 import { createPostgresSessionRepository } from '../src/persistence/postgres/session-repository.js';
+import { createPostgresTenantUserLifecycleRepository } from '../src/persistence/postgres/tenant-user-lifecycle-repository.js';
 import { migrateUp,rollbackLatest } from '../scripts/db-migrations.mjs';
 
 test('native role provenance preserves independent grants, fences sessions and refuses destructive downgrade',async t=>{
@@ -30,6 +31,21 @@ test('native role provenance preserves independent grants, fences sessions and r
     VALUES($1,$2,'conference_manager',false,$3,ARRAY[$4]::uuid[])`,[tenantId,userId,directory,group]);
   const listed=(await repo.listByTenantId({ tenantId })).find(row=>row.userId===userId);
   assert.deepEqual(listed.elevatedRoles,[]);assert.deepEqual(listed.microsoftGroupRoles,['conference_manager']);
+  const lifecycle=createPostgresTenantUserLifecycleRepository(pool,{ auditRepository });
+  const lifecycleListed=(await lifecycle.listByTenantId({ tenantId,role: 'conference_manager' })).find(row=>row.userId===userId);
+  assert.deepEqual(lifecycleListed.elevatedRoles,[]);
+  assert.deepEqual(lifecycleListed.microsoftGroupRoles,['conference_manager']);
+  assert.equal((await lifecycle.listByTenantId({ tenantId,role: 'employee_only' })).some(row=>row.userId===userId),false);
+  const lifecycleEvent=()=>audit.createActorEvent({ tenantId,actorUserId: actor,correlationId: randomUUID(),
+    action: 'tenant.user_permissions.changed',targetType: 'user',targetId: userId,outcome: 'success',
+    retentionClass: 'administrative',metadata: { operation: 'lifecycle_fixture' } });
+  const disabled=await lifecycle.changeAccess({ tenantId,targetUserId: userId,active: false,expectedVersion: 1,
+    changedAt: new Date(),auditEventFor: lifecycleEvent });
+  assert.equal(disabled.status,'updated');
+  assert.deepEqual(disabled.user.elevatedRoles,[]);
+  assert.deepEqual(disabled.user.microsoftGroupRoles,['conference_manager']);
+  await lifecycle.changeAccess({ tenantId,targetUserId: userId,active: true,expectedVersion: 2,
+    changedAt: new Date(),auditEventFor: lifecycleEvent });
   assert.equal((await mutate([])).status,'unchanged');
   await mutate(['conference_manager']);
   let stored=(await pool.query('SELECT * FROM tenant_user_roles WHERE tenant_id=$1 AND user_id=$2',[tenantId,userId])).rows[0];

@@ -49,8 +49,21 @@ test('administration projects mapped groups but forwards only direct grants to i
   const context={ principal: { userId: '10000000-0000-4000-8000-000000000003' },tenantContext: { tenantId },
     correlationId: '10000000-0000-4000-8000-000000000004' };
   assert.deepEqual((await service.listUsers(context))[0].roles,[TENANT_ROLE.EMPLOYEE,manager]);
+  assert.deepEqual((await service.listUsers(context))[0].roleSources,{ direct: [],microsoftGroups: [manager] });
   assert.deepEqual((await service.setRoles({ ...context,targetUserId: userId,roles: [] })).roles,[TENANT_ROLE.EMPLOYEE,manager]);
   assert.deepEqual(written,[]);
+});
+
+test('role presentation preserves every source combination without exposing provider identifiers',async()=>{
+  const { tenantUserRolePresentation }=await import('../src/application/tenant-user-role-presentation.js');
+  for (const direct of combinations) for (const microsoftGroups of combinations) {
+    const output=tenantUserRolePresentation({ elevatedRoles: direct,microsoftGroupRoles: microsoftGroups });
+    assert.deepEqual(output.roles,['employee',...[manager,admin].filter(role=>direct.includes(role) || microsoftGroups.includes(role))]);
+    if (microsoftGroups.length) {
+      assert.deepEqual(output.roleSources,{ direct,microsoftGroups });
+      assert.equal(Object.isFrozen(output.roleSources),true);
+    } else assert.equal(Object.hasOwn(output,'roleSources'),false);
+  }
 });
 
 test('source envelope rejects extra authority and accessors before reading values',()=>{

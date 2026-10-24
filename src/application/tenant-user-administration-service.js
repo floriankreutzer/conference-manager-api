@@ -10,9 +10,9 @@ import {
 import {
   PERMISSION,
   TENANT_ROLE,
-  tenantAuthorizationSnapshot,
 } from '../authorization/policy.js';
-import { normalizeTenantElevatedRoles,resolveTenantRoleSources } from '../authorization/tenant-role-sources.js';
+import { normalizeTenantElevatedRoles } from '../authorization/tenant-role-sources.js';
+import { tenantUserRolePresentation } from './tenant-user-role-presentation.js';
 import { isInternalUuid } from '../domain/identifiers.js';
 import { TenantUserRoleConflictError } from './tenant-user-errors.js';
 
@@ -29,16 +29,11 @@ function assertTargetUserId(value) {
 }
 
 function publicUser(user) {
-  const snapshot = tenantAuthorizationSnapshot([
-    TENANT_ROLE.EMPLOYEE,
-    ...resolveTenantRoleSources({ directRoles: user.elevatedRoles,
-      microsoftGroupRoles: user.microsoftGroupRoles ?? [] }).effectiveRoles,
-  ]);
   return Object.freeze({
     id: user.userId,
     displayName: user.displayName,
     active: user.active,
-    roles: snapshot.roles,
+    ...tenantUserRolePresentation(user),
   });
 }
 

@@ -73,3 +73,16 @@ last group Admin, invalid duplicate groups and downgrade refusal. It is not proo
 of Microsoft identity/membership validation. Provider mapping, reconciliation,
 revocation/overage policy, source-aware administration UI and actual protected
 operating acceptance remain required before group assignment can be activated.
+
+## Administration source projection
+
+The current source candidate projects the same canonical effective roles in both
+role-mutation responses and lifecycle/list responses. When Microsoft-derived roles
+exist, an additive `roleSources` object exposes only elevated `direct` and
+`microsoftGroups` role arrays, without directory, group or provider-User IDs.
+Without group grants, the historical response shape remains unchanged. Lifecycle
+filters continue to use effective roles; direct editing uses only the direct
+projection. The paired frontend validates that source union exactly equals the
+returned effective roles and displays group grants separately from direct checkboxes.
+This prevents accidental conversion of group authority to durable direct authority.
+It does not populate groups or replace the remaining provider/mapping integration.

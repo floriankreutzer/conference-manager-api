@@ -61,6 +61,15 @@ function service(repository, overrides = {}) {
   };
 }
 
+test('lifecycle presentation keeps group authority separate from direct assignments',async()=>{
+  const harness=service({ async listByTenantId() { return [storedUser({ elevatedRoles: [],
+    microsoftGroupRoles: ['tenant_admin'] })]; },async changeAccess() {} });
+  const page=await harness.service.listUsers({ principal: principal(),tenantContext: { tenantId: TENANT_ID,status: 'active' },
+    correlationId: CORRELATION_ID });
+  assert.deepEqual(page.users[0].roles,['employee','tenant_admin']);
+  assert.deepEqual(page.users[0].roleSources,{ direct: [],microsoftGroups: ['tenant_admin'] });
+});
+
 test('Tenant User lifecycle listing is bounded, filtered, Tenant-scoped and presentation-safe', async () => {
   let received;
   const harness = service({
