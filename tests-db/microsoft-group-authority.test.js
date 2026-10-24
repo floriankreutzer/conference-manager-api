@@ -175,5 +175,6 @@ test('native Microsoft groups require approved REAL mapping and verified flow; r
   for (const table of ['tenant_microsoft_role_settings','customer_microsoft_group_observations']) {
     await assert.rejects(pool.query(`TRUNCATE ${table}`),{ code: '55000' });
   }
+  assert.equal(await rollbackLatest(pool),true); // Empty070, retaining actual069 evidence.
   await assert.rejects(rollbackLatest(pool),{ code: '55000' }); // Preserve mappings, observations and approval evidence.
 });

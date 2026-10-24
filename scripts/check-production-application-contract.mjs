@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 69;/.test(pool)) {
-  throw new Error('Production application requires Microsoft group authority schema 69.');
+if (!/export const CURRENT_SCHEMA_VERSION = 70;/.test(pool)) {
+  throw new Error('Production application requires Microsoft operation proof schema 70.');
 }
 
 const auditEvent = await readFile('src/audit/event.js', 'utf8');

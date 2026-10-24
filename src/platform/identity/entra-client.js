@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { ConfidentialClientApplication } from '@azure/msal-node';
 import { PlatformIdentityError } from './errors.js';
 import { PLATFORM_ENTRA_PROVIDER } from '../../domain/identity-provider.js';
+import { PLATFORM_MICROSOFT_OPERATION_CALLBACK } from './microsoft-operation-cookie.js';
 import { canonicalizePlatformEntraSdkUrl } from './entra-sdk-authorization-url.js';
 import {
   PLATFORM_ENTRA_SCOPES,
@@ -50,7 +51,7 @@ function fixedAuthority(value, tenantReference) {
   return parsed;
 }
 
-function fixedRedirect(value, publicOrigin) {
+function fixedRedirect(value, publicOrigin, operationOnly) {
   let parsed;
   try {
     parsed = new URL(value);
@@ -63,7 +64,7 @@ function fixedRedirect(value, publicOrigin) {
     || parsed.password !== ''
     || parsed.search !== ''
     || parsed.hash !== ''
-    || parsed.pathname !== '/api/v1/platform/auth/microsoft/callback'
+    || parsed.pathname !== (operationOnly ? PLATFORM_MICROSOFT_OPERATION_CALLBACK : '/api/v1/platform/auth/microsoft/callback')
     || parsed.origin !== publicOrigin
   ) throw new TypeError('PLATFORM_ENTRA_REDIRECT_INVALID');
   return parsed.toString();
@@ -147,7 +148,7 @@ function createClient({
   authenticationMaxAgeSeconds = 15 * 60,
   clock = () => Date.now(),
   application,
-} = {}, primaryOnly = false, microsoftMfa = false) {
+} = {}, primaryOnly = false, microsoftMfa = false, operationOnly = false) {
   const tenantReference = requireGuid(tenantValue, 'PLATFORM_ENTRA_TENANT_INVALID');
   if (!GUID_PATTERN.test(clientId || '')) throw new TypeError('PLATFORM_ENTRA_CLIENT_ID_INVALID');
   const normalizedClientId = clientId.toLowerCase();
@@ -157,7 +158,7 @@ function createClient({
   }
   const authority = fixedAuthority(authorityValue, tenantReference);
   const platformOrigin = fixedPublicOrigin(publicOrigin);
-  const redirectUri = fixedRedirect(redirectValue, platformOrigin);
+  const redirectUri = fixedRedirect(redirectValue, platformOrigin,operationOnly);
   if (!primaryOnly && (
     typeof mfaAuthenticationContext !== 'string'
     || typeof stepUpAuthenticationContext !== 'string'
@@ -182,7 +183,9 @@ function createClient({
   }
 
   function context(value) {
-    if (!contexts.has(value)) throw new TypeError('PLATFORM_ENTRA_AUTHENTICATION_CONTEXT_INVALID');
+    if (!contexts.has(value) || operationOnly && value!==stepUpAuthenticationContext) {
+      throw new TypeError('PLATFORM_ENTRA_AUTHENTICATION_CONTEXT_INVALID');
+    }
     return value;
   }
 
@@ -350,4 +353,10 @@ export function createPlatformEntraPrimaryClient(configuration = {}) {
 // claim alone never establish assurance. Assertions are instance-bound/one-use.
 export function createPlatformEntraMfaClient(configuration = {}) {
   return createClient({ authenticationMaxAgeSeconds: 300, ...configuration }, false, true);
+}
+
+// Dedicated fixed callback and fresh context only. No login session or ordinary
+// authentication context can substitute for the operation's provider ceremony.
+export function createPlatformEntraOperationClient(configuration = {}) {
+  return createClient({ authenticationMaxAgeSeconds: 300,...configuration },false,true,true);
 }

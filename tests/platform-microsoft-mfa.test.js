@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
-import { createPlatformEntraMfaClient, createPlatformEntraPrimaryClient } from '../src/platform/identity/entra-client.js';
+import { createPlatformEntraMfaClient,createPlatformEntraPrimaryClient,createPlatformEntraOperationClient }
+  from '../src/platform/identity/entra-client.js';
+import { PLATFORM_MICROSOFT_OPERATION_CALLBACK } from '../src/platform/identity/microsoft-operation-cookie.js';
 import { validatePlatformEntraMfaAuthorizationUrl } from '../src/platform/identity/entra-authorization-url.js';
 
 const CLIENT = '11111111-1111-4111-8111-111111111111';
@@ -20,13 +22,14 @@ const claims = () => ({ aud: CLIENT, tid: DIRECTORY, oid: SUBJECT, iss: `${AUTHO
   ver: '2.0', auth_time: NOW / 1000 - 10, iat: NOW / 1000 - 10, exp: NOW / 1000 + 3600, amr: ['pwd', 'mfa'],
   roles: ['forged-owner'], groups: ['forged-group'], email: 'ignored@example.com' });
 function client(token = claims(), options = {}) {
-  return createPlatformEntraMfaClient({ clientId: CLIENT, clientSecret: 's'.repeat(48), tenantReference: DIRECTORY,
-    authority: AUTHORITY, redirectUri: REDIRECT, publicOrigin: ORIGIN, clock: () => NOW,
+  const { factory=createPlatformEntraMfaClient,redirectUri=REDIRECT,...configuration }=options;
+  return factory({ clientId: CLIENT, clientSecret: 's'.repeat(48), tenantReference: DIRECTORY,
+    authority: AUTHORITY, redirectUri, publicOrigin: ORIGIN, clock: () => NOW,
     mfaAuthenticationContext: NORMAL, stepUpAuthenticationContext: FRESH,
     application: {
       async getAuthCodeUrl(value) {
         const url = new URL(`${AUTHORITY}/oauth2/v2.0/authorize`);
-        for (const [key, item] of Object.entries({ client_id: CLIENT, redirect_uri: REDIRECT, scope: 'openid profile',
+        for (const [key, item] of Object.entries({ client_id: CLIENT, redirect_uri: redirectUri, scope: 'openid profile',
           response_type: 'code', response_mode: 'query', max_age: String(value.maxAge), state: value.state,
           nonce: value.nonce, code_challenge: value.codeChallenge, code_challenge_method: 'S256', claims: value.claims })) {
           url.searchParams.set(key, item);
@@ -34,8 +37,24 @@ function client(token = claims(), options = {}) {
         return url.toString();
       },
       async acquireTokenByCode(value) { assert.equal(value.nonce, NONCE); return { idTokenClaims: token }; },
-    }, ...options });
+    }, ...configuration });
 }
+
+test('exact-operation Microsoft client permits only its fixed callback and fresh MFA context',async()=>{
+  const options={ factory: createPlatformEntraOperationClient,redirectUri: `${ORIGIN}${PLATFORM_MICROSOFT_OPERATION_CALLBACK}` };
+  const operation=client(claims(),options),url=new URL(await operation.authorizationUrl({ ...request,authenticationContext: FRESH }));
+  assert.equal(url.searchParams.get('redirect_uri'),options.redirectUri);assert.equal(url.searchParams.get('max_age'),'0');
+  assert.deepEqual(JSON.parse(url.searchParams.get('claims')),{ id_token: {
+    auth_time: { essential: true },amr: { essential: true } } });
+  await assert.rejects(operation.authorizationUrl(request),/CONTEXT_INVALID/);
+  await assert.rejects(operation.redeemAuthorizationCode(redeem),/CONTEXT_INVALID/);
+  const proof=await operation.redeemAuthorizationCode({ ...redeem,authenticationContext: FRESH });
+  assert.equal((await operation.verify(proof)).claims.authenticationContext,FRESH);
+  await assert.rejects(operation.verify(proof),/NOT_VERIFIED/);
+  assert.throws(()=>client(claims(),{ ...options,redirectUri: REDIRECT }),/REDIRECT_INVALID/);
+  assert.throws(()=>client(claims(),{ ...options,redirectUri: options.redirectUri+'?next=foreign' }),/REDIRECT_INVALID/);
+  assert.throws(()=>client(claims(),{ redirectUri: options.redirectUri }),/REDIRECT_INVALID/);
+});
 
 test('Microsoft MFA requests auth_time/amr without Conditional Access, extra scopes or WebAuthn', async () => {
   const mfa = client(), url = new URL(await mfa.authorizationUrl(request));

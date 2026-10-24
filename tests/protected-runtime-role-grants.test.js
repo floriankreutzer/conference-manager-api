@@ -1,11 +1,28 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { protectedRuntimeRoleGrantPlan,grantProtectedRuntimeRoles,platformAuditSegmentRoleGrantPlan,
-  grantPlatformAuditSegmentRuntimeRoles,customerMicrosoftGroupRoleGrantPlan,grantCustomerMicrosoftGroupRuntimeRoles }
+  grantPlatformAuditSegmentRuntimeRoles,customerMicrosoftGroupRoleGrantPlan,grantCustomerMicrosoftGroupRuntimeRoles,
+  platformMicrosoftOperationRoleGrantPlan,grantPlatformMicrosoftOperationRuntimeRoles }
   from '../scripts/support/protected-runtime-role-grants.mjs';
 import { architectureConsolidationBoundaryViolations } from '../scripts/check-module-boundaries.mjs';
 
 const epoch='be000000-0000-4000-8000-000000000001';
+test('existing INT Microsoft operation grants are fixed Platform CRUD without Customer or administrative authority',async()=>{
+  const input={ environment: 'int',securityEpoch: epoch,segmentId: 'be000000-0000-4000-8000-000000000002' };
+  const plan=platformMicrosoftOperationRoleGrantPlan(input);
+  assert.deepEqual(plan.statements,[
+    'GRANT SELECT,INSERT,UPDATE,DELETE ON public.platform_microsoft_operation_proofs TO "cm_protected_int_platform"',
+  ]);
+  assert.ok(Object.isFrozen(plan.statements));let connected=false;
+  const pool={ async connect() { connected=true;throw new Error('private-driver-detail'); } };
+  for (const invalid of [{ ...input,environment: 'prod' },{ ...input,role: 'customer' },
+    { ...input,statements: [] },{ ...input,get securityEpoch() { throw new Error('private-accessor'); } }]) {
+    assert.throws(()=>platformMicrosoftOperationRoleGrantPlan(invalid),{ message: 'PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED' });
+    await assert.rejects(grantPlatformMicrosoftOperationRuntimeRoles(pool,invalid),
+      { message: 'PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED' });
+  }
+  assert.equal(connected,false);
+});
 test('existing INT Microsoft group role delta grants only Customer table authority and refuses caller authority',async()=>{
   const input={ environment: 'int',securityEpoch: epoch,segmentId: 'be000000-0000-4000-8000-000000000002' };
   const plan=customerMicrosoftGroupRoleGrantPlan(input);
@@ -44,7 +61,7 @@ test('existing INT audit role delta is fixed, minimal and removes legacy writing
 test('operator plan preserves per-surface proof custody and offline enrollment without connecting or creating credentials',()=>{
   for (const environment of ['dev','int','prod']) {
     const plan=protectedRuntimeRoleGrantPlan({ environment,securityEpoch: epoch });
-    assert.ok(Object.isFrozen(plan));assert.equal(plan.schemaVersion,69);
+    assert.ok(Object.isFrozen(plan));assert.equal(plan.schemaVersion,70);
     const customer=plan.roles[0],platform=plan.roles[1];
     assert.equal(customer.role,`cm_protected_${environment}_customer`);
     assert.equal(platform.role,`cm_protected_${environment}_platform`);

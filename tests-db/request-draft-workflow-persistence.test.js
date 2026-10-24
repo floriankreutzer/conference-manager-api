@@ -170,6 +170,7 @@ test('Request lifecycle is tenant/owner scoped, concurrent, idempotent and audit
       "UPDATE request_workflow_starts SET status = 'started', ended_at = NULL WHERE tenant_id = $1 AND id = $2",
       `UPDATE request_workflow_starts SET owner_user_id = '${COLLEAGUE}' WHERE tenant_id = $1 AND id = $2`,
     ]) await assert.rejects(pool.query(sql, [TENANT, id]), (error) => error.code === '23514');
+    assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
     assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
     assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
     assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.

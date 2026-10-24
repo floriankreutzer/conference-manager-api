@@ -4,7 +4,7 @@ import { ConfidentialClientApplication } from '@azure/msal-node';
 // Actual pinned MSAL with isolated in-memory provider responses. No HTTP leaves
 // this fixture; synthetic JWT bytes are not real Microsoft/device acceptance.
 export function microsoftCodeSdkFixture({ clientId,authority,tenantId,userId,clock,authenticationContext='c1' }) {
-  const state={ sentNonce: null,returnedNonce: null,tokenRequests: 0,groups: undefined,groupOverage: false };
+  const state={ sentNonce: null,returnedNonce: null,tokenRequests: 0,groups: undefined,groupOverage: false,amr: undefined };
   const origin=new URL(authority).origin;
   const metadata={ issuer: `${origin}/{tenantid}/v2.0`,authorization_endpoint: `${authority}/oauth2/v2.0/authorize`,
     token_endpoint: `${authority}/oauth2/v2.0/token`,end_session_endpoint: `${authority}/oauth2/v2.0/logout`,
@@ -26,6 +26,7 @@ export function microsoftCodeSdkFixture({ clientId,authority,tenantId,userId,clo
     const claims={ aud: clientId,tid: tenantId,oid: userId,iss: `${origin}/${tenantId}/v2.0`,
       nonce: state.returnedNonce ?? state.sentNonce,ver: '2.0',iat: seconds,auth_time: seconds,exp: seconds+3600,
       acrs: [authenticationContext],preferred_username: 'synthetic@example.test',
+      ...(state.amr===undefined ? {} : { amr: state.amr }),
       ...(state.groups===undefined ? {} : { groups: state.groups }),...(state.groupOverage ? { hasgroups: true } : {}) };
     const idToken=[{ alg: 'RS256',typ: 'JWT' },claims].map(entry=>Buffer.from(JSON.stringify(entry)).toString('base64url'))
       .concat(Buffer.from('synthetic-signature-not-real-provider-proof').toString('base64url')).join('.');
