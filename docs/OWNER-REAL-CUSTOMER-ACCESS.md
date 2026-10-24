@@ -27,6 +27,21 @@ uses the existing fresh operator-management permission and consumes only its
 injected shared Microsoft operation context. Browser input cannot choose proof
 execution class or supply an own Customer User identity.
 
+The fixed owner protocol and legacy synthetic wrapper share one commit-safe
+orchestrator. Preparation releases its short lease before operation execution;
+the injected operation instance retains its own shared/exclusive transaction
+class. Owner intent rejects generation/slot and credential-response fields. A
+failed mutation or commit returns no redirect/normal continuation result.
+
+The private Platform current-source SQL port requires an actual transaction
+inside the owned shared deployment lease. It checks the unique bootstrap and
+all-role receipts for the actual operator, current all-role/all-scope Microsoft
+normal source with exact provider/version/time/expiry and a current REAL target.
+It holds actor, source, deployment and Tenant read locks. A separate all-role
+operator without the original receipts remains denied. Its native fixture uses
+actual bootstrap/upgrade/session/audit adapters and separate max-one pools; native
+execution remains pending because PostgreSQL is not available locally.
+
 These are necessary checks only. An all-role principal does not prove designated
 ownership. No owner REAL runtime, route, grant, migration, User, Customer session
 or provider access is activated by these modules. The redirect result is private
