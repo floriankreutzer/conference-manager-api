@@ -31,16 +31,22 @@ export function loadProtectedPlatformConfiguration(env) {
   const allowed=new Set([...protectedRuntimeConfigurationKeys('platform'),...KEYS.map(key=>PREFIX+key)]);
   if (Reflect.ownKeys(env).some(key=>key.startsWith('PROTECTED_') && !allowed.has(key))) fail('UNKNOWN_KEY');
   const own=key=>read(env,PREFIX+key),optional=key=>read(env,PREFIX+key,true);
-  const mode=own('ASSURANCE_MODE');if (!['passkey_setup','application_passkey'].includes(mode)) fail('PASSKEY_PROFILE_REQUIRED');
+  const mode=own('ASSURANCE_MODE');
+  if (!['passkey_setup','application_passkey','microsoft_mfa'].includes(mode)) fail('PASSKEY_PROFILE_REQUIRED');
+  const microsoftMfa=mode==='microsoft_mfa';
+  if (microsoftMfa && ['MINIMUM_PASSKEYS','PASSKEY_TRANSACTION_SECRET'].some(key=>Object.hasOwn(env,PREFIX+key))) {
+    fail('MICROSOFT_MFA_PASSKEY_INPUT_FORBIDDEN');
+  }
   const minimum=optional('MINIMUM_PASSKEYS') ?? '2';
   if (!['1','2'].includes(minimum)) fail('PASSKEY_MINIMUM_INVALID');
-  const minimumCredentialCount=requirePlatformPasskeyMinimum(profile.environment,Number(minimum));
+  const minimumCredentialCount=microsoftMfa ? null : requirePlatformPasskeyMinimum(profile.environment,Number(minimum));
   const segmentId=optional('AUDIT_SEGMENT_ID');
   if (segmentId!==undefined && (profile.environment!=='int' || !isInternalUuid(segmentId))) fail('AUDIT_SEGMENT_INVALID');
   const values={ entraClientSecret: secret(env,PREFIX+'ENTRA_CLIENT_SECRET'),
     oidcTransactionSecret: secret(env,PREFIX+'OIDC_TRANSACTION_SECRET'),
     csrfSecret: secret(env,PREFIX+'CSRF_SECRET'),auditHmacSecret: secret(env,PREFIX+'AUDIT_HMAC_SECRET'),
-    cursorSecret: secret(env,PREFIX+'CURSOR_SECRET'),passkeyTransactionSecret: secret(env,PREFIX+'PASSKEY_TRANSACTION_SECRET'),
+    cursorSecret: secret(env,PREFIX+'CURSOR_SECRET'),
+    ...(!microsoftMfa ? { passkeyTransactionSecret: secret(env,PREFIX+'PASSKEY_TRANSACTION_SECRET') } : {}),
     tenantAuditHmacSecret: secret(env,'PROTECTED_TENANT_AUDIT_HMAC_SECRET'),lookupSecret: secret(env,'PROTECTED_CUSTODY_LOOKUP_SECRET') };
   const handoff=profile.syntheticEnabled ? secret(env,'PROTECTED_HANDOFF_SECRET') : null;
   const intent=profile.syntheticEnabled ? secret(env,PREFIX+'HANDOFF_INTENT_SECRET') : null;
@@ -56,7 +62,7 @@ export function loadProtectedPlatformConfiguration(env) {
   let ownerRecipient;try { ownerRecipient=normalizeInvitationRecipient(own('OWNER_RECIPIENT')); } catch { fail('OWNER_REQUIRED'); }
   const ownerLocale=optional('OWNER_LOCALE') ?? 'de';if (!['de','en'].includes(ownerLocale)) fail('OWNER_LOCALE_INVALID');
   const insightSources=loadProtectedPlatformInsightSnapshots({ providerSnapshot: optional('PROVIDER_USAGE_SNAPSHOT'),
-    productSnapshot: optional('PRODUCT_DELIVERY_SNAPSHOT') });
+    productSnapshot: optional('PRODUCT_DELIVERY_SNAPSHOT'),accessMode: microsoftMfa ? 'microsoft_mfa' : 'application_passkey' });
   const authenticationEnvironment=Object.freeze({ NODE_ENV: 'production',PLATFORM_PUBLIC_ORIGIN: profile.platformOrigin,
     PUBLIC_ORIGIN: profile.customerOrigin,ENTRA_CLIENT_ID: peer,PLATFORM_ENTRA_CLIENT_ID: clientId,
     PLATFORM_ENTRA_TENANT_ID: tenantId,PLATFORM_ENTRA_CLIENT_SECRET: values.entraClientSecret,

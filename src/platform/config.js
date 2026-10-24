@@ -183,10 +183,11 @@ export function loadPlatformConfig(env) {
   }
   const productionLike = mode === 'pilot' || mode === 'production';
   const assuranceMode = env.PLATFORM_ASSURANCE_MODE || 'conditional_access';
-  if (!['conditional_access','passkey_setup','application_passkey'].includes(assuranceMode)) {
+  if (!['conditional_access','passkey_setup','application_passkey','microsoft_mfa'].includes(assuranceMode)) {
     fail('PLATFORM_ASSURANCE_MODE_INVALID');
   }
-  const applicationPasskeys = assuranceMode !== 'conditional_access';
+  const applicationPasskeys = ['passkey_setup','application_passkey'].includes(assuranceMode);
+  const microsoftMfa = assuranceMode === 'microsoft_mfa';
   if (applicationPasskeys && !['dev','int','prod'].includes(deploymentEnvironment)) {
     fail('PLATFORM_PASSKEY_DEPLOYMENT_ENVIRONMENT_REQUIRED');
   }
@@ -239,11 +240,14 @@ export function loadPlatformConfig(env) {
     requiredCode: 'PLATFORM_TENANT_AUDIT_HMAC_SECRET_REQUIRED',
     invalidCode: 'PLATFORM_TENANT_AUDIT_HMAC_SECRET_INVALID',
   });
-  const mfaAuthenticationContext = parseAuthenticationContext(
+  if (microsoftMfa && (env.PLATFORM_ENTRA_MFA_AUTHENTICATION_CONTEXT || env.PLATFORM_ENTRA_STEP_UP_AUTHENTICATION_CONTEXT)) {
+    fail('PLATFORM_MICROSOFT_MFA_CA_CONTEXT_FORBIDDEN');
+  }
+  const mfaAuthenticationContext = microsoftMfa ? 'cm:ms:mfa:v1' : parseAuthenticationContext(
     env.PLATFORM_ENTRA_MFA_AUTHENTICATION_CONTEXT,
     { required: identityRequired && !applicationPasskeys, code: 'PLATFORM_ENTRA_MFA_AUTHENTICATION_CONTEXT_INVALID' },
   );
-  const stepUpAuthenticationContext = parseAuthenticationContext(
+  const stepUpAuthenticationContext = microsoftMfa ? 'cm:ms:fresh:v1' : parseAuthenticationContext(
     env.PLATFORM_ENTRA_STEP_UP_AUTHENTICATION_CONTEXT,
     { required: identityRequired && !applicationPasskeys, code: 'PLATFORM_ENTRA_STEP_UP_AUTHENTICATION_CONTEXT_INVALID' },
   );

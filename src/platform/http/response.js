@@ -1,6 +1,6 @@
 import { PlatformHttpError } from './errors.js';
 import { validatePlatformEntraAuthorizationUrl,
-  validatePlatformEntraPrimaryAuthorizationUrl } from '../identity/entra-authorization-url.js';
+  validatePlatformEntraPrimaryAuthorizationUrl, validatePlatformEntraMfaAuthorizationUrl } from '../identity/entra-authorization-url.js';
 
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 
@@ -62,6 +62,9 @@ export function requirePlatformProviderAuthorizationUrl(value, authority, {
   authenticationMaxAgeSeconds,
 } = {}) {
   try {
+    if (['cm:ms:mfa:v1','cm:ms:fresh:v1'].includes(authenticationContext)) {
+      return validatePlatformEntraMfaAuthorizationUrl(value, { authority, clientId, redirectUri, authenticationMaxAgeSeconds });
+    }
     return validatePlatformEntraAuthorizationUrl(value, {
       authority,
       clientId,

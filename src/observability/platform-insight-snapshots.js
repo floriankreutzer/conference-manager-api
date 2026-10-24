@@ -9,8 +9,8 @@ function parse(raw) {
 }
 // Private, precompiled aggregates only. No provider credentials, network or
 // Tenant records enter this source. Missing observations remain unknown.
-export function loadProtectedPlatformInsightSnapshots({ providerSnapshot, productSnapshot } = {}) {
-  const provider = loadProviderUsageSnapshot(providerSnapshot, { accessMode: 'application_passkey' });
+export function loadProtectedPlatformInsightSnapshots({ providerSnapshot, productSnapshot, accessMode = 'application_passkey' } = {}) {
+  const provider = loadProviderUsageSnapshot(providerSnapshot, { accessMode });
   let product = null;
   if (productSnapshot !== undefined) {
     product = normalizeProductDeliverySnapshot(parse(productSnapshot));
@@ -28,7 +28,7 @@ export function loadProtectedPlatformInsightSnapshots({ providerSnapshot, produc
         || (product?.observedAt && now < productInstant(product.observedAt))) invalid();
       if (product?.observedAt && now - productInstant(product.observedAt) >= 30 * DAY_MS) product = null;
       const report = product || uncollectedProductDeliveryReport(now, 'production');
-      return Object.freeze({ ...JSON.parse(JSON.stringify(report)), accessMode: 'application_passkey',
+      return Object.freeze({ ...JSON.parse(JSON.stringify(report)), accessMode,
         collectionMode: report.observedAt === null ? 'not_collected' : 'operator_snapshot',
         evaluatedAt: new Date(now).toISOString(), freshness: report.observedAt === null ? 'unknown'
           : now - productInstant(report.observedAt) >= DAY_MS ? 'stale' : 'fresh' });
