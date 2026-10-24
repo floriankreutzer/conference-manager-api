@@ -59,7 +59,7 @@ An actual-PostgreSQL progression is prepared for the real session and audit
 repositories with independent max-one business/lease pools and isolated actual
 MSAL responses. It covers inert callbacks, ordinary and synthetic execution
 classes, one-use proof, wrong digest/class, rolled-back business/session writes,
-mandatory audit, password-only denial, logout, suspension, capacity and retained
+mandatory audit, password-only denial, logout, operator disabling, capacity and retained
 history. These are pending execution; synthetic SDK tokens do not prove real
 provider signatures or physical MFA. Callback routes and redirect registration,
 business-route protection, browser integration and both native and
@@ -82,3 +82,14 @@ or simulated commit failure. These are component evidence only, not PostgreSQL
 atomicity, real Microsoft/device MFA or deployed acceptance. Full exact-source
 quality/security/native, all permanent three-customer/two-reset browser/storage
 gates, actual provider evidence and coordinated live acceptance remain mandatory.
+
+## Qualification history
+
+Candidate be0e22aea5aad06d272dab9d239ee14ecff92954 passed quality,
+including2151 tests and both HTTP security gates. Its actual native proof
+progression reached the final owner-state fence after successfully exercising
+callback separation, shared/synthetic execution, rollback, replay and capacity.
+The fixture then used unsupported operator status `suspended`; the canonical
+operator vocabulary is `active`/`disabled`. The fixture now uses `disabled`;
+no schema, runtime predicate or original assertion is weakened. The failed run
+remains failed and complete renewed native/browser qualification is required.
