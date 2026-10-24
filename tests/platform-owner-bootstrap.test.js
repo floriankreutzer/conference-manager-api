@@ -71,3 +71,19 @@ test('owner role CLI refuses unsupported configuration without reflecting privat
     env: { PATH: process.env.PATH,NODE_ENV: 'test' },encoding: 'utf8' });
   assert.equal(result.status,1);assert.equal(result.stdout,'');assert.equal(result.stderr,'PLATFORM_OWNER_ROLES_REFUSED\n');
 });
+
+test('owner-role receipt stays offline and rejects fabricated MFA, scope and approval evidence',()=>{
+  const value={ operatorId: null,roles: [],permissions: [],assuranceLevel: 'offline_owner',targetTenantId: null,
+    action: 'platform.operator.changed',targetType: 'platform_owner_roles',targetId: randomUUID(),
+    previousState: { roleCount: 2 },newState: { roleCount: 4 },occurredAt: new Date().toISOString(),
+    correlationId: randomUUID(),outcome: 'success',retentionClass: 'recovery',metadata: {
+      operation: 'owner_all_platform_roles',environment: 'int',deploymentEpoch: expected.deploymentEpoch,
+      approvalReference: 'OWNER-ALL-ROLES',
+    } };
+  assert.equal(normalizePlatformAuditEvent(value).assuranceLevel,'offline_owner');
+  for (const patch of [{ assuranceLevel: 'mfa' },{ operatorId: randomUUID() },{ targetTenantId: randomUUID() },
+    { roles: ['platform_security_admin'] },{ metadata: {} },{ metadata: { ...value.metadata,environment: 'prod' } },
+    { metadata: { ...value.metadata,deploymentEpoch: 'invalid' } },{ metadata: { ...value.metadata,approvalReference: '' } }]) {
+    assert.throws(()=>normalizePlatformAuditEvent({ ...value,...patch }));
+  }
+});

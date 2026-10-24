@@ -172,6 +172,7 @@ test('independently granted enrollment stages public keys and atomically require
     await assert.rejects(pool.query(`UPDATE platform_passkey_credentials SET revoked_at=NULL
       WHERE operator_id=$1 AND revoked_at IS NOT NULL`,
       [f.operatorId]), /IMMUTABLE/);
+    assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
     assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.

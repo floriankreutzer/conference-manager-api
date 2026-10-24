@@ -182,6 +182,7 @@ async t=>{
   assert.equal(await next.sessionService.resolvePrincipal(headers(lastCookie)),null);
   assert.equal(await next.sessionService.resolvePrincipal(headers(realSession.setCookie)),null);
   // Check destructive rollback only after all current-runtime assertions.
+  assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before original064/063/062 proof.
   assert.equal(await rollbackLatest(pool),true); // Empty private calendar063; retain the populated062 recovery guard.
