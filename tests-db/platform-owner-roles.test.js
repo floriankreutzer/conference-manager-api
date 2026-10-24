@@ -5,6 +5,9 @@ import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool } from '../src/persistence/postgres/pool.js';
 import { createPostgresPlatformAuditRepository } from '../src/persistence/postgres/platform-audit-repository.js';
 import { createPostgresPlatformOwnerBootstrapRepository } from '../src/persistence/postgres/platform-owner-bootstrap-repository.js';
+import { createPlatformSessionService } from '../src/platform/identity/session-service.js';
+import { permissionsForPlatformRoles } from '../src/platform/identity/policy.js';
+import { createPostgresPlatformSessionRepository } from '../src/persistence/postgres/platform-session-repository.js';
 import { migrateUp,rollbackLatest } from '../scripts/db-migrations.mjs';
 
 test('native owner role upgrade is exact, one-winner, audited and rolls back atomically on receipt failure',async t=>{
@@ -18,6 +21,18 @@ test('native owner role upgrade is exact, one-winner, audited and rolls back ato
     { expected,expectedOfflineRole: role,auditRepository: audit,...options });
   const request={ ...expected,approvalReference: 'OWNER-ALL-ROLES',correlationId: randomUUID() };
   const boot=await create().initialize(request);
+  const sessions=createPlatformSessionService({
+    repository: createPostgresPlatformSessionRepository(pool,{ auditRepository: audit }),
+    publicOrigin: 'https://ops-int.example.com',csrfSecret: 'c'.repeat(48),securityEpoch: 1,
+  });
+  const identity=(roles,securityVersion)=>({ operatorId: boot.operatorId,
+    providerIdentity: { provider: 'microsoft_entra_platform',tenantReference: expected.directoryId,
+      subjectReference: expected.subjectId },roles,permissions: permissionsForPlatformRoles(roles),securityVersion,
+    targetScope: { mode: 'all',securityVersion },assurance: { level: 'mfa',authenticationContext: 'cm:ms:mfa:v1',
+      authenticatedAt: new Date().toISOString() } });
+  const prior=await sessions.issue(identity(['platform_security_admin','platform_tenant_operator'],1),{ correlationId: randomUUID() });
+  const sessionRequest=value=>({ headers: { cookie: value.setCookie.split(';')[0] } });
+  assert.ok(await sessions.resolvePrincipal(sessionRequest(prior)));
   const grant={ ...request,correlationId: randomUUID(),expectedSecurityVersion: 1 };
   await assert.rejects(create({ expectedOfflineRole: 'wrong_owner' }).grantAllOwnerRoles(grant));
   await assert.rejects(create().grantAllOwnerRoles({ ...grant,expectedSecurityVersion: 2 }));
@@ -33,11 +48,15 @@ test('native owner role upgrade is exact, one-winner, audited and rolls back ato
     'platform_security_admin','platform_security_auditor','platform_support_reader','platform_tenant_operator',
   ]);
   assert.equal(Number((await read()).security_version),2);
+  assert.equal(await sessions.resolvePrincipal(sessionRequest(prior)),null);
+  const renewed=await sessions.issue(identity((await read()).roles,2),{ correlationId: randomUUID() });
+  assert.deepEqual((await sessions.resolvePrincipal(sessionRequest(renewed))).roles,(await read()).roles);
   await assert.rejects(create().grantAllOwnerRoles({ ...grant,expectedSecurityVersion: 2,correlationId: randomUUID() }));
   const events=await audit.listVerified({ scope: { mode: 'all',operatorId: boot.operatorId,securityVersion: 2 } });
   const receipts=events.filter(row=>row.targetType==='platform_owner_roles');
   assert.equal(receipts.length,1);assert.equal(receipts[0].assuranceLevel,'offline_owner');
   assert.equal(receipts[0].operatorId,null);assert.deepEqual(receipts[0].roles,[]);
+  assert.equal(receipts[0].metadata.sessionsRevoked,1);
   assert.equal(receipts[0].newState.roleCount,4);assert.equal(receipts[0].previousState.roleCount,2);
   assert.doesNotMatch(JSON.stringify(receipts),new RegExp(expected.subjectId));
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_operator_change_alert_outbox')).rows[0].count,2);
