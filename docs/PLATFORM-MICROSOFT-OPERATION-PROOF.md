@@ -93,3 +93,10 @@ The fixture then used unsupported operator status `suspended`; the canonical
 operator vocabulary is `active`/`disabled`. The fixture now uses `disabled`;
 no schema, runtime predicate or original assertion is weakened. The failed run
 remains failed and complete renewed native/browser qualification is required.
+
+Candidate59afd9129e6aff08ca9091d8562cdce271a1f2c8 passed quality and
+all native operation/mutation fences, then correctly returned no audit page for
+the disabled owner with stale version1. The fixture now verifies the signed
+operation receipt before disabling, explicitly requires an empty page afterwards
+and independently verifies the retained chain through the offline transaction
+port. No disabled-actor exception is introduced. Full renewed gates remain open.

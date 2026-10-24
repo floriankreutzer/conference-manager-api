@@ -113,6 +113,8 @@ test('native Microsoft exact proof retains callback separation, one-use atomic c
   await assert.rejects(rollback.active.complete({ state: rollback.started.state,cookie: rollback.cookie,code: 'logged-out' }));
   const last=await prepare();
   await assert.rejects(prepare()); // Five live rows include consumed/failed attempts; the bound cannot be bypassed.
+  assert.ok((await audit.listVerified({ scope: { mode: 'all',operatorId: boot.operatorId,securityVersion: 1 } }))
+    .some(event=>event.targetType==='platform_microsoft_operation' && event.outcome==='success'));
   await pool.query("UPDATE platform_operators SET status='disabled' WHERE id=$1",[boot.operatorId]);
   await assert.rejects(last.active.complete({ state: last.started.state,cookie: last.cookie,code: 'disabled-owner' }));
   for (const sql of ["UPDATE platform_microsoft_operation_proofs SET operation_hash=repeat('f',64)",
@@ -120,6 +122,6 @@ test('native Microsoft exact proof retains callback separation, one-use atomic c
     await assert.rejects(pool.query(sql));
   }
   await assert.rejects(rollbackLatest(pool),{ code: '55000' });
-  assert.ok((await audit.listVerified({ scope: { mode: 'all',operatorId: boot.operatorId,securityVersion: 1 } }))
-    .some(event=>event.targetType==='platform_microsoft_operation' && event.outcome==='success'));
+  assert.deepEqual(await audit.listVerified({ scope: { mode: 'all',operatorId: boot.operatorId,securityVersion: 1 } }),[]);
+  await withPostgresTransaction(pool,client=>audit.verifyWithClient(client));
 });
