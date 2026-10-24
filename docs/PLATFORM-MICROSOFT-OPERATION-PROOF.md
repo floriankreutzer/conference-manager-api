@@ -100,3 +100,10 @@ the disabled owner with stale version1. The fixture now verifies the signed
 operation receipt before disabling, explicitly requires an empty page afterwards
 and independently verifies the retained chain through the offline transaction
 port. No disabled-actor exception is introduced. Full renewed gates remain open.
+
+Candidateaed36006ebe617c2d41a0123d294146b2ad4748c completed every
+operation/state/retention and active/disabled audit-page assertion, then exposed
+a fixture-only adapter mismatch: `verifyWithClient` belongs to the segmented
+adapter, while this isolated fixture uses the legacy adapter. It now invokes
+that adapter's existing `isReady` verifier, which checks all retained signatures,
+row count and terminal hash. The production adapters are unchanged.

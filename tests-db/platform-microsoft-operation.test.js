@@ -123,5 +123,5 @@ test('native Microsoft exact proof retains callback separation, one-use atomic c
   }
   await assert.rejects(rollbackLatest(pool),{ code: '55000' });
   assert.deepEqual(await audit.listVerified({ scope: { mode: 'all',operatorId: boot.operatorId,securityVersion: 1 } }),[]);
-  await withPostgresTransaction(pool,client=>audit.verifyWithClient(client));
+  assert.equal(await audit.isReady(),true); // Actual legacy adapter verifies every retained row and terminal hash.
 });
