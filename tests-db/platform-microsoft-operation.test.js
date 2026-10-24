@@ -122,6 +122,8 @@ test('native Microsoft exact proof retains callback separation, one-use atomic c
     'DELETE FROM platform_microsoft_operation_proofs','TRUNCATE platform_microsoft_operation_proofs']) {
     await assert.rejects(pool.query(sql));
   }
+  // Name the new dependent table so the retained-proof guard itself also runs.
+  await assert.rejects(pool.query('TRUNCATE synthetic_customer_handoffs,platform_microsoft_operation_proofs'),{ code: '55000' });
   assert.equal(await rollbackLatest(pool),true); // Empty071 before retained070 proof history.
   await assert.rejects(rollbackLatest(pool),{ code: '55000' });
   assert.deepEqual(await audit.listVerified({ scope: { mode: 'all',operatorId: boot.operatorId,securityVersion: 1 } }),[]);
