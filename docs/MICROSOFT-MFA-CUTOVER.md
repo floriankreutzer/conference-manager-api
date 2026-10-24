@@ -56,10 +56,9 @@ This is not full implementation of the approved target. In particular:
 - Synthetic generation/handoff still has its separate passkey/continuation SQL
   custody. The new mode refuses that incompatible opt-in; replacing it requires
   additive custody, expiry/replay/concurrency and real reset/browser qualification.
-- Actual owner role expansion and sole-owner administration are not performed by
-  this branch. Existing first-owner bootstrap and two-administrator lifecycle
-  controls remain unchanged. Do not forge an approver, replay bootstrap or edit
-  old checksummed migrations to assign roles.
+- The one-time owner-role upgrade is implemented below but has not been executed
+  live. General two-administrator operator lifecycle remains unchanged; broader
+  sole-owner administration is not yet implemented.
 - Auditable owner-to-real-Customer support access and administrative Microsoft
   group-to-role mapping are not yet composed. Customer direct role administration
   remains unchanged. Never simulate these features by broadening ordinary User
@@ -75,3 +74,34 @@ regression during the transition; they are not the approved final login model.
 Passing software/provider fixtures does not prove live Microsoft MFA or external
 email delivery. No owner role, Customer access, Demo generation, secret, migration
 or live service is changed by adding this source mode.
+
+## One-time existing-owner role upgrade (schema 067)
+
+`node scripts/platform-owner-roles.mjs` is an offline administration command,
+never an HTTP endpoint or a browser role selector. It uses the existing independently
+bound offline database-owner configuration (historical `PLATFORM_PASSKEY_OFFLINE_*`
+variable names); this credential is an administration credential, not a passkey,
+and no authenticator enrollment or credential secret is required by this command.
+The remaining configuration names and schema-ledger/TLS/audit-segment checks match
+`platform-owner-bootstrap.mjs`. Descriptor 3 supplies the exact bootstrap identity,
+INT deployment UUID, approval reference and fresh correlation ID, plus an explicit
+`expectedSecurityVersion`. Neither roles nor scope can be selected by that input.
+
+Only the already bootstrapped, active, all-scope Microsoft owner can receive the
+fixed canonical four-role union. There must be exactly one non-Demo operator and
+an original owner-bootstrap receipt for that operator. Identity, deployment,
+version, database owner/session owner and prior-upgrade guards fail closed. An
+upgrade is one-time and concurrency bounded; it cannot create/reactivate an owner,
+change identity, revoke other operators or turn a Customer into a Platform actor.
+
+The ordinary operator update trigger increments security version. The transaction
+revokes old Platform sessions and pending OIDC transactions, appends an integrity-
+protected offline-owner receipt and queues the existing access-change alert.
+Other previously issued authority remains fenced by the changed operator version.
+Receipt roles/permissions stay empty and its actor is explicitly offline owner;
+no Microsoft MFA or independent second approver is fabricated. Required receipt
+failure rolls back the change. Existing key records and audit history are retained.
+Migration067 adds this narrowly guarded audit vocabulary; it grants no role by
+itself. Its rollback refuses once an upgrade receipt exists, preserving signed
+history. This source mechanism still needs native database/CI qualification and
+explicit coordinated operating evidence; no actual owner role grant is claimed.

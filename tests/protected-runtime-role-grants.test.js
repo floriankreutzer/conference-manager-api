@@ -26,7 +26,7 @@ test('existing INT audit role delta is fixed, minimal and removes legacy writing
 test('operator plan preserves per-surface proof custody and offline enrollment without connecting or creating credentials',()=>{
   for (const environment of ['dev','int','prod']) {
     const plan=protectedRuntimeRoleGrantPlan({ environment,securityEpoch: epoch });
-    assert.ok(Object.isFrozen(plan));assert.equal(plan.schemaVersion,66);
+    assert.ok(Object.isFrozen(plan));assert.equal(plan.schemaVersion,67);
     const customer=plan.roles[0],platform=plan.roles[1];
     assert.equal(customer.role,`cm_protected_${environment}_customer`);
     assert.equal(platform.role,`cm_protected_${environment}_platform`);

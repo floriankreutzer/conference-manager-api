@@ -18,3 +18,11 @@ export function normalizePlatformOwnerBootstrapRequest(value,expected) {
     || !/^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/.test(value.approvalReference)) refuse();
   return Object.freeze({ ...value });
 }
+
+// This separate, one-time upgrade never replays first-owner initialization.
+export function normalizePlatformOwnerRolesRequest(value,expected) {
+  exact(value,['environment','deploymentEpoch','directoryId','subjectId','approvalReference','correlationId','expectedSecurityVersion']);
+  const { expectedSecurityVersion,...bootstrap }=value;
+  if (!Number.isSafeInteger(expectedSecurityVersion) || expectedSecurityVersion<1) refuse();
+  return Object.freeze({ ...normalizePlatformOwnerBootstrapRequest(bootstrap,expected),expectedSecurityVersion });
+}

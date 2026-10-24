@@ -136,7 +136,7 @@ async function assertDirectCallsDenied(pool, role) {
 }
 
 test('migration 038 confines Request attribution SECURITY DEFINER execution to triggers', async (t) => {
-  assert.equal(CURRENT_SCHEMA_VERSION, 66);
+  assert.equal(CURRENT_SCHEMA_VERSION, 67);
   const pool = createPostgresPool(databaseConfig());
   t.after(async () => {
     try {
@@ -210,7 +210,8 @@ test('migration 038 confines Request attribution SECURITY DEFINER execution to t
   }]);
 
   assert.equal((await createPostgresPlatformProjectionRepository(pool).consumeBatch({ limit: 100 })).retryCount, 0);
-  assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
+  assert.equal(await rollbackLatest(pool),true); // Empty owner roles067.
+    assert.equal(await rollbackLatest(pool),true); // Empty segment066 before unchanged065/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty owner audit065 before unchanged064/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty onboarding064 before unchanged063/older guards.
   assert.equal(await rollbackLatest(pool),true); // Empty private calendar063 before unchanged062/older guards.

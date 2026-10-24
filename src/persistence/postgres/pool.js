@@ -40,7 +40,8 @@ const { Pool } = pg;
 // Schema 64 adds scoped synthetic Room provisioning and local lifecycle readiness.
 // Schema 65 admits owner-only, one-time initial operator audit without creating authority.
 // Schema 66 preserves the legacy audit prefix and introduces independently signed INT segments.
-export const CURRENT_SCHEMA_VERSION = 66;
+// Schema 67 adds the owner-only, one-time all-role audit receipt.
+export const CURRENT_SCHEMA_VERSION = 67;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

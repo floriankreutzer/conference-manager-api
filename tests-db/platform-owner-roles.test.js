@@ -1,0 +1,45 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import test from 'node:test';
+import { loadDatabaseConfig } from '../src/config.js';
+import { createPostgresPool } from '../src/persistence/postgres/pool.js';
+import { createPostgresPlatformAuditRepository } from '../src/persistence/postgres/platform-audit-repository.js';
+import { createPostgresPlatformOwnerBootstrapRepository } from '../src/persistence/postgres/platform-owner-bootstrap-repository.js';
+import { migrateUp,rollbackLatest } from '../scripts/db-migrations.mjs';
+
+test('native owner role upgrade is exact, one-winner, audited and rolls back atomically on receipt failure',async t=>{
+  const pool=createPostgresPool({ mode: 'test',...loadDatabaseConfig(process.env,'test'),databasePoolMax: 3 });
+  t.after(()=>pool.end());await migrateUp(pool);
+  const expected={ environment: 'int',deploymentEpoch: randomUUID(),directoryId: randomUUID(),subjectId: randomUUID() };
+  await pool.query('INSERT INTO protected_runtime_deployments(environment,security_epoch) VALUES($1,$2)',['int',expected.deploymentEpoch]);
+  const role=(await pool.query('SELECT current_user AS role')).rows[0].role;
+  const audit=createPostgresPlatformAuditRepository(pool,{ hmacSecret: 'q'.repeat(48) });
+  const create=(options={})=>createPostgresPlatformOwnerBootstrapRepository(pool,
+    { expected,expectedOfflineRole: role,auditRepository: audit,...options });
+  const request={ ...expected,approvalReference: 'OWNER-ALL-ROLES',correlationId: randomUUID() };
+  const boot=await create().initialize(request);
+  const grant={ ...request,correlationId: randomUUID(),expectedSecurityVersion: 1 };
+  await assert.rejects(create({ expectedOfflineRole: 'wrong_owner' }).grantAllOwnerRoles(grant));
+  await assert.rejects(create().grantAllOwnerRoles({ ...grant,expectedSecurityVersion: 2 }));
+  await assert.rejects(create({ auditRepository: {
+    async appendWithClient() { throw new Error('private-cause'); },
+  } }).grantAllOwnerRoles(grant));
+  const read=async()=>(await pool.query('SELECT roles,security_version FROM platform_operators WHERE id=$1',[boot.operatorId])).rows[0];
+  assert.equal(Number((await read()).security_version),1);
+  assert.equal((await read()).roles.length,2);
+  const results=await Promise.allSettled([create().grantAllOwnerRoles(grant),create().grantAllOwnerRoles(grant)]);
+  assert.equal(results.filter(row=>row.status==='fulfilled').length,1);
+  assert.deepEqual((await read()).roles,[
+    'platform_security_admin','platform_security_auditor','platform_support_reader','platform_tenant_operator',
+  ]);
+  assert.equal(Number((await read()).security_version),2);
+  await assert.rejects(create().grantAllOwnerRoles({ ...grant,expectedSecurityVersion: 2,correlationId: randomUUID() }));
+  const events=await audit.listVerified({ scope: { mode: 'all',operatorId: boot.operatorId,securityVersion: 2 } });
+  const receipts=events.filter(row=>row.targetType==='platform_owner_roles');
+  assert.equal(receipts.length,1);assert.equal(receipts[0].assuranceLevel,'offline_owner');
+  assert.equal(receipts[0].operatorId,null);assert.deepEqual(receipts[0].roles,[]);
+  assert.equal(receipts[0].newState.roleCount,4);assert.equal(receipts[0].previousState.roleCount,2);
+  assert.doesNotMatch(JSON.stringify(receipts),new RegExp(expected.subjectId));
+  assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_operator_change_alert_outbox')).rows[0].count,2);
+  await assert.rejects(rollbackLatest(pool),{ code: '55000' });
+});

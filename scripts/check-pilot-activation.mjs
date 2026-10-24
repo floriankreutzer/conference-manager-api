@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 66;/.test(pool)) {
-  throw new Error('Pilot activation requires current schema including independent INT audit segment schema 66.');
+if (!/export const CURRENT_SCHEMA_VERSION = 67;/.test(pool)) {
+  throw new Error('Pilot activation requires current schema including owner role grant schema 67.');
 }
 
 const service = await readFile('src/application/tenant-pilot-service.js', 'utf8');

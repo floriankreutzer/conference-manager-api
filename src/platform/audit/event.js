@@ -108,11 +108,16 @@ export function normalizePlatformAuditEvent(value) {
   if (value.operatorId === null) {
     const offlineOwner = value.action === PLATFORM_AUDIT_ACTION.OPERATOR_CHANGED
       && value.assuranceLevel === 'offline_owner' && value.targetTenantId === null
-      && ['platform_passkey_grant', 'platform_operator_bootstrap', 'platform_audit_segment'].includes(value.targetType)
+      && ['platform_passkey_grant', 'platform_operator_bootstrap', 'platform_audit_segment',
+        'platform_owner_roles'].includes(value.targetType)
       && isInternalUuid(value.targetId)
       && value.outcome === PLATFORM_AUDIT_OUTCOME.SUCCESS && value.retentionClass === PLATFORM_AUDIT_RETENTION.RECOVERY;
     if (offlineOwner && value.targetType === 'platform_operator_bootstrap'
       && (value.metadata?.operation !== 'first_owner_bootstrap' || value.metadata?.environment !== 'int'
+        || !isInternalUuid(value.metadata?.deploymentEpoch)
+        || !/^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/.test(value.metadata?.approvalReference ?? ''))) invalid();
+    if (offlineOwner && value.targetType === 'platform_owner_roles'
+      && (value.metadata?.operation !== 'owner_all_platform_roles' || value.metadata?.environment !== 'int'
         || !isInternalUuid(value.metadata?.deploymentEpoch)
         || !/^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/.test(value.metadata?.approvalReference ?? ''))) invalid();
     if (offlineOwner && value.targetType === 'platform_audit_segment'

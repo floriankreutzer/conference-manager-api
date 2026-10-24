@@ -44,7 +44,7 @@ export async function assertOperatorIdentity(client, role) {
         AND pg_has_role(current_user,oid,'MEMBER')) AS bounded_role`);
   const row = rows[0];
   requireLiveMedia(rows.length === 1 && row.database === LIVE_MEDIA_TARGET.databaseName && row.role === role
-    && count(row.schema_version) === 66 && count(row.overlay_version) === 29 && count(row.sentinel_count) === 1
+    && count(row.schema_version) === 67 && count(row.overlay_version) === 29 && count(row.sentinel_count) === 1
     && ['inventory_select', 'inventory_insert', 'inventory_update', 'inventory_delete',
       'room_select', 'room_update', 'catalogue_select', 'catalogue_update'].every((key) => row[key] === true)
     && row.bounded_role === true, 'LIVE_MEDIA_IDENTITY_INVALID');

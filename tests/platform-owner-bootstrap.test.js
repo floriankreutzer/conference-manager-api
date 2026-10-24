@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
-import { normalizePlatformOwnerBootstrapRequest } from '../src/operator/platform-owner-bootstrap-request.js';
+import {
+  normalizePlatformOwnerBootstrapRequest,normalizePlatformOwnerRolesRequest,
+} from '../src/operator/platform-owner-bootstrap-request.js';
 import { architectureConsolidationBoundaryViolations } from '../scripts/check-module-boundaries.mjs';
 import { normalizePlatformAuditEvent } from '../src/platform/audit/event.js';
 
@@ -52,4 +54,20 @@ test('HTTP, process roots and both Demo surfaces cannot transitively reach offli
       'src/persistence/postgres/platform-owner-bootstrap-repository.js': 'export const bootstrap=true;' });
     assert.ok(violations.some(value=>value.includes('must not reach offline owner bootstrap')));
   }
+});
+
+test('owner all-role request is exact, version-bound and cannot choose roles or a foreign identity',()=>{
+  const input={ ...request(),expectedSecurityVersion: 3 };
+  assert.deepEqual(normalizePlatformOwnerRolesRequest(input,expected),input);
+  for (const change of [{ expectedSecurityVersion: 0 },{ expectedSecurityVersion: 1.5 },{ roles: [] },
+    { subjectId: randomUUID() },{ deploymentEpoch: randomUUID() },{ operatorId: randomUUID() }]) {
+    assert.throws(()=>normalizePlatformOwnerRolesRequest({ ...input,...change },expected));
+  }
+  const getter={ ...input };Object.defineProperty(getter,'expectedSecurityVersion',{ get() { throw new Error('GETTER_CALLED'); } });
+  assert.throws(()=>normalizePlatformOwnerRolesRequest(getter,expected),/REQUEST_INVALID/);
+});
+test('owner role CLI refuses unsupported configuration without reflecting private input',()=>{
+  const result=spawnSync(process.execPath,['scripts/platform-owner-roles.mjs'],{
+    env: { PATH: process.env.PATH,NODE_ENV: 'test' },encoding: 'utf8' });
+  assert.equal(result.status,1);assert.equal(result.stdout,'');assert.equal(result.stderr,'PLATFORM_OWNER_ROLES_REFUSED\n');
 });
