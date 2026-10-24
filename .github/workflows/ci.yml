@@ -85,6 +85,14 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci --ignore-scripts --no-fund
+      - name: Verify REAL owner custody before the complete persistence regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE conference_manager_test_72_0'
+          trap 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "DROP DATABASE conference_manager_test_72_0 WITH (FORCE)"' EXIT
+          DATABASE_URL=postgresql://conference_manager@127.0.0.1:5432/conference_manager_test_72_0 \
+            node --test --test-concurrency=1 tests-db/owner-customer-handoff.test.js
       - name: Verify Microsoft group authority in the fresh service database
         run: node --test --test-concurrency=1 tests-db/microsoft-group-authority.test.js
       - name: Verify Microsoft exact-operation custody in a separate ephemeral database

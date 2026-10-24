@@ -12,6 +12,66 @@ const TRANSACTION_INFRASTRUCTURE_PHASE = Object.freeze({
   COMMIT: 'commit',
 });
 const transactionContext = new AsyncLocalStorage();
+const authorityScopes = new WeakMap();
+
+// Optional process-owned write precondition. This infrastructure layer knows no
+// provider, Tenant, role or owner policy. The owning protected composition admits
+// an already-qualified immutable authority before business transactions begin.
+// Unregistered pools and ordinary unadmitted work retain their existing path.
+export function createPostgresTransactionAuthorityScope(pool,{ beforeWrite,denied }={}) {
+  if (!pool || typeof pool.connect!=='function' || typeof beforeWrite!=='function' || typeof denied!=='function'
+    || authorityScopes.has(pool)) throw new TypeError('TRANSACTION_AUTHORITY_CONFIGURATION_INVALID');
+  const context=new AsyncLocalStorage();
+  function reject() {
+    const error=denied();
+    if (!(error instanceof Error)) throw new TypeError('TRANSACTION_AUTHORITY_DENIAL_INVALID');
+    throw error;
+  }
+  async function before(frame) {
+    const active=context.getStore();
+    if (!active) return;
+    if (!active.live) reject();
+    if (!active.authority || active.validated.has(frame)) return;
+    if (active.validating.has(frame)) reject();
+    active.validating.add(frame);
+    try {
+      if (await beforeWrite(frame.client,active.authority)!==true) reject();
+      if (!active.live) reject();
+      active.validated.add(frame);
+    } finally { active.validating.delete(frame); }
+  }
+  authorityScopes.set(pool,before);
+  return Object.freeze({
+    async run(work) {
+      if (typeof work!=='function') throw new TypeError('TRANSACTION_AUTHORITY_WORK_REQUIRED');
+      const enclosing=context.getStore();
+      if (enclosing) {
+        if (!enclosing.live) reject();
+        return work();
+      }
+      const active={ live: true,authority: null,key: null,validated: new WeakSet(),validating: new WeakSet() };
+      return context.run(active,async()=>{
+        try { return await work(); } finally { active.live=false; }
+      });
+    },
+    hasAuthority() {
+      const active=context.getStore();
+      if (active && !active.live) reject();
+      return Boolean(active?.authority);
+    },
+    admit(authority,key) {
+      const active=context.getStore();
+      if (!active?.live || isPostgresTransactionActive(pool) || !authority || !Object.isFrozen(authority)
+        || typeof key!=='string' || key.length<1 || key.length>16384 || active.key!==null && active.key!==key) reject();
+      if (active.authority===null) { active.authority=authority;active.key=key; }
+      return true;
+    },
+  });
+}
+
+async function requireWriteAuthority(pool,frame,readOnly) {
+  if (!readOnly) await authorityScopes.get(pool)?.(frame);
+}
 
 export function isPostgresTransactionActive(pool, client) {
   const active = transactionContext.getStore();
@@ -53,6 +113,7 @@ export async function withPostgresTransaction(pool, work, options = {}) {
       ISOLATION_RANK.get(requested.isolationLevel) > ISOLATION_RANK.get(active.isolationLevel)
       || (active.readOnly && !requested.readOnly)
     ) throw new TypeError('NESTED_TRANSACTION_CONTRACT_INVALID');
+    await requireWriteAuthority(pool,active,requested.readOnly);
     return work(active.client);
   }
 
@@ -72,12 +133,16 @@ export async function withPostgresTransaction(pool, work, options = {}) {
       throw infrastructureError(error, mapInfrastructureError, TRANSACTION_INFRASTRUCTURE_PHASE.SETUP);
     }
 
-    const result = await transactionContext.run(Object.freeze({
+    const frame=Object.freeze({
       pool,
       client,
       isolationLevel: requested.isolationLevel,
       readOnly: requested.readOnly,
-    }), () => work(client));
+    });
+    const result = await transactionContext.run(frame,async()=>{
+      await requireWriteAuthority(pool,frame,requested.readOnly);
+      return work(client);
+    });
 
     try {
       await client.query('COMMIT');

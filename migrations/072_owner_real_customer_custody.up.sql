@@ -236,6 +236,10 @@ BEGIN
     AND security_epoch=integer_epoch AND revoked_at IS NULL AND expires_at>clock_timestamp()
     AND assurance_level='mfa' AND authentication_context='cm:ms:mfa:v1' AND step_up_expires_at IS NULL FOR SHARE NOWAIT;
   IF NOT FOUND THEN RETURN false; END IF;
+  -- Final Customer writes acquire target ownership before User/session and
+  -- business locks. Direct UPDATE avoids a concurrent SHARE-to-UPDATE upgrade.
+  PERFORM id FROM public.tenants WHERE id=tenant AND status IN ('pending','onboarding','ready','active') FOR UPDATE NOWAIT;
+  IF NOT FOUND THEN RETURN false; END IF;
   PERFORM id FROM public.users WHERE tenant_id=tenant AND id=person_id AND active=true AND security_version=person_version FOR SHARE NOWAIT;
   IF NOT FOUND THEN RETURN false; END IF;
   PERFORM id FROM public.sessions WHERE id=customer_session AND tenant_id=tenant AND user_id=person_id
@@ -319,8 +323,6 @@ BEGIN
   expected_roles:=CASE WHEN custody.selected_role='employee' THEN ARRAY['employee'] ELSE ARRAY['employee',custody.selected_role] END;
   IF NOT (NEW.roles @> expected_roles AND NEW.roles <@ expected_roles AND cardinality(NEW.roles)=cardinality(expected_roles)) THEN
     RAISE EXCEPTION 'OWNER_HANDOFF_SESSION_ROLE_INVALID' USING ERRCODE='23514'; END IF;
-  IF NEW.expires_at>(SELECT expires_at FROM public.platform_sessions WHERE id=custody.source_platform_session_id) THEN
-    RAISE EXCEPTION 'OWNER_HANDOFF_SESSION_EXCEEDS_SOURCE' USING ERRCODE='23514'; END IF;
   PERFORM public.assert_owner_customer_handoff(custody);
   RETURN NEW;
 END $$;

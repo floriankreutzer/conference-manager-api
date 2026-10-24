@@ -149,8 +149,10 @@ test('Demo overlay 004 grants only the reset operations needed by request attrib
       { version: 29, name: 'platform_audit_segment_guard_privileges', checksum_length: 64 },
       { version: 30, name: 'microsoft_role_authority_empty_reset', checksum_length: 64 },
       { version: 31, name: 'platform_microsoft_proof_empty_reset', checksum_length: 64 },
+      { version: 32, name: 'owner_customer_empty_reset', checksum_length: 64 },
     ]);
-    for (const table of ['platform_microsoft_operation_proofs','platform_passkey_credentials', 'platform_passkey_auth_transactions',
+    for (const table of ['owner_customer_handoffs','owner_handoff_start_budgets','platform_owner_customer_users',
+      'platform_microsoft_operation_proofs','platform_passkey_credentials', 'platform_passkey_auth_transactions',
       'platform_passkey_enrollment_grants', 'platform_passkey_enrollment_transactions',
       'customer_microsoft_flows','customer_microsoft_start_budgets',
       'tenant_microsoft_role_settings','customer_microsoft_group_observations',

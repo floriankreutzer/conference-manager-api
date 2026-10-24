@@ -26,7 +26,9 @@ export function createProtectedCustomerSessionService({ sessionService,accessRep
       try { runtime=requireProtectedTenantRuntime({ environment,securityEpoch,tenantId: principal.tenantId },access.runtime); }
       catch { return null; }
       if (runtime.mode==='real') {
-        if (access.kind!=='invited_membership' || !REAL_PROVIDERS.has(principal.providerIdentity.provider)) return null;
+        const invited=access.kind==='invited_membership' && REAL_PROVIDERS.has(principal.providerIdentity.provider);
+        const owner=access.kind==='owner_delegation' && principal.providerIdentity.provider==='platform_owner';
+        if (!invited && !owner) return null;
       } else if (access.kind!=='operator_delegation' || principal.providerIdentity.provider!=='platform_delegation') return null;
       return principal;
     },

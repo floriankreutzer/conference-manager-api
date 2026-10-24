@@ -53,8 +53,10 @@ export function protectedRuntimeRoleManifest(surface) {
       'display_name,updated_at,locations_revision,organization_revision,catalog_revision,'
         +'booking_policies_revision,cost_allocation_revision'),
     ...['sessions','customer_email_challenges','customer_access_deliveries','customer_access_abuse_budgets',
-      'customer_microsoft_flows','customer_microsoft_start_budgets','synthetic_customer_handoffs','synthetic_handoff_start_budgets']
-      .map(name=>table(name,CRUD)),table('synthetic_catalogue_media_assets','SELECT'),table('synthetic_calendar_resources','SELECT'),
+      'customer_microsoft_flows','customer_microsoft_start_budgets','synthetic_customer_handoffs','synthetic_handoff_start_budgets',
+      'owner_customer_handoffs','owner_handoff_start_budgets']
+      .map(name=>table(name,CRUD)),table('platform_owner_customer_users','SELECT'),
+    table('synthetic_catalogue_media_assets','SELECT'),table('synthetic_calendar_resources','SELECT'),
     table('synthetic_calendar_events','SELECT,INSERT,UPDATE'),
     columns('platform_operators','SELECT','id,provider,provider_tenant_reference,provider_subject_reference,'
       +'status,security_version,roles,scope_mode'),
@@ -68,9 +70,10 @@ export function protectedRuntimeRoleManifest(surface) {
     columns('platform_passkey_auth_transactions','SELECT','id,operator_id,environment,security_epoch,operator_security_version,purpose,'
       +'operation_hash,expected_session_id,consumed_at,expires_at'),
     columns('platform_audit_events','SELECT','sequence,operator_id,action,target_tenant_id,outcome,assurance_level,metadata,'
-      +'segment_id,integrity_version'),
+      +'segment_id,integrity_version,target_type,target_id,retention_class,roles,permissions'),
     columns('platform_audit_segments','SELECT','id,environment,deployment_epoch'));
-    functions.push('customer_microsoft_snapshot_valid(jsonb)','protected_lock_synthetic_handoff_source(text,uuid,uuid)',
+    functions.push('protected_lock_owner_handoff_source(text,uuid,uuid)','protected_lock_owner_customer_source(text,uuid,uuid)',
+      'customer_microsoft_snapshot_valid(jsonb)','protected_lock_synthetic_handoff_source(text,uuid,uuid)',
       'protected_lock_synthetic_calendar_source(text,uuid,uuid)',
       'protected_synthetic_lifecycle(text,uuid,uuid,text,text,bigint)');
   } else {
@@ -93,6 +96,7 @@ export function protectedRuntimeRoleManifest(surface) {
     table('synthetic_calendar_resources','SELECT,INSERT'),
     columns('protected_runtime_deployments','UPDATE','updated_at'),table('tenant_runtime_registry','INSERT'),
     table('synthetic_tenant_generations','INSERT,UPDATE'),table('synthetic_customer_handoffs','SELECT,UPDATE'),
+    table('owner_customer_handoffs','SELECT,UPDATE'),table('platform_owner_customer_users','SELECT,INSERT'),
     columns('sessions','SELECT','id,tenant_id,user_id,issued_at,revoked_at,expires_at,principal_version'),
     columns('sessions','UPDATE','revoked_at'),
     table('customer_access_deliveries','INSERT'),
