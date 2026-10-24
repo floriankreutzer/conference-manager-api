@@ -129,6 +129,8 @@ export function createPostgresTenantUserAdminRepository(pool, { auditRepository 
       if (typeof auditEventFor !== 'function') throw new TypeError('TENANT_USER_AUDIT_FACTORY_REQUIRED');
 
       return withPostgresTransaction(pool, async (client) => {
+        await client.query({ name: 'tenant-user-role-parent-lock',
+          text: 'SELECT id FROM tenants WHERE id=$1 FOR KEY SHARE',values: [tenantId] });
         await client.query({
           name: 'tenant-user-role-admin-lock',
           text: 'SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))',

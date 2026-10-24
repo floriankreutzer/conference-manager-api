@@ -98,3 +98,29 @@ END $$;
 REVOKE ALL ON FUNCTION guard_customer_microsoft_group_observation() FROM PUBLIC;
 CREATE TRIGGER customer_microsoft_group_observation_insert BEFORE INSERT OR UPDATE ON customer_microsoft_group_observations
   FOR EACH ROW EXECUTE FUNCTION guard_customer_microsoft_group_observation();
+
+-- Closed Demo reset must name all FK participants, even when empty. A strictly
+-- bound read-only definer guard prevents that reset from erasing real authority.
+CREATE FUNCTION guard_empty_microsoft_role_authority_truncate() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog AS $$
+BEGIN
+  IF TG_OP<>'TRUNCATE' OR TG_WHEN<>'BEFORE' OR TG_LEVEL<>'STATEMENT'
+    OR TG_NAME<>'microsoft_role_authority_empty_reset_guard' OR pg_trigger_depth()<>1
+    OR TG_RELID NOT IN ('public.tenant_microsoft_role_settings'::regclass,
+      'public.customer_microsoft_group_observations'::regclass) THEN
+    RAISE EXCEPTION 'MICROSOFT_ROLE_RESET_CONTEXT_REQUIRED' USING ERRCODE='42501';
+  END IF;
+  IF TG_RELID='public.tenant_microsoft_role_settings'::regclass THEN
+    IF EXISTS(SELECT 1 FROM public.tenant_microsoft_role_settings) THEN
+      RAISE EXCEPTION 'MICROSOFT_ROLE_AUTHORITY_RESET_DENIED' USING ERRCODE='55000';
+    END IF;
+  ELSIF EXISTS(SELECT 1 FROM public.customer_microsoft_group_observations) THEN
+    RAISE EXCEPTION 'MICROSOFT_ROLE_AUTHORITY_RESET_DENIED' USING ERRCODE='55000';
+  END IF;
+  RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION guard_empty_microsoft_role_authority_truncate() FROM PUBLIC;
+CREATE TRIGGER microsoft_role_authority_empty_reset_guard BEFORE TRUNCATE ON tenant_microsoft_role_settings
+  FOR EACH STATEMENT EXECUTE FUNCTION guard_empty_microsoft_role_authority_truncate();
+CREATE TRIGGER microsoft_role_authority_empty_reset_guard BEFORE TRUNCATE ON customer_microsoft_group_observations
+  FOR EACH STATEMENT EXECUTE FUNCTION guard_empty_microsoft_role_authority_truncate();

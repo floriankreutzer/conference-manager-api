@@ -79,6 +79,49 @@ test('native Microsoft groups require approved REAL mapping and verified flow; r
     expectedRevision: 1,auditEventFor }),/AUDIT_FAILED/);
   assert.ok(await resolve(signed.cookie));
   assert.equal((await mappingRepository.get({ tenantId: real.tenantId })).revision,1);
+  const recoveryAdmin=(await pool.query('SELECT id FROM users WHERE tenant_id=$1 AND id<>$2',
+    [real.tenantId,userId])).rows[0].id;
+  // While a parent transaction holds the Tenant, role administration must wait
+  // before taking its advisory lock. This prevents the Tenant/advisory cycle
+  // with provider admission, mapping edits and audit's FK-compatible lock.
+  const mutationPool=createPostgresPool({ mode: 'test',...database,databasePoolMax: 1 });
+  const observerPool=createPostgresPool({ mode: 'test',...database,databasePoolMax: 1 });
+  t.after(async()=>{ await Promise.all([mutationPool.end(),observerPool.end()]); });
+  const marker=`group-role-lock-${randomUUID()}`;
+  await mutationPool.query("SELECT set_config('application_name',$1,false)",[marker]);
+  const mutationUsers=createPostgresTenantUserAdminRepository(mutationPool,{ auditRepository: real.auditRepository });
+  const blocker=await pool.connect(),observer=await observerPool.connect();let ownsAdvisory=false;
+  await blocker.query('BEGIN');await blocker.query('SELECT id FROM tenants WHERE id=$1 FOR UPDATE',[real.tenantId]);
+  const mutation=mutationUsers.setElevatedRoles({ tenantId: real.tenantId,targetUserId: userId,
+    elevatedRoles: ['conference_manager','tenant_admin'],changedAt: new Date(),auditEventFor: ()=>real.auditService.createActorEvent({
+      tenantId: real.tenantId,actorUserId: recoveryAdmin,correlationId: correlationId(),action: 'tenant.user_permissions.changed',
+      targetType: 'user',targetId: userId,outcome: 'success',retentionClass: 'administrative',
+      metadata: { operation: 'native_lock_order_fixture' } }) }).then(value=>({ value }),error=>({ error }));
+  try {
+    let blocked=false;
+    for (let attempt=0;attempt<100;attempt++) {
+      const state=await observer.query('SELECT wait_event_type FROM pg_stat_activity WHERE application_name=$1 AND state=\'active\'',
+        [marker]);
+      if (state.rows[0]?.wait_event_type==='Lock') { blocked=true;break; }
+      await new Promise(resolve=>setTimeout(resolve,20));
+    }
+    assert.equal(blocked,true);
+    ownsAdvisory=(await observer.query('SELECT pg_try_advisory_lock(hashtextextended($1::text,0)) AS free',
+      [`tenant-role-admin:${real.tenantId}`])).rows[0].free;
+    assert.equal(ownsAdvisory,true);
+  } finally {
+    if (ownsAdvisory) await observer.query('SELECT pg_advisory_unlock(hashtextextended($1::text,0))',
+      [`tenant-role-admin:${real.tenantId}`]);
+    await blocker.query('ROLLBACK');blocker.release();observer.release();
+  }
+  const mutationResult=await mutation;if (mutationResult.error) throw mutationResult.error;
+  assert.equal(mutationResult.value.status,'updated');
+  await users.setElevatedRoles({ tenantId: real.tenantId,targetUserId: userId,elevatedRoles: ['tenant_admin'],
+    changedAt: new Date(),auditEventFor: ()=>real.auditService.createActorEvent({ tenantId: real.tenantId,
+      actorUserId: recoveryAdmin,correlationId: correlationId(),action: 'tenant.user_permissions.changed',
+      targetType: 'user',targetId: userId,
+      outcome: 'success',retentionClass: 'administrative',metadata: { operation: 'native_lock_order_restore' } }) });
+  signed=await signIn();
   // A complete later observation removes only the revoked group's source.
   provider.state.groups=[OTHER_GROUP];const revoked=await signIn();
   assert.deepEqual(revoked.principal.roles,['employee','tenant_admin']);assert.equal(await resolve(signed.cookie),null);
@@ -107,8 +150,6 @@ test('native Microsoft groups require approved REAL mapping and verified flow; r
   await access.groupRoleService.replace(context(signed.principal),{ directoryId: DIRECTORY,
     mappings: [{ groupId: GROUP,roles: ['tenant_admin'] }],expectedRevision: 1 });
   signed=await signIn();
-  const recoveryAdmin=(await pool.query('SELECT id FROM users WHERE tenant_id=$1 AND id<>$2',
-    [real.tenantId,userId])).rows[0].id;
   const direct=(targetUserId,elevatedRoles,actorUserId)=>users.setElevatedRoles({ tenantId: real.tenantId,
     targetUserId,elevatedRoles,changedAt: new Date(),auditEventFor: ()=>real.auditService.createActorEvent({
       tenantId: real.tenantId,actorUserId,correlationId: correlationId(),action: 'tenant.user_permissions.changed',
@@ -126,5 +167,8 @@ test('native Microsoft groups require approved REAL mapping and verified flow; r
   assert.equal(reset.revision,3);assert.equal(await resolve(signed.cookie),null);
   signed=await signIn();assert.deepEqual(signed.principal.roles,['employee']);
   assert.equal(await real.auditRepository.verifyTenantChain(real.tenantId),true);
+  for (const table of ['tenant_microsoft_role_settings','customer_microsoft_group_observations']) {
+    await assert.rejects(pool.query(`TRUNCATE ${table}`),{ code: '55000' });
+  }
   await assert.rejects(rollbackLatest(pool),{ code: '55000' }); // Preserve mappings, observations and approval evidence.
 });

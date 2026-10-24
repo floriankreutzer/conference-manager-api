@@ -254,12 +254,12 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
       return withPostgresTransaction(pool,async client=>{
         if (tenantEligibility!==null
           && await tenantEligibility.lockAdmissionWithClient(client,expectedEntry.tenantId)!==true) return rejected();
-        await lockTenantMicrosoftRoleAdministration(client,expectedEntry.tenantId);
         // Business scope first; never hold a global protocol row while waiting
         // for Tenant/member/User locks needed by lifecycle and role changes.
         const tenant=await client.query({ name: 'customer-microsoft-admission-tenant-lock',text:
           "SELECT id FROM tenants WHERE id=$1 AND status IN ('pending','onboarding','ready','active') FOR UPDATE",
         values: [expectedEntry.tenantId] });if (tenant.rowCount!==1) return rejected();
+        await lockTenantMicrosoftRoleAdministration(client,expectedEntry.tenantId);
         const member=await client.query({ name: 'customer-microsoft-admission-member-lock',text: `SELECT id
           FROM customer_access_memberships WHERE environment=$1 AND tenant_id=$2 AND id=$3 AND user_id=$4
             AND accepted_at IS NOT NULL FOR UPDATE`,

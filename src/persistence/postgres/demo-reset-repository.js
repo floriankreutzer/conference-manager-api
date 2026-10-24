@@ -44,6 +44,8 @@ export const DEMO_RESET_FAILURE_REASON = Object.freeze({
 const RESET_FAILURE_REASONS = new Set(Object.values(DEMO_RESET_FAILURE_REASON));
 
 export const DEMO_RESET_TABLES = Object.freeze([
+  'tenant_microsoft_role_settings',
+  'customer_microsoft_group_observations',
   'synthetic_calendar_events',
   'synthetic_calendar_resources',
   'synthetic_customer_handoffs',

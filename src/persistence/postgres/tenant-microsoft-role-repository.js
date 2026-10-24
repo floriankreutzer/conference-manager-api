@@ -49,6 +49,8 @@ export function createPostgresTenantMicrosoftRoleRepository(pool,{ auditReposito
         if (tenantEligibility!==null && await tenantEligibility.lockAdmissionWithClient(client,tenantId)!==true) {
           return Object.freeze({ status: 'not_authorized' });
         }
+        await client.query({ name: 'microsoft-role-parent-lock',text:
+          'SELECT id FROM tenants WHERE id=$1 FOR KEY SHARE',values: [tenantId] });
         await lockTenantMicrosoftRoleAdministration(client,tenantId);
         const actor=await client.query({ name: 'microsoft-role-actor-current',text: `SELECT person.id FROM users person
           JOIN (SELECT * FROM tenant_user_roles

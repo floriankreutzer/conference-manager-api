@@ -9,6 +9,7 @@ END $$;
 DROP TABLE customer_microsoft_group_observations;
 DROP FUNCTION guard_customer_microsoft_group_observation();
 DROP TABLE tenant_microsoft_role_settings;
+DROP FUNCTION guard_empty_microsoft_role_authority_truncate();
 DROP FUNCTION tenant_microsoft_role_mappings_valid(jsonb);
 DROP FUNCTION tenant_role_source_active(boolean,timestamptz);
 DROP TRIGGER tenant_group_role_refresh ON tenant_user_roles;

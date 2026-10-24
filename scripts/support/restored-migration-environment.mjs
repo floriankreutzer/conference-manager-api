@@ -86,7 +86,7 @@ export function runRestoredMigration(env, execute = spawnSync) {
     || Object.keys(receipt).sort().join(',') !==
       'canonicalVersion,demoVersion,operation,resetPerformed,retainedCountsMatch,schemaVersion'
     || receipt.schemaVersion !== 1 || receipt.operation !== 'provider_metrics_migration'
-    || receipt.canonicalVersion !== 69 || receipt.demoVersion !== 29
+    || receipt.canonicalVersion !== 69 || receipt.demoVersion !== 30
     || receipt.resetPerformed !== false || receipt.retainedCountsMatch !== true) refuse('RECEIPT');
   return { normalizedSourceAlias: prepared.normalizedSourceAlias,
     discardedToolchainMetadata: prepared.discardedToolchainMetadata };

@@ -17,7 +17,7 @@ async function assertDemoCopyDiscardAuthority(pool) {
   const row = result.rows[0];
   if (result.rows.length !== 1 || row.database !== 'conference_manager_demo_shared'
     || row.role !== 'cm_demo_migration' || Number(row.schema_version) !== 69
-    || Number(row.overlay_version) !== 29 || Number(row.sentinel_count) !== 1) {
+    || Number(row.overlay_version) !== 30 || Number(row.sentinel_count) !== 1) {
     throw new TypeError('MEDIA_DEMO_COPY_DISCARD_AUTHORITY_REQUIRED');
   }
 }

@@ -56,8 +56,10 @@ identity/User/version and current mapping, then reconciles only the intersection
 of the approved directory and groups. Absent, overage, expired or mismatched
 observations remove derived sources; direct grants survive. Source changes and
 refreshes advance User security versions. Mapping changes, direct/lifecycle
-administration and reconciliation share the Tenant advisory lock and lock Users
-before role rows. Required grant audit and ordinary session issuance commit in
+administration and reconciliation lock the Tenant before the Tenant advisory
+lock, then Users before role rows. This order avoids a parent/advisory deadlock
+with admission and audit FK locks. Native qualification observes the advisory
+lock remaining available while a role mutation waits for its locked Tenant. Required grant audit and ordinary session issuance commit in
 the same transaction. Browser data cannot submit an observation or derived grant.
 
 Derived membership is valid until the earlier of token expiry and one hour after
@@ -76,7 +78,12 @@ existing role rows; old rows remain direct grants. Schema069 adds expiry, approv
 mapping revisions and flow observations. Pure SQL source-validity validation grants
 no table authority. Existing accepted migrations are not rewritten. Migration069
 refuses pre-existing group provenance without a fresh observation rather than
-inventing one. Populated mapping/observation/grant state blocks downgrade.
+inventing one. Populated mapping/observation/grant state blocks downgrade. Demo overlay030 grants
+only TRUNCATE on the two otherwise inaccessible new tables so the closed Demo
+reset can name all FK participants. A trigger-context-bound, read-only definer
+guard refuses either table when populated. It cannot erase actual mappings or
+observations and grants no Demo CRUD, SELECT or direct function execution. Existing
+Demo migrations and seed semantics remain unchanged.
 
 Effective role reads use the same database source-validity predicate. Direct
 editing continues to use direct assignments. Lifecycle filters use effective roles.
