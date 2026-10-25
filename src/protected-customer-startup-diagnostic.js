@@ -18,7 +18,7 @@ const categories=new Map([
     ['ENTRA_FRESH_CLIENT_CONFIGURATION_INVALID','microsoft_configuration'],
 ]);
 
-const allowed=new Set(categories.values());
+const allowed=new Set([...categories.values(),'unavailable']);
 export function protectedCustomerStartupCategory(error) {
   const own=error && typeof error==='object' ? Object.getOwnPropertyDescriptors(error) : {};
   const category=own.startupCategory?.value;
