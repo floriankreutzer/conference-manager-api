@@ -30,6 +30,7 @@ test('REAL owner exact Microsoft options and native final approval preserve sele
   const f=await fixture(t),selection={ tenantId: f.generationId,role: 'tenant_admin' };
   const options=await f.request('/options',{ method: 'POST',body: selection,headers: f.managed });assert.equal(options.status,200);
   assert.equal(JSON.parse(options.text).status,'microsoft_required');assert.equal(options.headers['set-cookie'].length,2);
+  assert.equal(new URL(JSON.parse(options.text).authorizationUrl).searchParams.get('prompt'),'login');
   const input=f.calls.at(-1).input;assert.deepEqual(Object.keys(input.intent).sort(),['flowId','operatorId','role','state','tenantId']);
   assert.equal(input.intent.operatorId,f.principal.operatorId);assert.equal(input.intent.tenantId,f.generationId);
   assert.equal(input.intent.flowId,f.flowId);assert.equal(input.intent.state,f.STATE);
