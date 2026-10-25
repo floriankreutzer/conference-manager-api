@@ -49,22 +49,25 @@ References:
 - https://learn.microsoft.com/en-us/entra/identity-platform/optional-claims
 - https://learn.microsoft.com/en-us/entra/identity-platform/optional-claims-reference
 
-## Incomplete release scope — do not activate
+## Source accepted; operating release scope remains incomplete
 
-This is not full implementation of the approved target. In particular:
+Accepted source is distinct from the coordinated operating cutover. In particular:
 
-- The071 source candidate composes fixed Microsoft generation/handoff/calendar
-  custody with zero application keys while retaining historical legacy custody.
-  See SYNTHETIC-MICROSOFT-CUSTODY.md. Its native/elapsed-expiry and final paired
-  browser/reset qualification remain required before activation.
+- Accepted071 source composes fixed Microsoft generation/handoff/calendar custody
+  with zero application keys while retaining historical legacy custody. See
+  SYNTHETIC-MICROSOFT-CUSTODY.md. API315 and FE381 passed their complete candidate
+  and independent Main gates; this does not establish live activation.
 - The one-time owner-role upgrade is implemented below but has not been executed
   live. General two-administrator operator lifecycle remains unchanged; broader
   sole-owner administration is not yet implemented.
-- Auditable owner-to-real-Customer support access and administrative Microsoft
-  group-to-role mapping require final paired/provider qualification. The schema069
-  candidate implements approved mapping, bounded observation and independent
-  source reconciliation; see CUSTOMER-ROLE-SOURCES.md. Never simulate these features by broadening ordinary User
-  roles or linking a real identity to a synthetic persona.
+- Accepted072 source implements attributable owner-to-REAL-Customer access and
+  current source/write/provider fencing; API317/318 passed complete candidate
+  native and permanent Demo gates. Paired Owner browser and independent runtime
+  Main qualification must be recorded separately. Schema069 approved mapping,
+  bounded observations and independent source reconciliation are accepted source;
+  see CUSTOMER-ROLE-SOURCES.md and OWNER-REAL-CUSTOMER-ACCESS.md. Actual provider
+  qualification remains required. Never broaden ordinary User roles or link a
+  real identity to a synthetic persona to simulate these capabilities.
 - Runtime roles, schema/custody, source pair, browser manifests, deployment UUID
   and integer epoch, actual MFA claims, invitation sender/delivery and all three
   Demo scenarios require coordinated cutover evidence. Existing key/audit history
@@ -108,3 +111,18 @@ itself. Its rollback refuses once an upgrade receipt exists, preserving signed
 history. The source mechanism passed native database and complete Demo/browser CI at
 API307 and the cumulative API310 candidate. Explicit coordinated operating
 evidence is still required; no actual owner role grant is claimed.
+
+
+## Existing-owner upgrade execution boundary
+
+The separate `protected-int-owner-roles.yml` workflow executes only the existing
+one-time `platform-owner-roles.mjs` command. It never repeats first-owner bootstrap.
+It retains exact accepted Main, the fixed owner actor, first attempt, ordinary
+logging, independently bound identity/deployment/segment, closed-service evidence,
+protected environment secrets, the shared operating mutex and descriptor3 input.
+The private request additionally requires `expectedSecurityVersion`; the database
+adapter independently checks the actual current value and original owner receipt.
+Only the fixed four-role union is possible. No second approver is fabricated and
+the general two-administrator lifecycle is unchanged. The workflow emits only a
+success marker; private receipts are suppressed. This execution path has not been
+run live; preparing source cannot establish that its private inputs are current.
