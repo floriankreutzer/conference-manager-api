@@ -63,8 +63,10 @@ export async function createProtectedCustomerRuntime(environment) {
     const logger=createLogger();
     const syntheticScope=profile.syntheticEnabled ? { ...protection,platformSecurityEpoch: profile.platformSecurityEpoch,
       customerOrigin: profile.customerOrigin,platformOrigin: profile.platformOrigin } : null;
+    const ownerScope=profile.ownerCustomerAccessEnabled ? { ...protection,platformSecurityEpoch: profile.platformSecurityEpoch,
+      customerOrigin: profile.customerOrigin,platformOrigin: profile.platformOrigin } : null;
     persistence=createPostgresPersistence(config,{ calendarAuthorityGuardFactory: pool=>
-      createPostgresProtectedCalendarAuthorityGuard(pool,{ ...protection,syntheticScope }) });
+      createPostgresProtectedCalendarAuthorityGuard(pool,{ ...protection,syntheticScope,ownerScope }) });
     leasePool=createPostgresPool(profile.leaseDatabase);
     const base=persistence,readiness=createPostgresProtectedRuntimeReadiness(base.pool,
       { ...protection,leasePool,surface: 'customer' });
@@ -82,8 +84,13 @@ export async function createProtectedCustomerRuntime(environment) {
       authority: config.entraAuthority,publicOrigin: config.publicOrigin,includeGroupMembership: true });
     const authentication=createProtectedCustomerAuthentication({ config,persistence,leasePool,...protection,cipher,
       microsoftClient,...bundle.authentication });
-    const graph=createMicrosoft365Client({ clientId: config.entraClientId,clientSecret: config.entraClientSecret,
+    if (authentication.writeCustody!==null) additionalReadinessChecks.push(authentication.writeCustody.isReady);
+    const actualGraph=createMicrosoft365Client({ clientId: config.entraClientId,clientSecret: config.entraClientSecret,
       publicOrigin: config.publicOrigin,timeoutMs: config.microsoft365GraphTimeoutMs,allowInsecureLocalhost: false });
+    const graph=authentication.writeCustody===null ? actualGraph : authentication.writeCustody.providerClient(actualGraph);
+    const executionScopes=authentication.writeCustody===null ? scopes : Object.freeze({
+      withShared: work=>scopes.withShared(()=>authentication.writeCustody.run(work)),
+    });
     const realFactory=createMicrosoft365CalendarProviderFactory({ connectionRepository: base.microsoft365ConnectionRepository,
       bindingRepository: base.tenantOnboardingRepository,mappingRepository: base.microsoft365RoomMappingRepository,
       providerClient: graph,capabilityHealthService: createMicrosoft365CapabilityHealthService({
@@ -110,7 +117,7 @@ export async function createProtectedCustomerRuntime(environment) {
       httpServerFactory: options=>createHttpServer({ ...options,
         microsoft365ConnectionService: realMicrosoftService(options.microsoft365ConnectionService,realGate),
         requestHandlerFactory: app=>withProtectedHostedFrontend({ profile,config,artifact: frontend,
-          apiHandler: createProtectedHttpExecutionHandler({ config,surface: 'customer',executionScopes: scopes,app }) }),
+          apiHandler: createProtectedHttpExecutionHandler({ config,surface: 'customer',executionScopes,app }) }),
       }) });
     const worker=bundle.mailProvider===null ? null : createProtectedCustomerAccessDeliveryWorker({ ...protection,
       pool: base.pool,leasePool,cipher,provider: bundle.mailProvider });

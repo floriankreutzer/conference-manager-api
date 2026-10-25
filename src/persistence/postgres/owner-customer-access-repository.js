@@ -124,6 +124,14 @@ export function createPostgresOwnerCustomerAccessRepository(pool,{ scope: rawSco
       ...protection,tenantId: principal.tenantId,mode: 'real',generationId: null,generationState: null,operatorId: null,slot: null }) });
   }
   return Object.freeze({
+    async isReady() {
+      try {
+        const result=await pool.query(`SELECT bool_and(has_function_privilege(current_user,signature,'EXECUTE')) AS allowed
+          FROM unnest(ARRAY['public.protected_lock_owner_handoff_source(text,uuid,uuid)',
+            'public.protected_lock_owner_customer_source(text,uuid,uuid)']) AS required(signature)`);
+        return result.rowCount===1 && result.rows[0]?.allowed===true;
+      } catch { return false; }
+    },
     resolveCurrentAccess(input) {
       requireProtectedRuntimeSharedExecutionScope(pool,protection);
       return withPostgresTransaction(pool,client=>resolve(client,input),{ readOnly: true });

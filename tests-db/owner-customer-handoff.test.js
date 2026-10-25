@@ -19,24 +19,29 @@ import { createProtectedOwnerCustomerWriteCustody } from '../src/protected-owner
 import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
 import { ownerCustomerUserId } from '../src/domain/owner-customer-handoff.js';
 import { createProtectedOwnerMicrosoftFixture } from './support/protected-owner-microsoft-fixture.js';
+import { unusedProtectedRuntimePort,startProtectedRuntimeProcess,exchangeProtectedRuntime }
+  from './support/protected-runtime-process-fixture.js';
 
 const headers=cookie=>({ headers: { cookie: cookie.split(';')[0] } });
 
 test('native designated owner REAL handoff creates only own identity, preserves role switches and rechecks every write source',async t=>{
-  const fixture=await createProtectedPostgresTlsFixture(t),pools=[];
+  const fixture=await createProtectedPostgresTlsFixture(t),pools=[],children=[];
   function database(url) {
     const pool=new pg.Pool({ connectionString: url,ssl: { ca: fixture.certificate,rejectUnauthorized: true },max: 1,
       connectionTimeoutMillis: 2000,statement_timeout: 10000 });pool.on('error',()=>{});pools.push(pool);return pool;
   }
   const pool=database(fixture.url.href),leasePool=database(fixture.url.href);
-  t.after(async()=>{ try { await Promise.all(pools.map(pool=>pool.end())); } finally { await fixture.destroy(); } });
+  t.after(async()=>{
+    try { for (const child of children) await child.stop(); }
+    finally { try { await Promise.all(pools.map(pool=>pool.end())); } finally { await fixture.destroy(); } }
+  });
   await migrateUp(pool);
   const prior=(await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=71 ORDER BY version')).rows;
   assert.equal(await rollbackLatest(pool),true);await migrateUp(pool);
   assert.deepEqual((await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=71 ORDER BY version')).rows,prior);
   const epoch=randomUUID(),tenantId=randomUUID(),foreignTenant=randomUUID();
   const scope={ environment: 'int',securityEpoch: epoch,platformSecurityEpoch: 7,
-    customerOrigin: 'https://127.0.0.1',platformOrigin: 'https://ops-int.example.com' };
+    customerOrigin: 'https://app-int.example.test',platformOrigin: 'https://ops-int.example.com' };
   const protection={ environment: 'int',securityEpoch: epoch };
   await pool.query("INSERT INTO protected_runtime_deployments(environment,security_epoch) VALUES('int',$1)",[epoch]);
   for (const target of [tenantId,foreignTenant]) {
@@ -72,7 +77,7 @@ test('native designated owner REAL handoff creates only own identity, preserves 
   const owner=await createProtectedOwnerMicrosoftFixture(pool,leasePool,{ epoch,runtimePool: platformPool,
     runtimeLeasePool: platformLease });
   const customerScopes=createPostgresProtectedRuntimeExecutionScopes({ pool: customerPool,leasePool: customerLease,...protection });
-  const audit=createPostgresAuditRepository(platformPool,{ hmacSecret: 'a'.repeat(48) });
+  const audit=createPostgresAuditRepository(platformPool,{ hmacSecret: 't'.repeat(48) });
   const browserSecret='h'.repeat(48),binding=createOwnerCustomerHandoffBrowserBinding({ scope,secret: browserSecret });
   t.after(()=>binding.destroy());
   const service=createOwnerCustomerAccessService({ scope,browserBinding: binding,microsoftOperationService: owner.auth,
@@ -80,7 +85,7 @@ test('native designated owner REAL handoff creates only own identity, preserves 
       { scope,browserBinding: binding,platformAuditRepository: owner.auditRepository,tenantAuditRepository: audit }) });
   const customer=createProtectedOwnerCustomerAccess({ pool: customerPool,leasePool: customerLease,scope,
     browserSecret,sourceSecret: 'b'.repeat(48),
-    auditHmacSecret: 'a'.repeat(48),csrfSecret: 's'.repeat(48),fallbackSessionService: { resolvePrincipal: async()=>null } });
+    auditHmacSecret: 't'.repeat(48),csrfSecret: 's'.repeat(48),fallbackSessionService: { resolvePrincipal: async()=>null } });
   const custody=createPostgresOwnerCustomerAccessRepository(customerPool,{ scope });
   const writes=createProtectedOwnerCustomerWriteCustody({ pool: customerPool,scope });
   const ownId=ownerCustomerUserId({ environment: 'int',operatorId: owner.operatorId,tenantId });
@@ -127,6 +132,55 @@ test('native designated owner REAL handoff creates only own identity, preserves 
     await assert.rejects(pool.query(sql));
   }
   await assert.rejects(rollbackLatest(pool),/OWNER_CUSTOMER_HISTORY_REQUIRES_VERIFIED_RECOVERY/);
+  const common={ NODE_ENV: 'production',NODE_EXTRA_CA_CERTS: fixture.caPath,PROTECTED_ENVIRONMENT: 'int',
+    PROTECTED_SECURITY_EPOCH: epoch,PROTECTED_PLATFORM_SECURITY_EPOCH: '7',PROTECTED_API_COMMIT: 'a'.repeat(40),
+    PROTECTED_FRONTEND_COMMIT: 'b'.repeat(40),PROTECTED_SERVICE_VERSION: '1.0.0',PROTECTED_DATABASE_POOL_MAX: '1',
+    PROTECTED_LEASE_POOL_MAX: '1',PROTECTED_CUSTOMER_ORIGIN: scope.customerOrigin,PROTECTED_PLATFORM_ORIGIN: scope.platformOrigin,
+    PROTECTED_TENANT_AUDIT_HMAC_SECRET: 't'.repeat(48),PROTECTED_CUSTODY_LOOKUP_SECRET: 'l'.repeat(48),
+    PROTECTED_CUSTODY_ACTIVE_KEY_ID: 'initial',PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED: 'true',
+    PROTECTED_OWNER_HANDOFF_SECRET: browserSecret,
+    PROTECTED_CUSTODY_KEYRING: JSON.stringify([{ id: 'initial',key: Buffer.alloc(32,3).toString('base64url') }]) };
+  function roleUrl(index) {
+    const url=new URL(fixture.url);url.username=`cm_protected_int_${index===0 ? 'customer' : 'platform'}`;
+    url.password=passwords[index];return url.href;
+  }
+  const customerClientId=randomUUID(),customerEnv={ ...common,PROTECTED_CUSTOMER_DATABASE_URL: roleUrl(0),
+    PROTECTED_CUSTOMER_ENTRA_CLIENT_ID: customerClientId,PROTECTED_PEER_ENTRA_CLIENT_ID: owner.clientId,
+    PROTECTED_CUSTOMER_ENTRA_CLIENT_SECRET: 'g'.repeat(48),PROTECTED_CUSTOMER_CSRF_SECRET: 's'.repeat(48),
+    PROTECTED_CUSTOMER_EMAIL_FLOW_SECRET: 'f'.repeat(48),PROTECTED_CUSTOMER_EMAIL_CODE_SECRET: 'n'.repeat(48),
+    PROTECTED_CUSTOMER_EMAIL_SOURCE_SECRET: 'b'.repeat(48),PROTECTED_CUSTOMER_MICROSOFT_FLOW_SECRET: 'm'.repeat(48),
+    PROTECTED_CUSTOMER_HOST: '127.0.0.1',PROTECTED_CUSTOMER_PORT: String(await unusedProtectedRuntimePort()) };
+  const platformEnv={ ...common,PROTECTED_PLATFORM_DATABASE_URL: roleUrl(1),PROTECTED_PLATFORM_ENTRA_CLIENT_ID: owner.clientId,
+    PROTECTED_PEER_ENTRA_CLIENT_ID: customerClientId,PROTECTED_PLATFORM_ENTRA_TENANT_ID: owner.directoryId,
+    PROTECTED_PLATFORM_ENTRA_CLIENT_SECRET: 'e'.repeat(48),PROTECTED_PLATFORM_OIDC_TRANSACTION_SECRET: 'o'.repeat(48),
+    PROTECTED_PLATFORM_CSRF_SECRET: 'c'.repeat(48),PROTECTED_PLATFORM_AUDIT_HMAC_SECRET: 'a'.repeat(48),
+    PROTECTED_PLATFORM_CURSOR_SECRET: 'u'.repeat(48),PROTECTED_PLATFORM_OWNER_RECIPIENT: 'Owner@example.test',
+    PROTECTED_PLATFORM_ASSURANCE_MODE: 'microsoft_mfa',PROTECTED_PLATFORM_OWNER_HANDOFF_INTENT_SECRET: 'i'.repeat(48),
+    PROTECTED_PLATFORM_HOST: '127.0.0.1',PROTECTED_PLATFORM_PORT: String(await unusedProtectedRuntimePort()) };
+  const app=await startProtectedRuntimeProcess('customer',customerEnv);children.push(app);
+  const ops=await startProtectedRuntimeProcess('platform',platformEnv);children.push(ops);
+  assert.equal(app.outcome.type,'listening');assert.equal(ops.outcome.type,'listening');
+  assert.equal((await exchangeProtectedRuntime('customer',app.outcome.port,'/api/v1/session',
+    { headers: headers(previous.setCookie).headers })).status,200);
+  const started=await exchangeProtectedRuntime('customer',app.outcome.port,'/api/v1/auth/owner/start',{ method: 'POST',body: {} });
+  assert.equal(started.status,303);assert.match(started.headers['set-cookie'][0],/^cm_owner_browser=/);
+  const arrival=new URL(started.headers.location);assert.equal(arrival.origin,scope.platformOrigin);
+  const arrived=await exchangeProtectedRuntime('platform',ops.outcome.port,arrival.pathname+arrival.search,
+    { headers: { origin: null,'sec-fetch-site': 'cross-site' } });
+  assert.equal(arrived.status,303);assert.equal(arrived.headers.location,'/?auth=owner_intent');
+  const intent=arrived.headers['set-cookie'][0].split(';')[0];
+  const currentCookie=owner.current().setCookie.split(';')[0],managed={ cookie: `${currentCookie}; ${intent}` };
+  const targets=await exchangeProtectedRuntime('platform',ops.outcome.port,'/api/v1/platform/auth/owner/intent',
+    { headers: managed });
+  assert.equal(targets.status,200);const targetDto=JSON.parse(targets.text);
+  assert.equal(targetDto.status,'confirmation_required');assert.equal(targetDto.tenants.length,2);
+  assert.ok(targetDto.tenants.some(target=>target.tenantId===tenantId));
+  // Do not contact real Microsoft from the fixture. Invalid caller identity is
+  // denied before the actual process can construct any provider challenge.
+  const unsafe=await exchangeProtectedRuntime('platform',ops.outcome.port,'/api/v1/platform/auth/owner/options',{
+    method: 'POST',body: { tenantId,role: 'employee',userId: ownId },
+    headers: { ...managed,'x-csrf-token': owner.current().csrfToken } });assert.equal(unsafe.status,400);
+  assert.equal((await app.stop()).code,0);assert.equal((await ops.stop()).code,0);
   async function write(principal) {
     return customerScopes.withShared(()=>writes.run(async()=>{
       writes.observe(principal);
@@ -136,10 +190,23 @@ test('native designated owner REAL handoff creates only own identity, preserves 
       });
     }));
   }
+  const blocking=await pool.connect();
+  try {
+    await blocking.query('BEGIN');await blocking.query('SELECT id FROM platform_sessions WHERE id=$1 FOR UPDATE',
+      [owner.current().principal.session.id]);
+    await assert.rejects(write(previous.principal),/AUTHORIZATION_DENIED/);
+  } finally { await blocking.query('ROLLBACK');blocking.release(); }
   assert.equal(await write(previous.principal),1);
   await owner.sessions.revoke(owner.current().principal);
   assert.equal(await customer.sessionService.resolvePrincipal(headers(previous.setCookie)),null);
   await assert.rejects(write(previous.principal),/AUTHORIZATION_DENIED/);
   assert.equal((await pool.query('SELECT display_name FROM tenants WHERE id=$1',[tenantId])).rows[0].display_name,
     'Owner changed Customer');
+  const restarted=await startProtectedRuntimeProcess('customer',customerEnv);children.push(restarted);
+  assert.equal(restarted.outcome.type,'listening');
+  assert.equal((await exchangeProtectedRuntime('customer',restarted.outcome.port,'/api/v1/session',
+    { headers: headers(previous.setCookie).headers })).status,401);assert.equal((await restarted.stop()).code,0);
+  for (const value of [fixture.password,...passwords,previous.setCookie.split(';')[0],currentCookie,intent]) {
+    assert.equal(children.some(child=>child.logs().includes(value)),false,'owner root logs exclude private fixture custody');
+  }
 });

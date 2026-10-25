@@ -19,7 +19,7 @@ export function createProtectedOwnerCustomerWriteCustody({ pool,scope: rawScope 
     beforeWrite: (client,principal)=>repository.lockCurrentAccessWithClient(client,{ ...protection,principal }),
   });
   return Object.freeze({
-    run: authority.run,
+    run: authority.run,isReady: repository.isReady,
     observe(principal) {
       if (principal?.providerIdentity?.provider!=='platform_owner') return principal;
       const current=normalizePrincipal(principal);authority.admit(current,JSON.stringify(current));return current;

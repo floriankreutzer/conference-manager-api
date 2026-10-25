@@ -170,3 +170,52 @@ That branch now explicitly drains only empty072 before asserting the original
 populated071 recovery rejection. No down guard or expected rejection is removed.
 Full native and all-browser qualification remain required; the failed run remains
 failed evidence even though its new owner-native step passed.
+
+
+## Explicit process composition candidate (not live)
+
+The separate runtime branch adds default-off PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED
+and independent PROTECTED_OWNER_HANDOFF_SECRET / Platform intent secrets. Explicit
+MFA Platform configuration alone can enable it; application-passkey profiles,
+inactive supplied owner secrets, malformed flags and cross-purpose aliases refuse.
+Both surfaces retain their own database roles, client IDs, CSRF, source budgets,
+namespace and public origin. No app passkey or credential minimum is constructed
+by the Microsoft owner path.
+
+Customer construction owns invited/synthetic fallback and the private owner
+issuer. Its five-method HTTP session facade alone reaches business handlers.
+The owning outer API execution scope retains the existing shared deployment lease
+and a live immutable authority scope. Only the successfully qualified owner
+Principal is observed there, before business writes. Fixed actual Microsoft
+network methods use the owned write guard; normal provider URL/timeout/retry
+contracts remain with the existing client. Readiness requires both private owner
+source-lock function grants. The REAL calendar final-authority branch now
+independently verifies the same current owner custody before checking the
+existing Microsoft Tenant/integration/resource bindings.
+
+Platform construction injects only its actual shared Microsoft operation instance
+into the closed owner approval protocol. The original source predicate has a
+current-owner half for the bounded directory and an independently locked REAL
+target half for preparation/approval, preserving provider/version/time/receipt
+checks. No fake target/flow identifier is needed for directory qualification.
+Owner-only /api/v1/platform/auth/owner arrive/intent/options/approve routes use a
+separate Strict signed intent, bounded UUID keyset target pages and the canonical
+normal-source CSRF/operation cookies. The browser may request only REAL target
+UUID/selected Customer role; identity, generation, slot and credential-response
+fields refuse. Source, actual current registry and exact shared proof remain
+independent authorities. An invalid /arrive cannot create an authenticated session.
+Native approval remains a top-level fixed Customer303 after committed proof,
+audit and normal continuation. Legacy synthetic route/cookie wrappers preserve
+their exact namespace and explicit route-module contract without a gate exemption.
+
+Focused source tests cover both process constructions in DEV/INT/PROD without
+provider/database I/O, closed flags/secrets, own directory/selection HTTP,
+CSRF/account-change/commit/redirect failures and legacy HTTP/cookie regression.
+The native owner fixture is extended to start both actual process roots over
+restricted max-one TLS/SCRAM roles, read current own session/target intent through
+real HTTP, deny injected identity before provider work, and deny the old own
+session after source revocation. It retains a deterministic concurrent source-row
+lock denial before the final write and restarts the actual Customer process after
+revocation. The fixture deliberately does not contact real Microsoft; its positive
+exact proof remains the separately identified MSAL fixture. Native execution of
+this extension and the paired real frontend/browser journey remain pending.

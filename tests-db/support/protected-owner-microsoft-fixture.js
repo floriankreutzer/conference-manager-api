@@ -64,7 +64,7 @@ export async function createProtectedOwnerMicrosoftFixture(pool,leasePool,{ epoc
       state: started.state,cookie,request: { headers: { cookie: current.setCookie.split(';')[0] } } },mutation);
     current={ principal: result.principal,setCookie: result.setCookies[0],csrfToken: result.csrfToken };return result.result;
   }
-  return { operatorId,auth,sessions,scopes,auditRepository,freshSession,current: ()=>current,
+  return { operatorId,directoryId: directory,clientId,auth,sessions,scopes,auditRepository,freshSession,current: ()=>current,
     execute: (hash,mutation)=>execute(hash,mutation,false),
     executeWithContinuation: (hash,mutation)=>execute(hash,mutation,true) };
 }

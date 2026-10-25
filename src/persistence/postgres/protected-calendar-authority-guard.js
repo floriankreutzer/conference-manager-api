@@ -1,5 +1,7 @@
 import { isInternalUuid } from '../../domain/identifiers.js';
 import { normalizePrincipal } from '../../identity/principal.js';
+import { normalizeOwnerCustomerAccessScope } from '../../domain/owner-customer-handoff.js';
+import { createPostgresOwnerCustomerAccessRepository } from './owner-customer-access-repository.js';
 import { normalizeSyntheticHandoffScope } from '../../domain/synthetic-handoff.js';
 import { createPostgresProtectedCustomerAccessRepository } from './protected-customer-access-repository.js';
 import { createPostgresSyntheticCustomerAccessRepository } from './synthetic-customer-access-repository.js';
@@ -10,7 +12,7 @@ import { createPostgresMicrosoft365CalendarAuthorityGuard,isCalendarAuthorityLoc
 
 // Current registry chooses the fixed branch. A provider label or principal
 // alone cannot replace current invited/delegated custody at the final write.
-export function createPostgresProtectedCalendarAuthorityGuard(pool,{ environment,securityEpoch,syntheticScope=null }={}) {
+export function createPostgresProtectedCalendarAuthorityGuard(pool,{ environment,securityEpoch,syntheticScope=null,ownerScope=null }={}) {
   if (!pool || typeof pool.query!=='function' || typeof pool.connect!=='function'
     || !['dev','int','prod'].includes(environment) || !isInternalUuid(securityEpoch)) {
     throw new TypeError('PROTECTED_CALENDAR_AUTHORITY_CONFIGURATION_INVALID');
@@ -22,6 +24,13 @@ export function createPostgresProtectedCalendarAuthorityGuard(pool,{ environment
       throw new TypeError('PROTECTED_CALENDAR_AUTHORITY_CONFIGURATION_INVALID');
     }
   }
+  if (ownerScope!==null) {
+    ownerScope=normalizeOwnerCustomerAccessScope(ownerScope);
+    if (ownerScope.environment!==environment || ownerScope.securityEpoch!==scope.securityEpoch) {
+      throw new TypeError('PROTECTED_CALENDAR_AUTHORITY_CONFIGURATION_INVALID');
+    }
+  }
+  const owner=ownerScope===null ? null : createPostgresOwnerCustomerAccessRepository(pool,{ scope: ownerScope });
   const real=createPostgresProtectedCustomerAccessRepository(pool,scope),microsoft=createPostgresMicrosoft365CalendarAuthorityGuard();
   const synthetic=syntheticScope===null ? null : createPostgresSyntheticCustomerAccessRepository(pool,{ scope: syntheticScope });
   function transaction(client) {
@@ -38,11 +47,14 @@ export function createPostgresProtectedCalendarAuthorityGuard(pool,{ environment
       JOIN tenants tenant ON tenant.id=registry.tenant_id
       WHERE registry.environment=$1 AND registry.tenant_id=$3 AND tenant.status='active' FOR SHARE OF tenant`,
     values: [environment,scope.securityEpoch,tenantId] });
-    const mode=selected.rows[0]?.mode,repository=mode==='real' ? real : mode==='synthetic' ? synthetic : null;
+    const mode=selected.rows[0]?.mode,isOwner=principal.providerIdentity.provider==='platform_owner';
+    const repository=mode==='real' ? isOwner ? owner : real : mode==='synthetic' ? synthetic : null;
     if (!repository) return null;
     const input={ ...scope,principal },first=await repository.resolveCurrentAccess(input);
     if (first?.runtime?.mode!==mode) return null;
-    if (mode==='synthetic') {
+    if (mode==='real' && isOwner) {
+      if (!await owner.lockCurrentAccessWithClient(client,input)) return null;
+    } else if (mode==='synthetic') {
       const locked=await client.query({ name: 'protected-calendar-source-lock',
         text: 'SELECT protected_lock_synthetic_calendar_source($1,$2,$3) AS allowed',
         values: [environment,scope.securityEpoch,principal.session.id] });

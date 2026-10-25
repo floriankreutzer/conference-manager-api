@@ -7,7 +7,7 @@ const COMMON_KEYS=new Set(['PROTECTED_ENVIRONMENT','PROTECTED_SECURITY_EPOCH','P
   'PROTECTED_DATABASE_POOL_MAX','PROTECTED_LEASE_POOL_MAX','PROTECTED_PLATFORM_SECURITY_EPOCH','PROTECTED_HANDOFF_SECRET',
   'PROTECTED_CUSTODY_ACTIVE_KEY_ID','PROTECTED_CUSTODY_KEYRING','PROTECTED_CUSTODY_LOOKUP_SECRET','PROTECTED_TENANT_AUDIT_HMAC_SECRET',
   'PROTECTED_PEER_ENTRA_CLIENT_ID','PROTECTED_SERVICE_VERSION','PROTECTED_HOSTED_FRONTEND_ENABLED',
-  'PROTECTED_HOSTED_FRONTEND_SHA256']);
+  'PROTECTED_HOSTED_FRONTEND_SHA256','PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED','PROTECTED_OWNER_HANDOFF_SECRET']);
 const LEGACY=/^(?:DATABASE_URL|DATABASE_SSL|PUBLIC_ORIGIN|CSRF_SECRET|AUDIT_HMAC_SECRET|ENTRA_|OIDC_|PLATFORM_|DEMO_)/;
 const fail=code=>{ throw new TypeError(`PROTECTED_RUNTIME_CONFIG_${code}`); };
 function required(env,key) {
@@ -69,6 +69,8 @@ export function loadProtectedRuntimeProfile(env,{ surface }={}) {
     || Number(platformSecurityEpoch)<2 || Number(platformSecurityEpoch)>2147483647) fail('PLATFORM_EPOCH_INVALID');
   const synthetic=optional(env,'PROTECTED_SYNTHETIC_ENABLED') ?? 'false';
   if (!['true','false'].includes(synthetic) || synthetic==='true' && environment==='prod') fail('SYNTHETIC_INVALID');
+  const ownerAccess=optional(env,'PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED') ?? 'false';
+  if (!['true','false'].includes(ownerAccess)) fail('OWNER_CUSTOMER_ACCESS_INVALID');
   const apiCommit=required(env,'PROTECTED_API_COMMIT'),frontendCommit=required(env,'PROTECTED_FRONTEND_COMMIT');
   if (![apiCommit,frontendCommit].every(value=>/^[a-f0-9]{40}$/.test(value))) fail('ARTIFACT_PAIR_INVALID');
   const hosted=optional(env,'PROTECTED_HOSTED_FRONTEND_ENABLED') ?? 'false';
@@ -85,6 +87,7 @@ export function loadProtectedRuntimeProfile(env,{ surface }={}) {
   const selected=Object.freeze({ ...database,mode: 'production',applicationName });
   return Object.freeze({ surface,environment,securityEpoch: securityEpoch.toLowerCase(),
     platformSecurityEpoch: Number(platformSecurityEpoch),customerOrigin,platformOrigin,syntheticEnabled: synthetic==='true',
+    ownerCustomerAccessEnabled: ownerAccess==='true',
     apiCommit,frontendCommit,hostedFrontendSha256: hosted==='true' ? frontendDigest : null,
     database: selected,leaseDatabase: Object.freeze({ ...selected,databasePoolMax: leaseMax }),
   });

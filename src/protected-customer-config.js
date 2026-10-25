@@ -33,7 +33,9 @@ export function loadProtectedCustomerConfiguration(env) {
     microsoftFlowSecret: secret(env,PREFIX+'MICROSOFT_FLOW_SECRET'),lookupSecret: secret(env,'PROTECTED_CUSTODY_LOOKUP_SECRET') };
   const handoff=profile.syntheticEnabled ? secret(env,'PROTECTED_HANDOFF_SECRET') : null;
   if (!profile.syntheticEnabled && Object.hasOwn(env,'PROTECTED_HANDOFF_SECRET')) fail('INACTIVE_HANDOFF_FORBIDDEN');
-  const material=[...Object.values(values),...(handoff===null ? [] : [handoff])];
+  const ownerHandoff=profile.ownerCustomerAccessEnabled ? secret(env,'PROTECTED_OWNER_HANDOFF_SECRET') : null;
+  if (!profile.ownerCustomerAccessEnabled && Object.hasOwn(env,'PROTECTED_OWNER_HANDOFF_SECRET')) fail('INACTIVE_OWNER_HANDOFF_FORBIDDEN');
+  const material=[...Object.values(values),...(handoff===null ? [] : [handoff]),...(ownerHandoff===null ? [] : [ownerHandoff])];
   if (new Set(material).size!==material.length
     || material.includes(decodeURIComponent(new URL(profile.database.databaseUrl).password))) fail('SECRET_ALIAS_FORBIDDEN');
   const peer=read(env,'PROTECTED_PEER_ENTRA_CLIENT_ID'),clientId=own('ENTRA_CLIENT_ID');
@@ -59,6 +61,8 @@ export function loadProtectedCustomerConfiguration(env) {
   return Object.freeze({ profile,config,cipher,mailProvider,
     authentication: Object.freeze({ emailFlowSecret: values.emailFlowSecret,emailCodeSecret: values.emailCodeSecret,
       emailSourceSecret: values.emailSourceSecret,microsoftFlowSecret: values.microsoftFlowSecret,
+      owner: ownerHandoff===null ? null : Object.freeze({ platformOrigin: profile.platformOrigin,
+        platformSecurityEpoch: profile.platformSecurityEpoch,browserSecret: ownerHandoff,sourceSecret: values.emailSourceSecret }),
       synthetic: handoff===null ? null : Object.freeze({ platformOrigin: profile.platformOrigin,
         platformSecurityEpoch: profile.platformSecurityEpoch,browserSecret: handoff,sourceSecret: values.emailSourceSecret }) }),
   });

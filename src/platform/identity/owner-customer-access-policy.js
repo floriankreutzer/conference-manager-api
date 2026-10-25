@@ -15,9 +15,9 @@ function denied() { throw new PlatformAuthorizationError('OWNER_CUSTOMER_ACCESS_
 // registry, active target User and the consumed shared Microsoft proof.
 export function createOwnerCustomerAccessPolicy(rawScope) {
   const scope=normalizeOwnerCustomerAccessScope(rawScope);
-  function principal(value,selection,level) {
+  function principal(value,operatorId,level) {
     const current=normalizePlatformPrincipal(value);
-    if (current.operatorId!==selection.operatorId || current.providerIdentity.provider!==PLATFORM_ENTRA_PROVIDER
+    if (current.operatorId!==operatorId || current.providerIdentity.provider!==PLATFORM_ENTRA_PROVIDER
       || current.targetScope.mode!=='all' || current.roles.length!==ROLES.length
       || current.roles.some((role,index)=>role!==ROLES[index])
       || current.session.securityEpoch!==scope.platformSecurityEpoch || current.assurance.level!==level
@@ -25,12 +25,15 @@ export function createOwnerCustomerAccessPolicy(rawScope) {
     return current;
   }
   return Object.freeze({
+    owner(value) {
+      const current=normalizePlatformPrincipal(value);return principal(current,current.operatorId,'mfa');
+    },
     prepare(value,rawSelection) {
-      return principal(value,normalizeOwnerCustomerAccessSelection(rawSelection),'mfa');
+      return principal(value,normalizeOwnerCustomerAccessSelection(rawSelection).operatorId,'mfa');
     },
     continuation(value,future,rawSelection) {
       const selection=normalizeOwnerCustomerAccessSelection(rawSelection);
-      const approved=principal(value,selection,'step_up'),source=principal(future,selection,'mfa');
+      const approved=principal(value,selection.operatorId,'step_up'),source=principal(future,selection.operatorId,'mfa');
       if (source.securityVersion!==approved.securityVersion || source.session.id===approved.session.id
         || source.assurance.authenticatedAt!==approved.assurance.authenticatedAt
         || ['provider','tenantReference','subjectReference']
