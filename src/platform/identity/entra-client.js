@@ -109,7 +109,9 @@ function validateTokenIdentity(claims, {
   if (claims.iss !== issuer) fail('PLATFORM_ISSUER_MISMATCH');
   if (!hashMatches(claims.nonce, expectedNonceHash)) fail('PLATFORM_ENTRA_NONCE_INVALID');
   const nowSeconds = Math.floor(clock() / 1000);
-  if (!Number.isSafeInteger(claims.exp) || claims.exp <= nowSeconds) fail('PLATFORM_ENTRA_TOKEN_EXPIRED');
+  if (claims.exp===undefined) fail('PLATFORM_ENTRA_TOKEN_EXPIRY_MISSING');
+  if (!Number.isSafeInteger(claims.exp)) fail('PLATFORM_ENTRA_TOKEN_EXPIRY_INVALID');
+  if (claims.exp <= nowSeconds) fail('PLATFORM_ENTRA_TOKEN_EXPIRED');
   if (!Number.isSafeInteger(claims.iat) || claims.iat > nowSeconds + 60) {
     fail('PLATFORM_ENTRA_ISSUED_AT_INVALID');
   }
