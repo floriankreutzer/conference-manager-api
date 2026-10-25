@@ -170,3 +170,11 @@ That branch now explicitly drains only empty072 before asserting the original
 populated071 recovery rejection. No down guard or expected rejection is removed.
 Full native and all-browser qualification remain required; the failed run remains
 failed evidence even though its new owner-native step passed.
+
+
+Candidate64ea688486b47bf3f5dc7b36041921af611ecb1e failed native
+CI40145381516/job121025792749 at invitation persistence startup: its explicit
+current-ledger readiness probe still requested71 after migration72. The fixture
+now probes72; the following explicit empty072 rollback and all populated
+invitation custody assertions remain unchanged. The failure is retained and
+requires a fresh complete native run; no readiness check or suite is removed.
