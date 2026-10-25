@@ -58,7 +58,7 @@ function fixture(platform = false,mode = null) {
     const parameters = new URL(value).searchParams;
     protocolShape = {
       keys: [...parameters.keys()],
-      scope: parameters.get('scope'), maxAge: parameters.get('max_age'),
+      scope: parameters.get('scope'), maxAge: parameters.get('max_age'), prompt: parameters.get('prompt'),
       sku: parameters.get('x-client-SKU'), version: parameters.get('x-client-VER'),
       os: parameters.get('x-client-OS'), cpu: parameters.get('x-client-CPU'),
       claims: parameters.get('claims'), clientInfo: parameters.get('client_info'),
@@ -138,18 +138,21 @@ for (const [name, platform, authenticationContext] of [
   });
 }
 
-for (const [mode,authenticationContext,maxAge] of [
-  ['mfa','cm:ms:mfa:v1','300'],['mfa','cm:ms:fresh:v1','0'],['operation','cm:ms:fresh:v1','0'],
+for (const [mode,authenticationContext,maxAge,prompt] of [
+  ['mfa','cm:ms:mfa:v1','300',null],['mfa','cm:ms:fresh:v1','0',null],
+  ['operation','cm:ms:fresh:v1','0','login'],
 ]) {
   test(`installed MSAL serializes nonempty literal MFA claims for ${mode} ${maxAge}`,async()=>{
     const { client,request,redirectUri,protocolShape }=fixture(true,mode);
     const url=new URL(await client.authorizationUrl({ ...request,authenticationContext }));
     assert.deepEqual(JSON.parse(url.searchParams.get('claims')),{ id_token: {
       auth_time: { essential: true },amr: { essential: true,values: ['mfa'] } } });
-    assert.equal(url.searchParams.get('max_age'),maxAge);assert.equal(url.searchParams.get('scope'),'openid profile');
+    assert.equal(url.searchParams.get('max_age'),maxAge);assert.equal(url.searchParams.get('prompt'),prompt);
+    assert.equal(url.searchParams.get('scope'),'openid profile');
     assert.equal(url.searchParams.get('redirect_uri'),redirectUri);
     const shape=protocolShape();
     for (const key of ['stateMatches','nonceMatches','pkceMatches','callbackMatches','clientMatches']) assert.equal(shape[key],true);
+    assert.equal(shape.prompt,prompt);
     assert.equal(url.searchParams.has('client_secret'),false);assert.equal(url.searchParams.has('clidata'),false);
   });
 }
