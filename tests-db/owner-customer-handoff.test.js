@@ -124,6 +124,29 @@ test('native designated owner REAL handoff creates only own identity, preserves 
       principal: { ...session.principal,tenantId: foreignTenant } })),null);
     previous=session;
   }
+  const foreignOwnId=ownerCustomerUserId({ environment: 'int',operatorId: owner.operatorId,tenantId: foreignTenant });
+  await pool.query("INSERT INTO users(tenant_id,id,display_name) VALUES($1,$2,'Pre-existing Customer identity')",
+    [foreignTenant,foreignOwnId]);
+  const collision=await customer.start('127.0.0.3');
+  await assert.rejects(approve(collision,'employee',foreignTenant));
+  assert.equal((await pool.query('SELECT display_name FROM users WHERE tenant_id=$1 AND id=$2',
+    [foreignTenant,foreignOwnId])).rows[0].display_name,'Pre-existing Customer identity');
+  assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_owner_customer_users WHERE tenant_id=$1',
+    [foreignTenant])).rows[0].count,0);
+  await pool.query('UPDATE users SET active=false WHERE tenant_id=$1 AND id=$2',[tenantId,ownId]);
+  assert.equal(await customer.sessionService.resolvePrincipal(headers(previous.setCookie)),null);
+  const suspended=await customer.start('127.0.0.4');await assert.rejects(approve(suspended,'tenant_admin'));
+  assert.equal((await pool.query('SELECT active FROM users WHERE tenant_id=$1 AND id=$2',[tenantId,ownId])).rows[0].active,false);
+  // Only this isolated database-owner fixture restores its own test User. The
+  // handoff never changes active state; a fresh exact approval is still needed.
+  await pool.query('UPDATE users SET active=true WHERE tenant_id=$1 AND id=$2',[tenantId,ownId]);
+  assert.equal(await customer.sessionService.resolvePrincipal(headers(previous.setCookie)),null);
+  const restoredStart=await customer.start('127.0.0.5'),restoredCallback=await approve(restoredStart,'tenant_admin');
+  const restoredPending=await customer.callback(restoredCallback),restoredView=await customer.confirmation({
+    ...restoredCallback,completion: restoredPending.completion });
+  previous=await customer.complete({ flowId: restoredStart.flowId,browserToken: restoredStart.browserToken,
+    completion: restoredPending.completion,csrfToken: restoredView.csrfToken,request: { headers: {} },correlationId: randomUUID() });
+  assert.equal(previous.principal.userId,ownId);
   assert.equal(await audit.verifyTenantChain(tenantId),true);assert.ok(await owner.auditRepository.isReady());
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_passkey_credentials')).rows[0].count,0);
   for (const sql of ['TRUNCATE owner_customer_handoffs','TRUNCATE platform_owner_customer_users',
@@ -197,9 +220,28 @@ test('native designated owner REAL handoff creates only own identity, preserves 
     await assert.rejects(write(previous.principal),/AUTHORIZATION_DENIED/);
   } finally { await blocking.query('ROLLBACK');blocking.release(); }
   assert.equal(await write(previous.principal),1);
+  let entered,release,networkCalls=0;
+  const providerEntered=new Promise(resolve=>{ entered=resolve; }),providerRelease=new Promise(resolve=>{ release=resolve; });
+  const network=async()=>{ networkCalls++;entered();await providerRelease;return 'isolated-provider-result'; };
+  const provider=writes.providerClient({ redirectUri: scope.customerOrigin+'/provider/callback',adminConsentUrl: ()=>null,
+    discoverRooms: network,lookupFreeBusy: network,createCalendarEvent: network,updateCalendarEvent: network,
+    cancelCalendarEvent: network,verifyBasePermissions: network });
+  const attempt=customerScopes.withShared(()=>writes.run(async()=>{
+    writes.observe(previous.principal);return provider.createCalendarEvent({});
+  }));
+  try {
+    await Promise.race([providerEntered,attempt.then(()=>{ throw new Error('OWNER_PROVIDER_ENTRY_NOT_OBSERVED'); })]);
+    await assert.rejects(pool.query('SELECT id FROM platform_sessions WHERE id=$1 FOR UPDATE NOWAIT',
+      [owner.current().principal.session.id]),{ code: '55P03' });
+  } finally { release(); }
+  assert.equal(await attempt,'isolated-provider-result');assert.equal(networkCalls,1);
   await owner.sessions.revoke(owner.current().principal);
   assert.equal(await customer.sessionService.resolvePrincipal(headers(previous.setCookie)),null);
   await assert.rejects(write(previous.principal),/AUTHORIZATION_DENIED/);
+  await assert.rejects(customerScopes.withShared(()=>writes.run(async()=>{
+    writes.observe(previous.principal);return provider.createCalendarEvent({});
+  })),/AUTHORIZATION_DENIED/);
+  assert.equal(networkCalls,1);
   assert.equal((await pool.query('SELECT display_name FROM tenants WHERE id=$1',[tenantId])).rows[0].display_name,
     'Owner changed Customer');
   const restarted=await startProtectedRuntimeProcess('customer',customerEnv);children.push(restarted);

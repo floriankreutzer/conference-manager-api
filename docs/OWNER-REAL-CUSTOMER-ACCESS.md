@@ -234,3 +234,26 @@ CI40146347767/job121028402596 before tests because the new hosted-manifest
 fixture declaration exceeded the canonical140-character style limit. The
 declaration is wrapped without changing behavior. That run proves no native
 or browser acceptance; all required checks must execute on the correction.
+
+
+The corrected readiness candidate failed full native CI40146228534 /
+job121028666131 at demo-request-attribution-reset-grant.test.js:116: its current
+overlay constant assertion still expected31 although the same fixture already
+listed032. The constant and complete reapplication list now require32. A full
+source search also found four obsolete CURRENT_SCHEMA_VERSION71 assertions in
+historical migration fixtures; these now require72. Historical target versions,
+role grants, rollback sequencing, negative assertions and time budgets are
+unchanged. The complete native run must qualify this correction.
+
+
+Runtime597b9d20a7e559b88323bb5dab7100b1ba0e9069 passed its early
+Owner native step in CI40146508230/job121029135774, including both actual
+process roots, current-target HTTP, source-row concurrency denial and actual
+Customer process restart after source revocation. Its later full native run
+remains distinct. The new fixture extension additionally refuses adoption of
+a pre-existing deterministic own User ID and refuses automatic reactivation of
+a suspended User. A fresh exact approval is required after fixture-only restore.
+It observes an actual SQL source lock held during an isolated provider attempt
+and denies the next attempt after revocation before calling that provider port.
+These new cases require renewed native execution. No real Graph/Microsoft call,
+provider/device acceptance or externally atomic booking claim is made.
