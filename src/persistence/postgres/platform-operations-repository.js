@@ -55,7 +55,11 @@ export async function findPlatformOperationReceipt(
     `,
     values: [operatorId, operation, tenantId, idempotencyKey],
   });
-  return receiptRow(result.rows[0]);
+  const receipt=receiptRow(result.rows[0]);
+  if (!receipt || operation!=='tenant.entitlement.apply') return receipt;
+  return Object.freeze({ ...receipt,result: Object.freeze({
+    entitlements: platformEntitlementState(receipt.result?.entitlements),
+  }) });
 }
 
 export async function storePlatformOperationReceipt(client, {
@@ -586,7 +590,8 @@ function platformEntitlementState(state) {
   if (state===null) return null;
   return Object.freeze({ tenantId: state.tenantId,tenantStatus: state.tenantStatus,revision: state.revision,
     entries: Object.freeze(state.entries.map(entry=>Object.freeze({
-      capabilityId: entry.capabilityId,enabled: entry.enabled,effectiveAt: entry.updatedAt,
+      capabilityId: entry.capabilityId,enabled: entry.enabled,
+      effectiveAt: Object.hasOwn(entry,'effectiveAt') ? entry.effectiveAt : entry.updatedAt,
     }))) });
 }
 
