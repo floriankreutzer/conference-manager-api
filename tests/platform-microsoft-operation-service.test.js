@@ -181,6 +181,8 @@ test('operation rejection diagnostics are closed, non-authoritative and contain 
     [new PlatformIdentityError('PLATFORM_MICROSOFT_MFA_REQUIRED'),'mfa_missing'],
     [new PlatformIdentityError('PLATFORM_ENTRA_CODE_REDEMPTION_FAILED'),'exchange_failed'],
     [new PlatformIdentityError('PLATFORM_ENTRA_TOKEN_EXPIRED'),'token_expired'],
+    [new PlatformIdentityError('PLATFORM_ENTRA_TOKEN_EXPIRY_MISSING'),'expiry_missing'],
+    [new PlatformIdentityError('PLATFORM_ENTRA_TOKEN_EXPIRY_INVALID'),'expiry_invalid'],
     [new PlatformIdentityError('private-provider-code'),'rejected'],
     [new Error('private-provider-payload'),'unavailable'],
   ]) {
