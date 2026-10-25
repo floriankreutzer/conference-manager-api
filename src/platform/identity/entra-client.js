@@ -229,6 +229,7 @@ function createClient({
           nonce,
           codeChallenge,
           codeChallengeMethod: 'S256',
+          ...(operationOnly ? { prompt: 'login' } : {}),
           maxAge: requestedMaxAge,
           extraQueryParameters: { max_age: String(requestedMaxAge) },
           claims,
@@ -244,6 +245,7 @@ function createClient({
           expectedState: state,
           expectedNonce: nonce,
           expectedCodeChallenge: codeChallenge,
+          expectedPrompt: operationOnly ? 'login' : undefined,
         });
       } catch (error) {
         if (error instanceof PlatformIdentityError) throw error;
