@@ -26,7 +26,7 @@ function authorizationUrl() {
   const url=new URL(`${authority}/oauth2/v2.0/authorize`);
   for (const [key,value] of Object.entries({ client_id: id,
     redirect_uri: origin+'/api/v1/platform/auth/microsoft/operation/callback',scope: 'openid profile',
-    response_type: 'code',response_mode: 'query',max_age: '0',state,nonce: browser,
+    response_type: 'code',response_mode: 'query',max_age: '0',prompt: 'login',state,nonce: browser,
     code_challenge: browser,code_challenge_method: 'S256',claims: JSON.stringify({ id_token: {
       auth_time: { essential: true },amr: { essential: true,values: ['mfa'] } } }) })) url.searchParams.set(key,value);
   return url.toString();
@@ -79,6 +79,7 @@ test('Microsoft protects the actual Tenant route and returns only a normal sessi
   assert.equal(first.payload.status,'microsoft_required');assert.deepEqual(first.headers['set-cookie'],cookies);
   assert.equal(first.payload.options,undefined);
   assert.equal(new URL(first.payload.authorizationUrl).origin,'https://login.microsoftonline.com');
+  assert.equal(new URL(first.payload.authorizationUrl).searchParams.get('prompt'),'login');
   const done=await f.invoke({ proof: state });assert.equal(done.statusCode,201);assert.equal(f.writes(),1);
   assert.deepEqual(done.headers['set-cookie'],[normal,clearPlatformMicrosoftOperationCookie()]);
   assert.equal((await f.invoke({ proof: state })).error.statusCode,403);assert.equal(f.writes(),1);

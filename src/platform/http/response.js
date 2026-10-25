@@ -60,10 +60,13 @@ export function requirePlatformProviderAuthorizationUrl(value, authority, {
   redirectUri,
   authenticationContext,
   authenticationMaxAgeSeconds,
+  expectedPrompt,
 } = {}) {
   try {
     if (['cm:ms:mfa:v1','cm:ms:fresh:v1'].includes(authenticationContext)) {
-      return validatePlatformEntraMfaAuthorizationUrl(value, { authority, clientId, redirectUri, authenticationMaxAgeSeconds });
+      return validatePlatformEntraMfaAuthorizationUrl(value, {
+        authority,clientId,redirectUri,authenticationMaxAgeSeconds,expectedPrompt,
+      });
     }
     return validatePlatformEntraAuthorizationUrl(value, {
       authority,
@@ -71,6 +74,7 @@ export function requirePlatformProviderAuthorizationUrl(value, authority, {
       redirectUri,
       authenticationContext,
       authenticationMaxAgeSeconds,
+      expectedPrompt,
     });
   } catch {
     throw new PlatformHttpError(500, 'PLATFORM_AUTHORIZATION_REDIRECT_INVALID');
