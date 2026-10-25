@@ -8,6 +8,7 @@ async function run() {
   await runtime.start();
 }
 run().catch(error=>{
-  process.stderr.write(`PROTECTED_CUSTOMER_PROCESS_FAILED\nPROTECTED_CUSTOMER_STARTUP_CATEGORY:${protectedCustomerStartupCategory(error)}\n`);
+  const category=protectedCustomerStartupCategory(error);
+  process.stderr.write(`PROTECTED_CUSTOMER_PROCESS_FAILED\nPROTECTED_CUSTOMER_STARTUP_CATEGORY:${category}\n`);
   process.exitCode=1;
 });

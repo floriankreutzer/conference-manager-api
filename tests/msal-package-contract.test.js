@@ -3,7 +3,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import test from 'node:test';
 import { ConfidentialClientApplication } from '@azure/msal-node';
 import { createEntraClient } from '../src/identity/entra-client.js';
-import { createPlatformEntraClient,createPlatformEntraMfaClient,createPlatformEntraOperationClient } from '../src/platform/identity/entra-client.js';
+import { createPlatformEntraClient,createPlatformEntraMfaClient,createPlatformEntraOperationClient }
+  from '../src/platform/identity/entra-client.js';
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
 const TENANT_ID = '22222222-2222-4222-8222-222222222222';
@@ -13,7 +14,8 @@ const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 function fixture(platform = false,mode = null) {
   const authority = `${LOGIN_ORIGIN}/${platform ? TENANT_ID : 'organizations'}`;
   const publicOrigin = platform ? 'https://platform.example.test' : 'https://customer.example.test';
-  const redirectUri = `${publicOrigin}/api/v1/${platform ? 'platform/' : ''}auth/microsoft/${mode==='operation' ? 'operation/' : ''}callback`;
+  const callback=mode==='operation' ? 'operation/callback' : 'callback';
+  const redirectUri = `${publicOrigin}/api/v1/${platform ? 'platform/' : ''}auth/microsoft/${callback}`;
   const clientSecret = randomBytes(32).toString('hex');
   const calls = [];
   const metadata = {
