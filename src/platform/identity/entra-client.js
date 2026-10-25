@@ -12,6 +12,7 @@ import {
 } from './entra-authorization-url.js';
 
 export { PLATFORM_ENTRA_PROVIDER } from '../../domain/identity-provider.js';
+const OPERATION_PROVIDER_MAX_AGE_SECONDS=300;
 const VERIFIED_ASSERTION = Symbol('verifiedPlatformEntraAssertion');
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -217,7 +218,8 @@ function createClient({
     async authorizationUrl({ state, nonce, codeChallenge, authenticationContext }) {
       if (primaryOnly && authenticationContext !== undefined) fail('PLATFORM_PRIMARY_CONTEXT_FORBIDDEN');
       const requested = primaryOnly ? undefined : context(authenticationContext);
-      const requestedMaxAge = primaryOnly ? authenticationMaxAgeSeconds : maxAge(requested);
+      const requestedMaxAge = operationOnly ? OPERATION_PROVIDER_MAX_AGE_SECONDS
+        : primaryOnly ? authenticationMaxAgeSeconds : maxAge(requested);
       try {
         const claims = JSON.stringify({ id_token: microsoftMfa
           ? { auth_time: { essential: true }, amr: { essential: true, values: ['mfa'] } } : primaryOnly
@@ -305,7 +307,8 @@ function createClient({
         if (result.idTokenClaims.auth_time < 0) fail('PLATFORM_ENTRA_AUTHENTICATION_TIME_NEGATIVE');
         if (result.idTokenClaims.exp <= result.idTokenClaims.iat) fail('PLATFORM_ENTRA_TOKEN_EXPIRY_ORDER_INVALID');
         // OIDC validates issuance age and authentication freshness against the RP clock independently.
-        if (result.idTokenClaims.iat < Math.floor(clock() / 1000) - requestedMaxAge - 60) {
+        const issuanceMaxAge=operationOnly ? OPERATION_PROVIDER_MAX_AGE_SECONDS : requestedMaxAge;
+        if (result.idTokenClaims.iat < Math.floor(clock() / 1000) - issuanceMaxAge - 60) {
           fail('PLATFORM_ENTRA_ISSUED_AT_NOT_FRESH');
         }
         if (result.idTokenClaims.auth_time >= result.idTokenClaims.exp) {
