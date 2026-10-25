@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { createPlatformMicrosoftOperationService } from '../src/platform/identity/microsoft-operation-service.js';
+import { PlatformIdentityError } from '../src/platform/identity/errors.js';
 import { createPlatformClaimPolicy } from '../src/platform/identity/claim-policy.js';
 import { permissionsForPlatformRoles } from '../src/platform/identity/policy.js';
 
@@ -19,13 +20,13 @@ const cookieValue=serialized=>serialized.slice(serialized.indexOf('=')+1).split(
 
 // In-memory service-port fixture only. Native transaction, real provider and
 // different-site cookie acceptance require the subsequent owned adapters/CI.
-function fixture() {
-  let now=NOW,row=null,current=structuredClone(principal),sessionNumber=20,claimPatch={},mutationFault=false;
+function fixture({ onRejection }={}) {
+  let now=NOW,row=null,current=structuredClone(principal),sessionNumber=20,claimPatch={},mutationFault=false,clientFailure=null;
   const calls={ create: 0,redeem: 0,verify: 0,authenticate: 0,sessionWrites: 0,business: 0 };
   const assertions=new WeakMap();let authorization;
   const client={ async authorizationUrl(value) { authorization=value;return 'https://login.microsoftonline.com/operation'; },
     async redeemAuthorizationCode(value) {
-      calls.redeem++;
+      calls.redeem++;if (clientFailure) throw clientFailure;
       assert.equal(value.authenticationContext,FRESH);assert.equal(value.expectedNonce,authorization.nonce);
       assert.equal(createHash('sha256').update(value.expectedNonce).digest('hex'),value.expectedNonceHash);
       assert.equal(createHash('sha256').update(value.codeVerifier,'ascii').digest('base64url'),authorization.codeChallenge);
@@ -71,7 +72,7 @@ function fixture() {
   const sessionService={ async resolvePrincipal() { return current; },
     async rotate(_source,identity) { return issued(identity); },async issue(identity) { return issued(identity); },
     async revoke() { calls.sessionWrites++;return true; } };
-  const service=()=>createPlatformMicrosoftOperationService({ repository,entraClient: client,sessionService,
+  const service=()=>createPlatformMicrosoftOperationService({ onRejection,repository,entraClient: client,sessionService,
     claimPolicy: createPlatformClaimPolicy({ provider,issuer,audience: id(12),tenantReference: id(10),
       mfaAuthenticationContext: NORMAL,stepUpAuthenticationContext: FRESH }),
     environment: 'int',protectedSecurityEpoch: id(13),securityEpoch: 7,transactionSecret: 's'.repeat(48),clock: ()=>now,
@@ -83,7 +84,7 @@ function fixture() {
   }
   return { service,prepare,calls,record: ()=>row,current: ()=>current,
     clock: value=>{ now=value; },claims: value=>{ claimPatch=value; },fault: ()=>{ mutationFault=true; },
-    source: value=>{ current=value; } };
+    clientFailure: value=>{ clientFailure=value; },source: value=>{ current=value; } };
 }
 
 for (const continuation of [false,true]) test(
@@ -170,4 +171,37 @@ test('provider refusal, callback replay and ordinary non-Microsoft sources never
     /OPERATION_REJECTED/);assert.equal(other.calls.redeem,1);
   await assert.rejects(other.service().startStepUp({ ...principal,assurance: { ...principal.assurance,
     authenticationContext: 'cm:pk:v1' } },{ operationHash: hash,correlationId: id(15) }),/OPERATION_REJECTED/);
+});
+
+test('operation rejection diagnostics are closed, non-authoritative and contain no provider material',async()=>{
+  for (const [error,reason] of [
+    [new PlatformIdentityError('PLATFORM_ENTRA_AUTHENTICATION_NOT_FRESH'),'authentication_stale'],
+    [new PlatformIdentityError('PLATFORM_ENTRA_ISSUED_AT_NOT_FRESH'),'issuance_stale'],
+    [new PlatformIdentityError('PLATFORM_ENTRA_NONCE_INVALID'),'nonce_rejected'],
+    [new PlatformIdentityError('PLATFORM_MICROSOFT_MFA_REQUIRED'),'mfa_missing'],
+    [new PlatformIdentityError('PLATFORM_ENTRA_CODE_REDEMPTION_FAILED'),'exchange_failed'],
+    [new PlatformIdentityError('PLATFORM_ENTRA_TOKEN_EXPIRED'),'token_expired'],
+    [new PlatformIdentityError('private-provider-code'),'rejected'],
+    [new Error('private-provider-payload'),'unavailable'],
+  ]) {
+    const events=[],f=fixture({ onRejection: value=>events.push(value) }),{ started,cookie }=await f.prepare();
+    f.clientFailure(error);
+    await assert.rejects(f.service().complete({ state: started.state,cookie,code: 'synthetic-code' }),/OPERATION_REJECTED/);
+    assert.deepEqual(events,[{ stage: 'redemption',reason }]);assert.ok(Object.isFrozen(events[0]));
+    assert.equal(f.record().status,'failed');assert.equal(f.calls.business,0);assert.equal(f.calls.sessionWrites,0);
+  }
+  const refused=[],f=fixture({ onRejection: value=>refused.push(value) }),{ started,cookie }=await f.prepare();
+  const result=await f.service().complete({ state: started.state,cookie,providerError: 'access_denied' });
+  assert.equal(result.status,'authentication_rejected');assert.deepEqual(refused,[{ stage: 'provider',reason: 'provider_refused' }]);
+  const broken=fixture({ onRejection: ()=>{ throw new Error('private-sink-failure'); } }),pending=await broken.prepare();
+  broken.clientFailure(new Error('private-exchange'));
+  await assert.rejects(broken.service().complete({ state: pending.started.state,cookie: pending.cookie,code: 'synthetic-code' }),
+    /OPERATION_REJECTED/);
+  assert.equal(broken.record().status,'failed');assert.equal(broken.calls.business,0);
+});
+
+test('successful verification emits no rejection diagnostic',async()=>{
+  const events=[],f=fixture({ onRejection: value=>events.push(value) }),{ started,cookie }=await f.prepare();
+  assert.equal((await f.service().complete({ state: started.state,cookie,code: 'synthetic-code' })).status,'operation_verified');
+  assert.deepEqual(events,[]);assert.equal(f.record().status,'verified');assert.equal(f.calls.business,0);
 });
