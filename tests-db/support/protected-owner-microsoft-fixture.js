@@ -16,7 +16,8 @@ import { microsoftCodeSdkFixture } from '../../tests/support/microsoft-code-sdk-
 // Isolated provider fixture, never real Microsoft/device MFA acceptance. The
 // actual first-owner bootstrap/all-role upgrade and shared one-use proof path
 // use the canonical persistent adapters with no application passkey credentials.
-export async function createProtectedOwnerMicrosoftFixture(pool,leasePool,{ epoch,runtimePool=pool,runtimeLeasePool=leasePool }={}) {
+export async function createProtectedOwnerMicrosoftFixture(pool,leasePool,{ epoch,runtimePool=pool,runtimeLeasePool=leasePool,
+  transactionSecret='p'.repeat(48) }={}) {
   const directory=randomUUID(),subject=randomUUID(),clientId=randomUUID();
   const roles=Object.values(PLATFORM_ROLE).sort(),scopeMode='all',origin='https://ops-int.example.com';
   const offlineAudit=createPostgresPlatformAuditRepository(pool,{ hmacSecret: 'a'.repeat(48) });
@@ -37,7 +38,7 @@ export async function createProtectedOwnerMicrosoftFixture(pool,leasePool,{ epoc
   const sdk=microsoftCodeSdkFixture({ clientId,authority,tenantId: directory,userId: subject,clock: ()=>Date.now() });
   sdk.state.amr=['pwd','mfa'];
   const auth=createPlatformMicrosoftOperationService({ environment: 'int',protectedSecurityEpoch: epoch,securityEpoch: 7,
-    transactionSecret: 'p'.repeat(48),sessionService: sessions,
+    transactionSecret,sessionService: sessions,
     entraClient: createPlatformEntraOperationClient({ clientId,clientSecret: 's'.repeat(48),tenantReference: directory,authority,
       publicOrigin: origin,redirectUri: origin+'/api/v1/platform/auth/microsoft/operation/callback',
       mfaAuthenticationContext: 'cm:ms:mfa:v1',stepUpAuthenticationContext: 'cm:ms:fresh:v1',application: sdk.application() }),
@@ -55,16 +56,28 @@ export async function createProtectedOwnerMicrosoftFixture(pool,leasePool,{ epoc
         authenticatedAt: new Date().toISOString() } });
   }
   await freshSession();
-  async function execute(operationHash,mutation,continuation) {
+  async function prepare(operationHash) {
     const started=await auth.startStepUp(current.principal,{ operationHash });
     sdk.state.sentNonce=new URL(started.authorizationUrl).searchParams.get('nonce');
     const cookie=started.setCookies[0].split(';')[0].slice('cm_platform_ms_operation_tx='.length);
     await auth.complete({ state: started.state,cookie,code: 'owner-microsoft-operation' });
+    return Object.freeze({ state: started.state,cookie });
+  }
+  async function execute(operationHash,mutation,continuation) {
+    const prepared=await prepare(operationHash);
     const result=await auth[continuation ? 'executeStepUpWithContinuation' : 'executeStepUp']({ operationHash,
-      state: started.state,cookie,request: { headers: { cookie: current.setCookie.split(';')[0] } } },mutation);
+      state: prepared.state,cookie: prepared.cookie,request: { headers: { cookie: current.setCookie.split(';')[0] } } },mutation);
     current={ principal: result.principal,setCookie: result.setCookies[0],csrfToken: result.csrfToken };return result.result;
   }
   return { operatorId,directoryId: directory,clientId,auth,sessions,scopes,auditRepository,freshSession,current: ()=>current,
+    prepare,
+    async acceptContinuation(setCookie) {
+      const principal=await scopes.withShared(()=>sessions.resolvePrincipal({ headers: { cookie: setCookie.split(';')[0] } }));
+      if (!principal || principal.operatorId!==operatorId || principal.assurance.authenticationContext!=='cm:ms:mfa:v1') {
+        throw new Error('OWNER_FIXTURE_CONTINUATION_INVALID');
+      }
+      current={ principal,setCookie,csrfToken: sessions.csrfTokenForPrincipal(principal) };
+    },
     execute: (hash,mutation)=>execute(hash,mutation,false),
     executeWithContinuation: (hash,mutation)=>execute(hash,mutation,true) };
 }

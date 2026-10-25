@@ -257,3 +257,23 @@ It observes an actual SQL source lock held during an isolated provider attempt
 and denies the next attempt after revocation before calling that provider port.
 These new cases require renewed native execution. No real Graph/Microsoft call,
 provider/device acceptance or externally atomic booking claim is made.
+
+
+The final Owner native fixture additionally drives the actual Platform native
+approval POST, committed303, actual Customer cross-site callback/Strict
+confirmation, explicit old-account logout, final native completion and replay
+denial. The isolated actual MSAL adapter verifies only the exact shared proof
+using the same test transaction key; both independently constructed production
+roots still own final one-use proof, audit, source continuation and session
+admission. Neither root receives an issuer or provider adapter injection. This
+is fixture provider verification, not live Microsoft MFA. Full dual-engine
+real-root browser navigation remains a separate release gate.
+
+
+Candidatebc1bb8689f44f2cf81035d01feb9a32df9bdf7c4 failed early native
+CI40146997272/job121030787490 at the new fixture-only reactivation assertion.
+The fixture changed active directly without the security-version increment
+performed by the canonical Tenant User lifecycle repository. Both isolated
+state changes now retain that version increment; the assertion that the old
+session cannot revive remains unchanged. No production reader, expiry, role
+or suspension check is relaxed. New native qualification remains required.

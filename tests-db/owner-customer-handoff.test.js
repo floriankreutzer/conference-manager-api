@@ -75,7 +75,7 @@ test('native designated owner REAL handoff creates only own identity, preserves 
     has_table_privilege(current_user,'platform_owner_customer_users','UPDATE') AS mutable`)).rows[0];
   assert.deepEqual(immutableRights,{ readable: true,creatable: true,mutable: false });
   const owner=await createProtectedOwnerMicrosoftFixture(pool,leasePool,{ epoch,runtimePool: platformPool,
-    runtimeLeasePool: platformLease });
+    runtimeLeasePool: platformLease,transactionSecret: 'o'.repeat(48) });
   const customerScopes=createPostgresProtectedRuntimeExecutionScopes({ pool: customerPool,leasePool: customerLease,...protection });
   const audit=createPostgresAuditRepository(platformPool,{ hmacSecret: 't'.repeat(48) });
   const browserSecret='h'.repeat(48),binding=createOwnerCustomerHandoffBrowserBinding({ scope,secret: browserSecret });
@@ -133,13 +133,13 @@ test('native designated owner REAL handoff creates only own identity, preserves 
     [foreignTenant,foreignOwnId])).rows[0].display_name,'Pre-existing Customer identity');
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_owner_customer_users WHERE tenant_id=$1',
     [foreignTenant])).rows[0].count,0);
-  await pool.query('UPDATE users SET active=false WHERE tenant_id=$1 AND id=$2',[tenantId,ownId]);
+  await pool.query('UPDATE users SET active=false,security_version=security_version+1 WHERE tenant_id=$1 AND id=$2',[tenantId,ownId]);
   assert.equal(await customer.sessionService.resolvePrincipal(headers(previous.setCookie)),null);
   const suspended=await customer.start('127.0.0.4');await assert.rejects(approve(suspended,'tenant_admin'));
   assert.equal((await pool.query('SELECT active FROM users WHERE tenant_id=$1 AND id=$2',[tenantId,ownId])).rows[0].active,false);
   // Only this isolated database-owner fixture restores its own test User. The
   // handoff never changes active state; a fresh exact approval is still needed.
-  await pool.query('UPDATE users SET active=true WHERE tenant_id=$1 AND id=$2',[tenantId,ownId]);
+  await pool.query('UPDATE users SET active=true,security_version=security_version+1 WHERE tenant_id=$1 AND id=$2',[tenantId,ownId]);
   assert.equal(await customer.sessionService.resolvePrincipal(headers(previous.setCookie)),null);
   const restoredStart=await customer.start('127.0.0.5'),restoredCallback=await approve(restoredStart,'tenant_admin');
   const restoredPending=await customer.callback(restoredCallback),restoredView=await customer.confirmation({
@@ -203,6 +203,40 @@ test('native designated owner REAL handoff creates only own identity, preserves 
   const unsafe=await exchangeProtectedRuntime('platform',ops.outcome.port,'/api/v1/platform/auth/owner/options',{
     method: 'POST',body: { tenantId,role: 'employee',userId: ownId },
     headers: { ...managed,'x-csrf-token': owner.current().csrfToken } });assert.equal(unsafe.status,400);
+  const httpIntent={ flowId: arrival.searchParams.get('flow'),state: arrival.searchParams.get('state'),
+    operatorId: owner.operatorId,tenantId,role: 'tenant_admin' };
+  const httpHash=await owner.scopes.withShared(()=>service.operationHash({ principal: owner.current().principal,intent: httpIntent }));
+  // The isolated actual MSAL fixture verifies only this exact shared proof.
+  // Both final HTTP roots independently execute their production protocol; no
+  // business/session issuer is injected into either process.
+  const verified=await owner.prepare(httpHash);
+  const approved=await exchangeProtectedRuntime('platform',ops.outcome.port,'/api/v1/platform/auth/owner/approve',{
+    method: 'POST',form: { csrfToken: owner.current().csrfToken,payload: JSON.stringify({
+      tenantId,role: 'tenant_admin',state: verified.state }) },
+    headers: { cookie: managed.cookie+'; cm_platform_ms_operation='+verified.cookie } });
+  assert.equal(approved.status,303);const approvedLocation=new URL(approved.headers.location);
+  assert.equal(approvedLocation.origin,scope.customerOrigin);assert.equal(approvedLocation.pathname,'/api/v1/auth/owner/callback');
+  const continued=approved.headers['set-cookie'].find(value=>value.startsWith('cm_platform_session='));
+  assert.ok(continued);await owner.acceptContinuation(continued);
+  const originalBrowser=started.headers['set-cookie'][0].split(';')[0];
+  const returned=await exchangeProtectedRuntime('customer',app.outcome.port,approvedLocation.pathname+approvedLocation.search,
+    { headers: { cookie: originalBrowser,origin: null,'sec-fetch-site': 'cross-site' } });
+  assert.equal(returned.status,303);assert.equal(returned.headers.location,'/?auth=owner_confirmation');
+  const completionCookie=returned.headers['set-cookie'][0].split(';')[0],flowCookies=originalBrowser+'; '+completionCookie;
+  const confirmation=await exchangeProtectedRuntime('customer',app.outcome.port,'/api/v1/auth/owner/confirmation',
+    { headers: { cookie: flowCookies+'; '+previous.setCookie.split(';')[0] } });
+  assert.equal(confirmation.status,200);const confirmed=JSON.parse(confirmation.text);
+  assert.equal(confirmed.accountSwitchRequired,true);assert.equal(confirmed.tenantId,tenantId);
+  const logout=await exchangeProtectedRuntime('customer',app.outcome.port,'/api/v1/auth/owner/logout',{
+    method: 'POST',body: {},headers: { cookie: flowCookies+'; '+previous.setCookie.split(';')[0],
+      'x-csrf-token': confirmed.csrfToken } });assert.equal(logout.status,204);
+  const finish=()=>exchangeProtectedRuntime('customer',app.outcome.port,'/api/v1/auth/owner/complete',{
+    method: 'POST',form: { csrfToken: confirmed.csrfToken },headers: { cookie: flowCookies } });
+  const completed=await finish();assert.equal(completed.status,303);assert.equal(completed.headers.location,'/');
+  const customerContinuation=completed.headers['set-cookie'].find(value=>value.startsWith('cm_session='));
+  assert.ok(customerContinuation);const actual=await customer.sessionService.resolvePrincipal(headers(customerContinuation));
+  assert.ok(actual);assert.equal(actual.userId,ownId);assert.deepEqual(actual.roles,['employee','tenant_admin']);
+  previous={ principal: actual,setCookie: customerContinuation };assert.equal((await finish()).status,401);
   assert.equal((await app.stop()).code,0);assert.equal((await ops.stop()).code,0);
   async function write(principal) {
     return customerScopes.withShared(()=>writes.run(async()=>{
@@ -248,7 +282,8 @@ test('native designated owner REAL handoff creates only own identity, preserves 
   assert.equal(restarted.outcome.type,'listening');
   assert.equal((await exchangeProtectedRuntime('customer',restarted.outcome.port,'/api/v1/session',
     { headers: headers(previous.setCookie).headers })).status,401);assert.equal((await restarted.stop()).code,0);
-  for (const value of [fixture.password,...passwords,previous.setCookie.split(';')[0],currentCookie,intent]) {
+  for (const value of [fixture.password,...passwords,previous.setCookie.split(';')[0],currentCookie,intent,
+    continued.split(';')[0],verified.cookie]) {
     assert.equal(children.some(child=>child.logs().includes(value)),false,'owner root logs exclude private fixture custody');
   }
 });
