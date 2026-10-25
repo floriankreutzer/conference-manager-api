@@ -178,3 +178,13 @@ current-ledger readiness probe still requested71 after migration72. The fixture
 now probes72; the following explicit empty072 rollback and all populated
 invitation custody assertions remain unchanged. The failure is retained and
 requires a fresh complete native run; no readiness check or suite is removed.
+
+
+The corrected readiness candidate failed full native CI40146228534 /
+job121028666131 at demo-request-attribution-reset-grant.test.js:116: its current
+overlay constant assertion still expected31 although the same fixture already
+listed032. The constant and complete reapplication list now require32. A full
+source search also found four obsolete CURRENT_SCHEMA_VERSION71 assertions in
+historical migration fixtures; these now require72. Historical target versions,
+role grants, rollback sequencing, negative assertions and time budgets are
+unchanged. The complete native run must qualify this correction.
