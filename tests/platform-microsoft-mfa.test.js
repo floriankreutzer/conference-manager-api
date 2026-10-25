@@ -34,6 +34,7 @@ function client(token = claims(), options = {}) {
           nonce: value.nonce, code_challenge: value.codeChallenge, code_challenge_method: 'S256', claims: value.claims })) {
           url.searchParams.set(key, item);
         }
+        if (value.prompt!==undefined) url.searchParams.set('prompt',value.prompt);
         return url.toString();
       },
       async acquireTokenByCode(value) { assert.equal(value.nonce, NONCE); return { idTokenClaims: token }; },
@@ -44,6 +45,7 @@ test('exact-operation Microsoft client permits only its fixed callback and fresh
   const options={ factory: createPlatformEntraOperationClient,redirectUri: `${ORIGIN}${PLATFORM_MICROSOFT_OPERATION_CALLBACK}` };
   const operation=client(claims(),options),url=new URL(await operation.authorizationUrl({ ...request,authenticationContext: FRESH }));
   assert.equal(url.searchParams.get('redirect_uri'),options.redirectUri);assert.equal(url.searchParams.get('max_age'),'0');
+  assert.equal(url.searchParams.get('prompt'),'login');
   assert.deepEqual(JSON.parse(url.searchParams.get('claims')),{ id_token: {
     auth_time: { essential: true },amr: { essential: true,values: ['mfa'] } } });
   await assert.rejects(operation.authorizationUrl(request),/CONTEXT_INVALID/);
@@ -62,6 +64,7 @@ test('Microsoft MFA requests auth_time/amr without Conditional Access, extra sco
     id_token: { auth_time: { essential: true }, amr: { essential: true,values: ['mfa'] } },
   });
   assert.equal(url.searchParams.get('max_age'), '300');
+  assert.equal(url.searchParams.has('prompt'), false);
   assert.equal(url.searchParams.get('scope'), 'openid profile');
   assert.equal(mfa.verifyPrimary, undefined);
   const verified = await mfa.verify(await mfa.redeemAuthorizationCode(redeem));
@@ -127,7 +130,8 @@ test('Microsoft MFA preserves tenant/audience/issuer/nonce/time checks and stric
   for (const change of [u => u.searchParams.set('claims', '{"id_token":{"auth_time":{"essential":true}}}'),
     u => u.searchParams.set('claims', '{"id_token":{"auth_time":{"essential":true},"amr":{"essential":false}}}'),
     u => u.searchParams.set('max_age', '301'), u => u.searchParams.append('state', request.state),
-    u => u.searchParams.set('redirect_uri', 'https://evil.example'), u => u.searchParams.set('scope', 'openid profile User.Read')]) {
+    u => u.searchParams.set('redirect_uri', 'https://evil.example'), u => u.searchParams.set('scope', 'openid profile User.Read'),
+    u => u.searchParams.set('prompt', 'login')]) {
     const changed = new URL(url); change(changed);
     assert.throws(() => validatePlatformEntraMfaAuthorizationUrl(changed.toString(), contract), /AUTHORIZATION_URL_INVALID/);
   }
