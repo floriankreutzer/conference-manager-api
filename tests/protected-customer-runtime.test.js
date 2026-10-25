@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { request } from 'node:http';
 import test from 'node:test';
+import { protectedCustomerStartupCategory,createProtectedCustomerStartupFailure } from '../src/protected-customer-startup-diagnostic.js';
 import { createProtectedCustomerRuntime } from '../src/protected-customer-runtime.js';
 import { createHttpServer } from '../src/server.js';
 import { loadConfig } from '../src/config.js';
@@ -39,7 +42,10 @@ test('Customer runtime refuses malformed configuration and replacement authority
     { PROTECTED_CUSTOMER_CSRF_SECRET: 'PRIVATE_FIXTURE_DETAIL' },{ PROTECTED_CUSTOMER_PORT: '0' },
     { NODE_ENV: 'test' },{ PROTECTED_ENVIRONMENT: 'demo' }]) {
     await assert.rejects(createProtectedCustomerRuntime({ ...env,...change }),
-      { message: 'PROTECTED_CUSTOMER_RUNTIME_CONFIGURATION_INVALID' });
+      error=>{
+        assert.equal(error.message,'PROTECTED_CUSTOMER_RUNTIME_CONFIGURATION_INVALID');
+        assert.equal(error.cause,undefined);assert.doesNotMatch(JSON.stringify(error),/PRIVATE_FIXTURE_DETAIL/);return true;
+      });
   }
 });
 
@@ -83,4 +89,33 @@ test('explicit REAL owner process construction retains private provider/transact
     const env={ ...fixture(environment),PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED: 'true',PROTECTED_OWNER_HANDOFF_SECRET: 'o'.repeat(48) };
     const runtime=await createProtectedCustomerRuntime(env);assert.deepEqual(Object.keys(runtime),['start','stop']);await runtime.stop();
   }
+});
+
+test('actual Customer entrypoint emits only fixed startup categories and never private configuration',async()=>{
+  for (const [change,category] of [
+    [{ PROTECTED_CUSTOMER_CSRF_SECRET: 'PRIVATE_STARTUP_SENTINEL' },'secret_format'],
+    [{ PROTECTED_CUSTOMER_REPLACEMENT: 'PRIVATE_STARTUP_SENTINEL' },'unknown_configuration_key'],
+    [{ DATABASE_URL: 'PRIVATE_STARTUP_SENTINEL' },'legacy_configuration'],
+  ]) {
+    await assert.rejects(promisify(execFile)(process.execPath,['src/protected-customer-main.js'],{
+      cwd: new URL('..',import.meta.url),env: { ...fixture(),...change },timeout: 10000,maxBuffer: 4096,
+    }),error=>{
+      assert.equal(error.code,1);assert.equal(error.stdout,'');
+      assert.equal(error.stderr,`PROTECTED_CUSTOMER_PROCESS_FAILED\nPROTECTED_CUSTOMER_STARTUP_CATEGORY:${category}\n`);
+      assert.doesNotMatch(error.stderr,/PRIVATE_STARTUP_SENTINEL|postgresql:| at /);return true;
+    });
+  }
+});
+
+test('startup classification discards arbitrary errors, private causes and accessor properties',()=>{
+  for (const error of [new Error('PRIVATE_STARTUP_SENTINEL',{ cause: { password: 'PRIVATE_STARTUP_SENTINEL' } }),
+    { get message() { throw new Error('PRIVATE_STARTUP_SENTINEL'); } },null,'PRIVATE_STARTUP_SENTINEL']) {
+    const failure=createProtectedCustomerStartupFailure('PROTECTED_CUSTOMER_RUNTIME_START_FAILED',error);
+    assert.equal(protectedCustomerStartupCategory(failure),'unavailable');assert.equal(failure.cause,undefined);
+    assert.equal(failure.message,'PROTECTED_CUSTOMER_RUNTIME_START_FAILED');
+    assert.doesNotMatch(JSON.stringify(Object.getOwnPropertyDescriptors(failure)),/PRIVATE_STARTUP_SENTINEL/);
+  }
+  const failure=createProtectedCustomerStartupFailure('PROTECTED_CUSTOMER_RUNTIME_START_FAILED',
+    new Error('PROTECTED_CUSTOMER_RUNTIME_NOT_READY'));
+  assert.equal(protectedCustomerStartupCategory(failure),'readiness');
 });

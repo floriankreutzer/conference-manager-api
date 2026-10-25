@@ -1,3 +1,4 @@
+import { createProtectedCustomerStartupFailure } from './protected-customer-startup-diagnostic.js';
 import { ApiError } from './api-error.js';
 import { loadProtectedCustomerConfiguration } from './protected-customer-config.js';
 import { createCustomerComposition } from './customer-composition.js';
@@ -156,15 +157,15 @@ export async function createProtectedCustomerRuntime(environment) {
           if (worker!==null) { timer=setInterval(tick,1000);timer.unref(); }
           return address;
         })().finally(()=>{ starting=false; });
-        return startTask.catch(async()=>{
-          await stop();throw new Error('PROTECTED_CUSTOMER_RUNTIME_START_FAILED');
+        return startTask.catch(async error=>{
+          await stop();throw createProtectedCustomerStartupFailure('PROTECTED_CUSTOMER_RUNTIME_START_FAILED',error);
         });
       },
       stop,
     });
-  } catch {
+  } catch (error) {
     await Promise.allSettled([composition ? composition.stop() : persistence?.close(),leasePool?.end()]);
     bundle?.cipher.destroy();
-    throw new Error('PROTECTED_CUSTOMER_RUNTIME_CONFIGURATION_INVALID');
+    throw createProtectedCustomerStartupFailure('PROTECTED_CUSTOMER_RUNTIME_CONFIGURATION_INVALID',error);
   }
 }
