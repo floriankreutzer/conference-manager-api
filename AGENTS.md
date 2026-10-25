@@ -329,6 +329,12 @@ CI must retain an immutable cross-repository acceptance reference and run the co
 
 If the acceptance contract itself intentionally changes, update the frontend acceptance reference, API seed/reset implementation, checksum/version bindings and documentation together. The exact counterpart frontend commit used for API validation must remain pinned and reviewable.
 
+## Supplementary design-profile routing
+
+The [Pavurel Application Design profile](https://github.com/floriankreutzer/automatic-engineering-design-skills/blob/1e812a0f0f82cdd2669b5e2d3e5411ea79a5dd1d/skills/pavurel-app-design/SKILL.md) and [Pavurel Web Design profile](https://github.com/floriankreutzer/automatic-engineering-design-skills/blob/1e812a0f0f82cdd2669b5e2d3e5411ea79a5dd1d/skills/pavurel-web-design/SKILL.md) in [skills PR #1](https://github.com/floriankreutzer/automatic-engineering-design-skills/pull/1) are optional review candidates for work in their respective frontend repositories. Their current acceptance state is recorded in that PR. These links do not install skills or make UI/marketing defaults applicable to backend implementation.
+
+API work continues to follow this repository's current instructions, coding standards, security and API contracts, and executable gates. If an authorized task also changes a frontend, read the current requirements in each affected repository and bind the exact counterpart refs as required above. The relevant UI profile must defer to the API's owned contracts and trusted boundaries; it must not redefine them, copy their normative rules, or weaken backend validation and release requirements.
+
 ## Cost-constrained execution
 
 Work must remain within the owner's configured zero-additional-spend limits. Do not upgrade plans, increase paid quotas, change spending limits, or start billable runners or deployments without an explicit new owner decision. Prefer local validation, bundle related documentation changes, and avoid unnecessary workflow reruns and Hosted Demo traffic. Configured cost controls do not provide additional included capacity.
