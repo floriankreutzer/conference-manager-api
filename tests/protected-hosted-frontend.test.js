@@ -93,6 +93,9 @@ test('HTTP delivery validates Host, target, method and body while retaining the 
   }
   const html=await exchange('/');assert.equal(html.status,200);assert.equal(html.headers['cache-control'],'no-store');
   assert.equal(html.headers['cross-origin-resource-policy'],'same-origin');
+  const print=await exchange('/src/shared/detached-print.html');
+  assert.equal(print.status,200);assert.equal(print.headers['content-type'],'text/html; charset=utf-8');
+  assert.equal(print.headers['content-disposition'],undefined);assert.match(print.bytes.toString(),/<!doctype html>/i);
   assert.match(html.headers['content-security-policy'],/frame-ancestors/);
   assert.equal((await exchange('/assets/fixture.css?v=reviewed')).status,200);
   assert.equal((await exchange('/',{ method: 'HEAD' })).bytes.length,0);
@@ -133,6 +136,7 @@ test('static budget admits complete cold graph navigations and then limits asset
   }
   for (let navigation=0;navigation<16;navigation++) {
     assert.equal(await status('/'),200);assert.equal(await status('/assets/fixture.css'),200);
+    assert.equal(await status('/src/shared/detached-print.html'),200);
   }
   assert.equal(await status('/assets/fixture.css'),429);
   assert.equal(await status('/api/v1/session'),418);assert.equal(apiCalls,1);
