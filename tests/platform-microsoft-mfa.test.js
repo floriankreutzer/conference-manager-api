@@ -45,7 +45,7 @@ test('exact-operation Microsoft client permits only its fixed callback and fresh
   const operation=client(claims(),options),url=new URL(await operation.authorizationUrl({ ...request,authenticationContext: FRESH }));
   assert.equal(url.searchParams.get('redirect_uri'),options.redirectUri);assert.equal(url.searchParams.get('max_age'),'0');
   assert.deepEqual(JSON.parse(url.searchParams.get('claims')),{ id_token: {
-    auth_time: { essential: true },amr: { essential: true } } });
+    auth_time: { essential: true },amr: { essential: true,values: ['mfa'] } } });
   await assert.rejects(operation.authorizationUrl(request),/CONTEXT_INVALID/);
   await assert.rejects(operation.redeemAuthorizationCode(redeem),/CONTEXT_INVALID/);
   const proof=await operation.redeemAuthorizationCode({ ...redeem,authenticationContext: FRESH });
@@ -59,7 +59,7 @@ test('exact-operation Microsoft client permits only its fixed callback and fresh
 test('Microsoft MFA requests auth_time/amr without Conditional Access, extra scopes or WebAuthn', async () => {
   const mfa = client(), url = new URL(await mfa.authorizationUrl(request));
   assert.deepEqual(JSON.parse(url.searchParams.get('claims')), {
-    id_token: { auth_time: { essential: true }, amr: { essential: true } },
+    id_token: { auth_time: { essential: true }, amr: { essential: true,values: ['mfa'] } },
   });
   assert.equal(url.searchParams.get('max_age'), '300');
   assert.equal(url.searchParams.get('scope'), 'openid profile');
@@ -117,6 +117,13 @@ test('Microsoft MFA preserves tenant/audience/issuer/nonce/time checks and stric
   const contract = { authority: AUTHORITY, clientId: CLIENT, redirectUri: REDIRECT, authenticationMaxAgeSeconds: 300,
     expectedState: request.state, expectedNonce: NONCE, expectedCodeChallenge: request.codeChallenge };
   assert.equal(validatePlatformEntraMfaAuthorizationUrl(url, contract), url);
+  for (const amr of [{ essential: true },{ essential: true,values: [] },{ essential: true,values: ['pwd'] },
+    { essential: true,values: ['mfa','pwd'] },{ essential: false,values: ['mfa'] },
+    { essential: true,values: ['mfa'],extra: true }]) {
+    const changed=new URL(url);
+    changed.searchParams.set('claims',JSON.stringify({ id_token: { auth_time: { essential: true },amr } }));
+    assert.throws(()=>validatePlatformEntraMfaAuthorizationUrl(changed.href,contract),/AUTHORIZATION_URL_INVALID/);
+  }
   for (const change of [u => u.searchParams.set('claims', '{"id_token":{"auth_time":{"essential":true}}}'),
     u => u.searchParams.set('claims', '{"id_token":{"auth_time":{"essential":true},"amr":{"essential":false}}}'),
     u => u.searchParams.set('max_age', '301'), u => u.searchParams.append('state', request.state),

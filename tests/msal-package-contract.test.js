@@ -3,17 +3,19 @@ import { createHash, randomBytes } from 'node:crypto';
 import test from 'node:test';
 import { ConfidentialClientApplication } from '@azure/msal-node';
 import { createEntraClient } from '../src/identity/entra-client.js';
-import { createPlatformEntraClient } from '../src/platform/identity/entra-client.js';
+import { createPlatformEntraClient,createPlatformEntraMfaClient,createPlatformEntraOperationClient }
+  from '../src/platform/identity/entra-client.js';
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
 const TENANT_ID = '22222222-2222-4222-8222-222222222222';
 const LOGIN_ORIGIN = 'https://login.microsoftonline.com';
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function fixture(platform = false) {
+function fixture(platform = false,mode = null) {
   const authority = `${LOGIN_ORIGIN}/${platform ? TENANT_ID : 'organizations'}`;
   const publicOrigin = platform ? 'https://platform.example.test' : 'https://customer.example.test';
-  const redirectUri = `${publicOrigin}/api/v1/${platform ? 'platform/' : ''}auth/microsoft/callback`;
+  const callback=mode==='operation' ? 'operation/callback' : 'callback';
+  const redirectUri = `${publicOrigin}/api/v1/${platform ? 'platform/' : ''}auth/microsoft/${callback}`;
   const clientSecret = randomBytes(32).toString('hex');
   const calls = [];
   const metadata = {
@@ -71,9 +73,11 @@ function fixture(platform = false) {
     return value;
   };
   const config = { clientId: CLIENT_ID, clientSecret, authority, publicOrigin, redirectUri, application };
-  const client = platform ? createPlatformEntraClient({
+  const platformFactory=mode==='operation' ? createPlatformEntraOperationClient
+    : mode==='mfa' ? createPlatformEntraMfaClient : createPlatformEntraClient;
+  const client = platform ? platformFactory({
     ...config, tenantReference: TENANT_ID,
-    mfaAuthenticationContext: 'c1', stepUpAuthenticationContext: 'c2',
+    mfaAuthenticationContext: mode ? 'cm:ms:mfa:v1' : 'c1', stepUpAuthenticationContext: mode ? 'cm:ms:fresh:v1' : 'c2',
   }) : createEntraClient(config);
   const codeVerifier = randomBytes(32).toString('base64url');
   const request = {
@@ -131,5 +135,21 @@ for (const [name, platform, authenticationContext] of [
     assert.equal(calls[0].body.get('grant_type'), 'authorization_code');
     assert.equal(calls[0].body.get('redirect_uri'), redirectUri);
     assert.equal(calls[0].body.get('code_verifier'), codeVerifier);
+  });
+}
+
+for (const [mode,authenticationContext,maxAge] of [
+  ['mfa','cm:ms:mfa:v1','300'],['mfa','cm:ms:fresh:v1','0'],['operation','cm:ms:fresh:v1','0'],
+]) {
+  test(`installed MSAL serializes nonempty literal MFA claims for ${mode} ${maxAge}`,async()=>{
+    const { client,request,redirectUri,protocolShape }=fixture(true,mode);
+    const url=new URL(await client.authorizationUrl({ ...request,authenticationContext }));
+    assert.deepEqual(JSON.parse(url.searchParams.get('claims')),{ id_token: {
+      auth_time: { essential: true },amr: { essential: true,values: ['mfa'] } } });
+    assert.equal(url.searchParams.get('max_age'),maxAge);assert.equal(url.searchParams.get('scope'),'openid profile');
+    assert.equal(url.searchParams.get('redirect_uri'),redirectUri);
+    const shape=protocolShape();
+    for (const key of ['stateMatches','nonceMatches','pkceMatches','callbackMatches','clientMatches']) assert.equal(shape[key],true);
+    assert.equal(url.searchParams.has('client_secret'),false);assert.equal(url.searchParams.has('clidata'),false);
   });
 }

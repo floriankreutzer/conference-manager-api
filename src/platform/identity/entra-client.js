@@ -218,7 +218,7 @@ function createClient({
       const requestedMaxAge = primaryOnly ? authenticationMaxAgeSeconds : maxAge(requested);
       try {
         const claims = JSON.stringify({ id_token: microsoftMfa
-          ? { auth_time: { essential: true }, amr: { essential: true } } : primaryOnly
+          ? { auth_time: { essential: true }, amr: { essential: true, values: ['mfa'] } } : primaryOnly
           ? { auth_time: { essential: true } } : { acrs: { essential: true, values: [requested] } } });
         const value = await msal.getAuthCodeUrl({
           scopes: PLATFORM_ENTRA_SCOPES,

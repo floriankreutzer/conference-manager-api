@@ -79,8 +79,10 @@ function exactPrimaryClaims(value, microsoftMfa = false) {
       && claims.id_token && Object.keys(claims.id_token).sort().join(',') === (microsoftMfa ? 'amr,auth_time' : 'auth_time')
       && claims.id_token.auth_time && Object.keys(claims.id_token.auth_time).join(',') === 'essential'
       && claims.id_token.auth_time.essential === true
-      && (!microsoftMfa || claims.id_token.amr && Object.keys(claims.id_token.amr).join(',') === 'essential'
-        && claims.id_token.amr.essential === true);
+      && (!microsoftMfa || claims.id_token.amr
+        && Object.keys(claims.id_token.amr).sort().join(',') === 'essential,values'
+        && claims.id_token.amr.essential === true && Array.isArray(claims.id_token.amr.values)
+        && claims.id_token.amr.values.length === 1 && claims.id_token.amr.values[0] === 'mfa');
   } catch { return false; }
 }
 

@@ -1,3 +1,4 @@
+import { protectedCustomerStartupCategory } from './protected-customer-startup-diagnostic.js';
 import { createProtectedCustomerRuntime } from './protected-customer-runtime.js';
 
 async function run() {
@@ -6,6 +7,8 @@ async function run() {
   process.once('SIGINT',stop);process.once('SIGTERM',stop);
   await runtime.start();
 }
-run().catch(()=>{
-  process.stderr.write('PROTECTED_CUSTOMER_PROCESS_FAILED\n');process.exitCode=1;
+run().catch(error=>{
+  const category=protectedCustomerStartupCategory(error);
+  process.stderr.write(`PROTECTED_CUSTOMER_PROCESS_FAILED\nPROTECTED_CUSTOMER_STARTUP_CATEGORY:${category}\n`);
+  process.exitCode=1;
 });

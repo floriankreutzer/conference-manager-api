@@ -14,7 +14,13 @@ composition and whole-HTTP shared execution wrapper. No supplied identity,
 issuer, verifier, driver, clock, handler, policy or provider implementation can
 replace that chain. Before listening it requires actual role/current-deployment
 readiness. Concurrent startup/shutdown is serialized; failure closes pools and
-custody keys without reflecting driver/configuration details.
+custody keys without reflecting driver/configuration details. The entrypoint
+emits the fixed process-failure marker and one allowlisted startup category.
+The runtime retains only an allowlisted category on its fixed failure; the original
+exception and cause are discarded. Arbitrary messages, codes, stacks, provider
+responses and configuration values are never emitted. Unknown causes
+produce only `unavailable`. This diagnostic does not relax readiness or grant
+replacement dependency ports.
 
 The canonical HTTP server now accepts an optional construction-only request
 wrapper factory around its actual application. The default path remains the

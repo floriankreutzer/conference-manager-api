@@ -22,7 +22,8 @@ reset and simulated outbound integrations. No private identity is recorded here.
 
 The explicit `microsoft_mfa` Platform assurance mode uses the existing bounded
 Microsoft code-exchange adapter and server-side operator/session authority. It
-requests `auth_time` and `amr`, requires a bounded nonduplicate `amr` list containing
+requests `auth_time` and essential `amr` with the fixed nonempty
+`values: ['mfa']` constraint, requires a bounded nonduplicate `amr` list containing
 `mfa`, and preserves exact directory, issuer, audience, nonce, PKCE, freshness,
 expiry and transaction checks. Merely requesting a claim or having an Authenticator
 registered grants nothing. `pwd`, `rsa` and `ngcmfa` without `mfa` are rejected.
