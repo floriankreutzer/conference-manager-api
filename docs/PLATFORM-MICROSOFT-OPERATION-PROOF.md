@@ -163,3 +163,5 @@ code, state, nonce, identity, token, cookie, raw claim, provider payload or exce
 The optional sink is non-authoritative: a sink failure cannot suppress rejection,
 audit, cookie clearing, expiry or one-use controls. Callback output stays neutral.
 These categories support diagnosis; they do not establish real MFA acceptance.
+
+Expiry rejection diagnostics distinguish a missing `exp` (`expiry_missing`), a present non-safe-integer `exp` (`expiry_invalid`), and a safe-integer `exp` at or before the RP clock (`token_expired`). All three cases remain rejected before proof verification. No coercion, fallback to SDK access-token expiry, raw claim logging, clock override or increased expiry tolerance is permitted. These labels classify the boundary failure; they do not by themselves establish a provider or clock root cause.
