@@ -99,7 +99,9 @@ test('native designated owner REAL handoff creates only own identity, preserves 
     return { flowId: start.flowId,state: start.state,browserToken: start.browserToken,code: location.searchParams.get('code') };
   }
   let previous=null;
-  for (const role of ['employee','conference_manager','tenant_admin']) {
+  // Tenant Admin is exercised through both actual HTTP roots below. These
+  // two admissions plus the two negative ceremonies retain the five-proof cap.
+  for (const role of ['employee','conference_manager']) {
     const start=await customer.start(`127.0.0.${previous ? 2 : 1}`);assert.equal(start.status,'started');
     const callback=await approve(start,role);
     if (previous) assert.equal(await customer.sessionService.resolvePrincipal(headers(previous.setCookie)),null);
@@ -141,11 +143,6 @@ test('native designated owner REAL handoff creates only own identity, preserves 
   // handoff never changes active state; a fresh exact approval is still needed.
   await pool.query('UPDATE users SET active=true,security_version=security_version+1 WHERE tenant_id=$1 AND id=$2',[tenantId,ownId]);
   assert.equal(await customer.sessionService.resolvePrincipal(headers(previous.setCookie)),null);
-  const restoredStart=await customer.start('127.0.0.5'),restoredCallback=await approve(restoredStart,'tenant_admin');
-  const restoredPending=await customer.callback(restoredCallback),restoredView=await customer.confirmation({
-    ...restoredCallback,completion: restoredPending.completion });
-  previous=await customer.complete({ flowId: restoredStart.flowId,browserToken: restoredStart.browserToken,
-    completion: restoredPending.completion,csrfToken: restoredView.csrfToken,request: { headers: {} },correlationId: randomUUID() });
   assert.equal(previous.principal.userId,ownId);
   assert.equal(await audit.verifyTenantChain(tenantId),true);assert.ok(await owner.auditRepository.isReady());
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_passkey_credentials')).rows[0].count,0);
@@ -184,7 +181,7 @@ test('native designated owner REAL handoff creates only own identity, preserves 
   const ops=await startProtectedRuntimeProcess('platform',platformEnv);children.push(ops);
   assert.equal(app.outcome.type,'listening');assert.equal(ops.outcome.type,'listening');
   assert.equal((await exchangeProtectedRuntime('customer',app.outcome.port,'/api/v1/session',
-    { headers: headers(previous.setCookie).headers })).status,200);
+    { headers: headers(previous.setCookie).headers })).status,401);
   const started=await exchangeProtectedRuntime('customer',app.outcome.port,'/api/v1/auth/owner/start',{ method: 'POST',body: {} });
   assert.equal(started.status,303);assert.match(started.headers['set-cookie'][0],/^cm_owner_browser=/);
   const arrival=new URL(started.headers.location);assert.equal(arrival.origin,scope.platformOrigin);
@@ -219,6 +216,9 @@ test('native designated owner REAL handoff creates only own identity, preserves 
   const continued=approved.headers['set-cookie'].find(value=>value.startsWith('cm_platform_session='));
   assert.ok(continued);await owner.acceptContinuation(continued);
   const originalBrowser=started.headers['set-cookie'][0].split(';')[0];
+  const wrongBrowser=await exchangeProtectedRuntime('customer',app.outcome.port,approvedLocation.pathname+approvedLocation.search,
+    { headers: { origin: null,'sec-fetch-site': 'cross-site' } });
+  assert.equal(wrongBrowser.status,303);assert.equal(wrongBrowser.headers.location,'/?auth=authentication_failed');
   const returned=await exchangeProtectedRuntime('customer',app.outcome.port,approvedLocation.pathname+approvedLocation.search,
     { headers: { cookie: originalBrowser,origin: null,'sec-fetch-site': 'cross-site' } });
   assert.equal(returned.status,303);assert.equal(returned.headers.location,'/?auth=owner_confirmation');
@@ -232,11 +232,19 @@ test('native designated owner REAL handoff creates only own identity, preserves 
       'x-csrf-token': confirmed.csrfToken } });assert.equal(logout.status,204);
   const finish=()=>exchangeProtectedRuntime('customer',app.outcome.port,'/api/v1/auth/owner/complete',{
     method: 'POST',form: { csrfToken: confirmed.csrfToken },headers: { cookie: flowCookies } });
+  const wrongCsrf=await exchangeProtectedRuntime('customer',app.outcome.port,'/api/v1/auth/owner/complete',{
+    method: 'POST',form: { csrfToken: '0'.repeat(64) },headers: { cookie: flowCookies } });assert.equal(wrongCsrf.status,401);
   const completed=await finish();assert.equal(completed.status,303);assert.equal(completed.headers.location,'/');
   const customerContinuation=completed.headers['set-cookie'].find(value=>value.startsWith('cm_session='));
   assert.ok(customerContinuation);const actual=await customer.sessionService.resolvePrincipal(headers(customerContinuation));
   assert.ok(actual);assert.equal(actual.userId,ownId);assert.deepEqual(actual.roles,['employee','tenant_admin']);
   previous={ principal: actual,setCookie: customerContinuation };assert.equal((await finish()).status,401);
+  assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_owner_customer_users')).rows[0].count,1);
+  assert.equal((await pool.query('SELECT count(*)::int AS count FROM tenant_user_roles WHERE user_id=$1',[ownId])).rows[0].count,0);
+  assert.equal((await pool.query(`SELECT count(*)::int AS count FROM platform_microsoft_operation_proofs
+    WHERE expires_at>clock_timestamp()`)).rows[0].count,5);
+  await assert.rejects(owner.prepare('a'.repeat(64)),{ code: 'PLATFORM_MICROSOFT_OPERATION_REJECTED' });
+
   assert.equal((await app.stop()).code,0);assert.equal((await ops.stop()).code,0);
   async function write(principal) {
     return customerScopes.withShared(()=>writes.run(async()=>{

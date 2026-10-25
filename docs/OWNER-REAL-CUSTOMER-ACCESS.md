@@ -277,3 +277,40 @@ performed by the canonical Tenant User lifecycle repository. Both isolated
 state changes now retain that version increment; the assertion that the old
 session cannot revive remains unchanged. No production reader, expiry, role
 or suspension check is relaxed. New native qualification remains required.
+
+
+Candidateda05cfd6ce188a3c2d1224cfcaee32425be3fe44 failed early native
+CI40147287367/job121031672327 before new HTTP admission: the expanded fixture
+requested a sixth proof inside the unchanged five-per120s bound (consumed proofs
+also retain that bound). Tenant Admin admission now runs through the actual HTTP
+root as the third role case, following two adapter admissions and the two
+negative ceremonies. No extra restore admission is needed. The old session after
+User lifecycle version change must return401 at actual Customer HTTP startup;
+final exact HTTP admission then supplies the new own identity. Wrong-browser,
+wrong-CSRF, replay and stable identity/no ordinary-grant assertions cover the
+third role there. A sixth start is explicitly required to fail. The limit,
+retention, clocks, waits and production protocol remain unchanged.
+
+
+## Qualified-site Owner browser fixture candidate
+
+A separate fixed test child registers a loader only for the Platform identity
+adapter's SDK import. The fixture still uses the actual pinned Microsoft SDK,
+with its existing in-memory provider network. It supplies fresh MFA/nonce/time
+claims, not a business/session issuer. Production entrypoints never register
+the loader and no production configuration/factory injection port is added.
+A local Node22 fixture test exercises the actual adapter and claim policy,
+one-use assertion and nonce rejection. The first local iteration expected a
+normalized identity before invoking the existing claim policy; that test-only
+shape mismatch is corrected, with production contracts unchanged.
+
+The paired browser harness starts both actual process roots on restricted
+TLS/SCRAM/max-one database roles, exact hosted artifacts and fixed distinct
+qualified HTTPS origins. Only the external provider document/network are
+isolated; options, callback, status, native approval, current directory,
+Customer original-browser completion, explicit account switch and all three
+role admissions reach actual roots. Evidence retains only exact source refs,
+closed counts, signed-chain results and the fixture-provider classification.
+Real Microsoft/device acceptance remains unproved. No app key, ordinary User
+role, adopted identity, synthetic target or real external provider request is
+created by the harness. Full paired Chromium/WebKit execution remains pending.
