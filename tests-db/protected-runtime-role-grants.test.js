@@ -74,6 +74,13 @@ async t=>{
     'INSERT INTO platform_passkey_enrollment_grants DEFAULT VALUES','INSERT INTO sessions DEFAULT VALUES',
     'CREATE TABLE public.forbidden_fixture(id integer)']) await assert.rejects(platform.query(query),{ code: '42501' });
 
+  for (const name of ['platform_runtime_deployments','platform_runtime_tenant_mappings','platform_diagnostic_events',
+    'platform_metering_periods','platform_operational_quotas']) {
+    assert.equal((await platform.query(`SELECT * FROM public."${name}" LIMIT 0`)).rowCount,0);
+    await assert.rejects(restricted.query(`SELECT * FROM public."${name}" LIMIT 0`),{ code: '42501' });
+    await assert.rejects(platform.query(`DELETE FROM public."${name}" WHERE false`),{ code: '42501' });
+  }
+
   const realTenant=randomUUID();
   await pool.query("INSERT INTO tenants(id,display_name,status) VALUES($1,'Isolated REAL admission fixture','onboarding')",[realTenant]);
   await pool.query("INSERT INTO tenant_runtime_registry(environment,tenant_id,mode) VALUES('int',$1,'real')",[realTenant]);

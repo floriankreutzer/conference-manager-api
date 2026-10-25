@@ -126,3 +126,16 @@ the separate `customer_groups` operation through the same protected environment,
 descriptor3 request carrier, exact-source gate and source-bound real recovery/
 custody evidence. It neither repeats segment genesis nor changes that workflow's
 secret allocation, owner restriction, serialization or private-output policy.
+
+## Existing INT observability readers
+
+The fixed `observability_reads` operator action applies SELECT only to Platform
+runtime deployments/mappings, diagnostic events, metering periods and operational
+quotas. These are required by the existing authorized read services. Customer
+retains no read access to these tables; its diagnostic INSERT remains unchanged.
+No metering-event raw read, mutation, ownership, credential or provider authority
+is added. The checked incremental transaction retains current ledger, epoch,
+signed audit segment, catalog owner, nonelevated roles and both-role drain checks.
+The fresh-role manifest includes the same minimal read contract. Existing roles
+must use the incremental action, never rerun the fresh installer. Code validation
+and native restricted-role CI do not themselves prove a live grant or UI recovery.

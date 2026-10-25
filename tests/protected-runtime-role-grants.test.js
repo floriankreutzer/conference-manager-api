@@ -4,7 +4,7 @@ import { protectedRuntimeRoleGrantPlan,grantProtectedRuntimeRoles,platformAuditS
   grantPlatformAuditSegmentRuntimeRoles,customerMicrosoftGroupRoleGrantPlan,grantCustomerMicrosoftGroupRuntimeRoles,
   platformMicrosoftOperationRoleGrantPlan,grantPlatformMicrosoftOperationRuntimeRoles,syntheticMicrosoftCustodyRoleGrantPlan,
   ownerCustomerCustodyRoleGrantPlan,
-  grantOwnerCustomerCustodyRuntimeRoles }
+  grantOwnerCustomerCustodyRuntimeRoles,platformObservabilityReadRoleGrantPlan,grantPlatformObservabilityReadRuntimeRoles }
   from '../scripts/support/protected-runtime-role-grants.mjs';
 import { architectureConsolidationBoundaryViolations } from '../scripts/check-module-boundaries.mjs';
 
@@ -133,6 +133,28 @@ test('REAL owner delta grants exact existing-role custody without Platform mutat
   for (const patch of [{ environment: 'prod' },{ statements: [] },{ role: 'owner' },{ segmentId: 'private' }]) {
     assert.throws(()=>ownerCustomerCustodyRoleGrantPlan({ ...input,...patch }),/INSTALLATION_REFUSED/);
     await assert.rejects(grantOwnerCustomerCustodyRuntimeRoles(pool,{ ...input,...patch }),/INSTALLATION_REFUSED/);
+  }
+  assert.equal(connected,false);
+});
+
+test('observability delta grants fixed Platform SELECT only and rejects supplied authority before connecting',async()=>{
+  const input={ environment: 'int',securityEpoch: epoch,segmentId: 'be000000-0000-4000-8000-000000000002' };
+  const names=['platform_runtime_deployments','platform_runtime_tenant_mappings','platform_diagnostic_events',
+    'platform_metering_periods','platform_operational_quotas'];
+  const plan=platformObservabilityReadRoleGrantPlan(input);
+  assert.deepEqual(plan.statements,names.map(name=>`GRANT SELECT ON public."${name}" TO "cm_protected_int_platform"`));
+  for (const surface of protectedRuntimeRoleGrantPlan({ environment: 'int',securityEpoch: epoch }).roles) {
+    for (const name of names) {
+      const grant=surface.statements.find(sql=>sql.includes(`public."${name}" `));
+      if (surface.surface==='platform') assert.match(grant,/^GRANT SELECT(?:,INSERT)? ON /);
+      else if (name==='platform_diagnostic_events') assert.match(grant,/^GRANT INSERT ON /);
+      else assert.equal(grant,undefined);
+    }
+  }
+  let connected=false;const pool={ connect() { connected=true;assert.fail(); } };
+  for (const patch of [{ environment: 'prod' },{ role: 'customer' },{ statements: [] },{ segmentId: 'invalid' }]) {
+    assert.throws(()=>platformObservabilityReadRoleGrantPlan({ ...input,...patch }),/INSTALLATION_REFUSED/);
+    await assert.rejects(grantPlatformObservabilityReadRuntimeRoles(pool,{ ...input,...patch }),/INSTALLATION_REFUSED/);
   }
   assert.equal(connected,false);
 });

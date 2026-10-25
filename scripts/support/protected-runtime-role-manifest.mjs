@@ -44,7 +44,7 @@ export function protectedRuntimeRoleManifest(surface) {
     ...READ.map(name=>table(name,'SELECT')),...MEMBERSHIP.map(name=>table(name,'SELECT,INSERT,UPDATE')),
     table('users',CRUD),table('customer_access_commands','SELECT,INSERT'),table('tenant_entitlements','SELECT'),
     table('media_object_inventory','SELECT,INSERT'),columns('media_object_inventory','UPDATE','object_key'),
-    table('platform_diagnostic_events','INSERT')];
+    table('platform_diagnostic_events',surface==='platform' ? 'SELECT,INSERT' : 'INSERT')];
   const functions=[...COMMON_FUNCTIONS];
   if (surface==='customer') {
     tables.push(table('tenant_microsoft_role_settings','SELECT,INSERT,UPDATE'),
@@ -77,7 +77,9 @@ export function protectedRuntimeRoleManifest(surface) {
       'protected_lock_synthetic_calendar_source(text,uuid,uuid)',
       'protected_synthetic_lifecycle(text,uuid,uuid,text,text,bigint)');
   } else {
-    tables.push(table('tenants',CRUD),table('platform_operators','SELECT,UPDATE'),
+    tables.push(...['platform_runtime_deployments','platform_runtime_tenant_mappings',
+      'platform_metering_periods','platform_operational_quotas'].map(name=>table(name,'SELECT')),
+    table('tenants',CRUD),table('platform_operators','SELECT,UPDATE'),
     ...['platform_operator_tenant_scopes','platform_sessions','platform_oidc_auth_transactions','platform_microsoft_operation_proofs',
       'platform_passkey_auth_transactions','platform_passkey_enrollment_transactions','platform_passkey_credentials',
       'platform_operation_receipts','platform_tenant_readiness_snapshots','platform_microsoft_fleet_snapshots',
