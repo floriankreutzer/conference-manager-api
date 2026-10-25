@@ -219,3 +219,11 @@ lock denial before the final write and restarts the actual Customer process afte
 revocation. The fixture deliberately does not contact real Microsoft; its positive
 exact proof remains the separately identified MSAL fixture. Native execution of
 this extension and the paired real frontend/browser journey remain pending.
+
+
+Candidate64ea688486b47bf3f5dc7b36041921af611ecb1e failed native
+CI40145381516/job121025792749 at invitation persistence startup: its explicit
+current-ledger readiness probe still requested71 after migration72. The fixture
+now probes72; the following explicit empty072 rollback and all populated
+invitation custody assertions remain unchanged. The failure is retained and
+requires a fresh complete native run; no readiness check or suite is removed.
