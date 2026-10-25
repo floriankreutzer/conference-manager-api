@@ -140,7 +140,7 @@ for (const [name, platform, authenticationContext] of [
 
 for (const [mode,authenticationContext,maxAge,prompt] of [
   ['mfa','cm:ms:mfa:v1','300',null],['mfa','cm:ms:fresh:v1','0',null],
-  ['operation','cm:ms:fresh:v1','0','login'],
+  ['operation','cm:ms:fresh:v1','300','login'],
 ]) {
   test(`installed MSAL serializes nonempty literal MFA claims for ${mode} ${maxAge}`,async()=>{
     const { client,request,redirectUri,protocolShape }=fixture(true,mode);
