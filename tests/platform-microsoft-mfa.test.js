@@ -152,3 +152,19 @@ test('malformed Microsoft MFA code exchange fails before provider I/O and never 
   }
   assert.equal(calls, 0);
 });
+
+test('token expiry diagnostics distinguish malformed claims from elapsed lifetime without accepting either',async()=>{
+  for (const [exp,code] of [
+    [undefined,'PLATFORM_ENTRA_TOKEN_EXPIRY_MISSING'],
+    ...[null,'1792846800',NaN,Infinity,1.5,{},[],true].map(value=>[value,'PLATFORM_ENTRA_TOKEN_EXPIRY_INVALID']),
+    [NOW/1000,'PLATFORM_ENTRA_TOKEN_EXPIRED'],[NOW/1000-1,'PLATFORM_ENTRA_TOKEN_EXPIRED'],
+  ]) {
+    const operation=client({ ...claims(),exp },{ factory: createPlatformEntraOperationClient,
+      redirectUri: `${ORIGIN}${PLATFORM_MICROSOFT_OPERATION_CALLBACK}` });
+    await assert.rejects(operation.redeemAuthorizationCode({ ...redeem,authenticationContext: FRESH }),{ code });
+  }
+  const operation=client({ ...claims(),exp: NOW/1000+1 },{ factory: createPlatformEntraOperationClient,
+    redirectUri: `${ORIGIN}${PLATFORM_MICROSOFT_OPERATION_CALLBACK}` });
+  assert.equal((await operation.verify(await operation.redeemAuthorizationCode({
+    ...redeem,authenticationContext: FRESH }))).verified,true);
+});
