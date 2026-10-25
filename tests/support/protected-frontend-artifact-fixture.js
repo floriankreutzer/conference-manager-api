@@ -7,7 +7,8 @@ export async function writeProtectedFrontendFixture(root,profile) {
   const entry=profile.surface==='customer' ? 'index.html' : 'platform-admin/index.html';
   const content={ [entry]: Buffer.from('<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'self\'">'),
     'assets/fixture.css': Buffer.from('body { color: black; }\n') };
-  const manifest={ schemaVersion: 1,...profile,microsoftEnabled: false,invitationsEnabled: false,ownerAccessEnabled: profile.ownerCustomerAccessEnabled===true,
+  const manifest={ schemaVersion: 1,...profile,microsoftEnabled: false,invitationsEnabled: false,
+    ownerAccessEnabled: profile.ownerCustomerAccessEnabled===true,
     files: Object.keys(content).sort().map(name=>({ path: name,bytes: content[name].length,
       sha256: frontendArtifactDigest(content[name]) })) };
   delete manifest.hostedFrontendSha256;delete manifest.ownerCustomerAccessEnabled;

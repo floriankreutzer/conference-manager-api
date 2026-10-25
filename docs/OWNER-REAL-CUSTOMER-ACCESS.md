@@ -227,3 +227,10 @@ current-ledger readiness probe still requested71 after migration72. The fixture
 now probes72; the following explicit empty072 rollback and all populated
 invitation custody assertions remain unchanged. The failure is retained and
 requires a fresh complete native run; no readiness check or suite is removed.
+
+
+Runtime candidatec4764e9662bb939acadf83fb3cb10f7fcd594b05 failed
+CI40146347767/job121028402596 before tests because the new hosted-manifest
+fixture declaration exceeded the canonical140-character style limit. The
+declaration is wrapped without changing behavior. That run proves no native
+or browser acceptance; all required checks must execute on the correction.
