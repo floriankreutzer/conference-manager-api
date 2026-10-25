@@ -1,3 +1,4 @@
+import { createLogger } from './logger.js';
 import { requirePlatformPasskeyMinimum } from './platform/identity/passkey-policy.js';
 import { loadPlatformConfig } from './platform/config.js';
 import { createPlatformAuthorizationPolicy } from './platform/identity/policy.js';
@@ -50,9 +51,11 @@ function createProtectedPlatformMicrosoftOperations({ config,pool,scopes,auditRe
   const claimPolicy=createPlatformClaimPolicy({ provider: 'microsoft_entra_platform',issuer: `${config.entraAuthority}/v2.0`,
     audience: config.entraClientId,tenantReference: config.entraTenantId,
     mfaAuthenticationContext: config.mfaAuthenticationContext,stepUpAuthenticationContext: config.stepUpAuthenticationContext });
+  const diagnosticLogger=createLogger();
   const create=executionScope=>createPlatformMicrosoftOperationService({ entraClient,claimPolicy,sessionService: sessions,
     environment: config.deploymentEnvironment,protectedSecurityEpoch,securityEpoch: config.securityEpoch,
     transactionSecret: config.oidcTransactionSecret,
+    onRejection: ({ stage,reason })=>diagnosticLogger.lifecycle({ event: `platform_microsoft_operation_rejected_${stage}_${reason}` }),
     repository: createPostgresPlatformMicrosoftOperationRepository(pool,{ environment: config.deploymentEnvironment,
       protectedSecurityEpoch,securityEpoch: config.securityEpoch,executionScope,scopes,auditRepository }) });
   const normalMicrosoftService=create('shared');

@@ -149,3 +149,17 @@ a fixture-only adapter mismatch: `verifyWithClient` belongs to the segmented
 adapter, while this isolated fixture uses the legacy adapter. It now invokes
 that adapter's existing `isReady` verifier, which checks all retained signatures,
 row count and terminal hash. The production adapters are unchanged.
+
+
+## Bounded rejection diagnosis
+
+The closed protected composition emits a fixed lifecycle category when a pending
+operation is rejected during provider response, redemption, assertion, claim policy,
+identity binding, repository verification or remaining-lifetime handling. Known
+internal token-freshness, nonce, MFA, exchange and expiry errors map to fixed
+reason labels; unknown failures use a fixed fallback. Provider errors are reduced
+to provider_refused, without copying their values. The diagnostic contains no
+code, state, nonce, identity, token, cookie, raw claim, provider payload or exception.
+The optional sink is non-authoritative: a sink failure cannot suppress rejection,
+audit, cookie clearing, expiry or one-use controls. Callback output stays neutral.
+These categories support diagnosis; they do not establish real MFA acceptance.
