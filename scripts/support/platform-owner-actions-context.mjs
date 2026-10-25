@@ -1,4 +1,5 @@
-import { normalizePlatformOwnerBootstrapRequest } from '../../src/operator/platform-owner-bootstrap-request.js';
+import { normalizePlatformOwnerBootstrapRequest,normalizePlatformOwnerRolesRequest }
+  from '../../src/operator/platform-owner-bootstrap-request.js';
 import { requireOwnerMainActionsContext } from './owner-main-actions-context.mjs';
 
 const refuse = () => { throw new Error('PLATFORM_OWNER_ACTIONS_REFUSED'); };
@@ -8,12 +9,12 @@ function json(value) {
 }
 
 // Attestation binding only. The existing offline CLI remains the database authority.
-export function requirePlatformOwnerActionsContext(env) {
+function requireContext(env,workflow,normalizeRequest) {
   try {
-    requireOwnerMainActionsContext(env, 'protected-int-first-owner.yml');
+    requireOwnerMainActionsContext(env,workflow);
     const expected = { environment: 'int', deploymentEpoch: env.PLATFORM_OWNER_BOOTSTRAP_DEPLOYMENT_EPOCH,
       directoryId: env.PLATFORM_OWNER_BOOTSTRAP_DIRECTORY_ID, subjectId: env.PLATFORM_OWNER_BOOTSTRAP_SUBJECT_ID };
-    normalizePlatformOwnerBootstrapRequest(json(env.CM_INT_OWNER_REQUEST_JSON), expected);
+    normalizeRequest(json(env.CM_INT_OWNER_REQUEST_JSON), expected);
     const evidence = json(env.CM_INT_OWNER_EVIDENCE);
     if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)
       || Object.keys(evidence).sort().join(',') !==
@@ -27,4 +28,12 @@ export function requirePlatformOwnerActionsContext(env) {
       || !/^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/.test(evidence.identityReference)) refuse();
     return true;
   } catch { refuse(); }
+}
+
+export function requirePlatformOwnerActionsContext(env) {
+  return requireContext(env,'protected-int-first-owner.yml',normalizePlatformOwnerBootstrapRequest);
+}
+
+export function requirePlatformOwnerRolesActionsContext(env) {
+  return requireContext(env,'protected-int-owner-roles.yml',normalizePlatformOwnerRolesRequest);
 }
