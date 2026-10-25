@@ -19,6 +19,14 @@ fresh authentication time. The separate `createPlatformEntraOperationClient`
 accepts only its fixed operation callback and fresh context; ordinary login and
 primary-only client factories continue to reject that callback.
 
+The exact-operation authorization request additionally sets `prompt=login` together
+with `max_age=0`. This deliberately disables provider SSO for that one ceremony so
+the resulting `auth_time` can represent a fresh interactive authentication. Normal
+Platform Microsoft MFA login does not set `prompt=login`; its established session
+and five-minute freshness contract remain unchanged. Server-side `auth_time`, MFA
+method, nonce, PKCE, issuer/audience, source-session and one-use proof checks remain
+mandatory after the provider returns.
+
 The provider callback only verifies the pending proof. It executes no business
 operation, issues no application session and returns no elevated principal or
 CSRF token. Both transient cookies contain only state and a purpose-bound MAC.
