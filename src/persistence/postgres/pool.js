@@ -44,7 +44,8 @@ const { Pool } = pg;
 // Schema 68 tracks independent direct and Microsoft-derived Customer grants.
 // Schema 69 adds approved mappings and expiring identity-bound membership.
 // Schema 71 binds synthetic Customer custody to fixed Microsoft operation proofs.
-export const CURRENT_SCHEMA_VERSION = 71;
+// Schema 72 retains attributable REAL owner identity and one-use browser custody.
+export const CURRENT_SCHEMA_VERSION = 72;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

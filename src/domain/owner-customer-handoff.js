@@ -7,6 +7,8 @@ export const OWNER_CUSTOMER_ACCESS_ROLES=Object.freeze(['employee','conference_m
 export const OWNER_CUSTOMER_ACCESS_START_SECONDS=600;
 export const OWNER_CUSTOMER_ACCESS_CODE_SECONDS=60;
 export const OWNER_CUSTOMER_ACCESS_COMPLETION_SECONDS=30;
+export const OWNER_CUSTOMER_ACCESS_RETAINED_GLOBAL_LIMIT=5000;
+export const OWNER_CUSTOMER_ACCESS_RETAINED_OWNER_LIMIT=512;
 const HASH=/^[a-f0-9]{64}$/;
 function invalid() { throw new TypeError('OWNER_CUSTOMER_ACCESS_INPUT_INVALID'); }
 function exact(value,keys) {

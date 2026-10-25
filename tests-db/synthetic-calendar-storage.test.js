@@ -25,6 +25,7 @@ async t=>{
   assert.equal((await pool.query("SELECT protected_lock_synthetic_calendar_source('int',$1,$2) AS allowed",
     [randomUUID(),randomUUID()])).rows[0].allowed,false);
   const original=(await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=62 ORDER BY version')).rows;
+  assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.

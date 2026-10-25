@@ -49,6 +49,7 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
   pool = createPostgresPool({ mode: 'test', ...database, databaseUrl: url.toString(), databasePoolMax: 6 });
   await migrateUp(pool); await migrateDemoUp(pool, { roles });
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty032 before retained031/older reset grants.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty031 before unchanged030/older grants.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty030 before unchanged029/older grants.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty029 before unchanged028/older guards.
@@ -63,6 +64,7 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   await rollbackLatestDemoMigration(pool, { roles }); // Passkey reset grants019.
   await rollbackLatestDemoMigration(pool, { roles }); // Unsent grants018 while canonical053 is still ready.
+  assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
@@ -309,6 +311,7 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
     await assert.rejects(customer.query(sql), (error) => error.code === '42501');
     await assert.rejects(pool.query(sql), /CATERING_ORDER_HISTORY_APPEND_ONLY/);
   }
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty032 before retained031/older reset grants.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty031 before unchanged030/older grants.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty030 before unchanged029/older grants.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty029 before unchanged028/older guards.
@@ -322,6 +325,7 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Publication grants021 before source grants020.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   await rollbackLatestDemoMigration(pool, { roles }); // Remove grants019 before empty053.
+  assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
@@ -359,6 +363,7 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
   assert.equal((await reset.reset({ fixture: DEMO_FIXTURE, checksum: DEMO_FIXTURE_CHECKSUM })).checksum, DEMO_FIXTURE_CHECKSUM);
   assert.equal((await pool.query('SELECT count(*)::integer AS n FROM catering_order_withdrawals')).rows[0].n, 0);
   assert.equal((await pool.query('SELECT count(*)::integer AS n FROM catering_unsent_replacements')).rows[0].n, 0);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty032 before retained031/older reset grants.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty031 before unchanged030/older grants.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty030 before unchanged029/older grants.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty029 before unchanged028/older guards.
@@ -373,6 +378,7 @@ test('actual Customer withdrawal preserves history, fences active delivery and r
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catalogue source grants020.
   await rollbackLatestDemoMigration(pool, { roles }); //019 before changing canonical readiness.
   await rollbackLatestDemoMigration(pool, { roles }); //018 before changing canonical readiness.
+  assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.

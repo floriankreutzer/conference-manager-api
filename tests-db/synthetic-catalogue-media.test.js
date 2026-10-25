@@ -19,6 +19,7 @@ test('native synthetic media preserves actual ownership, private privileges and 
     finally { await pool.end(); }
   });await migrateUp(pool);
   const accepted=(await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=59 ORDER BY version')).rows;
+  assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
@@ -125,6 +126,7 @@ test('native synthetic media preserves actual ownership, private privileges and 
   const removable=await insert(owner,{ ownerId: spareRoom });
   assert.equal((await pool.query('DELETE FROM synthetic_catalogue_media_assets WHERE id=$1',[removable])).rowCount,1);
   await assert.rejects(asRole(roles[2],'TRUNCATE synthetic_catalogue_media_assets'),{ code: '55000' });
+  assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
@@ -156,5 +158,5 @@ test('native synthetic media preserves actual ownership, private privileges and 
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM synthetic_catalogue_media_assets')).rows[0].count,3);
   assert.deepEqual(await realState(),preserved);
   await migrateUp(pool); // Restore061 after the unchanged populated060 rollback probe.
-  assert.equal((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version,71);
+  assert.equal((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version,72);
 });

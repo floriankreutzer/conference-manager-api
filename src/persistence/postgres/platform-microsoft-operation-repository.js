@@ -117,6 +117,8 @@ export function createPostgresPlatformMicrosoftOperationRepository(pool,{ enviro
           SELECT proof.id FROM platform_microsoft_operation_proofs proof WHERE environment=$1 AND operator_id=$2
             AND expires_at<=clock_timestamp() AND (status<>'consumed' OR consumed_at<clock_timestamp()-interval '24 hours')
             AND NOT EXISTS(SELECT 1 FROM synthetic_customer_handoffs custody WHERE custody.approval_microsoft_proof_id=proof.id)
+            AND NOT EXISTS(SELECT 1 FROM owner_customer_handoffs custody WHERE custody.approval_microsoft_proof_id=proof.id)
+            AND NOT EXISTS(SELECT 1 FROM platform_owner_customer_users own WHERE own.created_proof_id=proof.id)
           ORDER BY expires_at,id LIMIT 64 FOR UPDATE SKIP LOCKED)`,values: [environment,source.operatorId] });
         const inserted=await client.query({ text: `WITH database_time AS (SELECT clock_timestamp() AS now)
           INSERT INTO platform_microsoft_operation_proofs(id,environment,protected_security_epoch,security_epoch,

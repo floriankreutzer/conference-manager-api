@@ -26,6 +26,7 @@ test('native audit cutover preserves all legacy bytes, commits one genesis and a
       }
     } finally { await pool.end(); }
   });await migrateUp(pool);
+  assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
@@ -166,6 +167,7 @@ test('native audit cutover preserves all legacy bytes, commits one genesis and a
     'TRUNCATE platform_audit_events CASCADE',
     'TRUNCATE platform_audit_segments CASCADE',
   ]) await assert.rejects(pool.query(statement));
+  assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.

@@ -40,7 +40,7 @@ normal source with exact provider/version/time/expiry and a current REAL target.
 It holds actor, source, deployment and Tenant read locks. A separate all-role
 operator without the original receipts remains denied. Its native fixture uses
 actual bootstrap/upgrade/session/audit adapters and separate max-one pools; native
-execution remains pending because PostgreSQL is not available locally.
+execution passed in candidate d2158746fb9ed59c8c32f4378d431eff205f95ce, CI40139954452 and independent Main40141577240. PostgreSQL remains unavailable locally.
 
 These are necessary checks only. An all-role principal does not prove designated
 ownership. No owner REAL runtime, route, grant, migration, User, Customer session
@@ -74,4 +74,117 @@ canonical precision for issued/expiry snapshot equality; actual revocation and
 expiry against clock_timestamp() remain exact. Native coverage verifies the
 mapper's precision and denies even a one-millisecond change in either supplied
 snapshot. No timestamp, TTL, provider, role or receipt check is removed. The
-failed run is retained and renewed native execution remains required.
+failed run is retained and the qualified renewed native execution and independent Main passed; the original failed run remains historical evidence.
+
+
+## Additive owner custody candidate (not activated)
+
+Migration072 adds separate bounded original-browser handoffs and immutable own-User
+attribution, without changing any existing migration. The stable predictable User
+identifier cannot adopt an existing unbound User, change suspension, or write
+ordinary Customer role grants. Initial creation retains its actual consumed shared
+Microsoft proof and signed approval sequence. Completed browser flow rows can
+later expire without pinning a permanent browser-capacity slot; proof cleanup
+excludes both all retained owner flows and stable initial identity attribution.
+Destructive down/reset refuses retained owner identity, sessions or history.
+Demo032 grants only explicit empty-child TRUNCATE participation in the canonical
+reset. All earlier rollback and permanent Demo assertions remain mandatory.
+No business seed/checksum change is intended.
+
+Two fixed private wrappers reuse start, cookie, admission, HTTP and owned-session
+implementations. Synthetic wire names, cookies, MAC bytes, namespace, error codes
+and confirmation shape remain compatible. The owner path uses separate narrow
+Lax browser and Strict completion cookies, a fixed /api/v1/auth/owner callback,
+and an approved REAL target/role confirmation. Anonymous start looks up no target.
+Callback GET never issues a Customer session. Only final same-origin CSRF POST
+may consume the approved original browser/code and issue the attributable own
+session. An unrelated current account requires explicit logout; a same-owner
+role/target switch can revoke its own previous session despite the newly revoked
+old Platform source. Issuance and signed Tenant audit commit with flow consumption.
+
+Owner qualification is the exact owner_delegation/platform_owner pair in REAL
+runtime only. It independently rereads bootstrap/all-role receipts, current normal
+source, shared consumed proof, signed approval and active own User/version on each
+resolved request. Invited membership, synthetic custody and unknown provider/kind
+pairs cannot inherit owner authority. The private Customer lock port serializes
+actor/source, then current Tenant, User and session with NOWAIT. Target UPDATE
+locking avoids a SHARE-to-UPDATE upgrade; a conflict denies before business work.
+
+The optional pool-owned transaction authority scope admits only an immutable
+already-qualified Principal before business work in the owned request scope.
+Every actual write transaction invokes the independent current owner lock/read
+precondition before its work callback. Nested work joins only the same transaction;
+new transactions recheck even if the physical max-one client is reused. Read-only,
+unadmitted, ordinary and unregistered pools keep their existing paths. Conflicting
+or expired request scopes, late admission and recursive write preconditions deny.
+No SQL inspection, whole-request transaction, isolation change or provider policy
+enters the generic transaction adapter. The owner composition wraps only the
+actual Microsoft client's fixed network methods to retain this custody during
+an external attempt, with existing bounded provider retries re-entering the guard.
+External provider effects remain distinct from local transaction atomicity.
+
+The fixed owner_customer grant delta retains exact accepted Main, sole configured
+actor, first-run, ordinary logging, offline schema owner, checked source ledger,
+segment/deployment, signed audit and both-role drain checks. It grants no Customer
+Platform mutation, no runtime bootstrap and no User-identity creation to Customer.
+The separate Platform approval adapter alone creates and signs the own identity.
+
+Current limits: these candidate adapters/route factories and the write composition
+are inactive until the explicit process roots, fixed configuration and actual
+provider/HTTP/browser journey are composed and qualified. Native072 execution,
+actual least-privilege TLS/SCRAM, source-revocation/concurrency and full historical
+persistence/Demo regression remain required. The early native owner CI step is
+additional coverage in the existing job; it replaces no complete release gate.
+No live migration, role grant, User/session creation, provider setting or deployment
+is established by this source work.
+
+
+The first072 native CI40143761367/job121020948319 failed at the Platform
+own-binding lookup: PostgreSQL SELECT FOR SHARE requires an UPDATE privilege,
+while that table deliberately grants only SELECT/INSERT. The lookup now uses a
+plain SELECT on the immutable attribution row. Its UPDATE/DELETE/TRUNCATE guards
+and enclosing owner advisory/current-target locks already serialize creation;
+actual mutable source/User/session locks and current qualification remain. The
+native fixture explicitly requires readable/creatable but not mutable rights.
+No privilege or negative assertion is widened. Renewed native qualification is
+required; this failed run remains historical evidence.
+
+
+The same candidate's four permanent Demo jobs stopped before browser execution
+because the independent Demo startup constant still required overlay031 while
+migration032 had been applied. The runtime now requires032, retaining exact-ledger
+fail-closed readiness. The migration-stream test compares both actual independent
+migration tails against their runtime readiness constants, in addition to the
+existing explicit version assertions. No startup assertion, wait budget, browser
+suite or reset case is relaxed. Those failed startup jobs do not establish any
+browser acceptance; all four complete jobs must run again against the correction.
+
+
+Corrected candidate8f007261e9a50c97cf5c45fd7e7b893118fe3c3f passed the
+actual restricted TLS/SCRAM/max-one native owner admission/write-custody test in
+CI40144120924/job121022050985, followed by Microsoft group and exact-proof native
+coverage. Both synthetic assurance profiles then reached their real lifecycle
+paths. The Microsoft profile's old direct populated071 down assertion encountered
+new empty072 first, so the run correctly failed the unchanged expected rejection.
+That branch now explicitly drains only empty072 before asserting the original
+populated071 recovery rejection. No down guard or expected rejection is removed.
+Full native and all-browser qualification remain required; the failed run remains
+failed evidence even though its new owner-native step passed.
+
+
+Candidate64ea688486b47bf3f5dc7b36041921af611ecb1e failed native
+CI40145381516/job121025792749 at invitation persistence startup: its explicit
+current-ledger readiness probe still requested71 after migration72. The fixture
+now probes72; the following explicit empty072 rollback and all populated
+invitation custody assertions remain unchanged. The failure is retained and
+requires a fresh complete native run; no readiness check or suite is removed.
+
+
+The corrected readiness candidate failed full native CI40146228534 /
+job121028666131 at demo-request-attribution-reset-grant.test.js:116: its current
+overlay constant assertion still expected31 although the same fixture already
+listed032. The constant and complete reapplication list now require32. A full
+source search also found four obsolete CURRENT_SCHEMA_VERSION71 assertions in
+historical migration fixtures; these now require72. Historical target versions,
+role grants, rollback sequencing, negative assertions and time budgets are
+unchanged. The complete native run must qualify this correction.
