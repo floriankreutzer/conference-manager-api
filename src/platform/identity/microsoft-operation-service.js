@@ -10,6 +10,14 @@ import {
 } from './microsoft-operation-cookie.js';
 
 const HASH=/^[a-f0-9]{64}$/,NORMAL='cm:ms:mfa:v1',FRESH='cm:ms:fresh:v1',TTL_SECONDS=120;
+const REJECTION_REASONS=new Map([
+  ['PLATFORM_ENTRA_AUTHENTICATION_NOT_FRESH','authentication_stale'],
+  ['PLATFORM_ENTRA_ISSUED_AT_NOT_FRESH','issuance_stale'],
+  ['PLATFORM_ENTRA_NONCE_INVALID','nonce_rejected'],
+  ['PLATFORM_MICROSOFT_MFA_REQUIRED','mfa_missing'],
+  ['PLATFORM_ENTRA_CODE_REDEMPTION_FAILED','exchange_failed'],
+  ['PLATFORM_ENTRA_TOKEN_EXPIRED','token_expired'],
+]);
 const reject=()=>{ throw new PlatformIdentityError('PLATFORM_MICROSOFT_OPERATION_REJECTED'); };
 function instant(value) {
   if (typeof value!=='string' || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString()!==value) reject();
@@ -39,16 +47,22 @@ function identityForProof(proof,level) {
 // fixed transaction. Callback verification never executes a business mutation.
 export function createPlatformMicrosoftOperationService({ repository,entraClient,claimPolicy,sessionService,
   environment,protectedSecurityEpoch,securityEpoch,transactionSecret,clock=()=>Date.now(),
-  tokenFactory=()=>randomBytes(32).toString('base64url'),idFactory=randomUUID }={}) {
+  onRejection=()=>{},tokenFactory=()=>randomBytes(32).toString('base64url'),idFactory=randomUUID }={}) {
   if (['create','findPending','verify','reject','authenticate'].some(name=>typeof repository?.[name]!=='function')
     || ['authorizationUrl','redeemAuthorizationCode','verify'].some(name=>typeof entraClient?.[name]!=='function')
     || typeof claimPolicy?.normalize!=='function'
     || ['resolvePrincipal','rotate','issue','revoke'].some(name=>typeof sessionService?.[name]!=='function')
     || !['dev','int','prod'].includes(environment) || !isInternalUuid(protectedSecurityEpoch)
     || !Number.isSafeInteger(securityEpoch) || securityEpoch<1 || typeof clock!=='function'
-    || typeof tokenFactory!=='function' || typeof idFactory!=='function'
+    || typeof onRejection!=='function' || typeof tokenFactory!=='function' || typeof idFactory!=='function'
     || typeof transactionSecret!=='string' || Buffer.byteLength(transactionSecret)<32
     || Buffer.byteLength(transactionSecret)>512) throw new TypeError('PLATFORM_MICROSOFT_OPERATION_CONFIGURATION_INVALID');
+  function reportRejection(stage,error=null) {
+    const reason=error===null ? 'provider_refused' : error instanceof PlatformIdentityError
+      ? REJECTION_REASONS.get(error.code) ?? 'rejected' : 'unavailable';
+    // A diagnostic sink cannot change proof, cookie, rejection or audit behavior.
+    try { onRejection(Object.freeze({ stage,reason })); } catch { /* Non-authoritative telemetry. */ }
+  }
   const secret=Buffer.from(transactionSecret),epoch=protectedSecurityEpoch.toLowerCase(),contexts=new WeakMap();
   const mac=(purpose,value,encoding='hex')=>createHmac('sha256',secret)
     .update(`platform-microsoft-operation:v1:${environment}:${epoch}:${securityEpoch}:${purpose}:${value}`).digest(encoding);
@@ -160,25 +174,28 @@ export function createPlatformMicrosoftOperationService({ repository,entraClient
       const lookup=locate(cookie,state),record=pending(await repository.findPending(lookup),'pending');
       if (providerError!==null) {
         if (code!==undefined || typeof providerError!=='string' || !/^[a-z][a-z0-9_]{1,63}$/.test(providerError)) reject();
-        await repository.reject(lookup);
+        reportRejection('provider');await repository.reject(lookup);
         return Object.freeze({ status: 'authentication_rejected',setCookies: Object.freeze([
           clearPlatformMicrosoftOperationBrowserCookie(),clearPlatformMicrosoftOperationCookie()]) });
       }
+      let stage='redemption';
       try {
         if (typeof code!=='string' || !/^[A-Za-z0-9._~-]{1,4096}$/.test(code)) reject();
         const assertion=await entraClient.redeemAuthorizationCode({ code,codeVerifier: mac('pkce',state,'base64url'),
           expectedNonce: nonce(state),expectedNonceHash: record.nonceHash,authenticationContext: FRESH });
-        const identity=claimPolicy.normalize(await entraClient.verify(assertion));
+        stage='assertion';const verified=await entraClient.verify(assertion);
+        stage='claims';const identity=claimPolicy.normalize(verified);
+        stage='identity_binding';
         if (identity.provider!==PLATFORM_ENTRA_PROVIDER || identity.tenantReference!==record.providerIdentity.tenantReference
           || identity.subjectReference!==record.providerIdentity.subjectReference || identity.assurance.level!=='step_up'
           || identity.assurance.authenticationContext!==FRESH || instant(identity.assurance.authenticatedAt)<instant(record.createdAt)-60000
           || instant(identity.assurance.authenticatedAt)>clock()+60000) reject();
-        if (await repository.verify({ ...lookup,id: record.id,identity })!==true) reject();
-        const remaining=Math.min(TTL_SECONDS,Math.ceil((instant(record.expiresAt)-clock())/1000));
+        stage='repository';if (await repository.verify({ ...lookup,id: record.id,identity })!==true) reject();
+        stage='remaining_lifetime';const remaining=Math.min(TTL_SECONDS,Math.ceil((instant(record.expiresAt)-clock())/1000));
         if (remaining<1) reject();
         return Object.freeze({ status: 'operation_verified',setCookies: Object.freeze([
           clearPlatformMicrosoftOperationBrowserCookie(),serializePlatformMicrosoftOperationCookie(cookie,remaining)]) });
-      } catch { await repository.reject(lookup);reject(); }
+      } catch (error) { reportRejection(stage,error);await repository.reject(lookup);reject(); }
     },
     executeStepUp: (input,mutation)=>finish(input,mutation,false),
     executeStepUpWithContinuation: (input,mutation)=>finish(input,mutation,true),
