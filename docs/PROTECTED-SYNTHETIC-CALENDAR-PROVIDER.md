@@ -2,9 +2,9 @@
 
 This prepared adapter connects the existing calendar contract to private063
 PostgreSQL state. It has no network, Microsoft, mail, Demo, credential, clock or
-fallback port. It is not yet activated in an owned process. Generation resource
-preparation, final booking authority, discovery/import, honest capabilities/UI,
-media and full browser/operating acceptance remain separate SaaS1 issue351 work.
+fallback port. The owned protected Customer root composes it for the enabled synthetic profile;
+the Platform root prepares generation resources. Full browser/operating acceptance
+and the remaining SaaS1 issue351 requirements must still be proved separately.
 
 ## Binding and operations
 
@@ -26,8 +26,12 @@ exports retain their API/semantics and re-export the extracted domain room-ID,
 phase and idempotency validators. No architecture gate was weakened or exception
 added when an initial integration-contract dependency failed the boundary check.
 
-Availability excludes the current Request and reports a bounded conflict
-indicator. Validation uses that same result. Creation stores an actual event and
+Availability accepts an absent Request ID for the pre-booking check and then
+compares every active event in the bound Tenant/generation/Integration/Room.
+When an existing Request ID is supplied, only that Request is excluded. The
+normalized private availability command uses null for the absent identifier; SQL
+uses an explicit null-aware predicate. Create, update and cancel still require a
+valid Request ID. Availability reports a bounded conflict indicator. Validation uses that same result. Creation stores an actual event and
 its idempotency key; a namespaced deterministic UUIDv8 lets simultaneous same-key
 retries address the same row before uniqueness is checked. Exact same-request/
 period retries return existing. Reuse with changed data or a cancelled event
@@ -45,7 +49,7 @@ final authoritative business transaction. These ports do not issue sessions or
 confirm a booking by themselves. Room replacement remains with the existing
 create/cancel booking saga; period updates alone are exercised here.
 
-## Evidence and limits
+## Initial implementation evidence and limits (historical)
 
 Seven focused cases cover all methods/truthful captured metadata, closed/accessor
 inputs, foreign/missing/persisted references, malformed periods/IDs/results,
@@ -71,3 +75,15 @@ and two-reset gates, then actual-main acceptance, remain required. Historical
 001–063/Demo001–028 and canonical Demo/business semantic checksums are unchanged
 by this adapter. No endpoint, live provider, email, schema, cloud compute, paid
 capacity, real customer or deployment is activated by preparing this source.
+
+## Pre-booking contract correction — 25 October 2026
+
+The actual room-availability application service supplies no Request ID before
+creation. A new regression composes that service with this actual adapter and
+checks both free/conflicting results without inventing an identifier. Mandatory
+write IDs and malformed availability IDs remain negative cases. The existing
+restricted TLS/max1 native case now checks a request-less query before creation,
+a conflict after creation and a free period after rescheduling. These changes
+add no public HTTP field, migration, provider fallback, principal/entitlement
+exception or write grant. Fifteen focused tests pass locally; final full checks,
+native CI and live UI acceptance remain separate required evidence.
