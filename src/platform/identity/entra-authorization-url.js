@@ -12,6 +12,7 @@ const QUERY_KEYS = new Set([
   'state',
   'claims',
   'max_age',
+  'prompt',
   'x-client-SKU',
   'x-client-VER',
   'x-client-OS',
@@ -107,6 +108,7 @@ function validateAuthorizationUrl(value, {
   expectedState,
   expectedNonce,
   expectedCodeChallenge,
+  expectedPrompt,
 } = {}, primaryOnly = false, microsoftMfa = false) {
   let parsed;
   let expectedAuthority;
@@ -134,6 +136,7 @@ function validateAuthorizationUrl(value, {
     || authenticationMaxAgeSeconds < 0
     || authenticationMaxAgeSeconds > (primaryOnly ? 300 : 1_800)
     || (primaryOnly && !microsoftMfa && authenticationMaxAgeSeconds < 60)
+    || (expectedPrompt !== undefined && expectedPrompt !== 'login')
   ) invalid();
   const keys = [...parsed.searchParams.keys()];
   if (
@@ -152,6 +155,7 @@ function validateAuthorizationUrl(value, {
     || parsed.searchParams.get('response_type') !== 'code'
     || parsed.searchParams.get('code_challenge_method') !== 'S256'
     || parsed.searchParams.get('max_age') !== String(authenticationMaxAgeSeconds)
+    || (expectedPrompt === undefined ? parsed.searchParams.has('prompt') : parsed.searchParams.get('prompt') !== expectedPrompt)
     || !exactOrOpaque(parsed.searchParams.get('state'), expectedState)
     || !exactOrOpaque(parsed.searchParams.get('nonce'), expectedNonce)
     || !exactOrOpaque(parsed.searchParams.get('code_challenge'), expectedCodeChallenge)
