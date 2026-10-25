@@ -33,7 +33,7 @@ export function createSyntheticOperationTransport({ assuranceMode='application_p
           || result.setCookies[1]!==serializePlatformMicrosoftOperationCookie(cookie,120)) invalid();
         const url=new URL(requirePlatformProviderAuthorizationUrl(result.authorizationUrl,runtime.platformEntraAuthority,{
           clientId: runtime.platformEntraClientId,redirectUri: platformOrigin+PLATFORM_MICROSOFT_OPERATION_CALLBACK,
-          authenticationContext: 'cm:ms:fresh:v1',authenticationMaxAgeSeconds: 0,
+          authenticationContext: 'cm:ms:fresh:v1',authenticationMaxAgeSeconds: 300,
           expectedPrompt: 'login',
         }));
         if (url.searchParams.get('state')!==result.state
