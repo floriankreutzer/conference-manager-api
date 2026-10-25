@@ -158,3 +158,15 @@ migration tails against their runtime readiness constants, in addition to the
 existing explicit version assertions. No startup assertion, wait budget, browser
 suite or reset case is relaxed. Those failed startup jobs do not establish any
 browser acceptance; all four complete jobs must run again against the correction.
+
+
+Corrected candidate8f007261e9a50c97cf5c45fd7e7b893118fe3c3f passed the
+actual restricted TLS/SCRAM/max-one native owner admission/write-custody test in
+CI40144120924/job121022050985, followed by Microsoft group and exact-proof native
+coverage. Both synthetic assurance profiles then reached their real lifecycle
+paths. The Microsoft profile's old direct populated071 down assertion encountered
+new empty072 first, so the run correctly failed the unchanged expected rejection.
+That branch now explicitly drains only empty072 before asserting the original
+populated071 recovery rejection. No down guard or expected rejection is removed.
+Full native and all-browser qualification remain required; the failed run remains
+failed evidence even though its new owner-native step passed.
