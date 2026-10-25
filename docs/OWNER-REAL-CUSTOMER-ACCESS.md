@@ -314,3 +314,16 @@ closed counts, signed-chain results and the fixture-provider classification.
 Real Microsoft/device acceptance remains unproved. No app key, ordinary User
 role, adopted identity, synthetic target or real external provider request is
 created by the harness. Full paired Chromium/WebKit execution remains pending.
+
+
+Runtime candidated8d1d10d4ca46dd524a808a5b5939f79c34e9638 failed
+CI40148068749/job121034089070 at the new actual native approval POST (401).
+The fixture used the raw OIDC input for its proof MAC, while the actual root
+correctly derives a purpose/environment/UUID-bound authentication-flow key.
+The fixture now uses that existing canonical derivation. No root key, MAC,
+proof namespace, cookie, CSRF or claim check is weakened. Paired browser
+CI40148190764 reached actual approval/callback/completion in both engines,
+then failed on the Customer session presentation: the old frontend session
+parser accepted UUID1-5 while the stable own identity is the specified UUID8.
+That separate frontend contract must align with canonical server UUID1-8 and
+retain malformed-ID/role/permission denials. Both failures remain historical.

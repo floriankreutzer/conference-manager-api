@@ -18,6 +18,7 @@ import { createPostgresOwnerCustomerAccessRepository } from '../src/persistence/
 import { createProtectedOwnerCustomerWriteCustody } from '../src/protected-owner-customer-write-composition.js';
 import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
 import { ownerCustomerUserId } from '../src/domain/owner-customer-handoff.js';
+import { deriveProtectedAuthenticationFlowSecret } from '../src/identity/protected-authentication-flow-secret.js';
 import { createProtectedOwnerMicrosoftFixture } from './support/protected-owner-microsoft-fixture.js';
 import { unusedProtectedRuntimePort,startProtectedRuntimeProcess,exchangeProtectedRuntime }
   from './support/protected-runtime-process-fixture.js';
@@ -75,7 +76,8 @@ test('native designated owner REAL handoff creates only own identity, preserves 
     has_table_privilege(current_user,'platform_owner_customer_users','UPDATE') AS mutable`)).rows[0];
   assert.deepEqual(immutableRights,{ readable: true,creatable: true,mutable: false });
   const owner=await createProtectedOwnerMicrosoftFixture(pool,leasePool,{ epoch,runtimePool: platformPool,
-    runtimeLeasePool: platformLease,transactionSecret: 'o'.repeat(48) });
+    runtimeLeasePool: platformLease,transactionSecret: deriveProtectedAuthenticationFlowSecret({
+      ...protection,secret: 'o'.repeat(48),purpose: 'platform-microsoft-flow' }) });
   const customerScopes=createPostgresProtectedRuntimeExecutionScopes({ pool: customerPool,leasePool: customerLease,...protection });
   const audit=createPostgresAuditRepository(platformPool,{ hmacSecret: 't'.repeat(48) });
   const browserSecret='h'.repeat(48),binding=createOwnerCustomerHandoffBrowserBinding({ scope,secret: browserSecret });

@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { migrateUp } from '../../scripts/db-migrations.mjs';
 import { grantProtectedRuntimeRoles } from '../../scripts/support/protected-runtime-role-grants.mjs';
+import { deriveProtectedAuthenticationFlowSecret } from '../../src/identity/protected-authentication-flow-secret.js';
 import { createPostgresAuditRepository } from '../../src/persistence/postgres/audit-repository.js';
 import { createProtectedPostgresTlsFixture } from './protected-postgres-tls-fixture.js';
 import { createProtectedOwnerMicrosoftFixture } from './protected-owner-microsoft-fixture.js';
@@ -53,7 +54,8 @@ export async function createProtectedOwnerBrowserRuntimeFixture(input) {
       url.password=passwords[index];return url.href;
     }
     const owner=await createProtectedOwnerMicrosoftFixture(pool,lease,{ epoch,runtimePool: connect(connection(1)),
-      runtimeLeasePool: connect(connection(1)),transactionSecret: 'o'.repeat(48) });
+      runtimeLeasePool: connect(connection(1)),transactionSecret: deriveProtectedAuthenticationFlowSecret({
+        environment: 'int',securityEpoch: epoch,secret: 'o'.repeat(48),purpose: 'platform-microsoft-flow' }) });
     const target=randomUUID(),foreign=randomUUID(),suspended=randomUUID();
     for (const [tenant,name,status] of [[target,'Owner browser Customer','active'],[foreign,'Other Customer','active'],
       [suspended,'Suspended Customer','suspended']]) {
