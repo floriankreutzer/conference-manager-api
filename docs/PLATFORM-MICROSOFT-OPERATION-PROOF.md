@@ -20,7 +20,7 @@ accepts only its fixed operation callback and fresh context; ordinary login and
 primary-only client factories continue to reject that callback.
 
 The exact-operation authorization request additionally sets `prompt=login` together
-with `max_age=0`. This deliberately disables provider SSO for that one ceremony so
+with a fixed provider `max_age=300`. This deliberately disables provider SSO for that one ceremony so
 the resulting `auth_time` can represent a fresh interactive authentication. Normal
 Platform Microsoft MFA login does not set `prompt=login`; its established session
 and five-minute freshness contract remain unchanged. Server-side `auth_time`, MFA
@@ -165,3 +165,7 @@ audit, cookie clearing, expiry or one-use controls. Callback output stays neutra
 These categories support diagnosis; they do not establish real MFA acceptance.
 
 Expiry rejection diagnostics distinguish a missing `exp` (`expiry_missing`), a present non-safe-integer `exp` (`expiry_invalid`), and a safe-integer `exp` at or before the RP clock (`token_expired`). All three cases remain rejected before proof verification. No coercion, fallback to SDK access-token expiry, raw claim logging, clock override or increased expiry tolerance is permitted. These labels classify the boundary failure; they do not by themselves establish a provider or clock root cause.
+
+## Provider lifetime and authentication freshness
+
+Microsoft Identity Platform can couple max_age to token expiry (MSAL maintainer evidence: https://github.com/AzureAD/microsoft-authentication-library-for-python/discussions/598). Exact-operation requests use fixed max_age=300 and prompt=login to avoid requesting an immediately expired token. The RP still validates auth_time with zero maximum age plus its existing60-second skew, and the operation service independently binds authentication time to proof creation. Token iat permits the fixed300-second provider issuance/backdating window plus60-second skew; it is not authentication freshness. Expiry must still be a safe integer strictly after the RP clock, with existing upper/lifetime/order bounds. MFA, nonce/PKCE, exact source/browser/operation binding,120-second proof and atomic one-use consumption remain mandatory. No access-token fallback, silent-token reuse, relaxed expiry or extended operation permission exists. Real provider acceptance remains required after coordinated immutable frontend/API qualification.
