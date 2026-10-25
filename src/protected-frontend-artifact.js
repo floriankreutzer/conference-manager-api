@@ -17,6 +17,7 @@ function allowed(name,surface) {
     || name.split('/').some(part=>!part || part==='.' || part==='..')) return false;
   const entry=surface==='customer' ? 'index.html' : 'platform-admin/index.html';
   if (name===entry) return true;
+  if (surface==='customer' && name==='src/shared/detached-print.html') return true;
   if (name.startsWith('assets/')) return path.extname(name)!=='.html' && Object.hasOwn(TYPES,path.extname(name));
   if (!name.startsWith('src/') || !name.endsWith('.js') || /\/(?:demo\/|demo-bootstrap\.js$)/.test(name)) return false;
   return surface==='customer' ? !name.startsWith('src/platform-admin/')
