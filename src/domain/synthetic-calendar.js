@@ -46,10 +46,11 @@ export function normalizeSyntheticCalendarSelection(value,persisted=false) {
 export function normalizeSyntheticCalendarOperation(binding,value,operation) {
   binding=normalizeSyntheticCalendarBinding(binding);
   if (!['availability','create','update','cancel'].includes(operation)) fail();
-  const required=['tenantId','roomId','requestId','startsAt','endsAt','phase','correlationId',
+  const required=['tenantId','roomId','startsAt','endsAt','phase','correlationId',
+    ...(operation==='availability' ? [] : ['requestId']),
     ...(operation==='create' ? ['idempotencyKey','providerResourceReference'] : []),
     ...(['update','cancel'].includes(operation) ? ['providerReference','providerResourceReference'] : [])];
-  record(value,required,['integrationId','providerConnectionReference']);
+  record(value,required,['integrationId','providerConnectionReference',...(operation==='availability' ? ['requestId'] : [])]);
   const metadata=syntheticCalendarMetadata(binding);
   if (uuid(value.tenantId)!==binding.tenantId || value.roomId!==binding.roomId
     || Object.hasOwn(value,'integrationId') && uuid(value.integrationId)!==metadata.integrationId
@@ -57,10 +58,11 @@ export function normalizeSyntheticCalendarOperation(binding,value,operation) {
     || Object.hasOwn(value,'providerResourceReference') && value.providerResourceReference!==metadata.providerResourceReference) {
     fail('authorization');
   }
-  if (!isRequestId(value.requestId) || !isReservationPhase(value.phase)) fail();
+  const requestId=Object.hasOwn(value,'requestId') ? value.requestId : null;
+  if ((requestId!==null || operation!=='availability') && !isRequestId(requestId) || !isReservationPhase(value.phase)) fail();
   const startsAt=instant(value.startsAt),endsAt=instant(value.endsAt),duration=Date.parse(endsAt)-Date.parse(startsAt);
   if (duration<=0 || duration>366*86400000) fail();
-  const result={ tenantId: binding.tenantId,roomId: binding.roomId,requestId: value.requestId,startsAt,endsAt,
+  const result={ tenantId: binding.tenantId,roomId: binding.roomId,requestId,startsAt,endsAt,
     phase: value.phase,correlationId: uuid(value.correlationId) };
   if (operation==='create') { if (!isIdempotencyKey(value.idempotencyKey)) fail();result.idempotencyKey=value.idempotencyKey; }
   if (['update','cancel'].includes(operation)) {
