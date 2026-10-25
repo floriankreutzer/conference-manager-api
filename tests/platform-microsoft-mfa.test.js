@@ -44,7 +44,7 @@ function client(token = claims(), options = {}) {
 test('exact-operation Microsoft client permits only its fixed callback and fresh MFA context',async()=>{
   const options={ factory: createPlatformEntraOperationClient,redirectUri: `${ORIGIN}${PLATFORM_MICROSOFT_OPERATION_CALLBACK}` };
   const operation=client(claims(),options),url=new URL(await operation.authorizationUrl({ ...request,authenticationContext: FRESH }));
-  assert.equal(url.searchParams.get('redirect_uri'),options.redirectUri);assert.equal(url.searchParams.get('max_age'),'0');
+  assert.equal(url.searchParams.get('redirect_uri'),options.redirectUri);assert.equal(url.searchParams.get('max_age'),'300');
   assert.equal(url.searchParams.get('prompt'),'login');
   assert.deepEqual(JSON.parse(url.searchParams.get('claims')),{ id_token: {
     auth_time: { essential: true },amr: { essential: true,values: ['mfa'] } } });
@@ -167,4 +167,20 @@ test('token expiry diagnostics distinguish malformed claims from elapsed lifetim
     redirectUri: `${ORIGIN}${PLATFORM_MICROSOFT_OPERATION_CALLBACK}` });
   assert.equal((await operation.verify(await operation.redeemAuthorizationCode({
     ...redeem,authenticationContext: FRESH }))).verified,true);
+});
+
+test('provider issuance window does not widen exact-operation authentication freshness',async()=>{
+  const options={ factory: createPlatformEntraOperationClient,
+    redirectUri: `${ORIGIN}${PLATFORM_MICROSOFT_OPERATION_CALLBACK}` };
+  const operation=client({ ...claims(),iat: NOW/1000-300,auth_time: NOW/1000-10 },options);
+  assert.equal((await operation.verify(await operation.redeemAuthorizationCode({
+    ...redeem,authenticationContext: FRESH }))).verified,true);
+  for (const [patch,code] of [
+    [{ auth_time: NOW/1000-61 },'PLATFORM_ENTRA_AUTHENTICATION_NOT_FRESH'],
+    [{ iat: NOW/1000-361 },'PLATFORM_ENTRA_ISSUED_AT_NOT_FRESH'],
+    [{ exp: NOW/1000 },'PLATFORM_ENTRA_TOKEN_EXPIRED'],
+    [{ amr: ['pwd'] },'PLATFORM_MICROSOFT_MFA_REQUIRED'],
+    [{ nonce: 'foreign' },'PLATFORM_ENTRA_NONCE_INVALID'],
+  ]) await assert.rejects(client({ ...claims(),...patch },options)
+    .redeemAuthorizationCode({ ...redeem,authenticationContext: FRESH }),{ code });
 });
