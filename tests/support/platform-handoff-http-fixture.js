@@ -39,7 +39,8 @@ export async function platformHandoffHttpFixture(t,{ injected=true,kind='synthet
   const authorizationUrl=new URL(`https://login.microsoftonline.com/${operatorId}/oauth2/v2.0/authorize`);
   for (const [key,value] of Object.entries({ client_id: sessionId,
     redirect_uri: ORIGIN+'/api/v1/platform/auth/microsoft/operation/callback',scope: 'openid profile',response_type: 'code',
-    response_mode: 'query',max_age: '0',state: PASSKEY_STATE,nonce: NONCE,code_challenge: NONCE,code_challenge_method: 'S256',
+    response_mode: 'query',max_age: '0',prompt: 'login',state: PASSKEY_STATE,nonce: NONCE,code_challenge: NONCE,
+    code_challenge_method: 'S256',
     claims: JSON.stringify({ id_token: { auth_time: { essential: true },amr: { essential: true,values: ['mfa'] } } }) })) {
     authorizationUrl.searchParams.set(key,value);
   }
