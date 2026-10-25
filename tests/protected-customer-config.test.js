@@ -121,3 +121,23 @@ test('mail configuration creates only the canonical bounded adapter and performs
   assert.ok(Object.isFrozen(protectedRuntimeConfigurationKeys('customer')));
   assert.throws(()=>protectedRuntimeConfigurationKeys('browser'),/SURFACE_INVALID/);
 });
+
+
+test('REAL owner handoff is explicit, separated from Demo and independently keyed in DEV/INT/PROD',t=>{
+  for (const environment of ['dev','int','prod']) {
+    const env=fixture(environment),secret='o'.repeat(48);
+    const configured=load(t,{ ...env,PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED: 'true',PROTECTED_OWNER_HANDOFF_SECRET: secret });
+    assert.equal(configured.profile.ownerCustomerAccessEnabled,true);assert.equal(configured.authentication.synthetic,null);
+    assert.deepEqual(configured.authentication.owner,{ platformOrigin: env.PROTECTED_PLATFORM_ORIGIN,platformSecurityEpoch: 7,
+      browserSecret: secret,sourceSecret: env.PROTECTED_CUSTOMER_EMAIL_SOURCE_SECRET });
+    for (const changes of [{ PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED: 'true' },{ PROTECTED_OWNER_HANDOFF_SECRET: secret },
+      { PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED: 'yes',PROTECTED_OWNER_HANDOFF_SECRET: secret },
+      { PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED: 'true',PROTECTED_OWNER_HANDOFF_SECRET: env.PROTECTED_CUSTOMER_EMAIL_FLOW_SECRET }]) {
+      assert.throws(()=>loadProtectedCustomerConfiguration({ ...env,...changes }));
+    }
+  }
+  const env=fixture();
+  assert.throws(()=>loadProtectedCustomerConfiguration({ ...env,PROTECTED_SYNTHETIC_ENABLED: 'true',
+    PROTECTED_HANDOFF_SECRET: 'h'.repeat(48),PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED: 'true',
+    PROTECTED_OWNER_HANDOFF_SECRET: 'h'.repeat(48) }),/SECRET_ALIAS_FORBIDDEN/);
+});

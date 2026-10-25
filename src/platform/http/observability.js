@@ -1,4 +1,8 @@
 export const PLATFORM_HTTP_ROUTE = Object.freeze({
+  OWNER_CUSTOMER_ARRIVE: 'platform_owner_customer_arrive',
+  OWNER_CUSTOMER_INTENT: 'platform_owner_customer_intent',
+  OWNER_CUSTOMER_OPTIONS: 'platform_owner_customer_options',
+  OWNER_CUSTOMER_APPROVE: 'platform_owner_customer_approve',
   INSIGHT_PROVIDERS: 'platform_insight_providers',
   INSIGHT_PRODUCT: 'platform_insight_product',
   SYNTHETIC_GENERATION_CURRENT: 'platform_synthetic_generation_current',

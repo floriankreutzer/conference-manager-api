@@ -172,12 +172,68 @@ Full native and all-browser qualification remain required; the failed run remain
 failed evidence even though its new owner-native step passed.
 
 
+## Explicit process composition candidate (not live)
+
+The separate runtime branch adds default-off PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED
+and independent PROTECTED_OWNER_HANDOFF_SECRET / Platform intent secrets. Explicit
+MFA Platform configuration alone can enable it; application-passkey profiles,
+inactive supplied owner secrets, malformed flags and cross-purpose aliases refuse.
+Both surfaces retain their own database roles, client IDs, CSRF, source budgets,
+namespace and public origin. No app passkey or credential minimum is constructed
+by the Microsoft owner path.
+
+Customer construction owns invited/synthetic fallback and the private owner
+issuer. Its five-method HTTP session facade alone reaches business handlers.
+The owning outer API execution scope retains the existing shared deployment lease
+and a live immutable authority scope. Only the successfully qualified owner
+Principal is observed there, before business writes. Fixed actual Microsoft
+network methods use the owned write guard; normal provider URL/timeout/retry
+contracts remain with the existing client. Readiness requires both private owner
+source-lock function grants. The REAL calendar final-authority branch now
+independently verifies the same current owner custody before checking the
+existing Microsoft Tenant/integration/resource bindings.
+
+Platform construction injects only its actual shared Microsoft operation instance
+into the closed owner approval protocol. The original source predicate has a
+current-owner half for the bounded directory and an independently locked REAL
+target half for preparation/approval, preserving provider/version/time/receipt
+checks. No fake target/flow identifier is needed for directory qualification.
+Owner-only /api/v1/platform/auth/owner arrive/intent/options/approve routes use a
+separate Strict signed intent, bounded UUID keyset target pages and the canonical
+normal-source CSRF/operation cookies. The browser may request only REAL target
+UUID/selected Customer role; identity, generation, slot and credential-response
+fields refuse. Source, actual current registry and exact shared proof remain
+independent authorities. An invalid /arrive cannot create an authenticated session.
+Native approval remains a top-level fixed Customer303 after committed proof,
+audit and normal continuation. Legacy synthetic route/cookie wrappers preserve
+their exact namespace and explicit route-module contract without a gate exemption.
+
+Focused source tests cover both process constructions in DEV/INT/PROD without
+provider/database I/O, closed flags/secrets, own directory/selection HTTP,
+CSRF/account-change/commit/redirect failures and legacy HTTP/cookie regression.
+The native owner fixture is extended to start both actual process roots over
+restricted max-one TLS/SCRAM roles, read current own session/target intent through
+real HTTP, deny injected identity before provider work, and deny the old own
+session after source revocation. It retains a deterministic concurrent source-row
+lock denial before the final write and restarts the actual Customer process after
+revocation. The fixture deliberately does not contact real Microsoft; its positive
+exact proof remains the separately identified MSAL fixture. Native execution of
+this extension and the paired real frontend/browser journey remain pending.
+
+
 Candidate64ea688486b47bf3f5dc7b36041921af611ecb1e failed native
 CI40145381516/job121025792749 at invitation persistence startup: its explicit
 current-ledger readiness probe still requested71 after migration72. The fixture
 now probes72; the following explicit empty072 rollback and all populated
 invitation custody assertions remain unchanged. The failure is retained and
 requires a fresh complete native run; no readiness check or suite is removed.
+
+
+Runtime candidatec4764e9662bb939acadf83fb3cb10f7fcd594b05 failed
+CI40146347767/job121028402596 before tests because the new hosted-manifest
+fixture declaration exceeded the canonical140-character style limit. The
+declaration is wrapped without changing behavior. That run proves no native
+or browser acceptance; all required checks must execute on the correction.
 
 
 The corrected readiness candidate failed full native CI40146228534 /
@@ -188,3 +244,86 @@ source search also found four obsolete CURRENT_SCHEMA_VERSION71 assertions in
 historical migration fixtures; these now require72. Historical target versions,
 role grants, rollback sequencing, negative assertions and time budgets are
 unchanged. The complete native run must qualify this correction.
+
+
+Runtime597b9d20a7e559b88323bb5dab7100b1ba0e9069 passed its early
+Owner native step in CI40146508230/job121029135774, including both actual
+process roots, current-target HTTP, source-row concurrency denial and actual
+Customer process restart after source revocation. Its later full native run
+remains distinct. The new fixture extension additionally refuses adoption of
+a pre-existing deterministic own User ID and refuses automatic reactivation of
+a suspended User. A fresh exact approval is required after fixture-only restore.
+It observes an actual SQL source lock held during an isolated provider attempt
+and denies the next attempt after revocation before calling that provider port.
+These new cases require renewed native execution. No real Graph/Microsoft call,
+provider/device acceptance or externally atomic booking claim is made.
+
+
+The final Owner native fixture additionally drives the actual Platform native
+approval POST, committed303, actual Customer cross-site callback/Strict
+confirmation, explicit old-account logout, final native completion and replay
+denial. The isolated actual MSAL adapter verifies only the exact shared proof
+using the same test transaction key; both independently constructed production
+roots still own final one-use proof, audit, source continuation and session
+admission. Neither root receives an issuer or provider adapter injection. This
+is fixture provider verification, not live Microsoft MFA. Full dual-engine
+real-root browser navigation remains a separate release gate.
+
+
+Candidatebc1bb8689f44f2cf81035d01feb9a32df9bdf7c4 failed early native
+CI40146997272/job121030787490 at the new fixture-only reactivation assertion.
+The fixture changed active directly without the security-version increment
+performed by the canonical Tenant User lifecycle repository. Both isolated
+state changes now retain that version increment; the assertion that the old
+session cannot revive remains unchanged. No production reader, expiry, role
+or suspension check is relaxed. New native qualification remains required.
+
+
+Candidateda05cfd6ce188a3c2d1224cfcaee32425be3fe44 failed early native
+CI40147287367/job121031672327 before new HTTP admission: the expanded fixture
+requested a sixth proof inside the unchanged five-per120s bound (consumed proofs
+also retain that bound). Tenant Admin admission now runs through the actual HTTP
+root as the third role case, following two adapter admissions and the two
+negative ceremonies. No extra restore admission is needed. The old session after
+User lifecycle version change must return401 at actual Customer HTTP startup;
+final exact HTTP admission then supplies the new own identity. Wrong-browser,
+wrong-CSRF, replay and stable identity/no ordinary-grant assertions cover the
+third role there. A sixth start is explicitly required to fail. The limit,
+retention, clocks, waits and production protocol remain unchanged.
+
+
+## Qualified-site Owner browser fixture candidate
+
+A separate fixed test child registers a loader only for the Platform identity
+adapter's SDK import. The fixture still uses the actual pinned Microsoft SDK,
+with its existing in-memory provider network. It supplies fresh MFA/nonce/time
+claims, not a business/session issuer. Production entrypoints never register
+the loader and no production configuration/factory injection port is added.
+A local Node22 fixture test exercises the actual adapter and claim policy,
+one-use assertion and nonce rejection. The first local iteration expected a
+normalized identity before invoking the existing claim policy; that test-only
+shape mismatch is corrected, with production contracts unchanged.
+
+The paired browser harness starts both actual process roots on restricted
+TLS/SCRAM/max-one database roles, exact hosted artifacts and fixed distinct
+qualified HTTPS origins. Only the external provider document/network are
+isolated; options, callback, status, native approval, current directory,
+Customer original-browser completion, explicit account switch and all three
+role admissions reach actual roots. Evidence retains only exact source refs,
+closed counts, signed-chain results and the fixture-provider classification.
+Real Microsoft/device acceptance remains unproved. No app key, ordinary User
+role, adopted identity, synthetic target or real external provider request is
+created by the harness. Full paired Chromium/WebKit execution remains pending.
+
+
+Runtime candidated8d1d10d4ca46dd524a808a5b5939f79c34e9638 failed
+CI40148068749/job121034089070 at the new actual native approval POST (401).
+The fixture used the raw OIDC input for its proof MAC, while the actual root
+correctly derives a purpose/environment/UUID-bound authentication-flow key.
+The fixture now uses that existing canonical derivation. No root key, MAC,
+proof namespace, cookie, CSRF or claim check is weakened. Paired browser
+CI40148190764 reached actual approval/callback/completion in both engines,
+then failed on the Customer session presentation: the old frontend session
+parser accepted UUID1-5 while the stable own identity is the specified UUID8.
+That separate frontend contract must align with canonical server UUID1-8 and
+retain malformed-ID/role/permission denials. Both failures remain historical.

@@ -54,3 +54,13 @@ test('owner continuation binds independent fresh and normal sessions to the same
   assert.throws(()=>policy.continuation({ ...fresh,assurance: { ...fresh.assurance,authenticationContext: 'cm:pk:fresh:v1' } },
     normal,selection),/OWNER_CUSTOMER_ACCESS_DENIED/);
 });
+
+
+test('owner-only source preparation retains the same necessary all-role Microsoft checks without inventing a target',()=>{
+  assert.deepEqual(policy.owner(normal),normal);
+  for (const identity of [fresh,{ ...normal,targetScope: { mode: 'allowlist',securityVersion: 6 } },
+    { ...normal,roles: ['platform_security_admin'],permissions: permissionsForPlatformRoles(['platform_security_admin']) },
+    { ...normal,assurance: { ...normal.assurance,authenticationContext: 'cm:pk:v1' } }]) {
+    assert.throws(()=>policy.owner(identity),/OWNER_CUSTOMER_ACCESS_DENIED/);
+  }
+});

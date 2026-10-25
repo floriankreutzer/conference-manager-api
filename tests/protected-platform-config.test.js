@@ -193,3 +193,28 @@ test('synthetic Microsoft profile constructs without application keys or a crede
     assert.throws(()=>loadProtectedPlatformConfiguration({ ...env,[key]: '' }),/MICROSOFT_MFA_PASSKEY_INPUT_FORBIDDEN/);
   }
 });
+
+
+test('REAL owner configuration requires explicit Microsoft, independent browser/intent secrets and no application keys',t=>{
+  for (const environment of ['dev','int','prod']) {
+    const env={ ...fixture(environment),PROTECTED_PLATFORM_ASSURANCE_MODE: 'microsoft_mfa',
+      PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED: 'true',PROTECTED_OWNER_HANDOFF_SECRET: 'h'.repeat(48),
+      PROTECTED_PLATFORM_OWNER_HANDOFF_INTENT_SECRET: 'i'.repeat(48) };
+    delete env.PROTECTED_PLATFORM_PASSKEY_TRANSACTION_SECRET;
+    const bundle=load(t,env);assert.equal(bundle.profile.ownerCustomerAccessEnabled,true);
+    assert.deepEqual(bundle.owner,{ browserSecret: 'h'.repeat(48),intentSecret: 'i'.repeat(48) });
+    assert.equal(bundle.synthetic,null);assert.equal(bundle.config.minimumCredentialCount,null);
+    for (const changes of [{ PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED: 'false' },
+      { PROTECTED_OWNER_HANDOFF_SECRET: env.PROTECTED_PLATFORM_ENTRA_CLIENT_SECRET },
+      { PROTECTED_PLATFORM_OWNER_HANDOFF_INTENT_SECRET: env.PROTECTED_OWNER_HANDOFF_SECRET },
+      { PROTECTED_PLATFORM_PASSKEY_TRANSACTION_SECRET: 'p'.repeat(48) }]) {
+      assert.throws(()=>loadProtectedPlatformConfiguration({ ...env,...changes }));
+    }
+    for (const key of ['PROTECTED_OWNER_HANDOFF_SECRET','PROTECTED_PLATFORM_OWNER_HANDOFF_INTENT_SECRET']) {
+      const missing={ ...env };delete missing[key];assert.throws(()=>loadProtectedPlatformConfiguration(missing));
+    }
+  }
+  assert.throws(()=>loadProtectedPlatformConfiguration({ ...fixture(),PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED: 'true',
+    PROTECTED_OWNER_HANDOFF_SECRET: 'h'.repeat(48),PROTECTED_PLATFORM_OWNER_HANDOFF_INTENT_SECRET: 'i'.repeat(48) }),
+  /OWNER_MICROSOFT_REQUIRED/);
+});

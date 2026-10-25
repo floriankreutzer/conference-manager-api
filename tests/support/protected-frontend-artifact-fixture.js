@@ -8,9 +8,10 @@ export async function writeProtectedFrontendFixture(root,profile) {
   const content={ [entry]: Buffer.from('<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'self\'">'),
     'assets/fixture.css': Buffer.from('body { color: black; }\n') };
   const manifest={ schemaVersion: 1,...profile,microsoftEnabled: false,invitationsEnabled: false,
+    ownerAccessEnabled: profile.ownerCustomerAccessEnabled===true,
     files: Object.keys(content).sort().map(name=>({ path: name,bytes: content[name].length,
       sha256: frontendArtifactDigest(content[name]) })) };
-  delete manifest.hostedFrontendSha256;
+  delete manifest.hostedFrontendSha256;delete manifest.ownerCustomerAccessEnabled;
   await mkdir(root,{ recursive: true });
   for (const [name,bytes] of Object.entries(content)) {
     await mkdir(path.dirname(path.join(root,name)),{ recursive: true });await writeFile(path.join(root,name),bytes);

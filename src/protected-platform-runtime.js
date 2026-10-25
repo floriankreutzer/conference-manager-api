@@ -1,3 +1,12 @@
+import { createOwnerCustomerHandoffBrowserBinding } from './identity/owner-customer-handoff-browser-binding.js';
+import { createPlatformOwnerCustomerIntentCookie } from './platform/identity/owner-customer-intent-cookie.js';
+import { createOwnerCustomerAccessService } from './platform/application/owner-customer-access-service.js';
+import { createOwnerCustomerAccessProtocol } from './platform/application/owner-customer-access-protocol.js';
+import { createPostgresPlatformOwnerCustomerHandoffRepository }
+  from './persistence/postgres/platform-owner-customer-handoff-repository.js';
+import { createPostgresOwnerCustomerDirectoryRepository }
+  from './persistence/postgres/platform-owner-customer-directory-repository.js';
+import { createPlatformOwnerCustomerHandoffRouteModule } from './platform/http/owner-customer-handoff-routes.js';
 import { randomUUID } from 'node:crypto';
 import { loadProtectedPlatformConfiguration } from './protected-platform-config.js';
 import { createPlatformComposition } from './platform-composition.js';
@@ -74,6 +83,27 @@ function syntheticRoutes(bundle,persistence,authentication,authorizationPolicy,d
     passkeyService,withPreparationScope: authentication.withPreparationScope }) })];
 }
 
+function ownerRoutes(bundle,persistence,authentication,authorizationPolicy,disposables) {
+  if (bundle.owner===null) return [];
+  if (bundle.config.assuranceMode!=='microsoft_mfa' || !authentication.normalMicrosoftService) {
+    throw new TypeError('PROTECTED_PLATFORM_OWNER_MICROSOFT_REQUIRED');
+  }
+  const { profile }=bundle,scope={ environment: profile.environment,securityEpoch: profile.securityEpoch,
+    platformSecurityEpoch: profile.platformSecurityEpoch,customerOrigin: profile.customerOrigin,platformOrigin: profile.platformOrigin };
+  const browserBinding=createOwnerCustomerHandoffBrowserBinding({ scope,secret: bundle.owner.browserSecret });
+  const intentCookie=createPlatformOwnerCustomerIntentCookie({ scope,secret: bundle.owner.intentSecret });
+  disposables.push(()=>browserBinding.destroy(),()=>intentCookie.destroy());
+  const microsoftOperationService=authentication.normalMicrosoftService;
+  const handoffService=createOwnerCustomerAccessService({ scope,browserBinding,microsoftOperationService,authorizationPolicy,
+    repository: createPostgresPlatformOwnerCustomerHandoffRepository(persistence.pool,{ scope,browserBinding,
+      platformAuditRepository: persistence.auditRepository,tenantAuditRepository: persistence.tenantAuditRepository }) });
+  const directory=createPostgresOwnerCustomerDirectoryRepository(persistence.pool,{ scope });
+  return [createPlatformOwnerCustomerHandoffRouteModule({ scope,intentCookie,
+    directory: { list: input=>authentication.withPreparationScope(()=>directory.list(input)) },
+    protocol: createOwnerCustomerAccessProtocol({ handoffService,microsoftOperationService,
+      withPreparationScope: authentication.withPreparationScope }) })];
+}
+
 // Closed process owner. No external authentication, grant issuer, fallback,
 // repository, verifier, driver, provider or handler implementation is accepted.
 export async function createProtectedPlatformRuntime(environment) {
@@ -123,7 +153,8 @@ export async function createProtectedPlatformRuntime(environment) {
     const insights=active ? [createPlatformInsightRoutes(createPlatformInsightService({
       sources: bundle.insightSources,authorizationPolicy: platformAuthorizationPolicy }))] : [];
     const routeModules=Object.freeze([...authentication.routeModules,...operational,...insights,
-      ...syntheticRoutes(bundle,persistence,authentication,platformAuthorizationPolicy,disposables)]);
+      ...syntheticRoutes(bundle,persistence,authentication,platformAuthorizationPolicy,disposables),
+      ...ownerRoutes(bundle,persistence,authentication,platformAuthorizationPolicy,disposables)]);
     composition=createPlatformComposition({ config,persistence,routeModules,projectionEnabled: active,
       metrics: createMetricsRegistry({ assertRouteKey: assertPlatformRouteKey }),
       authenticationFactory(context) {

@@ -65,3 +65,14 @@ test('Platform process ownership remains isolated from Customer roots, lower lay
     }
   }
 });
+
+
+test('explicit REAL owner Platform construction owns shared Microsoft proof and route factories without startup I/O',async()=>{
+  for (const environment of ['dev','int','prod']) {
+    const env={ ...fixture(environment),PROTECTED_PLATFORM_ASSURANCE_MODE: 'microsoft_mfa',
+      PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED: 'true',PROTECTED_OWNER_HANDOFF_SECRET: 'h'.repeat(48),
+      PROTECTED_PLATFORM_OWNER_HANDOFF_INTENT_SECRET: 'i'.repeat(48) };
+    delete env.PROTECTED_PLATFORM_PASSKEY_TRANSACTION_SECRET;
+    const runtime=await createProtectedPlatformRuntime(env);assert.deepEqual(Object.keys(runtime),['start','stop']);await runtime.stop();
+  }
+});
