@@ -26,6 +26,12 @@ const ROLE_POSTURE=`SELECT role.rolname=$1 AND role.rolname=current_user AND rol
     AND NOT EXISTS(SELECT 1 FROM unnest($5::text[]) forbidden(name)
       WHERE pg_catalog.has_table_privilege(current_user,'public.'||forbidden.name,'INSERT')
         OR pg_catalog.has_any_column_privilege(current_user,'public.'||forbidden.name,'INSERT'))
+    AND NOT EXISTS(SELECT 1 FROM unnest($6::text[]) required(name)
+      WHERE NOT pg_catalog.has_column_privilege(current_user,'public.'||split_part(required.name,'.',1),
+        split_part(required.name,'.',2),'SELECT'))
+    AND NOT EXISTS(SELECT 1 FROM unnest($7::text[]) forbidden(name)
+      WHERE pg_catalog.has_column_privilege(current_user,'public.'||split_part(forbidden.name,'.',1),
+        split_part(forbidden.name,'.',2),'SELECT'))
     AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class relation JOIN pg_catalog.pg_namespace namespace
       ON namespace.oid=relation.relnamespace WHERE namespace.nspname='public' AND relation.relkind IN ('r','p')
         AND (pg_catalog.has_table_privilege(current_user,relation.oid,'TRUNCATE')
@@ -43,7 +49,8 @@ export function createPostgresProtectedRuntimeReadiness(pool,{ leasePool,environ
       return await scopes.withShared(async()=>{
         if (!await isPostgresSchemaReady(pool)) return false;
         const result=await pool.query({ name: `protected-runtime-role-posture-${surface}`,text: ROLE_POSTURE,
-          values: [role,policy.read,policy.write,policy.forbiddenMutation,policy.forbiddenInsert] });
+          values: [role,policy.read,policy.write,policy.forbiddenMutation,policy.forbiddenInsert,
+            policy.readColumns,policy.forbiddenReadColumns] });
         return result.rowCount===1 && result.rows[0]?.allowed===true;
       });
     } catch { return false; }

@@ -41,7 +41,7 @@ test('both artifact planes pin exact deployment metadata and return isolated cap
     assert.deepEqual(artifact.get(artifact.entry).bytes,expected);
     for (const change of [{ surface: surface==='customer' ? 'platform' : 'customer' },{ environment: 'prod' },
       { apiCommit: 'd'.repeat(40) },{ frontendCommit: 'e'.repeat(40) },{ customerOrigin: 'https://foreign.example.test' },
-      { syntheticEnabled: false },{ hostedFrontendSha256: 'f'.repeat(64) }]) {
+      { syntheticEnabled: false },{ ownerCustomerAccessEnabled: true },{ hostedFrontendSha256: 'f'.repeat(64) }]) {
       await assert.rejects(readProtectedFrontendArtifact(root,{ ...selected,...change }),/ARTIFACT_INVALID/);
     }
     await writeFile(path.join(root,artifact.entry),'changed after immutable startup');

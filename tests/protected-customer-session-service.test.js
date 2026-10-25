@@ -78,3 +78,19 @@ test('protected session composition requires explicit deployment epoch and compl
       /PROTECTED_CUSTOMER_SESSION_CONFIGURATION_INVALID/);
   }
 });
+
+
+test('REAL own-owner custody is an exact kind/provider pair and can never inherit invited or synthetic authority',async()=>{
+  const identity={ ...principal,providerIdentity: { provider: 'platform_owner',reference: USER } };
+  assert.ok(await fixture({ identity,access: { kind: 'owner_delegation',runtime: real } }).service.resolvePrincipal({}));
+  for (const access of [{ kind: 'invited_membership',runtime: real },{ kind: 'operator_delegation',runtime: synthetic },
+    { kind: 'owner_delegation',runtime: synthetic },{ kind: 'owner_delegation',runtime: { ...real,tenantId: USER } },
+    { kind: 'owner_delegation',runtime: { ...real,securityEpoch: SESSION } }]) {
+    assert.equal(await fixture({ identity,access }).service.resolvePrincipal({}),null);
+  }
+  for (const provider of ['email_code','microsoft_entra','platform_delegation','demo','test_identity']) {
+    const other={ ...principal,providerIdentity: { provider,reference: USER } };
+    assert.equal(await fixture({ identity: other,access: { kind: 'owner_delegation',runtime: real } })
+      .service.resolvePrincipal({}),null);
+  }
+});

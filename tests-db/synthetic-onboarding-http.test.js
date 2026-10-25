@@ -31,6 +31,9 @@ test('owned Customer HTTP imports and activates synthetic customers with current
   });
   await migrateUp(pool);
   const prior=(await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=63 ORDER BY version')).rows;
+  assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
+  assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
+  assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
   assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
   assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before unchanged066/older guards.

@@ -76,3 +76,11 @@ test('protected Customer process authority cannot enter lower layers or closed D
     }
   }
 });
+
+
+test('explicit REAL owner process construction retains private provider/transaction custody without startup I/O',async()=>{
+  for (const environment of ['dev','int','prod']) {
+    const env={ ...fixture(environment),PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED: 'true',PROTECTED_OWNER_HANDOFF_SECRET: 'o'.repeat(48) };
+    const runtime=await createProtectedCustomerRuntime(env);assert.deepEqual(Object.keys(runtime),['start','stop']);await runtime.stop();
+  }
+});

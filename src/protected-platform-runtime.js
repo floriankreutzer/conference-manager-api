@@ -1,3 +1,12 @@
+import { createOwnerCustomerHandoffBrowserBinding } from './identity/owner-customer-handoff-browser-binding.js';
+import { createPlatformOwnerCustomerIntentCookie } from './platform/identity/owner-customer-intent-cookie.js';
+import { createOwnerCustomerAccessService } from './platform/application/owner-customer-access-service.js';
+import { createOwnerCustomerAccessProtocol } from './platform/application/owner-customer-access-protocol.js';
+import { createPostgresPlatformOwnerCustomerHandoffRepository }
+  from './persistence/postgres/platform-owner-customer-handoff-repository.js';
+import { createPostgresOwnerCustomerDirectoryRepository }
+  from './persistence/postgres/platform-owner-customer-directory-repository.js';
+import { createPlatformOwnerCustomerHandoffRouteModule } from './platform/http/owner-customer-handoff-routes.js';
 import { randomUUID } from 'node:crypto';
 import { loadProtectedPlatformConfiguration } from './protected-platform-config.js';
 import { createPlatformComposition } from './platform-composition.js';
@@ -34,6 +43,7 @@ import { createPlatformSyntheticGenerationRouteModule } from './platform/http/sy
 import { createPlatformSyntheticHandoffRouteModule } from './platform/http/synthetic-handoff-routes.js';
 import { createPlatformTenantRoutes } from './platform/http/tenant-routes.js';
 import { protectPlatformPasskeyRoute } from './platform/http/passkey-operation-route.js';
+import { protectPlatformMicrosoftRoute } from './platform/http/microsoft-operation-route.js';
 import { PLATFORM_OPERATIONAL_ROUTE_MODULES } from './platform/app.js';
 import { platformHealthRoutes } from './platform/http/health-routes.js';
 import { platformSessionRoutes } from './platform/http/session-routes.js';
@@ -49,27 +59,49 @@ import { createPlatformInsightRoutes } from './platform/http/insight-routes.js';
 function syntheticRoutes(bundle,persistence,authentication,authorizationPolicy,disposables) {
   if (bundle.synthetic===null) return [];
   const { profile }=bundle,protection={ environment: profile.environment,securityEpoch: profile.securityEpoch };
-  const passkeyService=authentication.syntheticPasskeyService;
+  const assuranceMode=bundle.config.assuranceMode,passkeyService=assuranceMode==='microsoft_mfa'
+    ? authentication.syntheticMicrosoftService : authentication.syntheticPasskeyService;
   if (!passkeyService) throw new TypeError('PROTECTED_PLATFORM_SYNTHETIC_AUTHENTICATION_REQUIRED');
   const scope={ ...protection,platformSecurityEpoch: profile.platformSecurityEpoch,
     customerOrigin: profile.customerOrigin,platformOrigin: profile.platformOrigin };
   const browserBinding=createSyntheticHandoffBrowserBinding({ scope,secret: bundle.synthetic.browserSecret });
   const intentCookie=createPlatformSyntheticHandoffIntentCookie({ scope,secret: bundle.synthetic.intentSecret });
   disposables.push(()=>browserBinding.destroy(),()=>intentCookie.destroy());
-  const generationService=createSyntheticGenerationService({ ...protection,passkeyService,authorizationPolicy,
-    repository: createPostgresSyntheticGenerationRepository(persistence.pool,{ ...protection,calendarEnabled: true,
+  const generationService=createSyntheticGenerationService({ ...protection,passkeyService,authorizationPolicy,assuranceMode,
+    repository: createPostgresSyntheticGenerationRepository(persistence.pool,{ ...protection,calendarEnabled: true,assuranceMode,
       tenantAuditRepository: persistence.tenantAuditRepository,platformAuditRepository: persistence.auditRepository }) });
   const directory=createPostgresSyntheticGenerationDirectoryRepository(persistence.pool,
-    { ...protection,platformSecurityEpoch: profile.platformSecurityEpoch });
+    { ...protection,platformSecurityEpoch: profile.platformSecurityEpoch,assuranceMode });
   const generationProtocol=createSyntheticGenerationProtocol({ generationService,directory,passkeyService,
     withPreparationScope: authentication.withPreparationScope });
-  const handoffService=createSyntheticHandoffService({ scope,passkeyService,authorizationPolicy,browserBinding,
-    repository: createPostgresSyntheticHandoffRepository(persistence.pool,{ scope,browserBinding,
+  const handoffService=createSyntheticHandoffService({ scope,passkeyService,authorizationPolicy,browserBinding,assuranceMode,
+    repository: createPostgresSyntheticHandoffRepository(persistence.pool,{ scope,browserBinding,assuranceMode,
       platformAuditRepository: persistence.auditRepository }) });
-  return [createPlatformSyntheticGenerationRouteModule({ protocol: generationProtocol,scope: {
+  return [createPlatformSyntheticGenerationRouteModule({ protocol: generationProtocol,assuranceMode,scope: {
     ...protection,platformOrigin: profile.platformOrigin,platformSecurityEpoch: profile.platformSecurityEpoch } }),
-  createPlatformSyntheticHandoffRouteModule({ scope,intentCookie,protocol: createSyntheticHandoffProtocol({ handoffService,
+  createPlatformSyntheticHandoffRouteModule({ scope,intentCookie,assuranceMode,protocol: createSyntheticHandoffProtocol({ handoffService,
     passkeyService,withPreparationScope: authentication.withPreparationScope }) })];
+}
+
+function ownerRoutes(bundle,persistence,authentication,authorizationPolicy,disposables) {
+  if (bundle.owner===null) return [];
+  if (bundle.config.assuranceMode!=='microsoft_mfa' || !authentication.normalMicrosoftService) {
+    throw new TypeError('PROTECTED_PLATFORM_OWNER_MICROSOFT_REQUIRED');
+  }
+  const { profile }=bundle,scope={ environment: profile.environment,securityEpoch: profile.securityEpoch,
+    platformSecurityEpoch: profile.platformSecurityEpoch,customerOrigin: profile.customerOrigin,platformOrigin: profile.platformOrigin };
+  const browserBinding=createOwnerCustomerHandoffBrowserBinding({ scope,secret: bundle.owner.browserSecret });
+  const intentCookie=createPlatformOwnerCustomerIntentCookie({ scope,secret: bundle.owner.intentSecret });
+  disposables.push(()=>browserBinding.destroy(),()=>intentCookie.destroy());
+  const microsoftOperationService=authentication.normalMicrosoftService;
+  const handoffService=createOwnerCustomerAccessService({ scope,browserBinding,microsoftOperationService,authorizationPolicy,
+    repository: createPostgresPlatformOwnerCustomerHandoffRepository(persistence.pool,{ scope,browserBinding,
+      platformAuditRepository: persistence.auditRepository,tenantAuditRepository: persistence.tenantAuditRepository }) });
+  const directory=createPostgresOwnerCustomerDirectoryRepository(persistence.pool,{ scope });
+  return [createPlatformOwnerCustomerHandoffRouteModule({ scope,intentCookie,
+    directory: { list: input=>authentication.withPreparationScope(()=>directory.list(input)) },
+    protocol: createOwnerCustomerAccessProtocol({ handoffService,microsoftOperationService,
+      withPreparationScope: authentication.withPreparationScope }) })];
 }
 
 // Closed process owner. No external authentication, grant issuer, fallback,
@@ -113,13 +145,16 @@ export async function createProtectedPlatformRuntime(environment) {
     const tenantRoutes=createPlatformTenantRoutes({ invitationAdministration: true });
     const operational=active ? PLATFORM_OPERATIONAL_ROUTE_MODULES.map(module=>{
       const selected=module.id===tenantRoutes.id ? tenantRoutes : module;
-      return config.assuranceMode==='microsoft_mfa' ? selected : protectPlatformPasskeyRoute(selected,
-        { authService: authentication.normalPasskeyService,environment: profile.environment,securityEpoch: profile.platformSecurityEpoch });
+      const protect=config.assuranceMode==='microsoft_mfa' ? protectPlatformMicrosoftRoute : protectPlatformPasskeyRoute;
+      return protect(selected,{ authService: config.assuranceMode==='microsoft_mfa'
+        ? authentication.normalMicrosoftService : authentication.normalPasskeyService,
+      environment: profile.environment,securityEpoch: profile.platformSecurityEpoch });
     }) : [platformHealthRoutes,platformSessionRoutes];
     const insights=active ? [createPlatformInsightRoutes(createPlatformInsightService({
       sources: bundle.insightSources,authorizationPolicy: platformAuthorizationPolicy }))] : [];
     const routeModules=Object.freeze([...authentication.routeModules,...operational,...insights,
-      ...syntheticRoutes(bundle,persistence,authentication,platformAuthorizationPolicy,disposables)]);
+      ...syntheticRoutes(bundle,persistence,authentication,platformAuthorizationPolicy,disposables),
+      ...ownerRoutes(bundle,persistence,authentication,platformAuthorizationPolicy,disposables)]);
     composition=createPlatformComposition({ config,persistence,routeModules,projectionEnabled: active,
       metrics: createMetricsRegistry({ assertRouteKey: assertPlatformRouteKey }),
       authenticationFactory(context) {

@@ -1,17 +1,13 @@
+import { createSyntheticOperationTransport } from './synthetic-operation-transport.js';
 import { isInternalUuid,isOpaqueBrowserToken } from '../../domain/identifiers.js';
 import { PLATFORM_ENTRA_PROVIDER } from '../../domain/identity-provider.js';
 import { normalizeSyntheticGenerationDirectory,projectSyntheticGenerationReplacement }
   from '../../domain/synthetic-generation-directory.js';
 import { normalizePlatformPrincipal } from '../identity/principal.js';
-import { readPlatformPasskeyTransactionCookie,serializePlatformPasskeyTransactionCookie,clearPlatformPasskeyTransactionCookie }
-  from '../identity/passkey-auth-cookie.js';
-import { readPlatformPasskeyOperationCookie,serializePlatformPasskeyOperationCookie,clearPlatformPasskeyOperationCookie }
-  from '../identity/passkey-operation-cookie.js';
 import { definePlatformRouteModule } from './route-module.js';
 import { PLATFORM_HTTP_ROUTE as ROUTE } from './observability.js';
 import { PlatformHttpError } from './errors.js';
 import { sendPlatformJson } from './response.js';
-import { requireCommittedPlatformPasskeyOperation } from './passkey-operation-result.js';
 import { assertNoPlatformRequestBody,readPlatformJsonObject,requirePlatformExactObject } from './security.js';
 
 const ROOT='/api/v1/platform/synthetic/generation';
@@ -36,7 +32,7 @@ async function call(work) {
 // Opt-in own-generation routes. Normal MFA may read only its own test metadata;
 // create/reset requires a fresh exact assertion and owner-exclusive transaction.
 // No browser operator/Tenant authority or ordinary real target scope is accepted.
-export function createPlatformSyntheticGenerationRouteModule({ protocol,scope }={}) {
+export function createPlatformSyntheticGenerationRouteModule({ protocol,scope,assuranceMode='application_passkey' }={}) {
   if (['current','options','replace'].some(name=>typeof protocol?.[name]!=='function') || !scope
     || Object.keys(scope).sort().join(',')!=='environment,platformOrigin,platformSecurityEpoch,securityEpoch'
     || !['dev','int'].includes(scope.environment) || !isInternalUuid(scope.securityEpoch)
@@ -51,9 +47,12 @@ export function createPlatformSyntheticGenerationRouteModule({ protocol,scope }=
     throw new TypeError('SYNTHETIC_GENERATION_HTTP_CONFIGURATION_INVALID');
   }
   scope=Object.freeze({ ...scope,securityEpoch: scope.securityEpoch.toLowerCase() });
+  const transport=createSyntheticOperationTransport({ assuranceMode,platformOrigin: scope.platformOrigin,
+    securityEpoch: scope.platformSecurityEpoch });
   return definePlatformRouteModule({ id: 'platform-synthetic-generation',
     claim: ({ path })=>Object.hasOwn(ROUTES,path) ? ROUTES[path][1] : null,
-    createHandler({ platformPrincipalGuard,maxBodyBytes,maxResponseBytes }={}) {
+    createHandler(runtime={}) {
+      const { platformPrincipalGuard,maxBodyBytes,maxResponseBytes }=runtime;
       if (typeof platformPrincipalGuard?.require!=='function' || !Number.isSafeInteger(maxBodyBytes) || maxBodyBytes<1024
         || !Number.isSafeInteger(maxResponseBytes) || maxResponseBytes<1024) throw new TypeError('SYNTHETIC_GENERATION_HTTP_PORTS_INVALID');
       return async({ request,response,path,parsedUrl,requestId })=>{
@@ -68,7 +67,8 @@ export function createPlatformSyntheticGenerationRouteModule({ protocol,scope }=
           { required: { expectedGenerationId: value=>value===null || isInternalUuid(value),
             expectedRevision: value=>Number.isSafeInteger(value) && value>=0,
             ...(replacement ? { state: isOpaqueBrowserToken,
-              response: value=>value!==null && typeof value==='object' && !Array.isArray(value) } : {}) } });
+              ...(!transport.microsoft ? { response: value=>value!==null && typeof value==='object' && !Array.isArray(value) } : {}),
+            } : {}) } });
         else await assertNoPlatformRequestBody(request);
         if (body && (body.expectedGenerationId===null)!==(body.expectedRevision===0)) {
           throw new PlatformHttpError(400,'PLATFORM_VALIDATION_FAILED');
@@ -76,7 +76,7 @@ export function createPlatformSyntheticGenerationRouteModule({ protocol,scope }=
         const principal=normalizePlatformPrincipal(
           await platformPrincipalGuard.require(request,{ csrf: mutation,correlationId: requestId }));
         if (principal.providerIdentity.provider!==PLATFORM_ENTRA_PROVIDER || principal.assurance.level!=='mfa'
-          || principal.assurance.authenticationContext!=='cm:pk:v1'
+          || principal.assurance.authenticationContext!==transport.normalContext
           || principal.session.securityEpoch!==scope.platformSecurityEpoch) denied();
         response.setHeader('Cache-Control','no-store');response.setHeader('Referrer-Policy','no-referrer');
         if (!mutation) {
@@ -87,25 +87,21 @@ export function createPlatformSyntheticGenerationRouteModule({ protocol,scope }=
           expectedRevision: body.expectedRevision };
         if (!replacement) {
           const result=await call(()=>protocol.options({ principal,intent,correlationId: requestId }));
-          if (result?.status!=='passkey_required' || !isOpaqueBrowserToken(result.state) || !result.options
-            || typeof result.options!=='object' || Array.isArray(result.options) || typeof result.setCookie!=='string') invalid();
-          const cookie=readPlatformPasskeyTransactionCookie({ cookie: result.setCookie.split(';')[0] });
-          if (!cookie || cookie.split('.')[0]!==result.state
-            || result.setCookie!==serializePlatformPasskeyTransactionCookie(cookie,120)) invalid();
-          response.setHeader('Set-Cookie',serializePlatformPasskeyOperationCookie(cookie));
-          sendPlatformJson(response,200,{ status: result.status,state: result.state,options: result.options,requestId },maxResponseBytes);
+          const challenge=transport.challenge(result,requestId,runtime);
+          response.setHeader('Set-Cookie',challenge.cookies);
+          sendPlatformJson(response,200,challenge.payload,maxResponseBytes);
           return 200;
         }
-        const cookie=readPlatformPasskeyOperationCookie(request.headers);if (!cookie) denied();
+        const cookie=transport.readCookie(request.headers);if (!cookie) denied();
         const result=await call(()=>protocol.replace({ principal,intent,correlationId: requestId,cookie,
           state: body.state,response: body.response,request }));
-        const completed=requireCommittedPlatformPasskeyOperation(result,{ principal,securityEpoch: scope.platformSecurityEpoch });
+        const completed=transport.committed(result,principal);
         const generation=projectSyntheticGenerationReplacement(completed.result);
         // Validate the entire bounded public result before releasing cookies.
         const payload={ status: 'generation_replaced',generation,csrfToken: completed.csrfToken,requestId };
         if (Buffer.byteLength(JSON.stringify(payload))>maxResponseBytes) invalid();
         response.setHeader('Set-Cookie',
-          [completed.normalCookie,clearPlatformPasskeyTransactionCookie(),clearPlatformPasskeyOperationCookie()]);
+          [completed.normalCookie,...transport.clearCookies()]);
         sendPlatformJson(response,200,payload,maxResponseBytes);return 200;
       };
     },

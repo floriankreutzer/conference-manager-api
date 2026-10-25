@@ -11,7 +11,7 @@ import { loadProtectedPlatformInsightSnapshots } from './observability/platform-
 const PREFIX='PROTECTED_PLATFORM_';
 const KEYS=['ENTRA_TENANT_ID','ENTRA_CLIENT_ID','ENTRA_CLIENT_SECRET','OIDC_TRANSACTION_SECRET','CSRF_SECRET',
   'AUDIT_HMAC_SECRET','CURSOR_SECRET','PASSKEY_TRANSACTION_SECRET','ASSURANCE_MODE','OWNER_RECIPIENT','OWNER_LOCALE',
-  'MINIMUM_PASSKEYS','SESSION_TTL_SECONDS','HOST','PORT','HANDOFF_INTENT_SECRET','AUDIT_SEGMENT_ID',
+  'MINIMUM_PASSKEYS','SESSION_TTL_SECONDS','HOST','PORT','HANDOFF_INTENT_SECRET','OWNER_HANDOFF_INTENT_SECRET','AUDIT_SEGMENT_ID',
   'PROVIDER_USAGE_SNAPSHOT','PRODUCT_DELIVERY_SNAPSHOT'];
 const fail=code=>{ throw new TypeError(`PROTECTED_PLATFORM_CONFIG_${code}`); };
 function read(env,key,optional=false) {
@@ -48,12 +48,18 @@ export function loadProtectedPlatformConfiguration(env) {
     cursorSecret: secret(env,PREFIX+'CURSOR_SECRET'),
     ...(!microsoftMfa ? { passkeyTransactionSecret: secret(env,PREFIX+'PASSKEY_TRANSACTION_SECRET') } : {}),
     tenantAuditHmacSecret: secret(env,'PROTECTED_TENANT_AUDIT_HMAC_SECRET'),lookupSecret: secret(env,'PROTECTED_CUSTODY_LOOKUP_SECRET') };
+  if (profile.ownerCustomerAccessEnabled && !microsoftMfa) fail('OWNER_MICROSOFT_REQUIRED');
   const handoff=profile.syntheticEnabled ? secret(env,'PROTECTED_HANDOFF_SECRET') : null;
   const intent=profile.syntheticEnabled ? secret(env,PREFIX+'HANDOFF_INTENT_SECRET') : null;
   if (!profile.syntheticEnabled && (Object.hasOwn(env,'PROTECTED_HANDOFF_SECRET')
     || Object.hasOwn(env,PREFIX+'HANDOFF_INTENT_SECRET'))) fail('INACTIVE_HANDOFF_FORBIDDEN');
-  if (profile.syntheticEnabled && mode!=='application_passkey') fail('SYNTHETIC_ACTIVE_PASSKEY_REQUIRED');
-  const material=[...Object.values(values),...(handoff===null ? [] : [handoff,intent])];
+  if (profile.syntheticEnabled && !['application_passkey','microsoft_mfa'].includes(mode)) fail('SYNTHETIC_ACTIVE_PASSKEY_REQUIRED');
+  const ownerHandoff=profile.ownerCustomerAccessEnabled ? secret(env,'PROTECTED_OWNER_HANDOFF_SECRET') : null;
+  const ownerIntent=profile.ownerCustomerAccessEnabled ? secret(env,PREFIX+'OWNER_HANDOFF_INTENT_SECRET') : null;
+  if (!profile.ownerCustomerAccessEnabled && (Object.hasOwn(env,'PROTECTED_OWNER_HANDOFF_SECRET')
+    || Object.hasOwn(env,PREFIX+'OWNER_HANDOFF_INTENT_SECRET'))) fail('INACTIVE_OWNER_HANDOFF_FORBIDDEN');
+  const material=[...Object.values(values),...(handoff===null ? [] : [handoff,intent]),
+    ...(ownerHandoff===null ? [] : [ownerHandoff,ownerIntent])];
   if (new Set(material).size!==material.length
     || material.includes(decodeURIComponent(new URL(profile.database.databaseUrl).password))) fail('SECRET_ALIAS_FORBIDDEN');
   const clientId=own('ENTRA_CLIENT_ID'),tenantId=own('ENTRA_TENANT_ID'),peer=read(env,'PROTECTED_PEER_ENTRA_CLIENT_ID');
@@ -94,5 +100,6 @@ export function loadProtectedPlatformConfiguration(env) {
       return createProtectedPlatformAuthentication({ env: authenticationEnvironment,pool: context.pool,leasePool: context.leasePool,
         protectedEnvironment: profile.environment,protectedSecurityEpoch: profile.securityEpoch,auditSegment,minimumCredentialCount });
     },
-    synthetic: handoff===null ? null : Object.freeze({ browserSecret: handoff,intentSecret: intent }) });
+    synthetic: handoff===null ? null : Object.freeze({ browserSecret: handoff,intentSecret: intent }),
+    owner: ownerHandoff===null ? null : Object.freeze({ browserSecret: ownerHandoff,intentSecret: ownerIntent }) });
 }

@@ -118,7 +118,7 @@ function createAuthService({
   transactionTtlSeconds = DEFAULT_TTL_SECONDS,
   randomToken = () => randomBytes(32).toString('base64url'),
   idFactory = () => randomUUID(),
-} = {}, primaryOnly = false) {
+} = {}, primaryOnly = false,loginOnly=false) {
   if (!repository || typeof repository.create !== 'function' || typeof repository.consume !== 'function') {
     throw new TypeError('PLATFORM_OIDC_TRANSACTION_REPOSITORY_REQUIRED');
   }
@@ -184,7 +184,7 @@ function createAuthService({
 
   return Object.freeze({
     async start({ purpose = 'login', principal: principalValue = null, correlationId } = {}) {
-      if ((primaryOnly && purpose !== 'login') || !['login', 'step_up'].includes(purpose)) {
+      if (((primaryOnly || loginOnly) && purpose !== 'login') || !['login', 'step_up'].includes(purpose)) {
         throw new TypeError('PLATFORM_OIDC_PURPOSE_INVALID');
       }
       let principal = null;
@@ -249,6 +249,10 @@ function createAuthService({
         throw new PlatformIdentityError('PLATFORM_OIDC_STATE_INVALID');
       }
       const flowCorrelationId = transaction.correlationId;
+      if (loginOnly && (transaction.purpose!=='login' || transaction.authenticationContext!==mfaAuthenticationContext)) {
+        await recordFailure('state_invalid',flowCorrelationId);
+        throw new PlatformIdentityError('PLATFORM_OIDC_LOGIN_TRANSACTION_REQUIRED');
+      }
       if (primaryOnly && (transaction.purpose !== 'login'
         || transaction.authenticationContext !== 'cm:pk:primary:v1')) {
         await recordFailure('state_invalid', flowCorrelationId);
@@ -294,6 +298,10 @@ function createAuthService({
         }
       }
       const identity = await identityService.verify(assertion, { correlationId: flowCorrelationId });
+      if (loginOnly && (identity.assurance.level!=='mfa' || identity.assurance.authenticationContext!==mfaAuthenticationContext)) {
+        await recordFailure('assertion_rejected',flowCorrelationId);
+        throw new PlatformIdentityError('PLATFORM_OIDC_LOGIN_ASSURANCE_REQUIRED');
+      }
       let issued;
       if (transaction.purpose === 'login') {
         issued = await sessionService.issue(identity, { correlationId: flowCorrelationId });
@@ -338,6 +346,11 @@ function createAuthService({
 
 export function createPlatformEntraAuthService(configuration) {
   return createAuthService(configuration);
+}
+
+// Exact-operation profiles cannot mint a reusable elevated browser session.
+export function createPlatformEntraLoginAuthService(configuration) {
+  return createAuthService(configuration,false,true);
 }
 
 // No primary-only session can be issued: completion delegates only to the

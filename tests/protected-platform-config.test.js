@@ -46,7 +46,11 @@ test('explicit Microsoft MFA uses protected sessions without any passkey secret,
     assert.equal(owned.normalPasskeyService,undefined);
     assert.equal(owned.syntheticPasskeyService,undefined);
     assert.equal(owned.platformHttpSessionService.issue,undefined);
-    assert.deepEqual(owned.routeModules.map(route=>route.id),['platform-authentication']);
+    assert.deepEqual(owned.routeModules.map(route=>route.id),['platform-authentication','platform-microsoft-operation-authentication']);
+    assert.equal(typeof owned.normalMicrosoftService.executeStepUp,'function');
+    assert.equal(owned.routeModules[0].claim({ path: '/api/v1/platform/auth/microsoft/step-up' }),null);
+    assert.equal(environment==='prod' ? owned.syntheticMicrosoftService===null
+      : typeof owned.syntheticMicrosoftService.executeStepUpWithContinuation==='function',true);
     for (const change of [{ PROTECTED_PLATFORM_MINIMUM_PASSKEYS: '1' },
       { PROTECTED_PLATFORM_PASSKEY_TRANSACTION_SECRET: 'p'.repeat(48) },
       { PROTECTED_PLATFORM_ENTRA_MFA_AUTHENTICATION_CONTEXT: 'c1' }]) {
@@ -175,4 +179,42 @@ test('one-key policy is explicit and confined to INT without changing the produc
     assert.throws(()=>loadProtectedPlatformConfiguration({ ...fixture(),PROTECTED_PLATFORM_MINIMUM_PASSKEYS: minimum }));
   }
   assert.equal(load(t,fixture()).config.minimumCredentialCount,2);
+});
+
+test('synthetic Microsoft profile constructs without application keys or a credential minimum',t=>{
+  const env={ ...fixture(),PROTECTED_SYNTHETIC_ENABLED: 'true',PROTECTED_HANDOFF_SECRET: 'h'.repeat(48),
+    PROTECTED_PLATFORM_HANDOFF_INTENT_SECRET: 'i'.repeat(48),PROTECTED_PLATFORM_ASSURANCE_MODE: 'microsoft_mfa' };
+  delete env.PROTECTED_PLATFORM_PASSKEY_TRANSACTION_SECRET;
+  const bundle=load(t,env);assert.equal(bundle.config.minimumCredentialCount,null);
+  const authentication=bundle.authenticationFactory({ pool: noIo(),leasePool: noIo() });
+  assert.equal(authentication.platformPasskeyService,undefined);
+  assert.equal(typeof authentication.syntheticMicrosoftService.executeStepUpWithContinuation,'function');
+  for (const key of ['PROTECTED_PLATFORM_MINIMUM_PASSKEYS','PROTECTED_PLATFORM_PASSKEY_TRANSACTION_SECRET']) {
+    assert.throws(()=>loadProtectedPlatformConfiguration({ ...env,[key]: '' }),/MICROSOFT_MFA_PASSKEY_INPUT_FORBIDDEN/);
+  }
+});
+
+
+test('REAL owner configuration requires explicit Microsoft, independent browser/intent secrets and no application keys',t=>{
+  for (const environment of ['dev','int','prod']) {
+    const env={ ...fixture(environment),PROTECTED_PLATFORM_ASSURANCE_MODE: 'microsoft_mfa',
+      PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED: 'true',PROTECTED_OWNER_HANDOFF_SECRET: 'h'.repeat(48),
+      PROTECTED_PLATFORM_OWNER_HANDOFF_INTENT_SECRET: 'i'.repeat(48) };
+    delete env.PROTECTED_PLATFORM_PASSKEY_TRANSACTION_SECRET;
+    const bundle=load(t,env);assert.equal(bundle.profile.ownerCustomerAccessEnabled,true);
+    assert.deepEqual(bundle.owner,{ browserSecret: 'h'.repeat(48),intentSecret: 'i'.repeat(48) });
+    assert.equal(bundle.synthetic,null);assert.equal(bundle.config.minimumCredentialCount,null);
+    for (const changes of [{ PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED: 'false' },
+      { PROTECTED_OWNER_HANDOFF_SECRET: env.PROTECTED_PLATFORM_ENTRA_CLIENT_SECRET },
+      { PROTECTED_PLATFORM_OWNER_HANDOFF_INTENT_SECRET: env.PROTECTED_OWNER_HANDOFF_SECRET },
+      { PROTECTED_PLATFORM_PASSKEY_TRANSACTION_SECRET: 'p'.repeat(48) }]) {
+      assert.throws(()=>loadProtectedPlatformConfiguration({ ...env,...changes }));
+    }
+    for (const key of ['PROTECTED_OWNER_HANDOFF_SECRET','PROTECTED_PLATFORM_OWNER_HANDOFF_INTENT_SECRET']) {
+      const missing={ ...env };delete missing[key];assert.throws(()=>loadProtectedPlatformConfiguration(missing));
+    }
+  }
+  assert.throws(()=>loadProtectedPlatformConfiguration({ ...fixture(),PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED: 'true',
+    PROTECTED_OWNER_HANDOFF_SECRET: 'h'.repeat(48),PROTECTED_PLATFORM_OWNER_HANDOFF_INTENT_SECRET: 'i'.repeat(48) }),
+  /OWNER_MICROSOFT_REQUIRED/);
 });

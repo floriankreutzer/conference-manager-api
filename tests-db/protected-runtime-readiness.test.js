@@ -57,11 +57,38 @@ async t=>{
     for (const table of policy.write) {
       await admin.query(`GRANT INSERT,UPDATE,DELETE ON public.${identifier(table)} TO ${identifier(role)}`);
     }
+    for (const spec of policy.readColumns) {
+      const [table,column]=spec.split('.');
+      await admin.query(`GRANT SELECT(${identifier(column)}) ON public.${identifier(table)} TO ${identifier(role)}`);
+    }
     readers[surface]=createPostgresProtectedRuntimeReadiness(asRole(business,role),{
       leasePool: asRole(lease,role),environment: 'int',securityEpoch: epoch,surface });
     assert.equal(await readers[surface].isReady(),true,surface);
   }
   const role='cm_protected_int_customer';
+  await admin.query(`REVOKE SELECT(authenticated_at) ON platform_microsoft_operation_proofs FROM ${identifier(role)}`);
+  assert.equal(await readers.customer.isReady(),false);
+  await admin.query(`GRANT SELECT(authenticated_at) ON platform_microsoft_operation_proofs TO ${identifier(role)}`);
+  assert.equal(await readers.customer.isReady(),true);
+  await admin.query(`GRANT SELECT(state_hash) ON platform_microsoft_operation_proofs TO ${identifier(role)}`);
+  assert.equal(await readers.customer.isReady(),false);
+  await admin.query(`REVOKE SELECT(state_hash) ON platform_microsoft_operation_proofs FROM ${identifier(role)}`);
+  assert.equal(await readers.customer.isReady(),true);
+  await admin.query(`GRANT SELECT ON platform_microsoft_operation_proofs TO ${identifier(role)}`);
+  assert.equal(await readers.customer.isReady(),false);
+  await admin.query(`REVOKE SELECT ON platform_microsoft_operation_proofs FROM ${identifier(role)}`);
+  // PostgreSQL also revokes column SELECT when table SELECT is revoked. Prove
+  // the missing custody predicate still fails closed, then restore only the
+  // explicitly approved columns rather than retaining the escalated grant.
+  assert.equal(await readers.customer.isReady(),false);
+  for (const spec of protectedRuntimeRoleRequirements('customer').readColumns) {
+    const [table,column]=spec.split('.');
+    if (table==='platform_microsoft_operation_proofs') {
+      await admin.query(`GRANT SELECT(${identifier(column)}) ON public.${identifier(table)} TO ${identifier(role)}`);
+    }
+  }
+  assert.equal(await readers.customer.isReady(),true);
+
   await admin.query(`GRANT INSERT ON platform_operators TO ${identifier(role)}`);
   assert.equal(await readers.customer.isReady(),false);
   await admin.query(`REVOKE INSERT ON platform_operators FROM ${identifier(role)}`);

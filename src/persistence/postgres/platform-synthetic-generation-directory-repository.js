@@ -1,3 +1,4 @@
+import { syntheticOperationAssurance } from '../../domain/synthetic-operation-assurance.js';
 import { isInternalUuid } from '../../domain/identifiers.js';
 import { PLATFORM_ENTRA_PROVIDER } from '../../domain/identity-provider.js';
 import { SYNTHETIC_HANDOFF_SLOTS } from '../../domain/synthetic-handoff.js';
@@ -10,7 +11,9 @@ import { requireProtectedRuntimeSharedExecutionScope } from './protected-runtime
 import { withPostgresTransaction } from './transaction.js';
 
 function invalid() { throw new TypeError('SYNTHETIC_GENERATION_DIRECTORY_INVALID'); }
-export function createPostgresSyntheticGenerationDirectoryRepository(pool,{ environment,securityEpoch,platformSecurityEpoch }={}) {
+export function createPostgresSyntheticGenerationDirectoryRepository(pool,{ environment,securityEpoch,platformSecurityEpoch,
+  assuranceMode='application_passkey' }={}) {
+  const assurance=syntheticOperationAssurance(assuranceMode);
   if (typeof pool?.query!=='function' || typeof pool?.connect!=='function' || !['dev','int'].includes(environment)
     || !isInternalUuid(securityEpoch) || !Number.isSafeInteger(platformSecurityEpoch) || platformSecurityEpoch<1) {
     throw new TypeError('SYNTHETIC_GENERATION_DIRECTORY_CONFIGURATION_INVALID');
@@ -21,7 +24,7 @@ export function createPostgresSyntheticGenerationDirectoryRepository(pool,{ envi
       requireProtectedRuntimeSharedExecutionScope(pool,protection);
       const principal=normalizePlatformPrincipal(value);
       if (principal.providerIdentity.provider!==PLATFORM_ENTRA_PROVIDER || principal.assurance.level!=='mfa'
-        || principal.assurance.authenticationContext!=='cm:pk:v1' || principal.session.securityEpoch!==platformSecurityEpoch
+        || principal.assurance.authenticationContext!==assurance.normalContext || principal.session.securityEpoch!==platformSecurityEpoch
         || !principal.permissions.includes(PLATFORM_PERMISSION.LIFECYCLE_MANAGE)) throw new PlatformAuthorizationError();
       return withPostgresTransaction(pool,async client=>{
         const authority=await client.query({ name: 'synthetic-generation-directory-current-source',text: `SELECT clock_timestamp() AS now
@@ -32,13 +35,13 @@ export function createPostgresSyntheticGenerationDirectoryRepository(pool,{ envi
             AND source.provider=actor.provider AND source.provider_tenant_reference=actor.provider_tenant_reference
             AND source.provider_subject_reference=actor.provider_subject_reference AND source.roles=actor.roles
             AND source.scope_mode=actor.scope_mode AND source.security_epoch=$9 AND source.assurance_level='mfa'
-            AND source.authentication_context='cm:pk:v1' AND source.revoked_at IS NULL AND source.expires_at>clock_timestamp()
+            AND source.authentication_context=$12 AND source.revoked_at IS NULL AND source.expires_at>clock_timestamp()
             AND date_trunc('milliseconds',source.authenticated_at)=$10
-            AND (SELECT count(*) FROM platform_passkey_credentials credential WHERE credential.operator_id=actor.id
-              AND credential.environment=$11 AND credential.revoked_at IS NULL)>=2 LIMIT 1`,
+            AND ($13::boolean OR (SELECT count(*) FROM platform_passkey_credentials credential WHERE credential.operator_id=actor.id
+              AND credential.environment=$11 AND credential.revoked_at IS NULL)>=2) LIMIT 1`,
         values: [principal.operatorId,principal.securityVersion,principal.session.id,PLATFORM_ENTRA_PROVIDER,
           principal.providerIdentity.tenantReference,principal.providerIdentity.subjectReference,principal.roles,principal.targetScope.mode,
-          platformSecurityEpoch,principal.assurance.authenticatedAt,environment] });
+          platformSecurityEpoch,principal.assurance.authenticatedAt,environment,assurance.normalContext,assuranceMode==='microsoft_mfa'] });
         if (authority.rowCount!==1) throw new PlatformAuthorizationError();
         const now=authority.rows[0]?.now;if (!(now instanceof Date) || !Number.isFinite(now.getTime())) invalid();
         const history=await client.query({ name: 'synthetic-generation-directory-own-history',text: `SELECT

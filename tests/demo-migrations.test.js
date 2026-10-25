@@ -6,6 +6,8 @@ import {
   migrateDemoUp,
 } from '../scripts/demo-db-migrations.mjs';
 import { loadMigrations } from '../scripts/db-migrations.mjs';
+import { DEMO_OVERLAY_MIGRATION_VERSION } from '../src/demo/runtime-contract.js';
+import { CURRENT_SCHEMA_VERSION } from '../src/persistence/postgres/pool.js';
 
 const ROLES = Object.freeze({
   customer: 'demo_customer',
@@ -15,10 +17,12 @@ const ROLES = Object.freeze({
 
 test('Demo migration stream is versioned independently from Production', async () => {
   const [production, demo] = await Promise.all([loadMigrations(), loadDemoMigrations()]);
-  assert.equal(production.at(-1).version, 69);
-  assert.equal(demo.length, 30);
-  assert.deepEqual(production.map(({ version }) => version),Array.from({ length: 69 },(_,index) => index+1));
-  assert.deepEqual(demo.map(({ version }) => version),Array.from({ length: 30 },(_,index) => index+1));
+  assert.equal(production.at(-1).version, 72);
+  assert.equal(demo.length, 32);
+  assert.equal(DEMO_OVERLAY_MIGRATION_VERSION,demo.at(-1).version);
+  assert.equal(CURRENT_SCHEMA_VERSION,production.at(-1).version);
+  assert.deepEqual(production.map(({ version }) => version),Array.from({ length: 72 },(_,index) => index+1));
+  assert.deepEqual(demo.map(({ version }) => version),Array.from({ length: 32 },(_,index) => index+1));
   assert.equal(demo[0].version, 1);
   assert.equal(demo[0].name, 'demo_runtime_foundation');
   assert.match(demo[0].checksum, /^[0-9a-f]{64}$/);
@@ -81,7 +85,7 @@ test('Demo migration runner reads Production readiness but writes only its own l
     async query(query, values) {
       queries.push({ query, values });
       if (query?.name === 'demo-migration-production-schema') {
-        return { rows: [{ versions: Array.from({ length: 69 }, (_, index) => index + 1) }] };
+        return { rows: [{ versions: Array.from({ length: 72 }, (_, index) => index + 1) }] };
       }
       if (typeof query === 'string' && query.includes('SELECT version, name, checksum')) return { rows: [] };
       return { rows: [], rowCount: 0 };

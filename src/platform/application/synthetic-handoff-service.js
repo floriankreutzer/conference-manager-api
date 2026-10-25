@@ -5,6 +5,7 @@ import { normalizeSyntheticHandoffScope,normalizeSyntheticHandoffIntent,syntheti
 import { normalizePlatformPrincipal } from '../identity/principal.js';
 import { PLATFORM_PERMISSION } from '../identity/policy.js';
 import { PlatformAuthorizationError } from '../identity/errors.js';
+import { syntheticOperationAssurance } from '../../domain/synthetic-operation-assurance.js';
 
 function exact(value,keys) {
   if (!value || typeof value!=='object' || Array.isArray(value)
@@ -22,7 +23,9 @@ function sameValues(left,right) { return left.length===right.length && left.ever
 // A selected role or even an elevated principal is never proof. Approval consumes
 // the exact private passkey context AND its future normal-MFA continuation, so an
 // old/temporary session cannot become the Customer delegation's source session.
-export function createSyntheticHandoffService({ repository,passkeyService,authorizationPolicy,browserBinding,scope }={}) {
+export function createSyntheticHandoffService({ repository,passkeyService,authorizationPolicy,browserBinding,scope,
+  assuranceMode='application_passkey' }={}) {
+  const assurance=syntheticOperationAssurance(assuranceMode);
   scope=normalizeSyntheticHandoffScope(scope);
   if (['prepare','binding','approve'].some(method=>typeof repository?.[method]!=='function')
     || typeof passkeyService?.verifiedOperationWithContinuation!=='function' || typeof authorizationPolicy?.authorize!=='function'
@@ -32,7 +35,7 @@ export function createSyntheticHandoffService({ repository,passkeyService,author
       exact(input,['principal','intent']);const principal=normalizePlatformPrincipal(input.principal);
       const intent=normalizeSyntheticHandoffIntent(input.intent),value=selection(intent);
       if (principal.operatorId!==value.operatorId || principal.providerIdentity.provider!==PLATFORM_ENTRA_PROVIDER
-        || principal.assurance.level!=='mfa' || principal.assurance.authenticationContext!=='cm:pk:v1'
+        || principal.assurance.level!=='mfa' || principal.assurance.authenticationContext!==assurance.normalContext
         || principal.session.securityEpoch!==scope.platformSecurityEpoch
         || !principal.permissions.includes(PLATFORM_PERMISSION.LIFECYCLE_MANAGE)) denied();
       // Preparing an exact challenge is not the privileged operation itself.
@@ -51,11 +54,12 @@ export function createSyntheticHandoffService({ repository,passkeyService,author
       const verified=passkeyService.verifiedOperationWithContinuation(input.proofContext,hash);
       const principal=normalizePlatformPrincipal(verified.principal),future=normalizePlatformPrincipal(verified.continuationPrincipal);
       if (principal.operatorId!==value.operatorId || principal.providerIdentity.provider!==PLATFORM_ENTRA_PROVIDER
-        || principal.assurance.level!=='step_up' || principal.assurance.authenticationContext!=='cm:pk:v1'
+        || principal.assurance.level!=='step_up' || principal.assurance.authenticationContext!==assurance.freshContext
         || principal.session.securityEpoch!==scope.platformSecurityEpoch || future.operatorId!==principal.operatorId
         || future.securityVersion!==principal.securityVersion || future.session.id===principal.session.id
         || future.session.securityEpoch!==scope.platformSecurityEpoch || future.assurance.level!=='mfa'
-        || future.assurance.authenticationContext!=='cm:pk:v1' || future.assurance.authenticatedAt!==principal.assurance.authenticatedAt
+        || future.assurance.authenticationContext!==assurance.normalContext
+        || future.assurance.authenticatedAt!==principal.assurance.authenticatedAt
         || ['provider','tenantReference','subjectReference'].some(key=>future.providerIdentity[key]!==principal.providerIdentity[key])
         || future.targetScope.mode!==principal.targetScope.mode || !sameValues(future.roles,principal.roles)
         || !sameValues(future.permissions,principal.permissions)

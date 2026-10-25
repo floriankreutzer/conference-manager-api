@@ -1,3 +1,5 @@
+import { syntheticOperationAssurance } from '../../domain/synthetic-operation-assurance.js';
+import { clearPlatformMicrosoftOperationCookie } from '../identity/microsoft-operation-cookie.js';
 import { isOpaqueBrowserToken } from '../../domain/identifiers.js';
 import { PLATFORM_ENTRA_PROVIDER } from '../../domain/identity-provider.js';
 import { normalizePlatformPrincipal } from '../identity/principal.js';
@@ -15,15 +17,21 @@ function normalCookie(value) {
 
 // Checks only committed result projection. It grants no operation context, MFA,
 // issuer, database mutation or authority from browser-selected metadata.
-export function requireCommittedPlatformPasskeyOperation(value,{ principal,securityEpoch }={}) {
+export function requireCommittedPlatformPasskeyOperation(value,options={}) {
+  return requireCommittedPlatformSyntheticOperation(value,{ ...options,assuranceMode: 'application_passkey' });
+}
+
+export function requireCommittedPlatformSyntheticOperation(value,{ principal,securityEpoch,assuranceMode }={}) {
+  const assurance=syntheticOperationAssurance(assuranceMode);
+  const clear=assurance.mode==='microsoft_mfa' ? clearPlatformMicrosoftOperationCookie() : clearPlatformPasskeyTransactionCookie();
   principal=normalizePlatformPrincipal(principal);
   if (value?.status!=='operation_completed' || !Array.isArray(value.setCookies) || value.setCookies.length!==2
-    || value.setCookies[1]!==clearPlatformPasskeyTransactionCookie() || !isOpaqueBrowserToken(value.csrfToken)) invalid();
+    || value.setCookies[1]!==clear || !isOpaqueBrowserToken(value.csrfToken)) invalid();
   const future=normalizePlatformPrincipal(value.principal);
   if (future.operatorId!==principal.operatorId || future.securityVersion!==principal.securityVersion
     || future.session.id===principal.session.id || future.session.securityEpoch!==securityEpoch
     || future.providerIdentity.provider!==PLATFORM_ENTRA_PROVIDER || future.assurance.level!=='mfa'
-    || future.assurance.authenticationContext!=='cm:pk:v1' || future.targetScope.mode!==principal.targetScope.mode
+    || future.assurance.authenticationContext!==assurance.normalContext || future.targetScope.mode!==principal.targetScope.mode
     || ['provider','tenantReference','subjectReference'].some(key=>future.providerIdentity[key]!==principal.providerIdentity[key])
     || future.roles.join(',')!==principal.roles.join(',')) invalid();
   return Object.freeze({ principal: future,normalCookie: normalCookie(value.setCookies[0]),

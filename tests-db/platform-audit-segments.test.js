@@ -7,7 +7,8 @@ import { createPostgresPlatformAuditRepository } from '../src/persistence/postgr
 import { createPostgresPlatformAuditSegmentInitializer } from '../src/persistence/postgres/platform-audit-segment-initializer.js';
 import { createPostgresPlatformOwnerBootstrapRepository } from '../src/persistence/postgres/platform-owner-bootstrap-repository.js';
 import { migrateUp,rollbackLatest } from '../scripts/db-migrations.mjs';
-import { grantProtectedRuntimeRoles,grantPlatformAuditSegmentRuntimeRoles,grantCustomerMicrosoftGroupRuntimeRoles }
+import { grantProtectedRuntimeRoles,grantPlatformAuditSegmentRuntimeRoles,grantCustomerMicrosoftGroupRuntimeRoles,
+  grantPlatformMicrosoftOperationRuntimeRoles }
   from '../scripts/support/protected-runtime-role-grants.mjs';
 
 const anonymous=()=>({ operatorId: null,roles: [],permissions: [],assuranceLevel: 'unverified',targetTenantId: null,
@@ -25,6 +26,9 @@ test('native audit cutover preserves all legacy bytes, commits one genesis and a
       }
     } finally { await pool.end(); }
   });await migrateUp(pool);
+  assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
+  assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
+  assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
   assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
   assert.equal(await rollbackLatest(pool),true); // Empty owner roles067.
@@ -91,6 +95,19 @@ test('native audit cutover preserves all legacy bytes, commits one genesis and a
         ['cm_protected_int_platform',table,privilege])).rows[0].allowed,false);
     }
   }
+  await pool.query('REVOKE ALL ON platform_microsoft_operation_proofs FROM cm_protected_int_platform');
+  await assert.rejects(grantPlatformMicrosoftOperationRuntimeRoles(pool,groupScope,{ expectedOfflineRole: role,
+    auditRepository: { async verifyWithClient() { throw new Error('private-integrity-detail'); } } }),
+  { message: 'PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED' });
+  assert.equal((await pool.query("SELECT has_table_privilege('cm_protected_int_platform',"
+    +"'platform_microsoft_operation_proofs','SELECT') AS allowed")).rows[0].allowed,false);
+  await grantPlatformMicrosoftOperationRuntimeRoles(pool,groupScope,{ expectedOfflineRole: role,auditRepository: audit });
+  for (const privilege of ['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) {
+    assert.equal(await allowed('platform_microsoft_operation_proofs',privilege),false);
+    assert.equal((await pool.query('SELECT has_table_privilege($1,$2,$3) AS allowed',
+      ['cm_protected_int_platform','platform_microsoft_operation_proofs',privilege])).rows[0].allowed,
+    ['SELECT','INSERT','UPDATE','DELETE'].includes(privilege));
+  }
   const restricted={ async connect() {
     const client=await pool.connect();
     await client.query('SET SESSION AUTHORIZATION cm_protected_int_platform');
@@ -150,6 +167,9 @@ test('native audit cutover preserves all legacy bytes, commits one genesis and a
     'TRUNCATE platform_audit_events CASCADE',
     'TRUNCATE platform_audit_segments CASCADE',
   ]) await assert.rejects(pool.query(statement));
+  assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
+  assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
+  assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft group authority069 before068.
   assert.equal(await rollbackLatest(pool),true); // Empty role provenance068 before067.
   assert.equal(await rollbackLatest(pool),true); // Empty owner roles067 before populated segment066.

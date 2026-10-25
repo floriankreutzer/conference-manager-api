@@ -51,10 +51,12 @@ export async function readProtectedFrontendArtifact(root,profile) {
     if (digest(raw)!==profile.hostedFrontendSha256) fail();
     const manifest=JSON.parse(raw.toString('utf8'));
     exact(manifest,['schemaVersion','surface','environment','apiCommit','frontendCommit','customerOrigin','platformOrigin',
-      'syntheticEnabled','microsoftEnabled','invitationsEnabled','files']);
+      'syntheticEnabled','microsoftEnabled','invitationsEnabled','ownerAccessEnabled','files']);
     if (manifest.schemaVersion!==1 || ['surface','environment','apiCommit','frontendCommit','customerOrigin','platformOrigin',
       'syntheticEnabled'].some(key=>manifest[key]!==profile[key])
-      || ['microsoftEnabled','invitationsEnabled'].some(key=>typeof manifest[key]!=='boolean')
+      || ['microsoftEnabled','invitationsEnabled','ownerAccessEnabled'].some(key=>typeof manifest[key]!=='boolean')
+      || manifest.ownerAccessEnabled!==(profile.ownerCustomerAccessEnabled===true)
+      || manifest.ownerAccessEnabled && !manifest.microsoftEnabled
       || !Array.isArray(manifest.files) || manifest.files.length<2 || manifest.files.length>MAX_FILES) fail();
     const files=new Map();let total=0,previous='';
     for (const entry of manifest.files) {

@@ -79,3 +79,24 @@ test('owned authentication assembly stays outside business/provider/HTTP layers 
   const violations=moduleBoundaryViolations({ [root]: "import './demo/probe.js';",'src/demo/probe.js': 'export const probe=true;' });
   assert.ok(violations.some(message=>message.includes('Production composition must not reach the Demo runtime')));
 });
+
+
+test('explicit REAL owner admission owns separate routes and retains the five-method HTTP session facade',t=>{
+  for (const environment of ['dev','int','prod']) {
+    const options=fixture(t,environment),owner={ ...options.synthetic,browserSecret: 'o'.repeat(48) };
+    const assembly=createProtectedCustomerAuthentication({ ...options,synthetic: null,owner });
+    assert.deepEqual(assembly.routeModules.map(route=>route.id),
+      ['microsoft-role-mappings','customer-email-authentication','customer-invitations','owner-customer-handoff']);
+    assert.ok(assembly.writeCustody);assert.equal(typeof assembly.writeCustody.run,'function');
+    assert.equal(assembly.writeCustody.issue,undefined);assert.equal(assembly.writeCustody.rotate,undefined);
+    const result=assembly.authenticationFactory({ config: options.config,persistence: options.persistence });
+    assert.deepEqual(Object.keys(result.sessionService).sort(),
+      ['clearCookie','csrfTokenForPrincipal','resolvePrincipal','revoke','verifyCsrf']);
+    assert.equal(result.writeCustody,undefined);
+  }
+  const options=fixture(t),assembly=createProtectedCustomerAuthentication({ ...options,
+    owner: { ...options.synthetic,browserSecret: 'o'.repeat(48) } });
+  assert.deepEqual(assembly.routeModules.map(route=>route.id),
+    ['microsoft-role-mappings','customer-email-authentication','customer-invitations',
+    'synthetic-customer-handoff','owner-customer-handoff']);
+});

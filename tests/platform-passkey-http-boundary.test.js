@@ -9,10 +9,11 @@ function sources(dependency) {
   ]);
 }
 test('Platform HTTP can use exact cookie contracts but still cannot import identity services, verifier or enrollment authority', () => {
-  for (const dependency of ['passkey-auth-cookie','passkey-enrollment-cookie','session-cookie']) {
+  for (const dependency of ['passkey-auth-cookie','passkey-enrollment-cookie','session-cookie','microsoft-operation-cookie']) {
     assert.deepEqual(platformHttpBoundaryViolations(sources(dependency)), []);
   }
-  for (const dependency of ['passkey-auth-service','passkey-verifier','passkey-enrollment-grant','passkey-enrollment-flow']) {
+  for (const dependency of ['passkey-auth-service','passkey-verifier','passkey-enrollment-grant','passkey-enrollment-flow',
+    'microsoft-operation-service','entra-client']) {
     assert.ok(platformHttpBoundaryViolations(sources(dependency)).length > 0, dependency);
   }
 });

@@ -109,6 +109,7 @@ before a ready/merge claim. Provider fixtures are explicitly synthetic; they do
 not prove real Microsoft membership, MFA, mail delivery or live operating readiness.
 Mapping-administration presentation and the actual configured Microsoft round trip
 still require final paired UI/live acceptance. Owner access to real Customers,
-sole-owner operator lifecycle and passkey-free synthetic custody remain separate
-cutover dependencies. No migration, actual role or provider setting is changed by
+sole-owner operator lifecycle remain separate cutover dependencies. Synthetic
+Microsoft custody is implemented in the071 source candidate and still requires
+its own native/paired/elapsed-expiry qualification; see SYNTHETIC-MICROSOFT-CUSTODY.md. No migration, actual role or provider setting is changed by
 publishing this source candidate.

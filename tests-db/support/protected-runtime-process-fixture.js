@@ -8,9 +8,15 @@ export async function unusedProtectedRuntimePort() {
   const server=createServer();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const port=server.address().port;await new Promise(resolve=>server.close(resolve));return port;
 }
-export async function startProtectedRuntimeProcess(selected,environment) {
+export function startProtectedRuntimeProcess(selected,environment) {
+  surface(selected);return start(selected,environment,new URL(`./protected-${selected}-runtime-child.mjs`,import.meta.url));
+}
+export function startProtectedOwnerBrowserPlatformProcess(environment) {
+  return start('platform',environment,new URL('./protected-owner-browser-platform-child.mjs',import.meta.url));
+}
+async function start(selected,environment,entry) {
   surface(selected);
-  const child=fork(new URL(`./protected-${selected}-runtime-child.mjs`,import.meta.url),[],{
+  const child=fork(entry,[],{
     cwd: new URL('../../',import.meta.url),execArgv: [],env: environment,stdio: ['ignore','pipe','pipe','ipc'] });let logs='';
   for (const output of [child.stdout,child.stderr]) output.on('data',chunk=>{
     if (logs.length+chunk.length>65536) { child.kill();return; }logs+=chunk.toString('utf8');

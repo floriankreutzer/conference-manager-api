@@ -83,6 +83,9 @@ test('native role provenance preserves independent grants, fences sessions and r
   assert.deepEqual(retainedAdmin.user.microsoftGroupRoles,['conference_manager','tenant_admin']);
   await assert.rejects(pool.query('UPDATE tenant_user_roles SET user_id=$3 WHERE tenant_id=$1 AND user_id=$2',
     [tenantId,userId,actor]),{ code: '42501' });
+  assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
+  assert.equal(await rollbackLatest(pool),true); // Empty071 retains the historical069 guard.
+  assert.equal(await rollbackLatest(pool),true); // Empty070 before the unchanged populated069 guard.
   await assert.rejects(rollbackLatest(pool),{ code: '55000' });
   await pool.query('DELETE FROM tenant_user_roles WHERE tenant_id=$1 AND user_id=$2',[tenantId,userId]);
   assert.deepEqual((await repo.listByTenantId({ tenantId })).find(row=>row.userId===userId).elevatedRoles,[]);
