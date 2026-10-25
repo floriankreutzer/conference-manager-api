@@ -26,7 +26,9 @@ test('synthetic Microsoft transport preserves callback and Strict cookies and ac
   assert.deepEqual(transport.challenge(result,id,runtime),{ cookies: setCookies,
     payload: { status: 'microsoft_required',state,authorizationUrl,requestId: id } });
   assert.equal(transport.normalContext,'cm:ms:mfa:v1');assert.equal(transport.microsoft,true);
-  for (const changed of [{ status: 'passkey_required' },{ setCookies: [setCookies[1],setCookies[0]] },
+  for (const changed of [
+    { authorizationUrl: authorizationUrl.replace('max_age=300','max_age=0') },
+    { status: 'passkey_required' },{ setCookies: [setCookies[1],setCookies[0]] },
     { state: browser },{ authorizationUrl: authorizationUrl.replace('login.microsoftonline.com','evil.example.test') },
     { authorizationUrl: authorizationUrl.replace('prompt=login','prompt=select_account') },
     { authorizationUrl: authorizationUrl+'&prompt=login' },

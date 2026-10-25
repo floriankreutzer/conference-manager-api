@@ -17,7 +17,7 @@ test('isolated browser SDK network drives the actual Platform adapter with MFA, 
       mfaAuthenticationContext: 'cm:ms:mfa:v1',stepUpAuthenticationContext: 'cm:ms:fresh:v1' });
     const nonce='N'.repeat(43),context='cm:ms:fresh:v1';
     const url=await auth.authorizationUrl({ state: 'S'.repeat(43),nonce,codeChallenge: 'C'.repeat(43),authenticationContext: context });
-    assert.equal(new URL(url).searchParams.get('nonce'),nonce);assert.equal(new URL(url).searchParams.get('max_age'),'0');
+    assert.equal(new URL(url).searchParams.get('nonce'),nonce);assert.equal(new URL(url).searchParams.get('max_age'),'300');
     const assertion=await auth.redeemAuthorizationCode({ code: 'owner-browser-provider-code',codeVerifier: 'V'.repeat(43),
       expectedNonce: nonce,expectedNonceHash: createHash('sha256').update(nonce).digest('hex'),authenticationContext: context });
     const policy=createPlatformClaimPolicy({ provider: 'microsoft_entra_platform',
