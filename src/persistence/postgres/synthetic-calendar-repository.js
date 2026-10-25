@@ -93,7 +93,8 @@ export function createPostgresSyntheticCalendarRepository(pool,{ environment,sec
         await qualified(client,bound);
         const result=await client.query({ name: 'synthetic-calendar-overlap',text: `SELECT EXISTS(SELECT 1
           FROM synthetic_calendar_events WHERE environment=$1 AND security_epoch=$2 AND tenant_id=$3 AND generation_id=$4
-          AND integration_id=$5 AND room_id=$6 AND state='active' AND request_id<>$7 AND starts_at<$9 AND ends_at>$8) AS conflict`,
+          AND integration_id=$5 AND room_id=$6 AND state='active' AND ($7::varchar IS NULL OR request_id<>$7)
+          AND starts_at<$9 AND ends_at>$8) AS conflict`,
         values: [...values(bound),input.requestId,input.startsAt,input.endsAt] });
         if (typeof result.rows[0]?.conflict!=='boolean') fail(PROVIDER_ERROR_KIND.MALFORMED_RESPONSE);
         return Object.freeze({ available: !result.rows[0].conflict,conflictCount: result.rows[0].conflict ? 1 : 0 });
