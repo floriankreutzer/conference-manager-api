@@ -55,7 +55,11 @@ export async function findPlatformOperationReceipt(
     `,
     values: [operatorId, operation, tenantId, idempotencyKey],
   });
-  return receiptRow(result.rows[0]);
+  const receipt=receiptRow(result.rows[0]);
+  if (!receipt || operation!=='tenant.entitlement.apply') return receipt;
+  return Object.freeze({ ...receipt,result: Object.freeze({
+    entitlements: platformEntitlementState(receipt.result?.entitlements),
+  }) });
 }
 
 export async function storePlatformOperationReceipt(client, {
@@ -582,6 +586,15 @@ export function createPostgresPlatformTenantOperationsRepository(pool, {
   });
 }
 
+function platformEntitlementState(state) {
+  if (state===null) return null;
+  return Object.freeze({ tenantId: state.tenantId,tenantStatus: state.tenantStatus,revision: state.revision,
+    entries: Object.freeze(state.entries.map(entry=>Object.freeze({
+      capabilityId: entry.capabilityId,enabled: entry.enabled,
+      effectiveAt: Object.hasOwn(entry,'effectiveAt') ? entry.effectiveAt : entry.updatedAt,
+    }))) });
+}
+
 export function createPostgresPlatformEntitlementOperationsRepository(pool, {
   tenantAuditRepository,
   platformAuditRepository,
@@ -674,7 +687,7 @@ export function createPostgresPlatformEntitlementOperationsRepository(pool, {
     entitlementReader: Object.freeze({
       async findTenantState(tenantId) {
         return withPostgresTransaction(pool, async (client) => {
-          return entitlementRepository.findTenantState(tenantId, { client });
+          return platformEntitlementState(await entitlementRepository.findTenantState(tenantId, { client }));
         }, { isolationLevel: 'REPEATABLE READ', readOnly: true });
       },
     }),
@@ -753,7 +766,7 @@ export function createPostgresPlatformEntitlementOperationsRepository(pool, {
           });
           await appendPlatformMutationEvidence(client, values.evidence, values.tenantId, audit);
           const result = Object.freeze({
-            entitlements: applied.state,
+            entitlements: platformEntitlementState(applied.state),
           });
           await storePlatformOperationReceipt(client, { operatorId, ...values, result });
           return Object.freeze({ outcome: 'updated', ...result });

@@ -3,6 +3,9 @@ import test from 'node:test';
 import { PLATFORM_OPERATION } from '../src/platform/application/platform-operation-contract.js';
 import { PlatformOperationConflictError } from '../src/platform/application/platform-operation-errors.js';
 import { createPlatformEntitlementOperationsService } from '../src/platform/application/entitlement-operations-service.js';
+import { createPostgresEntitlementRepository } from '../src/persistence/postgres/entitlement-repository.js';
+import { createPostgresPlatformEntitlementOperationsRepository,findPlatformOperationReceipt }
+  from '../src/persistence/postgres/platform-operations-repository.js';
 import { PLATFORM_PERMISSION } from '../src/platform/identity/policy.js';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -215,4 +218,46 @@ test('package apply rejects preview drift and never performs sequential partial 
     (error) => error.code === 'PLATFORM_PACKAGE_REVISION_STALE',
   );
   assert.equal(state.writes, 0);
+});
+
+test('actual canonical and Platform repositories translate stored updatedAt into the service effectiveAt contract',async()=>{
+  const queries=[];
+  const query=async command=>{
+    queries.push(command);
+    if (command.name==='entitlement-tenant-state') return { rowCount: 1,
+      rows: [{ id: TENANT_ID,status: 'active',entitlement_revision: 3 }] };
+    if (command.name==='entitlement-tenant-state-entries') return { rowCount: 1,
+      rows: [{ tenant_id: TENANT_ID,capability_id: 'microsoft.directory',enabled: true,updated_at: new Date(NOW) }] };
+    if (typeof command==='string' && (/^(BEGIN|COMMIT|ROLLBACK)/.test(command)
+      || command==="SET LOCAL TIME ZONE 'UTC'")) return { rowCount: 0,rows: [] };
+    throw new Error('UNEXPECTED_PERSISTENCE_QUERY');
+  };
+  const pool={ query,async connect() { return { query,release() {} }; } };
+  const audit={ async appendWithClient() { throw new Error('READ_MUST_NOT_APPEND'); } };
+  const repository=createPostgresEntitlementRepository(pool,{ auditRepository: audit });
+  const platform=createPostgresPlatformEntitlementOperationsRepository(pool,{ tenantAuditRepository: audit,
+    platformAuditRepository: audit,entitlementRepository: repository,cursorSecret: 's'.repeat(48) });
+  const { service }=fixtures({ overrides: { entitlementReader: platform.entitlementReader } });
+  const result=await service.getTenantEntitlements({ operatorContext: {},tenantId: TENANT_ID });
+  assert.equal(result.entitlements.entries.find(entry=>entry.capabilityId==='microsoft.directory').effectiveAt,NOW);
+  assert.equal(result.entitlements.entries.some(entry=>Object.hasOwn(entry,'updatedAt')),false);
+  assert.deepEqual(queries.find(command=>command.name==='entitlement-tenant-state-entries').values,[TENANT_ID]);
+});
+
+test('stored entitlement receipts translate legacy timestamps and preserve current nullable effectiveAt without replay writes',async()=>{
+  const operatorId='44444444-4444-4444-8444-444444444444',queries=[];
+  for (const entry of [
+    { capabilityId: 'microsoft.directory',enabled: true,updatedAt: NOW },
+    { capabilityId: 'microsoft.directory',enabled: false,effectiveAt: null },
+  ]) {
+    const client={ async query(command) { queries.push(command);return { rows: [{ request_digest: 'd'.repeat(64),
+      result: { entitlements: stateRecord('active',4,[entry]) } }] }; } };
+    const receipt=await findPlatformOperationReceipt(client,{ operatorId,operation: PLATFORM_OPERATION.ENTITLEMENT_APPLY,
+      tenantId: TENANT_ID,idempotencyKey: IDEMPOTENCY_KEY });
+    assert.deepEqual(receipt.result.entitlements.entries,[{ capabilityId: entry.capabilityId,enabled: entry.enabled,
+      effectiveAt: Object.hasOwn(entry,'effectiveAt') ? entry.effectiveAt : NOW }]);
+  }
+  assert.equal(queries.length,2);
+  for (const command of queries) assert.deepEqual(command.values,
+    [operatorId,PLATFORM_OPERATION.ENTITLEMENT_APPLY,TENANT_ID,IDEMPOTENCY_KEY]);
 });
