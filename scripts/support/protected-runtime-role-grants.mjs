@@ -238,3 +238,20 @@ async function grantIncrementalRuntimeRoles(pool,plan,{ expectedOfflineRole,audi
       roles: plan.roles,status: 'granted' });
   } catch { failed(); }
 }
+
+// Existing INT observability readers receive no write, Customer or administrative
+// authority. The checked incremental port retains ledger, audit and drain gates.
+export function platformObservabilityReadRoleGrantPlan(input) {
+  const base=platformAuditSegmentRoleGrantPlan(input),platform=identifier('cm_protected_int_platform');
+  const names=['platform_runtime_deployments','platform_runtime_tenant_mappings','platform_diagnostic_events',
+    'platform_metering_periods','platform_operational_quotas'];
+  const manifest=protectedRuntimeRoleManifest('platform');
+  if (names.some(name=>!manifest.tables.some(entry=>entry.name===name && entry.privileges.split(',').includes('SELECT')))) failed();
+  return Object.freeze({ ...base,statements: Object.freeze(names.map(name=>
+    `GRANT SELECT ON public.${identifier(name)} TO ${platform}`)) });
+}
+
+export async function grantPlatformObservabilityReadRuntimeRoles(pool,input,options={}) {
+  try { return await grantIncrementalRuntimeRoles(pool,platformObservabilityReadRoleGrantPlan(input),options); }
+  catch { failed(); }
+}
