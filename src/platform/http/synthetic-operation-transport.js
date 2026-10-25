@@ -34,6 +34,7 @@ export function createSyntheticOperationTransport({ assuranceMode='application_p
         const url=new URL(requirePlatformProviderAuthorizationUrl(result.authorizationUrl,runtime.platformEntraAuthority,{
           clientId: runtime.platformEntraClientId,redirectUri: platformOrigin+PLATFORM_MICROSOFT_OPERATION_CALLBACK,
           authenticationContext: 'cm:ms:fresh:v1',authenticationMaxAgeSeconds: 0,
+          expectedPrompt: 'login',
         }));
         if (url.searchParams.get('state')!==result.state
           || url.searchParams.get('redirect_uri')!==platformOrigin+PLATFORM_MICROSOFT_OPERATION_CALLBACK) invalid();
