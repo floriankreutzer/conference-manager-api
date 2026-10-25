@@ -137,7 +137,7 @@ export function protectPlatformExactOperationRoute(module, { authService,environ
             }
             const authorizationUrl=requirePlatformProviderAuthorizationUrl(started.authorizationUrl,runtime.platformEntraAuthority,{
               clientId: runtime.platformEntraClientId,redirectUri: runtime.platformPublicOrigin+PLATFORM_MICROSOFT_OPERATION_CALLBACK,
-              authenticationContext: 'cm:ms:fresh:v1',authenticationMaxAgeSeconds: 0,
+              authenticationContext: 'cm:ms:fresh:v1',authenticationMaxAgeSeconds: 300,
               expectedPrompt: 'login',
             });
             if (new URL(authorizationUrl).searchParams.get('state')!==started.state) {
