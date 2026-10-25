@@ -147,3 +147,17 @@ test('actual pre-booking service reaches the synthetic provider without inventin
   }
   await assert.rejects(provider.lookupAvailability({ ...input,requestId: undefined }),{ kind: 'validation' });
 });
+
+test('actual resubmission service forwards only the authorized existing Request ID to the synthetic provider',async()=>{
+  const f=fixture(),userId=randomUUID(),requestId=randomUUID();
+  const service=createRoomAvailabilityService({ authorizationPolicy: createAuthorizationPolicy(),calendarProviderFactory: f.factory,
+    repository: { async hasConflictingRequest(value) { assert.equal(value.excludeRequestId,requestId);return false; } },
+    requestRepository: { async findByTenantIdAndId() {
+      return { tenantId: binding.tenantId,id: requestId,requesterUserId: userId,status: 'Change Requested' };
+    } },entitlementService: { async requireAccess() { return true; } } });
+  await service.checkAvailability({ principal: { userId,tenantId: binding.tenantId,roles: ['employee'],
+    permissions: ['request:read','request:cancel'] },tenantContext: { tenantId: binding.tenantId,status: 'active' },
+  correlationId: randomUUID(),query: { roomId: binding.roomId,startsAt: input.startsAt,endsAt: input.endsAt,
+    resubmissionRequestId: requestId } });
+  assert.equal(f.calls.find(row=>row[0]==='availability')[2].requestId,requestId);
+});

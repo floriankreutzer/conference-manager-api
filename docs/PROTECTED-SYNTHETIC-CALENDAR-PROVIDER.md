@@ -28,7 +28,9 @@ added when an initial integration-contract dependency failed the boundary check.
 
 Availability accepts an absent Request ID for the pre-booking check and then
 compares every active event in the bound Tenant/generation/Integration/Room.
-When an existing Request ID is supplied, only that Request is excluded. The
+The application forwards an existing Request ID only after its authenticated
+owner/status resubmission checks; only that Request is then excluded. The public
+availability query still refuses an arbitrary requestId field. The
 normalized private availability command uses null for the absent identifier; SQL
 uses an explicit null-aware predicate. Create, update and cancel still require a
 valid Request ID. Availability reports a bounded conflict indicator. Validation uses that same result. Creation stores an actual event and
