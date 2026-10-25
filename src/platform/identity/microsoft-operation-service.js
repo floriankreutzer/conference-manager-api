@@ -17,6 +17,8 @@ const REJECTION_REASONS=new Map([
   ['PLATFORM_MICROSOFT_MFA_REQUIRED','mfa_missing'],
   ['PLATFORM_ENTRA_CODE_REDEMPTION_FAILED','exchange_failed'],
   ['PLATFORM_ENTRA_TOKEN_EXPIRED','token_expired'],
+  ['PLATFORM_ENTRA_TOKEN_EXPIRY_MISSING','expiry_missing'],
+  ['PLATFORM_ENTRA_TOKEN_EXPIRY_INVALID','expiry_invalid'],
 ]);
 const reject=()=>{ throw new PlatformIdentityError('PLATFORM_MICROSOFT_OPERATION_REJECTED'); };
 function instant(value) {
