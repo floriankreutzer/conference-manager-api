@@ -4,7 +4,8 @@ import { PLATFORM_OPERATION } from '../src/platform/application/platform-operati
 import { PlatformOperationConflictError } from '../src/platform/application/platform-operation-errors.js';
 import { createPlatformEntitlementOperationsService } from '../src/platform/application/entitlement-operations-service.js';
 import { createPostgresEntitlementRepository } from '../src/persistence/postgres/entitlement-repository.js';
-import { createPostgresPlatformEntitlementOperationsRepository } from '../src/persistence/postgres/platform-operations-repository.js';
+import { createPostgresPlatformEntitlementOperationsRepository,findPlatformOperationReceipt }
+  from '../src/persistence/postgres/platform-operations-repository.js';
 import { PLATFORM_PERMISSION } from '../src/platform/identity/policy.js';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -241,4 +242,22 @@ test('actual canonical and Platform repositories translate stored updatedAt into
   assert.equal(result.entitlements.entries.find(entry=>entry.capabilityId==='microsoft.directory').effectiveAt,NOW);
   assert.equal(result.entitlements.entries.some(entry=>Object.hasOwn(entry,'updatedAt')),false);
   assert.deepEqual(queries.find(command=>command.name==='entitlement-tenant-state-entries').values,[TENANT_ID]);
+});
+
+test('stored entitlement receipts translate legacy timestamps and preserve current nullable effectiveAt without replay writes',async()=>{
+  const operatorId='44444444-4444-4444-8444-444444444444',queries=[];
+  for (const entry of [
+    { capabilityId: 'microsoft.directory',enabled: true,updatedAt: NOW },
+    { capabilityId: 'microsoft.directory',enabled: false,effectiveAt: null },
+  ]) {
+    const client={ async query(command) { queries.push(command);return { rows: [{ request_digest: 'd'.repeat(64),
+      result: { entitlements: stateRecord('active',4,[entry]) } }] }; } };
+    const receipt=await findPlatformOperationReceipt(client,{ operatorId,operation: PLATFORM_OPERATION.ENTITLEMENT_APPLY,
+      tenantId: TENANT_ID,idempotencyKey: IDEMPOTENCY_KEY });
+    assert.deepEqual(receipt.result.entitlements.entries,[{ capabilityId: entry.capabilityId,enabled: entry.enabled,
+      effectiveAt: Object.hasOwn(entry,'effectiveAt') ? entry.effectiveAt : NOW }]);
+  }
+  assert.equal(queries.length,2);
+  for (const command of queries) assert.deepEqual(command.values,
+    [operatorId,PLATFORM_OPERATION.ENTITLEMENT_APPLY,TENANT_ID,IDEMPOTENCY_KEY]);
 });
