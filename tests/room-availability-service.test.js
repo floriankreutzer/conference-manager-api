@@ -127,6 +127,7 @@ test('resubmission availability excludes only the authenticated employee own cha
     'request', 'entitlement', 'local', 'provider', 'lookup',
   ]);
   assert.equal(calls[2][1].excludeRequestId, requestId);
+  assert.equal(calls[4][1].requestId, requestId);
 });
 
 test('resubmission availability conceals another employee or ineligible request before exclusion', async () => {
@@ -202,6 +203,7 @@ test('cross-Tenant, authority-shaped and unbounded availability inputs fail befo
     check(service, { query: { ...query, tenantId: TENANT_ID } }),
     AuthorizationInputError,
   );
+  await assert.rejects(check(service,{ query: { ...query,requestId: CORRELATION_ID } }),AuthorizationInputError);
   await assert.rejects(
     check(service, {
       query: {

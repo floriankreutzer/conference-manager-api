@@ -158,6 +158,7 @@ export function createRoomAvailabilityService({
           endsAt: normalized.endsAt,
           phase: 'provisional',
           correlationId,
+          ...(excludeRequestId===null ? {} : { requestId: excludeRequestId }),
         }));
       } catch (error) {
         if (error instanceof RoomAvailabilityUnavailableError) throw error;

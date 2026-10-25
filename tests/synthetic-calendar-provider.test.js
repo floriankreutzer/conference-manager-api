@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { createSyntheticCalendarProviderFactory } from '../src/integrations/synthetic-calendar-provider.js';
 import { createPostgresSyntheticCalendarRepository } from '../src/persistence/postgres/synthetic-calendar-repository.js';
+import { createRoomAvailabilityService } from '../src/application/room-availability-service.js';
+import { createAuthorizationPolicy } from '../src/authorization/policy.js';
 import { syntheticCalendarMetadata } from '../src/domain/synthetic-calendar.js';
 
 const binding={ tenantId: randomUUID(),roomId: 'room-01',integrationId: randomUUID(),generationId: randomUUID() };
@@ -120,4 +122,42 @@ test('an in-flight caller mutation cannot change the normalized update reference
   const mutable=changing(),result=provider.updateCalendarEvent(mutable);await seen;
   mutable.providerReference=`synthetic-event:${randomUUID()}`;release();
   assert.equal((await result).providerReference,reference);
+});
+
+test('actual pre-booking service reaches the synthetic provider without inventing a Request ID',async()=>{
+  const f=fixture(),principal={ userId: randomUUID(),tenantId: binding.tenantId,roles: ['employee'],
+    permissions: ['request:read','request:cancel'] };
+  const service=createRoomAvailabilityService({ authorizationPolicy: createAuthorizationPolicy(),calendarProviderFactory: f.factory,
+    repository: { async hasConflictingRequest() { return false; } },
+    requestRepository: { async findByTenantIdAndId() { assert.fail('NO_EXISTING_REQUEST'); } },
+    entitlementService: { async requireAccess() { return true; } } });
+  const query={ roomId: binding.roomId,startsAt: input.startsAt,endsAt: input.endsAt };
+  const check=()=>service.checkAvailability({ principal,tenantContext: { tenantId: binding.tenantId,status: 'active' },
+    correlationId: randomUUID(),query });
+  assert.deepEqual(await check(),{ available: true,conflictCount: 0 });
+  f.state.availability={ available: false,conflictCount: 1 };
+  assert.deepEqual(await check(),{ available: false,conflictCount: 1 });
+  for (const [name,,command] of f.calls.filter(row=>row[0]==='availability')) {
+    assert.equal(name,'availability');assert.equal(command.requestId,null);
+  }
+  const provider=await select(f);
+  for (const [name,value] of [['createCalendarEvent',creating()],['updateCalendarEvent',changing()],['cancelCalendarEvent',changing()]]) {
+    delete value.requestId;await assert.rejects(provider[name](value),{ kind: 'validation' });
+    await assert.rejects(provider[name]({ ...value,requestId: null }),{ kind: 'validation' });
+  }
+  await assert.rejects(provider.lookupAvailability({ ...input,requestId: undefined }),{ kind: 'validation' });
+});
+
+test('actual resubmission service forwards only the authorized existing Request ID to the synthetic provider',async()=>{
+  const f=fixture(),userId=randomUUID(),requestId=randomUUID();
+  const service=createRoomAvailabilityService({ authorizationPolicy: createAuthorizationPolicy(),calendarProviderFactory: f.factory,
+    repository: { async hasConflictingRequest(value) { assert.equal(value.excludeRequestId,requestId);return false; } },
+    requestRepository: { async findByTenantIdAndId() {
+      return { tenantId: binding.tenantId,id: requestId,requesterUserId: userId,status: 'Change Requested' };
+    } },entitlementService: { async requireAccess() { return true; } } });
+  await service.checkAvailability({ principal: { userId,tenantId: binding.tenantId,roles: ['employee'],
+    permissions: ['request:read','request:cancel'] },tenantContext: { tenantId: binding.tenantId,status: 'active' },
+  correlationId: randomUUID(),query: { roomId: binding.roomId,startsAt: input.startsAt,endsAt: input.endsAt,
+    resubmissionRequestId: requestId } });
+  assert.equal(f.calls.find(row=>row[0]==='availability')[2].requestId,requestId);
 });

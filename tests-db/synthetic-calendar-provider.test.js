@@ -71,12 +71,15 @@ async t=>{
   const create=(index=0,day='01',key=randomBytes(32).toString('hex'))=>({ ...input(index,day),idempotencyKey: key,
     providerResourceReference: a.providerResourceReference });
   const operation=(runtime,provider,name,value)=>runtime.scopes.withShared(()=>provider[name](value));
+  const prebooking=()=>{ const value=input(0);delete value.requestId;return value; };
+  assert.deepEqual(await operation(first,a,'lookupAvailability',prebooking()),{ available: true,conflictCount: 0 });
   const shared=create();
   const repeated=await Promise.all([operation(first,a,'createCalendarEvent',shared),operation(second,b,'createCalendarEvent',shared)]);
   assert.deepEqual(repeated.map(row=>row.disposition).sort(),['created','existing']);
   assert.equal(repeated[0].providerReference,repeated[1].providerReference);
   assert.equal((await operation(first,a,'createCalendarEvent',shared)).disposition,'existing');
   assert.deepEqual(await operation(first,a,'lookupAvailability',input(1)),{ available: false,conflictCount: 1 });
+  assert.deepEqual(await operation(first,a,'lookupAvailability',prebooking()),{ available: false,conflictCount: 1 });
   assert.deepEqual(await operation(first,a,'validateReservation',input(0)),{ valid: true,reason: 'available' });
   await assert.rejects(operation(second,b,'createCalendarEvent',create(1)),{ kind: 'conflict' });
   const event=repeated[0].providerReference;
@@ -84,6 +87,7 @@ async t=>{
   assert.equal((await operation(first,a,'updateCalendarEvent',change)).disposition,'updated');
   assert.equal((await operation(first,a,'updateCalendarEvent',change)).disposition,'unchanged');
   assert.deepEqual(await operation(first,a,'lookupAvailability',input(1)),{ available: true,conflictCount: 0 });
+  assert.deepEqual(await operation(first,a,'lookupAvailability',prebooking()),{ available: true,conflictCount: 0 });
   await operation(second,b,'createCalendarEvent',create(1));
   assert.equal((await operation(first,a,'cancelCalendarEvent',change)).disposition,'cancelled');
   assert.equal((await operation(first,a,'cancelCalendarEvent',change)).disposition,'already_cancelled');
