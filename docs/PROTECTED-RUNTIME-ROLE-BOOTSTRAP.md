@@ -52,8 +52,12 @@ any qualifying query.
 
 Customer business statements retain ordinary canonical authorization and Tenant
 scoping. Append-only history receives SELECT/INSERT rather than mutation rights.
-Customer cannot modify Platform identity, sessions, keys, proofs or audit, or the
-protected deployment/classification/generation history. Its delegated-session
+`request_workflow_starts` additionally grants UPDATE only on `status`, `ended_at`,
+`request_id` and `submission_fingerprint`, the columns required to lock and complete
+or abandon a started workflow. Workflow identity, owner, idempotency key, start time
+and Tenant remain immutable to the Customer role. Customer cannot modify Platform
+identity, sessions, keys, proofs or audit, or the protected deployment/classification/
+generation history. Its delegated-session
 reader receives only the exact necessary Platform columns; it cannot read source
 session hashes or public-key/credential material. The schema062 boolean source
 lock port replaces direct Platform row-lock privilege. Both existing061 trigger
@@ -139,3 +143,23 @@ signed audit segment, catalog owner, nonelevated roles and both-role drain check
 The fresh-role manifest includes the same minimal read contract. Existing roles
 must use the incremental action, never rerun the fresh installer. Code validation
 and native restricted-role CI do not themselves prove a live grant or UI recovery.
+
+
+## Existing INT Customer request workflows
+
+The Customer manifest grants `request_workflow_starts` SELECT/INSERT plus
+column-limited UPDATE on `status`, `ended_at`, `request_id` and
+`submission_fingerprint`. The workflow repository locks a started row and changes
+only those lifecycle fields. Owner, Tenant, workflow ID, idempotency key and start
+time remain outside the UPDATE grant.
+
+For already-created INT roles, use only the
+`customer_request_workflows` operation in the existing
+`protected-int-audit-segment.yml` workflow. The fixed action checks the exact Main
+source, current schema ledger, deployment epoch, signed audit segment, source-bound
+recovery/custody evidence, closed services and zero active connections on both
+runtime roles. It applies one Customer-column grant, performs no migration, reset
+or service activation, and emits no private operation record to public logs.
+Never rerun the fresh-role installer on existing roles. This source procedure does
+not itself prove that the live operation has been executed or that a new booking
+has been accepted through the deployed application.

@@ -61,6 +61,13 @@ async t=>{
   await assert.rejects(grantProtectedRuntimeRoles(pool,protection),{ message: 'PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED' });
   const restricted=restrictedPool(business,created[0]),restrictedLease=restrictedPool(lease,created[0]);
   const platform=restrictedPool(business,created[1]);
+  const workflowLock=await restricted.query(`SELECT id FROM request_workflow_starts WHERE false FOR UPDATE`);
+  assert.equal(workflowLock.rowCount,0);
+  const workflowUpdate=await restricted.query(`UPDATE request_workflow_starts
+    SET status='abandoned',ended_at=clock_timestamp(),request_id=id::text,submission_fingerprint=repeat('0',64)
+    WHERE false`);
+  assert.equal(workflowUpdate.rowCount,0);
+  await assert.rejects(restricted.query('UPDATE request_workflow_starts SET id=id WHERE false'),{ code: '42501' });
   for (const [surface,selected] of [['customer',restricted],['platform',platform]]) {
     assert.equal(await createPostgresProtectedRuntimeReadiness(selected,{ ...protection,surface,
       leasePool: restrictedPool(lease,`cm_protected_int_${surface}`) }).isReady(),true);

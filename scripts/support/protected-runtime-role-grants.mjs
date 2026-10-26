@@ -137,6 +137,23 @@ export async function grantCustomerMicrosoftGroupRuntimeRoles(pool,input,options
   catch { failed(); }
 }
 
+// Existing INT Customer needs only the mutable lifecycle columns on started request workflows.
+export function customerRequestWorkflowRoleGrantPlan(input) {
+  const base=platformAuditSegmentRoleGrantPlan(input),customer=identifier('cm_protected_int_customer');
+  const entries=protectedRuntimeRoleManifest('customer').tables.filter(entry=>entry.name==='request_workflow_starts'
+    && entry.privileges.startsWith('UPDATE('));
+  if (entries.length!==1
+    || entries[0].privileges!=='UPDATE(status,ended_at,request_id,submission_fingerprint)') failed();
+  return Object.freeze({ ...base,statements: Object.freeze([
+    `GRANT ${entries[0].privileges} ON public.${identifier(entries[0].name)} TO ${customer}`,
+  ]) });
+}
+
+export async function grantCustomerRequestWorkflowRuntimeRoles(pool,input,options={}) {
+  try { return await grantIncrementalRuntimeRoles(pool,customerRequestWorkflowRoleGrantPlan(input),options); }
+  catch { failed(); }
+}
+
 // Existing roles receive only the private Platform proof table after070.
 export function platformMicrosoftOperationRoleGrantPlan(input) {
   const base=platformAuditSegmentRoleGrantPlan(input),platform=identifier('cm_protected_int_platform');

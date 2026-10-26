@@ -41,6 +41,7 @@ function columns(name,privilege,names) { return table(name,`${privilege}(${names
 export function protectedRuntimeRoleManifest(surface) {
   if (!['customer','platform'].includes(surface)) throw new TypeError('PROTECTED_ROLE_SURFACE_INVALID');
   const tables=[...BUSINESS.map(name=>table(name,CRUD)),...HISTORY.map(name=>table(name,'SELECT,INSERT')),
+    ...(surface==='customer' ? [columns('request_workflow_starts','UPDATE','status,ended_at,request_id,submission_fingerprint')] : []),
     ...READ.map(name=>table(name,'SELECT')),...MEMBERSHIP.map(name=>table(name,'SELECT,INSERT,UPDATE')),
     table('users',CRUD),table('customer_access_commands','SELECT,INSERT'),table('tenant_entitlements','SELECT'),
     table('media_object_inventory','SELECT,INSERT'),columns('media_object_inventory','UPDATE','object_key'),

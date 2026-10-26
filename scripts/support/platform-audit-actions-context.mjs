@@ -1,6 +1,7 @@
 import { normalizePlatformAuditSegmentRequest } from '../../src/operator/platform-audit-segment-request.js';
 import { platformAuditSegmentRoleGrantPlan,customerMicrosoftGroupRoleGrantPlan,platformMicrosoftOperationRoleGrantPlan,
-  syntheticMicrosoftCustodyRoleGrantPlan,ownerCustomerCustodyRoleGrantPlan,platformObservabilityReadRoleGrantPlan }
+  syntheticMicrosoftCustodyRoleGrantPlan,ownerCustomerCustodyRoleGrantPlan,platformObservabilityReadRoleGrantPlan,
+  customerRequestWorkflowRoleGrantPlan }
   from './protected-runtime-role-grants.mjs';
 import { requireOwnerMainActionsContext } from './owner-main-actions-context.mjs';
 
@@ -19,8 +20,9 @@ function exact(value, keys) {
 export function requirePlatformAuditActionsContext(env) {
   try {
     requireOwnerMainActionsContext(env, 'protected-int-audit-segment.yml');
-    if (!['initialize', 'grants', 'customer_groups', 'microsoft_operations', 'synthetic_microsoft', 'owner_customer', 'observability_reads']
-      .includes(env.INT_AUDIT_OPERATION)) refuse();
+    const operations=['initialize', 'grants', 'customer_groups', 'microsoft_operations', 'synthetic_microsoft',
+      'owner_customer', 'observability_reads', 'customer_request_workflows'];
+    if (!operations.includes(env.INT_AUDIT_OPERATION)) refuse();
     const expected = json(env.CM_INT_AUDIT_EXPECTED_JSON);
     // Reuse the canonical closed request validator for independent expected values.
     const request = json(env.CM_INT_AUDIT_REQUEST_JSON);
@@ -30,7 +32,8 @@ export function requirePlatformAuditActionsContext(env) {
         correlationId: expected.segmentId }, expected);
       const plans={ customer_groups: customerMicrosoftGroupRoleGrantPlan,grants: platformAuditSegmentRoleGrantPlan,
         microsoft_operations: platformMicrosoftOperationRoleGrantPlan,synthetic_microsoft: syntheticMicrosoftCustodyRoleGrantPlan,
-        owner_customer: ownerCustomerCustodyRoleGrantPlan,observability_reads: platformObservabilityReadRoleGrantPlan };
+        owner_customer: ownerCustomerCustodyRoleGrantPlan,observability_reads: platformObservabilityReadRoleGrantPlan,
+        customer_request_workflows: customerRequestWorkflowRoleGrantPlan };
       const plan=plans[env.INT_AUDIT_OPERATION](request);
       if (request.environment !== 'int' || plan.segmentId !== expected.segmentId
         || request.securityEpoch !== expected.deploymentEpoch) refuse();
