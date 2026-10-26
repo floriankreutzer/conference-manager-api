@@ -85,7 +85,8 @@ test('operator plan preserves per-surface proof custody and offline enrollment w
     const workflowGrants=customer.statements.filter(sql=>sql.includes('public."request_workflow_starts"'));
     assert.deepEqual(workflowGrants,[
       'GRANT SELECT,INSERT ON public."request_workflow_starts" TO "cm_protected_'+environment+'_customer"',
-      'GRANT UPDATE(status,ended_at,request_id,submission_fingerprint) ON public."request_workflow_starts" TO "cm_protected_'+environment+'_customer"',
+      'GRANT UPDATE(status,ended_at,request_id,submission_fingerprint) '
+        +'ON public."request_workflow_starts" TO "cm_protected_'+environment+'_customer"',
     ]);
     assert.equal(customer.role,`cm_protected_${environment}_customer`);
     assert.equal(platform.role,`cm_protected_${environment}_platform`);
