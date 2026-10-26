@@ -43,7 +43,7 @@ test('Actions gate refuses replay, other actors, source, debug logging, environm
     { PLATFORM_AUDIT_SEGMENT_ID: expected.segmentId.toUpperCase() },
   ];
   for (const operation of ['initialize', 'grants', 'customer_groups', 'microsoft_operations',
-    'synthetic_microsoft', 'owner_customer', 'observability_reads']) {
+    'synthetic_microsoft', 'owner_customer', 'observability_reads', 'customer_request_workflows']) {
     for (const patch of invalid) assert.throws(() => requirePlatformAuditActionsContext({ ...context(operation), ...patch }),
       { message: 'PLATFORM_AUDIT_ACTIONS_REFUSED' });
     for (const patch of [{ sourceSha: 'c'.repeat(40) }, { environment: 'prod' }, { servicesClosed: false },
@@ -77,7 +77,7 @@ test('public workflow logs omit actual FD3 metadata and private CLI output; a re
       'if [[ "$1" == scripts/platform-audit-actions-guard.mjs ]]; then exec "$REAL_NODE" "$@"; fi\n' +
       'exec "$REAL_NODE" "$TEST_OFFLINE" "$@"\n', { mode: 0o700 });
     for (const operation of ['initialize', 'grants', 'customer_groups', 'microsoft_operations',
-    'synthetic_microsoft', 'owner_customer', 'observability_reads']) {
+    'synthetic_microsoft', 'owner_customer', 'observability_reads', 'customer_request_workflows']) {
       const env = { ...context(operation), PATH: `${directory}:/usr/bin:/bin`, REAL_NODE: process.execPath,
         TEST_OFFLINE: fake, TEST_MARKER: marker };
       const result = spawnSync('bash', ['-c', command], { env, encoding: 'utf8' });
