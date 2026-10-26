@@ -52,8 +52,12 @@ any qualifying query.
 
 Customer business statements retain ordinary canonical authorization and Tenant
 scoping. Append-only history receives SELECT/INSERT rather than mutation rights.
-Customer cannot modify Platform identity, sessions, keys, proofs or audit, or the
-protected deployment/classification/generation history. Its delegated-session
+`request_workflow_starts` additionally grants UPDATE only on `status`, `ended_at`,
+`request_id` and `submission_fingerprint`, the columns required to lock and complete
+or abandon a started workflow. Workflow identity, owner, idempotency key, start time
+and Tenant remain immutable to the Customer role. Customer cannot modify Platform
+identity, sessions, keys, proofs or audit, or the protected deployment/classification/
+generation history. Its delegated-session
 reader receives only the exact necessary Platform columns; it cannot read source
 session hashes or public-key/credential material. The schema062 boolean source
 lock port replaces direct Platform row-lock privilege. Both existing061 trigger
