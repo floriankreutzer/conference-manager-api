@@ -65,6 +65,11 @@ test('operator plan preserves per-surface proof custody and offline enrollment w
     const plan=protectedRuntimeRoleGrantPlan({ environment,securityEpoch: epoch });
     assert.ok(Object.isFrozen(plan));assert.equal(plan.schemaVersion,72);
     const customer=plan.roles[0],platform=plan.roles[1];
+    const workflowGrants=customer.statements.filter(sql=>sql.includes('public."request_workflow_starts"'));
+    assert.deepEqual(workflowGrants,[
+      'GRANT SELECT,INSERT ON public."request_workflow_starts" TO "cm_protected_'+environment+'_customer"',
+      'GRANT UPDATE(status,ended_at,request_id,submission_fingerprint) ON public."request_workflow_starts" TO "cm_protected_'+environment+'_customer"',
+    ]);
     assert.equal(customer.role,`cm_protected_${environment}_customer`);
     assert.equal(platform.role,`cm_protected_${environment}_platform`);
     assert.ok(Object.isFrozen(customer.statements));
