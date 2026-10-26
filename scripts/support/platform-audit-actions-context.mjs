@@ -20,8 +20,9 @@ function exact(value, keys) {
 export function requirePlatformAuditActionsContext(env) {
   try {
     requireOwnerMainActionsContext(env, 'protected-int-audit-segment.yml');
-    if (!['initialize', 'grants', 'customer_groups', 'microsoft_operations', 'synthetic_microsoft', 'owner_customer', 'observability_reads', 'customer_request_workflows']
-      .includes(env.INT_AUDIT_OPERATION)) refuse();
+    const operations=['initialize', 'grants', 'customer_groups', 'microsoft_operations', 'synthetic_microsoft',
+      'owner_customer', 'observability_reads', 'customer_request_workflows'];
+    if (!operations.includes(env.INT_AUDIT_OPERATION)) refuse();
     const expected = json(env.CM_INT_AUDIT_EXPECTED_JSON);
     // Reuse the canonical closed request validator for independent expected values.
     const request = json(env.CM_INT_AUDIT_REQUEST_JSON);
