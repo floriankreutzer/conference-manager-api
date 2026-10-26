@@ -4,7 +4,8 @@ import { protectedRuntimeRoleGrantPlan,grantProtectedRuntimeRoles,platformAuditS
   grantPlatformAuditSegmentRuntimeRoles,customerMicrosoftGroupRoleGrantPlan,grantCustomerMicrosoftGroupRuntimeRoles,
   platformMicrosoftOperationRoleGrantPlan,grantPlatformMicrosoftOperationRuntimeRoles,syntheticMicrosoftCustodyRoleGrantPlan,
   ownerCustomerCustodyRoleGrantPlan,
-  grantOwnerCustomerCustodyRuntimeRoles,platformObservabilityReadRoleGrantPlan,grantPlatformObservabilityReadRuntimeRoles }
+  grantOwnerCustomerCustodyRuntimeRoles,platformObservabilityReadRoleGrantPlan,grantPlatformObservabilityReadRuntimeRoles,
+  customerRequestWorkflowRoleGrantPlan,grantCustomerRequestWorkflowRuntimeRoles }
   from '../scripts/support/protected-runtime-role-grants.mjs';
 import { architectureConsolidationBoundaryViolations } from '../scripts/check-module-boundaries.mjs';
 
@@ -21,6 +22,22 @@ test('existing INT Microsoft operation grants are fixed Platform CRUD without Cu
     { ...input,statements: [] },{ ...input,get securityEpoch() { throw new Error('private-accessor'); } }]) {
     assert.throws(()=>platformMicrosoftOperationRoleGrantPlan(invalid),{ message: 'PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED' });
     await assert.rejects(grantPlatformMicrosoftOperationRuntimeRoles(pool,invalid),
+      { message: 'PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED' });
+  }
+  assert.equal(connected,false);
+});
+test('existing INT request workflow delta grants only the required Customer lifecycle columns',async()=>{
+  const input={ environment: 'int',securityEpoch: epoch,segmentId: 'be000000-0000-4000-8000-000000000002' };
+  const plan=customerRequestWorkflowRoleGrantPlan(input);
+  assert.deepEqual(plan.statements,[
+    'GRANT UPDATE(status,ended_at,request_id,submission_fingerprint) ON public."request_workflow_starts" TO "cm_protected_int_customer"',
+  ]);
+  assert.ok(Object.isFrozen(plan.statements));
+  let connected=false;const pool={ async connect() { connected=true;throw new Error('private-driver-detail'); } };
+  for (const invalid of [{ ...input,environment: 'prod' },{ ...input,role: 'platform' },{ ...input,statements: [] },
+    { ...input,segmentId: 'private' },{ ...input,get securityEpoch() { throw new Error('private-accessor'); } }]) {
+    assert.throws(()=>customerRequestWorkflowRoleGrantPlan(invalid),{ message: 'PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED' });
+    await assert.rejects(grantCustomerRequestWorkflowRuntimeRoles(pool,invalid),
       { message: 'PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED' });
   }
   assert.equal(connected,false);
