@@ -89,8 +89,8 @@ test('public workflow logs omit actual FD3 metadata and private CLI output; a re
           ? /customer-microsoft-group-runtime-grants/ : operation === 'microsoft_operations'
             ? /platform-microsoft-operation-runtime-grants/ : operation === 'synthetic_microsoft'
               ? /synthetic-microsoft-custody-runtime-grants/ : operation === 'owner_customer'
-                ? /owner-customer-custody-runtime-grants/ : operation === 'observability_reads' ? /platform-observability-read-runtime-grants/
-                : /customer-request-workflow-runtime-grants/);
+                ? /owner-customer-custody-runtime-grants/ : operation === 'observability_reads'
+                  ? /platform-observability-read-runtime-grants/ : /customer-request-workflow-runtime-grants/);
       rmSync(marker);
       const failed = spawnSync('bash', ['-c', command], { env: { ...env, TEST_EXIT: '1' }, encoding: 'utf8' });
       assert.equal(failed.status, 1); assert.equal(failed.stdout, ''); rmSync(marker);
