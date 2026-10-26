@@ -16,9 +16,9 @@ try {
   const audit=createPostgresPlatformAuditRepository(pool,{ hmacSecret: config.auditHmacSecret,
     segment: { id: plan.segmentId,environment: 'int',deploymentEpoch: plan.securityEpoch } });
   process.stdout.write(JSON.stringify(await grantCustomerRequestWorkflowRuntimeRoles(pool,request,
-    { expectedOfflineRole: config.expectedOfflineRole,auditRepository: audit }))+'\\n');
+    { expectedOfflineRole: config.expectedOfflineRole,auditRepository: audit }))+'\n');
 } catch {
-  process.stderr.write('PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED\\n');process.exitCode=1;
+  process.stderr.write('PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED\n');process.exitCode=1;
 } finally {
   try { await pool?.end(); } catch { process.exitCode=1; }
 }
