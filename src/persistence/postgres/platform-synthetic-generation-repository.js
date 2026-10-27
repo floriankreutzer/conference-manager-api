@@ -88,6 +88,18 @@ export function createPostgresSyntheticGenerationRepository(pool,{ environment,s
       WHERE registry.environment=$1 AND registry.mode='synthetic' AND registry.operator_id=$2 AND registry.generation_id=$3
       ORDER BY registry.slot FOR UPDATE OF tenant`,values: [environment,principal.operatorId,generation.id] });
     if (rows.rowCount!==3 || new Set(rows.rows.map(row=>row.slot)).size!==3) denied();
+    // Replacement allocates new Tenant IDs. Retaining the old rows alone cannot
+    // preserve invited people's access. Until reviewed membership continuity is
+    // available, reject before any lifecycle/session/audit mutation, including
+    // for pending or revoked invitation history. The enclosing exclusive scope
+    // excludes protected invitation/admission work for this deployment.
+    const participants=await client.query({ name: 'synthetic-generation-invited-participants',text: `SELECT EXISTS (
+      SELECT 1 FROM customer_access_memberships membership JOIN tenant_runtime_registry registry
+        ON registry.environment=membership.environment AND registry.tenant_id=membership.tenant_id
+      WHERE registry.environment=$1 AND registry.mode='synthetic'
+        AND registry.operator_id=$2 AND registry.generation_id=$3) AS present`,
+    values: [environment,principal.operatorId,generation.id] });
+    if (participants.rowCount!==1 || participants.rows[0].present!==false) denied('SYNTHETIC_GENERATION_DENIED');
     for (const row of rows.rows) {
       const revision=Number(row.lifecycle_revision),tenantId=row.tenant_id;
       requireOwnedSyntheticTenantArchival({ environment,operatorId: principal.operatorId,generationId: generation.id },

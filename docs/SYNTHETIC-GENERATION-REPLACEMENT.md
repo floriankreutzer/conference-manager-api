@@ -1,10 +1,49 @@
 # Owned synthetic generation replacement
 
-This private service/repository is uncomposed and not deployed. PostgreSQL native
-acceptance of this source is required before accepting the component. It does
-not implement the browser handoff, delegated Customer session admission, provider
-simulation, concrete protected roots or complete protected browser progression.
-Those remain under SaaS1 issue351; permanent closed Demo acceptance remains separate.
+## Current source and participant safety
+
+Generation replacement is composed into the protected DEV/INT roots. The selected
+Microsoft-managed MFA profile uses a fresh, one-use, exact-operation Microsoft
+proof; it does not require application passkey enrollment. The legacy application
+passkey profile remains separately tested. A source change is not evidence that
+the corresponding Hosted deployment has been updated.
+
+Replacement allocates fresh internal Tenant IDs. Preserving old database rows
+alone would leave invited people attached to archived Tenants. Until a reviewed
+membership-continuity implementation exists, the repository therefore rejects
+replacement when any canonical `customer_access_memberships` row belongs to the
+owner's generation being archived. Pending, accepted, revoked-invitation and
+disabled-User history all block replacement. Original invitation roles are never
+copied back into current authorization, and no membership is moved or deleted.
+
+The check runs after locking the three owned Tenants and before any lifecycle,
+Customer-session, generation, business-data or Tenant-audit mutation, inside the
+existing owner-stamped exclusive proof transaction. Protected invitation and
+admission work use the mutually exclusive shared deployment lease. The existing
+concealed `PLATFORM_SYNTHETIC_GENERATION_DENIED` HTTP403 contract applies; no
+recipient, membership count or foreign-Tenant existence is exposed. Real-Tenant
+and foreign-owner memberships do not block an otherwise eligible empty owned
+generation. Initial creation and normal replacement without invited participants
+retain the existing cooldown, retention, proof and regression requirements.
+
+The native integration test uses actual canonical encrypted invitation/admission
+custody in an isolated database, including a pending invitation, a revoked
+invitation and an accepted then disabled User. It checks unchanged authoritative
+state and current sessions after denial, and successful replacement of a separate
+empty generation under Microsoft exact-operation proof with zero app passkeys.
+Its base invitation fixture deliberately exercises storage safety without enabling
+protected Demo invitation eligibility or sending real mail.
+
+This guard is a safety prerequisite. It does not implement invited Demo login,
+cross-generation identity/role continuity, sender configuration or real delivery
+acceptance. SaaS1 issues351–353 remain open for their full scope. Protected-root
+and permanent closed Demo acceptance remain distinct release requirements.
+
+## Historical initial component scope
+
+The following records the original standalone component and its application
+passkey profile. Its former uncomposed status and two-credential requirement do
+not describe the selected current Microsoft-managed MFA composition above.
 
 ## Authority and transaction
 
