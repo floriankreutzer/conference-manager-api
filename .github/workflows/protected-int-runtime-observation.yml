@@ -1,0 +1,105 @@
+name: Observe existing protected INT deployments
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_main_sha:
+        description: Exact qualified observer and deployed API Main commit
+        required: true
+        type: string
+      selection_json:
+        description: Reviewed public deployment metadata only; no secrets, epoch or tenant selectors
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosted-shared-demo-database-initialize
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+      inputs.expected_main_sha == github.sha && github.actor == 'floriankreutzer' &&
+      github.triggering_actor == 'floriankreutzer' && github.run_attempt == 1
+    environment:
+      name: hosted-demo-initialize
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require ordinary logging before secret allocation
+        env:
+          ACTIONS_STEP_DEBUG: ${{ secrets.ACTIONS_STEP_DEBUG }}
+          ACTIONS_RUNNER_DEBUG: ${{ secrets.ACTIONS_RUNNER_DEBUG }}
+        run: test -z "${RUNNER_DEBUG:-}${ACTIONS_STEP_DEBUG:-}${ACTIONS_RUNNER_DEBUG:-}"
+      - name: Checkout exact accepted observer Main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Validate source and deployment selection without operator credentials
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          SELECTION_JSON: ${{ inputs.selection_json }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { requireOwnerMainActionsContext } from './scripts/support/owner-main-actions-context.mjs';
+          import { normalizeRuntimeObservationSelection } from './scripts/support/protected-runtime-observation-plan.mjs';
+          try {
+            requireOwnerMainActionsContext(process.env, 'protected-int-runtime-observation.yml');
+            if (Buffer.byteLength(process.env.SELECTION_JSON || '') > 4096) throw new Error('REFUSED');
+            const selection = normalizeRuntimeObservationSelection(JSON.parse(process.env.SELECTION_JSON));
+            if (selection.apiCommit !== process.env.GITHUB_SHA || execFileSync('git', ['rev-parse', 'HEAD'],
+              { encoding: 'utf8' }).trim() !== process.env.GITHUB_SHA) throw new Error('REFUSED');
+          } catch { process.stderr.write('PROTECTED_RUNTIME_OBSERVATION_REFUSED\n');process.exitCode = 1; }
+          NODE
+      - name: Checkout immutable qualified frontend
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: floriankreutzer/conference-manager
+          ref: ${{ fromJson(inputs.selection_json).frontendCommit }}
+          path: .runtime-observation-source
+          persist-credentials: false
+      - name: Install locked observer dependencies without operator credentials
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Rebuild sealed immutable frontend bytes without operator credentials
+        env:
+          SELECTION_JSON: ${{ inputs.selection_json }}
+        run: |
+          node --input-type=module <<'NODE'
+          import path from 'node:path';
+          import { execFileSync } from 'node:child_process';
+          import { normalizeRuntimeObservationSelection, PROTECTED_OBSERVATION_ORIGINS } from './scripts/support/protected-runtime-observation-plan.mjs';
+          const selection = normalizeRuntimeObservationSelection(JSON.parse(process.env.SELECTION_JSON));
+          execFileSync(process.execPath, ['scripts/build-protected-frontend.mjs', path.resolve('.runtime-observation-frontend')], {
+            cwd: '.runtime-observation-source', stdio: 'inherit', timeout: 60000,
+            env: { ...process.env, PROTECTED_ENVIRONMENT: 'int', PROTECTED_API_COMMIT: selection.apiCommit,
+              PROTECTED_FRONTEND_COMMIT: selection.frontendCommit, PROTECTED_SYNTHETIC_ENABLED: 'true',
+              PROTECTED_CUSTOMER_ORIGIN: PROTECTED_OBSERVATION_ORIGINS.customer,
+              PROTECTED_PLATFORM_ORIGIN: PROTECTED_OBSERVATION_ORIGINS.platform,
+              PROTECTED_PRESENTATION_MICROSOFT_ENABLED: 'true', PROTECTED_PRESENTATION_INVITATIONS_ENABLED: 'true',
+              PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED: 'true' },
+          });
+          NODE
+      - name: Collect actual fixed-origin bytes and health then reconcile exact current INT routing
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          SELECTION_JSON: ${{ inputs.selection_json }}
+          PLATFORM_PASSKEY_OFFLINE_ROLE: ${{ secrets.CM_INT_AUDIT_OFFLINE_ROLE }}
+          PLATFORM_PASSKEY_OFFLINE_DATABASE_URL: ${{ secrets.CM_INT_AUDIT_OFFLINE_DATABASE_URL }}
+          PLATFORM_DATABASE_URL: ${{ secrets.CM_INT_AUDIT_PLATFORM_DATABASE_URL }}
+          PROTECTED_OBSERVATION_SECURITY_EPOCH: ${{ secrets.CM_INT_AUDIT_DEPLOYMENT_EPOCH }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_MAIN_SHA"
+          git diff --exit-code HEAD -- .
+          node scripts/protected-runtime-observe.mjs 3<<<"$SELECTION_JSON"

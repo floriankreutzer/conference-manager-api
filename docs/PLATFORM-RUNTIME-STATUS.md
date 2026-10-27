@@ -42,8 +42,11 @@ browser- or operator-mutable deployment authority. There is no Platform HTTP mut
 sole permitted writer is the protected deployment reconciliation process owned by the approved
 topology: it derives records from protected deployment configuration, observed frontend and API
 build metadata, the existing API health owner, exact PostgreSQL schema readiness, the authoritative
-Tenant-routing topology and approved evidence references. Provisioning that writer and its values is
-blocked on issue #113; SQL entered by an operator or browser payload is not an acceptable substitute.
+Tenant-routing topology and approved evidence references. The existing two-service protected INT
+collector/writer is described in [Protected Runtime Observation](PROTECTED-RUNTIME-OBSERVATION.md).
+Its source, deployment and actual collection acceptance remain distinct; production topology and
+continuous collection remain owned by #113. SQL entered by an operator or browser payload is not an
+acceptable substitute.
 
 `platform_runtime_deployments` identifies one approved environment/deployment observation;
 `platform_runtime_tenant_mappings` is only a materialized copy of the routing owner's mapping. A
