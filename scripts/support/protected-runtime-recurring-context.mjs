@@ -36,6 +36,8 @@ export async function readRecurringRuntimeObservationSelection() {
   try {
     const buffer = Buffer.alloc(4097), { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
     if (bytesRead < 1 || bytesRead > 4096) refuseRuntimeObservation();
-    return normalizeRuntimeObservationSelection(JSON.parse(buffer.subarray(0, bytesRead).toString('utf8')));
+    const { deployedSourceCommit, ...selection } = JSON.parse(buffer.subarray(0, bytesRead).toString('utf8'));
+    if (Object.hasOwn(selection, 'apiCommit')) refuseRuntimeObservation();
+    return normalizeRuntimeObservationSelection({ ...selection, apiCommit: deployedSourceCommit });
   } finally { await handle.close(); }
 }

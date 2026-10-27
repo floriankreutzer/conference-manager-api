@@ -49,8 +49,9 @@ test('daily local window preserves exact boundaries across winter, summer and DS
 
 test('fixed reviewed deployments remain independent from qualified observer source; no invented optional evidence', async () => {
   const selection = await readRecurringRuntimeObservationSelection();
+  const deployedSource = 'c1248c43ff80ab1f1b92af080963d496a215d693';
   assert.equal(selection.environment, 'int');
-  assert.equal(selection.apiCommit, 'c1248c43ff80ab1f1b92af080963d496a215d693');
+  assert.equal(selection.apiCommit, deployedSource);
   assert.notEqual(selection.apiCommit, source);
   assert.equal(selection.frontendCommit, '2667b0b6df74ffa2632fce4be6f95ef8ef8103ac');
   assert.notEqual(selection.customer.deploymentReference, selection.platform.deploymentReference);
