@@ -343,6 +343,13 @@ Performance work must not weaken security, correctness, data integrity, or obser
 Update documentation when a change alters architecture, trust boundaries, API contracts, authorization, persistence, migrations, identity/session behavior, integrations, security configuration, observability, or operational requirements.
 
 - Keep documentation aligned with executable behavior.
+
+- For actual browser-facing HTML or hosted frontend asset work, consult the
+  [canonical frontend icon/Microsoft reference](https://github.com/floriankreutzer/conference-manager/blob/main/docs/ICON-SYSTEM.md)
+  and the frontend's current source/version. This does not impose icons on API
+  contracts, JSON responses, backend services or neutral protocol completion
+  pages. Vendor-control presentation never changes authentication authority or
+  overrides this repository's security, artifact and acceptance gates.
 - State limitations and residual risks explicitly.
 - Do not claim controls that are only planned or partially implemented.
 - Architecture/security PRs must describe responsibility changes, trust-boundary impact, data/migration impact, regression impact, tests, security impact, and architecture-gate impact.
