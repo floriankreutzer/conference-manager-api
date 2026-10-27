@@ -82,6 +82,19 @@ transactions. No active WebAuthn service, enrollment route, key secret or
 minimum-credential requirement is constructed in this profile. CSP, COOP,
 same-origin, no-store and no-referrer policies remain unchanged.
 
+## Presentation reference boundary
+
+The originating frontend's planned Microsoft control follows its
+[canonical brand reference](https://github.com/floriankreutzer/conference-manager/blob/main/docs/ICON-SYSTEM.md#microsoft-authentication-control),
+with unchanged vendor assets and localized customer/action/purpose/return context.
+This is presentation guidance, not an extension of Microsoft proof authority.
+The API login routes redirect to the provider; the API-owned `/complete` HTML is
+currently a neutral bilingual return page without a sign-in control. Keep that
+page neutral and script-free: reaching it proves neither verification nor business
+success. No functional icon or Microsoft login button is required merely because
+an endpoint serves HTML. This reference change stores no assets in the API and
+changes no route, callback, permission, proof lifetime, retry or security policy.
+
 ## Required integration before activation
 
 The complete requested release is not yet deployable. The draft070/031 custody

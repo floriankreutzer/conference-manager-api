@@ -26,6 +26,20 @@ files,2MiB per file,16MiB total and a256KiB manifest. Only browser modules and
 known public asset MIME types are admitted; manifests, build/operator scripts,
 tests, environment files and other directories are never public routes.
 
+The canonical GitHub brand payloads live in the frontend repository's
+[`assets/brand/`](https://github.com/floriankreutzer/conference-manager/tree/main/assets/brand);
+usage follows [ICON-SYSTEM.md](https://github.com/floriankreutzer/conference-manager/blob/main/docs/ICON-SYSTEM.md). Consume only the reviewed,
+immutable frontend artifact; do not fetch those links at runtime. The frontend
+Customer builder currently includes non-Markdown files below `assets/`, whereas
+this reader admits only its explicit MIME extensions and the Platform artifact
+has an explicit file inventory. JSON/CSV/checksum metadata, previews and generator
+scripts therefore remain under frontend `docs/brand-reference/`, outside the
+browser payload. New SVG storage increases a future Customer artifact's count
+and bytes even without UI imports. Validate the exact artifact against this
+reader; do not broaden allowed extensions or limits to store documentation.
+The v0.1 icon draft and Microsoft references do not establish UI integration or
+a deployed source pair.
+
 The owned responder validates Host, target, optional Origin, GET/HEAD and absence
 of a request body. It bounds rate-limit state and sends no-store, nosniff,
 same-origin resource policy, HSTS and the verified HTML CSP with frame denial.
