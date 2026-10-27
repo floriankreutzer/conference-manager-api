@@ -13,6 +13,7 @@ import { createPostgresSyntheticGenerationRepository } from '../src/persistence/
 import { createSyntheticGenerationService } from '../src/platform/application/synthetic-generation-service.js';
 import { createPlatformAuthorizationPolicy } from '../src/platform/identity/policy.js';
 import { withProtectedRuntimeSharedGate } from '../src/persistence/postgres/protected-runtime-gate.js';
+import { SYNTHETIC_GENERATION_COOLDOWN_MS } from '../src/domain/synthetic-generation-lifecycle.js';
 
 test('native observer preserves data across authoritative routing, rollback, duplicate, reset and epoch fencing', async t => {
   const config = { mode: 'test', ...loadDatabaseConfig(process.env, 'test'), databasePoolMax: 2 };
@@ -112,6 +113,9 @@ test('native observer preserves data across authoritative routing, rollback, dup
     fetchImpl: f.fetchImpl, clock: () => Date.now() - 121000 });
   await assert.rejects(() => reconcileProtectedRuntimeObservation(pool, expired, { expectedOfflineRole: role }));
 
+  // Respect the real generation cooldown before issuing a new reset intent.
+  // No database clock, generation timestamp or security expiry is rewritten.
+  await new Promise(resolve => setTimeout(resolve, SYNTHETIC_GENERATION_COOLDOWN_MS + 100));
   await actor.freshSession();const next = await replace(first);
   const afterReset = await before();
   const refreshed = await reconcileProtectedRuntimeObservation(pool, await collect(), { expectedOfflineRole: role });
