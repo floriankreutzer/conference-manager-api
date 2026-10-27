@@ -391,8 +391,8 @@ export function createPostgresPlatformDiagnosticRepository(pool, { platformAudit
             JOIN platform_tenant_readiness_snapshots readiness ON readiness.tenant_id = tenant.id
             JOIN platform_microsoft_fleet_snapshots microsoft ON microsoft.tenant_id = tenant.id
             LEFT JOIN platform_microsoft_fleet_capabilities capability ON capability.tenant_id = tenant.id
-            JOIN platform_runtime_tenant_mappings runtime_mapping ON runtime_mapping.tenant_id = tenant.id
-            JOIN platform_runtime_deployments runtime
+            LEFT JOIN platform_runtime_tenant_mappings runtime_mapping ON runtime_mapping.tenant_id = tenant.id
+            LEFT JOIN platform_runtime_deployments runtime
               ON runtime.id = runtime_mapping.deployment_id AND runtime.record_state = 'approved'
             WHERE tenant.id = $1
             GROUP BY tenant.id, readiness.tenant_id, microsoft.tenant_id,

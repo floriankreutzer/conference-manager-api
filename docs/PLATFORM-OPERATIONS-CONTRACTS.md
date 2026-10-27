@@ -319,6 +319,14 @@ suspend/reactivate must delegate to the canonical lifecycle policy.
 
 ## 10. Persistence and production composition
 
+The diagnostic summary preserves current Tenant, entitlement, readiness and Microsoft
+observations when no approved runtime deployment mapping exists. Its deployment
+`release` and `observedAt` are explicitly `null`; the existing browser projection
+shows the unknown release. Missing runtime observations do not make other facts
+unavailable and never imply a healthy runtime or create a mapping. Target custody,
+permission checks and atomic read-audit persistence remain mandatory. The separate
+deployment reconciler remains responsible for supplying actual runtime observations.
+
 The Platform process is composed separately with `npm run start:platform`. It reads only the validated `PLATFORM_*`
 configuration namespace, opens the Platform database identity, starts the bounded projection worker before accepting traffic,
 and registers only the Platform route registry. The customer process does not import this composition.
