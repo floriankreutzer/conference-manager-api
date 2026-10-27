@@ -13,7 +13,8 @@ async function assertOwnerAndLedger(client, expectedOfflineRole, migrations) {
     pg_get_userbyid(relowner) AS owner_role FROM pg_class WHERE oid='public.platform_runtime_deployments'::regclass`);
   if (owner.rowCount !== 1 || ['active_role', 'authenticated_role', 'owner_role']
     .some(key => owner.rows[0][key] !== expectedOfflineRole)) refuseRuntimeObservation();
-  const ledger = await client.query('SELECT version,name,checksum FROM schema_migrations ORDER BY version');
+  const ledger = await client.query('SELECT version,name,checksum FROM schema_migrations ORDER BY version LIMIT $1',
+    [migrations.length + 1]);
   if (ledger.rowCount !== migrations.length || ledger.rows.some((row, index) => row.version !== migrations[index].version
     || row.name !== migrations[index].name || row.checksum !== migrations[index].checksum)) refuseRuntimeObservation();
 }
@@ -84,10 +85,10 @@ export async function reconcileProtectedRuntimeObservation(pool, receipt, { expe
             AND o.status='active' AND o.security_version=g.operator_security_version))
         ORDER BY r.tenant_id LIMIT $2`, [plan.securityEpoch, MAX_ROUTED_TENANTS + 1]);
       if (routing.rowCount > MAX_ROUTED_TENANTS || routing.rows.some(row => !isInternalUuid(row.tenant_id))) refuseRuntimeObservation();
-      const approved = await client.query(`SELECT deployment_reference FROM platform_runtime_deployments
+      const approved = await client.query(`SELECT environment,deployment_reference FROM platform_runtime_deployments
         WHERE record_state='approved' ORDER BY environment,deployment_reference LIMIT $1`, [MAX_APPROVED_DEPLOYMENTS + 1]);
-      const references = new Set(approved.rows.map(row => row.deployment_reference));
-      const additional = surfaces.filter(row => !references.has(`render:${plan[row.surface].deploymentReference}`)).length;
+      const references = new Set(approved.rows.map(row => `${row.environment}\u0000${row.deployment_reference}`));
+      const additional = surfaces.filter(row => !references.has(`test\u0000render:${plan[row.surface].deploymentReference}`)).length;
       if (approved.rowCount + additional > MAX_APPROVED_DEPLOYMENTS) refuseRuntimeObservation();
       const ids = {};
       for (const observed of surfaces) {

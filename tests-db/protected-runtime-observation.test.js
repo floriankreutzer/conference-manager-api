@@ -12,6 +12,7 @@ import { createPostgresAuditRepository } from '../src/persistence/postgres/audit
 import { createPostgresSyntheticGenerationRepository } from '../src/persistence/postgres/platform-synthetic-generation-repository.js';
 import { createSyntheticGenerationService } from '../src/platform/application/synthetic-generation-service.js';
 import { createPlatformAuthorizationPolicy } from '../src/platform/identity/policy.js';
+import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
 
 test('native observer preserves data across authoritative routing, rollback, duplicate, reset and epoch fencing', async t => {
   const config = { mode: 'test', ...loadDatabaseConfig(process.env, 'test'), databasePoolMax: 2 };
@@ -63,6 +64,23 @@ test('native observer preserves data across authoritative routing, rollback, dup
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_runtime_deployments')).rows[0].count, 0);
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_runtime_tenant_mappings')).rows[0].count, 0);
   assert.deepEqual(await before(), baseline);
+
+  // Same provider reference in another environment cannot hide an additional
+  // INT observation from the bounded global reader. Discard probe rows by
+  // rolling back this fixture transaction, preserving all retention triggers.
+  await assert.rejects(() => withPostgresTransaction(pool, async client => {
+    const references = [f.plan.customer, f.plan.platform].map(row => `render:${row.deploymentReference}`);
+    references.push(...Array.from({ length: 47 }, (_, index) => `retained:${index}`));
+    await client.query(`INSERT INTO platform_runtime_deployments(id,environment,deployment_reference,deployed_at,
+      frontend_environment,api_environment,schema_environment,dependencies_environment)
+      SELECT id,'production',reference,clock_timestamp(),'production','production','production','production'
+      FROM unnest($1::uuid[],$2::text[]) AS source(id,reference)`, [references.map(() => randomUUID()), references]);
+    const boundedReceipt = await collect();
+    await assert.rejects(() => reconcileProtectedRuntimeObservation(pool, boundedReceipt, { expectedOfflineRole: role }));
+    assert.equal((await client.query('SELECT count(*)::int AS count FROM platform_runtime_deployments')).rows[0].count, 49);
+    throw new Error('ROLLBACK_OBSERVER_CAPACITY_FIXTURE');
+  }), /ROLLBACK_OBSERVER_CAPACITY_FIXTURE/);
+  assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_runtime_deployments')).rows[0].count, 0);
 
   const receipt = await collect();
   const attempts = await Promise.allSettled([1, 2].map(() => reconcileProtectedRuntimeObservation(pool, receipt,

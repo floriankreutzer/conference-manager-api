@@ -65,6 +65,8 @@ Both observations use the existing Runtime DTO's `test` environment (the mapping
 of protected INT), distinct `render:dep-...` references, observed build IDs and
 actual schema version. A reference's first deployment time/build identity cannot
 silently change. Older/equal observations and superseded references are refused.
+Frontend version/build use the verified immutable Git identity; no separately
+unobserved semantic frontend release number is invented.
 Missing evidence and optional observations still yield unknown in the existing
 state model; this process does not manufacture a fully healthy release.
 
@@ -87,7 +89,8 @@ Platform business-action audit. Existing audited Runtime reads remain unchanged.
 Focused tests cover sealed-byte/API source verification, cold/foreign/malformed
 responses, unknown versus not-ready health, schema/owner/custody fencing,
 serialized-observation rejection, concurrent duplicate processing, actual rollback,
-REAL/unclassified/other-environment separation, reset-history preservation and
+REAL/unclassified/other-environment separation, global capacity with colliding
+references from another environment, reset-history preservation and
 epoch rotation. Normal exact-source native and permanent Demo/browser gates remain
 mandatory before acceptance. The writer is not activated merely by merging it:
 first deploy the qualified pair, reconcile actual provider receipts/manifests, then
