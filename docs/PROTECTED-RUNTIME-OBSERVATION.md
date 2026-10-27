@@ -9,7 +9,7 @@ The normal Customer/Platform roles retain SELECT-only observation/mapping access
 No schema, grant, credential, lifecycle, entitlement, business or session change is
 performed. DEV/PROD and arbitrary hosts are outside this first implementation.
 
-`protected-int-runtime-observation.yml` runs only on explicit owner dispatch,
+The original `protected-int-runtime-observation.yml` runs only on explicit owner dispatch,
 exact accepted Main and first attempt, in the existing protected deployment
 environment. Debug logging is refused before private allocation. No schedule or
 automatic retry is introduced. Dependencies and sealed browser bytes are prepared
@@ -26,7 +26,7 @@ Missing evidence references stay null. Obtain deployment IDs/times from actual
 successful provider receipts; do not invent them. The current protected epoch is
 loaded from the existing private environment binding, never a public workflow
 input. There is no Tenant selector, connection, origin, SQL, role or health-state
-input. The deployed API SHA must equal the exact observer Main SHA. Frontend
+input. For the original one-shot workflow, the deployed API SHA must equal the exact observer Main SHA. Frontend
 selection is additionally locked to qualified immutable commit
 `2667b0b6df74ffa2632fce4be6f95ef8ef8103ac`; changing that pin requires a reviewed
 source change and renewed pair qualification. An arbitrary branch commit cannot
@@ -96,8 +96,72 @@ mandatory before acceptance. The writer is not activated merely by merging it:
 first deploy the qualified pair, reconcile actual provider receipts/manifests, then
 dispatch and verify the persisted/UI result.
 
-Freshness remains the existing five-minute policy. This one-shot process does not
+Freshness remains the existing five-minute policy. The original one-shot process does not
 promise continuous monitoring: observations correctly become stale unless a new
 approved collection runs. Provider billing dashboards, protected Product/delivery/
 feedback sources, invited Demo participants, actual email-code receipt, full
 recovery and real Microsoft365/Exchange acceptance remain separate open work.
+
+## Bounded recurring INT profile
+
+`protected-int-runtime-recurring.yml` adds a separately qualified, best-effort
+operating profile. It uses the same collector, credential binding and transactional
+writer; it does not add an HTTP write path, application timer, database role,
+migration, provider resource or authentication/signing credential. Existing
+one-shot dispatch restrictions remain unchanged.
+
+The fixed reviewed selection in `scripts/data/protected-int-runtime-selection.json`
+records the already qualified hosted API/frontend pair and actual provider receipts.
+The **observer source commit** is a separate fact from the **observed deployed API
+commit**. This allows an independently qualified offline workflow update without
+redeploying unchanged application code or claiming the new observer SHA is live.
+The collector still refuses any mismatch in actual hosted bytes, health build,
+manifest, deployment identity or current database custody. Updating the selection
+or frontend pin requires reviewed source and renewed qualification.
+
+Activation is disabled by default. Set the repository variable
+`CM_INT_OBSERVER_QUALIFIED_SHA` to the exact observer Main SHA only after the
+candidate and separate Main gates, source inventory/attestation and current
+deployment selection have been verified. The job refuses another repository,
+non-owner actor/triggering actor, non-Main ref, a rerun, debug logging, unknown event,
+missing qualification or a moved Main. No supplied selection, host, file path,
+Tenant, health status, database selector or signing key is accepted. Clearing the
+variable stops further execution; any Main change also requires renewed acceptance.
+In-flight operations retain the existing bounded transaction/exclusion semantics.
+
+Automatic collection runs every five minutes **only from 09:00 inclusive to 19:00
+exclusive Europe/Berlin**, daily. A UTC cron envelope and a local-time preflight
+cover both daylight-saving offsets. Outside that window the scheduled run ends
+before frontend checkout/build, database credential allocation or hosted traffic.
+The final collector rechecks the window, so a queued/delayed run cannot start
+collection after closing. Owner manual dispatch with the exact qualified Main may
+collect outside the window. Do not use repeated manual dispatch to evade the
+operating budget.
+
+The job is limited to a public repository on standard GitHub-hosted runners. A
+private repository skips it before runner allocation, including after the planned
+repository visibility change; do not enable paid private execution as a workaround.
+This temporary profile therefore does not provide ongoing private-source operations.
+Scheduled Actions can be delayed/dropped and public inactive schedules can be
+disabled by GitHub. The five-minute stale policy is unchanged: outside the window,
+after provider failure, schedule delay, disabled qualification or a private-source
+transition, the UI must show stale/unknown rather than a manufactured healthy state.
+
+The operating window is a resource bound, **not a zero-cost guarantee**. Two Render
+Free services awake for ten hours daily consume about 620 shared instance-hours
+in a 31-day month before startup/other usage, against the workspace's published
+750-hour allowance. The current complete sealed bytes total approximately 3.34 MB
+per collection (about 12.4 GB over 31 days at 120 collections/day, before headers).
+Verify actual remaining workspace instance-hours, bandwidth/build allowances and
+configured spending controls before activation; existing other usage still counts.
+No plan, quota, spending limit or resource expansion is authorized by this profile.
+Provider billing freshness and protected optional/provider diagnostics remain
+independent from successful runtime collection.
+
+Acceptance must distinguish local context/window/credential negative tests, full
+native and permanent three-customer browser gates, actual owner-dispatched receipt,
+and an actual scheduled-event receipt. Workflow source or manual success alone is
+not proof that a cron event ran. Verify observation timestamps, both deployments,
+three current-generation Customer mappings and unchanged Demo business baseline
+after operating execution. No invitation, email receipt or real-tenant issue is
+closed by this runtime-only change.

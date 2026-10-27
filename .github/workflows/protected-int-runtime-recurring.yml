@@ -1,0 +1,86 @@
+name: Recurring existing protected INT observation
+
+on:
+  schedule:
+    # UTC envelope; the preflight enforces 09:00–19:00 Europe/Berlin with DST.
+    - cron: '*/5 7-17 * * *'
+  workflow_dispatch:
+    inputs:
+      expected_main_sha:
+        description: Exact qualified observer Main commit; deployed pair is fixed in source
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosted-shared-demo-database-initialize
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    # Public standard runners only. Any Main movement requires new qualification.
+    # Missing variables fail closed before runner/private-environment allocation.
+    if: >-
+      github.repository == 'floriankreutzer/conference-manager-api' &&
+      github.event.repository.private == false && github.ref == 'refs/heads/main' &&
+      vars.CM_INT_OBSERVER_QUALIFIED_SHA == github.sha &&
+      github.actor == 'floriankreutzer' && github.triggering_actor == 'floriankreutzer' &&
+      github.run_attempt == 1 &&
+      (github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.expected_main_sha == github.sha))
+    environment:
+      name: hosted-demo-initialize
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+      QUALIFIED_OBSERVER_SHA: ${{ vars.CM_INT_OBSERVER_QUALIFIED_SHA }}
+      OBSERVATION_REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+      OBSERVATION_SCHEDULE: ${{ github.event.schedule }}
+    steps:
+      - name: Require ordinary logging before secret allocation
+        env:
+          ACTIONS_STEP_DEBUG: ${{ secrets.ACTIONS_STEP_DEBUG }}
+          ACTIONS_RUNNER_DEBUG: ${{ secrets.ACTIONS_RUNNER_DEBUG }}
+        run: test -z "${RUNNER_DEBUG:-}${ACTIONS_STEP_DEBUG:-}${ACTIONS_RUNNER_DEBUG:-}"
+      - name: Checkout exact accepted observer Main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Validate qualified source and local operating window without database credentials
+        id: preflight
+        run: node scripts/protected-runtime-recurring-preflight.mjs >> "$GITHUB_OUTPUT"
+      - name: Checkout fixed qualified frontend
+        if: steps.preflight.outputs.active == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: floriankreutzer/conference-manager
+          ref: '2667b0b6df74ffa2632fce4be6f95ef8ef8103ac'
+          path: .runtime-observation-source
+          persist-credentials: false
+      - name: Install locked observer dependencies without database credentials
+        if: steps.preflight.outputs.active == 'true'
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Rebuild fixed sealed frontend bytes without database credentials
+        if: steps.preflight.outputs.active == 'true'
+        run: node scripts/protected-runtime-recurring-build.mjs
+      - name: Collect actual fixed-origin evidence and reconcile current INT routing
+        if: steps.preflight.outputs.active == 'true'
+        env:
+          PLATFORM_PASSKEY_OFFLINE_ROLE: ${{ secrets.CM_INT_AUDIT_OFFLINE_ROLE }}
+          PLATFORM_PASSKEY_OFFLINE_DATABASE_URL: ${{ secrets.CM_INT_AUDIT_OFFLINE_DATABASE_URL }}
+          PLATFORM_DATABASE_URL: ${{ secrets.CM_INT_AUDIT_PLATFORM_DATABASE_URL }}
+          PROTECTED_OBSERVATION_SECURITY_EPOCH: ${{ secrets.CM_INT_AUDIT_DEPLOYMENT_EPOCH }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QUALIFIED_OBSERVER_SHA"
+          git diff --exit-code HEAD -- .
+          node scripts/protected-runtime-recurring-observe.mjs
