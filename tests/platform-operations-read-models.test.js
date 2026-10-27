@@ -320,3 +320,36 @@ test('diagnostic correlation windows are bounded before any repository query', a
   }), /PLATFORM_DIAGNOSTIC_TIME_RANGE_INVALID/);
   assert.equal(reads, 0);
 });
+
+test('diagnostics preserve available tenant facts when deployment observations are explicitly unknown', async () => {
+  let deployment = { deployedRelease: null, deploymentObservedAt: null };
+  const service = createPlatformDiagnosticOperationsService({
+    diagnosticReader: {
+      async readSummaryAndRecordAccess() {
+        return {
+          tenantId: TENANT_ID, displayName: 'Northwind', lifecycleStatus: 'active', lifecycleRevision: 1,
+          readinessState: 'blocked', readinessBlockerCodes: ['tenant.identity.inactive'], readinessEvaluatedAt: NOW,
+          entitlementRevision: 1, enabledEntitlementCount: 2, connectionState: 'not_configured',
+          healthState: 'unknown', healthFreshness: 'unknown', healthLastCheckedAt: null,
+          activeMappingCount: 0, missingMappingCount: 0, totalMappingCount: 0, recentFailures: [], ...deployment,
+        };
+      },
+      async queryTenantCorrelationAndRecordAccess() { return []; },
+    },
+    platformAuthorizationPolicy: authorizationPolicy([]), tenantTargetPolicy: targetPolicy(),
+    operationEvidenceFactory: { async createSensitiveRead() { return {}; } }, clock: () => Date.parse(NOW),
+  });
+  const read = () => service.getTenantSummary({ operatorContext: {}, tenantId: TENANT_ID, correlationId: CORRELATION_ID });
+  const result = (await read()).summary;
+  assert.deepEqual(result.deployment, { release: null, observedAt: null });
+  assert.equal(result.tenant.displayName, 'Northwind');
+  assert.equal(result.readiness.state, 'blocked');
+  assert.equal(result.entitlements.enabledCount, 2);
+  assert.equal(result.microsoft.connectionState, 'not_configured');
+  for (const invalid of [undefined, '', 'https://internal.example', 0]) {
+    deployment = { deployedRelease: invalid, deploymentObservedAt: null };
+    await assert.rejects(read, /PLATFORM_DIAGNOSTIC_SUMMARY_INVALID/);
+    deployment = { deployedRelease: null, deploymentObservedAt: invalid };
+    await assert.rejects(read, /PLATFORM_DIAGNOSTIC_SUMMARY_INVALID/);
+  }
+});

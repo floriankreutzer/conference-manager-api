@@ -82,8 +82,10 @@ function diagnosticSummary(value, tenantId) {
     }),
     mappings: Object.freeze({ active: activeMappings, missing: missingMappings, total: totalMappings }),
     deployment: Object.freeze({
-      release: requireRelease(value.deployedRelease, 'PLATFORM_DIAGNOSTIC_SUMMARY_INVALID'),
-      observedAt: requireTimestamp(value.deploymentObservedAt, 'PLATFORM_DIAGNOSTIC_SUMMARY_INVALID'),
+      release: value.deployedRelease === null
+        ? null : requireRelease(value.deployedRelease, 'PLATFORM_DIAGNOSTIC_SUMMARY_INVALID'),
+      observedAt: value.deploymentObservedAt === null
+        ? null : requireTimestamp(value.deploymentObservedAt, 'PLATFORM_DIAGNOSTIC_SUMMARY_INVALID'),
     }),
     recentFailures: Object.freeze(value.recentFailures.map((failure) => {
       if (!failure || typeof failure !== 'object' || Array.isArray(failure)) {

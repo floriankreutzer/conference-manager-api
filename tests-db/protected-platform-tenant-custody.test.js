@@ -12,6 +12,14 @@ import { withPostgresTransaction } from '../src/persistence/postgres/transaction
 import { migrateUp } from '../scripts/db-migrations.mjs';
 import { createInvitedCustomerFixture } from './support/invited-customer-fixture.js';
 import { createProtectedSyntheticOperatorFixture } from './support/protected-synthetic-operator-fixture.js';
+import { createPlatformAuditService } from '../src/platform/audit/audit-service.js';
+import { createPlatformTenantTargetPolicy } from '../src/platform/identity/tenant-target-policy.js';
+import { createAuditService } from '../src/audit/audit-service.js';
+import { createAuthorizationPolicy } from '../src/authorization/policy.js';
+import { createPlatformOperationEvidenceFactory } from '../src/persistence/postgres/platform-operations-evidence.js';
+import { createPlatformDiagnosticOperationsService } from '../src/platform/application/diagnostic-operations-service.js';
+import { createPostgresPlatformDiagnosticRepository }
+  from '../src/persistence/postgres/platform-operations-read-model-repository.js';
 
 test('native protected target custody keeps REAL allowlists and current own synthetic targets across pagination, reset and epoch rotation',
 async t=>{
@@ -88,6 +96,31 @@ async t=>{
   const health={ capability: null,healthStatus: null,incidentScope: null };
   assert.deepEqual(await collect(owner,persistence.readinessSnapshotRepository,readiness),expected);
   assert.deepEqual(await collect(owner,persistence.microsoftHealthSnapshotRepository,health),expected);
+  // A missing deployment observation must not erase the actual tenant/health facts.
+  const platformAuthorizationPolicy=createPlatformAuthorizationPolicy();
+  const tenantTargetPolicy=createPlatformTenantTargetPolicy({ operatorRepository: persistence.operatorRepository });
+  const platformAuditService=createPlatformAuditService({ repository: owner.auditRepository,
+    authorizationPolicy: platformAuthorizationPolicy,tenantTargetPolicy });
+  const operationEvidenceFactory=createPlatformOperationEvidenceFactory({ platformAuditService,
+    tenantAuditService: createAuditService({ repository: visible.auditRepository,authorizationPolicy: createAuthorizationPolicy() }) });
+  const diagnostics=reader=>createPlatformDiagnosticOperationsService({ diagnosticReader: reader,
+    platformAuthorizationPolicy,tenantTargetPolicy,operationEvidenceFactory });
+  const input=tenantId=>({ operatorContext: owner.current().principal,tenantId,correlationId: randomUUID() });
+  const ownSummary=await owner.scopes.withShared(()=>diagnostics(persistence.diagnosticRepository).getTenantSummary(input(ownIds[0])));
+  assert.equal(ownSummary.summary.tenant.tenantId,ownIds[0]);
+  assert.equal(ownSummary.summary.tenant.lifecycleStatus,'active');
+  assert.deepEqual(ownSummary.summary.deployment,{ release: null,observedAt: null });
+  assert.equal(ownSummary.summary.microsoft.connectionState,'not_configured');
+  assert.ok(Number.isSafeInteger(ownSummary.summary.entitlements.enabledCount));
+  await assert.rejects(owner.scopes.withShared(()=>diagnostics(persistence.diagnosticRepository)
+    .getTenantSummary(input(foreignIds[0]))),/PLATFORM_TENANT_TARGET_DENIED/);
+  const auditCount=async()=>Number((await pool.query('SELECT count(*) AS count FROM platform_audit_events')).rows[0].count);
+  const beforeAudit=await auditCount();
+  const refusing=createPostgresPlatformDiagnosticRepository(pool,{ protectedRuntime: scope,platformAuditRepository: {
+    async appendWithClient(...args) { await owner.auditRepository.appendWithClient(...args);throw new Error('AUDIT_PROBE_REFUSED'); },
+  } });
+  await assert.rejects(owner.scopes.withShared(()=>diagnostics(refusing).getTenantSummary(input(ownIds[0]))),/AUDIT_PROBE_REFUSED/);
+  assert.equal(await auditCount(),beforeAudit);
   await owner.scopes.withShared(()=>withPostgresTransaction(pool,async client=>{
     assert.equal(await requireCurrentPlatformMutationAuthorization(client,authorization(owner),ownIds[1],{ protectedRuntime: scope }),
       owner.operatorId);
