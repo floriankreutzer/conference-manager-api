@@ -17,9 +17,12 @@ import { createPostgresSessionRepository } from '../../src/persistence/postgres/
 // Seed only synthetic invitation authority. The tested email User is then created
 // by actual code proof/admission/session custody, never by editing a Demo persona.
 // No provider send is invoked; .test recipients and deterministic code are fixtures.
-export async function createInvitedCustomerFixture(pool,t,{ recipient='Invited@example.test' }={}) {
-  const tenantId=randomUUID(),adminId=randomUUID(),correlationId=randomUUID();
-  await pool.query("INSERT INTO tenants(id,display_name,status) VALUES($1,'Synthetic invited customer','onboarding')",[tenantId]);
+export async function createInvitedCustomerFixture(pool,t,{ recipient='Invited@example.test',targetTenantId=null,accept=true }={}) {
+  const tenantId=targetTenantId ?? randomUUID(),adminId=randomUUID(),correlationId=randomUUID();
+  if (targetTenantId===null) await pool.query(
+    "INSERT INTO tenants(id,display_name,status) VALUES($1,'Synthetic invited customer','onboarding')",[tenantId]);
+  const tenant=(await pool.query('SELECT status FROM tenants WHERE id=$1',[tenantId])).rows[0];
+  if (!tenant) throw new Error('SYNTHETIC_INVITATION_TENANT_REQUIRED');
   await pool.query("INSERT INTO users(tenant_id,id,display_name) VALUES($1,$2,'Synthetic invitation admin')",[tenantId,adminId]);
   await pool.query("INSERT INTO tenant_user_roles(tenant_id,user_id,role) VALUES($1,$2,'tenant_admin')",[tenantId,adminId]);
   const authorizationPolicy=createAuthorizationPolicy();
@@ -35,8 +38,10 @@ export async function createInvitedCustomerFixture(pool,t,{ recipient='Invited@e
   const content=createCustomerAccessEmailContent({ environment: 'int',publicOrigin: 'https://127.0.0.1' });
   const invitations=createCustomerInvitationService({ authorizationPolicy,auditService,environment: 'int',
     repository: createPostgresCustomerInvitationRepository(pool,{ environment: 'int',cipher,content,auditRepository }) });
-  await invitations.issueBatch({ principal: admin.principal,tenantContext: { tenantId,status: 'onboarding' },correlationId },
+  const context={ principal: admin.principal,tenantContext: { tenantId,status: tenant.status },correlationId };
+  const [invitation]=await invitations.issueBatch(context,
     { commandId: randomUUID(),invitations: [{ recipient,roles: ['tenant_admin'],locale: 'de' }] });
+  if (!accept) return { tenantId,invitation,context,invitations,auditRepository };
   const flowBinding=createCustomerEmailFlowBinding({ environment: 'int',secret: 'f'.repeat(48) });t.after(()=>flowBinding.destroy());
   const proofFactory=createEmailMailboxProofFactory({ environment: 'int',secret: 'p'.repeat(48),codeFactory: ()=> '00001234' });
   const challenges=createPostgresCustomerEmailChallengeRepository(pool,{ environment: 'int',cipher,content,flowBinding,proofFactory });
@@ -45,9 +50,15 @@ export async function createInvitedCustomerFixture(pool,t,{ recipient='Invited@e
   const sourceKey='e'.repeat(64),pending=await challenges.request({ recipient,locale: 'de',sourceKey });
   const verified=await challenges.verify({ ...pending,code: '00001234',sourceKey });
   if (verified.status!=='membership_required') throw new Error('SYNTHETIC_EMAIL_PROOF_FAILED');
-  const choices=await admission.choices(verified),membershipId=choices.items[0]?.membershipId;
+  // One mailbox may have memberships in multiple Tenants. Select this fixture's
+  // exact canonical invitation, never whichever opaque choice sorts first.
+  const expected=(await pool.query(`SELECT membership_id FROM customer_member_invitations
+    WHERE environment='int' AND tenant_id=$1 AND id=$2`,[tenantId,invitation.id])).rows[0]?.membership_id;
+  const choices=await admission.choices(verified),membershipId=choices.items.find(row=>row.membershipId===expected)?.membershipId;
   const issued=await admission.select({ ...verified,correlationId: randomUUID() },{ membershipId });
   const cookie=issued.setCookie?.split(';')[0],principal=await sessions.resolvePrincipal({ headers: { cookie } });
-  if (!principal || principal.providerIdentity.provider!=='email_code') throw new Error('SYNTHETIC_EMAIL_ADMISSION_FAILED');
+  if (!principal || principal.tenantId!==tenantId || principal.providerIdentity.provider!=='email_code') {
+    throw new Error('SYNTHETIC_EMAIL_ADMISSION_FAILED');
+  }
   return { tenantId,membershipId,principal,cookie,sessions,auditService,auditRepository,authorizationPolicy };
 }
