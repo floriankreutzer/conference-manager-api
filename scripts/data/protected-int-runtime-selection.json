@@ -1,0 +1,22 @@
+{
+  "environment": "int",
+  "deployedSourceCommit": "c1248c43ff80ab1f1b92af080963d496a215d693",
+  "frontendCommit": "2667b0b6df74ffa2632fce4be6f95ef8ef8103ac",
+  "serviceVersion": "cm-int-20261021",
+  "customer": {
+    "deploymentReference": "dep-dbga5md9fdbs73d7q4ug",
+    "deployedAt": "2026-10-27T13:11:47.765Z",
+    "frontendSha256": "6aaf306217a21536f82bcb8e0348edbfd9a556ae80af4806e61516190386c337"
+  },
+  "platform": {
+    "deploymentReference": "dep-dbga5i4ipgvc73evu9t0",
+    "deployedAt": "2026-10-27T13:11:41.900Z",
+    "frontendSha256": "d78a73d8e1af4fcd3299abe3462dbebd4db59e7cf0395ccff8a447bf0a91b312"
+  },
+  "evidence": {
+    "release": "github:conference-manager-api/commit/c1248c43ff80ab1f1b92af080963d496a215d693",
+    "change": "github:conference-manager-api/pull/335",
+    "rollback": null,
+    "runbook": "git:conference-manager-api/c1248c43ff80ab1f1b92af080963d496a215d693/docs/PROTECTED-RUNTIME-OBSERVATION.md"
+  }
+}

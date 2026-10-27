@@ -5,3 +5,7 @@ bc409234343789e086644f9de14f9930bdf06233:tests-db/protected-platform-authenticat
 # Historical false positive: ordinary English password-validation documentation, no credential value.
 # Current text is reworded; retain scanning everywhere except this exact published historical finding.
 eb1987a9a98ca232a76bf2dd01597b643d00df7a:docs/PROTECTED-RUNTIME-CONFIGURATION.md:generic-api-key:23
+# Historical false positives: public deployed Git commit c1248c43, not an API credential.
+# Current source uses explicit deployed-source metadata; only these observed historical findings are excluded.
+61d60a99ee1dbf599e9d9c84de4ce042394a3d09:scripts/data/protected-int-runtime-selection.json:generic-api-key:3
+61d60a99ee1dbf599e9d9c84de4ce042394a3d09:tests/protected-runtime-recurring.test.js:generic-api-key:53
