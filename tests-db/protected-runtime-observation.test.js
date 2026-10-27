@@ -12,7 +12,7 @@ import { createPostgresAuditRepository } from '../src/persistence/postgres/audit
 import { createPostgresSyntheticGenerationRepository } from '../src/persistence/postgres/platform-synthetic-generation-repository.js';
 import { createSyntheticGenerationService } from '../src/platform/application/synthetic-generation-service.js';
 import { createPlatformAuthorizationPolicy } from '../src/platform/identity/policy.js';
-import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
+import { withProtectedRuntimeSharedGate } from '../src/persistence/postgres/protected-runtime-gate.js';
 
 test('native observer preserves data across authoritative routing, rollback, duplicate, reset and epoch fencing', async t => {
   const config = { mode: 'test', ...loadDatabaseConfig(process.env, 'test'), databasePoolMax: 2 };
@@ -68,7 +68,7 @@ test('native observer preserves data across authoritative routing, rollback, dup
   // Same provider reference in another environment cannot hide an additional
   // INT observation from the bounded global reader. Discard probe rows by
   // rolling back this fixture transaction, preserving all retention triggers.
-  await assert.rejects(() => withPostgresTransaction(pool, async client => {
+  await assert.rejects(() => withProtectedRuntimeSharedGate(pool, 'int', async client => {
     const references = [f.plan.customer, f.plan.platform].map(row => `render:${row.deploymentReference}`);
     references.push(...Array.from({ length: 47 }, (_, index) => `retained:${index}`));
     await client.query(`INSERT INTO platform_runtime_deployments(id,environment,deployment_reference,deployed_at,

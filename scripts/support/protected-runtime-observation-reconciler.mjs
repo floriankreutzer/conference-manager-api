@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { isInternalUuid } from '../../src/domain/identifiers.js';
-import { withPostgresTransaction } from '../../src/persistence/postgres/transaction.js';
+import { withProtectedRuntimeSharedGate } from '../../src/persistence/postgres/protected-runtime-gate.js';
 import { loadMigrations } from '../db-migrations.mjs';
 import { readCollectedRuntimeObservation } from './protected-runtime-observation-collector.mjs';
 import { OBSERVATION_MAX_AGE_MS, refuseRuntimeObservation } from './protected-runtime-observation-plan.mjs';
@@ -63,10 +63,9 @@ export async function reconcileProtectedRuntimeObservation(pool, receipt, { expe
       || expectedOfflineRole.startsWith('cm_protected_')) refuseRuntimeObservation();
     const migrations = await loadMigrations();
     if (!migrations.length || migrations.some((row, index) => row.version !== index + 1)) refuseRuntimeObservation();
-    return await withPostgresTransaction(pool, async client => {
+    return await withProtectedRuntimeSharedGate(pool, 'int', async client => {
       await client.query("SET LOCAL statement_timeout='10s'");
       await client.query("SET LOCAL lock_timeout='2s'");
-      await client.query("SELECT protected_runtime_acquire_shared('int')");
       const lock = await client.query('SELECT pg_try_advisory_xact_lock(740194,2) AS locked');
       if (lock.rows[0]?.locked !== true) refuseRuntimeObservation();
       await assertOwnerAndLedger(client, expectedOfflineRole, migrations);
