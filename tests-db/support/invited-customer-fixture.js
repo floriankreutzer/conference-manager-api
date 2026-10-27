@@ -50,9 +50,15 @@ export async function createInvitedCustomerFixture(pool,t,{ recipient='Invited@e
   const sourceKey='e'.repeat(64),pending=await challenges.request({ recipient,locale: 'de',sourceKey });
   const verified=await challenges.verify({ ...pending,code: '00001234',sourceKey });
   if (verified.status!=='membership_required') throw new Error('SYNTHETIC_EMAIL_PROOF_FAILED');
-  const choices=await admission.choices(verified),membershipId=choices.items[0]?.membershipId;
+  // One mailbox may have memberships in multiple Tenants. Select this fixture's
+  // exact canonical invitation, never whichever opaque choice sorts first.
+  const expected=(await pool.query(`SELECT membership_id FROM customer_member_invitations
+    WHERE environment='int' AND tenant_id=$1 AND id=$2`,[tenantId,invitation.id])).rows[0]?.membership_id;
+  const choices=await admission.choices(verified),membershipId=choices.items.find(row=>row.membershipId===expected)?.membershipId;
   const issued=await admission.select({ ...verified,correlationId: randomUUID() },{ membershipId });
   const cookie=issued.setCookie?.split(';')[0],principal=await sessions.resolvePrincipal({ headers: { cookie } });
-  if (!principal || principal.providerIdentity.provider!=='email_code') throw new Error('SYNTHETIC_EMAIL_ADMISSION_FAILED');
+  if (!principal || principal.tenantId!==tenantId || principal.providerIdentity.provider!=='email_code') {
+    throw new Error('SYNTHETIC_EMAIL_ADMISSION_FAILED');
+  }
   return { tenantId,membershipId,principal,cookie,sessions,auditService,auditRepository,authorizationPolicy };
 }

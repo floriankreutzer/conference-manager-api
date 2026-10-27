@@ -42,6 +42,9 @@ test('Microsoft exact-proof replacement preserves invited participants and permi
   // send provider mail or attach a mailbox to a seeded delegation persona.
   const pending=await createInvitedCustomerFixture(pool,t,{ targetTenantId: pendingGeneration.tenants[2].tenantId,accept: false });
   const accepted=await createInvitedCustomerFixture(pool,t,{ targetTenantId: acceptedGeneration.tenants[0].tenantId });
+  assert.equal(accepted.principal.tenantId,accepted.tenantId);
+  assert.equal((await pool.query('SELECT accepted_at FROM customer_member_invitations WHERE tenant_id=$1 AND id=$2',
+    [pending.tenantId,pending.invitation.id])).rows[0].accepted_at,null);
   assert.ok(await accepted.sessions.resolvePrincipal({ headers: { cookie: accepted.cookie } }));
   async function state() {
     return (await pool.query(`SELECT jsonb_build_object(
