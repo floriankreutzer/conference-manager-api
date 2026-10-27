@@ -60,7 +60,8 @@ test('Microsoft exact-proof replacement preserves invited participants and permi
       'deliveries',(SELECT jsonb_agg(to_jsonb(d) ORDER BY id) FROM customer_access_deliveries d),
       'requests',(SELECT jsonb_agg(to_jsonb(r) ORDER BY tenant_id,id) FROM requests r),
       'audit',(SELECT jsonb_agg(to_jsonb(a) ORDER BY tenant_id,id) FROM audit_events a),
-      'platformTenantAudit',(SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM platform_audit_events a WHERE target_tenant_id IS NOT NULL)
+      'platformTenantAudit',(SELECT jsonb_agg(to_jsonb(a) ORDER BY sequence)
+        FROM platform_audit_events a WHERE target_tenant_id IS NOT NULL)
       ) AS state`)).rows[0].state;
   }
   // Real elapsed production cooldown. No clock rewrites or shortened limits.
