@@ -84,3 +84,17 @@ test('namespace construction is server-only, canonical and closed; arbitrary pre
   }
   assert.equal(f.stored.size,0);
 });
+
+
+test('participant issuer requires an explicitly participant-qualified repository in the same deployment',()=>{
+  const f=fixture(),options={ ...f.base,environment: 'int',securityEpoch: EPOCH,syntheticParticipantsEnabled: true };
+  for (const matchesParticipantProtectionScope of [undefined,()=>false,()=> 'true']) {
+    assert.throws(()=>createProtectedInvitedCustomerSessions({ ...options,
+      sessionRepository: { ...f.base.sessionRepository,matchesParticipantProtectionScope } }),
+    /PROTECTED_CUSTOMER_SESSION_REPOSITORY_REQUIRED/);
+  }
+  for (const syntheticParticipantsEnabled of [null,'true',1]) {
+    assert.throws(()=>createProtectedInvitedCustomerSessions({ ...options,syntheticParticipantsEnabled }),
+      /PROTECTED_CUSTOMER_SESSION_REPOSITORY_REQUIRED/);
+  }
+});

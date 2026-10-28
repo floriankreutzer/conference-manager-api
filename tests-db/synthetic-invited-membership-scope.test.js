@@ -29,6 +29,18 @@ import { createPlatformCustomerInvitationAdministrationService }
 import { createProtectedSyntheticMicrosoftFixture } from './support/protected-synthetic-microsoft-fixture.js';
 import { createInvitedCustomerFixture } from './support/invited-customer-fixture.js';
 
+import { createPostgresProtectedParticipantCustomerAccessRepository,createPostgresProtectedCustomerAccessRepository }
+  from '../src/persistence/postgres/protected-customer-access-repository.js';
+import { createPostgresProtectedParticipantSessionRepository }
+  from '../src/persistence/postgres/protected-invited-session-repository.js';
+import { createPostgresProtectedInvitedTenantScope } from '../src/persistence/postgres/protected-invited-tenant-scope.js';
+import { createPostgresCustomerEmailChallengeRepository } from '../src/persistence/postgres/customer-email-challenge-repository.js';
+import { createPostgresCustomerEmailAdmissionRepository } from '../src/persistence/postgres/customer-email-admission-repository.js';
+import { createCustomerEmailAdmissionService } from '../src/identity/customer-email-admission-service.js';
+import { createCustomerEmailFlowBinding } from '../src/identity/customer-email-flow-binding.js';
+import { createEmailMailboxProofFactory } from '../src/identity/email-code-proof.js';
+import { createProtectedInvitedCustomerSessions } from '../src/identity/protected-invited-customer-sessions.js';
+
 test('native participant registration retains exact Microsoft proof and member-qualified own-generation custody',async t=>{
   const database=loadDatabaseConfig(process.env,'test');
   if (!database.databaseUrl) throw new Error('DATABASE_URL_REQUIRED_FOR_INTEGRATION_TEST');
@@ -112,11 +124,70 @@ test('native participant registration retains exact Microsoft proof and member-q
     assert.equal(await eligible(owned.tenants.find(item=>item.tenantId!==row.tenant_id).tenantId,
       { membershipId: row.membership_id }),false);
   }
+  // Actual mailbox proof, invitation admission and session/audit commit share
+  // the max-one business pool while the independent shared lease stays live.
+  const protection={ environment: 'int',securityEpoch: epoch };
+  const participantAccess=createPostgresProtectedParticipantCustomerAccessRepository(pool,protection);
+  const strictAccess=createPostgresProtectedCustomerAccessRepository(pool,protection);
+  const participantScope=createPostgresProtectedInvitedTenantScope(pool,{ ...protection,syntheticParticipantsEnabled: true });
+  const sessions=createProtectedInvitedCustomerSessions({ ...protection,syntheticParticipantsEnabled: true,
+    sessionRepository: createPostgresProtectedParticipantSessionRepository(pool,{ ...protection,auditRepository: audit }),
+    accessRepository: participantAccess,auditService: createAuditService({ repository: audit,
+      authorizationPolicy: createAuthorizationPolicy() }),publicOrigin: 'https://127.0.0.1',csrfSecret: 's'.repeat(48) });
+  const flowBinding=createCustomerEmailFlowBinding({ environment: 'int',secret: 'f'.repeat(48) });
+  t.after(()=>flowBinding.destroy());
+  const proofFactory=createEmailMailboxProofFactory({ environment: 'int',secret: 'p'.repeat(48),codeFactory: ()=> '00001234' });
+  const challenges=createPostgresCustomerEmailChallengeRepository(pool,{ environment: 'int',cipher,flowBinding,proofFactory,
+    content: configuration.content,tenantEligibility: participantScope });
+  const admission=createCustomerEmailAdmissionService({ repository: createPostgresCustomerEmailAdmissionRepository(pool,
+    { environment: 'int',flowBinding,auditRepository: audit,
+      tenantEligibility: { allowsWithClient: participantScope.lockAdmissionWithClient } }),
+    auditService: createAuditService({ repository: audit,authorizationPolicy: createAuthorizationPolicy() }),sessionService: sessions });
+  const shared=work=>owner.operator.scopes.withShared(work),sourceKey='e'.repeat(64),accepted=[];
+  for (const target of issued) {
+    const pending=await shared(()=>challenges.request({ recipient: `${target.slot}@example.test`,locale: 'de',sourceKey }));
+    const verified=await shared(()=>challenges.verify({ ...pending,code: '00001234',sourceKey }));
+    assert.equal(verified.status,'membership_required');
+    const choices=await shared(()=>admission.choices(verified));assert.equal(choices.items.length,1);
+    const result=await shared(()=>admission.select({ ...verified,correlationId: randomUUID() },
+      { membershipId: choices.items[0].membershipId }));
+    const request={ headers: { cookie: result.setCookie.split(';')[0] } };
+    const principal=await shared(()=>sessions.resolvePrincipal(request));
+    assert.equal(principal.tenantId,target.tenantId);assert.equal(principal.providerIdentity.provider,'email_code');
+    assert.deepEqual(principal.roles,['employee','tenant_admin']);
+    const access=await shared(()=>participantAccess.resolveCurrentAccess({ ...protection,principal }));
+    assert.equal(access.kind,'synthetic_participant');assert.equal(access.runtime.generationId,owned.generationId);
+    assert.equal(access.runtime.slot,target.slot);
+    assert.equal(await strictAccess.resolveCurrentAccess({ ...protection,principal }),null);
+    assert.equal(await sessions.verifyCsrf({ headers: { 'x-csrf-token': result.csrfToken } },principal),true);
+    assert.equal(await sessions.verifyCsrf({ headers: { 'x-csrf-token': 'invalid' } },principal),false);
+    const foreign={ ...principal,tenantId: issued.find(row=>row.tenantId!==target.tenantId).tenantId };
+    assert.equal(await shared(()=>participantAccess.resolveCurrentAccess({ ...protection,principal: foreign })),null);
+    accepted.push({ request,principal });
+  }
   // Canonical unregistered history on the SAME otherwise eligible Tenant cannot
   // acquire the new path merely because another approved member exists there.
   const unregistered=await createInvitedCustomerFixture(pool,t,{ targetTenantId: owned.tenants[2].tenantId,
-    recipient: 'Unregistered@example.test',accept: false });
-  assert.equal(await eligible(unregistered.tenantId,{ invitationId: unregistered.invitation.id }),false);
+    recipient: 'Unregistered@example.test' });
+  assert.equal(await eligible(unregistered.tenantId,{ membershipId: unregistered.membershipId }),false);
+  const sessionHistory=async()=>(await pool.query(`SELECT jsonb_build_object(
+    'sessions',(SELECT jsonb_agg(to_jsonb(s) ORDER BY id) FROM sessions s),
+    'audit',(SELECT jsonb_agg(to_jsonb(a) ORDER BY tenant_id,id) FROM audit_events a)) AS value`)).rows[0].value;
+  const beforeDeniedIssue=await sessionHistory();
+  await assert.rejects(shared(()=>sessions.issue({ tenantId: unregistered.principal.tenantId,
+    userId: unregistered.principal.userId,securityVersion: unregistered.principal.session.securityVersion,
+    providerIdentity: unregistered.principal.providerIdentity,roles: unregistered.principal.roles,
+    permissions: unregistered.principal.permissions },{ correlationId: randomUUID() })),/IDENTITY_NOT_PROVISIONED/);
+  assert.deepEqual(await sessionHistory(),beforeDeniedIssue);
+  // User disablement must deny current custody independently of the owner. Use
+  // rollback to retain the accepted sessions for the later owner-source checks.
+  await assert.rejects(shared(()=>withPostgresTransaction(pool,async client=>{
+    const current=accepted[0];
+    await client.query('UPDATE users SET active=false WHERE tenant_id=$1 AND id=$2',
+      [current.principal.tenantId,current.principal.userId]);
+    assert.equal(await sessions.resolvePrincipal(current.request),null);
+    throw new Error('RESTORE_ISOLATED_DISABLED_USER');
+  })),/RESTORE_ISOLATED_DISABLED_USER/);
   const history=async()=>(await pool.query(`SELECT jsonb_build_object(
     'members',(SELECT jsonb_agg(to_jsonb(m) ORDER BY id) FROM customer_access_memberships m),
     'invites',(SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM customer_member_invitations i),
@@ -150,7 +221,9 @@ test('native participant registration retains exact Microsoft proof and member-q
   // session, but it cannot survive current owner disablement/security changes.
   await pool.query('UPDATE platform_sessions SET revoked_at=clock_timestamp() WHERE operator_id=$1',[owner.operator.operatorId]);
   assert.equal(await eligible(bindings[0].tenant_id,{ membershipId: bindings[0].membership_id }),true);
+  for (const row of accepted) assert.ok(await shared(()=>sessions.resolvePrincipal(row.request)));
   await pool.query("UPDATE platform_operators SET status='disabled' WHERE id=$1",[owner.operator.operatorId]);
   assert.equal(await eligible(bindings[0].tenant_id,{ membershipId: bindings[0].membership_id }),false);
+  for (const row of accepted) assert.equal(await shared(()=>sessions.resolvePrincipal(row.request)),null);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM platform_passkey_credentials')).rows[0].n,0);
 });

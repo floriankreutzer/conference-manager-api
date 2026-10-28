@@ -13,9 +13,12 @@ function requireInvitedProvider(identity) {
 // Own construction of the base hash namespace. A browser-supplied environment,
 // old Demo session service or custom hash prefix cannot select this boundary.
 export function createProtectedInvitedCustomerSessions({ environment,securityEpoch,sessionRepository,accessRepository,
-  auditService,publicOrigin,csrfSecret,sessionTtlSeconds,clock,tokenFactory,idFactory }={}) {
+  auditService,publicOrigin,csrfSecret,sessionTtlSeconds,clock,tokenFactory,idFactory,syntheticParticipantsEnabled=false }={}) {
   const securityNamespace=createProtectedCustomerSessionNamespace({ environment,securityEpoch });
-  if (typeof sessionRepository?.matchesProtectionScope!=='function'
+  if (typeof syntheticParticipantsEnabled!=='boolean'
+    || syntheticParticipantsEnabled && (typeof sessionRepository?.matchesParticipantProtectionScope!=='function'
+      || sessionRepository.matchesParticipantProtectionScope({ environment,securityEpoch })!==true)
+    || typeof sessionRepository?.matchesProtectionScope!=='function'
     || sessionRepository.matchesProtectionScope({ environment,securityEpoch })!==true) {
     throw new TypeError('PROTECTED_CUSTOMER_SESSION_REPOSITORY_REQUIRED');
   }
@@ -28,5 +31,5 @@ export function createProtectedInvitedCustomerSessions({ environment,securityEpo
         requireInvitedProvider(normalizeTrustedIdentity(identity)),options);
     },
   });
-  return createProtectedCustomerSessionService({ sessionService,accessRepository,environment,securityEpoch });
+  return createProtectedCustomerSessionService({ sessionService,accessRepository,environment,securityEpoch,syntheticParticipantsEnabled });
 }

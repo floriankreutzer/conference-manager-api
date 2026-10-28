@@ -7,11 +7,13 @@ const REAL_PROVIDERS=new Set(['email_code','microsoft_entra']);
 // The repository must resolve membership/delegation against current persistent
 // custody, including ordinary session ID/version and the deployment epoch. A
 // descriptor or a provider name alone is never an authentication grant.
-export function createProtectedCustomerSessionService({ sessionService,accessRepository,environment,securityEpoch }={}) {
+export function createProtectedCustomerSessionService({ sessionService,accessRepository,environment,securityEpoch,
+  syntheticParticipantsEnabled=false }={}) {
   if (!['dev','int','prod'].includes(environment) || !isInternalUuid(securityEpoch) || !sessionService
     || ['resolvePrincipal','issue','rotate','revoke','verifyCsrf','csrfTokenForPrincipal','clearCookie']
       .some(name=>typeof sessionService[name]!=='function')
-    || typeof accessRepository?.resolveCurrentAccess!=='function') {
+    || typeof accessRepository?.resolveCurrentAccess!=='function' || typeof syntheticParticipantsEnabled!=='boolean'
+    || syntheticParticipantsEnabled && !['dev','int'].includes(environment)) {
     throw new TypeError('PROTECTED_CUSTOMER_SESSION_CONFIGURATION_INVALID');
   }
   return Object.freeze({ ...sessionService,
@@ -29,7 +31,12 @@ export function createProtectedCustomerSessionService({ sessionService,accessRep
         const invited=access.kind==='invited_membership' && REAL_PROVIDERS.has(principal.providerIdentity.provider);
         const owner=access.kind==='owner_delegation' && principal.providerIdentity.provider==='platform_owner';
         if (!invited && !owner) return null;
-      } else if (access.kind!=='operator_delegation' || principal.providerIdentity.provider!=='platform_delegation') return null;
+      } else {
+        const delegated=access.kind==='operator_delegation' && principal.providerIdentity.provider==='platform_delegation';
+        const participant=syntheticParticipantsEnabled && access.kind==='synthetic_participant'
+          && REAL_PROVIDERS.has(principal.providerIdentity.provider);
+        if (!delegated && !participant) return null;
+      }
       return principal;
     },
   });
