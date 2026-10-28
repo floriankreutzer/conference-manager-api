@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID,createHash } from 'node:crypto';
 import test from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import pg from 'pg';
 import { createProtectedPostgresTlsFixture } from './support/protected-postgres-tls-fixture.js';
 import { grantProtectedRuntimeRoles } from '../scripts/support/protected-runtime-role-grants.mjs';
@@ -318,9 +319,23 @@ test('native participant registration retains exact Microsoft proof and member-q
   const graph=authentication.writeCustody.providerClient({ redirectUri: config.publicOrigin+'/callback',adminConsentUrl: graphCall,
     discoverRooms: graphCall,lookupFreeBusy: graphCall,createCalendarEvent: graphCall,updateCalendarEvent: graphCall,
     cancelCalendarEvent: graphCall,verifyBasePermissions: graphCall });
+  async function waitForRecipientCooldown() {
+    // Exercise the production clock and counters unchanged. The earlier real
+    // mailbox proof consumes the same recipient budget as this second login.
+    const { rows }=await pool.query(`SELECT GREATEST(0,COALESCE(MAX(EXTRACT(EPOCH FROM
+      (last_issued_at+interval '60 seconds'-clock_timestamp()))*1000),0)) AS remaining
+      FROM customer_access_abuse_budgets WHERE environment='int' AND kind='recipient'`);
+    const remaining=Number(rows[0].remaining);
+    assert.ok(Number.isFinite(remaining) && remaining>=0 && remaining<=60000);
+    if (remaining>0) await delay(Math.ceil(remaining)+50);
+  }
+  assert.equal((await invited.service.request({ recipient: `${issued[0].slot}@example.test`,
+    locale: 'de',sourceAddress: '127.0.0.1' })).status,'limited');
+  await waitForRecipientCooldown();
   for (const target of issued) {
     const recipient=`${target.slot}@example.test`,sourceAddress='127.0.0.1';
     const pending=await invited.service.request({ recipient,locale: 'de',sourceAddress });
+    assert.equal(pending.status,'code_required');
     assert.equal((await worker.runOnce()).status,'accepted');assert.equal(typeof codes.get(recipient),'string');
     const verified=await invited.service.verify({ ...pending,code: codes.get(recipient),sourceAddress });
     assert.equal(verified.status,'membership_required');
@@ -415,7 +430,9 @@ test('native participant registration retains exact Microsoft proof and member-q
     assert.equal(outcome.status,'accepted');
   }
   assert.equal(drained,true);
-  await invited.service.request({ recipient: `${issued[0].slot}@example.test`,locale: 'de',sourceAddress: '127.0.0.1' });
+  await waitForRecipientCooldown();
+  assert.equal((await invited.service.request({ recipient: `${issued[0].slot}@example.test`,locale: 'de',
+    sourceAddress: '127.0.0.1' })).status,'code_required');
   const beforeDisabledDispatch=mailCalls;
   await pool.query("UPDATE platform_operators SET status='disabled' WHERE id=$1",[owner.operator.operatorId]);
   assert.equal(await eligible(bindings[0].tenant_id,{ membershipId: bindings[0].membership_id }),false);
