@@ -55,11 +55,11 @@ test('one native max-one connection alternates delegated and invited Admin lifec
   const customerPool=database(url.href),customerLease=database(url.href);
   const scopes=createPostgresProtectedRuntimeExecutionScopes({ pool: customerPool,leasePool: customerLease,...protection });
   const delegated=createProtectedSyntheticCustomerAccess({ pool: customerPool,leasePool: customerLease,scope,
-    browserSecret: 'h'.repeat(48),sourceSecret: 'b'.repeat(48) });
+    browserSecret: 'h'.repeat(48),sourceSecret: 'b'.repeat(48),auditHmacSecret: 'a'.repeat(48),csrfSecret: 's'.repeat(48) });
   const binding=createSyntheticHandoffBrowserBinding({ scope,secret: 'h'.repeat(48) });t.after(()=>binding.destroy());
-  const handoff=createSyntheticHandoffService({ scope,assuranceMode: 'microsoft_mfa',passkeyService: owner.auth,
+  const handoff=createSyntheticHandoffService({ scope,browserBinding: binding,assuranceMode: 'microsoft_mfa',passkeyService: owner.auth,
     authorizationPolicy: createPlatformAuthorizationPolicy(),repository: createPostgresSyntheticHandoffRepository(pool,
-      { scope,binding,platformAuditRepository: owner.auditRepository }) });
+      { scope,browserBinding: binding,assuranceMode: 'microsoft_mfa',platformAuditRepository: owner.auditRepository }) });
   const start=await delegated.start('127.0.0.1');assert.equal(start.status,'started');
   const selected={ flowId: start.flowId,state: start.state,operatorId: owner.operatorId,
     generationId: generation.generationId,slot: 'fabrikam',role: 'tenant_admin' };
