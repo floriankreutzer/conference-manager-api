@@ -100,7 +100,7 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE conference_manager_invitation_retention'
           trap 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "DROP DATABASE conference_manager_invitation_retention WITH (FORCE)"' EXIT
           DATABASE_URL=postgresql://conference_manager@127.0.0.1:5432/conference_manager_invitation_retention \
-            node --test --test-concurrency=1 tests-db/synthetic-generation-invitation-retention.test.js
+            node --test --test-concurrency=1 tests-db/synthetic-generation-invitation-retention.test.js tests-db/synthetic-generation-default-privileges.test.js
       - name: Verify REAL owner custody before the complete persistence regression
         shell: bash
         run: |
