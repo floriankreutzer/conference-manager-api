@@ -1,9 +1,44 @@
 # Invited participants in protected synthetic tenants
 
-Status: implementation design draft for application issues351/352/353, not an
-implemented admission path or operating acceptance. Current API0c84b853 still
-permits protected invitations/email admission only for REAL tenants. Existing
-strict REAL predicates and the operator-owned synthetic handoff remain binding.
+Status: unmerged persistence foundation and implementation design for application
+issues351/352/353, not an implemented admission path or operating acceptance.
+Current main API0c84b853 still permits protected invitations/email admission only
+for REAL tenants. Existing strict REAL predicates and the operator-owned synthetic
+handoff remain binding.
+
+## Foundation in this candidate
+
+Migration073 adds immutable environment/Tenant/member/origin-invitation bindings
+to the exact owned generation and slot. Its registration trigger checks current
+deployment epoch, enabled Microsoft Platform owner/security version, active
+generation and a fresh unaccepted canonical invitation. Existing history is not
+backfilled; nonempty binding history prevents destructive rollback or truncation.
+The schema readiness contract advances to73 without changing historical migration
+compatibility thresholds or Demo seed/checksum content.
+
+A separate DEV/INT Platform invitation repository adds the binding within the
+canonical authorized invitation/proof/receipt/two-audit transaction. The ordinary
+protected repository remains REAL-only. A separate member-qualified SQL locking
+port and optional composition reject Tenant-only synthetic eligibility and retain
+the original REAL predicate. They require the exact live outer shared execution
+scope and its transaction; current generation, epoch and owner remain mandatory.
+Human membership does not require a continuously live delegated Owner session.
+
+These new repositories are not wired into an application composition. No runtime
+flag is registered or enabled, no SQL runtime grant is installed, and no endpoint
+has acquired participant admission. Current email, Microsoft linking, business
+session, media/calendar/onboarding and reset behavior remain unchanged. This
+foundation alone cannot close any participant or email operating requirement.
+
+Source tests cover exact parameter binding, scope/transaction custody, ambiguous
+or accessor metadata, strict boolean/PROD rejection, default REAL behavior and
+explicit member qualification. The new native PostgreSQL progression uses actual
+Microsoft operation proof and canonical invitations for three isolated slots,
+checks foreign/unregistered/ordinary-REAL negatives and immutable history, and
+checks owner disablement independently of source-session revocation. It provisions
+small isolated registration fixtures; it does not replace the full canonical Demo
+progression/two-reset browser gates. Native execution and all required CI results
+must be recorded before qualification; writing these tests is not a passing result.
 
 ## Intended narrow boundary
 

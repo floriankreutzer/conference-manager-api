@@ -80,7 +80,7 @@ test('existing INT audit role delta is fixed, minimal and removes legacy writing
 test('operator plan preserves per-surface proof custody and offline enrollment without connecting or creating credentials',()=>{
   for (const environment of ['dev','int','prod']) {
     const plan=protectedRuntimeRoleGrantPlan({ environment,securityEpoch: epoch });
-    assert.ok(Object.isFrozen(plan));assert.equal(plan.schemaVersion,72);
+    assert.ok(Object.isFrozen(plan));assert.equal(plan.schemaVersion,73);
     const customer=plan.roles[0],platform=plan.roles[1];
     const workflowGrants=customer.statements.filter(sql=>sql.includes('public."request_workflow_starts"'));
     assert.deepEqual(workflowGrants,[
@@ -132,7 +132,7 @@ test('runtime and Demo imports cannot reach operator grants even when script fil
 test('synthetic Microsoft Customer grant delta exposes only custody predicate columns',()=>{
   const plan=syntheticMicrosoftCustodyRoleGrantPlan({ environment: 'int',securityEpoch: epoch,
     segmentId: 'be000000-0000-4000-8000-000000000002' });
-  assert.equal(plan.schemaVersion,72);assert.equal(plan.statements.length,2);
+  assert.equal(plan.schemaVersion,73);assert.equal(plan.statements.length,2);
   assert.match(plan.statements[0],/^GRANT SELECT\(id,operator_id,environment,protected_security_epoch,/);
   assert.match(plan.statements[0],/authenticated_at\) ON public.platform_microsoft_operation_proofs TO "cm_protected_int_customer"$/);
   assert.doesNotMatch(plan.statements.join('\n'),/state_hash|browser_hash|nonce_hash|INSERT|UPDATE|DELETE|TRUNCATE|EXECUTE/);
@@ -142,7 +142,7 @@ test('synthetic Microsoft Customer grant delta exposes only custody predicate co
 
 test('REAL owner delta grants exact existing-role custody without Platform mutation or Customer identity creation',async()=>{
   const input={ environment: 'int',securityEpoch: epoch,segmentId: 'be000000-0000-4000-8000-000000000002' };
-  const plan=ownerCustomerCustodyRoleGrantPlan(input);assert.equal(plan.schemaVersion,72);
+  const plan=ownerCustomerCustodyRoleGrantPlan(input);assert.equal(plan.schemaVersion,73);
   assert.ok(Object.isFrozen(plan.statements));assert.equal(plan.statements.length,8);
   const customer=plan.statements.filter(value=>value.endsWith('"cm_protected_int_customer"')).join('\n');
   const platform=plan.statements.filter(value=>value.endsWith('"cm_protected_int_platform"')).join('\n');

@@ -158,5 +158,5 @@ test('native synthetic media preserves actual ownership, private privileges and 
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM synthetic_catalogue_media_assets')).rows[0].count,3);
   assert.deepEqual(await realState(),preserved);
   await migrateUp(pool); // Restore061 after the unchanged populated060 rollback probe.
-  assert.equal((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version,72);
+  assert.equal((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version,73);
 });

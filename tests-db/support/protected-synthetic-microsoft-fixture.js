@@ -12,10 +12,13 @@ import { createPostgresProtectedRuntimeExecutionScopes } from '../../src/persist
 import { microsoftCodeSdkFixture } from '../../tests/support/microsoft-code-sdk-fixture.js';
 
 // Isolated MSAL fixture only, not real Microsoft/device acceptance. The actual
-// claim policy, one-use proof, sessions, audit and exclusive PostgreSQL custody
+// claim policy, one-use proof, sessions, audit and scoped PostgreSQL custody
 // run with zero application credentials and no verifier/minimum exemptions.
-export async function createProtectedSyntheticMicrosoftFixture(pool,leasePool,{ epoch,scopeMode='allowlist' }={}) {
-  if (!['all','allowlist'].includes(scopeMode)) throw new TypeError('SYNTHETIC_OPERATOR_FIXTURE_SCOPE_INVALID');
+export async function createProtectedSyntheticMicrosoftFixture(pool,leasePool,
+  { epoch,scopeMode='allowlist',executionScope='synthetic' }={}) {
+  if (!['all','allowlist'].includes(scopeMode) || !['shared','synthetic'].includes(executionScope)) {
+    throw new TypeError('SYNTHETIC_OPERATOR_FIXTURE_SCOPE_INVALID');
+  }
   const operatorId=randomUUID(),directory=randomUUID(),subject=randomUUID(),clientId=randomUUID();
   const roles=['platform_tenant_operator'],origin='https://ops-int.example.com';
   await pool.query(`INSERT INTO platform_operators(id,provider,provider_tenant_reference,provider_subject_reference,scope_mode,roles)
@@ -35,7 +38,7 @@ export async function createProtectedSyntheticMicrosoftFixture(pool,leasePool,{ 
     claimPolicy: createPlatformClaimPolicy({ provider: 'microsoft_entra_platform',issuer: authority+'/v2.0',audience: clientId,
       tenantReference: directory,mfaAuthenticationContext: 'cm:ms:mfa:v1',stepUpAuthenticationContext: 'cm:ms:fresh:v1' }),
     repository: createPostgresPlatformMicrosoftOperationRepository(pool,{ environment: 'int',protectedSecurityEpoch: epoch,
-      securityEpoch: 7,executionScope: 'synthetic',scopes,auditRepository }) });
+      securityEpoch: 7,executionScope,scopes,auditRepository }) });
   let current;
   async function freshSession() {
     const securityVersion=Number((await pool.query('SELECT security_version FROM platform_operators WHERE id=$1',[operatorId]))

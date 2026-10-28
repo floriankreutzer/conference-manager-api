@@ -50,8 +50,8 @@ if (/repository|SELECT|UPDATE|INSERT INTO|DELETE FROM/i.test(revision)) {
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 72;/.test(pool)) {
-  throw new Error('Runtime schema readiness requires REAL owner Customer custody schema 72.');
+if (!/export const CURRENT_SCHEMA_VERSION = 73;/.test(pool)) {
+  throw new Error('Runtime schema readiness requires generation-bound invited membership schema 73.');
 }
 
 const migration = await readFile('migrations/020_tenant_settings_revisions.up.sql', 'utf8');

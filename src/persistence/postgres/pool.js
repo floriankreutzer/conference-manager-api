@@ -45,7 +45,8 @@ const { Pool } = pg;
 // Schema 69 adds approved mappings and expiring identity-bound membership.
 // Schema 71 binds synthetic Customer custody to fixed Microsoft operation proofs.
 // Schema 72 retains attributable REAL owner identity and one-use browser custody.
-export const CURRENT_SCHEMA_VERSION = 72;
+// Schema 73 binds invited human membership to one exact synthetic generation/slot.
+export const CURRENT_SCHEMA_VERSION = 73;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

@@ -7,5 +7,5 @@ import { createPostgresPlatformCustomerInvitationRepository } from './platform-c
 export function createPostgresProtectedPlatformCustomerInvitationRepository(pool,configuration={}) {
   const { environment,securityEpoch }=configuration;
   const tenantEligibility=createPostgresProtectedRealTenantScope(pool,{ environment,securityEpoch });
-  return createPostgresPlatformCustomerInvitationRepository(pool,{ ...configuration,tenantEligibility });
+  return createPostgresPlatformCustomerInvitationRepository(pool,{ ...configuration,tenantEligibility,invitationCreatedWithClient: null });
 }

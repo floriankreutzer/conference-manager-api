@@ -46,7 +46,7 @@ test('private protected registry preserves immutable mode, current owner/epoch, 
     assert.equal(await rollbackLatest(pool),true);
     assert.equal((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version,58);
     await migrateUp(pool);
-    assert.equal((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version,72);
+    assert.equal((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version,73);
     assert.deepEqual((await pool.query('SELECT version,checksum FROM schema_migrations WHERE version IN (57,58) ORDER BY version')).rows,
       before);
     const guard=(await pool.query(`SELECT procedure.prosecdef,procedure.proconfig,
