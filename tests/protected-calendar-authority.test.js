@@ -23,7 +23,7 @@ const authority={ integrationId: randomUUID(),integrationProvider: 'synthetic_ca
   providerResourceReference: `synthetic-room:${tenantId}:room-01`,calendarWriteEnabled: true };
 const currentRequest={ tenantId,id: 'request-01',roomId: 'room-01',startsAt: '2028-01-01T10:00:00.000Z',
   endsAt: '2028-01-01T11:00:00.000Z' };
-function fixture({ synthetic=true,enabled=true }={}) {
+function fixture({ synthetic=true,enabled=true,participants=false }={}) {
   const calls=[],state={ mode: synthetic ? 'synthetic' : 'real',access: true,lock: true,resource: true,event: true,
     reference: true,active: false,ready: true,loseAccess: false };let held=false;
   const custody={ id: flowId,state_hash: binding.stateHash,browser_verifier: binding.browserVerifier,
@@ -36,7 +36,14 @@ function fixture({ synthetic=true,enabled=true }={}) {
     if (value?.name==='protected-calendar-current-tenant') return result(state.mode!==null,[{ mode: state.mode }]);
     if (value?.name==='synthetic-customer-session-custody') return result(state.access,[{ id: flowId }]);
     if (value?.name==='synthetic-customer-current-custody') return result(state.access,[custody]);
-    if (value?.name==='protected-customer-current-invited-access') return result(state.access,[{ roles: ['conference_manager'] }]);
+    if (value?.name==='protected-customer-current-invited-access') return result(state.access,[{ roles: ['conference_manager'],
+      mode: state.mode,generation_id: generationId,operator_id: operatorId,slot: 'northwind' }]);
+    if (value?.name==='protected-delivery-real-tenant-lock') return result(state.mode==='real');
+    if (value?.name==='protected-participant-principal-member') return result(state.access,[{ id: flowId }]);
+    if (value?.name==='protected-synthetic-participant-scope') return result(true,[{ allowed: state.access }]);
+    if (value?.name==='protected-participant-current-session-lock') {
+      if (state.loseAccess) state.access=false;return result(state.lock,[{ id: userId }]);
+    }
     if (value?.name==='protected-calendar-source-lock') {
       if (state.loseAccess) state.access=false;return result(true,[{ allowed: state.lock }]);
     }
@@ -56,8 +63,9 @@ function fixture({ synthetic=true,enabled=true }={}) {
     return { async query() { return { rowCount: 1,rows: [{ acquired: true }] }; },release() {} };
   } };
   const scopes=createPostgresProtectedRuntimeExecutionScopes({ ...scope,pool,leasePool });
-  const guard=createPostgresProtectedCalendarAuthorityGuard(pool,{ ...scope,syntheticScope: enabled ? syntheticScope : null });
-  const input={ tenantId,requestId: currentRequest.id,principal: principal(synthetic),authority,currentRequest };
+  const guard=createPostgresProtectedCalendarAuthorityGuard(pool,
+    { ...scope,syntheticScope: enabled ? syntheticScope : null,syntheticParticipantsEnabled: participants });
+  const input={ tenantId,requestId: currentRequest.id,principal: principal(synthetic && !participants),authority,currentRequest };
   const run=(work)=>scopes.withShared(()=>withPostgresTransaction(pool,()=>work(client),{ isolationLevel: 'REPEATABLE READ' }));
   return { state,calls,pool,client,guard,input,run };
 }
@@ -130,4 +138,34 @@ test('pending booking references require current canonical synthetic custody and
   f.state.resource=false;assert.equal(await f.run(client=>f.guard.lockBookingIntegration(client,input)),false);
   const real=fixture({ synthetic: false });
   assert.equal(await real.run(client=>real.guard.lockBookingIntegration(client,{ ...input,principal: real.input.principal })),false);
+});
+
+
+test('explicit human participants fence final synthetic writes with their current member and ordinary session',async()=>{
+  for (const provider of ['email_code','microsoft_entra']) {
+    const f=fixture({ participants: true });f.input.principal.providerIdentity.provider=provider;
+    assert.equal(await f.run(client=>f.guard.lockCurrent(client,f.input)),true);
+    assert.equal(await f.run(client=>f.guard.lockBookingIntegration(client,{ tenantId,
+      integrationId: authority.integrationId,providerConnectionReference: authority.providerConnectionReference,
+      principal: f.input.principal })),true);
+    assert.equal(f.calls.some(value=>value?.name==='synthetic-customer-session-custody'),false);
+    assert.equal(f.calls.some(value=>value?.name==='protected-calendar-source-lock'),false);
+    const lock=f.calls.find(value=>value?.name==='protected-participant-current-session-lock');
+    assert.deepEqual(lock.values,[tenantId,userId,3,f.input.principal.session.id]);
+    assert.equal(f.calls.some(value=>value?.name==='calendar-authority-lock-current'),false);
+  }
+  for (const change of [{ access: false },{ lock: false },{ loseAccess: true },{ resource: false },{ event: false }]) {
+    const f=fixture({ participants: true });Object.assign(f.state,change);
+    assert.equal(await f.run(client=>f.guard.lockCurrent(client,f.input)),false);
+  }
+  const strict=fixture();strict.input.principal=principal(false);
+  assert.equal(await strict.run(client=>strict.guard.lockCurrent(client,strict.input)),false);
+});
+
+test('participant calendar selection is a closed boolean and requires the owned synthetic configuration',()=>{
+  const f=fixture();
+  for (const syntheticParticipantsEnabled of [null,'true',1,{},[]]) assert.throws(()=>
+    createPostgresProtectedCalendarAuthorityGuard(f.pool,{ ...scope,syntheticScope,syntheticParticipantsEnabled }),/CONFIGURATION_INVALID/);
+  assert.throws(()=>createPostgresProtectedCalendarAuthorityGuard(f.pool,{ ...scope,syntheticParticipantsEnabled: true }),
+    /CONFIGURATION_INVALID/);
 });

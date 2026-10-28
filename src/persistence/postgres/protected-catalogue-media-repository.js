@@ -4,7 +4,7 @@ import { normalizeSyntheticHandoffScope } from '../../domain/synthetic-handoff.j
 import { AuthorizationDeniedError } from '../../authorization/errors.js';
 import { MediaObjectStorageError,mediaObjectReference,verifyMediaObjectBytes } from '../../media/object-storage-contract.js';
 import { createPostgresProtectedCustomerAccessRepository } from './protected-customer-access-repository.js';
-import { createPostgresSyntheticCustomerAccessRepository } from './synthetic-customer-access-repository.js';
+import { createPostgresProtectedSyntheticCustomerCustody } from './protected-synthetic-customer-custody.js';
 import { requireProtectedRuntimeSharedExecutionScope } from './protected-runtime-execution-scopes.js';
 import { withPostgresTransaction } from './transaction.js';
 
@@ -23,9 +23,11 @@ function metadata(row) {
 
 // Only the protected Customer root constructs this reader. Each read owns the
 // live deployment lease and requalifies current invited/delegated custody.
-export function createPostgresProtectedCatalogueMediaRepository(pool,{ environment,securityEpoch,syntheticScope=null }={}) {
+export function createPostgresProtectedCatalogueMediaRepository(pool,
+  { environment,securityEpoch,syntheticScope=null,syntheticParticipantsEnabled=false }={}) {
   if (typeof pool?.query!=='function' || typeof pool?.connect!=='function'
-    || !['dev','int','prod'].includes(environment) || !isInternalUuid(securityEpoch)) {
+    || !['dev','int','prod'].includes(environment) || !isInternalUuid(securityEpoch)
+    || typeof syntheticParticipantsEnabled!=='boolean' || syntheticParticipantsEnabled && syntheticScope===null) {
     throw new TypeError('PROTECTED_CATALOGUE_MEDIA_CONFIGURATION_INVALID');
   }
   const scope=Object.freeze({ environment,securityEpoch: securityEpoch.toLowerCase() });
@@ -36,7 +38,8 @@ export function createPostgresProtectedCatalogueMediaRepository(pool,{ environme
     }
   }
   const real=createPostgresProtectedCustomerAccessRepository(pool,scope);
-  const synthetic=syntheticScope===null ? null : createPostgresSyntheticCustomerAccessRepository(pool,{ scope: syntheticScope });
+  const synthetic=syntheticScope===null ? null : createPostgresProtectedSyntheticCustomerCustody(pool,
+    { scope: syntheticScope,syntheticParticipantsEnabled });
   async function qualify(client,principal,tenantId) {
     const selected=await client.query({ name: 'protected-catalogue-media-current-tenant',text: `SELECT registry.mode
       FROM tenant_runtime_registry registry JOIN protected_runtime_deployments deployment
@@ -86,7 +89,7 @@ export function createPostgresProtectedCatalogueMediaRepository(pool,{ environme
       }
       if (await qualify(client,principal,tenantId)!==mode) denied();
       return value;
-    },{ readOnly: true });
+    },{ readOnly: !syntheticParticipantsEnabled });
   }
   return Object.freeze({ list: input=>read(input,false),find: input=>read(input,true) });
 }

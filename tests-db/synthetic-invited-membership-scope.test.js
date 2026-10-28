@@ -41,6 +41,12 @@ import { createCustomerEmailFlowBinding } from '../src/identity/customer-email-f
 import { createEmailMailboxProofFactory } from '../src/identity/email-code-proof.js';
 import { createProtectedInvitedCustomerSessions } from '../src/identity/protected-invited-customer-sessions.js';
 
+import { createPostgresProtectedSyntheticCustomerCustody } from '../src/persistence/postgres/protected-synthetic-customer-custody.js';
+import { createPostgresProtectedCatalogueMediaRepository } from '../src/persistence/postgres/protected-catalogue-media-repository.js';
+import { createPostgresProtectedCalendarAuthorityGuard } from '../src/persistence/postgres/protected-calendar-authority-guard.js';
+import { createSyntheticTemplateMediaSource } from '../src/media/synthetic-template-media.js';
+import { createSyntheticBusinessTemplates } from '../src/synthetic/business-templates.js';
+
 test('native participant registration retains exact Microsoft proof and member-qualified own-generation custody',async t=>{
   const database=loadDatabaseConfig(process.env,'test');
   if (!database.databaseUrl) throw new Error('DATABASE_URL_REQUIRED_FOR_INTEGRATION_TEST');
@@ -165,6 +171,43 @@ test('native participant registration retains exact Microsoft proof and member-q
     assert.equal(await shared(()=>participantAccess.resolveCurrentAccess({ ...protection,principal: foreign })),null);
     accepted.push({ request,principal });
   }
+  const syntheticScope={ ...protection,platformSecurityEpoch: 7,
+    customerOrigin: 'https://app-int.example.test',platformOrigin: 'https://ops-int.example.com' };
+  const participantOptions={ ...protection,syntheticScope,syntheticParticipantsEnabled: true };
+  const businessCustody=createPostgresProtectedSyntheticCustomerCustody(pool,
+    { scope: syntheticScope,syntheticParticipantsEnabled: true });
+  const mediaRepository=createPostgresProtectedCatalogueMediaRepository(pool,participantOptions);
+  const calendarGuard=createPostgresProtectedCalendarAuthorityGuard(pool,participantOptions);
+  const sourceId=createSyntheticBusinessTemplates()[0].catalogueMedia[0].id;
+  const media=await createSyntheticTemplateMediaSource().read(sourceId);
+  const business=[];
+  for (const { principal } of accepted) {
+    const tenantId=principal.tenantId,siteId=randomUUID(),roomId=randomUUID(),integrationId=randomUUID(),assetId=randomUUID();
+    await pool.query(`INSERT INTO integrations(tenant_id,id,provider,provider_reference,status)
+      VALUES($1,$2,'synthetic_calendar',$3,'active')`,[tenantId,integrationId,`synthetic:${owned.generationId}`]);
+    await pool.query("INSERT INTO sites(tenant_id,id,name,time_zone) VALUES($1,$2,'Participant fixture site','Europe/Berlin')",
+      [tenantId,siteId]);
+    await pool.query(`INSERT INTO rooms(tenant_id,id,site_id,name,capacity,details)
+      VALUES($1,$2,$3,'Participant fixture room',8,jsonb_build_object('floorplanAssetId',$4::text))`,[tenantId,roomId,siteId,assetId]);
+    await pool.query(`INSERT INTO synthetic_catalogue_media_assets(tenant_id,id,owner_kind,owner_id,bytes,content_type,
+      byte_length,content_sha256,alt_text,created_at,created_by_user_id)
+      VALUES($1,$2,'room_plan',$3,$4,$5,$6,$7,'Participant fixture plan',clock_timestamp(),$8)`,
+    [tenantId,assetId,roomId,media.bytes,media.contentType,media.byteLength,Buffer.from(media.sha256,'hex'),principal.userId]);
+    await pool.query("UPDATE tenants SET status='active' WHERE id=$1",[tenantId]);
+    const accessInput={ ...protection,principal };
+    const current=await shared(()=>withPostgresTransaction(pool,client=>businessCustody.lockCurrentAccessWithClient(client,accessInput)));
+    assert.equal(current.kind,'synthetic_participant');assert.equal(current.runtime.generationId,owned.generationId);
+    const catalogue=await shared(()=>mediaRepository.list({ tenantId,principal }));
+    assert.equal(catalogue.length,1);assert.equal(catalogue[0].id,assetId);
+    const image=await shared(()=>mediaRepository.find({ tenantId,principal,assetId }));assert.deepEqual(image.bytes,media.bytes);
+    assert.equal(await shared(()=>withPostgresTransaction(pool,client=>calendarGuard.lockBookingIntegration(client,
+      { tenantId,integrationId,providerConnectionReference: `synthetic:${owned.generationId}`,principal }))),true);
+    const foreign=accepted.find(row=>row.principal.tenantId!==tenantId).principal;
+    await assert.rejects(shared(()=>mediaRepository.find({ tenantId,principal: foreign,assetId })),/AUTHORIZATION_DENIED/);
+    assert.equal(await shared(()=>withPostgresTransaction(pool,client=>calendarGuard.lockCustomerMutation(client,
+      { tenantId,principal: foreign }))),false);
+    business.push({ tenantId,principal,assetId });
+  }
   // Canonical unregistered history on the SAME otherwise eligible Tenant cannot
   // acquire the new path merely because another approved member exists there.
   const unregistered=await createInvitedCustomerFixture(pool,t,{ targetTenantId: owned.tenants[2].tenantId,
@@ -225,5 +268,9 @@ test('native participant registration retains exact Microsoft proof and member-q
   await pool.query("UPDATE platform_operators SET status='disabled' WHERE id=$1",[owner.operator.operatorId]);
   assert.equal(await eligible(bindings[0].tenant_id,{ membershipId: bindings[0].membership_id }),false);
   for (const row of accepted) assert.equal(await shared(()=>sessions.resolvePrincipal(row.request)),null);
+  for (const row of business) {
+    await assert.rejects(shared(()=>mediaRepository.find(row)),/AUTHORIZATION_DENIED/);
+    assert.equal(await shared(()=>withPostgresTransaction(pool,client=>calendarGuard.lockCustomerMutation(client,row))),false);
+  }
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM platform_passkey_credentials')).rows[0].n,0);
 });

@@ -1,6 +1,6 @@
 # Invited participants in protected synthetic tenants
 
-Status: persistence/session ports and implementation design for application
+Status: persistence/session/business ports and implementation design for application
 issues351/352/353, not an implemented admission path or operating acceptance.
 The active protected runtime composition still permits invitations/email admission
 only for REAL tenants. Existing strict REAL predicates and the operator-owned
@@ -77,6 +77,32 @@ fixture codes and sends no mail. This evidence must pass natively; unit query mo
 do not prove PostgreSQL behavior. Full media/calendar/onboarding/write custody,
 Microsoft admission/link progression, restricted SQL-role grants, replacement and
 operating delivery remain separate required work before runtime activation.
+
+## Inactive synthetic business custody ports
+
+The protected media reader and final calendar authority guard accept the same
+explicit default-off DEV/INT participant selection only with owned synthetic
+configuration. A shared synthetic custody adapter chooses the current authoritative
+member or delegated source and never turns REAL qualification into synthetic
+access. Participant final writes retain current owner/generation/Tenant locks,
+add ordinary User/session locks, and re-read the complete identity and authorization
+snapshot before proceeding. Delegated final writes retain their original source
+lock and both current-custody reads. Simulator provider identity remains fixed
+metadata; it is independent of a human's email-code/Microsoft login identity.
+
+Participant media reads use a read-write transaction solely to retain PostgreSQL
+custody locks; both pre-read and post-read qualification remain mandatory. Actual
+bytes, hash checks, asset ownership, active catalogue rules and minimized output
+remain unchanged. No external provider, storage fallback or new HTTP surface is
+added. Constructor negatives reject malformed selection and missing owned scope.
+Native progression adds actual private image bytes, per-slot synthetic calendar
+integration/resource qualification, foreign-source denial and owner-disablement
+rejection. The full permanent browser/storage matrix remains separate evidence.
+
+These ports do not yet activate application runtime, onboarding lifecycle,
+restricted SQL grants, participant write-wide fencing, invitation dispatch or
+generation replacement. Those remaining boundaries must be implemented and
+qualified before enabling a participant runtime configuration.
 
 ## Intended narrow boundary
 

@@ -18,7 +18,7 @@ const principal={ tenantId,userId,...tenantAuthorizationSnapshot(['employee']),
   providerIdentity: { provider: 'platform_delegation',
     reference: syntheticDelegationIdentityReference({ generationId,operatorId,role: 'employee' }) },
   session: { id: randomUUID(),issuedAt: '2026-10-21T10:00:00.000Z',expiresAt: '2026-10-21T18:00:00.000Z',securityVersion: 3 } };
-function fixture({ synthetic=true,enabled=true }={}) {
+function fixture({ synthetic=true,enabled=true,participants=false }={}) {
   const bytes=Buffer.alloc(40,5),asset={ id: randomUUID(),owner_kind: 'room_plan',owner_id: 'room-01',content_type: 'image/png',
     alt_text: '<img onerror=alert(1)>',bytes,object_key: null,byte_length: bytes.length,
     content_sha256: createHash('sha256').update(bytes).digest() };
@@ -32,7 +32,11 @@ function fixture({ synthetic=true,enabled=true }={}) {
     if (name==='protected-catalogue-media-current-tenant') return { rows: [{ mode: state.mode }],rowCount: 1 };
     if (name==='synthetic-customer-session-custody') return { rows: [{ id: flowId }],rowCount: state.access ? 1 : 0 };
     if (name==='synthetic-customer-current-custody') return { rows: [custody],rowCount: state.access ? 1 : 0 };
-    if (name==='protected-customer-current-invited-access') return { rows: [{ roles: [] }],rowCount: state.access ? 1 : 0 };
+    if (name==='protected-customer-current-invited-access') return { rows: [{ roles: [],mode: state.mode,
+      generation_id: generationId,operator_id: operatorId,slot: 'northwind' }],rowCount: state.access ? 1 : 0 };
+    if (name==='protected-delivery-real-tenant-lock') return { rows: [],rowCount: state.mode==='real' ? 1 : 0 };
+    if (name==='protected-participant-principal-member') return { rows: [{ id: flowId }],rowCount: state.access ? 1 : 0 };
+    if (name==='protected-synthetic-participant-scope') return { rows: [{ allowed: state.access }],rowCount: 1 };
     if (['protected-catalogue-media-list','protected-catalogue-media-bytes'].includes(name)) {
       if (state.loseAccess) state.access=false;return { rows: state.assets,rowCount: state.assets.length };
     }
@@ -45,8 +49,9 @@ function fixture({ synthetic=true,enabled=true }={}) {
     return { rowCount: 1,rows: [{ acquired: true }] };
   },release() {} }; } };
   const scopes=createPostgresProtectedRuntimeExecutionScopes({ ...scope,pool,leasePool });
-  const repository=createPostgresProtectedCatalogueMediaRepository(pool,{ ...scope,syntheticScope: enabled ? full : null });
-  const input={ tenantId,principal: synthetic ? principal : {
+  const repository=createPostgresProtectedCatalogueMediaRepository(pool,
+    { ...scope,syntheticScope: enabled ? full : null,syntheticParticipantsEnabled: participants });
+  const input={ tenantId,principal: synthetic && !participants ? principal : {
     ...principal,providerIdentity: { provider: 'email_code',reference: randomUUID() } } };
   return { repository,input,asset,state,calls,run: work=>scopes.withShared(work) };
 }
@@ -130,4 +135,29 @@ test('HTTP authenticates every conditional image read, bounds transport and retu
   await assert.rejects(call(root,{ headers: { 'sec-fetch-site': 'cross-site' } }),{ statusCode: 403 });
   await assert.rejects(call(root,{ headers: { 'content-length': '1' } }),{ statusCode: 400 });
   assert.equal(module.routeKey(root+'/not-a-uuid'),null);
+});
+
+
+test('explicit participant media keeps current member locks and both source checks without delegated or REAL fallback',async()=>{
+  for (const provider of ['email_code','microsoft_entra']) {
+    const f=fixture({ participants: true });f.input.principal.providerIdentity.provider=provider;
+    assert.equal((await f.run(()=>f.repository.list(f.input))).length,1);
+    assert.equal(f.calls.filter(query=>query?.name==='protected-synthetic-participant-scope').length,2);
+    assert.ok(f.calls.includes('BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE'));
+    assert.equal(f.calls.some(query=>query?.name==='synthetic-customer-session-custody'),false);
+    f.state.loseAccess=true;
+    await assert.rejects(f.run(()=>f.repository.find({ ...f.input,assetId: f.asset.id })),/AUTHORIZATION_DENIED/);
+  }
+  const strict=fixture();strict.input.principal={ ...principal,providerIdentity: { provider: 'email_code',reference: userId } };
+  await assert.rejects(strict.run(()=>strict.repository.list(strict.input)),/AUTHORIZATION_DENIED/);
+  assert.equal(strict.calls.some(query=>query?.name==='protected-catalogue-media-list'),false);
+});
+
+test('participant media selection rejects malformed or missing synthetic configuration',()=>{
+  const pool={ query() {},connect() {} };
+  for (const syntheticParticipantsEnabled of [null,'true',1,{},[]]) assert.throws(()=>
+    createPostgresProtectedCatalogueMediaRepository(pool,{ ...scope,syntheticScope: full,syntheticParticipantsEnabled }),
+  /CONFIGURATION_INVALID/);
+  assert.throws(()=>createPostgresProtectedCatalogueMediaRepository(pool,{ ...scope,syntheticParticipantsEnabled: true }),
+    /CONFIGURATION_INVALID/);
 });
