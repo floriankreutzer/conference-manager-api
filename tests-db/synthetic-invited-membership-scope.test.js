@@ -159,7 +159,7 @@ test('native participant registration retains exact Microsoft proof and member-q
     assert.equal(access.kind,'synthetic_participant');assert.equal(access.runtime.generationId,owned.generationId);
     assert.equal(access.runtime.slot,target.slot);
     assert.equal(await strictAccess.resolveCurrentAccess({ ...protection,principal }),null);
-    assert.equal(await sessions.verifyCsrf({ headers: { 'x-csrf-token': result.csrfToken } },principal),true);
+    assert.equal(await sessions.verifyCsrf({ headers: { 'x-csrf-token': sessions.csrfTokenForPrincipal(principal) } },principal),true);
     assert.equal(await sessions.verifyCsrf({ headers: { 'x-csrf-token': 'invalid' } },principal),false);
     const foreign={ ...principal,tenantId: issued.find(row=>row.tenantId!==target.tenantId).tenantId };
     assert.equal(await shared(()=>participantAccess.resolveCurrentAccess({ ...protection,principal: foreign })),null);
