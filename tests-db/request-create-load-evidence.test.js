@@ -60,7 +60,9 @@ test('isolated PostgreSQL 18 preserves create integrity under bounded unpaced an
       try { await Promise.all(clients.map(client => client.query('SELECT 1'))); }
       finally { for (const client of clients) client.release(); }
       const responses = []; const ids = new Set(); const before = readCounters();
-      const result = await measureRequestCreates({ arrivalIntervalMs, origin: config.publicOrigin, cookies, csrfTokens, drafts,
+      const result = await measureRequestCreates({
+        onFailure(diagnostic) { t.diagnostic(JSON.stringify({ scenario, failure: diagnostic })); },
+        arrivalIntervalMs, origin: config.publicOrigin, cookies, csrfTokens, drafts,
         verify(body, index) {
           const request = body.request; const tenantIndex = tenants.indexOf(fixtures[index].tenantId);
           assert.equal(body.schemaVersion, 3); assert.equal(request.schemaVersion, 3); assert.equal(request.version, 1);
