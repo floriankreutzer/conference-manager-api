@@ -1,5 +1,6 @@
 import { randomBytes,randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { setTimeout as delay } from 'node:timers/promises';
 import pg from 'pg';
 import { migrateUp } from '../../scripts/db-migrations.mjs';
 import { grantProtectedRuntimeRoles } from '../../scripts/support/protected-runtime-role-grants.mjs';
@@ -103,7 +104,30 @@ export async function createProtectedOwnerBrowserRuntimeFixture(input) {
     if (cipher) cleanups.push(()=>cipher.destroy());
     return Object.freeze({ origins: ORIGINS,initialSetCookie: initial.setCookie,
       ports: Object.freeze({ customer: customer.outcome.port,platform: platform.outcome.port }),close,
-      ...(participants ? { async mailboxCode(recipient) {
+      ...(participants ? { async waitForMicrosoftOperationCapacity(requiredSlots=1) {
+        if (![1,2].includes(requiredSlots)) throw new Error('PARTICIPANT_BROWSER_PROOF_CAPACITY_INVALID');
+        // Production counts every unexpired proof, including consumed records.
+        // Wait on the actual database clock; never rewrite its budget or expiry.
+        async function capacity() {
+          const row=(await pool.query(`WITH active AS MATERIALIZED (
+            SELECT expires_at FROM platform_microsoft_operation_proofs
+            WHERE operator_id=$1 AND expires_at>clock_timestamp()
+          ), totals AS (SELECT count(*)::int AS live FROM active)
+          SELECT live,CASE WHEN live+$2>5 THEN GREATEST(0,CEIL(EXTRACT(EPOCH FROM (
+            (SELECT expires_at FROM active ORDER BY expires_at OFFSET (live+$2-6) LIMIT 1)-clock_timestamp()))*1000))
+            ELSE 0 END AS wait_ms FROM totals`,[owner.operatorId,requiredSlots])).rows[0];
+          const live=Number(row.live),waitMs=Number(row.wait_ms);
+          if (!Number.isInteger(live) || live<0 || live>5 || !Number.isInteger(waitMs) || waitMs<0 || waitMs>120000) {
+            throw new Error('PARTICIPANT_BROWSER_PROOF_CAPACITY_INVALID');
+          }
+          return { live,waitMs };
+        }
+        const before=await capacity(),waitedMs=before.live+requiredSlots>5 ? before.waitMs+25 : 0;
+        if (waitedMs) await delay(waitedMs);
+        const after=await capacity();
+        if (after.live+requiredSlots>5) throw new Error('PARTICIPANT_BROWSER_PROOF_CAPACITY_UNAVAILABLE');
+        return Object.freeze({ requiredSlots,liveProofs: before.live,waitedMs });
+      },async mailboxCode(recipient) {
         if (!['northwind@example.test','contoso@example.test','fabrikam@example.test'].includes(recipient)) {
           throw new Error('PARTICIPANT_BROWSER_MAILBOX_REJECTED');
         }

@@ -1,9 +1,9 @@
 # Invited participants in protected synthetic tenants
 
-Status: inactive persistence/session/business/onboarding ports and implementation design for application
-issues351/352/353, not an implemented admission path or operating acceptance.
-The active protected runtime composition still permits invitations/email admission
-only for REAL tenants. Existing strict REAL predicates and the operator-owned
+Status: source candidate for application issues351/352/353 with an explicit
+default-off DEV/INT participant runtime. Source qualification and isolated browser
+evidence are distinct from operating acceptance. Without that explicit flag,
+the protected runtime still permits invitations/email admission only for REAL tenants. Existing strict REAL predicates and the operator-owned
 synthetic handoff remain binding.
 
 ## Persistence and protocol foundation
@@ -35,11 +35,10 @@ do the same; account/link flows can use the explicit participant composition's
 accepted-member lookup before current session checks. Default REAL ports continue
 to reject unqualified targets before reading account or link business state.
 
-The concrete application runtime still does not enable these participant ports. No runtime
-flag is registered or enabled, no live SQL runtime grant is installed, and no endpoint
-has acquired participant admission. Current email, Microsoft linking, business
-session routing, media/calendar/onboarding and reset behavior remain unchanged. This
-foundation alone cannot close any participant or email operating requirement.
+These foundation ports do not enable themselves. The later explicit runtime
+assembly below is default-off; no live runtime grant or deployed configuration is
+installed by these source changes. The foundation alone cannot close a participant
+or email operating requirement.
 
 Source tests cover exact parameter binding, scope/transaction custody, ambiguous
 or accessor metadata, strict boolean/PROD rejection, default REAL behavior and
@@ -174,9 +173,38 @@ The native progression additionally uses owned authentication/session resolution
 actual current-source write preconditions, REAL-only self-invitation/group-mapping
 negatives, Graph tripwires, and independent human sessions after owner-session
 revocation. Queued authentication mail and all old authority fail on owner
-disablement. Current concrete runtime configuration still registers no participant
-environment flag. Replacement, complete Microsoft/link progression and operating
-acceptance remain required before enabling the feature in an application process.
+disablement. The explicit participant environment flag described below defaults
+to false. Replacement, complete Microsoft/link progression and operating acceptance
+remain required before enabling it in a deployed application process.
+
+## Explicit runtime and isolated browser assembly
+
+`PROTECTED_SYNTHETIC_PARTICIPANTS_ENABLED` is a strict boolean-string setting that
+defaults to false. True requires DEV/INT and the existing synthetic runtime; the
+Platform root also requires Microsoft-managed MFA. PROD or malformed selections
+fail closed. The owned roots propagate the value through their existing member,
+session, mail, business, invitation and generation-replacement contracts. The
+[protected runtime contract](PROTECTED-INT-RUNTIME.md) owns configuration and
+readiness; it verifies narrow required grants and rejects excess privileges but
+never installs grants or migrations automatically. Strict default REAL behavior
+and unsupported-history reset denial remain.
+
+The optional participant mode of the existing qualified-site browser fixture
+starts actual restricted TLS/SCRAM roots and serves exact sealed artifacts. It
+seeds no generation, invitation or human member: those must come from actual
+Platform operations and canonical Customer admission. Its mailbox-code reader is
+limited to the three fixed isolated recipients and current Owner/generation-bound
+encrypted outbox records. It is not a delivery receipt or a generic issuer.
+
+A test-only capacity wait accepts only one or two required Microsoft-operation
+slots, reads the fixture Owner's current unexpired proofs and actually waits for
+the database-derived expiry when needed. The second slot covers a mutation's
+independent automatic list-read proof. Production counts consumed proofs until
+their original expiry; its five-proof/120-second contract is unchanged. The helper
+never deletes proofs, rewrites clocks, budgets or counters, retries an operation,
+or raises a test deadline. It rechecks capacity once after the real wait and fails
+if still unavailable. Complete exact-pair browser execution remains required;
+fixture code alone proves no operating Microsoft, mail or device behavior.
 
 ## Intended narrow boundary
 
@@ -259,7 +287,7 @@ reset/epoch/concurrent-admission races, fake-persona adoption, audit rollback,
 restricted SQL identities and outbound-provider tripwires. Do not substitute
 schema shape or WASM database checks for native concurrency or operating evidence.
 
-This source preparation installs no live endpoint, runtime flag, role grant,
+This source preparation enables no live endpoint, participant flag, role grant,
 deployment, reset, provider request or mail. Normal Microsoft-managed MFA and the accepted Owner role
 baseline remain unchanged. Actual Microsoft365/Exchange acceptance stays later in
 the existing owner-directed sequence.
