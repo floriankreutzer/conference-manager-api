@@ -82,7 +82,7 @@ test('migration 034 prevents legacy Customer-session resurrection across rollbac
 
   await migrateUp(pool);
   await clean(pool);
-  assert.equal(CURRENT_SCHEMA_VERSION, 73);
+  assert.equal(CURRENT_SCHEMA_VERSION, 74);
   assert.equal(await rollbackToVersion(pool, 34), true);
   assert.equal(await isPostgresSchemaReady(pool, 33), true);
 

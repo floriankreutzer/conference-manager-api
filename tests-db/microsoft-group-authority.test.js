@@ -175,6 +175,7 @@ test('native Microsoft groups require approved REAL mapping and verified flow; r
   for (const table of ['tenant_microsoft_role_settings','customer_microsoft_group_observations']) {
     await assert.rejects(pool.query(`TRUNCATE ${table}`),{ code: '55000' });
   }
+  assert.equal(await rollbackLatest(pool),true); // Function-only074 before unchanged073/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged072/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.

@@ -182,6 +182,7 @@ async t=>{
   assert.equal(await next.sessionService.resolvePrincipal(headers(lastCookie)),null);
   assert.equal(await next.sessionService.resolvePrincipal(headers(realSession.setCookie)),null);
   // Check destructive rollback only after all current-runtime assertions.
+  assert.equal(await rollbackLatest(pool),true); // Function-only074 before unchanged073/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged072/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.

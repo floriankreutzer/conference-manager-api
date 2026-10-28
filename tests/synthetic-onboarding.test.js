@@ -128,3 +128,12 @@ test('presentation runtime mode is read-only current server classification with 
   await assert.rejects(read('?mode=synthetic'),{ statusCode: 400 });assert.equal(calls,1);
   wrong=true;await assert.rejects(read());
 });
+
+
+test('participant onboarding selection is strict and Production cannot acquire the source port',()=>{
+  const pool={ query() {},connect() {} },auditRepository={ appendWithClient() {} };
+  for (const syntheticParticipantsEnabled of [null,'true',1,{},[]]) assert.throws(()=>
+    createPostgresSyntheticOnboardingRepository(pool,{ scope,auditRepository,syntheticParticipantsEnabled }),/CONFIGURATION_INVALID/);
+  assert.throws(()=>createPostgresSyntheticOnboardingRepository(pool,
+    { scope: { ...scope,environment: 'prod' },auditRepository,syntheticParticipantsEnabled: true }));
+});
