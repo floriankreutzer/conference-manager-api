@@ -15,7 +15,7 @@ import { microsoftCodeSdkFixture } from '../../tests/support/microsoft-code-sdk-
 // claim policy, one-use proof, sessions, audit and scoped PostgreSQL custody
 // run with zero application credentials and no verifier/minimum exemptions.
 export async function createProtectedSyntheticMicrosoftFixture(pool,leasePool,
-  { epoch,scopeMode='allowlist',executionScope='synthetic' }={}) {
+  { epoch,scopeMode='allowlist',executionScope='synthetic',runtimePool=pool,runtimeLeasePool=leasePool }={}) {
   if (!['all','allowlist'].includes(scopeMode) || !['shared','synthetic'].includes(executionScope)) {
     throw new TypeError('SYNTHETIC_OPERATOR_FIXTURE_SCOPE_INVALID');
   }
@@ -23,10 +23,11 @@ export async function createProtectedSyntheticMicrosoftFixture(pool,leasePool,
   const roles=['platform_tenant_operator'],origin='https://ops-int.example.com';
   await pool.query(`INSERT INTO platform_operators(id,provider,provider_tenant_reference,provider_subject_reference,scope_mode,roles)
     VALUES($1,'microsoft_entra_platform',$2,$3,$4,$5)`,[operatorId,directory,subject,scopeMode,roles]);
-  const auditRepository=createPostgresPlatformAuditRepository(pool,{ hmacSecret: 'a'.repeat(48) });
-  const sessions=createProtectedPlatformSessions({ repository: createPostgresPlatformSessionRepository(pool,{ auditRepository }),
+  const auditRepository=createPostgresPlatformAuditRepository(runtimePool,{ hmacSecret: 'a'.repeat(48) });
+  const sessions=createProtectedPlatformSessions({ repository: createPostgresPlatformSessionRepository(runtimePool,{ auditRepository }),
     environment: 'int',protectedSecurityEpoch: epoch,publicOrigin: origin,csrfSecret: 'c'.repeat(48),securityEpoch: 7 });
-  const scopes=createPostgresProtectedRuntimeExecutionScopes({ pool,leasePool,environment: 'int',securityEpoch: epoch });
+  const scopes=createPostgresProtectedRuntimeExecutionScopes({ pool: runtimePool,leasePool: runtimeLeasePool,
+    environment: 'int',securityEpoch: epoch });
   const authority=`https://login.microsoftonline.com/${directory}`;
   const sdk=microsoftCodeSdkFixture({ clientId,authority,tenantId: directory,userId: subject,clock: ()=>Date.now() });
   sdk.state.amr=['pwd','mfa'];
@@ -37,11 +38,11 @@ export async function createProtectedSyntheticMicrosoftFixture(pool,leasePool,
       mfaAuthenticationContext: 'cm:ms:mfa:v1',stepUpAuthenticationContext: 'cm:ms:fresh:v1',application: sdk.application() }),
     claimPolicy: createPlatformClaimPolicy({ provider: 'microsoft_entra_platform',issuer: authority+'/v2.0',audience: clientId,
       tenantReference: directory,mfaAuthenticationContext: 'cm:ms:mfa:v1',stepUpAuthenticationContext: 'cm:ms:fresh:v1' }),
-    repository: createPostgresPlatformMicrosoftOperationRepository(pool,{ environment: 'int',protectedSecurityEpoch: epoch,
+    repository: createPostgresPlatformMicrosoftOperationRepository(runtimePool,{ environment: 'int',protectedSecurityEpoch: epoch,
       securityEpoch: 7,executionScope,scopes,auditRepository }) });
   let current;
   async function freshSession() {
-    const securityVersion=Number((await pool.query('SELECT security_version FROM platform_operators WHERE id=$1',[operatorId]))
+    const securityVersion=Number((await runtimePool.query('SELECT security_version FROM platform_operators WHERE id=$1',[operatorId]))
       .rows[0].security_version);
     current=await sessions.issue({ operatorId,roles,permissions: permissionsForPlatformRoles(roles),securityVersion,
       targetScope: { mode: scopeMode,securityVersion },providerIdentity: { provider: 'microsoft_entra_platform',
