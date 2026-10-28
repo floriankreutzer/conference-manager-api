@@ -1,12 +1,12 @@
 # Invited participants in protected synthetic tenants
 
-Status: unmerged persistence foundation and implementation design for application
+Status: persistence foundation and implementation design for application
 issues351/352/353, not an implemented admission path or operating acceptance.
-Current main API0c84b853 still permits protected invitations/email admission only
-for REAL tenants. Existing strict REAL predicates and the operator-owned synthetic
-handoff remain binding.
+The active protected runtime composition still permits invitations/email admission
+only for REAL tenants. Existing strict REAL predicates and the operator-owned
+synthetic handoff remain binding.
 
-## Foundation in this candidate
+## Persistence and protocol foundation
 
 Migration073 adds immutable environment/Tenant/member/origin-invitation bindings
 to the exact owned generation and slot. Its registration trigger checks current
