@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool } from '../src/persistence/postgres/pool.js';
 import { migrateUp } from '../scripts/db-migrations.mjs';
@@ -73,6 +74,23 @@ test('Microsoft exact-proof replacement preserves invited participants and permi
   assert.equal((await pool.query('SELECT accepted_at FROM customer_member_invitations WHERE tenant_id=$1 AND id=$2',
     [pending.tenantId,pending.invitation.id])).rows[0].accepted_at,null);
   assert.ok(await accepted.sessions.resolvePrincipal({ headers: { cookie: accepted.cookie } }));
+  const realControl=await createInvitedCustomerFixture(pool,t,{ recipient: 'RealControl@example.test' });
+  await pool.query("INSERT INTO tenant_runtime_registry(environment,tenant_id,mode) VALUES('int',$1,'real')",[realControl.tenantId]);
+  async function retainedReal() {
+    return (await pool.query(`SELECT jsonb_build_object(
+      'tenant',(SELECT to_jsonb(t) FROM tenants t WHERE id=$1),
+      'registry',(SELECT to_jsonb(r) FROM tenant_runtime_registry r WHERE tenant_id=$1),
+      'users',(SELECT jsonb_agg(to_jsonb(u) ORDER BY id) FROM users u WHERE tenant_id=$1),
+      'roles',(SELECT jsonb_agg(to_jsonb(r) ORDER BY user_id,role) FROM tenant_user_roles r WHERE tenant_id=$1),
+      'identities',(SELECT jsonb_agg(to_jsonb(b) ORDER BY provider,provider_user_reference)
+        FROM user_identity_bindings b WHERE tenant_id=$1),
+      'sessions',(SELECT jsonb_agg(to_jsonb(s) ORDER BY id) FROM sessions s WHERE tenant_id=$1),
+      'memberships',(SELECT jsonb_agg(to_jsonb(m) ORDER BY id) FROM customer_access_memberships m WHERE tenant_id=$1),
+      'invitations',(SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM customer_member_invitations i WHERE tenant_id=$1),
+      'audit',(SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM audit_events a WHERE tenant_id=$1)
+      ) AS state`,[realControl.tenantId])).rows[0].state;
+  }
+  const realBefore=await retainedReal();
   async function state() {
     return (await pool.query(`SELECT jsonb_build_object(
       'tenants',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM tenants t),
@@ -165,6 +183,47 @@ test('Microsoft exact-proof replacement preserves invited participants and permi
   }
   assert.equal((await pool.query(`SELECT count(*)::int AS n FROM customer_access_memberships
     WHERE tenant_id=ANY($1::uuid[])`,[replacement.tenants.map(row=>row.tenantId)])).rows[0].n,0);
+  assert.deepEqual(await retainedReal(),realBefore);
+  assert.ok(await realControl.sessions.resolvePrincipal({ headers: { cookie: realControl.cookie } }));
+  // Fresh explicit invitations on the newly allocated Tenants are required.
+  // Reuse the real mailbox while preserving its old Tenant's disabled/history
+  // state; no identity, roles or membership is transferred automatically.
+  const cooldown=(await pool.query(`SELECT GREATEST(0,COALESCE(MAX(EXTRACT(EPOCH FROM
+    (last_issued_at+interval '60 seconds'-clock_timestamp()))*1000),0)) AS remaining
+    FROM customer_access_abuse_budgets WHERE environment='int' AND kind='recipient'`)).rows[0];
+  const remaining=Number(cooldown.remaining);assert.ok(Number.isFinite(remaining) && remaining>=0 && remaining<=60000);
+  if (remaining>0) await delay(Math.ceil(remaining)+50);
+  const fresh=[];
+  for (const target of replacement.tenants) {
+    const invited=await createInvitedCustomerFixture(pool,t,{ recipient: `${target.slot}@example.test`,targetTenantId: target.tenantId,
+      async beforeAdmission({ invitation }) {
+        await pool.query(`INSERT INTO synthetic_invited_memberships
+          (environment,tenant_id,membership_id,invitation_id,generation_id,operator_id,slot)
+          SELECT 'int',$1,membership_id,id,$3,$4,$5 FROM customer_member_invitations
+          WHERE environment='int' AND tenant_id=$1 AND id=$2`,
+        [target.tenantId,invitation.id,replacement.generationId,registeredOwner.operator.operatorId,target.slot]);
+      } });
+    const previous=registered.find(row=>row.slot===target.slot);
+    if (previous.principal) assert.notEqual(invited.principal.userId,previous.principal.userId);
+    fresh.push(invited);
+  }
+  assert.deepEqual(await retainedPeople(),people);
+  const freshBindings=(await pool.query(`SELECT * FROM synthetic_invited_memberships
+    WHERE generation_id=$1 ORDER BY tenant_id`,[replacement.generationId])).rows;
+  assert.equal(freshBindings.length,3);
+  for (const binding of freshBindings) assert.equal(await qualified(binding),true);
+  await delay(10_100);
+  const secondReplacement=await replace(registeredOwner,replacement);
+  assert.deepEqual(await retainedPeople(),people);assert.deepEqual(await retainedReal(),realBefore);
+  for (const binding of [...bindings,...freshBindings]) assert.equal(await qualified(binding),false);
+  for (const invited of fresh) {
+    assert.equal(await invited.sessions.resolvePrincipal({ headers: { cookie: invited.cookie } }),null);
+    assert.equal(await tenantAuditRepository.verifyTenantChain(invited.tenantId),true);
+  }
+  assert.ok(await realControl.sessions.resolvePrincipal({ headers: { cookie: realControl.cookie } }));
+  assert.equal((await pool.query(`SELECT count(*)::int AS n FROM customer_access_memberships
+    WHERE tenant_id=ANY($1::uuid[])`,[secondReplacement.tenants.map(row=>row.tenantId)])).rows[0].n,0);
+  assert.ok(secondReplacement.tenants.every(row=>!replacement.tenants.some(old=>old.tenantId===row.tenantId)));
   for (const generation of [pendingGeneration,acceptedGeneration]) {
     const retained=(await pool.query('SELECT state FROM synthetic_tenant_generations WHERE id=$1',[generation.generationId])).rows[0];
     assert.equal(retained.state,'active');

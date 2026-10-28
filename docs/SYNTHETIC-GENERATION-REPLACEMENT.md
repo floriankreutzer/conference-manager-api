@@ -43,7 +43,11 @@ The native fixture covers default denial, unmapped pending/accepted/revoked/disa
 history, a separate empty reset and opt-in archival of registered pending/revoked,
 accepted and disabled participants under actual Microsoft exact-operation proof.
 It checks retained identity/history rows, revoked sessions, stale-scope denial,
-fresh Tenant IDs and no inherited memberships. Registration in this storage-focused
+fresh Tenant IDs and no inherited memberships across two complete replacements.
+Between cycles it requires fresh invitations and actual mailbox admission for all
+three new Tenants after the real recipient cooldown. Old disabled User state and
+all original identity/history rows remain unchanged; a separate REAL member and
+its current session/audit/registry state are compared after both cycles. Registration in this storage-focused
 fixture is an isolated database seed between real invitation creation and actual
 mailbox-proof admission; the separate participant registration progression proves
 the protected Platform invitation transaction. Neither fixture sends operating
