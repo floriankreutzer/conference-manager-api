@@ -218,3 +218,16 @@ test('REAL owner configuration requires explicit Microsoft, independent browser/
     PROTECTED_OWNER_HANDOFF_SECRET: 'h'.repeat(48),PROTECTED_PLATFORM_OWNER_HANDOFF_INTENT_SECRET: 'i'.repeat(48) }),
   /OWNER_MICROSOFT_REQUIRED/);
 });
+
+test('participant Operations profile requires Microsoft-managed MFA and never introduces application enrollment',t=>{
+  const env={ ...fixture(),PROTECTED_SYNTHETIC_ENABLED: 'true',PROTECTED_SYNTHETIC_PARTICIPANTS_ENABLED: 'true',
+    PROTECTED_HANDOFF_SECRET: 'h'.repeat(48),PROTECTED_PLATFORM_HANDOFF_INTENT_SECRET: 'i'.repeat(48) };
+  assert.throws(()=>loadProtectedPlatformConfiguration(env),/PARTICIPANTS_MICROSOFT_REQUIRED/);
+  env.PROTECTED_PLATFORM_ASSURANCE_MODE='microsoft_mfa';delete env.PROTECTED_PLATFORM_PASSKEY_TRANSACTION_SECRET;
+  const before={ ...env },bundle=load(t,env);
+  assert.deepEqual(env,before);assert.equal(bundle.profile.syntheticParticipantsEnabled,true);
+  assert.equal(bundle.config.minimumCredentialCount,null);
+  const authentication=bundle.authenticationFactory({ pool: noIo(),leasePool: noIo() });
+  assert.equal(authentication.platformPasskeyService,undefined);
+  assert.equal(typeof authentication.syntheticMicrosoftService.executeStepUpWithContinuation,'function');
+});

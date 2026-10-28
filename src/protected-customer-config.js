@@ -59,7 +59,8 @@ export function loadProtectedCustomerConfiguration(env) {
     activeKeyId: read(env,'PROTECTED_CUSTODY_ACTIVE_KEY_ID'),keyring: read(env,'PROTECTED_CUSTODY_KEYRING'),
     lookupSecret: values.lookupSecret,forbiddenSecrets: mailKey===undefined ? material : [...material,mailKey] });
   return Object.freeze({ profile,config,cipher,mailProvider,
-    authentication: Object.freeze({ emailFlowSecret: values.emailFlowSecret,emailCodeSecret: values.emailCodeSecret,
+    authentication: Object.freeze({ syntheticParticipantsEnabled: profile.syntheticParticipantsEnabled,
+      emailFlowSecret: values.emailFlowSecret,emailCodeSecret: values.emailCodeSecret,
       emailSourceSecret: values.emailSourceSecret,microsoftFlowSecret: values.microsoftFlowSecret,
       owner: ownerHandoff===null ? null : Object.freeze({ platformOrigin: profile.platformOrigin,
         platformSecurityEpoch: profile.platformSecurityEpoch,browserSecret: ownerHandoff,sourceSecret: values.emailSourceSecret }),

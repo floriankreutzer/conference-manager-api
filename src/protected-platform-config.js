@@ -34,6 +34,7 @@ export function loadProtectedPlatformConfiguration(env) {
   const mode=own('ASSURANCE_MODE');
   if (!['passkey_setup','application_passkey','microsoft_mfa'].includes(mode)) fail('PASSKEY_PROFILE_REQUIRED');
   const microsoftMfa=mode==='microsoft_mfa';
+  if (profile.syntheticParticipantsEnabled && !microsoftMfa) fail('PARTICIPANTS_MICROSOFT_REQUIRED');
   if (microsoftMfa && ['MINIMUM_PASSKEYS','PASSKEY_TRANSACTION_SECRET'].some(key=>Object.hasOwn(env,PREFIX+key))) {
     fail('MICROSOFT_MFA_PASSKEY_INPUT_FORBIDDEN');
   }

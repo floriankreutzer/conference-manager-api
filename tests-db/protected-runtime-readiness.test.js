@@ -112,6 +112,28 @@ async t=>{
   assert.equal(await readers.platform.isReady(),false);
   await admin.query(`REVOKE INSERT ON platform_passkey_enrollment_grants FROM ${identifier(platform)}`);
   assert.equal(await readers.platform.isReady(),true);
+  const participants={};
+  for (const surface of ['customer','platform']) {
+    participants[surface]=createPostgresProtectedRuntimeReadiness(asRole(business,`cm_protected_int_${surface}`),{
+      leasePool: asRole(lease,`cm_protected_int_${surface}`),environment: 'int',securityEpoch: epoch,surface,
+      syntheticParticipantsEnabled: true });
+    assert.equal(await participants[surface].isReady(),false);
+  }
+  const signatures=['protected_lock_synthetic_participant_scope(text,uuid,uuid,uuid,uuid,boolean)',
+    'protected_synthetic_participant_lifecycle(text,uuid,uuid,text,text,bigint)'];
+  for (const signature of signatures) await admin.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${identifier(role)}`);
+  assert.equal(await participants.customer.isReady(),true);
+  await admin.query(`GRANT SELECT,INSERT ON synthetic_invited_memberships TO ${identifier(platform)}`);
+  assert.equal(await participants.platform.isReady(),true);
+  await admin.query(`GRANT UPDATE(slot) ON synthetic_invited_memberships TO ${identifier(platform)}`);
+  assert.equal(await participants.platform.isReady(),false);
+  await admin.query(`REVOKE UPDATE(slot) ON synthetic_invited_memberships FROM ${identifier(platform)}`);
+  assert.equal(await participants.platform.isReady(),true);
+  const helper='protected_apply_synthetic_lifecycle(text,uuid,uuid,uuid,text,text,bigint)';
+  await admin.query(`GRANT EXECUTE ON FUNCTION ${helper} TO ${identifier(role)}`);
+  assert.equal(await participants.customer.isReady(),false);
+  await admin.query(`REVOKE EXECUTE ON FUNCTION ${helper} FROM ${identifier(role)}`);
+  assert.equal(await participants.customer.isReady(),true);
   await admin.query(`UPDATE protected_runtime_deployments SET security_epoch=$1,revision=revision+1,
     updated_at=clock_timestamp() WHERE environment='int'`,[randomUUID()]);
   assert.equal(await readers.customer.isReady(),false);assert.equal(await readers.platform.isReady(),false);

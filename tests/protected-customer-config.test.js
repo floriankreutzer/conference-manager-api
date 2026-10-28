@@ -141,3 +141,13 @@ test('REAL owner handoff is explicit, separated from Demo and independently keye
     PROTECTED_HANDOFF_SECRET: 'h'.repeat(48),PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED: 'true',
     PROTECTED_OWNER_HANDOFF_SECRET: 'h'.repeat(48) }),/SECRET_ALIAS_FORBIDDEN/);
 });
+
+test('Customer configuration passes only an explicit participant profile into its owned authentication factory',t=>{
+  assert.equal(load(t,fixture()).authentication.syntheticParticipantsEnabled,false);
+  const env={ ...fixture(),PROTECTED_SYNTHETIC_ENABLED: 'true',PROTECTED_HANDOFF_SECRET: 'h'.repeat(48),
+    PROTECTED_SYNTHETIC_PARTICIPANTS_ENABLED: 'true' };
+  const before={ ...env },bundle=load(t,env);
+  assert.deepEqual(env,before);assert.equal(bundle.profile.syntheticParticipantsEnabled,true);
+  assert.equal(bundle.authentication.syntheticParticipantsEnabled,true);assert.ok(bundle.authentication.synthetic);
+  assert.equal(Object.hasOwn(bundle.config,'syntheticParticipantsEnabled'),false);
+});

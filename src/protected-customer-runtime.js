@@ -62,15 +62,16 @@ export async function createProtectedCustomerRuntime(environment) {
     const { config,profile,cipher }=bundle,protection={ environment: profile.environment,securityEpoch: profile.securityEpoch };
     const frontend=await loadProtectedHostedFrontend(profile);
     const logger=createLogger();
+    const syntheticParticipantsEnabled=profile.syntheticParticipantsEnabled;
     const syntheticScope=profile.syntheticEnabled ? { ...protection,platformSecurityEpoch: profile.platformSecurityEpoch,
       customerOrigin: profile.customerOrigin,platformOrigin: profile.platformOrigin } : null;
     const ownerScope=profile.ownerCustomerAccessEnabled ? { ...protection,platformSecurityEpoch: profile.platformSecurityEpoch,
       customerOrigin: profile.customerOrigin,platformOrigin: profile.platformOrigin } : null;
     persistence=createPostgresPersistence(config,{ calendarAuthorityGuardFactory: pool=>
-      createPostgresProtectedCalendarAuthorityGuard(pool,{ ...protection,syntheticScope,ownerScope }) });
+      createPostgresProtectedCalendarAuthorityGuard(pool,{ ...protection,syntheticScope,ownerScope,syntheticParticipantsEnabled }) });
     leasePool=createPostgresPool(profile.leaseDatabase);
     const base=persistence,readiness=createPostgresProtectedRuntimeReadiness(base.pool,
-      { ...protection,leasePool,surface: 'customer' });
+      { ...protection,leasePool,surface: 'customer',syntheticParticipantsEnabled });
     const additionalReadinessChecks=[];
     async function runtimeReady() {
       if (!await readiness.isReady()) return false;
@@ -103,10 +104,11 @@ export async function createProtectedCustomerRuntime(environment) {
       createProtectedTenantRuntimeViewRouteModule({ runtimeRepository,...protection }),
       createProtectedCatalogueMediaRouteModule({ service: createProtectedCatalogueMediaService({
         authorizationPolicy: createAuthorizationPolicy(),
-        repository: createPostgresProtectedCatalogueMediaRepository(base.pool,{ ...protection,syntheticScope }) }) })];
+        repository: createPostgresProtectedCatalogueMediaRepository(base.pool,
+          { ...protection,syntheticScope,syntheticParticipantsEnabled }) }) })];
     if (syntheticScope!==null) {
       const authorizationPolicy=createAuthorizationPolicy();
-      const repository=createPostgresSyntheticOnboardingRepository(base.pool,{ scope: syntheticScope,
+      const repository=createPostgresSyntheticOnboardingRepository(base.pool,{ scope: syntheticScope,syntheticParticipantsEnabled,
         auditRepository: base.auditRepository });
       additionalReadinessChecks.push(repository.isReady);
       additionalRouteModules.push(createSyntheticOnboardingRouteModule({ publicOrigin: profile.customerOrigin,
@@ -121,7 +123,7 @@ export async function createProtectedCustomerRuntime(environment) {
           apiHandler: createProtectedHttpExecutionHandler({ config,surface: 'customer',executionScopes,app }) }),
       }) });
     const worker=bundle.mailProvider===null ? null : createProtectedCustomerAccessDeliveryWorker({ ...protection,
-      pool: base.pool,leasePool,cipher,provider: bundle.mailProvider });
+      pool: base.pool,leasePool,cipher,provider: bundle.mailProvider,syntheticParticipantsEnabled });
     let timer=null,running=null,closed=false,starting=false,started=false,stopping=null,startTask=null;
     function tick() {
       if (closed || running) return;

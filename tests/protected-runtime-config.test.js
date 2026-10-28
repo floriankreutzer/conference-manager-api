@@ -77,3 +77,26 @@ test('role/environment aliases, insecure connection parameters, pool excess and 
     { surface: 'customer' }).syntheticEnabled,true);
   assert.throws(()=>loadProtectedRuntimeProfile(fixture(),{ surface: 'browser' }),/SURFACE_INVALID/);
 });
+
+for (const surface of ['customer','platform']) {
+  test(`${surface} participant profile requires explicit DEV/INT synthetic scope and closed booleans`,()=>{
+    const base=fixture('int',surface),scope={ surface };
+    assert.equal(loadProtectedRuntimeProfile(base,scope).syntheticParticipantsEnabled,false);
+    for (const environment of ['dev','int']) {
+      const selected=loadProtectedRuntimeProfile({ ...fixture(environment,surface),PROTECTED_SYNTHETIC_ENABLED: 'true',
+        PROTECTED_SYNTHETIC_PARTICIPANTS_ENABLED: 'true' },scope);
+      assert.equal(selected.syntheticParticipantsEnabled,true);assert.ok(Object.isFrozen(selected));
+    }
+    for (const value of ['TRUE','1','yes','',true,null]) {
+      assert.throws(()=>loadProtectedRuntimeProfile({ ...base,PROTECTED_SYNTHETIC_ENABLED: 'true',
+        PROTECTED_SYNTHETIC_PARTICIPANTS_ENABLED: value },scope),/PROTECTED_RUNTIME_CONFIG_/);
+    }
+    assert.throws(()=>loadProtectedRuntimeProfile({ ...base,PROTECTED_SYNTHETIC_PARTICIPANTS_ENABLED: 'true' },scope),
+      /SYNTHETIC_PARTICIPANTS_INVALID/);
+    assert.throws(()=>loadProtectedRuntimeProfile({ ...fixture('prod',surface),
+      PROTECTED_SYNTHETIC_PARTICIPANTS_ENABLED: 'true' },scope),/SYNTHETIC_PARTICIPANTS_INVALID/);
+    const accessor=Object.defineProperty({ ...base },'PROTECTED_SYNTHETIC_PARTICIPANTS_ENABLED',
+      { get() { assert.fail('PARTICIPANT_CONFIGURATION_GETTER'); } });
+    assert.throws(()=>loadProtectedRuntimeProfile(accessor,scope),/REQUIRED/);
+  });
+}
