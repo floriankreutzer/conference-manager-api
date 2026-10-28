@@ -1,6 +1,6 @@
 # Invited participants in protected synthetic tenants
 
-Status: persistence foundation and implementation design for application
+Status: persistence/session ports and implementation design for application
 issues351/352/353, not an implemented admission path or operating acceptance.
 The active protected runtime composition still permits invitations/email admission
 only for REAL tenants. Existing strict REAL predicates and the operator-owned
@@ -38,7 +38,7 @@ to reject unqualified targets before reading account or link business state.
 These new repositories are not wired into an application composition. No runtime
 flag is registered or enabled, no SQL runtime grant is installed, and no endpoint
 has acquired participant admission. Current email, Microsoft linking, business
-session, media/calendar/onboarding and reset behavior remain unchanged. This
+session routing, media/calendar/onboarding and reset behavior remain unchanged. This
 foundation alone cannot close any participant or email operating requirement.
 
 Source tests cover exact parameter binding, scope/transaction custody, ambiguous
@@ -50,6 +50,33 @@ checks owner disablement independently of source-session revocation. It provisio
 small isolated registration fixtures; it does not replace the full canonical Demo
 progression/two-reset browser gates. Native execution and all required CI results
 must be recorded before qualification; writing these tests is not a passing result.
+
+## Inactive participant session ports
+
+Separate DEV/INT access and session repository factories qualify the actual
+accepted member under the live shared deployment lease and the same transaction.
+The member-qualified scope locks the active generation owner and Tenant before
+re-reading the canonical identity binding, User/security version, current role
+provenance and exact unexpired, unrevoked session snapshot. REAL and participant
+factories share that identity/session query; the existing REAL factory always
+binds participant selection to false, regardless of unrelated options.
+
+Only the separate factory can produce `synthetic_participant` custody. Its session
+issuer requires an explicitly participant-qualified repository for the same
+environment/epoch; qualification failure rolls back session and audit issuance.
+The session validator accepts that kind only with explicit boolean opt-in in
+DEV/INT and an email-code or Microsoft identity. Omitted configuration stays
+strict, and PROD opt-in is rejected. This creates no new authentication endpoint,
+SQL runtime grant, application composition or deployed permission.
+
+Native progression additionally performs actual mailbox proof and canonical
+invitation admission for all three isolated slots with the participant session
+repository, checks CSRF and strict REAL rejection, and verifies independent human
+sessions survive owner-session revocation but fail on owner disablement. It uses
+fixture codes and sends no mail. This evidence must pass natively; unit query mocks
+do not prove PostgreSQL behavior. Full media/calendar/onboarding/write custody,
+Microsoft admission/link progression, restricted SQL-role grants, replacement and
+operating delivery remain separate required work before runtime activation.
 
 ## Intended narrow boundary
 

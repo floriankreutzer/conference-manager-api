@@ -11,13 +11,14 @@ const real={ environment: 'int',tenantId: TENANT,securityEpoch: EPOCH,mode: 'rea
   generationId: null,generationState: null,operatorId: null,slot: null };
 const synthetic={ ...real,mode: 'synthetic',generationId: SESSION,generationState: 'active',operatorId: USER,slot: 'northwind' };
 
-function fixture({ identity=principal,access={ kind: 'invited_membership',runtime: real } }={}) {
+function fixture({ identity=principal,access={ kind: 'invited_membership',runtime: real },options={} }={}) {
   const calls=[];
   const base={ resolvePrincipal: async()=>identity };
   for (const method of ['issue','rotate','revoke','verifyCsrf','csrfTokenForPrincipal','clearCookie']) {
     base[method]=(...args)=>({ method,args });
   }
-  const service=createProtectedCustomerSessionService({ sessionService: base,environment: 'int',securityEpoch: EPOCH,accessRepository: {
+  const service=createProtectedCustomerSessionService({ sessionService: base,environment: 'int',securityEpoch: EPOCH,...options,
+    accessRepository: {
     async resolveCurrentAccess(value) { calls.push(value);return typeof access==='function' ? access() : access; },
   } });
   return { service,calls,base };
@@ -29,6 +30,38 @@ test('ordinary session is necessary and current custody is re-read on every prot
   assert.deepEqual(calls[0],{ environment: 'int',securityEpoch: EPOCH,principal });
   const missing=fixture({ identity: null });assert.equal(await missing.service.resolvePrincipal({}),null);
   assert.equal(missing.calls.length,0);
+});
+
+test('explicit DEV/INT participants require the exact current kind/provider pair on every resolution',async()=>{
+  for (const provider of ['email_code','microsoft_entra']) {
+    let current={ kind: 'synthetic_participant',runtime: synthetic };
+    const identity={ ...principal,providerIdentity: { provider,reference: USER } };
+    assert.equal(await fixture({ identity,access: current }).service.resolvePrincipal({}),null);
+    const f=fixture({ identity,access: ()=>current,options: { syntheticParticipantsEnabled: true } });
+    assert.deepEqual(await f.service.resolvePrincipal({}),identity);
+    current=null;assert.equal(await f.service.resolvePrincipal({}),null);assert.equal(f.calls.length,2);
+    for (const access of [{ kind: 'invited_membership',runtime: synthetic },
+      { kind: 'synthetic_participant',runtime: real },
+      { kind: 'synthetic_participant',runtime: { ...synthetic,generationState: 'archived' } },
+      { kind: 'synthetic_participant',runtime: { ...synthetic,securityEpoch: SESSION } },
+      { kind: 'synthetic_participant',runtime: { ...synthetic,tenantId: USER } }]) {
+      assert.equal(await fixture({ identity,access,options: { syntheticParticipantsEnabled: true } })
+        .service.resolvePrincipal({}),null);
+    }
+  }
+  for (const provider of ['platform_owner','platform_delegation','demo','test_identity']) {
+    assert.equal(await fixture({ identity: { ...principal,providerIdentity: { provider,reference: USER } },
+      access: { kind: 'synthetic_participant',runtime: synthetic },options: { syntheticParticipantsEnabled: true } })
+      .service.resolvePrincipal({}),null);
+  }
+});
+
+test('participant session selection rejects nonboolean and Production configuration before resolving authority',()=>{
+  for (const syntheticParticipantsEnabled of [null,'true',1,{},[]]) {
+    assert.throws(()=>fixture({ options: { syntheticParticipantsEnabled } }),/PROTECTED_CUSTOMER_SESSION_CONFIGURATION_INVALID/);
+  }
+  assert.throws(()=>fixture({ options: { environment: 'prod',syntheticParticipantsEnabled: true } }),
+    /PROTECTED_CUSTOMER_SESSION_CONFIGURATION_INVALID/);
 });
 
 test('only invited real identity or live operator delegation can cross its own classified boundary',async()=>{
