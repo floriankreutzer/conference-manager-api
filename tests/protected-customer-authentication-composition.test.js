@@ -100,3 +100,16 @@ test('explicit REAL owner admission owns separate routes and retains the five-me
     ['microsoft-role-mappings','customer-email-authentication','customer-invitations',
     'synthetic-customer-handoff','owner-customer-handoff']);
 });
+
+test('explicit participant assembly owns one write fence and retains only the five HTTP session methods',t=>{
+  const options=fixture(t),assembly=createProtectedCustomerAuthentication({ ...options,syntheticParticipantsEnabled: true });
+  assert.ok(assembly.writeCustody);assert.equal(typeof assembly.writeCustody.run,'function');
+  const { sessionService }=assembly.authenticationFactory({ config: options.config,persistence: options.persistence });
+  assert.deepEqual(Object.keys(sessionService).sort(),['clearCookie','csrfTokenForPrincipal','resolvePrincipal','revoke','verifyCsrf']);
+  assert.equal(sessionService.issue,undefined);assert.equal(sessionService.rotate,undefined);
+  const invalid=fixture(t);
+  for (const syntheticParticipantsEnabled of [null,'true',1,{},[]]) assert.throws(()=>
+    createProtectedCustomerAuthentication({ ...invalid,syntheticParticipantsEnabled }),/CONFIGURATION_INVALID/);
+  assert.throws(()=>createProtectedCustomerAuthentication({ ...invalid,synthetic: null,syntheticParticipantsEnabled: true }),
+    /CONFIGURATION_INVALID/);
+});

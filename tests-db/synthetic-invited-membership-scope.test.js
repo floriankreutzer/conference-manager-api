@@ -51,6 +51,10 @@ import { createPostgresProtectedCatalogueMediaRepository } from '../src/persiste
 import { createPostgresProtectedCalendarAuthorityGuard } from '../src/persistence/postgres/protected-calendar-authority-guard.js';
 import { createSyntheticTemplateMediaSource } from '../src/media/synthetic-template-media.js';
 import { createSyntheticBusinessTemplates } from '../src/synthetic/business-templates.js';
+import { loadConfig } from '../src/config.js';
+import { createProtectedInvitedCustomerAccess } from '../src/protected-invited-customer-access-composition.js';
+import { createProtectedCustomerAuthentication } from '../src/protected-customer-authentication-composition.js';
+import { createProtectedCustomerAccessDeliveryWorker } from '../src/protected-customer-access-delivery-composition.js';
 
 test('native participant registration retains exact Microsoft proof and member-qualified own-generation custody',async t=>{
   const fixture=await createProtectedPostgresTlsFixture(t),pools=[];
@@ -291,6 +295,57 @@ test('native participant registration retains exact Microsoft proof and member-q
       { tenantId,principal: foreign }))),false);
     business.push({ tenantId,principal,assetId });
   }
+  // Exercise the owned factories with their real random code/namespace ports.
+  // The provider is an in-memory test receipt, never operating mail evidence.
+  const config=Object.freeze({ ...loadConfig({ NODE_ENV: 'test',PUBLIC_ORIGIN: syntheticScope.customerOrigin,
+    AUDIT_HMAC_SECRET: 'a'.repeat(48),CSRF_SECRET: 's'.repeat(48) }),deploymentEnvironment: 'int' });
+  const persistence={ pool: customerPool },options={ pool: customerPool,leasePool: customerLease,...protection,cipher,
+    publicOrigin: config.publicOrigin,auditHmacSecret: config.auditHmacSecret,csrfSecret: config.csrfSecret,
+    sessionTtlSeconds: config.sessionTtlSeconds,emailFlowSecret: 'f'.repeat(48),emailCodeSecret: 'p'.repeat(48),
+    emailSourceSecret: 'b'.repeat(48),syntheticParticipantsEnabled: true };
+  const invited=createProtectedInvitedCustomerAccess(options);
+  const authentication=createProtectedCustomerAuthentication({ ...options,config,persistence,
+    synthetic: { platformOrigin: syntheticScope.platformOrigin,platformSecurityEpoch: syntheticScope.platformSecurityEpoch,
+      browserSecret: 'h'.repeat(48),sourceSecret: 'b'.repeat(48) } });
+  const facade=authentication.authenticationFactory({ config,persistence }).sessionService;
+  const ownedRun=work=>shared(()=>authentication.writeCustody.run(work)),codes=new Map(),ownedSessions=[];let mailCalls=0;
+  const worker=createProtectedCustomerAccessDeliveryWorker({ ...options,provider: { async send(message) {
+    mailCalls++;const code=message.text.match(/(?:^|\n)(\d{8})(?:\n|$)/)?.[1];if (code) codes.set(message.recipient,code);
+    return { status: 'accepted',messageId: randomUUID() };
+  } } });
+  let graphCalls=0;
+  const graphCall=()=>{ graphCalls++;throw new Error('ISOLATED_REAL_GRAPH_TRIPWIRE'); };
+  const graph=authentication.writeCustody.providerClient({ redirectUri: config.publicOrigin+'/callback',adminConsentUrl: graphCall,
+    discoverRooms: graphCall,lookupFreeBusy: graphCall,createCalendarEvent: graphCall,updateCalendarEvent: graphCall,
+    cancelCalendarEvent: graphCall,verifyBasePermissions: graphCall });
+  for (const target of issued) {
+    const recipient=`${target.slot}@example.test`,sourceAddress='127.0.0.1';
+    const pending=await invited.service.request({ recipient,locale: 'de',sourceAddress });
+    assert.equal((await worker.runOnce()).status,'accepted');assert.equal(typeof codes.get(recipient),'string');
+    const verified=await invited.service.verify({ ...pending,code: codes.get(recipient),sourceAddress });
+    assert.equal(verified.status,'membership_required');
+    const choices=await invited.service.choices(verified);assert.equal(choices.items.length,1);
+    const issuedSession=await invited.service.select({ ...verified,correlationId: randomUUID() },
+      { membershipId: choices.items[0].membershipId });
+    const request={ headers: { cookie: issuedSession.setCookie.split(';')[0] } };
+    const principal=await ownedRun(async()=>{
+      const current=await facade.resolvePrincipal(request);assert.equal(current.tenantId,target.tenantId);
+      const changed=await withPostgresTransaction(customerPool,client=>client.query(
+        'UPDATE tenants SET display_name=display_name WHERE id=$1 RETURNING id',[current.tenantId]));
+      assert.equal(changed.rowCount,1);
+      await assert.rejects(async()=>graph.createCalendarEvent({}),/AUTHORIZATION_DENIED/);return current;
+    });
+    const context={ principal,tenantContext: { tenantId: target.tenantId,status: 'active' },correlationId: randomUUID() };
+    await assert.rejects(ownedRun(async()=>{
+      await facade.resolvePrincipal(request);return invited.invitationService.issueBatch(context,
+        { commandId: randomUUID(),invitations: [{ recipient: 'Blocked@example.test',roles: ['tenant_admin'],locale: 'de' }] });
+    }),/RESOURCE_NOT_AVAILABLE/);
+    await assert.rejects(ownedRun(async()=>{
+      await facade.resolvePrincipal(request);return invited.groupRoleService.get(context);
+    }),/MICROSOFT_ROLE_MAPPING_NOT_AUTHORIZED/);
+    ownedSessions.push({ request,principal });
+  }
+  assert.equal(graphCalls,0);assert.equal((await worker.runOnce()).status,'idle');
   // Canonical unregistered history on the SAME otherwise eligible Tenant cannot
   // acquire the new path merely because another approved member exists there.
   const unregistered=await createInvitedCustomerFixture(pool,t,{ targetTenantId: owned.tenants[2].tenantId,
@@ -350,9 +405,30 @@ test('native participant registration retains exact Microsoft proof and member-q
   await pool.query('UPDATE platform_sessions SET revoked_at=clock_timestamp() WHERE operator_id=$1',[owner.operator.operatorId]);
   assert.equal(await eligible(bindings[0].tenant_id,{ membershipId: bindings[0].membership_id }),true);
   for (const row of accepted) assert.ok(await shared(()=>sessions.resolvePrincipal(row.request)));
+  for (const row of ownedSessions) assert.ok(await ownedRun(()=>facade.resolvePrincipal(row.request)));
+  // Drain the unrelated ordinary REAL invitation created by the strict-scope
+  // progression before isolating the queued participant-disablement case.
+  let drained=false;
+  for (let index=0;index<10;index++) {
+    const outcome=await worker.runOnce();
+    if (outcome.status==='idle') { drained=true;break; }
+    assert.equal(outcome.status,'accepted');
+  }
+  assert.equal(drained,true);
+  await invited.service.request({ recipient: `${issued[0].slot}@example.test`,locale: 'de',sourceAddress: '127.0.0.1' });
+  const beforeDisabledDispatch=mailCalls;
   await pool.query("UPDATE platform_operators SET status='disabled' WHERE id=$1",[owner.operator.operatorId]);
   assert.equal(await eligible(bindings[0].tenant_id,{ membershipId: bindings[0].membership_id }),false);
+  assert.equal((await worker.runOnce()).status,'idle');assert.equal(mailCalls,beforeDisabledDispatch);
   for (const row of accepted) assert.equal(await shared(()=>sessions.resolvePrincipal(row.request)),null);
+  for (const row of ownedSessions) {
+    assert.equal(await ownedRun(()=>facade.resolvePrincipal(row.request)),null);
+    await assert.rejects(ownedRun(async()=>{
+      await authentication.writeCustody.observe(row.principal);
+      return withPostgresTransaction(customerPool,client=>client.query(
+        "UPDATE tenants SET display_name='Forbidden stale participant' WHERE id=$1",[row.principal.tenantId]));
+    }),/AUTHORIZATION_DENIED/);
+  }
   for (const row of business) {
     await assert.rejects(shared(()=>mediaRepository.find(row)),/AUTHORIZATION_DENIED/);
     assert.equal(await shared(()=>withPostgresTransaction(customerPool,client=>calendarGuard.lockCustomerMutation(client,row))),false);

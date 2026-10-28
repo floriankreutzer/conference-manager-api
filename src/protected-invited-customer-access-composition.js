@@ -17,9 +17,12 @@ import { createPostgresCustomerInvitationRepository } from './persistence/postgr
 import { createPostgresCustomerEmailAdmissionRepository } from './persistence/postgres/customer-email-admission-repository.js';
 import { createPostgresCustomerMicrosoftFlowRepository } from './persistence/postgres/customer-microsoft-flow-repository.js';
 import { createPostgresCustomerEmailChallengeRepository } from './persistence/postgres/customer-email-challenge-repository.js';
-import { createPostgresProtectedCustomerAccessRepository } from './persistence/postgres/protected-customer-access-repository.js';
-import { createPostgresProtectedInvitedSessionRepository } from './persistence/postgres/protected-invited-session-repository.js';
+import { createPostgresProtectedParticipantCustomerAccessRepository,createPostgresProtectedCustomerAccessRepository }
+  from './persistence/postgres/protected-customer-access-repository.js';
+import { createPostgresProtectedParticipantSessionRepository,createPostgresProtectedInvitedSessionRepository }
+  from './persistence/postgres/protected-invited-session-repository.js';
 import { createPostgresProtectedRealTenantScope } from './persistence/postgres/protected-real-tenant-scope.js';
+import { createPostgresProtectedInvitedTenantScope } from './persistence/postgres/protected-invited-tenant-scope.js';
 import { createPostgresProtectedRuntimeExecutionScopes } from './persistence/postgres/protected-runtime-execution-scopes.js';
 import { createPostgresTenantMicrosoftRoleRepository } from './persistence/postgres/tenant-microsoft-role-repository.js';
 import { createTenantMicrosoftRoleService } from './application/tenant-microsoft-role-service.js';
@@ -29,22 +32,27 @@ import { createTenantMicrosoftRoleService } from './application/tenant-microsoft
 // unknown-recipient flows which never reach the REAL qualification predicate.
 export function createProtectedInvitedCustomerAccess({ pool,leasePool,environment,securityEpoch,publicOrigin,cipher,
   auditHmacSecret,csrfSecret,emailFlowSecret,emailCodeSecret,emailSourceSecret,sessionTtlSeconds,clock,
-  microsoftClient=null,microsoftFlowSecret } = {}) {
+  microsoftClient=null,microsoftFlowSecret,syntheticParticipantsEnabled=false } = {}) {
   const scopes=createPostgresProtectedRuntimeExecutionScopes({ pool,leasePool,environment,securityEpoch });
   const protection={ environment,securityEpoch: securityEpoch.toLowerCase() };
-  const tenantScope=createPostgresProtectedRealTenantScope(pool,protection);
+  const realTenantScope=createPostgresProtectedRealTenantScope(pool,protection);
+  const tenantScope=createPostgresProtectedInvitedTenantScope(pool,{ ...protection,syntheticParticipantsEnabled });
   const auditRepository=createPostgresAuditRepository(pool,{ hmacSecret: auditHmacSecret });
   const auditService=createAuditService({ repository: auditRepository,authorizationPolicy: createAuthorizationPolicy(),clock });
   const groupRoleAdministration=createTenantMicrosoftRoleService({
-    repository: createPostgresTenantMicrosoftRoleRepository(pool,{ auditRepository,tenantEligibility: tenantScope }),
+    repository: createPostgresTenantMicrosoftRoleRepository(pool,{ auditRepository,tenantEligibility: realTenantScope }),
     authorizationPolicy: createAuthorizationPolicy(),auditService,
   });
   const groupRoleService=Object.freeze({ get: context=>scopes.withShared(()=>groupRoleAdministration.get(context)),
     replace: (context,command)=>scopes.withShared(()=>groupRoleAdministration.replace(context,command)) });
-  const sessionRepository=createPostgresProtectedInvitedSessionRepository(pool,{ ...protection,auditRepository });
-  const accessRepository=createPostgresProtectedCustomerAccessRepository(pool,protection);
+  const sessionFactory=syntheticParticipantsEnabled
+    ? createPostgresProtectedParticipantSessionRepository : createPostgresProtectedInvitedSessionRepository;
+  const accessFactory=syntheticParticipantsEnabled
+    ? createPostgresProtectedParticipantCustomerAccessRepository : createPostgresProtectedCustomerAccessRepository;
+  const sessionRepository=sessionFactory(pool,{ ...protection,auditRepository });
+  const accessRepository=accessFactory(pool,protection);
   const sessionService=createProtectedInvitedCustomerSessions({ ...protection,sessionRepository,accessRepository,
-    auditService,publicOrigin,csrfSecret,sessionTtlSeconds,clock });
+    auditService,publicOrigin,csrfSecret,sessionTtlSeconds,clock,syntheticParticipantsEnabled });
   const flowBinding=createCustomerEmailFlowBinding({ environment,
     secret: deriveProtectedAuthenticationFlowSecret({ ...protection,secret: emailFlowSecret,purpose: 'customer-email-flow' }) });
   const proofFactory=createEmailMailboxProofFactory({ environment,
@@ -93,7 +101,7 @@ export function createProtectedInvitedCustomerAccess({ pool,leasePool,environmen
     });
   }
   const invitationRepository=createPostgresCustomerInvitationRepository(pool,{ environment,cipher,content,auditRepository,
-    tenantEligibility: { allowsWithClient: tenantScope.lockAdmissionWithClient } });
+    tenantEligibility: { allowsWithClient: realTenantScope.lockAdmissionWithClient } });
   const invitations=createCustomerInvitationService({ environment,repository: invitationRepository,auditService,
     authorizationPolicy: createAuthorizationPolicy() });
   const invitationService=Object.freeze({

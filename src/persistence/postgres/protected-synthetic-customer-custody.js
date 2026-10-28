@@ -13,20 +13,30 @@ export function createPostgresProtectedSyntheticCustomerCustody(pool,{ scope,syn
   const protection=Object.freeze({ environment: scope.environment,securityEpoch: scope.securityEpoch });
   const delegated=createPostgresSyntheticCustomerAccessRepository(pool,{ scope });
   const participant=syntheticParticipantsEnabled ? createPostgresProtectedParticipantCustomerAccessRepository(pool,protection) : null;
-  async function resolve(input) {
+  async function resolve(input,client=null) {
     let principal;try { principal=normalizePrincipal(input?.principal); } catch { return null; }
     const source=principal.providerIdentity.provider==='platform_delegation' ? delegated : participant;
     if (!source) return null;
-    const current=await source.resolveCurrentAccess(input);
+    const current=source===participant && client!==null
+      ? await participant.resolveCurrentAccessWithClient(client,input) : await source.resolveCurrentAccess(input);
     if (current?.runtime?.mode!=='synthetic') return null;
     return current;
   }
   return Object.freeze({
-    resolveCurrentAccess: resolve,
+    async isReady() {
+      try {
+        const result=await pool.query(`SELECT has_function_privilege(current_user,
+          'public.protected_lock_synthetic_calendar_source(text,uuid,uuid)','EXECUTE')
+          AND (NOT ${syntheticParticipantsEnabled} OR has_function_privilege(current_user,
+            'public.protected_lock_synthetic_participant_scope(text,uuid,uuid,uuid,uuid,boolean)','EXECUTE')) AS allowed`);
+        return result.rows[0]?.allowed===true;
+      } catch { return false; }
+    },
+    resolveCurrentAccess: input=>resolve(input),
     async lockCurrentAccessWithClient(client,input) {
       requireProtectedRuntimeSharedExecutionScope(pool,protection);
       if (!isPostgresTransactionActive(pool,client)) throw new TypeError('PROTECTED_SYNTHETIC_CUSTODY_TRANSACTION_REQUIRED');
-      const first=await resolve(input);if (!first) return null;
+      const first=await resolve(input,client);if (!first) return null;
       const principal=normalizePrincipal(input.principal);
       if (first.kind==='operator_delegation') {
         const locked=await client.query({ name: 'protected-calendar-source-lock',
@@ -47,7 +57,7 @@ export function createPostgresProtectedSyntheticCustomerCustody(pool,{ scope,syn
           if (locked.rowCount!==1) return null;
         } catch (error) { if (error?.code==='55P03') return null;throw error; }
       } else return null;
-      const current=await resolve(input);
+      const current=await resolve(input,client);
       return current?.kind===first.kind && current.runtime.generationId===first.runtime.generationId
         && current.runtime.operatorId===first.runtime.operatorId && current.runtime.slot===first.runtime.slot ? current : null;
     },

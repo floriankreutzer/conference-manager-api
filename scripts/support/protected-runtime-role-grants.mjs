@@ -272,3 +272,24 @@ export async function grantPlatformObservabilityReadRuntimeRoles(pool,input,opti
   try { return await grantIncrementalRuntimeRoles(pool,platformObservabilityReadRoleGrantPlan(input),options); }
   catch { failed(); }
 }
+
+// Existing drained INT roles need only the same three positive grants prepared
+// by the fresh manifest. No binding mutation goes to Customer, and the private
+// lifecycle helper remains ungranted. Reuse the exact ledger/audit/drain gate.
+export function syntheticParticipantRoleGrantPlan(input) {
+  const base=platformAuditSegmentRoleGrantPlan(input),customer=identifier('cm_protected_int_customer');
+  const signatures=['protected_lock_synthetic_participant_scope(text,uuid,uuid,uuid,uuid,boolean)',
+    'protected_synthetic_participant_lifecycle(text,uuid,uuid,text,text,bigint)'];
+  const customerManifest=protectedRuntimeRoleManifest('customer'),platformManifest=protectedRuntimeRoleManifest('platform');
+  const binding=platformManifest.tables.find(entry=>entry.name==='synthetic_invited_memberships');
+  if (signatures.some(signature=>!customerManifest.functions.includes(signature)) || binding?.privileges!=='SELECT,INSERT') failed();
+  return Object.freeze({ ...base,statements: Object.freeze([
+    ...signatures.map(signature=>`GRANT EXECUTE ON FUNCTION public.${signature} TO ${customer}`),
+    `GRANT ${binding.privileges} ON public.${identifier(binding.name)} TO ${identifier('cm_protected_int_platform')}`,
+  ]) });
+}
+
+export async function grantSyntheticParticipantRuntimeRoles(pool,input,options={}) {
+  try { return await grantIncrementalRuntimeRoles(pool,syntheticParticipantRoleGrantPlan(input),options); }
+  catch { failed(); }
+}

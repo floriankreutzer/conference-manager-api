@@ -5,7 +5,8 @@ import { protectedRuntimeRoleGrantPlan,grantProtectedRuntimeRoles,platformAuditS
   platformMicrosoftOperationRoleGrantPlan,grantPlatformMicrosoftOperationRuntimeRoles,syntheticMicrosoftCustodyRoleGrantPlan,
   ownerCustomerCustodyRoleGrantPlan,
   grantOwnerCustomerCustodyRuntimeRoles,platformObservabilityReadRoleGrantPlan,grantPlatformObservabilityReadRuntimeRoles,
-  customerRequestWorkflowRoleGrantPlan,grantCustomerRequestWorkflowRuntimeRoles }
+  customerRequestWorkflowRoleGrantPlan,grantCustomerRequestWorkflowRuntimeRoles,
+  syntheticParticipantRoleGrantPlan,grantSyntheticParticipantRuntimeRoles }
   from '../scripts/support/protected-runtime-role-grants.mjs';
 import { architectureConsolidationBoundaryViolations } from '../scripts/check-module-boundaries.mjs';
 
@@ -189,6 +190,28 @@ test('observability delta grants fixed Platform SELECT only and rejects supplied
   for (const patch of [{ environment: 'prod' },{ role: 'customer' },{ statements: [] },{ segmentId: 'invalid' }]) {
     assert.throws(()=>platformObservabilityReadRoleGrantPlan({ ...input,...patch }),/INSTALLATION_REFUSED/);
     await assert.rejects(grantPlatformObservabilityReadRuntimeRoles(pool,{ ...input,...patch }),/INSTALLATION_REFUSED/);
+  }
+  assert.equal(connected,false);
+});
+
+
+test('existing INT participant delta retains the fixed three grants and refuses caller-selected authority before connecting',async()=>{
+  const input={ environment: 'int',securityEpoch: epoch,segmentId: 'be000000-0000-4000-8000-000000000002' };
+  const plan=syntheticParticipantRoleGrantPlan(input);assert.equal(plan.schemaVersion,74);
+  assert.deepEqual(plan.statements,[
+    'GRANT EXECUTE ON FUNCTION public.protected_lock_synthetic_participant_scope(text,uuid,uuid,uuid,uuid,boolean) '
+      +'TO "cm_protected_int_customer"',
+    'GRANT EXECUTE ON FUNCTION public.protected_synthetic_participant_lifecycle(text,uuid,uuid,text,text,bigint) '
+      +'TO "cm_protected_int_customer"',
+    'GRANT SELECT,INSERT ON public."synthetic_invited_memberships" TO "cm_protected_int_platform"',
+  ]);
+  assert.ok(Object.isFrozen(plan.statements));
+  let connected=false;const pool={ async connect() { connected=true;throw new Error('PRIVATE_DRIVER_DETAIL'); } };
+  for (const value of [{ ...input,environment: 'prod' },{ ...input,environment: 'dev' },{ ...input,role: 'customer' },
+    { ...input,statements: [] },{ ...input,get securityEpoch() { throw new Error('INPUT_ACCESSOR'); } }]) {
+    assert.throws(()=>syntheticParticipantRoleGrantPlan(value),{ message: 'PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED' });
+    await assert.rejects(grantSyntheticParticipantRuntimeRoles(pool,value),
+      { message: 'PROTECTED_RUNTIME_ROLE_INSTALLATION_REFUSED' });
   }
   assert.equal(connected,false);
 });

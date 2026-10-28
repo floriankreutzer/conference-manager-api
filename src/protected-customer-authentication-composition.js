@@ -1,7 +1,7 @@
 import { isInternalUuid } from './domain/identifiers.js';
 import { normalizeOwnerCustomerAccessScope } from './domain/owner-customer-handoff.js';
 import { createProtectedOwnerCustomerAccess } from './protected-owner-customer-access-composition.js';
-import { createProtectedOwnerCustomerWriteCustody } from './protected-owner-customer-write-composition.js';
+import { createProtectedCustomerWriteCustody } from './protected-customer-write-composition.js';
 import { createOwnerCustomerHandoffRouteModule } from './http/owner-customer-handoff-routes.js';
 import { normalizeSyntheticHandoffScope } from './domain/synthetic-handoff.js';
 import { createProtectedInvitedCustomerAccess } from './protected-invited-customer-access-composition.js';
@@ -31,27 +31,37 @@ function handoffConfiguration(value,environment,securityEpoch,customerOrigin,nor
 // HTTP session functions escape: no generic issuer/rotation/JIT or supplied
 // session implementation can replace persistent REAL/delegation qualification.
 export function createProtectedCustomerAuthentication({ config,persistence,leasePool,environment,securityEpoch,cipher,
-  emailFlowSecret,emailCodeSecret,emailSourceSecret,microsoftClient=null,microsoftFlowSecret,synthetic=null,owner=null }={}) {
+  emailFlowSecret,emailCodeSecret,emailSourceSecret,microsoftClient=null,microsoftFlowSecret,synthetic=null,owner=null,
+  syntheticParticipantsEnabled=false }={}) {
   if (!config || !persistence || !isInternalUuid(securityEpoch) || !['dev','int','prod'].includes(environment)
-    || config.deploymentEnvironment!==environment) throw new TypeError('PROTECTED_CUSTOMER_AUTHENTICATION_CONFIGURATION_INVALID');
+    || config.deploymentEnvironment!==environment || typeof syntheticParticipantsEnabled!=='boolean') {
+    throw new TypeError('PROTECTED_CUSTOMER_AUTHENTICATION_CONFIGURATION_INVALID');
+  }
   const selected=handoffConfiguration(synthetic,environment,securityEpoch,config.publicOrigin,normalizeSyntheticHandoffScope);
+  if (syntheticParticipantsEnabled && selected===null) throw new TypeError('PROTECTED_CUSTOMER_AUTHENTICATION_CONFIGURATION_INVALID');
   const selectedOwner=handoffConfiguration(owner,environment,securityEpoch,config.publicOrigin,normalizeOwnerCustomerAccessScope);
   const scopes=createPostgresProtectedRuntimeExecutionScopes({ pool: persistence.pool,leasePool,environment,securityEpoch });
   const options={ pool: persistence.pool,leasePool,environment,securityEpoch,publicOrigin: config.publicOrigin,cipher,
     auditHmacSecret: config.auditHmacSecret,csrfSecret: config.csrfSecret,sessionTtlSeconds: config.sessionTtlSeconds,
-    emailFlowSecret,emailCodeSecret,emailSourceSecret,microsoftClient,microsoftFlowSecret };
+    emailFlowSecret,emailCodeSecret,emailSourceSecret,microsoftClient,microsoftFlowSecret,syntheticParticipantsEnabled };
   const invited=createProtectedInvitedCustomerAccess(options);
   const delegated=selected===null ? null : createProtectedSyntheticCustomerAccess({ ...options,scope: selected.scope,
     browserSecret: selected.browserSecret,sourceSecret: selected.sourceSecret });
-  // The delegated factory's resolver already dispatches to actual REAL membership
-  // or current synthetic delegation custody within the same namespace. Issuers
-  // remain private to the separate code/Microsoft and consumed-handoff protocols.
-  const fallback=delegated?.sessionService ?? invited.sessionService;
+  // The default delegation resolver retains REAL/delegated custody. Explicit
+  // participants first use the owned member issuer/resolver, then the existing
+  // delegated resolver. All issuers stay private to their admission protocols.
+  const fallback=syntheticParticipantsEnabled ? Object.freeze({
+    ...Object.fromEntries(HTTP_METHODS.map(name=>[name,invited.sessionService[name].bind(invited.sessionService)])),
+    async resolvePrincipal(request) {
+      return await invited.sessionService.resolvePrincipal(request) ?? delegated.sessionService.resolvePrincipal(request);
+    },
+  }) : delegated?.sessionService ?? invited.sessionService;
   const own=selectedOwner===null ? null : createProtectedOwnerCustomerAccess({ ...options,scope: selectedOwner.scope,
     browserSecret: selectedOwner.browserSecret,sourceSecret: selectedOwner.sourceSecret,fallbackSessionService: fallback });
   const resolver=own?.sessionService ?? fallback;
-  const writeCustody=selectedOwner===null ? null : createProtectedOwnerCustomerWriteCustody({ pool: persistence.pool,
-    scope: selectedOwner.scope });
+  const writeCustody=selectedOwner===null && !syntheticParticipantsEnabled ? null : createProtectedCustomerWriteCustody({
+    pool: persistence.pool,environment,securityEpoch,ownerScope: selectedOwner?.scope ?? null,
+    syntheticScope: selected?.scope ?? null,syntheticParticipantsEnabled });
   const sessionService=Object.freeze(Object.fromEntries(HTTP_METHODS.map(name=>[name,
     name==='resolvePrincipal' ? request=>scopes.withShared(async()=>{
       const principal=await resolver.resolvePrincipal(request);return writeCustody===null ? principal : writeCustody.observe(principal);

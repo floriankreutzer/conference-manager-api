@@ -1,16 +1,16 @@
 import { createCustomerAccessDeliveryWorker } from './application/customer-access-delivery-worker.js';
 import { createPostgresCustomerAccessDeliveryRepository } from './persistence/postgres/customer-access-delivery-repository.js';
-import { createPostgresProtectedRealDeliveryEligibility } from './persistence/postgres/protected-real-delivery-eligibility.js';
+import { createPostgresProtectedInvitedTenantScope } from './persistence/postgres/protected-invited-tenant-scope.js';
 import { createPostgresProtectedRuntimeExecutionScopes } from './persistence/postgres/protected-runtime-execution-scopes.js';
 
 // Composition owns both eligibility and the enclosing deployment lease. Neither
-// a supplied repository nor a caller-selected mode can bypass REAL qualification.
+// a supplied repository nor a Tenant-only selection can bypass current member qualification.
 // Provider configuration, fixed destination and bounded transport remain with
 // the existing server-owned transactional email adapter.
 export function createProtectedCustomerAccessDeliveryWorker({ pool,leasePool,environment,securityEpoch,
-  cipher,provider,random }={}) {
+  cipher,provider,random,syntheticParticipantsEnabled=false }={}) {
   const scopes=createPostgresProtectedRuntimeExecutionScopes({ pool,leasePool,environment,securityEpoch });
-  const tenantEligibility=createPostgresProtectedRealDeliveryEligibility(pool,{ environment,securityEpoch });
+  const tenantEligibility=createPostgresProtectedInvitedTenantScope(pool,{ environment,securityEpoch,syntheticParticipantsEnabled });
   const repository=createPostgresCustomerAccessDeliveryRepository(pool,{ environment,cipher,tenantEligibility });
   const worker=createCustomerAccessDeliveryWorker({ repository,provider,random });let running=false;
   return Object.freeze({

@@ -35,8 +35,8 @@ do the same; account/link flows can use the explicit participant composition's
 accepted-member lookup before current session checks. Default REAL ports continue
 to reject unqualified targets before reading account or link business state.
 
-These new repositories are not wired into an application composition. No runtime
-flag is registered or enabled, no SQL runtime grant is installed, and no endpoint
+The concrete application runtime still does not enable these participant ports. No runtime
+flag is registered or enabled, no live SQL runtime grant is installed, and no endpoint
 has acquired participant admission. Current email, Microsoft linking, business
 session routing, media/calendar/onboarding and reset behavior remain unchanged. This
 foundation alone cannot close any participant or email operating requirement.
@@ -74,9 +74,9 @@ invitation admission for all three isolated slots with the participant session
 repository, checks CSRF and strict REAL rejection, and verifies independent human
 sessions survive owner-session revocation but fail on owner disablement. It uses
 fixture codes and sends no mail. This evidence must pass natively; unit query mocks
-do not prove PostgreSQL behavior. Full media/calendar/onboarding/write custody,
-Microsoft admission/link progression, restricted SQL-role grants, replacement and
-operating delivery remain separate required work before runtime activation.
+do not prove PostgreSQL behavior. The downstream business/onboarding/write custody and role ports are described
+below. Complete Microsoft/link progression, replacement and operating delivery
+remain required before concrete runtime activation.
 
 ## Inactive synthetic business custody ports
 
@@ -99,10 +99,10 @@ Native progression adds actual private image bytes, per-slot synthetic calendar
 integration/resource qualification, foreign-source denial and owner-disablement
 rejection. The full permanent browser/storage matrix remains separate evidence.
 
-These ports do not yet activate application runtime, onboarding lifecycle,
-restricted SQL grants, participant write-wide fencing, invitation dispatch or
-generation replacement. Those remaining boundaries must be implemented and
-qualified before enabling a participant runtime configuration.
+These ports alone do not activate application runtime. The following sections
+define onboarding, role, write and dispatch custody; complete generation
+replacement and operating acceptance are still required before enabling the
+concrete participant runtime configuration.
 
 ## Inactive participant onboarding and SQL role plan
 
@@ -135,7 +135,48 @@ Platform/Tenant mutation denial, missing current role, disabled User, revoked/
 expired session, mismatched identity, wrong environment/epoch and audit rollback.
 These tests must pass natively and alongside all permanent Demo gates. Source
 preparation does not install live grants, expose new routes or enable participant
-runtime; write-wide fencing, composition, dispatch and replacement remain open.
+runtime. Owned write/composition/dispatch ports are described below; complete
+replacement and operating acceptance remain open.
+
+## Owned authentication, dispatch and transaction custody
+
+The owned invited factory now accepts explicit strict DEV/INT participant
+selection for challenge/choice/admission, Microsoft/account-link scope and the
+qualified session repository. The ordinary Customer invitation and Microsoft group
+mapping services still receive the separate fixed REAL scope. The owned normal
+HTTP facade resolves current invited access before its existing delegated fallback;
+it exposes only resolve/revoke/CSRF/clear-cookie methods, never a generic issuer.
+
+Participant-enabled delivery owns the same exact member/invitation qualification
+and whole-attempt shared lease as its canonical worker. Only the existing invitation
+and mailbox-code purposes are eligible. Native progression exercises random owned
+codes through encrypted outbox custody and a fake in-memory provider receipt; it
+is not actual mail delivery or sender/domain acceptance.
+
+One pool-owned transaction precondition handles REAL owner custody and invited
+synthetic participants. Observation requalifies the actual persistent source before
+admitting a private immutable authority record. Each later write transaction locks
+and rechecks that source on its exact client; a validator must not recursively enter
+its own write precondition. Missing/revoked/stale sources and detached callbacks
+cannot write. Owner observation retains its synchronous contract. Ordinary REAL
+members retain their existing path. Participant Graph methods and real consent
+redirects are denied before provider entry; identity sign-in and authentication
+mail remain separate allowed purposes.
+
+A fixed existing-INT-role installer plan reuses the exact offline owner, current
+ledger/epoch/audit segment, verified audit and both-role drain checks. Its only
+statements are the two narrow Customer member/lifecycle functions and Platform
+SELECT/INSERT on immutable bindings. No wildcard, private helper, Customer binding
+write, general Tenant lifecycle or Platform mutation grant is added. The operator
+CLI is explicit and not imported by runtime; no live grant is installed here.
+
+The native progression additionally uses owned authentication/session resolution,
+actual current-source write preconditions, REAL-only self-invitation/group-mapping
+negatives, Graph tripwires, and independent human sessions after owner-session
+revocation. Queued authentication mail and all old authority fail on owner
+disablement. Current concrete runtime configuration still registers no participant
+environment flag. Replacement, complete Microsoft/link progression and operating
+acceptance remain required before enabling the feature in an application process.
 
 ## Intended narrow boundary
 
@@ -218,7 +259,7 @@ reset/epoch/concurrent-admission races, fake-persona adoption, audit rollback,
 restricted SQL identities and outbound-provider tripwires. Do not substitute
 schema shape or WASM database checks for native concurrency or operating evidence.
 
-This draft enables no endpoint, runtime flag, role grant, deployment, live reset,
-provider request or mail. Normal Microsoft-managed MFA and the accepted Owner role
+This source preparation installs no live endpoint, runtime flag, role grant,
+deployment, reset, provider request or mail. Normal Microsoft-managed MFA and the accepted Owner role
 baseline remain unchanged. Actual Microsoft365/Exchange acceptance stays later in
 the existing owner-directed sequence.

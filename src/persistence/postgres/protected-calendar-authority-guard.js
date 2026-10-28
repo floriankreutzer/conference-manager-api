@@ -114,16 +114,7 @@ export function createPostgresProtectedCalendarAuthorityGuard(pool,
     return lockCalendarBookingReferenceAuthority(client,{ tenantId,requestId,authority,cleanupReference });
   }
   return Object.freeze({
-    async isReady() {
-      if (synthetic===null) return true;
-      try {
-        const result=await pool.query(`SELECT has_function_privilege(current_user,
-          'public.protected_lock_synthetic_calendar_source(text,uuid,uuid)','EXECUTE')
-          AND (NOT ${syntheticParticipantsEnabled} OR has_function_privilege(current_user,
-            'public.protected_lock_synthetic_participant_scope(text,uuid,uuid,uuid,uuid,boolean)','EXECUTE')) AS allowed`);
-        return result.rows[0]?.allowed===true;
-      } catch { return false; }
-    },
+    async isReady() { return synthetic===null || await synthetic.isReady(); },
     async lockBookingIntegration(client,{ tenantId,integrationId,providerConnectionReference,principal }={}) {
       if (!isInternalUuid(tenantId) || !isInternalUuid(integrationId)) return false;
       const runtime=await access(client,tenantId,principal);
