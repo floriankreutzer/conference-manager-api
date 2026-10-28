@@ -120,3 +120,18 @@ test('a directly supplied elevated principal cannot manufacture the required own
     { code: 'PROTECTED_SYNTHETIC_EXECUTION_REQUIRED' });
   assert.deepEqual(queries,['BEGIN ISOLATION LEVEL REPEATABLE READ READ WRITE',"SET LOCAL TIME ZONE 'UTC'",'ROLLBACK']);
 });
+
+test('participant replacement remains an explicit boolean and DEV/INT-only repository option',()=>{
+  const pool={ async connect() { assert.fail('CONSTRUCTION_MUST_NOT_CONNECT'); } };
+  const audit={ async appendWithClient() {} };
+  const options={ ...scope,tenantAuditRepository: audit,platformAuditRepository: audit };
+  for (const syntheticParticipantsEnabled of ['true',1,null,{},[]]) {
+    assert.throws(()=>createPostgresSyntheticGenerationRepository(pool,{ ...options,syntheticParticipantsEnabled }),
+      /SYNTHETIC_GENERATION_REPOSITORY_CONFIGURATION_INVALID/);
+  }
+  assert.throws(()=>createPostgresSyntheticGenerationRepository(pool,
+    { ...options,environment: 'prod',syntheticParticipantsEnabled: true }),/CONFIGURATION_INVALID/);
+  for (const syntheticParticipantsEnabled of [false,true]) {
+    assert.equal(typeof createPostgresSyntheticGenerationRepository(pool,{ ...options,syntheticParticipantsEnabled }).replace,'function');
+  }
+});
