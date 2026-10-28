@@ -76,7 +76,8 @@ export function createPostgresCustomerEmailChallengeRepository(pool, {
         if (tenantEligibility !== null) {
           const eligible = [];
           for (const entry of snapshot) {
-            if (await tenantEligibility.allowsWithClient(client,entry.tenantId) === true) eligible.push(entry);
+            if (await tenantEligibility.allowsWithClient(client,entry.tenantId,
+              { membershipId: entry.membershipId }) === true) eligible.push(entry);
           }
           snapshot = eligible;
         }

@@ -238,6 +238,7 @@ test('Demo runtime Product reads verified existing events through minimal Ops gr
     assert.equal(metric(result, 'onboarding_completed').value, 0);
     assert.equal(metric(result, 'time_to_submit').value, null);
     assert.equal(coverage(result, 'request_submitted').state, 'partial');
+    assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Empty033 before unchanged032/older reset grants.
     assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Empty032 before retained031/older reset grants.
     assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Empty031 before unchanged030/older grants.
     assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Empty030 before unchanged029/older grants.

@@ -18,11 +18,11 @@ const ROLES = Object.freeze({
 test('Demo migration stream is versioned independently from Production', async () => {
   const [production, demo] = await Promise.all([loadMigrations(), loadDemoMigrations()]);
   assert.equal(production.at(-1).version, 73);
-  assert.equal(demo.length, 32);
+  assert.equal(demo.length, 33);
   assert.equal(DEMO_OVERLAY_MIGRATION_VERSION,demo.at(-1).version);
   assert.equal(CURRENT_SCHEMA_VERSION,production.at(-1).version);
   assert.deepEqual(production.map(({ version }) => version),Array.from({ length: 73 },(_,index) => index+1));
-  assert.deepEqual(demo.map(({ version }) => version),Array.from({ length: 32 },(_,index) => index+1));
+  assert.deepEqual(demo.map(({ version }) => version),Array.from({ length: 33 },(_,index) => index+1));
   assert.equal(demo[0].version, 1);
   assert.equal(demo[0].name, 'demo_runtime_foundation');
   assert.match(demo[0].checksum, /^[0-9a-f]{64}$/);

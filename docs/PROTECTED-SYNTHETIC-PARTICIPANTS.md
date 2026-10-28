@@ -16,6 +16,12 @@ backfilled; nonempty binding history prevents destructive rollback or truncation
 The schema readiness contract advances to73 without changing historical migration
 compatibility thresholds or Demo seed/checksum content.
 
+Demo overlay033 grants only TRUNCATE on the new FK child to the existing reset
+role. The existing exact reset inventory includes it; its immutable-history
+trigger still denies any nonempty participant history. Historical rollback tests
+first remove empty073/033 before reaching their unchanged older recovery guards.
+This is not the protected generation-replacement implementation.
+
 A separate DEV/INT Platform invitation repository adds the binding within the
 canonical authorized invitation/proof/receipt/two-audit transaction. The ordinary
 protected repository remains REAL-only. A separate member-qualified SQL locking
@@ -23,6 +29,11 @@ port and optional composition reject Tenant-only synthetic eligibility and retai
 the original REAL predicate. They require the exact live outer shared execution
 scope and its transaction; current generation, epoch and owner remain mandatory.
 Human membership does not require a continuously live delegated Owner session.
+Canonical challenge, choice, admission and delivery callbacks now pass the
+server-derived membership/invitation identifier. Microsoft capture/choice/admission
+do the same; account/link flows can use the explicit participant composition's
+accepted-member lookup before current session checks. Default REAL ports continue
+to reject unqualified targets before reading account or link business state.
 
 These new repositories are not wired into an application composition. No runtime
 flag is registered or enabled, no SQL runtime grant is installed, and no endpoint

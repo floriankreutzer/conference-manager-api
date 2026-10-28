@@ -53,7 +53,7 @@ test('protected flow and code MACs separate purpose, environment, epoch and secr
 
 test('code capture filters only the bounded original snapshot before proof creation and durable mail queueing',async()=>{
   const entries=[entry(),entry(),entry()];
-  for (const allowed of [entries[1].tenantId,null]) {
+  for (const allowed of [entries[1].membershipId,null]) {
     let issues=0,seals=0;const checked=[];
     const f=fakePool(query=>{
       if (query==='SELECT clock_timestamp() AS now') return { rows: [{ now }] };
@@ -71,12 +71,14 @@ test('code capture filters only the bounded original snapshot before proof creat
       proofFactory: { issue() { issues++;return { browserToken: Buffer.alloc(32,7).toString('base64url'),code: '00001234',
         codeVerifier: 'c'.repeat(64),browserVerifier: 'd'.repeat(64) }; },matches() {} },
       content: { mailboxSignInCode: ()=>({ text: 'synthetic' }) },
-      tenantEligibility: { async allowsWithClient(client,tenantId) {
-        assert.equal(isPostgresTransactionActive(f.pool,client),true);checked.push(tenantId);return tenantId===allowed;
+      tenantEligibility: { async allowsWithClient(client,tenantId,member) {
+        assert.equal(isPostgresTransactionActive(f.pool,client),true);checked.push({ tenantId,...member });
+        assert.deepEqual(member,{ membershipId: entries.find(item=>item.membershipId===member?.membershipId)?.membershipId });
+        return member.membershipId===allowed;
       } } });
     assert.equal((await repository.request({ recipient: 'Synthetic@example.test',locale: 'de',sourceKey: 'b'.repeat(64) })).status,
       'code_required');
-    assert.deepEqual(checked,entries.map(item=>item.tenantId));
+    assert.deepEqual(checked,entries.map(item=>({ tenantId: item.tenantId,membershipId: item.membershipId })));
     const stored=f.queries.find(query=>query?.name==='customer-email-challenge-insert').values;
     assert.deepEqual(JSON.parse(stored[7]),allowed===null ? [] : [entries[1]]);
     assert.equal(stored[2],allowed===null ? null : mailboxId);
@@ -86,7 +88,7 @@ test('code capture filters only the bounded original snapshot before proof creat
 });
 
 test('choices qualify the captured member before label projection using one transaction; admission denial mutates nothing',async()=>{
-  const entries=[entry(),entry()],challengeId=randomUUID(),browser=flowBinding.issue({ challengeId,purpose: 'choice' });
+  const entries=[entry(),entry(),entry()],challengeId=randomUUID(),browser=flowBinding.issue({ challengeId,purpose: 'choice' });
   const challenge={ id: challengeId,mailbox_id: mailboxId,consumed_at: null,verified_at: now,
     expires_at: new Date(now.getTime()+300_000),choice_verifier: browser.browserVerifier,admission_snapshot: entries };
   for (const result of [false,null,undefined,'true',1,true]) {
@@ -104,14 +106,15 @@ test('choices qualify the captured member before label projection using one tran
     const checked=[];
     const repository=createPostgresCustomerEmailAdmissionRepository(f.pool,{ environment,flowBinding,
       auditRepository: { async appendWithClient() { throw new Error('NO_AUDIT_ON_DENIAL'); } },
-      tenantEligibility: { async allowsWithClient(client,tenantId) {
-        assert.equal(isPostgresTransactionActive(f.pool,client),true);checked.push(tenantId);
-        return tenantId===entries[1].tenantId ? result : false;
+      tenantEligibility: { async allowsWithClient(client,tenantId,member) {
+        assert.equal(isPostgresTransactionActive(f.pool,client),true);checked.push({ tenantId,...member });
+        return member.membershipId===entries[1].membershipId ? result : false;
       } } });
     const input={ challengeId,browserToken: browser.browserToken,csrfToken: browser.csrfToken };
     const choices=await repository.choices(input);
     assert.deepEqual(choices.items,result===true ? [{ membershipId: entries[1].membershipId,displayName: 'Real customer' }] : []);
-    assert.deepEqual(checked,entries.map(item=>item.tenantId));assert.equal(f.connections(),1);
+    assert.deepEqual(checked,entries.map(item=>({ tenantId: item.tenantId,membershipId: item.membershipId })));
+    assert.equal(f.connections(),1);
     assert.deepEqual(await repository.admit({ ...input,membershipId: entries[0].membershipId,correlationId: randomUUID(),
       auditEventFor() { throw new Error('NO_EVENT'); },issueSession() { throw new Error('NO_SESSION'); } }),{ status: 'rejected' });
     assert.equal(f.connections(),2);

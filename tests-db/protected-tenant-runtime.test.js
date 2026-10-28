@@ -29,6 +29,7 @@ test('private protected registry preserves immutable mode, current owner/epoch, 
       VALUES('int',$1,$2,$3,$4)`,[id,owner,version,epoch]);
   }
   await t.test('empty059 rollback preserves accepted058/057 checksums and restores exact current readiness',async()=>{
+    assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged072/older rollback assertions.
     assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
     assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
     assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
@@ -148,6 +149,7 @@ test('private protected registry preserves immutable mode, current owner/epoch, 
       [generation])).rows[0].count,3);
     await assert.rejects(pool.query("UPDATE synthetic_tenant_generations SET state='active',revision=4 WHERE id=$1",[generation]),
       /SYNTHETIC_GENERATION_TRANSITION_INVALID/);
+    assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged072/older rollback assertions.
     assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
     assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
     assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.

@@ -38,6 +38,7 @@ test('native designated owner REAL handoff creates only own identity, preserves 
   });
   await migrateUp(pool);
   const prior=(await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=71 ORDER BY version')).rows;
+  assert.equal(await rollbackLatest(pool),true); // Empty073 before the original empty072 rollback.
   assert.equal(await rollbackLatest(pool),true);await migrateUp(pool);
   assert.deepEqual((await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=71 ORDER BY version')).rows,prior);
   const epoch=randomUUID(),tenantId=randomUUID(),foreignTenant=randomUUID();
@@ -153,7 +154,9 @@ test('native designated owner REAL handoff creates only own identity, preserves 
     `UPDATE sessions SET roles=ARRAY['employee'] WHERE id='${previous.principal.session.id}'`]) {
     await assert.rejects(pool.query(sql));
   }
+  assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged populated072 recovery guard.
   await assert.rejects(rollbackLatest(pool),/OWNER_CUSTOMER_HISTORY_REQUIRES_VERIFIED_RECOVERY/);
+  await migrateUp(pool); // Restore current readiness before exercising both actual HTTP roots.
   const common={ NODE_ENV: 'production',NODE_EXTRA_CA_CERTS: fixture.caPath,PROTECTED_ENVIRONMENT: 'int',
     PROTECTED_SECURITY_EPOCH: epoch,PROTECTED_PLATFORM_SECURITY_EPOCH: '7',PROTECTED_API_COMMIT: 'a'.repeat(40),
     PROTECTED_FRONTEND_COMMIT: 'b'.repeat(40),PROTECTED_SERVICE_VERSION: '1.0.0',PROTECTED_DATABASE_POOL_MAX: '1',

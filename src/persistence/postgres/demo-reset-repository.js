@@ -44,6 +44,7 @@ export const DEMO_RESET_FAILURE_REASON = Object.freeze({
 const RESET_FAILURE_REASONS = new Set(Object.values(DEMO_RESET_FAILURE_REASON));
 
 export const DEMO_RESET_TABLES = Object.freeze([
+  'synthetic_invited_memberships',
   'owner_customer_handoffs',
   'owner_handoff_start_budgets',
   'platform_owner_customer_users',

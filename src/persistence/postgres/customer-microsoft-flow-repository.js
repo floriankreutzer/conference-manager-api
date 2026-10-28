@@ -31,6 +31,12 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
   }
   const globalKey=createHash('sha256').update(`customer-microsoft-global-start:v1:${environment}`).digest('hex');
   const groupRoles=auditRepository===null ? null : createPostgresTenantMicrosoftRoleRepository(pool,{ auditRepository });
+  function qualifiesPrincipal(client,principal,lock=false) {
+    if (tenantEligibility===null) return true;
+    const memberMethod=lock ? 'lockPrincipalAdmissionWithClient' : 'allowsPrincipalWithClient';
+    return typeof tenantEligibility[memberMethod]==='function' ? tenantEligibility[memberMethod](client,principal)
+      : tenantEligibility[lock ? 'lockAdmissionWithClient' : 'allowsWithClient'](client,principal.tenantId);
+  }
   function browser(row,browserToken) {
     return row && typeof browserToken==='string' && TOKEN.test(browserToken) && flowBinding.matchesBrowser({
       context: { flowId: row.id,purpose: row.purpose,stage: 'authorization' },browserToken,browserVerifier: row.browser_verifier });
@@ -46,8 +52,7 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
     if (principal.providerIdentity.provider!=='email_code' || expectedValue && (expectedValue.tenantId!==principal.tenantId
       || expectedValue.userId!==principal.userId || expectedValue.sessionId!==principal.session.id
       || expectedValue.securityVersion!==principal.session.securityVersion)) return null;
-    if (tenantEligibility!==null && await tenantEligibility[lock ? 'lockAdmissionWithClient' : 'allowsWithClient'](
-      client,principal.tenantId)!==true) return null;
+    if (await qualifiesPrincipal(client,principal,lock)!==true) return null;
     if (lock) {
       const tenant=await client.query({ name: 'customer-microsoft-email-tenant-lock',text: `SELECT id FROM tenants
         WHERE id=$1 AND status IN ('pending','onboarding','ready','active') FOR UPDATE`,values: [principal.tenantId] });
@@ -165,7 +170,8 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
     if (tenantEligibility!==null) {
       const qualified=[];
       for (const entry of snapshot) {
-        if (await tenantEligibility.allowsWithClient(client,entry.tenantId)===true) qualified.push(entry);
+        if (await tenantEligibility.allowsWithClient(client,entry.tenantId,
+          { membershipId: entry.membershipId })===true) qualified.push(entry);
       }
       snapshot=qualified;
     }
@@ -174,7 +180,7 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
   async function accountStateWithClient(client,{ principal: value }={}) {
     let principal;try { principal=normalizePrincipal(value); } catch { return rejected(); }
     if (!['email_code','microsoft_entra'].includes(principal.providerIdentity.provider)) return rejected();
-    if (tenantEligibility!==null && await tenantEligibility.allowsWithClient(client,principal.tenantId)!==true) return rejected();
+    if (await qualifiesPrincipal(client,principal)!==true) return rejected();
     const result=await client.query({ name: 'customer-microsoft-current-account-state',text: `SELECT
       EXISTS(SELECT 1 FROM user_identity_bindings identity WHERE identity.tenant_id=person.tenant_id AND identity.user_id=person.id
         AND identity.provider='microsoft_entra') AS microsoft_linked,
@@ -219,7 +225,8 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
     for (const current of result.rows) {
       if (!matchesCustomerMicrosoftAdmission({ snapshot,current: { membershipId: current.id,tenantId: current.tenant_id,
         userId: current.user_id,userSecurityVersion: Number(current.security_version) } })) continue;
-      if (tenantEligibility!==null && await tenantEligibility.allowsWithClient(client,current.tenant_id)!==true) continue;
+      if (tenantEligibility!==null && await tenantEligibility.allowsWithClient(client,current.tenant_id,
+        { membershipId: current.id })!==true) continue;
       if (typeof current.display_name!=='string' || current.display_name.length<1 || current.display_name.length>160
         || /[\u0000-\u001f\u007f]/.test(current.display_name)) throw new Error('CUSTOMER_MICROSOFT_CHOICE_LABEL_INVALID');
       items.push(Object.freeze({ membershipId: current.id,displayName: current.display_name }));
@@ -253,7 +260,8 @@ export function createPostgresCustomerMicrosoftFlowRepository(pool,{ environment
       if (!expectedEntry) return rejected();
       return withPostgresTransaction(pool,async client=>{
         if (tenantEligibility!==null
-          && await tenantEligibility.lockAdmissionWithClient(client,expectedEntry.tenantId)!==true) return rejected();
+          && await tenantEligibility.lockAdmissionWithClient(client,expectedEntry.tenantId,
+            { membershipId: expectedEntry.membershipId })!==true) return rejected();
         // Business scope first; never hold a global protocol row while waiting
         // for Tenant/member/User locks needed by lifecycle and role changes.
         const tenant=await client.query({ name: 'customer-microsoft-admission-tenant-lock',text:

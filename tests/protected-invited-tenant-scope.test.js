@@ -6,11 +6,12 @@ import { withPostgresTransaction } from '../src/persistence/postgres/transaction
 
 const epoch='80000000-0000-4000-8000-000000000001',tenant='80000000-0000-4000-8000-000000000002';
 const member='80000000-0000-4000-8000-000000000003';
-function fixture({ enabled=false,real=false }={}) {
+function fixture({ enabled=false,real=false,memberRows=[{ id: member }] }={}) {
   const statements=[];
   const client={ async query(input) {
     statements.push(input);
     if (input?.name==='protected-synthetic-participant-scope') return { rowCount: 1,rows: [{ allowed: true }] };
+    if (input?.name==='protected-participant-principal-member') return { rowCount: memberRows.length,rows: memberRows };
     return { rowCount: real ? 1 : 0,rows: [] };
   },release() {} };
   const pool={ connect: async()=>client,query: (...args)=>client.query(...args) };
@@ -57,4 +58,25 @@ test('participant enablement is a strict boolean and cannot select PROD',()=>{
     /CONFIGURATION_INVALID/);
   assert.throws(()=>createPostgresProtectedInvitedTenantScope(f.pool,{ environment: 'prod',securityEpoch: epoch,
     syntheticParticipantsEnabled: true }),/CONFIGURATION_INVALID/);
+});
+
+test('account and link scope derives one accepted membership from the server principal before member custody',async()=>{
+  const principal={ tenantId: tenant,userId: member,providerIdentity: { provider: 'email_code',reference: member },
+    roles: ['employee'],permissions: [],session: { id: epoch,securityVersion: 1,
+      issuedAt: '2026-10-28T08:00:00.000Z',expiresAt: '2026-10-28T09:00:00.000Z' } };
+  for (const memberRows of [[],[{ id: member }],[{ id: member },{ id: epoch }]]) {
+    const f=fixture({ enabled: true,memberRows });
+    await f.inScope(async client=>{
+      assert.equal(await f.port.allowsPrincipalWithClient(client,principal),memberRows.length===1);
+      assert.equal(await f.port.lockPrincipalAdmissionWithClient(client,principal),memberRows.length===1);
+    });
+    const reads=f.statements.filter(query=>query?.name==='protected-participant-principal-member');
+    assert.equal(reads.length,2);assert.deepEqual(reads[0].values,['int',tenant,member]);
+    assert.match(reads[0].text,/accepted_at IS NOT NULL LIMIT 2/);
+    const scopes=f.statements.filter(query=>query?.name==='protected-synthetic-participant-scope');
+    assert.equal(scopes.length,memberRows.length===1 ? 2 : 0);
+    if (scopes.length) assert.deepEqual(scopes.map(query=>query.values),[
+      ['int',epoch,tenant,member,null,false],['int',epoch,tenant,member,null,true],
+    ]);
+  }
 });
