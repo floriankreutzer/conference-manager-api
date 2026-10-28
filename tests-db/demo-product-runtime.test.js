@@ -190,7 +190,7 @@ test('Demo runtime Product reads verified existing events through minimal Ops gr
       await client.query('BEGIN');
       // Empty invitation and Microsoft custody reference Tenant audit evidence.
       // Name its dependent tables explicitly; never weaken those foreign keys.
-      await client.query(`TRUNCATE owner_customer_handoffs,owner_handoff_start_budgets,platform_owner_customer_users,
+      await client.query(`TRUNCATE synthetic_invited_memberships,owner_customer_handoffs,owner_handoff_start_budgets,platform_owner_customer_users,
         synthetic_customer_handoffs,platform_microsoft_operation_proofs,audit_events,customer_member_invitations,
         customer_access_deliveries,customer_microsoft_flows,
         tenant_microsoft_role_settings,customer_microsoft_group_observations`);
