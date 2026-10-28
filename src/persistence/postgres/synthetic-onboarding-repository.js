@@ -129,7 +129,8 @@ export function createPostgresSyntheticOnboardingRepository(pool,{ scope,auditRe
         const current=await qualify(client,principal,true);
         const lifecycle=current.kind==='synthetic_participant'
           ? 'protected_synthetic_participant_lifecycle' : 'protected_synthetic_lifecycle';
-        const result=await client.query({ name: 'synthetic-onboarding-lifecycle',
+        const result=await client.query({ name: current.kind==='synthetic_participant'
+          ? 'synthetic-onboarding-participant-lifecycle' : 'synthetic-onboarding-lifecycle',
           text: `SELECT ${lifecycle}($1,$2,$3,$4,$5,$6) AS allowed`,values: [scope.environment,scope.securityEpoch,
             current.principal.session.id,command.expectedStatus,command.targetStatus,command.expectedRevision] });
         if (result.rows[0]?.allowed!==true) fail('SYNTHETIC_ONBOARDING_CONFLICT');
