@@ -56,7 +56,7 @@ jobs:
   postgres-integration:
     runs-on: ubuntu-latest
     needs: quality
-    timeout-minutes: 20
+    timeout-minutes: 30
     services:
       postgres:
         image: docker.io/library/postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
@@ -92,7 +92,7 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE conference_manager_test_74_0'
           trap 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "DROP DATABASE conference_manager_test_74_0 WITH (FORCE)"' EXIT
           DATABASE_URL=postgresql://conference_manager@127.0.0.1:5432/conference_manager_test_74_0 \
-            node --test --test-concurrency=1 tests-db/synthetic-invited-membership-scope.test.js
+            node --test --test-concurrency=1 tests-db/synthetic-invited-membership-scope.test.js tests-db/synthetic-onboarding-mixed-custody.test.js
       - name: Verify invited Demo reset retention before the complete persistence regression
         shell: bash
         run: |
@@ -208,14 +208,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager
-          ref: 65d46db640aaeffff5b5b5c7776d1a0509afa4fa
+          ref: 3b1ecdf369e6c6daa2ef144f0319b4493a8dfe33
           token: ${{ steps.source-token.outputs.token || github.token }}
           persist-credentials: false
           path: acceptance
       - name: Verify immutable frontend and acceptance refs
         env:
           FRONTEND_REF: ${{ steps.frontend_ref.outputs.ref }}
-          ACCEPTANCE_REF: 65d46db640aaeffff5b5b5c7776d1a0509afa4fa
+          ACCEPTANCE_REF: 3b1ecdf369e6c6daa2ef144f0319b4493a8dfe33
         shell: bash
         run: |
           set -euo pipefail
@@ -233,7 +233,7 @@ jobs:
           node-version: '22'
       - name: Load verified immutable shared Demo acceptance dependencies
         env:
-          ACCEPTANCE_REF: 65d46db640aaeffff5b5b5c7776d1a0509afa4fa
+          ACCEPTANCE_REF: 3b1ecdf369e6c6daa2ef144f0319b4493a8dfe33
         run: node acceptance/scripts/copy-shared-acceptance.mjs --source acceptance --target frontend --ref "$ACCEPTANCE_REF"
       - name: Install locked API dependencies
         working-directory: api
