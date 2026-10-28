@@ -6,10 +6,11 @@ import { CURRENT_SCHEMA_VERSION } from '../src/persistence/postgres/pool.js';
 
 const EPOCH='be000000-0000-4000-8000-000000000001';
 function fixture() {
-  const queries=[];let schema=CURRENT_SCHEMA_VERSION,allowed=true,failed=false,leased=false;
+  const queries=[];let schema=CURRENT_SCHEMA_VERSION,allowed=true,participantAllowed=true,failed=false,leased=false;
   const pool={ async query(query) {
     assert.equal(leased,true);queries.push(query);
     if (failed) throw new Error('PRIVATE_DATABASE_DETAIL');
+    if (query.name?.startsWith('protected-participant-role-posture-')) return { rowCount: 1,rows: [{ allowed: participantAllowed }] };
     return query.name==='schema-readiness' ? { rows: [{ version: schema }] } : { rowCount: 1,rows: [{ allowed }] };
   },connect() { assert.fail('BUSINESS_CONNECTION_MUST_BE_FREE'); } };
   const leasePool={ query() { assert.fail('NO_DIRECT_LEASE_READ'); },async connect() {
@@ -18,7 +19,8 @@ function fixture() {
       release() { leased=false; } };
   } };
   return { pool,queries,scope: { leasePool,environment: 'int',securityEpoch: EPOCH,surface: 'customer' },
-    setSchema(value) { schema=value; },setAllowed(value) { allowed=value; },fail() { failed=true; },leased: ()=>leased };
+    setParticipantAllowed(value) { participantAllowed=value; },setSchema(value) { schema=value; },
+    setAllowed(value) { allowed=value; },fail() { failed=true; },leased: ()=>leased };
 }
 
 test('protected readiness fixes the surface role, current schema and exact shared lease without exposing an executor or grant',async()=>{
@@ -47,4 +49,28 @@ test('malformed surface/scope/pools cannot select a privileged role or acquire a
   const policy=protectedRuntimeRoleRequirements('platform');assert.ok(Object.isFrozen(policy));
   for (const value of Object.values(policy)) assert.ok(Object.isFrozen(value));
   assert.ok(policy.forbiddenInsert.includes('platform_passkey_enrollment_grants'));
+});
+
+test('enabled participant readiness verifies exact function/table privileges inside the existing shared lease',async()=>{
+  for (const surface of ['customer','platform']) {
+    const f=fixture(),readiness=createPostgresProtectedRuntimeReadiness(f.pool,
+      { ...f.scope,surface,syntheticParticipantsEnabled: true });
+    assert.equal(await readiness.isReady(),true);
+    const query=f.queries.find(value=>value?.name===`protected-participant-role-posture-${surface}`);
+    assert.ok(query);assert.doesNotMatch(query.text,/GRANT|REVOKE|INSERT INTO|UPDATE /);
+    if (surface==='customer') {
+      assert.match(query.text,/protected_synthetic_participant_lifecycle/);
+      assert.match(query.text,/AND NOT has_function_privilege/);
+    } else assert.match(query.text,/AND NOT has_any_column_privilege/);
+    assert.equal(f.leased(),false);assert.equal(f.queries.at(-1),'COMMIT');
+    f.setParticipantAllowed(false);assert.equal(await readiness.isReady(),false);
+    f.setParticipantAllowed('true');assert.equal(await readiness.isReady(),false);
+  }
+  const f=fixture();
+  for (const syntheticParticipantsEnabled of ['true',null,1]) {
+    assert.throws(()=>createPostgresProtectedRuntimeReadiness(f.pool,{ ...f.scope,syntheticParticipantsEnabled }),/CONFIGURATION_INVALID/);
+  }
+  assert.throws(()=>createPostgresProtectedRuntimeReadiness(f.pool,
+    { ...f.scope,environment: 'prod',syntheticParticipantsEnabled: true }),/CONFIGURATION_INVALID/);
+  assert.equal(f.queries.length,0);
 });

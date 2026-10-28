@@ -40,7 +40,11 @@ const ROLE_POSTURE=`SELECT role.rolname=$1 AND role.rolname=current_user AND rol
 
 // Readiness is an observation, not identity/permission/lease authority. It owns
 // no GRANT/role mutation and never substitutes for current request/provider checks.
-export function createPostgresProtectedRuntimeReadiness(pool,{ leasePool,environment,securityEpoch,surface }={}) {
+export function createPostgresProtectedRuntimeReadiness(pool,{ leasePool,environment,securityEpoch,surface,
+  syntheticParticipantsEnabled=false }={}) {
+  if (typeof syntheticParticipantsEnabled!=='boolean' || syntheticParticipantsEnabled && environment==='prod') {
+    throw new TypeError('PROTECTED_PARTICIPANT_READINESS_CONFIGURATION_INVALID');
+  }
   const policy=protectedRuntimeRoleRequirements(surface);
   const scopes=createPostgresProtectedRuntimeExecutionScopes({ pool,leasePool,environment,securityEpoch });
   const role=`cm_protected_${environment}_${surface}`;
@@ -51,7 +55,21 @@ export function createPostgresProtectedRuntimeReadiness(pool,{ leasePool,environ
         const result=await pool.query({ name: `protected-runtime-role-posture-${surface}`,text: ROLE_POSTURE,
           values: [role,policy.read,policy.write,policy.forbiddenMutation,policy.forbiddenInsert,
             policy.readColumns,policy.forbiddenReadColumns] });
-        return result.rowCount===1 && result.rows[0]?.allowed===true;
+        if (result.rowCount!==1 || result.rows[0]?.allowed!==true) return false;
+        if (!syntheticParticipantsEnabled) return true;
+        const participant=await pool.query({ name: `protected-participant-role-posture-${surface}`,text: surface==='customer'
+          ? `SELECT has_function_privilege(current_user,
+              'public.protected_lock_synthetic_participant_scope(text,uuid,uuid,uuid,uuid,boolean)','EXECUTE')
+            AND has_function_privilege(current_user,
+              'public.protected_synthetic_participant_lifecycle(text,uuid,uuid,text,text,bigint)','EXECUTE')
+            AND NOT has_function_privilege(current_user,
+              'public.protected_apply_synthetic_lifecycle(text,uuid,uuid,uuid,text,text,bigint)','EXECUTE') AS allowed`
+          : `SELECT has_table_privilege(current_user,'public.synthetic_invited_memberships','SELECT')
+            AND has_table_privilege(current_user,'public.synthetic_invited_memberships','INSERT')
+            AND NOT has_table_privilege(current_user,'public.synthetic_invited_memberships','UPDATE')
+            AND NOT has_table_privilege(current_user,'public.synthetic_invited_memberships','DELETE')
+            AND NOT has_any_column_privilege(current_user,'public.synthetic_invited_memberships','UPDATE') AS allowed` });
+        return participant.rowCount===1 && participant.rows[0]?.allowed===true;
       });
     } catch { return false; }
   } });

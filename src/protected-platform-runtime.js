@@ -18,6 +18,8 @@ import { createPostgresProtectedPlatformCustomerOnboardingRepository }
   from './persistence/postgres/platform-protected-customer-onboarding-repository.js';
 import { createPostgresProtectedPlatformCustomerInvitationRepository }
   from './persistence/postgres/platform-protected-customer-invitation-repository.js';
+import { createPostgresProtectedParticipantPlatformInvitationRepository }
+  from './persistence/postgres/platform-protected-participant-invitation-repository.js';
 import { createPostgresSyntheticGenerationRepository } from './persistence/postgres/platform-synthetic-generation-repository.js';
 import { createPostgresSyntheticGenerationDirectoryRepository }
   from './persistence/postgres/platform-synthetic-generation-directory-repository.js';
@@ -69,6 +71,7 @@ function syntheticRoutes(bundle,persistence,authentication,authorizationPolicy,d
   disposables.push(()=>browserBinding.destroy(),()=>intentCookie.destroy());
   const generationService=createSyntheticGenerationService({ ...protection,passkeyService,authorizationPolicy,assuranceMode,
     repository: createPostgresSyntheticGenerationRepository(persistence.pool,{ ...protection,calendarEnabled: true,assuranceMode,
+      syntheticParticipantsEnabled: profile.syntheticParticipantsEnabled,
       tenantAuditRepository: persistence.tenantAuditRepository,platformAuditRepository: persistence.auditRepository }) });
   const directory=createPostgresSyntheticGenerationDirectoryRepository(persistence.pool,
     { ...protection,platformSecurityEpoch: profile.platformSecurityEpoch,assuranceMode });
@@ -115,7 +118,8 @@ export async function createProtectedPlatformRuntime(environment) {
     persistence=createPostgresPlatformPersistence(config,{ protectedRuntime: protection });
     leasePool=createPostgresPool(profile.leaseDatabase);const base=persistence;
     const scopes=createPostgresProtectedRuntimeExecutionScopes({ ...protection,pool: base.pool,leasePool });
-    const readiness=createPostgresProtectedRuntimeReadiness(base.pool,{ ...protection,leasePool,surface: 'platform' });
+    const readiness=createPostgresProtectedRuntimeReadiness(base.pool,{ ...protection,leasePool,surface: 'platform',
+      syntheticParticipantsEnabled: profile.syntheticParticipantsEnabled });
     // Periodic durable projection work uses no persistent LISTEN connection on
     // the bounded business pool, preserving max1 business/lease configurations.
     persistence=Object.freeze({ ...base,readinessChecks: Object.freeze([readiness.isReady,
@@ -139,8 +143,10 @@ export async function createProtectedPlatformRuntime(environment) {
     const onboarding=createPlatformCustomerOnboardingService({ ...common,ownerRecipient: bundle.ownerRecipient,
       ownerLocale: bundle.ownerLocale,idFactory: randomUUID,
       repository: createPostgresProtectedPlatformCustomerOnboardingRepository(base.pool,custody) });
+    const invitationRepository=profile.syntheticParticipantsEnabled
+      ? createPostgresProtectedParticipantPlatformInvitationRepository : createPostgresProtectedPlatformCustomerInvitationRepository;
     const invitations=createPlatformCustomerInvitationAdministrationService({ ...common,
-      repository: createPostgresProtectedPlatformCustomerInvitationRepository(base.pool,custody) });
+      repository: invitationRepository(base.pool,custody) });
     const active=['application_passkey','microsoft_mfa'].includes(config.assuranceMode);
     const tenantRoutes=createPlatformTenantRoutes({ invitationAdministration: true });
     const operational=active ? PLATFORM_OPERATIONAL_ROUTE_MODULES.map(module=>{

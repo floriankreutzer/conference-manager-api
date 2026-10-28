@@ -54,6 +54,43 @@ PROTECTED_LEASE_POOL_MAX are optional bounded decimal integers.
 PROTECTED_SYNTHETIC_ENABLED defaults to false; only exact true/false strings are
 accepted and true is rejected in PROD.
 
+PROTECTED_SYNTHETIC_PARTICIPANTS_ENABLED defaults to false and accepts only exact
+true/false strings. True requires DEV/INT and PROTECTED_SYNTHETIC_ENABLED=true.
+Platform additionally requires the selected microsoft_mfa assurance profile;
+application passkey setup/enrollment is not introduced. The shared envelope stays
+immutable and the option is server-owned, never a browser capability or issuer.
+
+When enabled, the owned Platform invitation repository records the immutable
+member/origin-invitation/generation/owner/slot binding in the canonical exact-proof,
+receipt and two-audit transaction. Customer authentication, code dispatch,
+Microsoft link/login, current session/write fencing, calendar/media and synthetic
+onboarding select the member-qualified ports. Customer self-invitation, Microsoft
+group administration and REAL provider entry remain separately fixed to REAL
+custody. Human Microsoft identity does not select a real calendar provider;
+synthetic business operations retain their simulator and actual Graph/consent
+methods reject participant entry before network I/O.
+
+Startup readiness for enabled profiles verifies the two narrow Customer function
+privileges and denies direct execution of the private lifecycle helper. Platform
+requires SELECT/INSERT on immutable registrations and rejects table or column
+UPDATE/DELETE authority. Existing roles must receive the reviewed fixed participant
+delta through the offline grant command with both roles drained and current
+ledger/epoch/audit evidence. Neither config loading, readiness nor startup installs
+permissions or applies migrations. Missing rights keep startup closed. Fresh-role
+installation remains governed by the canonical role manifest.
+
+Registered history can be archived by the owned generation replacement port;
+unmapped history still blocks before mutation. Old Tenant sessions are revoked,
+old generation scope loses authority and all identity/role/invitation history is
+retained. New Tenant IDs inherit no human membership and require fresh explicit
+Owner invitations. See `SYNTHETIC-GENERATION-REPLACEMENT.md`.
+
+This configuration/source contract does not establish deployed activation,
+verified sender/domain or real delivery acceptance. No operating mail or Microsoft
+acceptance is inferred from in-memory protocol fixtures. Full native restricted
+HTTP progression, exact-head browser/storage checks and the coordinated operating
+cutover below remain separate required evidence.
+
 PROTECTED_HOSTED_FRONTEND_ENABLED also defaults to false. Exact true requires
 the selected surface's externally reviewed PROTECTED_HOSTED_FRONTEND_SHA256;
 inactive delivery rejects a stray digest. The fixed artifact manifest must match
