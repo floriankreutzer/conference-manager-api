@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import pg from 'pg';
 import { migrateUp } from '../scripts/db-migrations.mjs';
 import { grantProtectedRuntimeRoles } from '../scripts/support/protected-runtime-role-grants.mjs';
@@ -129,6 +130,16 @@ test('restricted participant Microsoft link and primary login preserve exact thr
   assert.deepEqual(await evidence(),beforeForeign);
   const selected=await Promise.all([1,2].map(()=>ms.admissionService.select(login,{ membershipId: customers[0].membershipId })));
   assert.deepEqual(selected.map(value=>value.status).sort(),['authenticated','rejected']);
+  // The same observed source has consumed its five real starts. Preserve the
+  // limiter and its clock; do not rotate source keys or rewrite budget rows.
+  const beforeLimited=await evidence();
+  assert.equal((await ms.authenticationService.startLogin({ correlationId: randomUUID(),sourceKey })).status,'rejected');
+  assert.deepEqual(await evidence(),beforeLimited);
+  const budget=(await pool.query(`SELECT GREATEST(0,EXTRACT(EPOCH FROM
+    (window_started_at+interval '1 minute'-clock_timestamp()))*1000) AS remaining
+    FROM customer_microsoft_start_budgets WHERE environment='int' AND kind='source' AND key_hash=$1`,[sourceKey])).rows[0];
+  const remaining=Number(budget.remaining);assert.ok(Number.isFinite(remaining) && remaining>=0 && remaining<=60000);
+  if (remaining>0) await delay(Math.ceil(remaining)+50);
   const pending=await start(),captured=proof(await complete(await start()));
   const currentChoices=await ms.admissionService.choices({ flowId: captured.flowId,browserToken: captured.browserToken });
   assert.equal(currentChoices.status,'membership_required');assert.equal(currentChoices.items.length,3);
