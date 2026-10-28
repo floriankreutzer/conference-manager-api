@@ -96,17 +96,18 @@ export function createPostgresSyntheticGenerationRepository(pool,{ environment,s
     // The enclosing exclusive lease excludes invitation/admission/dispatch and
     // business writes; archived generation/Tenant qualification removes old
     // session, pending proof and invitation authority while retaining history.
-    const participants=await client.query({ name: 'synthetic-generation-invited-participants',text: `SELECT EXISTS (
+    const participants=await client.query({ name: syntheticParticipantsEnabled
+      ? 'synthetic-generation-registered-participants' : 'synthetic-generation-invited-participants',text: `SELECT EXISTS (
       SELECT 1 FROM customer_access_memberships membership JOIN tenant_runtime_registry registry
         ON registry.environment=membership.environment AND registry.tenant_id=membership.tenant_id
-      LEFT JOIN synthetic_invited_memberships binding ON binding.environment=membership.environment
-        AND binding.tenant_id=membership.tenant_id AND binding.membership_id=membership.id
-        AND binding.generation_id=registry.generation_id AND binding.operator_id=registry.operator_id
-        AND binding.slot=registry.slot
+      ${syntheticParticipantsEnabled ? `LEFT JOIN synthetic_invited_memberships binding
+        ON binding.environment=membership.environment AND binding.tenant_id=membership.tenant_id
+        AND binding.membership_id=membership.id AND binding.generation_id=registry.generation_id
+        AND binding.operator_id=registry.operator_id AND binding.slot=registry.slot` : ''}
       WHERE registry.environment=$1 AND registry.mode='synthetic'
         AND registry.operator_id=$2 AND registry.generation_id=$3
-        AND (NOT $4::boolean OR binding.membership_id IS NULL)) AS present`,
-    values: [environment,principal.operatorId,generation.id,syntheticParticipantsEnabled] });
+        ${syntheticParticipantsEnabled ? 'AND binding.membership_id IS NULL' : ''}) AS present`,
+    values: [environment,principal.operatorId,generation.id] });
     if (participants.rowCount!==1 || participants.rows[0].present!==false) denied('SYNTHETIC_GENERATION_DENIED');
     for (const row of rows.rows) {
       const revision=Number(row.lifecycle_revision),tenantId=row.tenant_id;
