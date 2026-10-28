@@ -92,7 +92,7 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE conference_manager_test_74_0'
           trap 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "DROP DATABASE conference_manager_test_74_0 WITH (FORCE)"' EXIT
           DATABASE_URL=postgresql://conference_manager@127.0.0.1:5432/conference_manager_test_74_0 \
-            node --test --test-concurrency=1 tests-db/synthetic-invited-membership-scope.test.js
+            node --test --test-concurrency=1 tests-db/synthetic-invited-membership-scope.test.js tests-db/protected-participant-microsoft.test.js
       - name: Verify invited Demo reset retention before the complete persistence regression
         shell: bash
         run: |
