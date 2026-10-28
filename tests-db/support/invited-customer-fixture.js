@@ -17,7 +17,8 @@ import { createPostgresSessionRepository } from '../../src/persistence/postgres/
 // Seed only synthetic invitation authority. The tested email User is then created
 // by actual code proof/admission/session custody, never by editing a Demo persona.
 // No provider send is invoked; .test recipients and deterministic code are fixtures.
-export async function createInvitedCustomerFixture(pool,t,{ recipient='Invited@example.test',targetTenantId=null,accept=true }={}) {
+export async function createInvitedCustomerFixture(pool,t,{ recipient='Invited@example.test',targetTenantId=null,accept=true,
+  beforeAdmission=null }={}) {
   const tenantId=targetTenantId ?? randomUUID(),adminId=randomUUID(),correlationId=randomUUID();
   if (targetTenantId===null) await pool.query(
     "INSERT INTO tenants(id,display_name,status) VALUES($1,'Synthetic invited customer','onboarding')",[tenantId]);
@@ -41,6 +42,7 @@ export async function createInvitedCustomerFixture(pool,t,{ recipient='Invited@e
   const context={ principal: admin.principal,tenantContext: { tenantId,status: tenant.status },correlationId };
   const [invitation]=await invitations.issueBatch(context,
     { commandId: randomUUID(),invitations: [{ recipient,roles: ['tenant_admin'],locale: 'de' }] });
+  if (beforeAdmission!==null) await beforeAdmission({ tenantId,invitation });
   if (!accept) return { tenantId,invitation,context,invitations,auditRepository };
   const flowBinding=createCustomerEmailFlowBinding({ environment: 'int',secret: 'f'.repeat(48) });t.after(()=>flowBinding.destroy());
   const proofFactory=createEmailMailboxProofFactory({ environment: 'int',secret: 'p'.repeat(48),codeFactory: ()=> '00001234' });

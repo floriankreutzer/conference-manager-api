@@ -45,9 +45,11 @@ async function writeCatalogueMedia(client,{ tenantId,media,bytes,objectKey,creat
 // object-storage port/fallback: independently durable upload intents need their
 // own reviewed preparation phase before a max1 proof transaction is held.
 export function createPostgresSyntheticGenerationRepository(pool,{ environment,securityEpoch,
-  tenantAuditRepository,platformAuditRepository,calendarEnabled=false,assuranceMode='application_passkey' }={}) {
+  tenantAuditRepository,platformAuditRepository,calendarEnabled=false,assuranceMode='application_passkey',
+  syntheticParticipantsEnabled=false }={}) {
   const assurance=syntheticOperationAssurance(assuranceMode);
-  if (typeof calendarEnabled!=='boolean' || !pool || typeof pool.connect!=='function' || !['dev','int'].includes(environment)
+  if (typeof calendarEnabled!=='boolean' || typeof syntheticParticipantsEnabled!=='boolean'
+    || !pool || typeof pool.connect!=='function' || !['dev','int'].includes(environment)
     || !isInternalUuid(securityEpoch)
     || typeof tenantAuditRepository?.appendWithClient!=='function' || typeof platformAuditRepository?.appendWithClient!=='function') {
     throw new TypeError('SYNTHETIC_GENERATION_REPOSITORY_CONFIGURATION_INVALID');
@@ -88,17 +90,23 @@ export function createPostgresSyntheticGenerationRepository(pool,{ environment,s
       WHERE registry.environment=$1 AND registry.mode='synthetic' AND registry.operator_id=$2 AND registry.generation_id=$3
       ORDER BY registry.slot FOR UPDATE OF tenant`,values: [environment,principal.operatorId,generation.id] });
     if (rows.rowCount!==3 || new Set(rows.rows.map(row=>row.slot)).size!==3) denied();
-    // Replacement allocates new Tenant IDs. Retaining the old rows alone cannot
-    // preserve invited people's access. Until reviewed membership continuity is
-    // available, reject before any lifecycle/session/audit mutation, including
-    // for pending or revoked invitation history. The enclosing exclusive scope
-    // excludes protected invitation/admission work for this deployment.
+    // Replacement allocates new Tenant IDs; no identity/membership/role is
+    // copied. Only an explicit reviewed participant composition may archive
+    // exact registered history. Unmapped history still denies before mutation.
+    // The enclosing exclusive lease excludes invitation/admission/dispatch and
+    // business writes; archived generation/Tenant qualification removes old
+    // session, pending proof and invitation authority while retaining history.
     const participants=await client.query({ name: 'synthetic-generation-invited-participants',text: `SELECT EXISTS (
       SELECT 1 FROM customer_access_memberships membership JOIN tenant_runtime_registry registry
         ON registry.environment=membership.environment AND registry.tenant_id=membership.tenant_id
+      LEFT JOIN synthetic_invited_memberships binding ON binding.environment=membership.environment
+        AND binding.tenant_id=membership.tenant_id AND binding.membership_id=membership.id
+        AND binding.generation_id=registry.generation_id AND binding.operator_id=registry.operator_id
+        AND binding.slot=registry.slot
       WHERE registry.environment=$1 AND registry.mode='synthetic'
-        AND registry.operator_id=$2 AND registry.generation_id=$3) AS present`,
-    values: [environment,principal.operatorId,generation.id] });
+        AND registry.operator_id=$2 AND registry.generation_id=$3
+        AND (NOT $4::boolean OR binding.membership_id IS NULL)) AS present`,
+    values: [environment,principal.operatorId,generation.id,syntheticParticipantsEnabled] });
     if (participants.rowCount!==1 || participants.rows[0].present!==false) denied('SYNTHETIC_GENERATION_DENIED');
     for (const row of rows.rows) {
       const revision=Number(row.lifecycle_revision),tenantId=row.tenant_id;

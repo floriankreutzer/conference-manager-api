@@ -8,36 +8,51 @@ proof; it does not require application passkey enrollment. The legacy applicatio
 passkey profile remains separately tested. A source change is not evidence that
 the corresponding Hosted deployment has been updated.
 
-Replacement allocates fresh internal Tenant IDs. Preserving old database rows
-alone would leave invited people attached to archived Tenants. Until a reviewed
-membership-continuity implementation exists, the repository therefore rejects
-replacement when any canonical `customer_access_memberships` row belongs to the
-owner's generation being archived. Pending, accepted, revoked-invitation and
-disabled-User history all block replacement. Original invitation roles are never
-copied back into current authorization, and no membership is moved or deleted.
+Replacement allocates fresh internal Tenant IDs. The default repository still
+rejects replacement when any canonical `customer_access_memberships` row belongs
+to the owner's generation. Pending, accepted, revoked-invitation and disabled-User
+history all block that default path.
 
-The check runs after locking the three owned Tenants and before any lifecycle,
+An explicitly enabled DEV/INT repository option can archive registered participant
+history. Every membership must have an exact immutable
+`synthetic_invited_memberships` binding for its environment, Tenant, member,
+generation, owner and slot. The original invitation is retained through the
+binding's composite foreign key. Any unmapped membership still rejects the entire
+replacement before mutation, including when the option is enabled. This option
+is not registered in the concrete runtime configuration yet.
+
+The check runs after locking the three owned Tenants and before lifecycle,
 Customer-session, generation, business-data or Tenant-audit mutation, inside the
-existing owner-stamped exclusive proof transaction. Protected invitation and
-admission work use the mutually exclusive shared deployment lease. The existing
-concealed `PLATFORM_SYNTHETIC_GENERATION_DENIED` HTTP403 contract applies; no
-recipient, membership count or foreign-Tenant existence is exposed. Real-Tenant
-and foreign-owner memberships do not block an otherwise eligible empty owned
-generation. Initial creation and normal replacement without invited participants
-retain the existing cooldown, retention, proof and regression requirements.
+existing owner-stamped exclusive proof transaction. Protected invitation,
+admission, dispatch and business work use the mutually exclusive shared deployment
+lease. The existing concealed `PLATFORM_SYNTHETIC_GENERATION_DENIED` HTTP403
+contract applies. Real-Tenant and foreign-owner memberships do not block an
+otherwise eligible owned generation. Cooldown, retention and exact-proof
+requirements remain unchanged.
 
-The native integration test uses actual canonical encrypted invitation/admission
-custody in an isolated database, including a pending invitation, a revoked
-invitation and an accepted then disabled User. It checks unchanged authoritative
-state and current sessions after denial, and successful replacement of a separate
-empty generation under Microsoft exact-operation proof with zero app passkeys.
-Its base invitation fixture deliberately exercises storage safety without enabling
-protected Demo invitation eligibility or sending real mail.
+Successful archival retains original Tenants, Users (including current
+disablement), roles, provider bindings, mailboxes, memberships, invitations and
+immutable registration history. The existing Tenant lifecycle function increments
+session revision and revokes old sessions. Archived generation/Tenant scope denies
+old member, pending proof, invitation and business authority. No invitation roles
+are copied back into current authorization. New Tenants receive fresh business
+fixtures without any carried-over human membership; access requires a fresh
+explicit Owner invitation. No history is deleted or remapped.
 
-This guard is a safety prerequisite. It does not implement invited Demo login,
-cross-generation identity/role continuity, sender configuration or real delivery
-acceptance. SaaS1 issues351–353 remain open for their full scope. Protected-root
-and permanent closed Demo acceptance remain distinct release requirements.
+The native fixture covers default denial, unmapped pending/accepted/revoked/disabled
+history, a separate empty reset and opt-in archival of registered pending/revoked,
+accepted and disabled participants under actual Microsoft exact-operation proof.
+It checks retained identity/history rows, revoked sessions, stale-scope denial,
+fresh Tenant IDs and no inherited memberships. Registration in this storage-focused
+fixture is an isolated database seed between real invitation creation and actual
+mailbox-proof admission; the separate participant registration progression proves
+the protected Platform invitation transaction. Neither fixture sends operating
+mail. Exact-head native and permanent browser/storage gates remain mandatory.
+
+This source option does not complete runtime activation, Microsoft account-link
+progression, sender configuration or real delivery acceptance. SaaS1 issues351–353
+remain open for their complete scope. Protected-root and permanent closed Demo
+acceptance remain distinct release requirements.
 
 ## Historical initial component scope
 
