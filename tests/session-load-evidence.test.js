@@ -25,7 +25,7 @@ test('create measurement validates bounded canonical input and fixture roles bef
   for (const origin of ['http://example.com:1234', 'http://127.0.0.1:1234/other', 'https://127.0.0.1:1234']) {
     await assert.rejects(measureRequestCreates({ ...base, origin }), /LOAD_DESTINATION_INVALID/);
   }
-  for (const patch of [{ concurrency: 33 }, { deadlineMs: 60_001 }, { cookies: [`${cookie}; secret=x`] }]) {
+  for (const patch of [{ concurrency: 33 }, { deadlineMs: 60_001 }, { onFailure: 'private' }, { cookies: [`${cookie}; secret=x`] }]) {
     await assert.rejects(measureRequestCreates({ ...base, ...patch }), /LOAD_(BOUNDS|COOKIES)_INVALID/);
   }
   for (const roles of [[], ['unknown'], ['employee', 'employee']]) {
@@ -61,11 +61,19 @@ test('create measurement fixes POST, origin, CSRF and schema and counts both pay
     assert.equal(result.requestPayloadBytes, sentBytes);
     for (const failure of ['redirect', 'wrong-status', 'oversize', 'malformed', 'stall', 'identity']) {
       mode = failure;
-      const before = requests;
-      await assert.rejects(measureRequestCreates({ ...base, ...(mode === 'identity' ? {
+      const before = requests; const diagnostics = [];
+      await assert.rejects(measureRequestCreates({ ...base, onFailure(value) { diagnostics.push(value); }, ...(mode === 'identity' ? {
         verify() { throw new Error('PRIVATE_VERIFIER_DETAILS'); },
       } : {}) }), /^Error: LOAD_ACCEPTANCE_FAILED$/);
       assert.equal(requests, before + 1, 'Writes must never retry or follow redirects');
+      assert.equal(diagnostics.length, 1); assert.ok(Object.isFrozen(diagnostics[0]));
+      const { elapsedMs, ...diagnostic } = diagnostics[0]; assert.ok(elapsedMs >= 0);
+      const stage = { redirect: 'response-status', 'wrong-status': 'response-status', oversize: 'response-body',
+        malformed: 'response-json', stall: 'transport', identity: 'verify' }[failure];
+      assert.deepEqual(diagnostic, { index: 0, requests: 1, concurrency: 16, arrivalIntervalMs: 0, completed: 0,
+        stage, status: failure === 'stall' ? null : failure === 'redirect' ? 302 : failure === 'wrong-status' ? 200 : 201,
+        deadlineReached: failure === 'stall' });
+      assert.equal(JSON.stringify(diagnostics).includes('PRIVATE'), false);
     }
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 });
