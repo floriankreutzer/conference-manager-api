@@ -7,13 +7,14 @@ import { isInternalUuid } from '../src/domain/identifiers.js';
 
 // Test-only protocol measurement: the destination and operation cannot be supplied remotely.
 async function measureRequests({ origin, cookies, verify, concurrency = 16, deadlineMs = 45_000,
-  arrivalIntervalMs = 0 }, path, writes = null, mediaReads = null) {
+  arrivalIntervalMs = 0, onFailure }, path, writes = null, mediaReads = null) {
   const url = new URL(origin);
   if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password
     || url.pathname !== '/' || url.search || url.hash || !url.port) throw new Error('LOAD_DESTINATION_INVALID');
   if (!Array.isArray(cookies) || cookies.length < 1 || cookies.length > 10_000
     || cookies.some((cookie) => !/^cm_session=[A-Za-z0-9_-]{43}$/.test(cookie))) throw new Error('LOAD_COOKIES_INVALID');
-  if (typeof verify !== 'function' || !Number.isInteger(concurrency) || concurrency < 1 || concurrency > 32
+  if (typeof verify !== 'function' || (onFailure !== undefined && typeof onFailure !== 'function')
+    || !Number.isInteger(concurrency) || concurrency < 1 || concurrency > 32
     || !Number.isInteger(deadlineMs) || deadlineMs < 100 || deadlineMs > 60_000) throw new Error('LOAD_BOUNDS_INVALID');
   if (!Number.isInteger(arrivalIntervalMs) || arrivalIntervalMs < 0 || arrivalIntervalMs > 1_000
     || (cookies.length - 1) * arrivalIntervalMs >= deadlineMs) throw new Error('LOAD_ARRIVAL_INVALID');
@@ -29,8 +30,11 @@ async function measureRequests({ origin, cookies, verify, concurrency = 16, dead
   const controller = new AbortController();
   // Only this private, bounded signal: HTTP cancellation and paced workers can temporarily overlap.
   setMaxListeners(concurrency * 2 + 2, controller.signal);
-  const timer = setTimeout(() => controller.abort(), deadlineMs);
+  const progress = [];
+  let deadlineReached = false;
+  const timer = setTimeout(() => { deadlineReached = true; controller.abort(); }, deadlineMs);
   async function execute(index) {
+    const state = { stage: 'arrival', status: null }; progress[index] = state;
     const scheduledAt = started + index * arrivalIntervalMs;
     if (arrivalIntervalMs) {
       while (performance.now() < scheduledAt) {
@@ -41,6 +45,7 @@ async function measureRequests({ origin, cookies, verify, concurrency = 16, dead
     const at = performance.now();
     const payload = writes?.[index];
     const media = mediaReads?.[index];
+    state.stage = 'transport';
     const result = await new Promise((resolve, reject) => {
       const req = request(new URL(Array.isArray(path) ? path[index] : path, url), {
         agent, signal: controller.signal, method: payload ? 'POST' : 'GET',
@@ -50,6 +55,7 @@ async function measureRequests({ origin, cookies, verify, concurrency = 16, dead
           ...(payload.expectedVersion ? { 'If-Match': `"${payload.expectedVersion}"` } : {}),
         } : {}) },
       }, (response) => {
+        state.stage = 'response-body'; state.status = response.statusCode;
         const chunks = [];
         let bytes = 0;
         response.on('data', (chunk) => {
@@ -60,10 +66,12 @@ async function measureRequests({ origin, cookies, verify, concurrency = 16, dead
         response.on('error', reject);
         response.on('end', () => {
           try {
+            state.stage = 'response-status';
             if (response.statusCode !== (media?.etag ? 304 : payload?.expectedStatus ?? (payload ? 201 : 200))) {
               throw new Error('LOAD_STATUS_INVALID');
             }
             if (media) {
+              state.stage = 'response-media';
               if (!/^"[a-f0-9]{64}"$/.test(response.headers.etag ?? '')
                 || response.headers['cache-control'] !== 'private, no-cache, max-age=0, must-revalidate'
                 || response.headers.vary !== 'Cookie' || response.headers['x-content-type-options'] !== 'nosniff'
@@ -72,14 +80,18 @@ async function measureRequests({ origin, cookies, verify, concurrency = 16, dead
                 throw new Error('LOAD_MEDIA_RESPONSE_INVALID');
               }
               resolve({ body: Buffer.concat(chunks), bytes, etag: response.headers.etag, status: response.statusCode });
-            } else resolve({ body: JSON.parse(Buffer.concat(chunks).toString('utf8')), bytes });
+            } else {
+              state.stage = 'response-json';
+              resolve({ body: JSON.parse(Buffer.concat(chunks).toString('utf8')), bytes });
+            }
           } catch { reject(new Error('LOAD_RESPONSE_INVALID')); }
         });
       });
       req.on('error', () => reject(new Error('LOAD_REQUEST_FAILED')));
-      req.setTimeout(5_000, () => req.destroy());
+      req.setTimeout(5_000, () => { state.stage = 'socket-timeout'; req.destroy(); });
       req.end(payload?.body);
     });
+    state.stage = 'verify';
     verify(result.body, index, ...(media ? [{ etag: result.etag, status: result.status }] : []));
     payloadBytes += result.bytes;
     requestPayloadBytes += payload ? Buffer.byteLength(payload.body) : 0;
@@ -94,7 +106,17 @@ async function measureRequests({ origin, cookies, verify, concurrency = 16, dead
     const workers = Array.from({ length: Math.min(concurrency, cookies.length) }, async () => {
       while (!failed && next < cookies.length) {
         const index = next++;
-        try { await execute(index); } catch { failed = true; controller.abort(); throw new Error('LOAD_ACCEPTANCE_FAILED'); }
+        try { await execute(index); } catch {
+          if (!failed) {
+            failed = true;
+            const diagnostic = Object.freeze({ index, requests: cookies.length, concurrency, arrivalIntervalMs,
+              completed: latencies.length, ...progress[index], deadlineReached,
+              elapsedMs: Math.round(performance.now() - started) });
+            // Fixed numeric/enumerated metadata only; never retain input, response or raw errors.
+            try { onFailure?.(diagnostic); } catch { /* Diagnostics cannot change acceptance. */ }
+          }
+          controller.abort(); throw new Error('LOAD_ACCEPTANCE_FAILED');
+        }
       }
     });
     const outcomes = await Promise.allSettled(workers);
