@@ -4,6 +4,7 @@ import pg from 'pg';
 import { migrateUp } from '../../scripts/db-migrations.mjs';
 import { grantProtectedRuntimeRoles } from '../../scripts/support/protected-runtime-role-grants.mjs';
 import { deriveProtectedAuthenticationFlowSecret } from '../../src/identity/protected-authentication-flow-secret.js';
+import { createCustomerAccessCipher } from '../../src/persistence/customer-access-cipher.js';
 import { createPostgresAuditRepository } from '../../src/persistence/postgres/audit-repository.js';
 import { createProtectedPostgresTlsFixture } from './protected-postgres-tls-fixture.js';
 import { createProtectedOwnerMicrosoftFixture } from './protected-owner-microsoft-fixture.js';
@@ -16,12 +17,15 @@ const ORIGINS=Object.freeze({ customer: 'https://app-int.example.test',platform:
 // is substituted; actual browser callback/proof/approval/admission remain owned
 // by the independently constructed roots. Never real Microsoft/device evidence.
 export async function createProtectedOwnerBrowserRuntimeFixture(input) {
-  if (!input || Object.keys(input).sort().join(',')!=='apiCommit,frontendCommit,hostedFrontend'
+  if (!input || !['apiCommit,frontendCommit,hostedFrontend','apiCommit,frontendCommit,hostedFrontend,participants']
+    .includes(Object.keys(input).sort().join(','))
+    || Object.hasOwn(input,'participants') && typeof input.participants!=='boolean'
     || ![input.apiCommit,input.frontendCommit].every(value=>typeof value==='string' && /^[a-f0-9]{40}$/.test(value))
     || !input.hostedFrontend || Object.keys(input.hostedFrontend).sort().join(',')!=='customer,platform'
     || !Object.values(input.hostedFrontend).every(value=>typeof value==='string' && /^[a-f0-9]{64}$/.test(value))) {
     throw new Error('OWNER_BROWSER_FIXTURE_REFS_REQUIRED');
   }
+  const participants=input.participants===true,privateCodes=[];
   const cleanups=[],pools=[],children=[];let closed=false;
   async function close() {
     if (closed) return;closed=true;let failed=false;
@@ -70,7 +74,8 @@ export async function createProtectedOwnerBrowserRuntimeFixture(input) {
       PROTECTED_CUSTODY_LOOKUP_SECRET: 'l'.repeat(48),PROTECTED_CUSTODY_ACTIVE_KEY_ID: 'initial',
       PROTECTED_CUSTODY_KEYRING: JSON.stringify([{ id: 'initial',key: Buffer.alloc(32,3).toString('base64url') }]),
       PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED: 'true',PROTECTED_OWNER_HANDOFF_SECRET: 'h'.repeat(48),
-      PROTECTED_HOSTED_FRONTEND_ENABLED: 'true' };
+      PROTECTED_HOSTED_FRONTEND_ENABLED: 'true',...(participants ? { PROTECTED_SYNTHETIC_ENABLED: 'true',
+        PROTECTED_SYNTHETIC_PARTICIPANTS_ENABLED: 'true',PROTECTED_HANDOFF_SECRET: 'z'.repeat(48) } : {}) };
     const customerClientId=randomUUID();
     const platform=await startProtectedOwnerBrowserPlatformProcess({ ...common,
       CM_OWNER_BROWSER_SUBJECT: owner.current().principal.providerIdentity.subjectReference,
@@ -81,6 +86,7 @@ export async function createProtectedOwnerBrowserRuntimeFixture(input) {
       PROTECTED_PLATFORM_AUDIT_HMAC_SECRET: 'a'.repeat(48),PROTECTED_PLATFORM_CURSOR_SECRET: 'u'.repeat(48),
       PROTECTED_PLATFORM_OWNER_RECIPIENT: 'Owner@example.test',PROTECTED_PLATFORM_ASSURANCE_MODE: 'microsoft_mfa',
       PROTECTED_PLATFORM_OWNER_HANDOFF_INTENT_SECRET: 'i'.repeat(48),
+      ...(participants ? { PROTECTED_PLATFORM_HANDOFF_INTENT_SECRET: 'j'.repeat(48) } : {}),
       PROTECTED_PLATFORM_HOST: '127.0.0.1',PROTECTED_PLATFORM_PORT: String(await unusedProtectedRuntimePort()) });
     children.push(platform);if (platform.outcome.type!=='listening') throw new Error('OWNER_BROWSER_PLATFORM_NOT_READY');
     const customer=await startProtectedRuntimeProcess('customer',{ ...common,
@@ -92,8 +98,34 @@ export async function createProtectedOwnerBrowserRuntimeFixture(input) {
       PROTECTED_CUSTOMER_HOST: '127.0.0.1',PROTECTED_CUSTOMER_PORT: String(await unusedProtectedRuntimePort()) });
     children.push(customer);if (customer.outcome.type!=='listening') throw new Error('OWNER_BROWSER_CUSTOMER_NOT_READY');
     const initial=owner.current(),audit=createPostgresAuditRepository(pool,{ hmacSecret: 't'.repeat(48) });
+    const cipher=participants ? createCustomerAccessCipher({ environment: 'int',activeKeyId: 'initial',
+      keys: new Map([['initial',Buffer.alloc(32,3)]]),lookupSecret: 'l'.repeat(48) }) : null;
+    if (cipher) cleanups.push(()=>cipher.destroy());
     return Object.freeze({ origins: ORIGINS,initialSetCookie: initial.setCookie,
       ports: Object.freeze({ customer: customer.outcome.port,platform: platform.outcome.port }),close,
+      ...(participants ? { async mailboxCode(recipient) {
+        if (!['northwind@example.test','contoso@example.test','fabrikam@example.test'].includes(recipient)) {
+          throw new Error('PARTICIPANT_BROWSER_MAILBOX_REJECTED');
+        }
+        const row=(await pool.query(`SELECT delivery.* FROM customer_access_deliveries delivery
+          JOIN customer_email_challenges challenge ON challenge.environment=delivery.environment AND challenge.id=delivery.challenge_id
+          JOIN customer_access_mailboxes mailbox ON mailbox.environment=challenge.environment AND mailbox.id=challenge.mailbox_id
+          JOIN customer_access_memberships member ON member.environment=mailbox.environment AND member.mailbox_id=mailbox.id
+          JOIN synthetic_invited_memberships binding ON binding.environment=member.environment
+            AND binding.tenant_id=member.tenant_id AND binding.membership_id=member.id AND binding.operator_id=$2
+          JOIN synthetic_tenant_generations generation ON generation.environment=binding.environment
+            AND generation.id=binding.generation_id
+          WHERE delivery.environment='int' AND delivery.purpose='mailbox_code' AND mailbox.lookup_hash=$1
+            AND generation.state='active' AND challenge.consumed_at IS NULL AND challenge.verified_at IS NULL
+          ORDER BY delivery.created_at DESC LIMIT 1`,[cipher.recipientLookup(recipient),owner.operatorId])).rows[0];
+        if (!row) throw new Error('PARTICIPANT_BROWSER_CODE_UNAVAILABLE');
+        const bytes=cipher.open(row.payload_envelope,{ environment: 'int',mailboxId: row.mailbox_id,recordId: row.id,
+          purpose: 'mailbox_code',tenantId: null });
+        try {
+          const code=JSON.parse(bytes.toString('utf8')).text.match(/\b\d{8}\b/)?.[0];
+          if (!code) throw new Error('PARTICIPANT_BROWSER_CODE_INVALID');privateCodes.push(code);return code;
+        } finally { bytes.fill(0); }
+      } } : {}),
       async evidence() {
         if (await audit.verifyTenantChain(target)!==true || !await owner.auditRepository.isReady()) {
           throw new Error('OWNER_BROWSER_AUDIT_INVALID');
@@ -104,9 +136,22 @@ export async function createProtectedOwnerBrowserRuntimeFixture(input) {
           (SELECT count(DISTINCT user_id)::int FROM owner_customer_handoffs WHERE status='consumed') AS distinct_own_users,
           (SELECT count(*)::int FROM owner_customer_handoffs WHERE status='consumed') AS consumed_flows,
           (SELECT count(*)::int FROM tenant_user_roles) AS ordinary_user_grants`)).rows[0];
-        const secrets=[database.password,...passwords,initial.setCookie.split(';')[0],'h'.repeat(48),'a'.repeat(48),'t'.repeat(48)];
+        const secrets=[database.password,...passwords,...privateCodes,initial.setCookie.split(';')[0],
+          'h'.repeat(48),'a'.repeat(48),'t'.repeat(48)];
         if (children.some(child=>secrets.some(value=>child.logs().includes(value)))) throw new Error('OWNER_BROWSER_LOG_REDACTION_FAILED');
-        return Object.freeze({ refs: { apiCommit: input.apiCommit,frontendCommit: input.frontendCommit },...counts,
+        const participantEvidence={};
+        if (participants) {
+          const rows=(await pool.query(`SELECT tenant_id FROM tenant_runtime_registry WHERE environment='int'
+            AND mode='synthetic' AND operator_id=$1 ORDER BY tenant_id`,[owner.operatorId])).rows;
+          for (const row of rows) if (!await audit.verifyTenantChain(row.tenant_id)) throw new Error('PARTICIPANT_BROWSER_AUDIT_INVALID');
+          const totals=(await pool.query(`SELECT count(*)::int AS registered,
+            count(*) FILTER(WHERE member.accepted_at IS NOT NULL)::int AS accepted
+            FROM synthetic_invited_memberships binding JOIN customer_access_memberships member
+              ON member.environment=binding.environment AND member.tenant_id=binding.tenant_id AND member.id=binding.membership_id
+            WHERE binding.environment='int' AND binding.operator_id=$1`,[owner.operatorId])).rows[0];
+          participantEvidence.participants=Object.freeze(totals);
+        }
+        return Object.freeze({ ...participantEvidence,refs: { apiCommit: input.apiCommit,frontendCommit: input.frontendCommit },...counts,
           tenantChainVerified: true,platformChainVerified: true,provider: 'isolated-actual-msal-network' });
       },
     });
