@@ -417,6 +417,7 @@ test('native participant registration retains exact Microsoft proof and member-q
   for (const { tenantId } of owned.tenants) assert.equal(await audit.verifyTenantChain(tenantId),true);
   // Human membership source custody is independent of a delegated live Owner
   // session, but it cannot survive current owner disablement/security changes.
+  await execute(owner,'issueBatch',command(owned.tenants[0].tenantId,'Queued@example.test'));
   await pool.query('UPDATE platform_sessions SET revoked_at=clock_timestamp() WHERE operator_id=$1',[owner.operator.operatorId]);
   assert.equal(await eligible(bindings[0].tenant_id,{ membershipId: bindings[0].membership_id }),true);
   for (const row of accepted) assert.ok(await shared(()=>sessions.resolvePrincipal(row.request)));
@@ -430,8 +431,7 @@ test('native participant registration retains exact Microsoft proof and member-q
     assert.equal(outcome.status,'accepted');
   }
   assert.equal(drained,true);
-  await waitForRecipientCooldown();
-  assert.equal((await invited.service.request({ recipient: `${issued[0].slot}@example.test`,locale: 'de',
+  assert.equal((await invited.service.request({ recipient: 'Queued@example.test',locale: 'de',
     sourceAddress: '127.0.0.1' })).status,'code_required');
   const beforeDisabledDispatch=mailCalls;
   await pool.query("UPDATE platform_operators SET status='disabled' WHERE id=$1",[owner.operator.operatorId]);
