@@ -28,7 +28,10 @@ test('protected invitation qualification must return strict true before ordinary
   for (const allowed of [false,null,undefined,'true',1]) {
     const f=fakePool();
     assert.equal(await lockCustomerDeliveryEligibility(f.client,'int',invitation,
-      { async allowsWithClient(client,id) { assert.equal(client,f.client);assert.equal(id,tenantId);return allowed; } }),false);
+      { async allowsWithClient(client,id,member) {
+        assert.equal(client,f.client);assert.equal(id,tenantId);
+        assert.deepEqual(member,{ invitationId: invitation.invitation_id });return allowed;
+      } }),false);
     assert.equal(f.queries.length,0);
   }
   const f=fakePool();
@@ -40,15 +43,20 @@ test('protected invitation qualification must return strict true before ordinary
 test('code delivery qualifies only captured entries and cannot expand an old snapshot through another real membership',async()=>{
   const entries=[1,2,3].map(()=>({ tenantId: randomUUID(),membershipId: randomUUID(),userId: null,userSecurityVersion: null,
     invitationId: randomUUID(),invitationRevision: 1 }));
-  for (const allowed of [entries[1].tenantId,null]) {
+  for (const allowed of [entries[1].membershipId,null]) {
     const visited=[],f=fakePool(value=>({ rowCount: 1,rows: value?.name==='customer-delivery-code-snapshot'
       ? [{ admission_snapshot: entries }] : value?.name==='customer-delivery-code-member-lock' ? [{ user_id: null }] : [] }));
     const result=await lockCustomerDeliveryEligibility(f.client,'int',{ purpose: 'mailbox_code',challenge_id: randomUUID(),
-      mailbox_id: mailboxId },{ async allowsWithClient(client,id) { visited.push(id);return id===allowed; } });
-    assert.equal(result,allowed!==null);assert.ok(visited.every(id=>entries.some(entry=>entry.tenantId===id)));
+      mailbox_id: mailboxId },{ async allowsWithClient(client,id,member) {
+        visited.push({ tenantId: id,...member });return member.membershipId===allowed;
+      } });
+    assert.equal(result,allowed!==null);
+    assert.ok(visited.every(item=>entries.some(entry=>entry.tenantId===item.tenantId && entry.membershipId===item.membershipId)));
     const members=f.queries.filter(query=>query?.name==='customer-delivery-code-member-lock');
     assert.equal(members.length,allowed===null ? 0 : 1);
-    if (members.length) assert.equal(members[0].values[1],allowed);
+    if (members.length) {
+      assert.equal(members[0].values[1],entries[1].tenantId);assert.equal(members[0].values[2],allowed);
+    }
   }
 });
 

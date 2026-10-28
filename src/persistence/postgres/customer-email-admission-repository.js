@@ -77,7 +77,8 @@ export function createPostgresCustomerEmailAdmissionRepository(pool,{ environmen
       for (const row of result.rows) {
         const candidate = currentEntry(row,{ id: row.invitation_id,revision: row.revision },row);
         if (!matchesCustomerEmailAdmission({ snapshot,current: candidate })) continue;
-        if (tenantEligibility !== null && await tenantEligibility.allowsWithClient(client,row.tenant_id) !== true) continue;
+        if (tenantEligibility !== null && await tenantEligibility.allowsWithClient(client,row.tenant_id,
+          { membershipId: row.id }) !== true) continue;
         if (typeof row.display_name !== 'string' || row.display_name.length<1 || row.display_name.length>160
           || /[\u0000-\u001f\u007f]/.test(row.display_name)) throw new Error('CUSTOMER_EMAIL_CHOICE_LABEL_INVALID');
         items.push(Object.freeze({ membershipId: row.id,displayName: row.display_name }));
@@ -105,7 +106,8 @@ export function createPostgresCustomerEmailAdmissionRepository(pool,{ environmen
       if (!expected) return rejected();
       return withPostgresTransaction(pool,async client => {
         if (tenantEligibility !== null
-          && await tenantEligibility.allowsWithClient(client,expected.tenantId) !== true) return rejected();
+          && await tenantEligibility.allowsWithClient(client,expected.tenantId,
+            { membershipId: expected.membershipId }) !== true) return rejected();
         // Tenant -> membership -> User/invitation -> challenge. No global challenge
         // or mailbox lock is held while waiting for a Tenant business lock.
         const tenant = await client.query({ name: 'customer-email-admission-tenant-lock',text: `SELECT id FROM tenants

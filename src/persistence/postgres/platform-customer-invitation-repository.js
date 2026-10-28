@@ -13,10 +13,12 @@ import { requireCurrentPlatformMutationAuthorization,lockPlatformOperationReceip
 const fields=['id','revision','roles','locale','state','expiresAt','delivery'];
 const snapshot=row=>Object.fromEntries(fields.map(key=>[key,row[key]]));
 export function createPostgresPlatformCustomerInvitationRepository(pool,{ environment,cipher,content,
-  tenantAuditRepository,platformAuditRepository,identifierFactory=randomUUID,tenantEligibility=null } = {}) {
+  tenantAuditRepository,platformAuditRepository,identifierFactory=randomUUID,tenantEligibility=null,
+  invitationCreatedWithClient=null } = {}) {
   if (!pool || typeof pool.connect!=='function' || !['dev','int','prod'].includes(environment)
     || typeof cipher?.commandDigest!=='function' || typeof tenantAuditRepository?.appendWithClient!=='function'
     || typeof platformAuditRepository?.appendWithClient!=='function'
+    || invitationCreatedWithClient!==null && typeof invitationCreatedWithClient!=='function'
     || tenantEligibility!==null && ['allowsWithClient','lockAdmissionWithClient']
       .some(method=>typeof tenantEligibility?.[method]!=='function')) {
     throw new TypeError('PLATFORM_CUSTOMER_INVITATION_CONFIGURATION_INVALID');
@@ -64,7 +66,7 @@ export function createPostgresPlatformCustomerInvitationRepository(pool,{ enviro
       finally { bytes.fill(0); }
       const key={ operatorId,operation,tenantId,idempotencyKey: commandId };
       await lockPlatformOperationReceipt(client,key);
-      if (tenantEligibility!==null && await tenantEligibility.lockAdmissionWithClient(client,tenantId)!==true) {
+      if (tenantEligibility!==null && await tenantEligibility.lockAdmissionWithClient(client,tenantId,{ operatorId })!==true) {
         throw new PlatformOperationDeniedError();
       }
       const tenantDisplayName=await lockTenant(client,tenantId),previous=await findPlatformOperationReceipt(client,key);
@@ -82,7 +84,7 @@ export function createPostgresPlatformCustomerInvitationRepository(pool,{ enviro
         }
         return (await appendPlatformMutationEvidence(client,evidence,tenantId,auditRepositories)).id;
       }
-      const rows=await work(client,{ tenantId,tenantDisplayName,now,recordAudit });
+      const rows=await work(client,{ tenantId,tenantDisplayName,now,recordAudit,operatorId });
       await storePlatformOperationReceipt(client,{ ...key,requestDigest,occurredAt: now,
         result: { environment,invitations: rows.map(snapshot) } });
       return { outcome: 'updated',invitations: Object.freeze(rows) };
@@ -100,8 +102,8 @@ export function createPostgresPlatformCustomerInvitationRepository(pool,{ enviro
       }
       const after=input.afterInvitationId===null ? null : requireInternalId(input.afterInvitationId);
       return withPostgresTransaction(pool,async client=>{
-        await requireCurrentPlatformMutationAuthorization(client,input.authorization,tenantId);
-        if (tenantEligibility!==null && await tenantEligibility.allowsWithClient(client,tenantId)!==true) {
+        const operatorId=await requireCurrentPlatformMutationAuthorization(client,input.authorization,tenantId);
+        if (tenantEligibility!==null && await tenantEligibility.allowsWithClient(client,tenantId,{ operatorId })!==true) {
           throw new PlatformOperationDeniedError();
         }
         await lockTenant(client,tenantId,true);
@@ -122,7 +124,12 @@ export function createPostgresPlatformCustomerInvitationRepository(pool,{ enviro
       return mutation(input,PLATFORM_OPERATION.TENANT_INVITATION_CREATE,normalized.invitations,async(client,context)=>{
         const rows=[],ordered=normalized.invitations.map((intent,index)=>({ intent,index,hash: cipher.recipientLookup(intent.recipient) }))
           .sort((left,right)=>left.hash<right.hash ? -1 : left.hash>right.hash ? 1 : 0);
-        for (const { intent,index } of ordered) rows[index]=await custody.issue(client,{ ...context,intent });
+        for (const { intent,index } of ordered) {
+          rows[index]=await custody.issue(client,{ ...context,intent });
+          if (invitationCreatedWithClient!==null && await invitationCreatedWithClient(client,{
+            tenantId: context.tenantId,invitationId: rows[index].id,operatorId: context.operatorId,now: context.now,
+          })!==true) throw new PlatformOperationDeniedError();
+        }
         return rows;
       });
     },

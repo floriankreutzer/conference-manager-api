@@ -1,7 +1,8 @@
 import { normalizeCustomerEmailAdmissionSnapshot } from '../../identity/customer-email-admission.js';
 
 async function pendingInvitation(client,environment,delivery,tenantEligibility) {
-  if (tenantEligibility && await tenantEligibility.allowsWithClient(client,delivery.tenant_id)!==true) return false;
+  if (tenantEligibility && await tenantEligibility.allowsWithClient(client,delivery.tenant_id,
+    { invitationId: delivery.invitation_id })!==true) return false;
   const tenant=await client.query({ name: 'customer-delivery-tenant-lock',text: `SELECT id FROM tenants
     WHERE id=$1 AND status IN ('pending','onboarding','ready','active') FOR SHARE`,values: [delivery.tenant_id] });
   if (tenant.rowCount!==1) return false;
@@ -21,7 +22,8 @@ async function pendingInvitation(client,environment,delivery,tenantEligibility) 
 }
 
 async function capturedMember(client,environment,mailboxId,entry,tenantEligibility) {
-  if (tenantEligibility && await tenantEligibility.allowsWithClient(client,entry.tenantId)!==true) return false;
+  if (tenantEligibility && await tenantEligibility.allowsWithClient(client,entry.tenantId,
+    { membershipId: entry.membershipId })!==true) return false;
   const tenant=await client.query({ name: 'customer-delivery-code-tenant-lock',text: `SELECT id FROM tenants
     WHERE id=$1 AND status IN ('pending','onboarding','ready','active') FOR SHARE`,values: [entry.tenantId] });
   if (tenant.rowCount!==1) return false;

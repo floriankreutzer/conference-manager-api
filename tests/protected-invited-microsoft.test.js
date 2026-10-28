@@ -38,16 +38,16 @@ test('Microsoft capture qualifies only accepted bounded candidates before acquir
   });
   const visited=[];
   const repository=createPostgresCustomerMicrosoftFlowRepository(f.pool,{ environment,flowBinding: binding,
-    tenantEligibility: { async allowsWithClient(client,tenantId) {
+    tenantEligibility: { async allowsWithClient(client,tenantId,context) {
       assert.equal(isPostgresTransactionActive(f.pool,client),true);
       assert.equal(f.queries.some(query=>query?.name==='customer-microsoft-flow-lock'),false);
-      visited.push(tenantId);return tenantId===entries[1].tenantId;
+      visited.push({ tenantId,...context });return context.membershipId===entries[1].membershipId;
     },async lockAdmissionWithClient() { throw new Error('NO_ADMISSION_DURING_CAPTURE'); } } });
   const choice=binding.issueBrowser({ flowId,purpose: 'login',stage: 'choice' });
   assert.equal(await repository.verified({ flowId,browserToken: browser.browserToken,choiceVerifier: choice.browserVerifier,
     correlationId: randomUUID(),principal: null,identity: { provider: 'microsoft_entra',tenantReference: randomUUID(),
       userReference: randomUUID(),authenticatedAt: now.toISOString() } }),true);
-  assert.deepEqual(visited,entries.map(entry=>entry.tenantId));
+  assert.deepEqual(visited,entries.map(entry=>({ tenantId: entry.tenantId,membershipId: entry.membershipId })));
   assert.deepEqual(JSON.parse(f.queries.find(query=>query?.name==='customer-microsoft-flow-verified').values[7]),[entries[1]]);
 });
 
@@ -63,10 +63,13 @@ test('Microsoft choice labels and admission are REAL-qualified without expanding
     throw new Error('UNEXPECTED_BUSINESS_QUERY:'+query.name);
   });
   const repository=createPostgresCustomerMicrosoftFlowRepository(f.pool,{ environment,flowBinding: binding,
-    tenantEligibility: { async allowsWithClient(client,tenantId) {
-      assert.equal(isPostgresTransactionActive(f.pool,client),true);return tenantId===entries[1].tenantId;
-    },async lockAdmissionWithClient(client,tenantId) {
-      assert.equal(isPostgresTransactionActive(f.pool,client),true);assert.equal(tenantId,entries[0].tenantId);return false;
+    tenantEligibility: { async allowsWithClient(client,tenantId,context) {
+      assert.equal(isPostgresTransactionActive(f.pool,client),true);
+      assert.equal(entries.find(entry=>entry.membershipId===context.membershipId)?.tenantId,tenantId);
+      return context.membershipId===entries[1].membershipId;
+    },async lockAdmissionWithClient(client,tenantId,context) {
+      assert.equal(isPostgresTransactionActive(f.pool,client),true);assert.equal(tenantId,entries[0].tenantId);
+      assert.deepEqual(context,{ membershipId: entries[0].membershipId });return false;
     } } });
   const choices=await repository.choices({ flowId,browserToken: browser.browserToken });
   assert.deepEqual(choices.items,[{ membershipId: entries[1].membershipId,displayName: 'Real customer' }]);
@@ -125,4 +128,23 @@ test('owned Microsoft entry points require current deployment before protocol, a
   const next=createProtectedInvitedCustomerAccess({ ...configuration,securityEpoch: randomUUID() });
   assert.equal(access.microsoft.sourceKey.fingerprint('127.0.0.1'),next.microsoft.sourceKey.fingerprint('127.0.0.1'));
   assert.equal(business.connections(),0);assert.equal(business.queries.length,0);
+});
+
+test('explicit member-aware account and link qualification cannot fall back to Tenant-only authority',async()=>{
+  const principal={ tenantId: randomUUID(),userId: randomUUID(),providerIdentity: { provider: 'email_code',reference: randomUUID() },
+    roles: ['employee'],permissions: [],session: { id: randomUUID(),securityVersion: 1,issuedAt: now.toISOString(),
+      expiresAt: new Date(now.getTime()+3_600_000).toISOString() } };
+  const f=fixture(()=>{ throw new Error('NO_BUSINESS_AFTER_MEMBER_DENIAL'); }),visited=[];
+  const deny=method=>async(client,value)=>{
+    assert.equal(isPostgresTransactionActive(f.pool,client),true);assert.deepEqual(value,principal);
+    visited.push(method);return false;
+  };
+  const repository=createPostgresCustomerMicrosoftFlowRepository(f.pool,{ environment,flowBinding: binding,
+    tenantEligibility: { allowsPrincipalWithClient: deny('account'),lockPrincipalAdmissionWithClient: deny('link'),
+      allowsWithClient() { throw new Error('NO_TENANT_ONLY_FALLBACK'); },
+      lockAdmissionWithClient() { throw new Error('NO_TENANT_ONLY_FALLBACK'); } } });
+  assert.deepEqual(await repository.accountState({ principal }),{ status: 'rejected' });
+  assert.equal(await repository.create({ flowId: randomUUID(),purpose: 'link',principal,correlationId: randomUUID(),
+    stateHash: 'a'.repeat(64),nonceHash: 'b'.repeat(64),browserVerifier: 'c'.repeat(64),sourceKey: 'd'.repeat(64) }),null);
+  assert.deepEqual(visited,['account','link']);assert.equal(f.queries.some(query=>typeof query==='object'),false);
 });

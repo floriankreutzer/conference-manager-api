@@ -80,19 +80,22 @@ test('reviewed metrics upgrade preserves retained Demo data, excludes concurrent
   await assert.rejects(withDemoMetricsMigrationGate(pool, { ...expected, customer: 'cm_wrong_customer' }, upgrade), /PRECONDITIONS/);
   assert.equal(upgrades, 0);
   assert.deepEqual(await withDemoMetricsMigrationGate(pool, expected, upgrade), {
-    canonicalVersion: 72, demoVersion: 32, resetPerformed: false, retainedCountsMatch: true,
+    canonicalVersion: 73, demoVersion: 33, resetPerformed: false, retainedCountsMatch: true,
   });
   assert.equal(upgrades, 1);
   assert.equal((await raw.query('SELECT count(*)::integer AS count FROM tenants')).rows[0].count, 1);
   assert.equal((await withDemoMetricsMigrationGate(pool, expected, upgrade)).retainedCountsMatch, true);
   assert.equal(upgrades, 2);
-  for (const [table, version] of [['schema_migrations', 73], ['demo_schema_migrations', 33]]) {
+  for (const [table, version] of [['schema_migrations', 74], ['demo_schema_migrations', 34]]) {
     await raw.query(`INSERT INTO ${table}(version,name,checksum) VALUES ($1,'synthetic_future_schema',repeat('a',64))`, [version]);
     try {
       await assert.rejects(withDemoMetricsMigrationGate(pool, expected, upgrade), /PRECONDITIONS/);
       assert.equal(upgrades, 2);
     } finally { await raw.query(`DELETE FROM ${table} WHERE version=$1`, [version]); }
   }
+  const participantCustody = (await raw.query('DELETE FROM schema_migrations WHERE version=73 RETURNING *')).rows[0];
+  await assert.rejects(withDemoMetricsMigrationGate(pool,expected,upgrade),/PRECONDITIONS/); // Retained072 cannot admit033.
+  const participantOverlay = (await raw.query('DELETE FROM demo_schema_migrations WHERE version=33 RETURNING *')).rows[0];
   const ownerCustody = (await raw.query('DELETE FROM schema_migrations WHERE version=72 RETURNING *')).rows[0];
   await assert.rejects(withDemoMetricsMigrationGate(pool,expected,upgrade),/PRECONDITIONS/); // Retained071 cannot admit032.
   const ownerOverlay = (await raw.query('DELETE FROM demo_schema_migrations WHERE version=32 RETURNING *')).rows[0];
@@ -150,7 +153,8 @@ test('reviewed metrics upgrade preserves retained Demo data, excludes concurrent
   } finally {
     await raw.query('INSERT INTO schema_migrations(version,name,checksum,applied_at) VALUES ($1,$2,$3,$4)',
       [removed.version,removed.name,removed.checksum,removed.applied_at]);
-    for (const [table,row] of [['schema_migrations',ownerCustody],['demo_schema_migrations',ownerOverlay],
+    for (const [table,row] of [['schema_migrations',participantCustody],['demo_schema_migrations',participantOverlay],
+      ['schema_migrations',ownerCustody],['demo_schema_migrations',ownerOverlay],
       ['schema_migrations',microsoftCustody],['schema_migrations',microsoftProof],
       ['demo_schema_migrations',microsoftProofOverlay],
       ['demo_schema_migrations',groupAuthorityOverlay],['schema_migrations',groupAuthority],

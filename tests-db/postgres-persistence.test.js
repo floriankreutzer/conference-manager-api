@@ -226,6 +226,7 @@ test('PostgreSQL migration, tenant persistence, session, authorization, and audi
       { version: 70, name: 'platform_microsoft_operation_proofs' },
       { version: 71, name: 'synthetic_microsoft_custody' },
       { version: 72, name: 'owner_real_customer_custody' },
+      { version: 73, name: 'synthetic_invited_memberships' },
     ]);
   });
 

@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 72;/.test(pool)) {
-  throw new Error('Production application requires REAL owner Customer custody schema 72.');
+if (!/export const CURRENT_SCHEMA_VERSION = 73;/.test(pool)) {
+  throw new Error('Production application requires generation-bound invited membership schema 73.');
 }
 
 const auditEvent = await readFile('src/audit/event.js', 'utf8');

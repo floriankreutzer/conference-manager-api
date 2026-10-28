@@ -37,6 +37,7 @@ test('Catering orders retain scoped historical source, atomic quotes/decisions a
   t.after(() => pool.end());
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged072/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
@@ -338,6 +339,7 @@ test('Catering orders retain scoped historical source, atomic quotes/decisions a
   await assert.rejects(pool.query(`UPDATE catering_order_version_states SET revision=revision+1,status='released'
     WHERE tenant_id=$1 AND order_id=$2 AND version=1`, [id(1), componentOrder.orders[0].orderId]), (error) => error.code === '23514');
   assert.equal(await auditRepository.verifyTenantChain(id(1)), true);
+  assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged072/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
@@ -365,6 +367,7 @@ test('Catering orders retain scoped historical source, atomic quotes/decisions a
   await assert.rejects(rollbackLatest(pool), /CATERING_ORDER_ROLLBACK_REQUIRES_REVIEW/);
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged072/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.

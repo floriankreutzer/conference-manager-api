@@ -151,6 +151,7 @@ test('outbox commits atomically, rebuilds current state, survives lost notificat
       [NORTHWIND]);
   }
   assert.equal((await restarted.consumeBatch()).poisonCount, 0);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty033 before unchanged032/older reset grants.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty032 before retained031/older reset grants.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty031 before unchanged030/older grants.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty030 before unchanged029/older grants.
@@ -174,6 +175,7 @@ test('outbox commits atomically, rebuilds current state, survives lost notificat
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catering grants overlay 012.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Product-source overlay 011.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Lifecycle grants overlay 010.
+  assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged072/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.
@@ -306,6 +308,7 @@ test('outbox commits atomically, rebuilds current state, survives lost notificat
   assert.equal((await pool.query('SELECT count(*)::integer AS count FROM catering_integration_configurations')).rows[0].count, 0);
   assert.equal((await pool.query('SELECT count(*)::integer AS count FROM catering_integration_configuration_revisions')).rows[0].count, 0);
   assert.equal((await restarted.consumeBatch()).refreshedCount, 3);
+  assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Empty033 before unchanged032/older reset grants.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty032 before retained031/older reset grants.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty031 before unchanged030/older grants.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles: roles }), true); // Empty030 before unchanged029/older grants.
@@ -329,6 +332,7 @@ test('outbox commits atomically, rebuilds current state, survives lost notificat
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true); // Catering grants overlay 012.
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
   assert.equal(await rollbackLatestDemoMigration(pool, { roles }), true);
+  assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged072/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty Microsoft operation proofs070 before069.

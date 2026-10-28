@@ -190,7 +190,8 @@ test('Demo runtime Product reads verified existing events through minimal Ops gr
       await client.query('BEGIN');
       // Empty invitation and Microsoft custody reference Tenant audit evidence.
       // Name its dependent tables explicitly; never weaken those foreign keys.
-      await client.query(`TRUNCATE owner_customer_handoffs,owner_handoff_start_budgets,platform_owner_customer_users,
+      await client.query(`TRUNCATE synthetic_invited_memberships,
+        owner_customer_handoffs,owner_handoff_start_budgets,platform_owner_customer_users,
         synthetic_customer_handoffs,platform_microsoft_operation_proofs,audit_events,customer_member_invitations,
         customer_access_deliveries,customer_microsoft_flows,
         tenant_microsoft_role_settings,customer_microsoft_group_observations`);
@@ -238,6 +239,7 @@ test('Demo runtime Product reads verified existing events through minimal Ops gr
     assert.equal(metric(result, 'onboarding_completed').value, 0);
     assert.equal(metric(result, 'time_to_submit').value, null);
     assert.equal(coverage(result, 'request_submitted').state, 'partial');
+    assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Empty033 before unchanged032/older reset grants.
     assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Empty032 before retained031/older reset grants.
     assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Empty031 before unchanged030/older grants.
     assert.equal(await rollbackLatestDemoMigration(pool, { roles: ROLES }), true); // Empty030 before unchanged029/older grants.
