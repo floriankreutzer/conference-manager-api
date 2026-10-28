@@ -168,7 +168,9 @@ async t=>{
     assert.equal(JSON.parse(view.text).tenant.id,target.tenantId);
     assert.deepEqual(JSON.parse(view.text).roles,['employee','tenant_admin']);
     assert.equal((await call('/api/v1/session',{ headers: { cookie: sessionCookie } })).status,401);
-    assert.equal((await participant('/api/v1/tenant/invitations',{ headers: { cookie: sessionCookie } })).status,403);
+    const concealed=await participant('/api/v1/tenant/invitations',{ headers: { cookie: sessionCookie } });
+    assert.equal(concealed.status,404);assert.equal(JSON.parse(concealed.text).error.code,'NOT_FOUND');
+    assert.equal(Object.hasOwn(JSON.parse(concealed.text),'items'),false);
     const onboarding=await participant('/api/v1/integrations/synthetic-calendar',{ headers: { cookie: sessionCookie } });
     assert.equal(onboarding.status,200);assert.equal(JSON.parse(onboarding.text).mode,'synthetic');
     if (target.slot==='fabrikam') {
