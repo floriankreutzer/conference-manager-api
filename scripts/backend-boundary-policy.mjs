@@ -36,6 +36,7 @@ const COMPOSITION_FILES = new Set([
   'src/protected-custody-configuration.js',
   'src/protected-customer-config.js',
   'src/protected-customer-authentication-composition.js',
+  'src/protected-customer-write-composition.js',
   'src/protected-customer-access-delivery-composition.js',
   'src/protected-invited-customer-access-composition.js',
   'src/index.js',
