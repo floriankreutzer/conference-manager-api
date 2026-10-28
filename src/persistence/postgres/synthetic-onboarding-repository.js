@@ -3,7 +3,7 @@ import { normalizeSyntheticHandoffScope } from '../../domain/synthetic-handoff.j
 import { normalizePrincipal } from '../../identity/principal.js';
 import { normalizeSyntheticOnboardingCommand,syntheticOnboardingCandidates,SyntheticOnboardingError }
   from '../../domain/synthetic-onboarding.js';
-import { createPostgresSyntheticCustomerAccessRepository } from './synthetic-customer-access-repository.js';
+import { createPostgresProtectedSyntheticCustomerCustody } from './protected-synthetic-customer-custody.js';
 import { requireProtectedRuntimeSharedExecutionScope } from './protected-runtime-execution-scopes.js';
 import { withPostgresTransaction } from './transaction.js';
 import { loadTenantLocationConfigurationWithClient,lockTenantLocationRevisionWithClient,
@@ -18,26 +18,22 @@ function ownedId(tenantId,key) {
 
 // The owning protected root fixes the full scope, actual pool and audit store.
 // This repository does not authenticate, select a mode or activate a provider.
-export function createPostgresSyntheticOnboardingRepository(pool,{ scope,auditRepository }={}) {
+export function createPostgresSyntheticOnboardingRepository(pool,{ scope,auditRepository,syntheticParticipantsEnabled=false }={}) {
   scope=normalizeSyntheticHandoffScope(scope);
-  if (typeof pool?.query!=='function' || typeof pool?.connect!=='function' || typeof auditRepository?.appendWithClient!=='function') {
+  if (typeof pool?.query!=='function' || typeof pool?.connect!=='function' || typeof auditRepository?.appendWithClient!=='function'
+    || typeof syntheticParticipantsEnabled!=='boolean') {
     throw new TypeError('SYNTHETIC_ONBOARDING_REPOSITORY_CONFIGURATION_INVALID');
   }
   const protection=Object.freeze({ environment: scope.environment,securityEpoch: scope.securityEpoch });
-  const access=createPostgresSyntheticCustomerAccessRepository(pool,{ scope });
+  const access=createPostgresProtectedSyntheticCustomerCustody(pool,{ scope,syntheticParticipantsEnabled });
   async function qualify(client,value,lock=false) {
     let principal;try { principal=normalizePrincipal(value); } catch { fail(); }
-    const resolved=await access.resolveCurrentAccess({ ...protection,principal });
+    const input={ ...protection,principal };
+    const resolved=lock ? await access.lockCurrentAccessWithClient(client,input) : await access.resolveCurrentAccess(input);
     if (resolved?.runtime?.mode!=='synthetic' || !principal.roles.includes('tenant_admin')) fail();
-    if (lock) {
-      const result=await client.query({ name: 'synthetic-onboarding-current-source-lock',
-        text: 'SELECT protected_lock_synthetic_calendar_source($1,$2,$3) AS allowed',
-        values: [scope.environment,scope.securityEpoch,principal.session.id] });
-      if (result.rows[0]?.allowed!==true) fail();
-      if (!(await access.resolveCurrentAccess({ ...protection,principal }))) fail();
-    }
-    return { principal,runtime: resolved.runtime };
+    return { principal,runtime: resolved.runtime,kind: resolved.kind };
   }
+
   async function transaction(work,readOnly=false) {
     requireProtectedRuntimeSharedExecutionScope(pool,protection);
     try { return await withPostgresTransaction(pool,work,{ readOnly }); }
@@ -82,11 +78,15 @@ export function createPostgresSyntheticOnboardingRepository(pool,{ scope,auditRe
     async isReady() {
       try {
         const result=await pool.query(`SELECT has_function_privilege(current_user,
-          'public.protected_synthetic_lifecycle(text,uuid,uuid,text,text,bigint)','EXECUTE') AS allowed`);
+          'public.protected_synthetic_lifecycle(text,uuid,uuid,text,text,bigint)','EXECUTE')
+          AND (NOT ${syntheticParticipantsEnabled} OR has_function_privilege(current_user,
+            'public.protected_synthetic_participant_lifecycle(text,uuid,uuid,text,text,bigint)','EXECUTE')) AS allowed`);
         return result.rows[0]?.allowed===true;
       } catch { return false; }
     },
-    view({ principal }) { return transaction(async client=>view(client,(await qualify(client,principal)).runtime),true); },
+    view({ principal }) {
+      return transaction(async client=>view(client,(await qualify(client,principal)).runtime),!syntheticParticipantsEnabled);
+    },
     importRooms({ principal,expectedRevision,selectedKeys,auditEventFor }) {
       const command=normalizeSyntheticOnboardingCommand({ expectedRevision,selectedKeys },'import');
       if (typeof auditEventFor!=='function') throw new TypeError('SYNTHETIC_ONBOARDING_AUDIT_REQUIRED');
@@ -127,8 +127,11 @@ export function createPostgresSyntheticOnboardingRepository(pool,{ scope,auditRe
       const command=normalizeSyntheticOnboardingCommand({ expectedRevision,expectedStatus,targetStatus },'lifecycle');
       return transaction(async client=>{
         const current=await qualify(client,principal,true);
-        const result=await client.query({ name: 'synthetic-onboarding-lifecycle',
-          text: 'SELECT protected_synthetic_lifecycle($1,$2,$3,$4,$5,$6) AS allowed',values: [scope.environment,scope.securityEpoch,
+        const lifecycle=current.kind==='synthetic_participant'
+          ? 'protected_synthetic_participant_lifecycle' : 'protected_synthetic_lifecycle';
+        const result=await client.query({ name: current.kind==='synthetic_participant'
+          ? 'synthetic-onboarding-participant-lifecycle' : 'synthetic-onboarding-lifecycle',
+          text: `SELECT ${lifecycle}($1,$2,$3,$4,$5,$6) AS allowed`,values: [scope.environment,scope.securityEpoch,
             current.principal.session.id,command.expectedStatus,command.targetStatus,command.expectedRevision] });
         if (result.rows[0]?.allowed!==true) fail('SYNTHETIC_ONBOARDING_CONFLICT');
         await qualify(client,current.principal);await auditRepository.appendWithClient(client,auditEvent);

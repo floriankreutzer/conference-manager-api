@@ -21,6 +21,7 @@ test('durable invited Microsoft primary flow preserves browser/state custody bef
   await t.test('empty Microsoft migration rolls back without rewriting accepted057 and restores its exact checksum',async()=>{
     const checksum=(await pool.query('SELECT checksum FROM schema_migrations WHERE version=58')).rows[0].checksum;
     const accepted=(await pool.query('SELECT checksum FROM schema_migrations WHERE version=57')).rows[0].checksum;
+    assert.equal(await rollbackLatest(pool),true); // Function-only074 before unchanged073/older rollback assertions.
     assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged072/older rollback assertions.
     assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
     assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.
@@ -39,7 +40,7 @@ test('durable invited Microsoft primary flow preserves browser/state custody bef
     assert.equal(await rollbackLatest(pool),true);
     assert.equal(Number((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version),57);
     await migrateUp(pool);
-    assert.equal(Number((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version),73);
+    assert.equal(Number((await pool.query('SELECT max(version) AS version FROM schema_migrations')).rows[0].version),74);
     assert.equal((await pool.query('SELECT checksum FROM schema_migrations WHERE version=58')).rows[0].checksum,checksum);
     assert.equal((await pool.query('SELECT checksum FROM schema_migrations WHERE version=57')).rows[0].checksum,accepted);
   });
@@ -124,6 +125,7 @@ test('durable invited Microsoft primary flow preserves browser/state custody bef
       principal: customer.principal })).status,'rejected');
     assert.equal(await customer.auditRepository.verifyTenantChain(customer.tenantId),true);
   });
+  assert.equal(await rollbackLatest(pool),true); // Function-only074 before unchanged073/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged072/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty071 before unchanged070/older rollback assertions.

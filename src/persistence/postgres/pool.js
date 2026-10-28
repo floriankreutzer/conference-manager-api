@@ -46,7 +46,8 @@ const { Pool } = pg;
 // Schema 71 binds synthetic Customer custody to fixed Microsoft operation proofs.
 // Schema 72 retains attributable REAL owner identity and one-use browser custody.
 // Schema 73 binds invited human membership to one exact synthetic generation/slot.
-export const CURRENT_SCHEMA_VERSION = 73;
+// Schema 74 adds current-member synthetic lifecycle custody without general Tenant UPDATE rights.
+export const CURRENT_SCHEMA_VERSION = 74;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

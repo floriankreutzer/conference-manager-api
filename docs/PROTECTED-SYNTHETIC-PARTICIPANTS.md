@@ -1,6 +1,6 @@
 # Invited participants in protected synthetic tenants
 
-Status: persistence/session/business ports and implementation design for application
+Status: inactive persistence/session/business/onboarding ports and implementation design for application
 issues351/352/353, not an implemented admission path or operating acceptance.
 The active protected runtime composition still permits invitations/email admission
 only for REAL tenants. Existing strict REAL predicates and the operator-owned
@@ -103,6 +103,39 @@ These ports do not yet activate application runtime, onboarding lifecycle,
 restricted SQL grants, participant write-wide fencing, invitation dispatch or
 generation replacement. Those remaining boundaries must be implemented and
 qualified before enabling a participant runtime configuration.
+
+## Inactive participant onboarding and SQL role plan
+
+Migration074 provides a separate member/session-qualified lifecycle function for
+invited Tenant Admins. It requires a current accepted member, exact generation,
+identity binding, unexpired/unrevoked session, enabled User/security version and
+current direct/verified Admin provenance before either legal lifecycle transition.
+It retains deployment/owner/Tenant and ordinary source row locks. The existing
+delegated wrapper retains its source qualification. Both wrappers call one private
+invoker function containing the existing resource/entitlement/revision checks;
+PUBLIC and runtime roles receive no execute grant on that private helper.
+
+Current schema readiness is74; the independent Demo overlay remains33. Historical
+migration checksums and compatibility thresholds are unchanged. Prior rollback
+fixtures remove the new function-only port before reaching their existing073 and
+older recovery guards; removing the port preserves all human/business history.
+Reapplying the migration does not reinstall runtime grants automatically.
+
+The fresh operator role manifest prepares only the two narrow Customer member/
+lifecycle function grants and Platform SELECT/INSERT on immutable participant
+bindings. Customer receives no binding writes or general Tenant lifecycle/Platform
+mutation rights. The inactive onboarding repository accepts only strict boolean
+DEV/INT selection and chooses the qualified current access kind; it does not infer
+Admin authority from the original invitation or login provider.
+
+The extended native progression uses verified TLS/SCRAM and actual max-one
+restricted Customer pools for code admission, sessions, media, calendar and the
+Fabrikam import/ready/active sequence. Negative checks include private-helper and
+Platform/Tenant mutation denial, missing current role, disabled User, revoked/
+expired session, mismatched identity, wrong environment/epoch and audit rollback.
+These tests must pass natively and alongside all permanent Demo gates. Source
+preparation does not install live grants, expose new routes or enable participant
+runtime; write-wide fencing, composition, dispatch and replacement remain open.
 
 ## Intended narrow boundary
 

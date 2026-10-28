@@ -7,7 +7,7 @@ const CUSTOMER_READ=['owner_customer_handoffs','owner_handoff_start_budgets','pl
 const CUSTOMER_WRITE=['owner_customer_handoffs','owner_handoff_start_budgets','sessions','customer_email_challenges',
   'customer_access_deliveries','customer_access_abuse_budgets',
   'customer_microsoft_flows','customer_microsoft_start_budgets'];
-const CUSTOMER_FORBIDDEN=['platform_owner_customer_users','platform_microsoft_operation_proofs',
+const CUSTOMER_FORBIDDEN=['synthetic_invited_memberships','platform_owner_customer_users','platform_microsoft_operation_proofs',
   'platform_operators','platform_sessions','platform_oidc_auth_transactions','platform_audit_events',
   'platform_passkey_credentials','platform_passkey_auth_transactions','platform_passkey_enrollment_grants',
   'platform_passkey_enrollment_transactions','protected_runtime_deployments','protected_runtime_epoch_history',

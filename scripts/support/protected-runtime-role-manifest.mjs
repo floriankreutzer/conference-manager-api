@@ -76,7 +76,9 @@ export function protectedRuntimeRoleManifest(surface) {
     functions.push('protected_lock_owner_handoff_source(text,uuid,uuid)','protected_lock_owner_customer_source(text,uuid,uuid)',
       'customer_microsoft_snapshot_valid(jsonb)','protected_lock_synthetic_handoff_source(text,uuid,uuid)',
       'protected_lock_synthetic_calendar_source(text,uuid,uuid)',
-      'protected_synthetic_lifecycle(text,uuid,uuid,text,text,bigint)');
+      'protected_synthetic_lifecycle(text,uuid,uuid,text,text,bigint)',
+      'protected_lock_synthetic_participant_scope(text,uuid,uuid,uuid,uuid,boolean)',
+      'protected_synthetic_participant_lifecycle(text,uuid,uuid,text,text,bigint)');
   } else {
     tables.push(...['platform_runtime_deployments','platform_runtime_tenant_mappings',
       'platform_metering_periods','platform_operational_quotas'].map(name=>table(name,'SELECT')),
@@ -100,6 +102,7 @@ export function protectedRuntimeRoleManifest(surface) {
     columns('protected_runtime_deployments','UPDATE','updated_at'),table('tenant_runtime_registry','INSERT'),
     table('synthetic_tenant_generations','INSERT,UPDATE'),table('synthetic_customer_handoffs','SELECT,UPDATE'),
     table('owner_customer_handoffs','SELECT,UPDATE'),table('platform_owner_customer_users','SELECT,INSERT'),
+    table('synthetic_invited_memberships','SELECT,INSERT'),
     columns('sessions','SELECT','id,tenant_id,user_id,issued_at,revoked_at,expires_at,principal_version'),
     columns('sessions','UPDATE','revoked_at'),
     table('customer_access_deliveries','INSERT'),
