@@ -3,6 +3,7 @@ import { createPrivateKey,createPublicKey } from 'node:crypto';
 import test from 'node:test';
 import { isoCBOR } from '@simplewebauthn/server/helpers';
 import { platformPasskeyFixture } from './support/platform-passkey-fixture.js';
+import { createProtectedOwnerBrowserRuntimeFixture } from '../tests-db/support/protected-owner-browser-runtime-fixture.js';
 import { PROTECTED_BROWSER_ORIGINS,createProtectedBrowserRuntimeFixture }
   from '../tests-db/support/protected-browser-runtime-fixture.js';
 
@@ -20,4 +21,14 @@ test('native virtual authenticator imports the same ephemeral ES256 fixture key 
   const cose=isoCBOR.decodeFirst(Buffer.from(key.credential.publicKey,'base64url'));
   assert.equal(publicKey.crv,'P-256');assert.deepEqual(Buffer.from(publicKey.x,'base64url'),Buffer.from(cose.get(-2)));
   assert.deepEqual(Buffer.from(publicKey.y,'base64url'),Buffer.from(cose.get(-3)));
+});
+
+
+test('participant browser fixture rejects unbound refs, nonboolean options and dependency overrides before native setup',async()=>{
+  const refs={ apiCommit: 'a'.repeat(40),frontendCommit: 'b'.repeat(40),hostedFrontend: {
+    customer: 'c'.repeat(64),platform: 'd'.repeat(64) } };
+  for (const value of [null,{}, { ...refs,apiCommit: 'main' },{ ...refs,issuer: ()=>{} },
+    ...['true',1,null,{}].map(participants=>({ ...refs,participants }))]) {
+    await assert.rejects(createProtectedOwnerBrowserRuntimeFixture(value),/OWNER_BROWSER_FIXTURE_REFS_REQUIRED/);
+  }
 });
