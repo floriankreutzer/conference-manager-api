@@ -5,6 +5,7 @@ import { loadConfig } from '../src/config.js';
 import { createHttpServer } from '../src/server.js';
 import { createLogger } from '../src/logger.js';
 import { createApp } from '../src/app.js';
+import { createCustomerComposition } from '../src/customer-composition.js';
 import { createCustomerMicrosoftAuthenticationRouteModule } from '../src/http/customer-microsoft-authentication-routes.js';
 import { serializeCustomerMicrosoftTransactionCookie } from '../src/identity/customer-microsoft-cookie.js';
 import { serializeSessionCookie } from '../src/identity/session-cookie.js';
@@ -17,7 +18,7 @@ const session=serializeSessionCookie('N'.repeat(43),{ secure: true,maxAgeSeconds
 const principal={ tenantId: id(2),userId: id(3),roles: ['employee'],permissions: [],
   providerIdentity: { provider: 'email_code',reference: id(4) },session: { id: id(5),securityVersion: 1,
     issuedAt: '2026-10-20T12:00:00.000Z',expiresAt: '2026-10-20T13:00:00.000Z' } };
-async function fixture(t,{ injected=true }={}) {
+async function fixture(t,{ injected=true,composed=false }={}) {
   const calls=[],logs=[],sources=[];
   const state={ principal,startLogin: { status: 'redirect',authorizationUrl:
     `https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?state=${STATE}`,setCookie: cookie(false) },
@@ -38,7 +39,11 @@ async function fixture(t,{ injected=true }={}) {
   const options={ config,logger: createLogger({ write: line=>logs.push(line) }),resolvePrincipal: async()=>state.principal,
     verifyCsrf: async request=>request.headers['x-csrf-token']==='ordinary-session-csrf',
     ...(injected ? { customerMicrosoftAuthenticationRouteModule: module } : {}) };
-  const server=createHttpServer(options);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const server=composed ? createCustomerComposition({ config,persistence: null,
+    additionalRouteModules: injected ? [module] : [],
+    httpServerFactory: selected=>createHttpServer({ ...selected,logger: options.logger,
+      resolvePrincipal: options.resolvePrincipal,verifyCsrf: options.verifyCsrf }) }).server : createHttpServer(options);
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   t.after(()=>new Promise(resolve=>server.close(resolve)));
   async function request(path='/login',{ method='GET',body=null,headers={} }={}) {
     const raw=body===null ? null : typeof body==='string' ? body : JSON.stringify(body);
@@ -54,6 +59,42 @@ async function fixture(t,{ injected=true }={}) {
   }
   return { calls,state,logs,sources,request,options,module };
 }
+test('Customer composition routes Microsoft login and callback before inactive legacy authentication',async t=>{
+  const f=await fixture(t,{ composed: true }),start=await f.request();
+  assert.equal(start.status,302);assert.equal(start.headers.location,f.state.startLogin.authorizationUrl);
+  assert.deepEqual(start.headers['set-cookie'],[cookie(false)]);
+  const result=await f.request(`/callback?state=${STATE}&code=synthetic-code`,{
+    headers: { cookie: cookie(false).split(';')[0],origin: undefined,'sec-fetch-site': 'cross-site' } });
+  assert.equal(result.status,303);assert.equal(result.headers.location,'/?auth=microsoft_membership_required');
+  assert.deepEqual(f.calls.map(call=>call.name),['startLogin','complete']);
+  assert.equal((await f.request('/login',{ headers: { origin: 'https://other.invalid' } })).status,403);
+  assert.equal((await f.request('/login?tenantId=untrusted')).status,400);
+  assert.equal((await f.request('/login',{ method: 'POST' })).status,405);
+  assert.equal(f.calls.length,2);
+  assert.equal((await f.request('/link/status')).status,200);
+  assert.equal((await f.request('/link/start',{ method: 'POST',body: {} })).status,403);
+});
+test('Customer composition rejects duplicate Microsoft modules and closed Demo injection, and preserves inactive login',async t=>{
+  const f=await fixture(t,{ composed: true,injected: false });
+  assert.equal((await f.request()).status,503);assert.equal(f.calls.length,0);
+  const options={ config: f.options.config,persistence: null,additionalRouteModules: [f.module] };
+  assert.throws(()=>createCustomerComposition({ ...options,additionalRouteModules: [f.module,f.module] }),/COMPOSITION_INVALID/);
+  for (const changed of [{ demoRuntime: true },{ mode: 'demo' }]) {
+    assert.throws(()=>createCustomerComposition({ ...options,config: { ...options.config,...changed } }),/COMPOSITION_INVALID/);
+  }
+});
+test('Customer route factory uses the same early Microsoft dispatch as explicit additional modules',async t=>{
+  const f=await fixture(t);
+  const composition=createCustomerComposition({ config: f.options.config,persistence: null,
+    routeModulesFactory: ()=>[f.module],httpServerFactory: options=>{
+      assert.equal(options.customerMicrosoftAuthenticationRouteModule,f.module);
+      assert.equal(options.additionalRouteModules.includes(f.module),false);
+      assert.equal(options.entraAuthService,null);
+      return createHttpServer(options);
+    } });
+  assert.ok(composition.server);
+  await composition.stop();
+});
 test('opt-in HTTP login/callback preserves exact browser transaction and only redirects to a fixed next ceremony',async t=>{
   const f=await fixture(t),start=await f.request();assert.equal(start.status,302);
   assert.equal(start.headers.location,f.state.startLogin.authorizationUrl);assert.deepEqual(start.headers['set-cookie'],[cookie(false)]);
