@@ -12,9 +12,9 @@ import { frontendArtifactDigest,writeProtectedFrontendFixture } from './support/
 
 const profile=surface=>({ surface,environment: 'int',apiCommit: 'a'.repeat(40),frontendCommit: 'b'.repeat(40),
   customerOrigin: 'https://app-int.example.test',platformOrigin: 'https://ops-int.example.com',syntheticEnabled: true });
-async function fixture(t,surface='customer') {
+async function fixture(t,surface='customer',overrides={}) {
   const root=await mkdtemp(path.join(os.tmpdir(),'cm-protected-artifact-'));t.after(()=>rm(root,{ recursive: true,force: true }));
-  const selected=await writeProtectedFrontendFixture(root,profile(surface));return { root,selected };
+  const selected=await writeProtectedFrontendFixture(root,{ ...profile(surface),...overrides });return { root,selected };
 }
 test('hosted delivery stays disabled by default and needs an external per-surface manifest digest',async()=>{
   assert.equal(await loadProtectedHostedFrontend({ hostedFrontendSha256: null }),null);
@@ -41,11 +41,45 @@ test('both artifact planes pin exact deployment metadata and return isolated cap
     assert.deepEqual(artifact.get(artifact.entry).bytes,expected);
     for (const change of [{ surface: surface==='customer' ? 'platform' : 'customer' },{ environment: 'prod' },
       { apiCommit: 'd'.repeat(40) },{ frontendCommit: 'e'.repeat(40) },{ customerOrigin: 'https://foreign.example.test' },
-      { syntheticEnabled: false },{ ownerCustomerAccessEnabled: true },{ hostedFrontendSha256: 'f'.repeat(64) }]) {
+      { platformOrigin: 'https://foreign.example.test' },{ syntheticEnabled: false },
+      { ownerCustomerAccessEnabled: true },{ hostedFrontendSha256: 'f'.repeat(64) }]) {
       await assert.rejects(readProtectedFrontendArtifact(root,{ ...selected,...change }),/ARTIFACT_INVALID/);
     }
     await writeFile(path.join(root,artifact.entry),'changed after immutable startup');
     assert.deepEqual(artifact.get(artifact.entry).bytes,expected);
+  }
+});
+test('Pavurel INT serving requires freshly sealed origins and rejects old and sibling hosts on both surfaces',async t=>{
+  const origins={ customerOrigin: 'https://app.int.pavurel.eu',platformOrigin: 'https://platform.int.pavurel.eu' };
+  const oldOrigins={ customerOrigin: 'https://conference-manager-demo.onrender.com',
+    platformOrigin: 'https://conference-manager-ops-demo.onrender.com' };
+  for (const surface of ['customer','platform']) {
+    const old=await fixture(t,surface,oldOrigins);
+    await assert.rejects(readProtectedFrontendArtifact(old.root,{ ...old.selected,...origins }),/ARTIFACT_INVALID/);
+    const { root,selected }=await fixture(t,surface,origins),artifact=await readProtectedFrontendArtifact(root,selected);
+    const own=origins[`${surface}Origin`],peer=origins[surface==='customer' ? 'platformOrigin' : 'customerOrigin'];
+    const entry=surface==='customer' ? '/' : '/platform-admin/';
+    const server=createServer(withProtectedHostedFrontend({ profile: selected,config: { mode: 'production',publicOrigin: own },
+      artifact,apiHandler: ()=>assert.fail('STATIC_REQUEST_CANNOT_ENTER_API') }));
+    await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+    t.after(()=>new Promise(resolve=>server.close(resolve)));
+    const exchange=(target=entry,headers={})=>new Promise((resolve,reject)=>{
+      const call=request({ hostname: '127.0.0.1',port: server.address().port,path: target,
+        headers: { host: new URL(own).host,...headers } },response=>{
+        response.resume();response.once('end',()=>resolve({ status: response.statusCode,headers: response.headers }));
+      });call.once('error',reject);call.end();
+    });
+    const response=await exchange(entry,{ origin: own });assert.equal(response.status,200);
+    assert.equal(response.headers['cross-origin-resource-policy'],'same-origin');
+    assert.equal(response.headers['access-control-allow-origin'],undefined);
+    if (surface==='platform') {
+      const redirect=await exchange('/');assert.equal(redirect.status,303);assert.equal(redirect.headers.location,'/platform-admin/');
+    }
+    for (const host of [new URL(oldOrigins[`${surface}Origin`]).host,new URL(peer).host,`${new URL(own).host}.foreign.test`]) {
+      assert.equal((await exchange(entry,{ host })).status,400);
+    }
+    assert.equal((await exchange(entry,{ origin: peer })).status,403);
+    assert.equal((await exchange(entry,{ origin: oldOrigins[`${surface}Origin`] })).status,403);
   }
 });
 test('modified bytes, a recomputed manifest without an external pin and extra files cannot be adopted',async t=>{

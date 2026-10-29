@@ -1,11 +1,11 @@
 import { isInternalUuid } from '../../src/domain/identifiers.js';
 
 export const PROTECTED_OBSERVATION_ORIGINS = Object.freeze({
-  customer: 'https://conference-manager-demo.onrender.com',
-  platform: 'https://conference-manager-ops-demo.onrender.com',
+  customer: 'https://app.int.pavurel.eu',
+  platform: 'https://platform.int.pavurel.eu',
 });
 export const OBSERVATION_MAX_AGE_MS = 120_000;
-export const OBSERVATION_FRONTEND_COMMIT = '2667b0b6df74ffa2632fce4be6f95ef8ef8103ac';
+export const OBSERVATION_FRONTEND_COMMIT = '29cabd5cfa2e254a3d9960cb8b016f9da956e1f9';
 export function refuseRuntimeObservation() { throw new Error('PROTECTED_RUNTIME_OBSERVATION_REFUSED'); }
 export function exactObservationObject(value, keys) {
   if (!value || ![Object.prototype, null].includes(Object.getPrototypeOf(value))
@@ -21,7 +21,7 @@ function instant(value) {
 }
 
 // An approved deployment selection, never an observation or browser mutation.
-// This first implementation is restricted to the two existing INT origins.
+// Restricted to the reviewed Pavurel INT origins; source preparation is not cutover evidence.
 export function normalizeRuntimeObservationSelection(value) {
   exactObservationObject(value, ['environment', 'apiCommit', 'frontendCommit',
     'serviceVersion', 'customer', 'platform', 'evidence']);
