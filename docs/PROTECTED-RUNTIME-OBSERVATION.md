@@ -1,4 +1,4 @@
-# Existing INT deployment observation process
+# Protected INT deployment observation process
 
 ## Ownership and boundaries
 
@@ -8,6 +8,19 @@ Platform API mutation, application worker, authentication mode or provider runti
 The normal Customer/Platform roles retain SELECT-only observation/mapping access.
 No schema, grant, credential, lifecycle, entitlement, business or session change is
 performed. DEV/PROD and arbitrary hosts are outside this first implementation.
+
+The prepared domain cutover binds the fixed origins to
+`https://app.int.pavurel.eu` and `https://platform.int.pavurel.eu`.
+It is a coordinated release candidate for
+[frontend issue415](https://github.com/floriankreutzer/conference-manager/issues/415),
+not an independently activatable observer refresh. The retained deployment
+selection still describes the earlier origin pair and must not be relabelled.
+Until real deployments, manifests and qualification replace that evidence, the
+new candidate frontend pin deliberately makes recurring preflight fail closed.
+Follow [PAVUREL-INT-DOMAIN-CUTOVER.md](PAVUREL-INT-DOMAIN-CUTOVER.md), including the
+explicit observation gap and fresh qualification boundary, before merging or
+activating this change. Source preparation proves no hosted cutover or active
+schedule.
 
 The original `protected-int-runtime-observation.yml` runs only on explicit owner dispatch,
 exact accepted Main and first attempt, in the existing protected deployment
@@ -27,9 +40,10 @@ successful provider receipts; do not invent them. The current protected epoch is
 loaded from the existing private environment binding, never a public workflow
 input. There is no Tenant selector, connection, origin, SQL, role or health-state
 input. For the original one-shot workflow, the deployed API SHA must equal the exact observer Main SHA. Frontend
-selection is additionally locked to qualified immutable commit
-`2667b0b6df74ffa2632fce4be6f95ef8ef8103ac`; changing that pin requires a reviewed
-source change and renewed pair qualification. An arbitrary branch commit cannot
+selection is additionally locked to immutable candidate commit
+`29cabd5cfa2e254a3d9960cb8b016f9da956e1f9`; this cutover candidate still needs
+renewed pair qualification. Changing that pin requires a reviewed source change
+and renewed qualification. An arbitrary branch commit cannot
 execute browser build code before subsequent offline credential allocation.
 
 The selection declares expected deployments, not successful observations. The
@@ -111,7 +125,8 @@ migration, provider resource or authentication/signing credential. Existing
 one-shot dispatch restrictions remain unchanged.
 
 The fixed reviewed selection in `scripts/data/protected-int-runtime-selection.json`
-records the already qualified hosted API/frontend pair and actual provider receipts.
+retains the previously qualified pre-cutover API/frontend pair and actual provider
+receipts. It does not qualify the Pavurel domain candidate or its frontend pin.
 The **observer source commit** is a separate fact from the **observed deployed API
 commit**. This allows an independently qualified offline workflow update without
 redeploying unchanged application code or claiming the new observer SHA is live.
@@ -150,8 +165,11 @@ transition, the UI must show stale/unknown rather than a manufactured healthy st
 The operating window is a resource bound, **not a zero-cost guarantee**. Two Render
 Free services awake for ten hours daily consume about 620 shared instance-hours
 in a 31-day month before startup/other usage, against the workspace's published
-750-hour allowance. The current complete sealed bytes total approximately 3.34 MB
-per collection (about 12.4 GB over 31 days at 120 collections/day, before headers).
+750-hour allowance. A previously recorded pre-cutover pair totalled approximately
+3.34 MB of complete sealed bytes per collection (about 12.4 GB over 31 days at
+120 collections/day, before headers). This is historical, not the candidate's
+measurement; recompute its complete artifact bytes and operating budget before
+qualification.
 Verify actual remaining workspace instance-hours, bandwidth/build allowances and
 configured spending controls before activation; existing other usage still counts.
 No plan, quota, spending limit or resource expansion is authorized by this profile.

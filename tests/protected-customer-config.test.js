@@ -4,6 +4,8 @@ import test from 'node:test';
 import { loadProtectedCustomerConfiguration } from '../src/protected-customer-config.js';
 import { protectedRuntimeConfigurationKeys } from '../src/protected-runtime-config.js';
 import { assertProductionConfig } from '../src/config.js';
+import { assertRequestHost,assertSameOrigin } from '../src/security.js';
+import { createMicrosoft365Client } from '../src/integrations/microsoft365-client.js';
 import { moduleBoundaryViolations } from '../scripts/check-module-boundaries.mjs';
 
 function fixture(environment='int') {
@@ -23,6 +25,27 @@ function fixture(environment='int') {
     PROTECTED_CUSTODY_KEYRING: JSON.stringify([{ id: 'initial',key: Buffer.alloc(32,3).toString('base64url') }]) };
 }
 function load(t,env) { const result=loadProtectedCustomerConfiguration(env);t.after(()=>result.cipher.destroy());return result; }
+
+test('Pavurel INT Customer binds Microsoft callbacks and handoff to its exact domains without accepting a sibling origin',t=>{
+  t.mock.method(globalThis,'fetch',()=>assert.fail('CONFIGURATION_CANNOT_CALL_PROVIDER'));
+  const env={ ...fixture(),PROTECTED_CUSTOMER_ORIGIN: 'https://app.int.pavurel.eu',
+    PROTECTED_PLATFORM_ORIGIN: 'https://platform.int.pavurel.eu',PROTECTED_SYNTHETIC_ENABLED: 'true',
+    PROTECTED_HANDOFF_SECRET: 'h'.repeat(48) };
+  const bundle=load(t,env),origin=bundle.config.publicOrigin;
+  assert.equal(origin,'https://app.int.pavurel.eu');
+  assert.equal(bundle.config.entraRedirectUri,'https://app.int.pavurel.eu/api/v1/auth/microsoft/callback');
+  assert.equal(bundle.authentication.synthetic.platformOrigin,'https://platform.int.pavurel.eu');
+  const microsoft365=createMicrosoft365Client({ clientId: env.PROTECTED_CUSTOMER_ENTRA_CLIENT_ID,
+    clientSecret: env.PROTECTED_CUSTOMER_ENTRA_CLIENT_SECRET,publicOrigin: origin });
+  assert.equal(microsoft365.redirectUri,'https://app.int.pavurel.eu/api/v1/integrations/microsoft365/callback');
+  assert.equal(bundle.mailProvider,null);assertProductionConfig(bundle.config);
+  assert.doesNotThrow(()=>assertRequestHost({ host: 'app.int.pavurel.eu' },origin));
+  assert.doesNotThrow(()=>assertSameOrigin({ origin },origin));
+  for (const host of ['conference-manager-demo.onrender.com','platform.int.pavurel.eu','app.int.pavurel.eu.foreign.test']) {
+    assert.throws(()=>assertRequestHost({ host },origin),/HOST_NOT_ALLOWED/);
+    assert.throws(()=>assertSameOrigin({ origin: `https://${host}` },origin),/ORIGIN_NOT_ALLOWED/);
+  }
+});
 
 for (const environment of ['dev','int','prod']) {
   test(`owned ${environment} Customer configuration retains production constraints and independent protected deployment scope`,t=>{

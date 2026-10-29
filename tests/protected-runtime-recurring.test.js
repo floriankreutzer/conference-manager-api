@@ -6,6 +6,8 @@ import { requireRecurringRuntimeObservationContext, recurringRuntimeObservationW
   readRecurringRuntimeObservationSelection, RECURRING_OBSERVATION_CRON }
   from '../scripts/support/protected-runtime-recurring-context.mjs';
 import { protectedRuntimeObservationDatabase } from '../scripts/support/protected-runtime-observation-execution.mjs';
+import { normalizeRuntimeObservationSelection,OBSERVATION_FRONTEND_COMMIT }
+  from '../scripts/support/protected-runtime-observation-plan.mjs';
 
 const source = 'b'.repeat(40);
 function context(event = 'schedule') {
@@ -47,15 +49,15 @@ test('daily local window preserves exact boundaries across winter, summer and DS
   }
 });
 
-test('fixed reviewed deployments remain independent from qualified observer source; no invented optional evidence', async () => {
-  const selection = await readRecurringRuntimeObservationSelection();
-  const deployedSource = 'c1248c43ff80ab1f1b92af080963d496a215d693';
-  assert.equal(selection.environment, 'int');
-  assert.equal(selection.apiCommit, deployedSource);
-  assert.notEqual(selection.apiCommit, source);
-  assert.equal(selection.frontendCommit, '2667b0b6df74ffa2632fce4be6f95ef8ef8103ac');
-  assert.notEqual(selection.customer.deploymentReference, selection.platform.deploymentReference);
-  assert.equal(selection.evidence.rollback, null);assert.ok(Object.isFrozen(selection));
+test('retained pre-cutover deployment evidence cannot qualify the Pavurel candidate frontend', async () => {
+  const { deployedSourceCommit,...selection }=JSON.parse(await readFile('scripts/data/protected-int-runtime-selection.json','utf8'));
+  assert.equal(selection.environment,'int');assert.match(deployedSourceCommit,/^[a-f0-9]{40}$/);
+  assert.notEqual(deployedSourceCommit,source);
+  assert.notEqual(selection.frontendCommit,OBSERVATION_FRONTEND_COMMIT);
+  assert.notEqual(selection.customer.deploymentReference,selection.platform.deploymentReference);
+  assert.equal(selection.evidence.rollback,null);
+  assert.throws(()=>normalizeRuntimeObservationSelection({ ...selection,apiCommit: deployedSourceCommit }),/OBSERVATION_REFUSED/);
+  await assert.rejects(readRecurringRuntimeObservationSelection(),/OBSERVATION_REFUSED/);
 });
 
 test('shared CLI credential binding rejects foreign database, runtime identity and malformed role before collection', () => {
@@ -83,22 +85,22 @@ test('recurring workflow retains shared exclusion, pinned sources, late minimal 
   assert.match(workflow, /github.run_attempt == 1/);
   assert.match(workflow, /inputs.expected_main_sha == github.sha/);
   assert.match(workflow, /persist-credentials: false/);
+  assert.ok(workflow.includes(`ref: '${OBSERVATION_FRONTEND_COMMIT}'`));
   assert.doesNotMatch(workflow, /pull_request_target:|contents: write|CM_INT_AUDIT_HMAC_SECRET|selection_json|NODE_OPTIONS:/);
   assert.equal((workflow.match(/CM_INT_AUDIT_OFFLINE_DATABASE_URL/g) ?? []).length, 1);
   assert.ok(workflow.indexOf('CM_INT_AUDIT_OFFLINE_DATABASE_URL') > workflow.indexOf('protected-runtime-recurring-build.mjs'));
   assert.match(workflow, /git diff --exit-code HEAD/);
 });
 
-test('actual CLI preflight needs no database binding; wrong source and extra arguments fail with minimized errors', () => {
+test('actual CLI preflight refuses historical receipts before any database binding, even at the exact qualified source', () => {
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   const env = { PATH: process.env.PATH, ...context('workflow_dispatch'),
     GITHUB_SHA: head, EXPECTED_MAIN_SHA: head, QUALIFIED_OBSERVER_SHA: head };
   const run = (script, args = [], delta = {}) => spawnSync(process.execPath, [script, ...args], {
     env: { ...env, ...delta }, encoding: 'utf8', timeout: 10000,
   });
-  const ready = run('scripts/protected-runtime-recurring-preflight.mjs');
-  assert.equal(ready.status, 0);assert.equal(ready.stdout, 'active=true\n');assert.equal(ready.stderr, '');
-  for (const result of [run('scripts/protected-runtime-recurring-preflight.mjs', ['foreign.json']),
+  for (const result of [run('scripts/protected-runtime-recurring-preflight.mjs'),
+    run('scripts/protected-runtime-recurring-preflight.mjs', ['foreign.json']),
     run('scripts/protected-runtime-recurring-preflight.mjs', [], { GITHUB_SHA: source, EXPECTED_MAIN_SHA: source,
       QUALIFIED_OBSERVER_SHA: source }),
     run('scripts/protected-runtime-recurring-observe.mjs', [], { QUALIFIED_OBSERVER_SHA: '' }),

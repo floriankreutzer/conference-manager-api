@@ -27,6 +27,8 @@ test('observation selection rejects selectors, arbitrary destinations, credentia
 });
 
 test('collector verifies sealed bytes, exact API builds and fixed-origin requests; optional evidence remains unknown', async t => {
+  assert.deepEqual(PROTECTED_OBSERVATION_ORIGINS,{ customer: 'https://app.int.pavurel.eu',
+    platform: 'https://platform.int.pavurel.eu' });
   const f = await runtimeObservationFixture(t);
   const receipt = await collectProtectedRuntimeObservation({ plan: f.plan, artifactRoot: f.root, fetchImpl: f.fetchImpl });
   assert.deepEqual(receipt, {});assert.ok(Object.isFrozen(receipt));
@@ -49,6 +51,8 @@ test('cold HTML, redirects, foreign URLs, stale builds and tampered bytes cannot
   const modifications = [
     row => ({ ...row, bytes: Buffer.from('<html>cold start</html>'), type: 'text/html' }),
     row => ({ ...row, url: 'https://foreign.example.test/' }),
+    row => ({ ...row, url: row.url.replace('https://app.int.pavurel.eu','https://conference-manager-demo.onrender.com')
+      .replace('https://platform.int.pavurel.eu','https://conference-manager-ops-demo.onrender.com') }),
     row => ({ ...row, status: 302 }),
     row => row.type.startsWith('application/json') ? { ...row, bytes: Buffer.from('{}') } : row,
     row => row.type.startsWith('application/json') ? { ...row,

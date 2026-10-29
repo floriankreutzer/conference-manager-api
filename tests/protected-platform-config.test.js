@@ -4,6 +4,7 @@ import test from 'node:test';
 import { loadProtectedPlatformConfiguration } from '../src/protected-platform-config.js';
 import { loadProtectedCustomerConfiguration } from '../src/protected-customer-config.js';
 import { createProtectedPlatformAuthentication } from '../src/platform-production-authentication.js';
+import { assertPlatformRequestHost,assertPlatformRequestOrigin } from '../src/platform/http/security.js';
 import { moduleBoundaryViolations } from '../scripts/check-module-boundaries.mjs';
 
 const CUSTOMER='11111111-1111-4111-8111-111111111111',PLATFORM='22222222-2222-4222-8222-222222222222';
@@ -31,6 +32,29 @@ function load(t,env) { const result=loadProtectedPlatformConfiguration(env);t.af
 function noIo() {
   return { query() { assert.fail('NO_CONSTRUCTION_DATABASE_ACCESS'); },connect() { assert.fail('NO_CONSTRUCTION_CONNECT'); } };
 }
+
+test('Pavurel INT Platform retains Microsoft MFA and both callback routes with strict own Host and Origin',t=>{
+  t.mock.method(globalThis,'fetch',()=>assert.fail('CONFIGURATION_CANNOT_CALL_PROVIDER'));
+  const env={ ...fixture(),PROTECTED_CUSTOMER_ORIGIN: 'https://app.int.pavurel.eu',
+    PROTECTED_PLATFORM_ORIGIN: 'https://platform.int.pavurel.eu',PROTECTED_PLATFORM_ASSURANCE_MODE: 'microsoft_mfa' };
+  delete env.PROTECTED_PLATFORM_PASSKEY_TRANSACTION_SECRET;
+  const bundle=load(t,env),origin=bundle.config.publicOrigin;
+  const owned=bundle.authenticationFactory({ pool: noIo(),leasePool: noIo() });
+  assert.equal(origin,'https://platform.int.pavurel.eu');assert.equal(bundle.config.assuranceMode,'microsoft_mfa');
+  assert.equal(bundle.profile.customerOrigin,'https://app.int.pavurel.eu');
+  assert.equal(bundle.config.entraRedirectUri,'https://platform.int.pavurel.eu/api/v1/platform/auth/microsoft/callback');
+  assert.equal(owned.routeModules[0].claim({ path: '/api/v1/platform/auth/microsoft/callback' }),'platform_auth_callback');
+  assert.equal(owned.routeModules[1].claim({ path: '/api/v1/platform/auth/microsoft/operation/callback' }),
+    'platform_microsoft_operation_callback');
+  assert.equal(owned.platformPasskeyService,undefined);assert.equal(bundle.config.passkeyTransactionSecret,null);
+  assert.doesNotThrow(()=>assertPlatformRequestHost({ host: 'platform.int.pavurel.eu' },origin));
+  assert.doesNotThrow(()=>assertPlatformRequestOrigin({ origin },origin,{ required: true }));
+  for (const host of ['conference-manager-ops-demo.onrender.com','app.int.pavurel.eu','platform.int.pavurel.eu.foreign.test']) {
+    assert.throws(()=>assertPlatformRequestHost({ host },origin),/HOST_NOT_ALLOWED/);
+    assert.throws(()=>assertPlatformRequestOrigin({ origin: `https://${host}` },origin,{ required: true }),/ORIGIN_NOT_ALLOWED/);
+  }
+  assert.throws(()=>assertPlatformRequestOrigin({},origin,{ required: true }),/ORIGIN_NOT_ALLOWED/);
+});
 
 test('explicit Microsoft MFA uses protected sessions without any passkey secret, count, verifier or enrollment route',t=>{
   for (const environment of ['dev','int','prod']) {
