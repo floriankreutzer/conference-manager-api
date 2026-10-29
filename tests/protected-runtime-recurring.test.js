@@ -87,6 +87,7 @@ test('shared CLI credential binding rejects foreign database, runtime identity a
 test('recurring workflow retains shared exclusion, pinned sources, late minimal credentials and no private runner execution', async () => {
   const workflow = await readFile('.github/workflows/protected-int-runtime-recurring.yml', 'utf8');
   assert.ok(workflow.includes(`cron: '${RECURRING_OBSERVATION_CRON}'`));
+  assert.equal(RECURRING_OBSERVATION_CRON, '2-57/5 7-17 * * *');
   assert.match(workflow, /github.event.repository.private == false/);
   assert.match(workflow, /vars.CM_INT_OBSERVER_QUALIFIED_SHA == github.sha/);
   assert.match(workflow, /group: hosted-shared-demo-database-initialize/);
