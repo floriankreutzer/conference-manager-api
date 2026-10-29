@@ -28,7 +28,7 @@ loaded from the existing private environment binding, never a public workflow
 input. There is no Tenant selector, connection, origin, SQL, role or health-state
 input. For the original one-shot workflow, the deployed API SHA must equal the exact observer Main SHA. Frontend
 selection is additionally locked to qualified immutable commit
-`2667b0b6df74ffa2632fce4be6f95ef8ef8103ac`; changing that pin requires a reviewed
+`f6359ff537165c5e29fc4884578d92a83ce22be4`; changing that pin requires a reviewed
 source change and renewed pair qualification. An arbitrary branch commit cannot
 execute browser build code before subsequent offline credential allocation.
 
@@ -150,8 +150,8 @@ transition, the UI must show stale/unknown rather than a manufactured healthy st
 The operating window is a resource bound, **not a zero-cost guarantee**. Two Render
 Free services awake for ten hours daily consume about 620 shared instance-hours
 in a 31-day month before startup/other usage, against the workspace's published
-750-hour allowance. The current complete sealed bytes total approximately 3.34 MB
-per collection (about 12.4 GB over 31 days at 120 collections/day, before headers).
+750-hour allowance. The current complete sealed bytes total approximately 3.56 MB
+per collection (about 13.3 GB over 31 days at 120 collections/day, before headers).
 Verify actual remaining workspace instance-hours, bandwidth/build allowances and
 configured spending controls before activation; existing other usage still counts.
 No plan, quota, spending limit or resource expansion is authorized by this profile.
