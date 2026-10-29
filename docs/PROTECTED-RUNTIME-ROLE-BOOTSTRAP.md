@@ -163,3 +163,21 @@ or service activation, and emits no private operation record to public logs.
 Never rerun the fresh-role installer on existing roles. This source procedure does
 not itself prove that the live operation has been executed or that a new booking
 has been accepted through the deployed application.
+
+## Existing INT invited synthetic participants
+
+The separate `synthetic_participants` operation in the existing
+`protected-int-audit-segment.yml` workflow calls only
+`scripts/synthetic-participant-runtime-grants.mjs`. It applies the already-owned
+fixed delta: two Customer member/lifecycle function EXECUTE grants and Platform
+SELECT/INSERT on immutable participant bindings. No Customer binding write,
+private-helper execution, general lifecycle or Platform mutation right is added.
+
+The action uses the same descriptor3 request, independent expected segment/epoch,
+exact qualified Main, owner-only first attempt, ordinary logging, protected
+environment and source-bound recovery/custody evidence as the other incremental
+operations. The existing installer additionally requires the complete current
+ledger, verified signed audit, catalog-owner session, nonelevated roles and both
+runtime roles drained. It does not rerun fresh-role installation, migrate/reset,
+send mail, start services or enable participant mode. Configure that default-off
+mode only after the separate operating prerequisites and acceptance are met.

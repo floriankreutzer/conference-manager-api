@@ -25,8 +25,11 @@ function context(operation = 'initialize') {
 }
 
 test('Actions gate accepts each separate operation only with exact source, independent context and evidence references', () => {
+  const workflow = readFileSync('.github/workflows/protected-int-audit-segment.yml', 'utf8');
+  const choices = workflow.match(/options: \[([^\]]+)\]/)[1].split(',').map(value => value.trim());
   for (const operation of ['initialize', 'grants', 'customer_groups', 'microsoft_operations',
-    'synthetic_microsoft', 'owner_customer', 'observability_reads', 'customer_request_workflows']) {
+    'synthetic_microsoft', 'owner_customer', 'observability_reads', 'customer_request_workflows', 'synthetic_participants']) {
+    assert.ok(choices.includes(operation), `${operation} must be selectable in the protected workflow`);
     assert.equal(requirePlatformAuditActionsContext(context(operation)), operation);
   }
 });
@@ -43,7 +46,7 @@ test('Actions gate refuses replay, other actors, source, debug logging, environm
     { PLATFORM_AUDIT_SEGMENT_ID: expected.segmentId.toUpperCase() },
   ];
   for (const operation of ['initialize', 'grants', 'customer_groups', 'microsoft_operations',
-    'synthetic_microsoft', 'owner_customer', 'observability_reads', 'customer_request_workflows']) {
+    'synthetic_microsoft', 'owner_customer', 'observability_reads', 'customer_request_workflows', 'synthetic_participants']) {
     for (const patch of invalid) assert.throws(() => requirePlatformAuditActionsContext({ ...context(operation), ...patch }),
       { message: 'PLATFORM_AUDIT_ACTIONS_REFUSED' });
     for (const patch of [{ sourceSha: 'c'.repeat(40) }, { environment: 'prod' }, { servicesClosed: false },
@@ -53,7 +56,8 @@ test('Actions gate refuses replay, other actors, source, debug logging, environm
       assert.throws(() => requirePlatformAuditActionsContext(env), { message: 'PLATFORM_AUDIT_ACTIONS_REFUSED' });
     }
     const env = context(operation), request = JSON.parse(env.CM_INT_AUDIT_REQUEST_JSON);
-    for (const patch of [{ segmentId: expected.deploymentEpoch }, { extra: true }]) {
+    for (const patch of [{ segmentId: expected.deploymentEpoch }, { securityEpoch: expected.segmentId },
+      { environment: 'dev' }, { environment: 'prod' }, { role: 'customer' }, { statements: [] }, { extra: true }]) {
       assert.throws(() => requirePlatformAuditActionsContext({ ...env,
         CM_INT_AUDIT_REQUEST_JSON: JSON.stringify({ ...request, ...patch }) }), { message: 'PLATFORM_AUDIT_ACTIONS_REFUSED' });
     }
@@ -77,7 +81,7 @@ test('public workflow logs omit actual FD3 metadata and private CLI output; a re
       'if [[ "$1" == scripts/platform-audit-actions-guard.mjs ]]; then exec "$REAL_NODE" "$@"; fi\n' +
       'exec "$REAL_NODE" "$TEST_OFFLINE" "$@"\n', { mode: 0o700 });
     for (const operation of ['initialize', 'grants', 'customer_groups', 'microsoft_operations',
-    'synthetic_microsoft', 'owner_customer', 'observability_reads', 'customer_request_workflows']) {
+    'synthetic_microsoft', 'owner_customer', 'observability_reads', 'customer_request_workflows', 'synthetic_participants']) {
       const env = { ...context(operation), PATH: `${directory}:/usr/bin:/bin`, REAL_NODE: process.execPath,
         TEST_OFFLINE: fake, TEST_MARKER: marker };
       const result = spawnSync('bash', ['-c', command], { env, encoding: 'utf8' });
@@ -90,7 +94,8 @@ test('public workflow logs omit actual FD3 metadata and private CLI output; a re
             ? /platform-microsoft-operation-runtime-grants/ : operation === 'synthetic_microsoft'
               ? /synthetic-microsoft-custody-runtime-grants/ : operation === 'owner_customer'
                 ? /owner-customer-custody-runtime-grants/ : operation === 'observability_reads'
-                  ? /platform-observability-read-runtime-grants/ : /customer-request-workflow-runtime-grants/);
+                  ? /platform-observability-read-runtime-grants/ : operation === 'customer_request_workflows'
+                    ? /customer-request-workflow-runtime-grants/ : /synthetic-participant-runtime-grants/);
       rmSync(marker);
       const failed = spawnSync('bash', ['-c', command], { env: { ...env, TEST_EXIT: '1' }, encoding: 'utf8' });
       assert.equal(failed.status, 1); assert.equal(failed.stdout, ''); rmSync(marker);

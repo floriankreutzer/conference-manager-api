@@ -1,7 +1,7 @@
 import { normalizePlatformAuditSegmentRequest } from '../../src/operator/platform-audit-segment-request.js';
 import { platformAuditSegmentRoleGrantPlan,customerMicrosoftGroupRoleGrantPlan,platformMicrosoftOperationRoleGrantPlan,
   syntheticMicrosoftCustodyRoleGrantPlan,ownerCustomerCustodyRoleGrantPlan,platformObservabilityReadRoleGrantPlan,
-  customerRequestWorkflowRoleGrantPlan }
+  customerRequestWorkflowRoleGrantPlan,syntheticParticipantRoleGrantPlan }
   from './protected-runtime-role-grants.mjs';
 import { requireOwnerMainActionsContext } from './owner-main-actions-context.mjs';
 
@@ -21,7 +21,7 @@ export function requirePlatformAuditActionsContext(env) {
   try {
     requireOwnerMainActionsContext(env, 'protected-int-audit-segment.yml');
     const operations=['initialize', 'grants', 'customer_groups', 'microsoft_operations', 'synthetic_microsoft',
-      'owner_customer', 'observability_reads', 'customer_request_workflows'];
+      'owner_customer', 'observability_reads', 'customer_request_workflows', 'synthetic_participants'];
     if (!operations.includes(env.INT_AUDIT_OPERATION)) refuse();
     const expected = json(env.CM_INT_AUDIT_EXPECTED_JSON);
     // Reuse the canonical closed request validator for independent expected values.
@@ -33,7 +33,7 @@ export function requirePlatformAuditActionsContext(env) {
       const plans={ customer_groups: customerMicrosoftGroupRoleGrantPlan,grants: platformAuditSegmentRoleGrantPlan,
         microsoft_operations: platformMicrosoftOperationRoleGrantPlan,synthetic_microsoft: syntheticMicrosoftCustodyRoleGrantPlan,
         owner_customer: ownerCustomerCustodyRoleGrantPlan,observability_reads: platformObservabilityReadRoleGrantPlan,
-        customer_request_workflows: customerRequestWorkflowRoleGrantPlan };
+        customer_request_workflows: customerRequestWorkflowRoleGrantPlan,synthetic_participants: syntheticParticipantRoleGrantPlan };
       const plan=plans[env.INT_AUDIT_OPERATION](request);
       if (request.environment !== 'int' || plan.segmentId !== expected.segmentId
         || request.securityEpoch !== expected.deploymentEpoch) refuse();
