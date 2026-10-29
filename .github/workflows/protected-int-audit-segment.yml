@@ -11,7 +11,7 @@ on:
         description: One operation only; initialization is never automatically retried
         required: true
         type: choice
-        options: [initialize, grants, customer_groups, microsoft_operations, synthetic_microsoft, owner_customer, observability_reads, customer_request_workflows]
+        options: [initialize, grants, customer_groups, microsoft_operations, synthetic_microsoft, owner_customer, observability_reads, customer_request_workflows, synthetic_participants]
 
 permissions:
   contents: read
@@ -82,6 +82,7 @@ jobs:
             owner_customer) node scripts/owner-customer-custody-runtime-grants.mjs 3<<<"$CM_INT_AUDIT_REQUEST_JSON" >/dev/null ;;
             observability_reads) node scripts/platform-observability-read-runtime-grants.mjs 3<<<"$CM_INT_AUDIT_REQUEST_JSON" >/dev/null ;;
             customer_request_workflows) node scripts/customer-request-workflow-runtime-grants.mjs 3<<<"$CM_INT_AUDIT_REQUEST_JSON" >/dev/null ;;
+            synthetic_participants) node scripts/synthetic-participant-runtime-grants.mjs 3<<<"$CM_INT_AUDIT_REQUEST_JSON" >/dev/null ;;
             *) exit 1 ;;
           esac
           echo 'PROTECTED_INT_AUDIT_OPERATION_SUCCEEDED'
