@@ -2,8 +2,9 @@ name: Recurring existing protected INT observation
 
 on:
   schedule:
-    # UTC envelope; the preflight enforces 09:00–19:00 Europe/Berlin with DST.
-    - cron: '*/5 7-17 * * *'
+    # Offset from minute zero to reduce provider scheduler delay/drop risk. The
+    # preflight still enforces 09:00–19:00 Europe/Berlin with DST.
+    - cron: '2-57/5 7-17 * * *'
   workflow_dispatch:
     inputs:
       expected_main_sha:

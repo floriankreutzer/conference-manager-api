@@ -1,7 +1,7 @@
 import { open } from 'node:fs/promises';
 import { normalizeRuntimeObservationSelection, refuseRuntimeObservation } from './protected-runtime-observation-plan.mjs';
 
-export const RECURRING_OBSERVATION_CRON = '*/5 7-17 * * *';
+export const RECURRING_OBSERVATION_CRON = '2-57/5 7-17 * * *';
 export function requireRecurringRuntimeObservationContext(env) {
   const repository = 'floriankreutzer/conference-manager-api';
   if (env.GITHUB_REPOSITORY !== repository || env.GITHUB_REF !== 'refs/heads/main'
