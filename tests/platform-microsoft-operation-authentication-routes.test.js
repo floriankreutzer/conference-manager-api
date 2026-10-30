@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import test from 'node:test';
 import { createPlatformMicrosoftOperationAuthenticationRoutes,PLATFORM_MICROSOFT_OPERATION_STATUS as STATUS,
@@ -47,7 +48,17 @@ test('different-site callback needs only its narrow Lax cookie and always scrubs
     clearPlatformMicrosoftOperationBrowserCookie(),operationCookie]);
   assert.equal(result.headers['cache-control'],'no-store');assert.equal(result.headers['referrer-policy'],'no-referrer');
   const page=await f.invoke(COMPLETE);assert.equal(page.result,200);
-  assert.match(page.body,/<main>/);assert.doesNotMatch(page.body,/script|postMessage|opener|synthetic-code|cm_platform_session/);
+  assert.match(page.body,/<main>/);assert.doesNotMatch(page.body,/postMessage|opener|synthetic-code|cm_platform_session/);
+  const scripts=[...page.body.matchAll(/<script>(.*?)<\/script>/gs)];assert.equal(scripts.length,1);
+  assert.match(scripts[0][1],/window\.close\(\)/);
+  assert.doesNotMatch(scripts[0][1],/fetch|storage|location|referrer|state|token|cookie|eval|innerHTML/i);
+  const hash=createHash('sha256').update(scripts[0][1]).digest('base64');
+  assert.equal(page.headers['content-security-policy'],"default-src 'none'; script-src 'sha256-"+hash
+    +"'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+  assert.doesNotMatch(page.headers['content-security-policy'],/unsafe-inline|unsafe-eval|https:|\*|'self'/);
+  assert.match(page.body,/<button type="button" id="platformMicrosoftCloseWindow">/);
+  assert.match(page.body,/<p lang="en">/);assert.match(page.body,/<a href="\/platform-admin\/">/);
+  assert.equal(page.headers['set-cookie'],undefined);
 });
 test('provider rejection, malformed callback and unexpected failure clear both cookies and never claim verification',async()=>{
   for (const path of [`${CALLBACK}?state=${state}&error=access_denied`,`${CALLBACK}?state=${state}&code=code&roles=owner`,
@@ -71,6 +82,7 @@ test('status is closed, CSRF-protected POST with current Strict source and MAC; 
     assert.ok((await f.invoke(STATUS,{ ...input,...change })).error);
   }
   assert.ok((await f.invoke(COMPLETE+'?state='+state)).error);
+  assert.equal((await f.invoke(COMPLETE+'?returnTo=https://other.invalid')).error.statusCode,400);
   assert.ok((await f.invoke(COMPLETE,{ body: { state } })).error);
   f.status('consumed');assert.ok((await f.invoke(STATUS,input)).error);
 });

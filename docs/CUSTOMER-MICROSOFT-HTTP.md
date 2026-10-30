@@ -7,6 +7,15 @@ composition rejects the option and architecture checks reject importing the real
 module from either Demo root. Protected INT composition must explicitly select
 the invited resolver and reject legacy authority before activation.
 
+The canonical Customer composition extracts the explicitly registered
+`customer-microsoft-authentication` module from its selected additional routes
+(including `routeModulesFactory`) and supplies that existing early dispatch slot.
+It removes the module from the later operational registry and rejects duplicate
+Microsoft module registration. This preserves the closed Demo rejection and
+prevents legacy login/callback branches from shadowing the protected flow when
+the generic Entra service is intentionally absent. Loopback composition regressions
+cover both entry routes; this is not deployed Microsoft acceptance.
+
 Existing Host, canonical request target, same-origin, source rate, request ID,
 security header, safe error and observability guards run first. The injected
 module owns only the following fixed Customer paths. It precedes legacy Microsoft

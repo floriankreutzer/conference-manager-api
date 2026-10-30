@@ -68,7 +68,7 @@ Fixed authentication endpoints under `/api/v1/platform/auth/microsoft/operation`
 - `GET /configuration`: current authenticated capability, mode and environment.
 - `GET /callback`: bounded provider response plus callback-only Lax cookie;
   no source Strict cookie is required or elevated application session issued.
-- `GET /complete`: fixed neutral script-free bilingual page after query scrub;
+- `GET /complete`: fixed neutral bilingual page after query scrub;
   reaching this page makes no verification or business-success claim.
 - `POST /status`: exact `{state}` body, current normal Strict source session,
   CSRF/origin and separate Strict operation cookie; only pending/verified plus
@@ -79,8 +79,16 @@ rejects old/generic step-up transactions before provider exchange. Its route
 registry does not expose generic step-up, and its HTTP session resolver accepts
 only normal Microsoft MFA. Temporary fresh authority stays inside final owned
 transactions. No active WebAuthn service, enrollment route, key secret or
-minimum-credential requirement is constructed in this profile. CSP, COOP,
-same-origin, no-store and no-referrer policies remain unchanged.
+minimum-credential requirement is constructed in this profile. COOP, same-origin,
+no-store and no-referrer policies remain unchanged. Only the neutral completion
+page permits one static hash-pinned inline script under its otherwise closed CSP.
+It attempts to close that browser-created confirmation tab and binds the native
+Close window button to the same operation. It reads no URL, cookie, message,
+opener, storage or proof and makes no request. Closing the tab is never proof;
+only the original session-bound status and exact final request may continue.
+When native close is blocked or the source view no longer exists, bilingual
+instructions, a native close button and a fixed same-origin Platform link remain.
+No caller-selected return destination or application draft is sent to this page.
 
 ## Presentation reference boundary
 
@@ -90,8 +98,9 @@ with unchanged vendor assets and localized customer/action/purpose/return contex
 This is presentation guidance, not an extension of Microsoft proof authority.
 The API login routes redirect to the provider; the API-owned `/complete` HTML is
 currently a neutral bilingual return page without a sign-in control. Keep that
-page neutral and script-free: reaching it proves neither verification nor business
-success. No functional icon or Microsoft login button is required merely because
+page neutral: reaching or closing it proves neither verification nor business
+success. The bounded close-only script above is its sole CSP exception.
+No functional icon or Microsoft login button is required merely because
 an endpoint serves HTML. This reference change stores no assets in the API and
 changes no route, callback, permission, proof lifetime, retry or security policy.
 
