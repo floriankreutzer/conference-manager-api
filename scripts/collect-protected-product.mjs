@@ -6,7 +6,7 @@ import { createPostgresPool } from '../src/persistence/postgres/pool.js';
 import { protectedRuntimeObservationDatabase } from './support/protected-runtime-observation-execution.mjs';
 import { collectProtectedProductReport } from './support/protected-product-collector.mjs';
 
-let pool;
+let pool,leasePool;
 try {
   if (process.argv.length !== 2) throw new Error('REFUSED');
   const env = process.env, output = env.PROTECTED_PRODUCT_OUTPUT_PATH;
@@ -16,10 +16,11 @@ try {
   if (!parent.isDirectory() || parent.isSymbolicLink() || parent.uid !== process.getuid()
     || (parent.mode & 0o077) !== 0) throw new Error('REFUSED');
   const database = protectedRuntimeObservationDatabase(env);
-  pool = createPostgresPool({ mode: 'production', ...loadDatabaseConfig({ DATABASE_URL: database.databaseUrl,
+  const configuration={ mode: 'production', ...loadDatabaseConfig({ DATABASE_URL: database.databaseUrl,
     DATABASE_SSL: 'verify-full', DATABASE_POOL_MAX: '1', DATABASE_CONNECTION_TIMEOUT_MS: '5000',
-    DATABASE_STATEMENT_TIMEOUT_MS: '10000' }, 'production') });
-  const report = await collectProtectedProductReport({ pool, expectedOfflineRole: database.expectedOfflineRole,
+    DATABASE_STATEMENT_TIMEOUT_MS: '10000' }, 'production') };
+  pool = createPostgresPool(configuration);leasePool=createPostgresPool(configuration);
+  const report = await collectProtectedProductReport({ pool,leasePool,expectedOfflineRole: database.expectedOfflineRole,
     securityEpoch: env.PROTECTED_OBSERVATION_SECURITY_EPOCH, dataProfile: env.PROTECTED_PRODUCT_DATA_PROFILE,
     tenantAuditHmacSecret: env.PROTECTED_TENANT_AUDIT_HMAC_SECRET,
     platformAuditHmacSecret: env.PROTECTED_PLATFORM_AUDIT_HMAC_SECRET });
@@ -28,4 +29,4 @@ try {
   try { await file.writeFile(bytes);await file.sync(); } finally { await file.close(); }
   process.stdout.write('PROTECTED_PRODUCT_COLLECTED\n');
 } catch { process.stderr.write('PROTECTED_PRODUCT_COLLECTION_REFUSED\n');process.exitCode = 1; }
-finally { if (pool) await pool.end(); }
+finally { await Promise.all([pool?.end(),leasePool?.end()]); }

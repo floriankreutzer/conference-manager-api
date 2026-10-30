@@ -3,6 +3,8 @@ import { performance } from 'node:perf_hooks';
 import { loadMigrations } from '../db-migrations.mjs';
 import { isInternalUuid } from '../../src/domain/identifiers.js';
 import { withPostgresTransaction } from '../../src/persistence/postgres/transaction.js';
+import { createPostgresProtectedRuntimeExecutionScopes }
+  from '../../src/persistence/postgres/protected-runtime-execution-scopes.js';
 import { AUDIT_COLUMNS, createTenantAuditRowVerifier, mapAuditRow } from '../../src/persistence/postgres/audit-repository.js';
 import { createSegmentRowVerifier, mapEventRow, PLATFORM_AUDIT_EVENT_COLUMNS }
   from '../../src/persistence/postgres/platform-audit-integrity.js';
@@ -66,9 +68,10 @@ async function platformSource(query, tenantIds, epoch, secret, maximum) {
 
 // Offline owner only, bound to the existing INT database and immutable security
 // epoch. No runtime grant, public ingestion route, tenant selector or Demo import.
-export async function collectProtectedProductReport({ pool, expectedOfflineRole, securityEpoch, dataProfile,
+export async function collectProtectedProductReport({ pool, leasePool, expectedOfflineRole, securityEpoch, dataProfile,
   tenantAuditHmacSecret, platformAuditHmacSecret } = {}) {
-  if (!pool?.connect || !isInternalUuid(securityEpoch) || !['real','synthetic'].includes(dataProfile)
+  if (!pool?.connect || !pool?.query || !leasePool?.connect || !leasePool?.query || pool===leasePool
+    || !isInternalUuid(securityEpoch) || !['real','synthetic'].includes(dataProfile)
     || typeof expectedOfflineRole !== 'string' || !/^[a-z][a-z0-9_]{2,62}$/.test(expectedOfflineRole)
     || expectedOfflineRole.startsWith('cm_protected_')
     || [tenantAuditHmacSecret, platformAuditHmacSecret].some(value => typeof value !== 'string'
@@ -76,16 +79,17 @@ export async function collectProtectedProductReport({ pool, expectedOfflineRole,
     || tenantAuditHmacSecret === platformAuditHmacSecret) refuse();
   const migrations = await loadMigrations();
   try {
-    return await withPostgresTransaction(pool, async client => {
-      const deadline = performance.now() + 8000;
+    const deadline = performance.now() + 8000;
+    const scopes=createPostgresProtectedRuntimeExecutionScopes({ pool,leasePool,environment: 'int',securityEpoch });
+    // The existing separate lease is acquired before BEGIN RR. A lock SELECT
+    // inside RR could itself retain a pre-reset snapshot after the reset commits.
+    return await scopes.withShared(()=>withPostgresTransaction(pool, async client => {
       const query = async (text, values) => {
         const remaining = Math.floor(deadline - performance.now()); if (remaining < 1) refuse();
         await client.query("SELECT set_config('statement_timeout',$1,true)", [String(remaining)]);
         const result = await client.query({ text, values });
         if (performance.now() >= deadline) refuse();return result;
       };
-      const lock = await query('SELECT pg_try_advisory_xact_lock_shared(740193,2) AS locked');
-      if (lock.rows[0]?.locked !== true) refuse();
       const owner = await query(`SELECT current_user AS active_role,session_user AS authenticated_role,
         pg_get_userbyid(relowner) AS owner_role FROM pg_class WHERE oid='public.platform_operators'::regclass`);
       if (owner.rows.length !== 1 || ['active_role','authenticated_role','owner_role']
@@ -128,6 +132,6 @@ export async function collectProtectedProductReport({ pool, expectedOfflineRole,
         environment: 'production', accessMode: 'application_passkey',
         sourceContext: { runtimeEnvironment: 'int', dataProfile, securityEpochDigest: digest(securityEpoch) },
         tenant, platform, revisions: { state: 'available', rows } });
-    }, { isolationLevel: 'REPEATABLE READ', readOnly: true });
+    }, { isolationLevel: 'REPEATABLE READ', readOnly: true }));
   } catch { refuse(); }
 }

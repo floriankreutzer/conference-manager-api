@@ -22,10 +22,13 @@ async function fixture() {
     previous_state: null, new_state: null, occurred_at: now, correlation_id: event.correlationId, outcome: event.outcome,
     metadata: event.metadata, retention_class: event.retentionClass, previous_hash: null,
     event_hash: createSegmentSigners('p'.repeat(48), segment).event(event, 1, null) };
-  const migrations = await loadMigrations(), calls = [];let mutate = (_sql, rows) => rows;
-  const pool = { async connect() { return { async query(sql) {
-    const text = typeof sql === 'string' ? sql : sql.text;calls.push(text);let rows = [];
+  const migrations = await loadMigrations(), calls = [];let mutate = (_sql, rows) => rows,leaseHeld=false,snapshotHadLease=false;
+  const makePool=prefix=>({ async query() { throw new Error('DIRECT_POOL_QUERY_FORBIDDEN'); },async connect() { return { async query(sql) {
+    const text = typeof sql === 'string' ? sql : sql.text;calls.push(prefix+text);let rows = [];
+    if (!prefix && text==='BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY') snapshotHadLease=leaseHeld;
     if (text.includes('AS locked')) rows = [{ locked: true }];
+    else if (text.includes('AS acquired')) rows = [{ acquired: true }];
+    else if (text.includes('FROM protected_runtime_deployments WHERE')) rows = [{ security_epoch: epoch }];
     else if (text.includes('AS owner_role')) rows = [{ active_role: 'migration_owner',
       authenticated_role: 'migration_owner', owner_role: 'migration_owner' }];
     else if (text.includes('FROM schema_migrations')) rows = migrations;
@@ -34,9 +37,14 @@ async function fixture() {
       inventory_digest: segment.inventoryDigest, approval_reference: segment.approvalReference, created_at: now,
       event_count: 1, terminal_event_hash: genesis.event_hash, terminal_checkpoint_hash: null }];
     else if (text.includes('FROM platform_audit_events WHERE')) rows = [genesis];
-    return { rows: mutate(text, structuredClone(rows)) };
-  }, release() { calls.push('RELEASE'); } }; } };
-  return { calls, mutate: fn => { mutate = fn; }, input: { pool, expectedOfflineRole: 'migration_owner', securityEpoch: epoch,
+    rows=mutate(text,structuredClone(rows));
+    if (prefix && text.includes('AS acquired')) leaseHeld=rows[0]?.acquired===true;
+    if (prefix && ['COMMIT','ROLLBACK'].includes(text)) leaseHeld=false;
+    return { rows,rowCount: rows.length };
+  }, release() { calls.push(prefix+'RELEASE'); } }; } });
+  const pool=makePool(''),leasePool=makePool('LEASE ');
+  return { calls,snapshotHadLease: ()=>snapshotHadLease,mutate: fn => { mutate = fn; },
+    input: { pool,leasePool,expectedOfflineRole: 'migration_owner', securityEpoch: epoch,
     dataProfile: 'synthetic', tenantAuditHmacSecret: 't'.repeat(48), platformAuditHmacSecret: 'p'.repeat(48) } };
 }
 
@@ -47,14 +55,29 @@ test('collector publishes minimized verified aggregates only from one bounded re
   assert.equal(report.product.find(row => row.id === 'time_to_submit').value, null);
   assert.equal(report.product.find(row => row.id === 'time_to_submit').reason, 'empty_denominator');
   assert.ok(f.calls.includes('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY'));
-  assert.ok(f.calls.includes('COMMIT'));assert.equal(f.calls.at(-1), 'RELEASE');
-  assert.ok(!f.calls.some(sql => /^(INSERT|UPDATE|DELETE|GRANT|TRUNCATE)\b/.test(sql)));
+  assert.ok(f.calls.includes('COMMIT'));assert.ok(f.calls.includes('RELEASE'));assert.equal(f.calls.at(-1), 'LEASE RELEASE');
+  assert.ok(!f.calls.some(sql => /^(?:LEASE )?(INSERT|UPDATE|DELETE|GRANT|TRUNCATE)\b/.test(sql)));
   assert.ok(!JSON.stringify(report).includes(f.input.securityEpoch));
+});
+
+test('the current-epoch lease is held before the Product read-only snapshot begins',async()=>{
+  const f=await fixture();await collectProtectedProductReport(f.input);
+  assert.equal(f.snapshotHadLease(),true);
+  assert.ok(f.calls.indexOf('RELEASE')<f.calls.indexOf('LEASE RELEASE'));
+});
+
+test('Product collection rejects missing or shared lease pools before database work',async()=>{
+  for (const invalid of [undefined,null,{},'same']) {
+    const f=await fixture();
+    await assert.rejects(()=>collectProtectedProductReport({ ...f.input,leasePool: invalid==='same' ? f.input.pool : invalid }),
+      { message: 'PROTECTED_PRODUCT_COLLECTION_REFUSED' });
+    assert.deepEqual(f.calls,[]);
+  }
 });
 
 test('missing epoch, unexpected owner, ledger drift, tampering and over-limit sources fail without a partial report', async () => {
   const modifications = [
-    (sql, rows) => sql.includes('AS locked') ? [{ locked: false }] : rows,
+    (sql, rows) => sql.includes('AS locked') || sql.includes('AS acquired') ? [{ locked: false,acquired: false }] : rows,
     (sql, rows) => sql.includes('AS epoch_started_at') ? [] : rows,
     (sql, rows) => sql.includes('AS owner_role') ? [{ ...rows[0], authenticated_role: 'foreign' }] : rows,
     (sql, rows) => sql.includes('FROM schema_migrations') ? rows.slice(1) : rows,
@@ -65,7 +88,7 @@ test('missing epoch, unexpected owner, ledger drift, tampering and over-limit so
   for (const change of modifications) {
     const f = await fixture();f.mutate(change);
     await assert.rejects(() => collectProtectedProductReport(f.input), { message: 'PROTECTED_PRODUCT_COLLECTION_REFUSED' });
-    assert.ok(f.calls.includes('ROLLBACK'));assert.equal(f.calls.at(-1), 'RELEASE');
+    assert.ok(f.calls.some(sql=>/^(?:LEASE )?ROLLBACK$/.test(sql)));assert.equal(f.calls.at(-1), 'LEASE RELEASE');
   }
 });
 

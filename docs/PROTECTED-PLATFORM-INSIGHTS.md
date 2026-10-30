@@ -78,9 +78,14 @@ a fixed success/failure code. Keep that file private; do not attach it or raw au
 records to issues, CI artifacts or logs. No database row, grant, event or audit
 history is changed by collection.
 
-The collector verifies the exact canonical migration ledger and offline table
-owner, acquires the existing INT shared epoch gate and uses one bounded READ ONLY
-REPEATABLE READ transaction. It selects current registered customers of only the
+The collector acquires the existing INT shared epoch lease on a separate max1
+owner pool before beginning its max1 READ ONLY REPEATABLE READ transaction. Both
+pools use the same validated offline database binding. The lease remains held
+until the snapshot is fully consumed; a reset cannot commit between the first
+snapshot and a later lock. No pool size, database resource, grant or timeout is
+increased. The eight-second work deadline includes lease acquisition.
+Inside that snapshot it verifies the exact canonical migration ledger and offline
+table owner. It selects current registered customers of only the
 chosen profile, verifies complete retained Tenant chains and the active Platform
 segment/genesis/checkpoint chain, then reads only minimized Request revision facts.
 Limits are 100 customers, 2,000 retained audit rows, 2,000 revision facts and eight
