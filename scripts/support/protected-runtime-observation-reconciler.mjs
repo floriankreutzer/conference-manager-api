@@ -22,16 +22,17 @@ async function assertOwnerAndLedger(client, expectedOfflineRole, migrations) {
 async function writeObservation(client, plan, observed, currentSchemaVersion, observedAt) {
   const deployment = plan[observed.surface], reference = `render:${deployment.deploymentReference}`;
   const result = await client.query(`INSERT INTO platform_runtime_deployments (
-    id,environment,deployment_reference,deployed_at,
+    id,environment,deployment_reference,deployed_at,service_instance_key,service_surface,
     frontend_environment,frontend_deployment_reference,frontend_expected_version,frontend_expected_build_id,
     frontend_version,frontend_build_id,
     api_environment,api_deployment_reference,api_expected_version,api_expected_build_id,api_version,api_build_id,
     schema_environment,schema_deployment_reference,schema_expected_version,schema_current_version,
     dependencies_environment,dependencies_deployment_reference,required_dependencies_state,optional_dependencies_state,
     observed_at,release_evidence_reference,change_evidence_reference,rollback_evidence_reference,runbook_evidence_reference)
-    VALUES($1,'test',$2,$3,'test',$2,$4,$4,$4,$4,'test',$2,$5,$6,$5,$6,'test',$2,$7,$7,
+    VALUES($1,'test',$2,$3,$15,$16,'test',$2,$4,$4,$4,$4,'test',$2,$5,$6,$5,$6,'test',$2,$7,$7,
       'test',$2,$8,$9,$10,$11,$12,$13,$14)
     ON CONFLICT(environment,deployment_reference) DO UPDATE SET
+      service_instance_key=EXCLUDED.service_instance_key,service_surface=EXCLUDED.service_surface,
       frontend_expected_version=EXCLUDED.frontend_expected_version,frontend_expected_build_id=EXCLUDED.frontend_expected_build_id,
       frontend_version=EXCLUDED.frontend_version,frontend_build_id=EXCLUDED.frontend_build_id,
       api_expected_version=EXCLUDED.api_expected_version,api_expected_build_id=EXCLUDED.api_expected_build_id,
@@ -43,13 +44,17 @@ async function writeObservation(client, plan, observed, currentSchemaVersion, ob
       runbook_evidence_reference=EXCLUDED.runbook_evidence_reference,
       revision=platform_runtime_deployments.revision+1,updated_at=GREATEST(clock_timestamp(),platform_runtime_deployments.updated_at)
     WHERE platform_runtime_deployments.record_state='approved'
+      AND (platform_runtime_deployments.service_instance_key IS NULL
+        OR (platform_runtime_deployments.service_instance_key=EXCLUDED.service_instance_key
+          AND platform_runtime_deployments.service_surface=EXCLUDED.service_surface))
       AND platform_runtime_deployments.deployed_at=EXCLUDED.deployed_at
       AND platform_runtime_deployments.frontend_build_id=EXCLUDED.frontend_build_id
       AND platform_runtime_deployments.api_build_id=EXCLUDED.api_build_id
       AND platform_runtime_deployments.observed_at<EXCLUDED.observed_at
     RETURNING id`, [randomUUID(), reference, deployment.deployedAt, observed.frontendBuildId,
     observed.apiVersion, observed.apiBuildId, currentSchemaVersion, observed.required, observed.optional,
-    new Date(observedAt).toISOString(), plan.evidence.release, plan.evidence.change, plan.evidence.rollback, plan.evidence.runbook]);
+    new Date(observedAt).toISOString(), plan.evidence.release, plan.evidence.change, plan.evidence.rollback, plan.evidence.runbook,
+    `protected-int-${observed.surface}`, observed.surface]);
   if (result.rowCount !== 1 || !isInternalUuid(result.rows[0].id)) refuseRuntimeObservation();
   return result.rows[0].id;
 }

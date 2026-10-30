@@ -63,7 +63,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager
-          ref: 'f6359ff537165c5e29fc4884578d92a83ce22be4'
+          ref: '2ddcf3859505fe62a46ac008fb1d6e9059711bbb'
           path: .runtime-observation-source
           persist-credentials: false
       - name: Install locked observer dependencies without database credentials

@@ -2,6 +2,8 @@ import { isInternalUuid } from '../../domain/identifiers.js';
 import { withPostgresTransaction } from './transaction.js';
 
 const RUNTIME_COLUMN_NAMES = Object.freeze([
+  'service_instance_key',
+  'service_surface',
   'environment',
   'deployment_reference',
   'deployed_at',
@@ -50,6 +52,8 @@ function integer(value) {
 function mapRuntime(row) {
   if (!row) return null;
   return Object.freeze({
+    serviceInstance: row.service_instance_key === null || row.service_instance_key === undefined
+      ? null : Object.freeze({ key: row.service_instance_key, surface: row.service_surface }),
     environment: row.environment,
     deployment: Object.freeze({
       reference: row.deployment_reference,
@@ -108,7 +112,7 @@ export function createPostgresPlatformRuntimeStatusRepository(pool, { auditRepos
       }
       return withPostgresTransaction(pool, async (client) => {
         const result = await client.query({
-          name: 'platform-runtime-approved-deployments-list',
+          name: 'platform-runtime-approved-deployments-list-v2',
           text: `
             SELECT ${RUNTIME_COLUMNS}
             FROM platform_runtime_deployments
@@ -136,7 +140,7 @@ export function createPostgresPlatformRuntimeStatusRepository(pool, { auditRepos
       }
       return withPostgresTransaction(pool, async (client) => {
         const result = await client.query({
-          name: 'platform-runtime-tenant-deployment-find',
+          name: 'platform-runtime-tenant-deployment-find-v2',
           text: `
             SELECT ${QUALIFIED_RUNTIME_COLUMNS}
             FROM platform_runtime_tenant_mappings mapping

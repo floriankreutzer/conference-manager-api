@@ -50,8 +50,8 @@ if (/repository|SELECT|UPDATE|INSERT INTO|DELETE FROM/i.test(revision)) {
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 74;/.test(pool)) {
-  throw new Error('Runtime schema readiness requires participant lifecycle schema 74.');
+if (!/export const CURRENT_SCHEMA_VERSION = 75;/.test(pool)) {
+  throw new Error('Runtime schema readiness requires runtime service identity schema 75.');
 }
 
 const migration = await readFile('migrations/020_tenant_settings_revisions.up.sql', 'utf8');

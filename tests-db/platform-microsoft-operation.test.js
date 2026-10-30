@@ -27,6 +27,7 @@ test('native Microsoft exact proof retains callback separation, one-use atomic c
   const configuration={ mode: 'test',...loadDatabaseConfig(process.env,'test'),databasePoolMax: 1 };
   const pool=createPostgresPool(configuration),leasePool=createPostgresPool(configuration);
   t.after(async()=>{ await leasePool.end();await pool.end(); });await migrateUp(pool);
+  assert.equal(await rollbackLatest(pool),true); // Empty service identity075 before unchanged074/older guards.
   assert.equal(await rollbackLatest(pool),true); // Function-only074 before unchanged073/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged072/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
@@ -128,6 +129,7 @@ test('native Microsoft exact proof retains callback separation, one-use atomic c
   // Name the new dependent table so the retained-proof guard itself also runs.
   await assert.rejects(pool.query(`TRUNCATE owner_customer_handoffs,platform_owner_customer_users,
     synthetic_customer_handoffs,platform_microsoft_operation_proofs`),{ code: '55000' });
+  assert.equal(await rollbackLatest(pool),true); // Empty service identity075 before unchanged074/older guards.
   assert.equal(await rollbackLatest(pool),true); // Function-only074 before unchanged073/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged072/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
