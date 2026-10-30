@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { isOpaqueBrowserToken } from '../../domain/identifiers.js';
 import { PLATFORM_MICROSOFT_OPERATION_CALLBACK,readPlatformMicrosoftOperationBrowserCookie,
   readPlatformMicrosoftOperationCookie,clearPlatformMicrosoftOperationBrowserCookie,clearPlatformMicrosoftOperationCookie }
@@ -12,14 +13,27 @@ import { assertNoPlatformRequestBody,assertPlatformNoQuery,readPlatformJsonObjec
 export const PLATFORM_MICROSOFT_OPERATION_STATUS='/api/v1/platform/auth/microsoft/operation/status';
 export const PLATFORM_MICROSOFT_OPERATION_COMPLETE='/api/v1/platform/auth/microsoft/operation/complete';
 export const PLATFORM_MICROSOFT_OPERATION_CONFIGURATION='/api/v1/platform/auth/microsoft/operation/configuration';
+const CLOSE_SCRIPT='(()=>{const close=()=>{try{window.close();}catch{}};'
+  +'document.getElementById("platformMicrosoftCloseWindow").addEventListener("click",close);close();})();';
+const CLOSE_SCRIPT_HASH=createHash('sha256').update(CLOSE_SCRIPT).digest('base64');
 const PAGE='<!doctype html><html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width">'
   +'<title>Microsoft-Bestätigung · Pavurel</title><main><h1>Zurück zur Anwendung</h1>'
-  +'<p>Du kannst dieses Fenster schließen. Der Status wird in der Anwendung geprüft.</p>'
-  +'<p lang="en">You can close this window. Your application will check the confirmation status.</p></main></html>';
+  +'<p>Dieses Fenster schließt sich automatisch, sofern der Browser es erlaubt. '
+  +'Falls es geöffnet bleibt, schließe es und kehre zum ursprünglichen Anwendungsfenster zurück. '
+  +'Deine Auswahl und Eingaben bleiben dort erhalten. Die Anwendung prüft den Bestätigungsstatus selbst.</p>'
+  +'<p lang="en">This window closes automatically where the browser permits it. '
+  +'If it remains open, close it and return to the original application window. '
+  +'Your selection and inputs remain there. The application independently checks the confirmation status.</p>'
+  +'<button type="button" id="platformMicrosoftCloseWindow">Fenster schließen / '
+  +'<span lang="en">Close window</span></button>'
+  +'<p>Ist das ursprüngliche Fenster nicht mehr geöffnet? <a href="/platform-admin/">Plattform öffnen</a></p>'
+  +'<p lang="en">Original window no longer open? <a href="/platform-admin/">Open platform</a></p>'
+  +'</main><script>'+CLOSE_SCRIPT+'</script></html>';
 
 // Callback owns only the Lax pending cookie; status/final requests still require
 // the original Strict session and separate Strict operation cookie. No opener,
-// postMessage, inline script, browser storage or generic operation endpoint.
+// postMessage, browser storage or generic operation endpoint. The completion
+// page's hash-pinned close-only script is a navigation hint, never authority.
 export function createPlatformMicrosoftOperationAuthenticationRoutes(service,{ environment }={}) {
   if (!['dev','int','prod'].includes(environment) || ['complete','pendingStatus'].some(name=>typeof service?.[name]!=='function')) {
     throw new TypeError('PLATFORM_MICROSOFT_OPERATION_SERVICE_REQUIRED');
@@ -78,6 +92,8 @@ export function createPlatformMicrosoftOperationAuthenticationRoutes(service,{ e
         if (path===PLATFORM_MICROSOFT_OPERATION_COMPLETE) {
           await assertNoPlatformRequestBody(request);
           if (Buffer.byteLength(PAGE)>maxResponseBytes) throw new PlatformHttpError(500,'PLATFORM_RESPONSE_TOO_LARGE');
+          response.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'sha256-"+CLOSE_SCRIPT_HASH
+            +"'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
           response.statusCode=200;response.setHeader('Content-Type','text/html; charset=utf-8');
           response.setHeader('Content-Length',Buffer.byteLength(PAGE));response.end(PAGE);return 200;
         }

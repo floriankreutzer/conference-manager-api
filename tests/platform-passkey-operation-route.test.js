@@ -4,6 +4,8 @@ import test from 'node:test';
 import { protectPlatformPasskeyRoute } from '../src/platform/http/passkey-operation-route.js';
 import { platformTenantRoutes,createPlatformTenantRoutes } from '../src/platform/http/tenant-routes.js';
 import { platformAuditRoutes } from '../src/platform/http/audit-routes.js';
+import { platformRecoveryRoutes } from '../src/platform/http/recovery-routes.js';
+import { recoveryTargetRouteService } from './support/platform-recovery-target-route-fixture.js';
 import { PlatformIdentityError } from '../src/platform/identity/errors.js';
 import { permissionsForPlatformRoles } from '../src/platform/identity/policy.js';
 import { serializePlatformPasskeyTransactionCookie, clearPlatformPasskeyTransactionCookie }
@@ -35,7 +37,7 @@ function response() {
     end(value) { this.body = JSON.parse(value); } };
 }
 function fixture(module = platformTenantRoutes,platformCustomerOnboardingService=null,
-  platformCustomerInvitationAdministrationService=null) {
+  platformCustomerInvitationAdministrationService=null,platformRecoveryOperationsService=null) {
   let pending = null; let failCommit = false; let failMutation = false; let csrf = true; let denied = 0;
   const contexts = new WeakSet(); const mutations = []; const challenges = []; let current = principal;
   const authService = {
@@ -57,6 +59,7 @@ function fixture(module = platformTenantRoutes,platformCustomerOnboardingService
     },
   };
   const runtime = {
+    platformRecoveryOperationsService,
     platformCustomerOnboardingService,
     platformCustomerInvitationAdministrationService,
     maxBodyBytes: 32768, maxResponseBytes: 65536,
@@ -104,6 +107,38 @@ test('an existing concrete mutation gets a fresh exact proof, original validatio
   assert.deepEqual(complete.headers['set-cookie'], [normalCookie,clearPlatformPasskeyOperationCookie()]);
   assert.equal(f.mutations.length, 1); assert.equal(f.mutations[0].idempotencyKey, ID);
   assert.equal((await f.invoke({ proof: encodedProof })).error.statusCode, 403); assert.equal(f.mutations.length, 1);
+});
+
+test('passkey recovery target reads require exact one-use proofs and preserve the original target query',async()=>{
+  for (const operation of ['last-tenant-admin','room-mapping-repair','user-session-revocation']) {
+    const reads=[],service=recoveryTargetRouteService(async input=>{
+      reads.push(input);return { schemaVersion: 1,tenantId: input.tenantId,operation: input.operation,
+        snapshotAt: now,items: [],nextCursor: null };
+    });
+    const f=fixture(platformRecoveryRoutes,null,null,service);
+    const path=`/api/v1/platform/tenants/${ID}/recovery/${operation}/targets?limit=5&cursor=page_1`;
+    f.setCsrf(false);assert.ok((await f.invoke({ method: 'GET',path })).error);assert.equal(reads.length,0);
+    f.setCsrf(true);assert.equal((await f.invoke({ method: 'GET',path })).statusCode,428);assert.equal(reads.length,0);
+    for (const swapped of [path.replace(ID,OTHER),path.replace('limit=5','limit=6'),
+      path.replace('page_1','page_2'),
+      path.replace(operation,operation==='last-tenant-admin' ? 'room-mapping-repair' : 'last-tenant-admin')]) {
+      assert.equal((await f.invoke({ method: 'GET',path: swapped,proof: encodedProof })).error.statusCode,403);
+      assert.equal(reads.length,0);
+    }
+    const completed=await f.invoke({ method: 'GET',path,proof: encodedProof });assert.equal(completed.statusCode,200);
+    assert.deepEqual(completed.body.items,[]);assert.equal(reads.length,1);
+    assert.equal(reads[0].tenantId,ID);assert.equal(reads[0].operation,operation);
+    assert.equal(reads[0].limit,5);assert.equal(reads[0].cursor,'page_1');
+    assert.deepEqual(completed.headers['set-cookie'],[normalCookie,clearPlatformPasskeyOperationCookie()]);
+    assert.equal((await f.invoke({ method: 'GET',path,proof: encodedProof })).error.statusCode,403);
+    assert.equal(reads.length,1);assert.equal(f.mutations.length,0);
+    const invalid=path.replace('limit=5','limit=0');
+    assert.equal((await f.invoke({ method: 'GET',path: invalid })).statusCode,428);
+    const rejected=await f.invoke({ method: 'GET',path: invalid,proof: encodedProof });
+    assert.equal(rejected.error.statusCode,400);assert.equal(rejected.body,null);
+    assert.equal(rejected.headers['set-cookie'],undefined);assert.equal(reads.length,1);
+    assert.equal((await f.invoke({ method: 'POST',path })).error.statusCode,405);
+  }
 });
 
 test('body, idempotency, method/target, live session and cookie substitutions cannot repurpose a pending proof', async () => {

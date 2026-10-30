@@ -339,6 +339,12 @@ const selectedAdditionalRouteModules = routeModulesFactory
 if (!Array.isArray(selectedAdditionalRouteModules)) {
   throw new TypeError('CUSTOMER_ROUTE_MODULES_INVALID');
 }
+// Microsoft login/callback share paths with legacy authentication. Select the
+// existing early dispatcher so the owned flow cannot fall into legacy authority.
+const microsoftAuthenticationModules=selectedAdditionalRouteModules.filter(route=>route?.id==='customer-microsoft-authentication');
+if (microsoftAuthenticationModules.length>1) throw new TypeError('CUSTOMER_MICROSOFT_HTTP_COMPOSITION_INVALID');
+const customerMicrosoftAuthenticationRouteModule=microsoftAuthenticationModules[0] ?? null;
+const operationalRouteModules=selectedAdditionalRouteModules.filter(route=>route?.id!=='customer-microsoft-authentication');
 const cateringConfigurationRouteModules = createCateringConfigurationRouteModules({
   config, persistence, authorizationPolicy, auditService,
 });
@@ -353,6 +359,7 @@ const server = httpServerFactory({
   auditService,
   sessionService,
   entraAuthService,
+  customerMicrosoftAuthenticationRouteModule,
   onboardingService,
   requestService,
   bookingChangeService,
@@ -369,7 +376,7 @@ const server = httpServerFactory({
   tenantUserAdministrationService,
   tenantUserLifecycleService,
   microsoft365ConnectionService: microsoft365Service,
-  additionalRouteModules: [...selectedAdditionalRouteModules, ...cateringConfigurationRouteModules, ...cateringOrderRouteModules,
+  additionalRouteModules: [...operationalRouteModules, ...cateringConfigurationRouteModules, ...cateringOrderRouteModules,
     ...cateringDeliveryRouteModules],
   loadTenant: persistence?.loadTenant,
   readinessChecks: persistence?.readinessChecks || [],

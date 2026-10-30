@@ -74,6 +74,9 @@ export function createPostgresPlatformRecoveryRepository(pool, {
   const custody=createProtectedPlatformTenantCustodySql(protectedRuntime);
   const cursorCodec = createPlatformOperationCursorCodec({ secret: cursorSecret });
   const audit = { tenantAuditRepository, platformAuditRepository };
+  // Proof consumption already retains the single business connection. Reads
+  // join that transaction; a raw pool query would wait for its own held client.
+  const readQuery = statement => withPostgresTransaction(pool, client => client.query(statement), { readOnly: true });
 
   async function findContext(client, { operatorId, contextId, lock = false }) {
     const result = await client.query({
@@ -144,7 +147,7 @@ export function createPostgresPlatformRecoveryRepository(pool, {
 
   const recoveryInspector = Object.freeze({
     async lastTenantAdmin({ tenantId, targetUserId }) {
-      const result = await pool.query({
+      const result = await readQuery({
         name: 'platform-recovery-inspect-last-admin',
         text: `
           SELECT tenant.lifecycle_revision AS tenant_revision,
@@ -176,7 +179,7 @@ export function createPostgresPlatformRecoveryRepository(pool, {
     },
 
     async microsoftReconsent({ tenantId }) {
-      const result = await pool.query({
+      const result = await readQuery({
         name: 'platform-recovery-inspect-microsoft-reconsent',
         text: `
           SELECT integration.connection_version, integration.status,
@@ -201,7 +204,7 @@ export function createPostgresPlatformRecoveryRepository(pool, {
     },
 
     async roomMappingRepair({ tenantId, mappingId }) {
-      const result = await pool.query({
+      const result = await readQuery({
         name: 'platform-recovery-inspect-room-mapping',
         text: `
           SELECT mapping.revision AS mapping_revision,
@@ -236,7 +239,7 @@ export function createPostgresPlatformRecoveryRepository(pool, {
     },
 
     async identityUnbind({ tenantId }) {
-      const result = await pool.query({
+      const result = await readQuery({
         name: 'platform-recovery-inspect-identity-unbind',
         text: `
           SELECT binding.revision AS binding_revision,
@@ -270,7 +273,7 @@ export function createPostgresPlatformRecoveryRepository(pool, {
     },
 
     async tenantSessionRevocation({ tenantId }) {
-      const result = await pool.query({
+      const result = await readQuery({
         name: 'platform-recovery-inspect-tenant-sessions',
         text: `
           SELECT tenant.customer_session_revision,
@@ -291,7 +294,7 @@ export function createPostgresPlatformRecoveryRepository(pool, {
     },
 
     async userSessionRevocation({ tenantId, targetUserId }) {
-      const result = await pool.query({
+      const result = await readQuery({
         name: 'platform-recovery-inspect-user-sessions',
         text: `
           SELECT tenant.customer_session_revision, target.security_version,
@@ -314,7 +317,7 @@ export function createPostgresPlatformRecoveryRepository(pool, {
     },
 
     async tenantLifecycle({ tenantId }) {
-      const result = await pool.query({
+      const result = await readQuery({
         name: 'platform-recovery-inspect-lifecycle',
         text: 'SELECT lifecycle_revision, status FROM tenants WHERE id = $1 LIMIT 1',
         values: [tenantId],
@@ -331,146 +334,150 @@ export function createPostgresPlatformRecoveryRepository(pool, {
 
   const recoveryContextReader = Object.freeze({
     async findForExecution({ authorization, contextId }) {
-      return findContext(pool, { operatorId: requirePlatformOperatorId(authorization), contextId });
+      return withPostgresTransaction(pool, client => findContext(client, {
+        operatorId: requirePlatformOperatorId(authorization), contextId,
+      }), { readOnly: true });
     },
   });
 
   const recoveryTargetReader = Object.freeze({
     async list({ tenantId, operation, limit, cursor, authorization, evidence }) {
-      const principal = authorization.principal;
-      const scope = Object.freeze({
-        operatorId: requirePlatformOperatorId(authorization),
-        securityVersion: principal.securityVersion,
-        mode: principal.targetScope.mode,
-      });
-      const filters = Object.freeze({ tenantId, operation });
-      const decoded = cursor === null
-        ? null
-        : cursorCodec.decode(cursor, { kind: 'recovery_targets', scope, filters });
-      const snapshotAt = decoded?.snapshotAt ?? (await pool.query({
-        name: 'platform-recovery-target-clock',
-        text: 'SELECT date_trunc(\'milliseconds\', clock_timestamp()) AS snapshot_at',
-      })).rows[0].snapshot_at.toISOString();
-      const afterId = decoded?.position?.id ?? null;
-      let result;
-      if (operation === 'last-tenant-admin' || operation === 'user-session-revocation') {
-        result = await pool.query({
-          name: 'platform-recovery-user-targets',
-          text: `
-            SELECT target.id,
-                   CASE WHEN target.active THEN 'active' ELSE 'disabled' END AS user_state,
-                   EXISTS (SELECT 1 FROM user_identity_bindings identity
-                           WHERE identity.tenant_id = target.tenant_id
-                             AND identity.user_id = target.id) AS identity_active,
-                   EXISTS (SELECT 1 FROM (SELECT * FROM tenant_user_roles
-      WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS role
-                           WHERE role.tenant_id = target.tenant_id AND role.user_id = target.id
-                             AND role.role = 'tenant_admin') AS already_admin,
-                   (SELECT count(*)::integer FROM (SELECT * FROM tenant_user_roles
-      WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS role
-                    WHERE role.tenant_id = target.tenant_id AND role.role = 'tenant_admin') AS admin_count,
-                   (SELECT count(*)::integer FROM sessions session
-                    WHERE session.tenant_id = target.tenant_id AND session.user_id = target.id
-                      AND session.revoked_at IS NULL AND session.expires_at > $3) AS active_sessions
-            FROM users target
-            WHERE target.tenant_id = $1 AND target.updated_at <= $3
-              AND ($2::uuid IS NULL OR target.id > $2)
-              AND EXISTS (
-                SELECT 1 FROM platform_operators operator
-                WHERE operator.id = $4 AND operator.status = 'active'
-                  AND operator.security_version = $5
-                  AND (operator.scope_mode = 'all' OR EXISTS (
-                    SELECT 1 FROM platform_operator_tenant_scopes target_scope
-                    WHERE target_scope.operator_id = operator.id AND target_scope.tenant_id = $1
-                  ))
-              )
-            ORDER BY target.id LIMIT $6
-          `,
-          values: [tenantId, afterId, snapshotAt, scope.operatorId, scope.securityVersion, limit + 1],
+      return withPostgresTransaction(pool, async client => {
+        const principal = authorization.principal;
+        const scope = Object.freeze({
+          operatorId: requirePlatformOperatorId(authorization),
+          securityVersion: principal.securityVersion,
+          mode: principal.targetScope.mode,
         });
-      } else if (operation === 'room-mapping-repair') {
-        result = await pool.query({
-          name: 'platform-recovery-mapping-targets',
-          text: `
-            SELECT mapping.id, mapping.provider_status, integration.status AS connection_state,
-                   integration.places_permission_status,
-                   count(observation.external_room_id)::integer AS candidate_count
-            FROM microsoft365_room_mappings mapping
-            JOIN integrations integration
-              ON integration.tenant_id = mapping.tenant_id AND integration.id = mapping.integration_id
-            LEFT JOIN microsoft365_room_discovery_observations observation
-              ON observation.tenant_id = mapping.tenant_id
-             AND observation.integration_id = mapping.integration_id
-             AND observation.connection_version = integration.connection_version
-             AND observation.fresh_until > $3 AND observation.provider_status = 'active'
-             AND (observation.external_room_id = mapping.external_room_id
-                  OR lower(observation.resource_address) = lower(mapping.resource_address))
-            WHERE mapping.tenant_id = $1 AND mapping.updated_at <= $3
-              AND ($2::uuid IS NULL OR mapping.id > $2)
-              AND EXISTS (
-                SELECT 1 FROM platform_operators operator
-                WHERE operator.id = $4 AND operator.status = 'active'
-                  AND operator.security_version = $5
-                  AND (operator.scope_mode = 'all' OR EXISTS (
-                    SELECT 1 FROM platform_operator_tenant_scopes target_scope
-                    WHERE target_scope.operator_id = operator.id AND target_scope.tenant_id = $1
-                  ))
-              )
-            GROUP BY mapping.id, mapping.provider_status, integration.status,
-              integration.places_permission_status
-            ORDER BY mapping.id LIMIT $6
-          `,
-          values: [tenantId, afterId, snapshotAt, scope.operatorId, scope.securityVersion, limit + 1],
-        });
-      } else {
-        throw new TypeError('PLATFORM_RECOVERY_TARGET_OPERATION_INVALID');
-      }
-      const hasMore = result.rows.length > limit;
-      const rows = hasMore ? result.rows.slice(0, limit) : result.rows;
-      const items = rows.map((row) => operation === 'room-mapping-repair'
-        ? Object.freeze({
-          mappingId: row.id,
-          eligible: Number(row.candidate_count) === 1,
-          mappingState: row.provider_status,
-          connectionState: row.connection_state,
-          placesPermission: row.places_permission_status,
-          candidateCount: Number(row.candidate_count),
-        })
-        : Object.freeze({
-          targetUserId: row.id,
-          eligible: operation === 'last-tenant-admin'
-            ? row.user_state === 'active' && row.identity_active && !row.already_admin
-              && Number(row.admin_count) === 0
-            : Number(row.active_sessions) > 0,
-          userState: row.user_state,
-          activeSessionCount: Number(row.active_sessions),
-          ...(operation === 'last-tenant-admin' ? {
-            identityState: row.identity_active ? 'active' : 'missing',
-            alreadyTenantAdmin: row.already_admin,
-            currentTenantAdminCount: Number(row.admin_count),
-          } : {}),
-        }));
-      if (
-        !evidence
-        || typeof evidence !== 'object'
-        || Object.keys(evidence).join(',') !== 'platformAuditEvent'
-      ) throw new TypeError('PLATFORM_OPERATION_EVIDENCE_INVALID');
-      const appended = await platformAuditRepository.append(
-        evidence.platformAuditEvent,
-        { expectedTargetTenantId: tenantId },
-      );
-      if (!appended || appended.targetTenantId !== tenantId) {
-        throw new Error('PLATFORM_AUDIT_APPEND_FAILED');
-      }
-      return Object.freeze({
-        items: Object.freeze(items),
-        snapshotAt,
-        nextCursor: hasMore
-          ? cursorCodec.encode({
-            kind: 'recovery_targets', scope, snapshotAt, filters,
-            position: { id: rows.at(-1).id },
+        const filters = Object.freeze({ tenantId, operation });
+        const decoded = cursor === null
+          ? null
+          : cursorCodec.decode(cursor, { kind: 'recovery_targets', scope, filters });
+        const snapshotAt = decoded?.snapshotAt ?? (await client.query({
+          name: 'platform-recovery-target-clock',
+          text: 'SELECT date_trunc(\'milliseconds\', clock_timestamp()) AS snapshot_at',
+        })).rows[0].snapshot_at.toISOString();
+        const afterId = decoded?.position?.id ?? null;
+        let result;
+        if (operation === 'last-tenant-admin' || operation === 'user-session-revocation') {
+          result = await client.query({
+            name: 'platform-recovery-user-targets',
+            text: `
+              SELECT target.id,
+                     CASE WHEN target.active THEN 'active' ELSE 'disabled' END AS user_state,
+                     EXISTS (SELECT 1 FROM user_identity_bindings identity
+                             WHERE identity.tenant_id = target.tenant_id
+                               AND identity.user_id = target.id) AS identity_active,
+                     EXISTS (SELECT 1 FROM (SELECT * FROM tenant_user_roles
+        WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS role
+                             WHERE role.tenant_id = target.tenant_id AND role.user_id = target.id
+                               AND role.role = 'tenant_admin') AS already_admin,
+                     (SELECT count(*)::integer FROM (SELECT * FROM tenant_user_roles
+        WHERE tenant_role_source_active(direct_grant,microsoft_verified_until)) AS role
+                      WHERE role.tenant_id = target.tenant_id AND role.role = 'tenant_admin') AS admin_count,
+                     (SELECT count(*)::integer FROM sessions session
+                      WHERE session.tenant_id = target.tenant_id AND session.user_id = target.id
+                        AND session.revoked_at IS NULL AND session.expires_at > $3) AS active_sessions
+              FROM users target
+              WHERE target.tenant_id = $1 AND target.updated_at <= $3
+                AND ($2::uuid IS NULL OR target.id > $2)
+                AND EXISTS (
+                  SELECT 1 FROM platform_operators operator
+                  WHERE operator.id = $4 AND operator.status = 'active'
+                    AND operator.security_version = $5
+                    AND (operator.scope_mode = 'all' OR EXISTS (
+                      SELECT 1 FROM platform_operator_tenant_scopes target_scope
+                      WHERE target_scope.operator_id = operator.id AND target_scope.tenant_id = $1
+                    ))
+                )
+              ORDER BY target.id LIMIT $6
+            `,
+            values: [tenantId, afterId, snapshotAt, scope.operatorId, scope.securityVersion, limit + 1],
+          });
+        } else if (operation === 'room-mapping-repair') {
+          result = await client.query({
+            name: 'platform-recovery-mapping-targets',
+            text: `
+              SELECT mapping.id, mapping.provider_status, integration.status AS connection_state,
+                     integration.places_permission_status,
+                     count(observation.external_room_id)::integer AS candidate_count
+              FROM microsoft365_room_mappings mapping
+              JOIN integrations integration
+                ON integration.tenant_id = mapping.tenant_id AND integration.id = mapping.integration_id
+              LEFT JOIN microsoft365_room_discovery_observations observation
+                ON observation.tenant_id = mapping.tenant_id
+               AND observation.integration_id = mapping.integration_id
+               AND observation.connection_version = integration.connection_version
+               AND observation.fresh_until > $3 AND observation.provider_status = 'active'
+               AND (observation.external_room_id = mapping.external_room_id
+                    OR lower(observation.resource_address) = lower(mapping.resource_address))
+              WHERE mapping.tenant_id = $1 AND mapping.updated_at <= $3
+                AND ($2::uuid IS NULL OR mapping.id > $2)
+                AND EXISTS (
+                  SELECT 1 FROM platform_operators operator
+                  WHERE operator.id = $4 AND operator.status = 'active'
+                    AND operator.security_version = $5
+                    AND (operator.scope_mode = 'all' OR EXISTS (
+                      SELECT 1 FROM platform_operator_tenant_scopes target_scope
+                      WHERE target_scope.operator_id = operator.id AND target_scope.tenant_id = $1
+                    ))
+                )
+              GROUP BY mapping.id, mapping.provider_status, integration.status,
+                integration.places_permission_status
+              ORDER BY mapping.id LIMIT $6
+            `,
+            values: [tenantId, afterId, snapshotAt, scope.operatorId, scope.securityVersion, limit + 1],
+          });
+        } else {
+          throw new TypeError('PLATFORM_RECOVERY_TARGET_OPERATION_INVALID');
+        }
+        const hasMore = result.rows.length > limit;
+        const rows = hasMore ? result.rows.slice(0, limit) : result.rows;
+        const items = rows.map((row) => operation === 'room-mapping-repair'
+          ? Object.freeze({
+            mappingId: row.id,
+            eligible: Number(row.candidate_count) === 1,
+            mappingState: row.provider_status,
+            connectionState: row.connection_state,
+            placesPermission: row.places_permission_status,
+            candidateCount: Number(row.candidate_count),
           })
-          : null,
+          : Object.freeze({
+            targetUserId: row.id,
+            eligible: operation === 'last-tenant-admin'
+              ? row.user_state === 'active' && row.identity_active && !row.already_admin
+                && Number(row.admin_count) === 0
+              : Number(row.active_sessions) > 0,
+            userState: row.user_state,
+            activeSessionCount: Number(row.active_sessions),
+            ...(operation === 'last-tenant-admin' ? {
+              identityState: row.identity_active ? 'active' : 'missing',
+              alreadyTenantAdmin: row.already_admin,
+              currentTenantAdminCount: Number(row.admin_count),
+            } : {}),
+          }));
+        if (
+          !evidence
+          || typeof evidence !== 'object'
+          || Object.keys(evidence).join(',') !== 'platformAuditEvent'
+        ) throw new TypeError('PLATFORM_OPERATION_EVIDENCE_INVALID');
+        const appended = await platformAuditRepository.appendWithClient(client,
+          evidence.platformAuditEvent,
+          { expectedTargetTenantId: tenantId },
+        );
+        if (!appended || appended.targetTenantId !== tenantId) {
+          throw new Error('PLATFORM_AUDIT_APPEND_FAILED');
+        }
+        return Object.freeze({
+          items: Object.freeze(items),
+          snapshotAt,
+          nextCursor: hasMore
+            ? cursorCodec.encode({
+              kind: 'recovery_targets', scope, snapshotAt, filters,
+              position: { id: rows.at(-1).id },
+            })
+            : null,
+        });
       });
     },
   });

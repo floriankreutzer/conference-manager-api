@@ -69,6 +69,26 @@ Customer session issuance, offline enrollment-grant INSERT and private marker/
 maintenance execution stay denied. No schema or actual role installation is
 performed by process construction/startup.
 
+Recovery target discovery is a sensitive GET, including last-administrator,
+room-mapping and user-session target lists. The existing exact-operation route
+wrapper covers these reads in both Microsoft MFA and application-passkey modes.
+An ordinary MFA session receives the existing proof challenge before target
+discovery runs. The one-use proof binds the original customer, operation and
+pagination query; existing CSRF, permission, target, audit and response controls
+still execute. Listing targets does not preview or execute a recovery and does
+not issue reusable elevated browser authority. Route tests cover all three list
+families, CSRF, query/customer/operation swaps, replay and original validation.
+These tests do not prove a new live Microsoft confirmation or deployed rollout.
+
+Recovery inspections and context reads join the current exact-proof transaction
+through the existing PostgreSQL transaction adapter. Target discovery and its
+Platform access audit use that same client atomically. They must not issue a raw
+pool query while proof consumption retains the max1 business connection, or the
+read waits on its own connection. An ordinary target read owns one transaction;
+an audit failure rolls it back rather than returning a target page. Focused
+single-connection regressions cover every inspection/context and all three target
+families. No pool size, timeout, authorization or proof policy is increased.
+
 Seven focused cases cover three environments, setup/opt-in construction, closed
 ports, refused configuration, unavailable actual loopback database/concurrent
 stop and ownership isolation. The new native case is prepared for exact-source

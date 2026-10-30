@@ -5,6 +5,7 @@ import { PLATFORM_PERMISSION } from '../src/platform/identity/policy.js';
 import {
   createPostgresPlatformRecoveryRepository,
 } from '../src/persistence/postgres/platform-operations-recovery-repository.js';
+import { withPostgresTransaction, isPostgresTransactionActive } from '../src/persistence/postgres/transaction.js';
 
 const OPERATOR_ID = 'f1111111-1111-4111-8111-111111111111';
 const TENANT_ID = 'f2222222-2222-4222-8222-222222222222';
@@ -162,4 +163,79 @@ test('a stale canonical lifecycle result leaves recovery context and evidence un
   assert.equal(probe.state.receipts, 0);
   assert.equal(probe.state.tenantAudits, 0);
   assert.equal(probe.state.platformAudits, 0);
+});
+
+function singleConnectionRecoveryProbe({ failAudit = false } = {}) {
+  const state = { borrowed: false, connections: 0, audits: 0, queries: [], released: 0 };
+  const client = {
+    async query(statement) {
+      state.queries.push(typeof statement === 'string' ? statement : statement.name);
+      if (typeof statement === 'string') return { rows: [], rowCount: 0 };
+      assert.equal(isPostgresTransactionActive(pool, client), true);
+      if (statement.name === 'platform-recovery-target-clock') {
+        return { rows: [{ snapshot_at: new Date(OCCURRED_AT) }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    },
+    release() { state.borrowed = false; state.released++; },
+  };
+  const pool = {
+    async query() { throw new Error('RECOVERY_READ_ESCAPED_CURRENT_TRANSACTION'); },
+    async connect() {
+      assert.equal(state.borrowed, false, 'A proof read must not acquire a second max1 connection');
+      state.borrowed = true; state.connections++; return client;
+    },
+  };
+  const repository = createPostgresPlatformRecoveryRepository(pool, {
+    tenantAuditRepository: { async appendWithClient() { assert.fail('Target discovery must not append Tenant mutation evidence'); } },
+    platformAuditRepository: { async appendWithClient(received, _event, options) {
+      assert.equal(received, client); assert.equal(isPostgresTransactionActive(pool, client), true);
+      assert.equal(options.expectedTargetTenantId, TENANT_ID); state.audits++;
+      if (failAudit) throw new Error('SYNTHETIC_ACCESS_AUDIT_FAILURE');
+      return { targetTenantId: TENANT_ID };
+    } },
+    onboardingRepository: { async unbindActiveWithClient() { assert.fail('Read cannot unbind identity'); } },
+    tenantLifecycleRepository: { async changeStatusWithClient() { assert.fail('Read cannot change lifecycle'); } },
+    cursorSecret: 'platform-recovery-persistence-test-secret-32-bytes',
+  });
+  const previous = authorization();
+  const authority = { ...previous, principal: { ...previous.principal, targetScope: { mode: 'all' } } };
+  const list = operation => repository.recoveryTargetReader.list({ tenantId: TENANT_ID, operation,
+    limit: 50, cursor: null, authorization: authority, evidence: { platformAuditEvent: {} } });
+  return { pool, repository, state, authority, list };
+}
+
+test('Recovery inspections, contexts and all target lists reuse the current proof transaction with a max1 pool', async () => {
+  const probe = singleConnectionRecoveryProbe();
+  await withPostgresTransaction(probe.pool, async () => {
+    for (const method of ['lastTenantAdmin', 'microsoftReconsent', 'roomMappingRepair', 'identityUnbind',
+      'tenantSessionRevocation', 'userSessionRevocation', 'tenantLifecycle']) {
+      await probe.repository.recoveryInspector[method]({ tenantId: TENANT_ID, targetUserId: SESSION_ID, mappingId: CONTEXT_ID });
+    }
+    assert.equal(await probe.repository.recoveryContextReader.findForExecution({
+      authorization: probe.authority, contextId: CONTEXT_ID,
+    }), null);
+    for (const operation of ['last-tenant-admin', 'room-mapping-repair', 'user-session-revocation']) {
+      const page = await probe.list(operation); assert.deepEqual(page.items, []); assert.equal(page.nextCursor, null);
+    }
+  });
+  assert.equal(probe.state.connections, 1); assert.equal(probe.state.released, 1); assert.equal(probe.state.audits, 3);
+  assert.equal(probe.state.queries.filter(value => value === 'COMMIT').length, 1);
+  assert.equal(probe.state.queries.includes('ROLLBACK'), false);
+});
+
+test('ordinary Recovery target discovery owns one transaction for its bounded read and access audit', async () => {
+  const probe = singleConnectionRecoveryProbe();
+  assert.deepEqual((await probe.list('room-mapping-repair')).items, []);
+  assert.equal(probe.state.connections, 1); assert.equal(probe.state.audits, 1);
+  assert.equal(probe.state.queries.at(-1), 'COMMIT'); assert.equal(probe.state.released, 1);
+});
+
+test('a failed Recovery target access audit rolls back the current proof without returning a target page', async () => {
+  const probe = singleConnectionRecoveryProbe({ failAudit: true });
+  await assert.rejects(withPostgresTransaction(probe.pool, () => probe.list('room-mapping-repair')),
+    /SYNTHETIC_ACCESS_AUDIT_FAILURE/);
+  assert.equal(probe.state.connections, 1); assert.equal(probe.state.audits, 1);
+  assert.equal(probe.state.queries.includes('COMMIT'), false); assert.equal(probe.state.queries.at(-1), 'ROLLBACK');
+  assert.equal(probe.state.released, 1);
 });

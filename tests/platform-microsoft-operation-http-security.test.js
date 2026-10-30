@@ -64,5 +64,11 @@ test('real Microsoft callback/status HTTP preserves host, origin, CSRF, cookie, 
   assert.equal(callback.status,303);assert.equal(callback.headers.location,base+'/complete');assert.equal(callbacks.length,1);
   assert.equal(callbacks[0].request,undefined);assert.equal(callback.headers['referrer-policy'],'no-referrer');
   assert.equal(callback.headers['set-cookie'].some(value=>value.startsWith('cm_platform_session=')),false);
+  const completion=await request(base+'/complete');assert.equal(completion.status,200);
+  assert.equal(completion.headers['cross-origin-opener-policy'],'same-origin');
+  assert.equal(completion.headers['cache-control'],'no-store');assert.equal(completion.headers['referrer-policy'],'no-referrer');
+  assert.match(completion.headers['content-security-policy'],/^default-src 'none'; script-src 'sha256-[A-Za-z0-9+/]+=*';/);
+  assert.doesNotMatch(completion.headers['content-security-policy'],/unsafe-inline|unsafe-eval|https:|\*/);
+  assert.match(completion.text,/window\.close\(\)/);assert.equal(completion.headers['set-cookie'],undefined);
   assert.doesNotMatch(JSON.stringify(logs),/synthetic-provider-code|cm_platform_ms_operation|synthetic-normal|code=/);
 });
