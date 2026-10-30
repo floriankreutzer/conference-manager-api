@@ -170,3 +170,22 @@ Remaining integration and external evidence:
 
 The final item depends on an approved and provisioned production topology and is external acceptance
 evidence; repository unit tests cannot self-approve it.
+
+
+## Stable service identity (QA-01)
+
+Schema 75 adds nullable, immutable service identity to retained deployment rows.
+The verified protected INT observer binds `protected-int-customer` and
+`protected-int-platform` from its fixed surface configuration. Deployment hashes
+and environment labels are never used to infer a service. Legacy rows remain
+unattributed until a sealed observation proves the identity. Rollback refuses to
+discard any stored identity; existing retention and tenant mappings remain intact.
+
+`GET /api/v1/platform/runtime/deployments?schemaVersion=2` returns the closed v2
+projection with `serviceInstance: { key, surface } | null`. The queryless v1 and
+Tenant-specific route retain their existing wire shapes and authorization. Mixed
+versions, conflicting surface attribution and arbitrary queries are rejected.
+Deploy the API before the frontend that requests v2. The UI groups by environment
+and service key, shows the latest observation and retains older observations in
+keyboard-accessible disclosure sections. Neither “latest” nor “stale” proves which
+deployment is currently serving or whether a current outage exists. TTL stays 300s.

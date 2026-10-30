@@ -35,11 +35,13 @@ export const platformRuntimeRoutes = definePlatformRouteModule({
       const tenantId = tenantIdFor(path);
       if (path !== PLATFORM_RUNTIME_DEPLOYMENTS_PATH && tenantId === null) return null;
       if (request.method !== 'GET') throw new PlatformHttpError(405, 'PLATFORM_METHOD_NOT_ALLOWED');
-      assertPlatformNoQuery(parsedUrl);
+      let schemaVersion;
+      if (path === PLATFORM_RUNTIME_DEPLOYMENTS_PATH && parsedUrl.search === '?schemaVersion=2') schemaVersion = 2;
+      else assertPlatformNoQuery(parsedUrl);
       const operatorContext = await platformPrincipalGuard.require(request, { correlationId: requestId });
       await assertNoPlatformRequestBody(request);
       const result = path === PLATFORM_RUNTIME_DEPLOYMENTS_PATH
-        ? await platformRuntimeStatusService.listApprovedDeployments({ operatorContext })
+        ? await platformRuntimeStatusService.listApprovedDeployments({ operatorContext, ...(schemaVersion ? { schemaVersion } : {}) })
         : await platformRuntimeStatusService.getServingDeploymentForTenant({ operatorContext, tenantId });
       sendPlatformJson(response, 200, result, maxResponseBytes);
       return 200;

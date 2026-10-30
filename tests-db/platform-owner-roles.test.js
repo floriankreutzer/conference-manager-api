@@ -62,6 +62,7 @@ test('native owner role upgrade is exact, one-winner, audited and rolls back ato
   assert.equal(receipts[0].newState.roleCount,4);assert.equal(receipts[0].previousState.roleCount,2);
   assert.doesNotMatch(JSON.stringify(receipts),new RegExp(expected.subjectId));
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_operator_change_alert_outbox')).rows[0].count,2);
+  assert.equal(await rollbackLatest(pool),true); // Empty service identity075 before unchanged074/older guards.
   assert.equal(await rollbackLatest(pool),true); // Function-only074 before unchanged073/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged072/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.

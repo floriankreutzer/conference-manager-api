@@ -558,8 +558,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 74;/.test(pool)) {
-  throw new Error('Runtime schema readiness requires participant lifecycle schema 74.');
+if (!/export const CURRENT_SCHEMA_VERSION = 75;/.test(pool)) {
+  throw new Error('Runtime schema readiness requires runtime service identity schema 75.');
 }
 const retentionPrivilegeMigration = await readFile(
   'migrations/041_room_media_retention_privileges.up.sql',

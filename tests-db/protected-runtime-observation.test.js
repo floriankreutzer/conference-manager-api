@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { loadDatabaseConfig } from '../src/config.js';
 import { createPostgresPool, CURRENT_SCHEMA_VERSION } from '../src/persistence/postgres/pool.js';
-import { migrateUp } from '../scripts/db-migrations.mjs';
+import { migrateUp, rollbackLatest } from '../scripts/db-migrations.mjs';
 import { collectProtectedRuntimeObservation } from '../scripts/support/protected-runtime-observation-collector.mjs';
 import { reconcileProtectedRuntimeObservation } from '../scripts/support/protected-runtime-observation-reconciler.mjs';
 import { runtimeObservationFixture } from '../tests/support/runtime-observation-fixture.js';
@@ -90,6 +90,17 @@ test('native observer preserves data across authoritative routing, rollback, dup
   const result = attempts.find(row => row.status === 'fulfilled').value;
   assert.equal(result.deployments, 2);assert.equal(result.routedTenants, 4);
   assert.equal(result.databaseSchemaVersion, CURRENT_SCHEMA_VERSION);
+  const identityQuery = 'SELECT service_instance_key,service_surface FROM platform_runtime_deployments ORDER BY service_surface';
+  const identities = await pool.query(identityQuery);
+  assert.deepEqual(identities.rows, [
+    { service_instance_key: 'protected-int-customer', service_surface: 'customer' },
+    { service_instance_key: 'protected-int-platform', service_surface: 'platform' },
+  ]);
+  await assert.rejects(() => pool.query(`UPDATE platform_runtime_deployments
+    SET service_instance_key='forged',revision=revision+1,updated_at=clock_timestamp()`), /SERVICE_IDENTITY_IMMUTABLE/);
+  assert.deepEqual((await pool.query(identityQuery)).rows, identities.rows);
+  await assert.rejects(() => rollbackLatest(pool), /PLATFORM_RUNTIME_SERVICE_IDENTITY_RETAINED/);
+  assert.deepEqual((await pool.query(identityQuery)).rows, identities.rows);
   assert.doesNotMatch(JSON.stringify(result), new RegExp([real, unknown, other, epoch, actor.operatorId].join('|')));
   const mappings = await pool.query(`SELECT m.tenant_id,d.deployment_reference,d.schema_current_version,
     d.required_dependencies_state,d.optional_dependencies_state FROM platform_runtime_tenant_mappings m
