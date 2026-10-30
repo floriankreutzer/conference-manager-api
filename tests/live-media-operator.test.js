@@ -225,6 +225,26 @@ test('workflow exposes only manual enums and three dedicated secrets after insta
   assert.doesNotMatch(entry, /shell: true|console\.(?:log|error)|process\.stderr\.write/);
 });
 
+test('both credential consumers bind the owner Main Environment before any operator step', () => {
+  for (const file of ['live-media-operator.yml', 'demo-copy-discard.yml']) {
+    const workflow = readFileSync(new URL(`../.github/workflows/${file}`, import.meta.url), 'utf8');
+    const job = workflow.split('\n  operator:\n')[1];
+    assert.ok(job);
+    const policy = job.split('    steps:')[0];
+    for (const condition of ["github.repository == 'floriankreutzer/conference-manager-api'",
+      "github.ref == 'refs/heads/main'", "github.event_name == 'workflow_dispatch'",
+      "github.actor == 'floriankreutzer'", "github.triggering_actor == 'floriankreutzer'", 'github.run_attempt == 1']) {
+      assert.ok(policy.includes(condition));
+    }
+    assert.doesNotMatch(policy, /\|\|/);
+    assert.match(policy, /environment:\s+name: live-media-operator/);
+    assert.match(workflow, /concurrency:\s+group: live-media-operator\s+cancel-in-progress: false/);
+    assert.equal((workflow.match(/secrets\./g) || []).length, 3);
+    assert.ok(job.indexOf('npm ci --ignore-scripts') < job.indexOf('secrets.CM_NEON_LIVE'));
+    assert.doesNotMatch(workflow, /pull_request_target:|continue-on-error:|contents: write|id-token: write/);
+  }
+});
+
 test('trusted controller validates the record without operator credentials and rejects digest drift', () => {
   const env = setup();
   for (const key of Object.keys(env).filter((key) => key.startsWith('CM_NEON_LIVE_OPERATOR_'))) delete env[key];

@@ -231,6 +231,11 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            api/package-lock.json
+            acceptance/package-lock.json
       - name: Load verified immutable shared Demo acceptance dependencies
         env:
           ACCEPTANCE_REF: 3b1ecdf369e6c6daa2ef144f0319b4493a8dfe33
