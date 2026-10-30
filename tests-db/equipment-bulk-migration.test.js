@@ -17,6 +17,7 @@ test('Equipment receipt migration preserves Tenant/actor constraints and blocks 
   const pool = createPostgresPool({ mode: 'test', ...database });
   t.after(() => pool.end());
   await migrateUp(pool);
+  assert.equal(await rollbackLatest(pool),true); // Empty service identity075 before unchanged074/older guards.
   assert.equal(await rollbackLatest(pool),true); // Function-only074 before unchanged073/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged072/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
@@ -63,6 +64,7 @@ test('Equipment receipt migration preserves Tenant/actor constraints and blocks 
   await assert.rejects(repository.create({ ...input, id: FOREIGN, actorUserId: FOREIGN }),
     (error) => error.code === '23503');
   assert.equal((await createPostgresPlatformProjectionRepository(pool).consumeBatch({ limit: 100 })).retryCount, 0);
+  assert.equal(await rollbackLatest(pool),true); // Empty service identity075 before unchanged074/older guards.
   assert.equal(await rollbackLatest(pool),true); // Function-only074 before unchanged073/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged072/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.

@@ -394,3 +394,25 @@ test('missing and future observations are unknown rather than apparently healthy
     'unknown',
   ]);
 });
+
+
+test('runtime v2 exposes only validated service identity while v1 remains byte-shape compatible', async () => {
+  const records = [runtimeRecord({ extra: { serviceInstance: { key: 'protected-int-customer', surface: 'customer' } } }),
+    runtimeRecord({ reference: 'legacy' })];
+  const { service } = harness({ records });
+  const old = await service.listApprovedDeployments({ operatorContext: PRINCIPAL });
+  assert.equal(old.schemaVersion, 1);assert.equal(Object.hasOwn(old.deployments[0], 'serviceInstance'), false);
+  const result = await service.listApprovedDeployments({ operatorContext: PRINCIPAL, schemaVersion: 2 });
+  assert.equal(result.schemaVersion, 2);assert.equal(result.deployments[0].schemaVersion, 2);
+  assert.deepEqual(result.deployments[0].serviceInstance, { key: 'protected-int-customer', surface: 'customer' });
+  assert.equal(result.deployments[1].serviceInstance, null);
+  for (const identity of [{ key: 'https://evil.invalid', surface: 'customer' }, { key: 'a', surface: 'owner' },
+    { key: 'a', surface: 'customer', extra: true }, { key: 'a'.repeat(65), surface: 'customer' }]) {
+    const invalid = harness({ records: [runtimeRecord({ extra: { serviceInstance: identity } })] });
+    await assert.rejects(() => invalid.service.listApprovedDeployments({ operatorContext: PRINCIPAL, schemaVersion: 2 }));
+  }
+  const contradictory = harness({ records: [records[0], runtimeRecord({ reference: 'other',
+    extra: { serviceInstance: { key: 'protected-int-customer', surface: 'platform' } } })] });
+  await assert.rejects(() => contradictory.service.listApprovedDeployments({ operatorContext: PRINCIPAL, schemaVersion: 2 }));
+  await assert.rejects(() => service.listApprovedDeployments({ operatorContext: PRINCIPAL, schemaVersion: 3 }));
+});

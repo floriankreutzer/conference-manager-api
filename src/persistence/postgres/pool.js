@@ -47,7 +47,8 @@ const { Pool } = pg;
 // Schema 72 retains attributable REAL owner identity and one-use browser custody.
 // Schema 73 binds invited human membership to one exact synthetic generation/slot.
 // Schema 74 adds current-member synthetic lifecycle custody without general Tenant UPDATE rights.
-export const CURRENT_SCHEMA_VERSION = 74;
+// Schema 75 preserves immutable runtime service identity separately from deployment history.
+export const CURRENT_SCHEMA_VERSION = 75;
 
 const PRODUCTION_APPLICATION_NAMES = new Set([
   'conference-manager-api',

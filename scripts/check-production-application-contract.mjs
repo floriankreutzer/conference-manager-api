@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 74;/.test(pool)) {
-  throw new Error('Production application requires participant lifecycle schema 74.');
+if (!/export const CURRENT_SCHEMA_VERSION = 75;/.test(pool)) {
+  throw new Error('Production application requires runtime service identity schema 75.');
 }
 
 const auditEvent = await readFile('src/audit/event.js', 'utf8');

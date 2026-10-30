@@ -174,6 +174,7 @@ test('Catering configuration commits scoped revisions and audit atomically and f
   assert.deepEqual(identities, identities.slice().sort());
   assert.deepEqual((await repository.listCurrent({ tenantId: otherTenant })).items, []);
   assert.equal(await auditRepository.verifyTenantChain(tenantId), true);
+  assert.equal(await rollbackLatest(pool),true); // Empty service identity075 before unchanged074/older guards.
   assert.equal(await rollbackLatest(pool),true); // Function-only074 before unchanged073/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged072/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
@@ -206,6 +207,7 @@ test('Catering configuration commits scoped revisions and audit atomically and f
   assert.equal(await isPostgresSchemaReady(pool), false);
   await migrateUp(pool);
   assert.equal(await isPostgresSchemaReady(pool), true);
+  assert.equal(await rollbackLatest(pool),true); // Empty service identity075 before unchanged074/older guards.
   assert.equal(await rollbackLatest(pool),true); // Function-only074 before unchanged073/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged072/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.
