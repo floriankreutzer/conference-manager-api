@@ -16,7 +16,7 @@ services:
     region: frankfurt
     numInstances: 1
     repo: https://github.com/floriankreutzer/conference-manager-api
-    branch: main
+    branch: release/int-20261030-ca1f06b
     autoDeployTrigger: off
     previews:
       generation: off
@@ -105,7 +105,7 @@ services:
     region: frankfurt
     numInstances: 1
     repo: https://github.com/floriankreutzer/conference-manager-api
-    branch: main
+    branch: release/int-20261030-ca1f06b
     autoDeployTrigger: off
     previews:
       generation: off

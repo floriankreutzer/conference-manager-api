@@ -4,7 +4,7 @@ Tracking: floriankreutzer/conference-manager#432, INF-04/05. `render.int.yaml`
 describes both existing protected INT services. The legacy `render.yaml` remains
 a separate CI dependency and must not be synchronized over protected INT.
 
-## Blueprint adoption without a release
+## Blueprint adoption for the existing qualified release
 
 The existing Blueprint `conference-manager-demo` (`exs-daakihlg1s2s73df6jdg`)
 owns both services and `conference-manager-demo-shared`. At the administration
@@ -13,6 +13,28 @@ Change that Blueprint's path to `render.int.yaml`; do not create a second
 Blueprint or new services. Keep automatic sync paused. Inspect the provider's
 proposed changes before any manual sync; existing resource IDs, Free plans,
 Frankfurt, disabled previews/auto-deploy, origins and readiness paths must match.
+
+The Blueprint follows Main, but both services select the separately frozen Git
+branch `release/int-20261030-ca1f06b` at
+`ca1f06b5b5181965f7c3aeffdc235aa44c638771`. Its GitHub ruleset must be active,
+target exactly that branch, prohibit updates, deletion and force pushes, and have
+no bypass actors. Verify both the ref and effective rules before syncing. This
+keeps a fresh build independent of later Main movement; selecting Main would
+make the existing exact-source build guard reject a rebuild.
+
+On 2026-10-30 both existing services were changed to that branch using Dashboard
+Save changes with auto-deploy off. Provider readback confirmed the branch and
+the unchanged live deploy receipts: Customer `dep-dbibkggu01pc7397eb40` and
+Platform `dep-dbibkjnlk1mc73fr97gg`. This configuration-only adoption did not
+trigger a deploy. The active exact-branch ruleset is `26239613`, with no bypass.
+
+A subsequent manual Blueprint sync can redeploy the existing qualified source pair; inspect the
+proposed resources and then verify both real deploy receipts, manifest digests
+and readiness. No service code, data, schema or secret is migrated by that sync.
+Record the new receipts in the observer selection only after actual success;
+the existing receipts remain historical evidence rather than guessed new IDs.
+For a future release, create and protect a new immutable release branch and
+update the Blueprint's pair, source guards and digests together after qualification.
 
 The file freezes the actually deployed API `ca1f06b5b5181965f7c3aeffdc235aa44c638771`
 and frontend `2ddcf3859505fe62a46ac008fb1d6e9059711bbb`, including the existing
