@@ -1,5 +1,6 @@
 node_modules/
 .protected-frontend/
+.protected-ui-build/
 .env
 .env.*
 !.env.example
