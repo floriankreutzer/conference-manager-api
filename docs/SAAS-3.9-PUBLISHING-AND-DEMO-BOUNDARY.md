@@ -12,7 +12,30 @@ Public partner contracts remain explicitly allowlisted artifacts owned by `confe
 
 ## Public API publication
 
-SaaS 3.9 issue #250 establishes deterministic publication of approved external API contracts from the canonical backend repository. The implementation uses the dedicated `Conference Manager API Publisher` GitHub App (App ID `5173007`) to mint short-lived installation tokens at workflow runtime. The App is installed only on `conference-manager-api` and `conference-manager-developer`; the private key is stored only in the backend repository Actions secret store.
+SaaS 3.9 issue #250 establishes deterministic publication of approved external API contracts from the canonical backend repository. The implementation uses the dedicated `Conference Manager API Publisher` GitHub App (App ID `5173007`) to mint short-lived installation tokens at workflow runtime. The App is installed only on `conference-manager-api` and `conference-manager-developer`. The required secret boundary is the backend's `public-api-publication` Environment; the historical repository-level secret arrangement must be migrated before publication is enabled.
+
+### Environment activation gate
+
+Tracking: `floriankreutzer/conference-manager#432` (INF-01). The workflow permits
+only the owner and owner-triggered runs on `main` in the canonical repository,
+serializes publication and limits the job to ten minutes. These YAML conditions
+are defense in depth, not an independent barrier against a writer editing a branch.
+
+Before using the workflow, an administrator must:
+
+1. Create `public-api-publication` and restrict deployment branches to exactly
+   `main`, with no tag or wildcard allowance. Verify the actual GitHub policy.
+2. Store `CM_PUBLISHER_APP_ID` and `CM_PUBLISHER_PRIVATE_KEY` only in that
+   Environment. Verify the migration without exposing values; remove any
+   repository/organization-level fallback copies accessible to this repository.
+3. Confirm a non-main run cannot obtain the Environment secrets and record the
+   policy readback. Do not publish a synthetic contract merely to test access.
+4. Retain the Developer repository's independent documentation safety check and
+   normal PR review. No direct push to Developer `main` is authorized.
+
+Referencing an Environment in YAML can create an unprotected Environment; it does
+not provision deployment-branch restrictions or move secrets. Until these external
+steps are verified, INF-01 remains open and publication must not be dispatched.
 
 Required properties:
 - backend source remains canonical under the intended private boundary and the explicitly dated exception above;

@@ -28,7 +28,7 @@ loaded from the existing private environment binding, never a public workflow
 input. There is no Tenant selector, connection, origin, SQL, role or health-state
 input. For the original one-shot workflow, the deployed API SHA must equal the exact observer Main SHA. Frontend
 selection is additionally locked to qualified immutable commit
-`f6359ff537165c5e29fc4884578d92a83ce22be4`; changing that pin requires a reviewed
+`2ddcf3859505fe62a46ac008fb1d6e9059711bbb`; changing that pin requires a reviewed
 source change and renewed pair qualification. An arbitrary branch commit cannot
 execute browser build code before subsequent offline credential allocation.
 
@@ -104,6 +104,19 @@ recovery and real Microsoft365/Exchange acceptance remain separate open work.
 
 ## Bounded recurring INT profile
 
+Selection reconciliation on 2026-10-30 (INF-02): the checked-in selection now
+matches actual live Render receipts `dep-dbibkggu01pc7397eb40` (Customer) and
+`dep-dbibkjnlk1mc73fr97gg` (Platform), both on API
+`ca1f06b5b5181965f7c3aeffdc235aa44c638771` and frontend
+`2ddcf3859505fe62a46ac008fb1d6e9059711bbb`. Receipt completion timestamps are
+normalized to JavaScript millisecond precision. Both public health/status routes
+returned ready, the matching API build and `cm-int-20261021`. Independent sealed
+frontend reconstruction matched both manifest digests in the actual Render build
+logs. These are source/deployment observations, not proof of a database write,
+scheduled event or current UI freshness. The previous selection is superseded,
+not retroactively described as the current deployment. Activation still requires
+the separate observer Main qualification and actual execution receipt below.
+
 `protected-int-runtime-recurring.yml` adds a separately qualified, best-effort
 operating profile. It uses the same collector, credential binding and transactional
 writer; it does not add an HTTP write path, application timer, database role,
@@ -128,6 +141,17 @@ missing qualification or a moved Main. No supplied selection, host, file path,
 Tenant, health status, database selector or signing key is accepted. Clearing the
 variable stops further execution; any Main change also requires renewed acceptance.
 In-flight operations retain the existing bounded transaction/exclusion semantics.
+
+Recurring traffic additionally requires repository variable
+`CM_INT_OBSERVER_SCHEDULE_ENABLED=true`, checked both before runner allocation
+and in the CLI. Missing/empty/false values keep scheduled collection disabled.
+This separates exact-source qualification for one bounded manual observation from
+permission for ongoing traffic. Set the schedule flag only after current workspace
+hours, bandwidth, billing headroom and the existing owner budget are reconciled;
+setting the qualified SHA alone must not reactivate a recurring cost source.
+Clearing this flag stops new scheduled collection without blocking a separately
+qualified owner manual invocation. It does not cancel an already running bounded
+transaction or claim provider-level currency enforcement.
 
 Automatic collection runs every five minutes **only from 09:00 inclusive to 19:00
 exclusive Europe/Berlin**, daily. A UTC cron envelope and a local-time preflight

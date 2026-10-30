@@ -1,9 +1,48 @@
 # Protected INT Render build
 
-Tracking: floriankreutzer/conference-manager#432, INF-04/05. This is a proposed
-versioned replacement for the Dashboard inline build command, not a deployed
-change or a complete Blueprint migration. The legacy render.yaml remains a CI
-dependency and must not be synchronized over the protected INT services.
+Tracking: floriankreutzer/conference-manager#432, INF-04/05. `render.int.yaml`
+describes both existing protected INT services. The legacy `render.yaml` remains
+a separate CI dependency and must not be synchronized over protected INT.
+
+## Blueprint adoption without a release
+
+The existing Blueprint `conference-manager-demo` (`exs-daakihlg1s2s73df6jdg`)
+owns both services and `conference-manager-demo-shared`. At the administration
+readback on 2026-10-30 it uses Main/render.yaml with automatic sync paused.
+Change that Blueprint's path to `render.int.yaml`; do not create a second
+Blueprint or new services. Keep automatic sync paused. Inspect the provider's
+proposed changes before any manual sync; existing resource IDs, Free plans,
+Frankfurt, disabled previews/auto-deploy, origins and readiness paths must match.
+
+The file freezes the actually deployed API `ca1f06b5b5181965f7c3aeffdc235aa44c638771`
+and frontend `2ddcf3859505fe62a46ac008fb1d6e9059711bbb`, including the existing
+literal build guards and clean frontend clone. It intentionally does not activate
+the newer wrapper merely by adopting IaC. Source selection, runtime pins and
+both independently reviewed frontend digests must change together in a separately
+qualified paired release. Do not sync this dated snapshot if another release or
+domain migration has since changed those values; reconcile the file first.
+
+Both artifact digests were independently reproduced and matched to the actual
+Render build logs; they and the public service version are pinned explicitly.
+At 2026-10-30 19:33 UTC the canonical collector also verified every served sealed
+file against those independently rebuilt artifacts and read both public health
+and status endpoints. This read-only in-memory check did not persist an observer
+record, exercise database credentials, or prove recurring freshness.
+Credentials, epochs, provider identity/owner inputs, current Node version/pool
+bounds and participant flag are explicit `sync: false` inputs. These
+are prompts only on initial creation; Render ignores them when updating an
+existing Blueprint, retaining current values. New required inputs must therefore
+be entered separately and verified. Never generate or rotate keys during adoption.
+The legacy group remains owned but unlinked: its existing omitted values survive,
+and forbidden `DEMO_*` inputs must not enter either protected runtime. Verify the
+actual linked-group state before applying; do not detach a live dependency blindly.
+
+The Blueprint provisions no database, worker, disk, paid compute or extra service.
+Independent existing data/provider resources and their restricted credentials are
+operator inputs, not resources to recreate. Dashboard-only workspace billing,
+quotas and private repository credentials remain external administration tasks.
+
+## Qualified build-wrapper activation
 
 Build command after qualification:
 
@@ -42,8 +81,12 @@ Frankfurt, autoDeployTrigger off, the separate protected Customer/Platform start
 commands and their existing readiness paths. Do not introduce duplicate services,
 change domain origins, reset data or activate new presentation capabilities.
 
-The full protected Blueprint remains pending actual configuration/ownership
-reconciliation; this wrapper is only its build component. The observer selection,
+The versioned wrapper remains a candidate until a paired release replaces both
+inline commands and literal source guards in the Blueprint and Dashboard. Keep
+the presentation flags scoped to the build command, as in the captured inline
+command: the runtime deliberately rejects `PROTECTED_PRESENTATION_*` variables.
+Do not add those build-only keys to either service's persistent environment.
+The observer selection,
 both successful deploy receipts, manifest digests and qualified observer SHA must
 be updated together after an actual qualified release. Historical report values
 must not be copied into a new active selection as current evidence.

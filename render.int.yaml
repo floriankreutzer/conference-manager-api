@@ -1,0 +1,199 @@
+# yaml-language-server: $schema=https://render.com/schema/render.yaml.json
+# Existing protected INT resources; adopt only in the current paused Blueprint.
+# Frozen deployed pair from 2026-10-30. See docs/RENDER-PROTECTED-BUILD.md.
+previews:
+  generation: off
+# Preserve ownership of the legacy group without injecting DEMO_* into INT.
+# Existing values are retained when omitted; no key is generated or rotated.
+envVarGroups:
+  - name: conference-manager-demo-shared
+    envVars: []
+services:
+  - type: web
+    name: conference-manager-demo
+    runtime: node
+    plan: free
+    region: frankfurt
+    numInstances: 1
+    repo: https://github.com/floriankreutzer/conference-manager-api
+    branch: main
+    autoDeployTrigger: off
+    previews:
+      generation: off
+    buildCommand: >-
+      test "$(git rev-parse HEAD)" = "ca1f06b5b5181965f7c3aeffdc235aa44c638771" && npm ci --ignore-scripts --no-audit --no-fund && rm -rf .protected-ui-build && git clone --filter=blob:none --no-checkout https://github.com/floriankreutzer/conference-manager.git .protected-ui-build && git -C .protected-ui-build fetch --depth=1 origin 2ddcf3859505fe62a46ac008fb1d6e9059711bbb && git -C .protected-ui-build checkout --detach 2ddcf3859505fe62a46ac008fb1d6e9059711bbb && npm --prefix .protected-ui-build ci --include=dev --ignore-scripts --no-audit --no-fund && protected_api_root="$PWD" && cd .protected-ui-build && PROTECTED_API_COMMIT=ca1f06b5b5181965f7c3aeffdc235aa44c638771 PROTECTED_FRONTEND_COMMIT=2ddcf3859505fe62a46ac008fb1d6e9059711bbb PROTECTED_ENVIRONMENT=int PROTECTED_CUSTOMER_ORIGIN=https://conference-manager-demo.onrender.com PROTECTED_PLATFORM_ORIGIN=https://conference-manager-ops-demo.onrender.com PROTECTED_SYNTHETIC_ENABLED=true PROTECTED_PRESENTATION_MICROSOFT_ENABLED=true PROTECTED_PRESENTATION_INVITATIONS_ENABLED=true PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED=true node scripts/build-protected-frontend.mjs "$protected_api_root/.protected-frontend"
+    startCommand: npm run start:protected:customer
+    healthCheckPath: /api/v1/health/ready
+    envVars:
+      - key: NODE_VERSION
+        sync: false
+      - key: NODE_ENV
+        value: "production"
+      - key: PROTECTED_ENVIRONMENT
+        value: "int"
+      - key: PROTECTED_API_COMMIT
+        value: "ca1f06b5b5181965f7c3aeffdc235aa44c638771"
+      - key: PROTECTED_FRONTEND_COMMIT
+        value: "2ddcf3859505fe62a46ac008fb1d6e9059711bbb"
+      - key: PROTECTED_CUSTOMER_ORIGIN
+        value: "https://conference-manager-demo.onrender.com"
+      - key: PROTECTED_PLATFORM_ORIGIN
+        value: "https://conference-manager-ops-demo.onrender.com"
+      - key: PROTECTED_DATABASE_SSL
+        value: "verify-full"
+      - key: PROTECTED_SYNTHETIC_ENABLED
+        value: "true"
+      - key: PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED
+        value: "true"
+      - key: PROTECTED_HOSTED_FRONTEND_ENABLED
+        value: "true"
+      # Operator-owned values: creation prompts only; existing values preserved.
+      - key: PROTECTED_SECURITY_EPOCH
+        sync: false
+      - key: PROTECTED_PLATFORM_SECURITY_EPOCH
+        sync: false
+      - key: PROTECTED_CUSTODY_ACTIVE_KEY_ID
+        sync: false
+      - key: PROTECTED_CUSTODY_KEYRING
+        sync: false
+      - key: PROTECTED_CUSTODY_LOOKUP_SECRET
+        sync: false
+      - key: PROTECTED_TENANT_AUDIT_HMAC_SECRET
+        sync: false
+      - key: PROTECTED_HANDOFF_SECRET
+        sync: false
+      - key: PROTECTED_OWNER_HANDOFF_SECRET
+        sync: false
+      - key: PROTECTED_PEER_ENTRA_CLIENT_ID
+        sync: false
+      - key: PROTECTED_SERVICE_VERSION
+        value: "cm-int-20261021"
+      - key: PROTECTED_HOSTED_FRONTEND_SHA256
+        value: "03b12e5466f3f396f9476e4731a3ef3eec799e355a4fa78e6cd02dfc01d2a241"
+      - key: PROTECTED_DATABASE_POOL_MAX
+        sync: false
+      - key: PROTECTED_LEASE_POOL_MAX
+        sync: false
+      - key: PROTECTED_SYNTHETIC_PARTICIPANTS_ENABLED
+        sync: false
+      - key: PROTECTED_CUSTOMER_CSRF_SECRET
+        sync: false
+      - key: PROTECTED_CUSTOMER_DATABASE_URL
+        sync: false
+      - key: PROTECTED_CUSTOMER_EMAIL_CODE_SECRET
+        sync: false
+      - key: PROTECTED_CUSTOMER_EMAIL_FLOW_SECRET
+        sync: false
+      - key: PROTECTED_CUSTOMER_EMAIL_SOURCE_SECRET
+        sync: false
+      - key: PROTECTED_CUSTOMER_MICROSOFT_FLOW_SECRET
+        sync: false
+      - key: PROTECTED_CUSTOMER_ENTRA_CLIENT_ID
+        sync: false
+      - key: PROTECTED_CUSTOMER_ENTRA_CLIENT_SECRET
+        sync: false
+      - key: PROTECTED_CUSTOMER_MAIL_API_KEY
+        sync: false
+      - key: PROTECTED_CUSTOMER_MAIL_SENDER
+        sync: false
+      - key: PROTECTED_CUSTOMER_PORT
+        sync: false
+  - type: web
+    name: conference-manager-ops-demo
+    runtime: node
+    plan: free
+    region: frankfurt
+    numInstances: 1
+    repo: https://github.com/floriankreutzer/conference-manager-api
+    branch: main
+    autoDeployTrigger: off
+    previews:
+      generation: off
+    buildCommand: >-
+      test "$(git rev-parse HEAD)" = "ca1f06b5b5181965f7c3aeffdc235aa44c638771" && npm ci --ignore-scripts --no-audit --no-fund && rm -rf .protected-ui-build && git clone --filter=blob:none --no-checkout https://github.com/floriankreutzer/conference-manager.git .protected-ui-build && git -C .protected-ui-build fetch --depth=1 origin 2ddcf3859505fe62a46ac008fb1d6e9059711bbb && git -C .protected-ui-build checkout --detach 2ddcf3859505fe62a46ac008fb1d6e9059711bbb && npm --prefix .protected-ui-build ci --include=dev --ignore-scripts --no-audit --no-fund && protected_api_root="$PWD" && cd .protected-ui-build && PROTECTED_API_COMMIT=ca1f06b5b5181965f7c3aeffdc235aa44c638771 PROTECTED_FRONTEND_COMMIT=2ddcf3859505fe62a46ac008fb1d6e9059711bbb PROTECTED_ENVIRONMENT=int PROTECTED_CUSTOMER_ORIGIN=https://conference-manager-demo.onrender.com PROTECTED_PLATFORM_ORIGIN=https://conference-manager-ops-demo.onrender.com PROTECTED_SYNTHETIC_ENABLED=true PROTECTED_PRESENTATION_MICROSOFT_ENABLED=true PROTECTED_PRESENTATION_INVITATIONS_ENABLED=true PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED=true node scripts/build-protected-frontend.mjs "$protected_api_root/.protected-frontend"
+    startCommand: npm run start:protected:platform
+    healthCheckPath: /api/v1/platform/health/ready
+    envVars:
+      - key: NODE_VERSION
+        sync: false
+      - key: NODE_ENV
+        value: "production"
+      - key: PROTECTED_ENVIRONMENT
+        value: "int"
+      - key: PROTECTED_API_COMMIT
+        value: "ca1f06b5b5181965f7c3aeffdc235aa44c638771"
+      - key: PROTECTED_FRONTEND_COMMIT
+        value: "2ddcf3859505fe62a46ac008fb1d6e9059711bbb"
+      - key: PROTECTED_CUSTOMER_ORIGIN
+        value: "https://conference-manager-demo.onrender.com"
+      - key: PROTECTED_PLATFORM_ORIGIN
+        value: "https://conference-manager-ops-demo.onrender.com"
+      - key: PROTECTED_DATABASE_SSL
+        value: "verify-full"
+      - key: PROTECTED_SYNTHETIC_ENABLED
+        value: "true"
+      - key: PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED
+        value: "true"
+      - key: PROTECTED_HOSTED_FRONTEND_ENABLED
+        value: "true"
+      # Operator-owned values: creation prompts only; existing values preserved.
+      - key: PROTECTED_SECURITY_EPOCH
+        sync: false
+      - key: PROTECTED_PLATFORM_SECURITY_EPOCH
+        sync: false
+      - key: PROTECTED_CUSTODY_ACTIVE_KEY_ID
+        sync: false
+      - key: PROTECTED_CUSTODY_KEYRING
+        sync: false
+      - key: PROTECTED_CUSTODY_LOOKUP_SECRET
+        sync: false
+      - key: PROTECTED_TENANT_AUDIT_HMAC_SECRET
+        sync: false
+      - key: PROTECTED_HANDOFF_SECRET
+        sync: false
+      - key: PROTECTED_OWNER_HANDOFF_SECRET
+        sync: false
+      - key: PROTECTED_PEER_ENTRA_CLIENT_ID
+        sync: false
+      - key: PROTECTED_SERVICE_VERSION
+        value: "cm-int-20261021"
+      - key: PROTECTED_HOSTED_FRONTEND_SHA256
+        value: "a244f1fb678ef7a145aa399bea4be7d8cae99a0a9e1b1bbae98effca551c4965"
+      - key: PROTECTED_DATABASE_POOL_MAX
+        sync: false
+      - key: PROTECTED_LEASE_POOL_MAX
+        sync: false
+      - key: PROTECTED_SYNTHETIC_PARTICIPANTS_ENABLED
+        sync: false
+      - key: PROTECTED_PLATFORM_ASSURANCE_MODE
+        sync: false
+      - key: PROTECTED_PLATFORM_AUDIT_HMAC_SECRET
+        sync: false
+      - key: PROTECTED_PLATFORM_AUDIT_SEGMENT_ID
+        sync: false
+      - key: PROTECTED_PLATFORM_CSRF_SECRET
+        sync: false
+      - key: PROTECTED_PLATFORM_CURSOR_SECRET
+        sync: false
+      - key: PROTECTED_PLATFORM_DATABASE_URL
+        sync: false
+      - key: PROTECTED_PLATFORM_ENTRA_CLIENT_ID
+        sync: false
+      - key: PROTECTED_PLATFORM_ENTRA_CLIENT_SECRET
+        sync: false
+      - key: PROTECTED_PLATFORM_ENTRA_TENANT_ID
+        sync: false
+      - key: PROTECTED_PLATFORM_HANDOFF_INTENT_SECRET
+        sync: false
+      - key: PROTECTED_PLATFORM_OIDC_TRANSACTION_SECRET
+        sync: false
+      - key: PROTECTED_PLATFORM_OWNER_HANDOFF_INTENT_SECRET
+        sync: false
+      - key: PROTECTED_PLATFORM_OWNER_LOCALE
+        sync: false
+      - key: PROTECTED_PLATFORM_OWNER_RECIPIENT
+        sync: false
+      - key: PROTECTED_PLATFORM_PORT
+        sync: false
+      - key: PROTECTED_PLATFORM_PROVIDER_USAGE_SNAPSHOT
+        sync: false

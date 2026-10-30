@@ -1,22 +1,22 @@
 {
   "environment": "int",
-  "deployedSourceCommit": "cfc591c0164ea3e5902ad3318df1b8e21b9c6d93",
-  "frontendCommit": "f6359ff537165c5e29fc4884578d92a83ce22be4",
+  "deployedSourceCommit": "ca1f06b5b5181965f7c3aeffdc235aa44c638771",
+  "frontendCommit": "2ddcf3859505fe62a46ac008fb1d6e9059711bbb",
   "serviceVersion": "cm-int-20261021",
   "customer": {
-    "deploymentReference": "dep-dbhean0473hc739onvug",
-    "deployedAt": "2026-10-29T06:20:01.211Z",
-    "frontendSha256": "d04f8577b7337edbd024348f3b4221da11d1ebca323dd972133bc0285855a097"
+    "deploymentReference": "dep-dbibkggu01pc7397eb40",
+    "deployedAt": "2026-10-30T15:40:50.577Z",
+    "frontendSha256": "03b12e5466f3f396f9476e4731a3ef3eec799e355a4fa78e6cd02dfc01d2a241"
   },
   "platform": {
-    "deploymentReference": "dep-dbhealmc6qcc73f6juo0",
-    "deployedAt": "2026-10-29T06:20:12.425Z",
-    "frontendSha256": "0f684f7678983ab1f8af4653b48cfda8dd5523618a0c950f03b1441fcb3e9d26"
+    "deploymentReference": "dep-dbibkjnlk1mc73fr97gg",
+    "deployedAt": "2026-10-30T15:40:57.924Z",
+    "frontendSha256": "a244f1fb678ef7a145aa399bea4be7d8cae99a0a9e1b1bbae98effca551c4965"
   },
   "evidence": {
-    "release": "github:conference-manager-api/commit/cfc591c0164ea3e5902ad3318df1b8e21b9c6d93",
-    "change": "github:conference-manager-api/pull/349",
+    "release": "github:conference-manager-api/commit/ca1f06b5b5181965f7c3aeffdc235aa44c638771",
+    "change": "github:conference-manager-api/pull/352",
     "rollback": null,
-    "runbook": "git:conference-manager-api/cfc591c0164ea3e5902ad3318df1b8e21b9c6d93/docs/PROTECTED-RUNTIME-OBSERVATION.md"
+    "runbook": "git:conference-manager-api/ca1f06b5b5181965f7c3aeffdc235aa44c638771/docs/PROTECTED-RUNTIME-OBSERVATION.md"
   }
 }
