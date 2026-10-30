@@ -315,6 +315,15 @@ test('Platform metering PostgreSQL ledger, reconciliation and quota invariants',
       periodEnd: currentPeriodEnd,
     });
     assert.equal(unreadySnapshot.dataState, 'partial');
+    assert.equal(unreadySnapshot.values.active_users, readySnapshot.values.active_users);
+    assert.equal(unreadySnapshot.values.active_rooms, readySnapshot.values.active_rooms);
+    for (const dimension of ['requests_created','bookings_confirmed','integration_operations']) {
+      assert.equal(unreadySnapshot.values[dimension], null);
+    }
+    const old = await unready.readPeriod({ tenantId: TENANT_A,
+      periodStart: '2020-01-01T00:00:00.000Z', periodEnd: '2020-02-01T00:00:00.000Z' });
+    assert.equal(old.dataState, 'unknown');assert.equal(old.measuredAt, null);assert.equal(old.eventWatermark, null);
+    assert.ok(Object.values(old.values).every(value => value === null));
     await assert.rejects(
       ready.readPeriod({
         tenantId: 'a7777777-7777-4777-8777-777777777777',

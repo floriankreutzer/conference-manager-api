@@ -12,7 +12,7 @@ const PREFIX='PROTECTED_PLATFORM_';
 const KEYS=['ENTRA_TENANT_ID','ENTRA_CLIENT_ID','ENTRA_CLIENT_SECRET','OIDC_TRANSACTION_SECRET','CSRF_SECRET',
   'AUDIT_HMAC_SECRET','CURSOR_SECRET','PASSKEY_TRANSACTION_SECRET','ASSURANCE_MODE','OWNER_RECIPIENT','OWNER_LOCALE',
   'MINIMUM_PASSKEYS','SESSION_TTL_SECONDS','HOST','PORT','HANDOFF_INTENT_SECRET','OWNER_HANDOFF_INTENT_SECRET','AUDIT_SEGMENT_ID',
-  'PROVIDER_USAGE_SNAPSHOT','PRODUCT_DELIVERY_SNAPSHOT'];
+  'PROVIDER_USAGE_SNAPSHOT','PRODUCT_DELIVERY_SNAPSHOT','PRODUCT_RUNTIME_SNAPSHOT'];
 const fail=code=>{ throw new TypeError(`PROTECTED_PLATFORM_CONFIG_${code}`); };
 function read(env,key,optional=false) {
   if (optional && !Object.hasOwn(env,key)) return undefined;
@@ -68,8 +68,10 @@ export function loadProtectedPlatformConfiguration(env) {
   const host=optional('HOST') ?? '0.0.0.0';if (!['0.0.0.0','127.0.0.1','::'].includes(host)) fail('HOST_INVALID');
   let ownerRecipient;try { ownerRecipient=normalizeInvitationRecipient(own('OWNER_RECIPIENT')); } catch { fail('OWNER_REQUIRED'); }
   const ownerLocale=optional('OWNER_LOCALE') ?? 'de';if (!['de','en'].includes(ownerLocale)) fail('OWNER_LOCALE_INVALID');
+  if (optional('PRODUCT_RUNTIME_SNAPSHOT') !== undefined && profile.environment !== 'int') fail('INSIGHT_ENVIRONMENT_INVALID');
   const insightSources=loadProtectedPlatformInsightSnapshots({ providerSnapshot: optional('PROVIDER_USAGE_SNAPSHOT'),
-    productSnapshot: optional('PRODUCT_DELIVERY_SNAPSHOT'),accessMode: microsoftMfa ? 'microsoft_mfa' : 'application_passkey' });
+    productSnapshot: optional('PRODUCT_DELIVERY_SNAPSHOT'),runtimeProductSnapshot: optional('PRODUCT_RUNTIME_SNAPSHOT'),
+    securityEpoch: profile.securityEpoch,accessMode: microsoftMfa ? 'microsoft_mfa' : 'application_passkey' });
   const authenticationEnvironment=Object.freeze({ NODE_ENV: 'production',PLATFORM_PUBLIC_ORIGIN: profile.platformOrigin,
     PUBLIC_ORIGIN: profile.customerOrigin,ENTRA_CLIENT_ID: peer,PLATFORM_ENTRA_CLIENT_ID: clientId,
     PLATFORM_ENTRA_TENANT_ID: tenantId,PLATFORM_ENTRA_CLIENT_SECRET: values.entraClientSecret,

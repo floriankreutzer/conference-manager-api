@@ -5,6 +5,8 @@ try {
   const report=inspectProtectedInsightReadiness({
     providerSnapshot: process.env.PROTECTED_PLATFORM_PROVIDER_USAGE_SNAPSHOT,
     productSnapshot: process.env.PROTECTED_PLATFORM_PRODUCT_DELIVERY_SNAPSHOT,
+    runtimeProductSnapshot: process.env.PROTECTED_PLATFORM_PRODUCT_RUNTIME_SNAPSHOT,
+    securityEpoch: process.env.PROTECTED_OBSERVATION_SECURITY_EPOCH,
   });
   process.stdout.write(`${JSON.stringify(report)}\n`);
   if (report.state!=='ready') process.exitCode=2;

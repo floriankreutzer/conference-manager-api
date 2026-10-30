@@ -18,10 +18,11 @@ export function createPlatformInsightRoutes(service) {
       return async ({ path, parsedUrl, request, response, requestId }) => {
         const entry = PATHS.get(path); if (!entry) return null;
         if (request.method !== 'GET') throw new PlatformHttpError(405, 'PLATFORM_METHOD_NOT_ALLOWED');
-        assertPlatformNoQuery(parsedUrl);
+        const version2 = entry.kind === 'product-delivery' && parsedUrl.search === '?schemaVersion=2';
+        if (!version2) assertPlatformNoQuery(parsedUrl);
         const operatorContext = await platformPrincipalGuard.require(request, { correlationId: requestId });
         await assertNoPlatformRequestBody(request);
-        const report = service.read({ operatorContext, kind: entry.kind });
+        const report = service.read({ operatorContext, kind: entry.kind, ...(version2 ? { schemaVersion: 2 } : {}) });
         if (report === null) throw new PlatformHttpError(503, 'PLATFORM_INSIGHT_SOURCE_UNAVAILABLE');
         sendPlatformJson(response, 200, report, maxResponseBytes); return 200;
       };

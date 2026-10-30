@@ -213,3 +213,10 @@ Remaining integration outside this module:
   then and only then change `counterProducersReady` from `false` to `true`;
 - Platform HTTP/UI integration through the isolated Platform session and API boundary;
 - Demo fixtures and operational evidence.
+
+
+Missing counter producers are not measured zeroes. The authoritative source keeps
+all three event dimensions null until producer readiness is qualified, even if an
+empty ledger returns SQL COUNT=0. Current gauges can remain measured independently.
+A historical period without historical gauges and qualified counters is unknown,
+with no measurement or event-watermark clock; it cannot appear partially measured.

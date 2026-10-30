@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { isInternalUuid } from '../domain/identifiers.js';
+import { normalizeRuntimeProductReport } from './product-runtime-contract.js';
 import { loadProviderUsageSnapshot } from './provider-usage-snapshot.js';
 import { DAY_MS, normalizeProductDeliverySnapshot, productInstant } from './product-delivery-contract.js';
 import { uncollectedProductDeliveryReport } from './product-delivery-report.js';
@@ -9,14 +12,30 @@ function parse(raw) {
 }
 // Private, precompiled aggregates only. No provider credentials, network or
 // Tenant records enter this source. Missing observations remain unknown.
-export function loadProtectedPlatformInsightSnapshots({ providerSnapshot, productSnapshot, accessMode = 'application_passkey' } = {}) {
+export function loadProtectedPlatformInsightSnapshots({ providerSnapshot, productSnapshot, runtimeProductSnapshot,
+  securityEpoch, accessMode = 'application_passkey' } = {}) {
   const provider = loadProviderUsageSnapshot(providerSnapshot, { accessMode });
   let product = null;
+  let runtimeProduct = runtimeProductSnapshot === undefined ? null : normalizeRuntimeProductReport(parse(runtimeProductSnapshot),
+    { environment: 'production', accessMode: 'application_passkey' });
+  if (runtimeProduct && (runtimeProduct.environment !== 'production' || !isInternalUuid(securityEpoch)
+    || runtimeProduct.sourceContext.securityEpochDigest !== createHash('sha256')
+      .update(JSON.stringify(securityEpoch)).digest('hex'))) invalid();
   if (productSnapshot !== undefined) {
     product = normalizeProductDeliverySnapshot(parse(productSnapshot));
     if (product.environment !== 'production' || product.provenance.mode !== 'operator_extract') invalid();
   }
   return Object.freeze({
+    readRuntimeProduct(now) {
+      if (!Number.isSafeInteger(now)) invalid();
+      if (runtimeProduct === null) return null;
+      const age = now - productInstant(runtimeProduct.observedAt);
+      if (age < 0) invalid();
+      if (age >= 30 * DAY_MS) { runtimeProduct = null; return null; }
+      return normalizeRuntimeProductReport({ ...runtimeProduct, accessMode,
+        evaluatedAt: new Date(now).toISOString(), freshness: age >= DAY_MS ? 'stale' : 'fresh' },
+      { environment: 'production', accessMode });
+    },
     readProvider(now) {
       if (!Number.isSafeInteger(now)) invalid();
       if (provider === null) return null;

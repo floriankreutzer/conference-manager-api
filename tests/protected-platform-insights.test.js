@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
+import { compileRuntimeProductReport } from '../src/observability/product-runtime-report.js';
 import { Readable } from 'node:stream';
 import { loadProtectedPlatformInsightSnapshots } from '../src/observability/platform-insight-snapshots.js';
 import { createPlatformInsightService } from '../src/platform/application/insight-service.js';
@@ -82,6 +84,12 @@ test('protected insight routes authenticate fixed GETs and reject unsupported me
   const path = '/api/v1/platform/insights/product-delivery';
   assert.equal((await invoke(path)).payload.accessMode, 'application_passkey');
   assert.equal(authenticated, 1);
+  const bundle = (await invoke(path, 'GET', '', '?schemaVersion=2')).payload;
+  assert.equal(bundle.schemaVersion, 2);assert.equal(bundle.runtimeProduct, null);
+  assert.equal(bundle.storedReport.environment, 'production');
+  for (const query of ['?schemaVersion=3','?schemaVersion=2&schemaVersion=2','?schemaVersion=2&tenant=foreign']) {
+    await assert.rejects(invoke(path, 'GET', '', query), error => error.statusCode === 400);
+  }
   await assert.rejects(invoke(path, 'POST'), error => error.statusCode === 405);
   await assert.rejects(invoke(path, 'GET', '', '?tenantId=foreign'), error => error.statusCode === 400);
   await assert.rejects(invoke(path, 'GET', '{}'), error => error.statusCode === 400);
@@ -91,4 +99,27 @@ test('protected insight routes authenticate fixed GETs and reject unsupported me
   } });
   await assert.rejects(denied({ path, request: { method: 'GET' }, parsedUrl: new URL(path, 'https://ops.example.test') }));
   assert.equal(module.claim({ path: '/api/v1/platform/demo/product-delivery' }), null);
+});
+
+
+test('protected Product read keeps capture time, expiry and active epoch separate from the read clock', () => {
+  const securityEpoch = '11111111-1111-4111-8111-111111111111';
+  const report = compileRuntimeProductReport({ observedAt: new Date(NOW).toISOString(),
+    sourceEpoch: 'source', epochStartedAt: new Date(NOW - 1000).toISOString(),
+    environment: 'production', accessMode: 'application_passkey',
+    sourceContext: { runtimeEnvironment: 'int', dataProfile: 'synthetic',
+      securityEpochDigest: createHash('sha256').update(JSON.stringify(securityEpoch)).digest('hex') },
+    tenant: { state: 'available', events: [] }, platform: { state: 'available', events: [] },
+    revisions: { state: 'available', rows: [] } });
+  const options = { runtimeProductSnapshot: JSON.stringify(report), securityEpoch, accessMode: 'microsoft_mfa' };
+  const sources = loadProtectedPlatformInsightSnapshots(options);
+  const current = sources.readRuntimeProduct(NOW + 1000);
+  assert.equal(current.accessMode, 'microsoft_mfa');assert.equal(current.observedAt, report.observedAt);
+  assert.equal(current.evaluatedAt, new Date(NOW + 1000).toISOString());
+  assert.equal(sources.readRuntimeProduct(NOW + 86400000).freshness, 'stale');
+  assert.throws(() => sources.readRuntimeProduct(NOW - 1));
+  assert.equal(sources.readRuntimeProduct(NOW + 30 * 86400000), null);
+  assert.throws(() => loadProtectedPlatformInsightSnapshots({ ...options,
+    securityEpoch: '22222222-2222-4222-8222-222222222222' }));
+  assert.throws(() => loadProtectedPlatformInsightSnapshots({ runtimeProductSnapshot: JSON.stringify(report) }));
 });
