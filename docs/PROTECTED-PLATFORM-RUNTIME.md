@@ -69,6 +69,17 @@ Customer session issuance, offline enrollment-grant INSERT and private marker/
 maintenance execution stay denied. No schema or actual role installation is
 performed by process construction/startup.
 
+Recovery target discovery is a sensitive GET, including last-administrator,
+room-mapping and user-session target lists. The existing exact-operation route
+wrapper covers these reads in both Microsoft MFA and application-passkey modes.
+An ordinary MFA session receives the existing proof challenge before target
+discovery runs. The one-use proof binds the original customer, operation and
+pagination query; existing CSRF, permission, target, audit and response controls
+still execute. Listing targets does not preview or execute a recovery and does
+not issue reusable elevated browser authority. Route tests cover all three list
+families, CSRF, query/customer/operation swaps, replay and original validation.
+These tests do not prove a new live Microsoft confirmation or deployed rollout.
+
 Seven focused cases cover three environments, setup/opt-in construction, closed
 ports, refused configuration, unavailable actual loopback database/concurrent
 stop and ownership isolation. The new native case is prepared for exact-source
