@@ -14,9 +14,9 @@
     "frontendSha256": "a244f1fb678ef7a145aa399bea4be7d8cae99a0a9e1b1bbae98effca551c4965"
   },
   "evidence": {
-    "release": "github:conference-manager-api/commit/ca1f06b5b5181965f7c3aeffdc235aa44c638771",
-    "change": "github:conference-manager-api/pull/352",
+    "release": "github:conference-manager/issues/419",
+    "change": "github:conference-manager/pull/425",
     "rollback": null,
-    "runbook": "git:conference-manager-api/ca1f06b5b5181965f7c3aeffdc235aa44c638771/docs/PROTECTED-RUNTIME-OBSERVATION.md"
+    "runbook": "git:conference-manager-api/e0c8367e572f19ad6c44c9cfd6c127de504ad4ef/docs/PROTECTED-RUNTIME-OBSERVATION.md"
   }
 }

@@ -142,6 +142,14 @@ Tenant, health status, database selector or signing key is accepted. Clearing th
 variable stops further execution; any Main change also requires renewed acceptance.
 In-flight operations retain the existing bounded transaction/exclusion semantics.
 
+Main now includes the service-identity migration 075 from API PR359. The observer
+verifies the complete current migration ledger before writing; matching public
+bytes and deployment receipts alone cannot qualify that database prerequisite.
+Confirm the canonical live migration and its coordinated release acceptance before
+activating this newer observer. This infrastructure change does not execute a
+migration or relax the ledger check. Reconcile the fixed selection again if that
+release replaces either deployed source or receipt.
+
 Recurring traffic additionally requires repository variable
 `CM_INT_OBSERVER_SCHEDULE_ENABLED=true`, checked both before runner allocation
 and in the CLI. Missing/empty/false values keep scheduled collection disabled.
@@ -189,3 +197,30 @@ not proof that a cron event ran. Verify observation timestamps, both deployments
 three current-generation Customer mappings and unchanged Demo business baseline
 after operating execution. No invitation, email receipt or real-tenant issue is
 closed by this runtime-only change.
+
+
+## QA-10 reconciliation candidate — 30 October 2026
+
+The fixed recurring selection is reconciled to the successful existing-service
+receipts recorded in frontend issues #113 and #419: API `ca1f06b5b5181965f7c3aeffdc235aa44c638771`
+and frontend `2ddcf3859505fe62a46ac008fb1d6e9059711bbb`. The Customer and Platform
+manifest digests and deployment IDs come from those receipts; receipt timestamps
+are normalized to the existing millisecond contract. They are deployment times,
+not newly collected observation times. The deployed API and qualified observer
+source deliberately remain separate identities.
+
+This is a **draft reconciliation for that exact pair**, not collector activation.
+The separate Recovery rollout tracked by frontend #426/#400 may supersede the pair.
+Before accepting this selection, reconcile it again against the final successful
+paired rollout receipts if that happens. Never infer deployed identities from Main.
+Require normal candidate and independent Main qualification, then bind the existing
+qualified-SHA variable to that accepted observer source. Only an actual successful
+collection and independent readback can establish a new observation; a later
+`schedule` event is separately required to prove recurring execution.
+
+The five-minute freshness contract, 09:00–19:00 Europe/Berlin window, exact fixed
+origins, all-byte evidence checks, shared exclusion, role/epoch custody and
+zero-additional-cost boundary remain unchanged. No workflow dispatch, variable,
+credential, grant, service, plan or deployment is changed by this source patch.
+Provider subscription collection and Product/Feedback source activation are
+separate from this runtime collector (see `PROTECTED-PLATFORM-INSIGHTS.md`).

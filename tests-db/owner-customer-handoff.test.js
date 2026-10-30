@@ -38,6 +38,7 @@ test('native designated owner REAL handoff creates only own identity, preserves 
   });
   await migrateUp(pool);
   const prior=(await pool.query('SELECT version,checksum FROM schema_migrations WHERE version<=71 ORDER BY version')).rows;
+  assert.equal(await rollbackLatest(pool),true); // Empty service identity075 before unchanged074/older guards.
   assert.equal(await rollbackLatest(pool),true); // Function-only074 before unchanged073/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty073 before the original empty072 rollback.
   assert.equal(await rollbackLatest(pool),true);await migrateUp(pool);
@@ -155,6 +156,7 @@ test('native designated owner REAL handoff creates only own identity, preserves 
     `UPDATE sessions SET roles=ARRAY['employee'] WHERE id='${previous.principal.session.id}'`]) {
     await assert.rejects(pool.query(sql));
   }
+  assert.equal(await rollbackLatest(pool),true); // Empty service identity075 before unchanged074/older guards.
   assert.equal(await rollbackLatest(pool),true); // Function-only074 before unchanged073/older rollback assertions.
   assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged populated072 recovery guard.
   await assert.rejects(rollbackLatest(pool),/OWNER_CUSTOMER_HISTORY_REQUIRES_VERIFIED_RECOVERY/);
