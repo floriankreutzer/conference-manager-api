@@ -10,7 +10,8 @@ export function requireRecurringRuntimeObservationContext(env) {
     || !/^[a-f0-9]{40}$/.test(env.GITHUB_SHA || '') || env.QUALIFIED_OBSERVER_SHA !== env.GITHUB_SHA
     || env.GITHUB_WORKFLOW_REF !== `${repository}/.github/workflows/protected-int-runtime-recurring.yml@refs/heads/main`
     || !['schedule', 'workflow_dispatch'].includes(env.GITHUB_EVENT_NAME)
-    || (env.GITHUB_EVENT_NAME === 'schedule' ? env.OBSERVATION_SCHEDULE !== RECURRING_OBSERVATION_CRON
+    || (env.GITHUB_EVENT_NAME === 'schedule' ? (env.OBSERVATION_SCHEDULE !== RECURRING_OBSERVATION_CRON
+      || env.OBSERVATION_SCHEDULE_ENABLED !== 'true')
       : env.EXPECTED_MAIN_SHA !== env.GITHUB_SHA)
     || [env.RUNNER_DEBUG, env.ACTIONS_STEP_DEBUG, env.ACTIONS_RUNNER_DEBUG, env.NODE_OPTIONS].some(Boolean)) {
     refuseRuntimeObservation();
