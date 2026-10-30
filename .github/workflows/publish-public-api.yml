@@ -11,9 +11,21 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: publish-public-api
+  cancel-in-progress: false
+
 jobs:
   publish:
+    if: >-
+      github.repository == 'floriankreutzer/conference-manager-api' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == 'floriankreutzer' &&
+      github.triggering_actor == 'floriankreutzer'
+    environment:
+      name: public-api-publication
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout immutable backend source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
