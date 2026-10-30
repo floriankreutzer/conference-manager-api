@@ -8,6 +8,26 @@ import { test } from 'node:test';
 
 const script = path.resolve('scripts/prepare-public-api-publication.mjs');
 
+test('publisher requires the canonical owner main environment before any secret-bearing step', async () => {
+  const workflow = await readFile('.github/workflows/publish-public-api.yml', 'utf8');
+  const job = workflow.split('\n  publish:\n')[1];
+  assert.ok(job);
+  const policy = job.split('    steps:')[0];
+  for (const condition of [
+    "github.repository == 'floriankreutzer/conference-manager-api'",
+    "github.ref == 'refs/heads/main'",
+    "github.actor == 'floriankreutzer'",
+    "github.triggering_actor == 'floriankreutzer'",
+  ]) assert.ok(policy.includes(condition));
+  assert.doesNotMatch(policy, /\|\|/);
+  assert.match(policy, /environment:\s+name: public-api-publication/);
+  assert.match(policy, /timeout-minutes: 10/);
+  assert.match(workflow, /concurrency:\s+group: publish-public-api\s+cancel-in-progress: false/);
+  assert.ok(job.indexOf('Prepare allowlisted public artifact') < job.indexOf('Create short-lived publisher token'));
+  assert.match(job, /repositories: conference-manager-developer\s+permission-contents: write\s+permission-pull-requests: write/);
+  assert.doesNotMatch(workflow, /pull_request_target:|continue-on-error:/);
+});
+
 function artifactDigest(files) {
   const canonical = Object.entries(files)
     .sort(([left], [right]) => left.localeCompare(right))

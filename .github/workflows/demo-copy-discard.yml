@@ -40,8 +40,11 @@ concurrency:
 jobs:
   operator:
     if: >-
+      github.repository == 'floriankreutzer/conference-manager-api' &&
       github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
       github.actor == 'floriankreutzer' && github.triggering_actor == 'floriankreutzer' && github.run_attempt == 1
+    environment:
+      name: live-media-operator
     runs-on: ubuntu-latest
     timeout-minutes: 8
     env:

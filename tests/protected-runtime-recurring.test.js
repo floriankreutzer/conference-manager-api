@@ -14,7 +14,8 @@ function context(event = 'schedule') {
     GITHUB_ACTOR: 'floriankreutzer', GITHUB_TRIGGERING_ACTOR: 'floriankreutzer', GITHUB_RUN_ATTEMPT: '1',
     GITHUB_SHA: source, QUALIFIED_OBSERVER_SHA: source, OBSERVATION_REPOSITORY_PRIVATE: 'false',
     GITHUB_WORKFLOW_REF: 'floriankreutzer/conference-manager-api/.github/workflows/protected-int-runtime-recurring.yml@refs/heads/main',
-    GITHUB_EVENT_NAME: event, OBSERVATION_SCHEDULE: RECURRING_OBSERVATION_CRON, EXPECTED_MAIN_SHA: source };
+    GITHUB_EVENT_NAME: event, OBSERVATION_SCHEDULE: RECURRING_OBSERVATION_CRON,
+    OBSERVATION_SCHEDULE_ENABLED: 'true', EXPECTED_MAIN_SHA: source };
 }
 
 test('recurring observation accepts only exact qualified public owner Main and explicit event authority', () => {
@@ -26,11 +27,21 @@ test('recurring observation accepts only exact qualified public owner Main and e
     { OBSERVATION_REPOSITORY_PRIVATE: 'true' }, { OBSERVATION_REPOSITORY_PRIVATE: undefined },
     { GITHUB_WORKFLOW_REF: context().GITHUB_WORKFLOW_REF.replace('@refs/heads/main', '@refs/heads/candidate') },
     { GITHUB_EVENT_NAME: 'pull_request_target' }, { OBSERVATION_SCHEDULE: '* * * * *' },
+    { OBSERVATION_SCHEDULE_ENABLED: undefined }, { OBSERVATION_SCHEDULE_ENABLED: 'false' },
+    { OBSERVATION_SCHEDULE_ENABLED: 'yes' },
     { RUNNER_DEBUG: '1' }, { ACTIONS_STEP_DEBUG: 'true' }, { ACTIONS_RUNNER_DEBUG: 'true' }, { NODE_OPTIONS: '--inspect' }]) {
     assert.throws(() => requireRecurringRuntimeObservationContext({ ...context(), ...delta }), /OBSERVATION_REFUSED/);
   }
   assert.throws(() => requireRecurringRuntimeObservationContext({ ...context('workflow_dispatch'),
     EXPECTED_MAIN_SHA: 'c'.repeat(40) }), /OBSERVATION_REFUSED/);
+});
+
+test('a qualified bounded manual observation does not enable recurring traffic', () => {
+  for (const enabled of [undefined, '', 'false']) {
+    assert.doesNotThrow(() => requireRecurringRuntimeObservationContext({
+      ...context('workflow_dispatch'), OBSERVATION_SCHEDULE_ENABLED: enabled,
+    }));
+  }
 });
 
 test('daily local window preserves exact boundaries across winter, summer and DST changes', () => {
@@ -90,6 +101,7 @@ test('recurring workflow retains shared exclusion, pinned sources, late minimal 
   assert.equal(RECURRING_OBSERVATION_CRON, '2-57/5 7-17 * * *');
   assert.match(workflow, /github.event.repository.private == false/);
   assert.match(workflow, /vars.CM_INT_OBSERVER_QUALIFIED_SHA == github.sha/);
+  assert.match(workflow, /github.event_name == 'schedule' && vars.CM_INT_OBSERVER_SCHEDULE_ENABLED == 'true'/);
   assert.match(workflow, /group: hosted-shared-demo-database-initialize/);
   assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /github.run_attempt == 1/);

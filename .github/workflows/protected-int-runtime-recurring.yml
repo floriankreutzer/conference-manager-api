@@ -29,7 +29,7 @@ jobs:
       vars.CM_INT_OBSERVER_QUALIFIED_SHA == github.sha &&
       github.actor == 'floriankreutzer' && github.triggering_actor == 'floriankreutzer' &&
       github.run_attempt == 1 &&
-      (github.event_name == 'schedule' ||
+      ((github.event_name == 'schedule' && vars.CM_INT_OBSERVER_SCHEDULE_ENABLED == 'true') ||
       (github.event_name == 'workflow_dispatch' && inputs.expected_main_sha == github.sha))
     environment:
       name: hosted-demo-initialize
@@ -40,6 +40,7 @@ jobs:
       QUALIFIED_OBSERVER_SHA: ${{ vars.CM_INT_OBSERVER_QUALIFIED_SHA }}
       OBSERVATION_REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
       OBSERVATION_SCHEDULE: ${{ github.event.schedule }}
+      OBSERVATION_SCHEDULE_ENABLED: ${{ vars.CM_INT_OBSERVER_SCHEDULE_ENABLED }}
     steps:
       - name: Require ordinary logging before secret allocation
         env:
