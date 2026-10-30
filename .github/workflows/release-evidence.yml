@@ -10,6 +10,11 @@ on:
 permissions:
   contents: read
 
+# PR updates supersede old inventories; every non-PR run keeps its own evidence.
+concurrency:
+  group: release-evidence-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   inventory:
     runs-on: ubuntu-latest
@@ -18,9 +23,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '22.22.3'
       - name: Checkout immutable public release evidence tool
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -28,6 +30,11 @@ jobs:
           ref: 7dbf952ce36d1b5153b8f39112f511ec13bd21a9
           path: .release-tool
           persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.22.3'
+          cache: npm
+          cache-dependency-path: .release-tool/scripts/release/package-lock.json
       - name: Install the pinned standalone evidence tool dependency
         run: |
           npm ci --prefix .release-tool/scripts/release --ignore-scripts
