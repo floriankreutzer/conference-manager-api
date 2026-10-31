@@ -18,7 +18,9 @@ test('runtime dependency approval rejects version drift, ranges, missing and ext
     delete missingPasskey['@simplewebauthn/server'];
     for (const dependencies of [
       { ...manifest.dependencies, '@azure/msal-node': '7.0.1' },
+      { ...manifest.dependencies, '@azure/msal-node': '7.1.0' },
       { ...manifest.dependencies, '@aws-sdk/client-s3': '3.1148.0' },
+      { ...manifest.dependencies, '@aws-sdk/client-s3': '3.1152.0' },
       { ...manifest.dependencies, '@azure/msal-node': '^7.1.0' },
       { ...manifest.dependencies, '@simplewebauthn/server': '14.0.2' },
       { ...manifest.dependencies, '@simplewebauthn/server': '^14.0.3' },

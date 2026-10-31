@@ -54,14 +54,14 @@
     "check:format": "npm run check:style"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "3.1152.0",
-    "@azure/msal-node": "7.1.0",
+    "@aws-sdk/client-s3": "3.1158.0",
+    "@azure/msal-node": "7.1.1",
     "@simplewebauthn/server": "14.0.3",
     "pg": "8.23.1",
     "sharp": "0.35.5"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
+    "@biomejs/biome": "2.6.3",
     "es-module-lexer": "3.0.4"
   }
 }
