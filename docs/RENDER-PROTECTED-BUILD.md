@@ -6,12 +6,14 @@ a separate CI dependency and must not be synchronized over protected INT.
 
 ## Current release selection
 
-`render.int.yaml` now selects the QA release described in
-[the coordinated schema75 runbook](QA-20261031-RELEASE.md). Its immutable API
-and frontend pins and both independently verified manifests move together.
-The selection is not proof of a deployment or migration. Keep automatic Blueprint
-sync paused and follow that runbook before applying the selected pair.
-The following 30 October provider receipts remain historical evidence.
+`render.int.yaml` selects the wrapper activation pair documented in
+[the infrastructure release runbook](INFRASTRUCTURE-20261031-WRAPPER-RELEASE.md).
+Its immutable API/frontend pins, build command and both independently verified
+manifests move together. This is a configuration selection, not a deployment
+receipt. Keep automatic Blueprint sync paused and require the exact candidate,
+independent Main and provider gates in that runbook before manual application.
+The earlier [schema75 QA release](QA-20261031-RELEASE.md) and the following
+30 October receipts remain historical evidence. This release adds no migration.
 
 ## Historical Blueprint adoption — 30 October 2026
 
@@ -124,8 +126,9 @@ Frankfurt, autoDeployTrigger off, the separate protected Customer/Platform start
 commands and their existing readiness paths. Do not introduce duplicate services,
 change domain origins, reset data or activate new presentation capabilities.
 
-The versioned wrapper remains a candidate until a paired release replaces both
-inline commands and literal source guards in the Blueprint and Dashboard. Keep
+The versioned wrapper is selected by the infrastructure release configuration;
+activation is complete only after both actual services and their receipts match
+the separately qualified paired release. A merged YAML file alone is not live evidence. Keep
 the presentation flags scoped to the build command, as in the captured inline
 command: the runtime deliberately rejects `PROTECTED_PRESENTATION_*` variables.
 Do not add those build-only keys to either service's persistent environment.
