@@ -1013,17 +1013,17 @@ export function createPostgresPlatformUsageSource(
         const values = Object.freeze({
           active_users: databaseValue(row.active_users),
           active_rooms: databaseValue(row.active_rooms),
-          requests_created: databaseValue(row.requests_created),
-          bookings_confirmed: databaseValue(row.bookings_confirmed),
-          integration_operations: databaseValue(row.integration_operations),
+          requests_created: counterProducersReady ? databaseValue(row.requests_created) : null,
+          bookings_confirmed: counterProducersReady ? databaseValue(row.bookings_confirmed) : null,
+          integration_operations: counterProducersReady ? databaseValue(row.integration_operations) : null,
         });
         const complete = counterProducersReady
           && values.active_users !== null
           && values.active_rooms !== null;
         return Object.freeze({
-          dataState: complete ? 'complete' : 'partial',
-          measuredAt,
-          eventWatermark: measuredAt,
+          dataState: complete ? 'complete' : Object.values(values).every(value => value === null) ? 'unknown' : 'partial',
+          measuredAt: Object.values(values).every(value => value === null) ? null : measuredAt,
+          eventWatermark: Object.values(values).every(value => value === null) ? null : measuredAt,
           values,
         });
       });

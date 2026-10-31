@@ -133,3 +133,20 @@ test('runtime wire rejects mixed clocks, hidden fields and falsely complete or u
     assert.throws(() => normalizeRuntimeProductReport(value));
   }
 });
+
+
+test('protected runtime aggregates preserve real/synthetic provenance and cannot cross Demo authority', () => {
+  const input = { ...fixture(), environment: 'production', accessMode: 'application_passkey',
+    sourceContext: { runtimeEnvironment: 'int', dataProfile: 'synthetic', securityEpochDigest: 'a'.repeat(64) } };
+  const report = compileRuntimeProductReport(input);
+  assert.deepEqual(report.product.map(item => item.value), [1,1,2,3,1,300000,2,300000,1,1,1,0.5]);
+  assert.equal(report.sourceContext.dataProfile, 'synthetic');
+  assert.throws(() => normalizeRuntimeProductReport(report));
+  assert.deepEqual(normalizeRuntimeProductReport(report, { environment: 'production', accessMode: 'application_passkey' }), report);
+  for (const mutation of [value => { value.sourceContext.dataProfile = 'pilot'; },
+    value => { value.sourceContext.runtimeEnvironment = 'prod'; }, value => { delete value.sourceContext.securityEpochDigest; },
+    value => { value.sourceContext.tenantId = TENANT; }, value => { value.accessMode = 'shared_owner_password'; }]) {
+    const invalid = structuredClone(report);mutation(invalid);
+    assert.throws(() => normalizeRuntimeProductReport(invalid, { environment: 'production', accessMode: 'application_passkey' }));
+  }
+});
