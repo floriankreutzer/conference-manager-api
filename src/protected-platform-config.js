@@ -7,12 +7,13 @@ import { isInternalUuid } from './domain/identifiers.js';
 import { createProtectedPlatformAuthentication } from './platform-production-authentication.js';
 import { APPROVED_OUTBOUND_ORIGINS } from './config.js';
 import { loadProtectedPlatformInsightSnapshots } from './observability/platform-insight-snapshots.js';
+import { loadProtectedDailyInsightConfig, PROTECTED_DAILY_INSIGHT_KEYS } from './protected-platform-insight-config.js';
 
 const PREFIX='PROTECTED_PLATFORM_';
 const KEYS=['ENTRA_TENANT_ID','ENTRA_CLIENT_ID','ENTRA_CLIENT_SECRET','OIDC_TRANSACTION_SECRET','CSRF_SECRET',
   'AUDIT_HMAC_SECRET','CURSOR_SECRET','PASSKEY_TRANSACTION_SECRET','ASSURANCE_MODE','OWNER_RECIPIENT','OWNER_LOCALE',
   'MINIMUM_PASSKEYS','SESSION_TTL_SECONDS','HOST','PORT','HANDOFF_INTENT_SECRET','OWNER_HANDOFF_INTENT_SECRET','AUDIT_SEGMENT_ID',
-  'PROVIDER_USAGE_SNAPSHOT','PRODUCT_DELIVERY_SNAPSHOT','PRODUCT_RUNTIME_SNAPSHOT'];
+  'PROVIDER_USAGE_SNAPSHOT','PRODUCT_DELIVERY_SNAPSHOT','PRODUCT_RUNTIME_SNAPSHOT',...PROTECTED_DAILY_INSIGHT_KEYS];
 const fail=code=>{ throw new TypeError(`PROTECTED_PLATFORM_CONFIG_${code}`); };
 function read(env,key,optional=false) {
   if (optional && !Object.hasOwn(env,key)) return undefined;
@@ -72,6 +73,8 @@ export function loadProtectedPlatformConfiguration(env) {
   const insightSources=loadProtectedPlatformInsightSnapshots({ providerSnapshot: optional('PROVIDER_USAGE_SNAPSHOT'),
     productSnapshot: optional('PRODUCT_DELIVERY_SNAPSHOT'),runtimeProductSnapshot: optional('PRODUCT_RUNTIME_SNAPSHOT'),
     securityEpoch: profile.securityEpoch,accessMode: microsoftMfa ? 'microsoft_mfa' : 'application_passkey' });
+  const dailyInsightStorage=loadProtectedDailyInsightConfig({ values: PROTECTED_DAILY_INSIGHT_KEYS.map(optional),
+    profile,assuranceMode: mode,forbiddenSecrets: [...material,read(env,'PROTECTED_CUSTODY_KEYRING')] });
   const authenticationEnvironment=Object.freeze({ NODE_ENV: 'production',PLATFORM_PUBLIC_ORIGIN: profile.platformOrigin,
     PUBLIC_ORIGIN: profile.customerOrigin,ENTRA_CLIENT_ID: peer,PLATFORM_ENTRA_CLIENT_ID: clientId,
     PLATFORM_ENTRA_TENANT_ID: tenantId,PLATFORM_ENTRA_CLIENT_SECRET: values.entraClientSecret,
@@ -93,7 +96,7 @@ export function loadProtectedPlatformConfiguration(env) {
   const cipher=createProtectedCustodyCipher({ environment: profile.environment,
     activeKeyId: read(env,'PROTECTED_CUSTODY_ACTIVE_KEY_ID'),keyring: read(env,'PROTECTED_CUSTODY_KEYRING'),
     lookupSecret: values.lookupSecret,forbiddenSecrets: material });
-  return Object.freeze({ profile,config,cipher,ownerRecipient,ownerLocale,insightSources,
+  return Object.freeze({ profile,config,cipher,ownerRecipient,ownerLocale,insightSources,dailyInsightStorage,
     authenticationFactory(context) {
       if (!context || ![Object.prototype,null].includes(Object.getPrototypeOf(context))
         || Reflect.ownKeys(context).length!==2 || Reflect.ownKeys(context).some(key=>{
