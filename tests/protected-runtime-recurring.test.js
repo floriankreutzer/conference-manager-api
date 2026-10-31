@@ -73,7 +73,8 @@ test('fixed reviewed deployments remain independent from qualified observer sour
 test('the released frontend is required by both selection validation and the credential-free checkout', async () => {
   const selection = await readRecurringRuntimeObservationSelection();
   assert.doesNotThrow(() => normalizeRuntimeObservationSelection(selection));
-  for (const frontendCommit of ['2ddcf3859505fe62a46ac008fb1d6e9059711bbb', '2667b0b6df74ffa2632fce4be6f95ef8ef8103ac', 'f6359ff537165c5e29fc4884578d92a83ce22be4', 'a'.repeat(40)]) {
+  for (const frontendCommit of ['2ddcf3859505fe62a46ac008fb1d6e9059711bbb',
+    '2667b0b6df74ffa2632fce4be6f95ef8ef8103ac', 'f6359ff537165c5e29fc4884578d92a83ce22be4', 'a'.repeat(40)]) {
     assert.throws(() => normalizeRuntimeObservationSelection({ ...selection, frontendCommit }), /OBSERVATION_REFUSED/);
   }
   const workflow = await readFile('.github/workflows/protected-int-runtime-recurring.yml', 'utf8');
