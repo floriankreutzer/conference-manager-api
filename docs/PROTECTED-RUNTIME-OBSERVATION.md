@@ -170,23 +170,47 @@ collection after closing. Owner manual dispatch with the exact qualified Main ma
 collect outside the window. Do not use repeated manual dispatch to evade the
 operating budget.
 
-The job is limited to a public repository on standard GitHub-hosted runners. A
-private repository skips it before runner allocation, including after the planned
-repository visibility change; do not enable paid private execution as a workaround.
-This temporary profile therefore does not provide ongoing private-source operations.
+The observer uses the small `ubuntu-slim` runner; the full application CI and
+browser/database runners are unchanged. Private execution additionally requires
+`CM_INT_OBSERVER_PRIVATE_ENABLED=true`, checked before runner allocation and in
+the CLI. Set it only after the owner's separately recorded recurring budget
+decision, actual Actions spending-stop configuration and combined provider
+headroom have been reconciled. Missing or malformed values refuse private
+execution, including manual dispatch. This flag neither enables the schedule nor
+qualifies a new source commit. Clearing it stops new private runs; provider caps
+and already running jobs retain their provider-defined semantics.
+
+After the credential-free operating-window preflight, the existing CI Reader App
+issues a short-lived installation token restricted to `conference-manager` and
+`contents: read`. The fixed frontend checkout uses it in both public and private
+mode, without an anonymous fallback or persisted checkout credentials. The pinned
+action revokes the token during post-job cleanup. App credentials are not passed
+to the frontend builder or collector; database bindings are still allocated only
+to the final collector step. No new long-lived credential or repository grant is
+created by this workflow. The owning API checkout uses its scoped workflow token.
+
 Scheduled Actions can be delayed/dropped and public inactive schedules can be
 disabled by GitHub. The five-minute stale policy is unchanged: outside the window,
-after provider failure, schedule delay, disabled qualification or a private-source
-transition, the UI must show stale/unknown rather than a manufactured healthy state.
+after provider failure, schedule delay, disabled qualification, an unaccepted
+private-source transition or exhausted budget, the UI must show stale/unknown
+rather than a manufactured healthy state.
 
 The operating window is a resource bound, **not a zero-cost guarantee**. Two Render
 Free services awake for ten hours daily consume about 620 shared instance-hours
 in a 31-day month before startup/other usage, against the workspace's published
-750-hour allowance. The October30 complete sealed bytes totaled approximately 3.56 MB
-per collection (about 13.3 GB over 31 days at 120 collections/day, before headers).
+750-hour allowance. The October31 complete sealed bytes totaled 3,693,153 bytes
+per collection (about 13.74 GB over 31 days at 120 collections/day, before headers).
 Verify actual remaining workspace instance-hours, bandwidth/build allowances and
 configured spending controls before activation; existing other usage still counts.
-No plan, quota, spending limit or resource expansion is authorized by this profile.
+The owner's 31 October recurring budget decision supersedes the earlier
+zero-additional-spend restriction only within its privately recorded envelope.
+This source change does not itself alter any provider plan, quota or spending
+limit. Billing values and private account evidence do not belong in public source.
+Measure the actual slim-runner duration before activating the schedule; use
+provider-rounded billed minutes and account for outside-window preflight jobs,
+remaining included minutes, other CI, bandwidth, database usage, taxes and currency
+conversion. A source flag is not a cross-provider monetary cap. Retain Actions'
+stop-usage control and accept stale evidence if a budget or resource cap is reached.
 Provider billing freshness and protected optional/provider diagnostics remain
 independent from successful runtime collection.
 
@@ -197,6 +221,13 @@ not proof that a cron event ran. Verify observation timestamps, both deployments
 three current-generation Customer mappings and unchanged Demo business baseline
 after operating execution. No invitation, email receipt or real-tenant issue is
 closed by this runtime-only change.
+
+The actual 31 October manual observation on qualified observer Main `4413647d`
+passed in run `41207157763`: schema 75, two deployments and three Customer mappings,
+with authenticated independent UI readback recorded in frontend issue #428. Its
+56-second standard-runner job is a historical baseline, not measured slim/private
+execution or recurring acceptance. Actual private checkout/build and post-cutover
+enforcement remain separate acceptance at the agreed visibility transition.
 
 
 ## Historical QA-10 reconciliation candidate — 30 October 2026

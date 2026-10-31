@@ -18,7 +18,7 @@ function context(event = 'schedule') {
     OBSERVATION_SCHEDULE_ENABLED: 'true', EXPECTED_MAIN_SHA: source };
 }
 
-test('recurring observation accepts only exact qualified public owner Main and explicit event authority', () => {
+test('recurring observation accepts only exact qualified owner Main and explicit event authority', () => {
   assert.doesNotThrow(() => requireRecurringRuntimeObservationContext(context()));
   assert.doesNotThrow(() => requireRecurringRuntimeObservationContext(context('workflow_dispatch')));
   for (const delta of [{ GITHUB_REPOSITORY: 'foreign/conference-manager-api' }, { GITHUB_REF: 'refs/heads/candidate' },
@@ -34,6 +34,27 @@ test('recurring observation accepts only exact qualified public owner Main and e
   }
   assert.throws(() => requireRecurringRuntimeObservationContext({ ...context('workflow_dispatch'),
     EXPECTED_MAIN_SHA: 'c'.repeat(40) }), /OBSERVATION_REFUSED/);
+});
+
+test('private observation requires a separate explicit grant for both manual and scheduled execution', () => {
+  for (const event of ['schedule', 'workflow_dispatch']) {
+    const privateContext = { ...context(event), OBSERVATION_REPOSITORY_PRIVATE: 'true' };
+    assert.doesNotThrow(() => requireRecurringRuntimeObservationContext({ ...privateContext,
+      OBSERVATION_PRIVATE_ENABLED: 'true' }));
+    for (const enabled of [undefined, '', 'false', 'yes', 'TRUE', true]) {
+      assert.throws(() => requireRecurringRuntimeObservationContext({ ...privateContext,
+        OBSERVATION_PRIVATE_ENABLED: enabled }), /OBSERVATION_REFUSED/);
+    }
+    for (const visibility of [undefined, '', 'unknown', true, false]) {
+      assert.throws(() => requireRecurringRuntimeObservationContext({ ...privateContext,
+        OBSERVATION_REPOSITORY_PRIVATE: visibility, OBSERVATION_PRIVATE_ENABLED: 'true' }), /OBSERVATION_REFUSED/);
+    }
+    for (const delta of [{ GITHUB_ACTOR: 'foreign' }, { QUALIFIED_OBSERVER_SHA: '' },
+      { GITHUB_RUN_ATTEMPT: '2' }, { RUNNER_DEBUG: '1' }]) {
+      assert.throws(() => requireRecurringRuntimeObservationContext({ ...privateContext,
+        OBSERVATION_PRIVATE_ENABLED: 'true', ...delta }), /OBSERVATION_REFUSED/);
+    }
+  }
 });
 
 test('a qualified bounded manual observation does not enable recurring traffic', () => {
@@ -70,7 +91,7 @@ test('fixed reviewed deployments remain independent from qualified observer sour
   assert.equal(selection.evidence.rollback, null);assert.ok(Object.isFrozen(selection));
 });
 
-test('the released frontend is required by both selection validation and the credential-free checkout', async () => {
+test('the released frontend is required by both selection validation and the fixed checkout', async () => {
   const selection = await readRecurringRuntimeObservationSelection();
   assert.doesNotThrow(() => normalizeRuntimeObservationSelection(selection));
   for (const frontendCommit of ['2ddcf3859505fe62a46ac008fb1d6e9059711bbb',
@@ -96,11 +117,14 @@ test('shared CLI credential binding rejects foreign database, runtime identity a
   }
 });
 
-test('recurring workflow retains shared exclusion, pinned sources, late minimal credentials and no private runner execution', async () => {
+test('recurring workflow retains shared exclusion, pinned sources and separately granted bounded private execution', async () => {
   const workflow = await readFile('.github/workflows/protected-int-runtime-recurring.yml', 'utf8');
   assert.ok(workflow.includes(`cron: '${RECURRING_OBSERVATION_CRON}'`));
   assert.equal(RECURRING_OBSERVATION_CRON, '2-57/5 7-17 * * *');
   assert.match(workflow, /github.event.repository.private == false/);
+  assert.match(workflow, /github.event.repository.private == true && vars.CM_INT_OBSERVER_PRIVATE_ENABLED == 'true'/);
+  assert.match(workflow, /OBSERVATION_PRIVATE_ENABLED: \$\{\{ vars.CM_INT_OBSERVER_PRIVATE_ENABLED \}\}/);
+  assert.match(workflow, /runs-on: ubuntu-slim\n    timeout-minutes: 5/);
   assert.match(workflow, /vars.CM_INT_OBSERVER_QUALIFIED_SHA == github.sha/);
   assert.match(workflow, /github.event_name == 'schedule' && vars.CM_INT_OBSERVER_SCHEDULE_ENABLED == 'true'/);
   assert.match(workflow, /group: hosted-shared-demo-database-initialize/);
@@ -108,6 +132,11 @@ test('recurring workflow retains shared exclusion, pinned sources, late minimal 
   assert.match(workflow, /github.run_attempt == 1/);
   assert.match(workflow, /inputs.expected_main_sha == github.sha/);
   assert.match(workflow, /persist-credentials: false/);
+  assert.match(workflow, /repositories: conference-manager\n          permission-contents: read/);
+  assert.match(workflow, /token: \$\{\{ steps.source-token.outputs.token \}\}/);
+  assert.doesNotMatch(workflow, /skip-token-revoke|outputs.token \|\||permission-contents: write/);
+  assert.equal((workflow.match(/CM_CI_READER_PRIVATE_KEY/g) ?? []).length, 1);
+  assert.ok(workflow.indexOf('CM_CI_READER_PRIVATE_KEY') > workflow.indexOf('protected-runtime-recurring-preflight.mjs'));
   assert.doesNotMatch(workflow, /pull_request_target:|contents: write|CM_INT_AUDIT_HMAC_SECRET|selection_json|NODE_OPTIONS:/);
   assert.equal((workflow.match(/CM_INT_AUDIT_OFFLINE_DATABASE_URL/g) ?? []).length, 1);
   assert.ok(workflow.indexOf('CM_INT_AUDIT_OFFLINE_DATABASE_URL') > workflow.indexOf('protected-runtime-recurring-build.mjs'));
@@ -123,6 +152,10 @@ test('actual CLI preflight needs no database binding; wrong source and extra arg
   });
   const ready = run('scripts/protected-runtime-recurring-preflight.mjs');
   assert.equal(ready.status, 0);assert.equal(ready.stdout, 'active=true\n');assert.equal(ready.stderr, '');
+  const privateReady = run('scripts/protected-runtime-recurring-preflight.mjs', [], {
+    OBSERVATION_REPOSITORY_PRIVATE: 'true', OBSERVATION_PRIVATE_ENABLED: 'true',
+  });
+  assert.equal(privateReady.status, 0);assert.equal(privateReady.stdout, 'active=true\n');assert.equal(privateReady.stderr, '');
   for (const result of [run('scripts/protected-runtime-recurring-preflight.mjs', ['foreign.json']),
     run('scripts/protected-runtime-recurring-preflight.mjs', [], { GITHUB_SHA: source, EXPECTED_MAIN_SHA: source,
       QUALIFIED_OBSERVER_SHA: source }),

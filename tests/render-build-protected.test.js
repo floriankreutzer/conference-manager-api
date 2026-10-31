@@ -17,15 +17,20 @@ const evidence = { apiCommit: env.PROTECTED_API_COMMIT, frontendCommit: env.PROT
 
 async function fixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'protected-render-'));
+  await mkdir(path.join(root, 'vendor/protected-frontend'), { recursive: true });
   t.after(() => rm(root, { recursive: true, force: true }));
   return root;
 }
 
 function runner(calls, { apiCommit = env.PROTECTED_API_COMMIT, frontendCommit = env.PROTECTED_FRONTEND_COMMIT,
-  dirty = '', summary = evidence } = {}) {
+  dirty = '', frontendDirty = '', gitlink = `160000 commit ${env.PROTECTED_FRONTEND_COMMIT}\tvendor/protected-frontend`,
+  checkoutRoot, summary = evidence } = {}) {
   return (command, args, options) => {
     calls.push({ command, args, options });
     if (command === 'git' && args[0] === 'status') return dirty;
+    if (command === 'git' && args[0] === 'ls-tree') return gitlink;
+    if (command === 'git' && args.includes('--show-toplevel')) return checkoutRoot ?? args[1];
+    if (command === 'git' && args.includes('status')) return frontendDirty;
     if (command === 'git' && args.includes('rev-parse')) return args[0] === '-C' ? frontendCommit : apiCommit;
     if (command === process.execPath) return JSON.stringify(summary);
     return '';
@@ -49,6 +54,8 @@ test('repeated cached builds clean only fixed directories and isolate builder en
     const npm = calls.filter(call => call.command === 'npm');
     assert.equal(npm.length, 2);
     for (const call of npm) assert.ok(call.args.includes('--ignore-scripts'));
+    assert.equal(npm[1].options.cwd, path.join(root, 'vendor/protected-frontend'));
+    assert.ok(calls.every(call => !call.args.some(arg => ['clone', 'fetch', 'checkout'].includes(arg))));
     const builder = calls.at(-1);
     assert.equal(builder.options.env.PRIVATE_RUNTIME_VALUE, undefined);
     assert.equal(builder.options.env.HOME, undefined);
@@ -90,10 +97,32 @@ test('cache symlinks cannot delete foreign files', async t => {
 });
 
 test('wrong frontend source cannot install dependencies or execute its builder', async t => {
-  const calls = [];
-  await assert.rejects(buildProtectedRender({ apiRoot: await fixture(t), env,
-    run: runner(calls, { frontendCommit: 'e'.repeat(40) }) }));
-  assert.ok(calls.every(call => call.command === 'git'));
+  for (const failure of [
+    { frontendCommit: 'e'.repeat(40) }, { frontendDirty: ' M script.mjs' },
+    { gitlink: `160000 commit ${'e'.repeat(40)}\tvendor/protected-frontend` },
+    { gitlink: `040000 tree ${env.PROTECTED_FRONTEND_COMMIT}\tvendor/protected-frontend` },
+    { checkoutRoot: '/uninitialized-parent' },
+  ]) {
+    const calls = [];
+    await assert.rejects(buildProtectedRender({ apiRoot: await fixture(t), env, run: runner(calls, failure) }));
+    assert.ok(calls.every(call => call.command === 'git'));
+  }
+});
+
+test('missing or symlinked provider checkout fails before installation and cache deletion', async t => {
+  for (const link of [false, true]) {
+    const root = await fixture(t);
+    const source = path.join(root, 'vendor/protected-frontend');
+    await rm(source, { recursive: true });
+    if (link) await symlink(await fixture(t), source);
+    await mkdir(path.join(root, '.protected-ui-build'));
+    const marker = path.join(root, '.protected-ui-build', 'stale');
+    await writeFile(marker, 'preserved');
+    const calls = [];
+    await assert.rejects(buildProtectedRender({ apiRoot: root, env, run: runner(calls) }));
+    assert.ok(calls.every(call => call.command === 'git'));
+    assert.equal(await readFile(marker, 'utf8'), 'preserved');
+  }
 });
 
 test('unbound or malformed digest summaries cannot be accepted as evidence', async t => {

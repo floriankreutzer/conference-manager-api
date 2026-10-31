@@ -6,7 +6,9 @@ export function requireRecurringRuntimeObservationContext(env) {
   const repository = 'floriankreutzer/conference-manager-api';
   if (env.GITHUB_REPOSITORY !== repository || env.GITHUB_REF !== 'refs/heads/main'
     || env.GITHUB_ACTOR !== 'floriankreutzer' || env.GITHUB_TRIGGERING_ACTOR !== 'floriankreutzer'
-    || env.GITHUB_RUN_ATTEMPT !== '1' || env.OBSERVATION_REPOSITORY_PRIVATE !== 'false'
+    || env.GITHUB_RUN_ATTEMPT !== '1'
+    || !(env.OBSERVATION_REPOSITORY_PRIVATE === 'false'
+      || (env.OBSERVATION_REPOSITORY_PRIVATE === 'true' && env.OBSERVATION_PRIVATE_ENABLED === 'true'))
     || !/^[a-f0-9]{40}$/.test(env.GITHUB_SHA || '') || env.QUALIFIED_OBSERVER_SHA !== env.GITHUB_SHA
     || env.GITHUB_WORKFLOW_REF !== `${repository}/.github/workflows/protected-int-runtime-recurring.yml@refs/heads/main`
     || !['schedule', 'workflow_dispatch'].includes(env.GITHUB_EVENT_NAME)

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const repository = 'https://github.com/floriankreutzer/conference-manager.git';
+const frontendPath = 'vendor/protected-frontend';
 const flags = [
   'PROTECTED_SYNTHETIC_ENABLED', 'PROTECTED_PRESENTATION_MICROSOFT_ENABLED',
   'PROTECTED_PRESENTATION_INVITATIONS_ENABLED', 'PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED',
@@ -43,11 +43,12 @@ function execute(command, args, options) {
   });
 }
 
-async function checkDirectory(directory) {
+async function checkDirectory(directory, required = false) {
   const stat = await lstat(directory).catch(error => {
     if (error.code === 'ENOENT') return null;
     throw error;
   });
+  if (required && !stat) reject();
   if (stat && (!stat.isDirectory() || stat.isSymbolicLink())) reject();
 }
 
@@ -57,24 +58,30 @@ export async function buildProtectedRender({ apiRoot = root, env = process.env, 
   const inputs = profile(env);
   const system = environment(env, ['PATH', 'HOME', 'TMPDIR', 'LANG', 'SYSTEMROOT',
     'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy', 'NODE_EXTRA_CA_CERTS']);
-  const gitEnv = { ...system, ...environment(env, ['GIT_ASKPASS']), GIT_TERMINAL_PROMPT: '0' };
+  const gitEnv = { ...system, GIT_TERMINAL_PROMPT: '0' };
   const git = args => run('git', args, { cwd: apiRoot, env: gitEnv }).trim();
   if (git(['rev-parse', 'HEAD']) !== inputs.PROTECTED_API_COMMIT) reject();
   if (git(['status', '--porcelain', '--untracked-files=normal'])) reject();
+  // Render initializes this immutable Gitlink with its existing Git-provider
+  // credentials. Refuse missing/dirty checkouts; never fall back to a public clone.
+  const source = path.join(apiRoot, frontendPath);
+  await checkDirectory(path.dirname(source), true);
+  await checkDirectory(source, true);
+  if (git(['ls-tree', 'HEAD', '--', frontendPath])
+    !== `160000 commit ${inputs.PROTECTED_FRONTEND_COMMIT}\t${frontendPath}`) reject();
+  if (git(['-C', source, 'rev-parse', '--show-toplevel']) !== source) reject();
+  if (git(['-C', source, 'rev-parse', 'HEAD']) !== inputs.PROTECTED_FRONTEND_COMMIT) reject();
+  if (git(['-C', source, 'status', '--porcelain', '--untracked-files=normal'])) reject();
   const checkout = path.join(apiRoot, '.protected-ui-build');
   const output = path.join(apiRoot, '.protected-frontend');
   await checkDirectory(checkout);
   await checkDirectory(output);
   await rm(checkout, { recursive: true, force: true });
-  git(['clone', '--filter=blob:none', '--no-checkout', repository, checkout]);
-  git(['-C', checkout, 'fetch', '--depth=1', 'origin', inputs.PROTECTED_FRONTEND_COMMIT]);
-  git(['-C', checkout, 'checkout', '--detach', inputs.PROTECTED_FRONTEND_COMMIT]);
-  if (git(['-C', checkout, 'rev-parse', 'HEAD']) !== inputs.PROTECTED_FRONTEND_COMMIT) reject();
   run('npm', ['ci', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: apiRoot, env: system });
-  run('npm', ['ci', '--include=dev', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: checkout, env: system });
+  run('npm', ['ci', '--include=dev', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: source, env: system });
   await rm(output, { recursive: true, force: true });
   const summary = run(process.execPath, ['scripts/build-protected-frontend.mjs', output], {
-    cwd: checkout, env: { ...environment(env, ['PATH', 'TMPDIR', 'LANG', 'SYSTEMROOT']), ...inputs },
+    cwd: source, env: { ...environment(env, ['PATH', 'TMPDIR', 'LANG', 'SYSTEMROOT']), ...inputs },
   });
   // The owning builder emits a public digest summary; do not echo subprocess diagnostics.
   const evidence = JSON.parse(summary);
