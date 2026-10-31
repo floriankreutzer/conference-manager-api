@@ -100,7 +100,9 @@ Configure each service's PROTECTED_HOSTED_FRONTEND_SHA256 independently after
 qualification. Never derive and automatically trust the runtime digest at startup.
 
 The reviewed frontend is now the separate Gitlink `vendor/protected-frontend`,
-pinned to `efe672ebaaa844f6663186b8a5d53a18ebab98a6`. The legacy
+pinned to `a930bb1fbbda3f3d5037ec9c016c756363c60ae6`, the consistent OPS cards
+and private daily-source frontend candidate in frontend PR440. Require its complete
+candidate/Main acceptance before selecting a paired release. The legacy
 `vendor/demo-frontend` and its Demo contract are unchanged. Render documents that
 it initializes Git submodules using its connected Git-provider credentials:
 <https://render.com/docs/git-provider#git-submodules>. The existing Render
