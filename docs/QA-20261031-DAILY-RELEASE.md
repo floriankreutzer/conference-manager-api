@@ -1,7 +1,9 @@
 # Protected OPS daily insights and consistent cards
 
 Tracking: frontend #419 and #428; existing infrastructure #432 and observer #113.
-This document selects a candidate pair and its operating procedure. It is not a
+Merge the coordinated wrapper selection in API PR366 and the implementation in
+API PR365/frontend PR440 before this selection. Reconcile any concurrent provider
+activation first. This document selects a candidate pair and its procedure, not a
 deployment receipt. The earlier schema75 release and its actual receipts remain
 historical evidence in QA-20261031-RELEASE.md and the current observer selection.
 
@@ -9,13 +11,13 @@ historical evidence in QA-20261031-RELEASE.md and the current observer selection
 
 | Input | Selection |
 | --- | --- |
-| API | `d65e5c797687c493bd3f860553e602171536f0d4` |
+| API | `ded73b39be9101197150091c84ebfa879ec40575` |
 | Frontend | `a930bb1fbbda3f3d5037ec9c016c756363c60ae6` |
-| Release branch | `release/int-20261031-d65e5c7` |
-| Customer manifest SHA256 | `00a08667ea7df697fea70f34ff507cf9e11e6e6f8e5be249bf4c67f424e56c53` |
-| Platform manifest SHA256 | `1844b06978227878f8582a76b229a48f322b6d89928c86984228a56d7ece903c` |
+| Release branch | `release/int-20261031-ded73b3` |
+| Customer manifest SHA256 | `4d5a89ae1b429c8b6b0b71a18fc85903dc17b4889035210f0918f26d9f821b5b` |
+| Platform manifest SHA256 | `20edadef605b3d6552e75e23b1eabb4870455400c42d1f28aba2d1a1d0c53f8b` |
 
-The clean selected frontend built 300 Customer and 197 Platform files using these
+The real authenticated-build wrapper built 300 Customer and 197 Platform files using these
 exact source refs, existing INT origins and unchanged presentation flags. The
 selected API artifact reader independently validated every file against these
 digests. Actual insight/runtime API-to-production-client wire checks pass. Local
@@ -25,11 +27,18 @@ exact candidate and independent Main checks, PostgreSQL and complete permanent
 three-customer/two-reset Chromium/WebKit gates before deploying.
 
 The API retains the accepted private-build and bounded-observer preparation from
-PR364. This release preserves the existing inline sealing build; activation of
-the authenticated submodule wrapper and actual private-repository build remain a
-separate infrastructure acceptance. The wrapper's older protected Gitlink is not
-the frontend selected by this inline build. Do not confuse either with the
-unchanged immutable Demo acceptance counterpart or claim private-state delivery.
+PR364 and the wrapper path selected in PR366. The protected Gitlink selects the
+frontend above. Render initializes it with its existing Git-provider credentials;
+there is no anonymous clone/fetch fallback or new build credential store. The two
+presentation flags remain build-command-only. Actual private-repository delivery
+remains the separate agreed cutover acceptance.
+
+The frontend's complete protected browser matrix is pinned to API d65e5c79. The
+selected API ded73b39 differs only in the protected frontend Gitlink and its build
+documentation: application, routes, tests, dependencies and build-wrapper code are
+byte-identical. Exact selected-pair wrapper builds, artifact validation and actual
+insight/runtime wire checks supplement its required API/Main gates. This does not
+replace the unchanged permanent Demo counterpart or claim live/private acceptance.
 
 ## Coordinated operation
 
@@ -88,4 +97,6 @@ If the new source cannot be read, inspect its minimized unavailable state and
 credential scope/configuration. Do not fabricate dates, copy Demo counts, loosen
 validation, replace all environment variables or reset business data. A rollback
 requires the previous paired source/build/digests and removal of only the five
-new reader inputs before starting an older runtime that rejects them.
+new reader inputs before starting an older runtime that rejects them. Preserve the authenticated
+wrapper for a rollback to a later accepted wrapper release; use its matching
+Gitlink and digests instead of reverting infrastructure decisions.

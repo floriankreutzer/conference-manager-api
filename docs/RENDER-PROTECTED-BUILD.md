@@ -6,12 +6,14 @@ a separate CI dependency and must not be synchronized over protected INT.
 
 ## Current release selection
 
-`render.int.yaml` now selects the QA release described in
-[the coordinated schema75 runbook](QA-20261031-RELEASE.md). Its immutable API
-and frontend pins and both independently verified manifests move together.
-The selection is not proof of a deployment or migration. Keep automatic Blueprint
-sync paused and follow that runbook before applying the selected pair.
-The following 30 October provider receipts remain historical evidence.
+`render.int.yaml` selects the daily-insights pair in
+[the coordinated OPS release runbook](QA-20261031-DAILY-RELEASE.md), retaining the
+authenticated wrapper selected by API PR366. Its immutable source pair, protected
+Gitlink, build command and independently verified manifests move together. Keep
+Blueprint auto-sync paused and require the exact candidate/Main and provider gates
+before application. A merged configuration is not a deployment receipt. The earlier
+schema75 and initial wrapper selections remain historical evidence; no migration
+or reset is part of this release.
 
 ## Historical Blueprint adoption — 30 October 2026
 
@@ -100,7 +102,9 @@ Configure each service's PROTECTED_HOSTED_FRONTEND_SHA256 independently after
 qualification. Never derive and automatically trust the runtime digest at startup.
 
 The reviewed frontend is now the separate Gitlink `vendor/protected-frontend`,
-pinned to `efe672ebaaa844f6663186b8a5d53a18ebab98a6`. The legacy
+pinned to `a930bb1fbbda3f3d5037ec9c016c756363c60ae6`, the consistent OPS cards
+and private daily-source frontend candidate in frontend PR440. Require its complete
+candidate/Main acceptance before selecting a paired release. The legacy
 `vendor/demo-frontend` and its Demo contract are unchanged. Render documents that
 it initializes Git submodules using its connected Git-provider credentials:
 <https://render.com/docs/git-provider#git-submodules>. The existing Render
@@ -124,8 +128,9 @@ Frankfurt, autoDeployTrigger off, the separate protected Customer/Platform start
 commands and their existing readiness paths. Do not introduce duplicate services,
 change domain origins, reset data or activate new presentation capabilities.
 
-The versioned wrapper remains a candidate until a paired release replaces both
-inline commands and literal source guards in the Blueprint and Dashboard. Keep
+The versioned wrapper is selected by the paired release configuration. Activation
+is complete only after both actual services and their receipts match its qualified
+source and artifact pins. A merged YAML file alone is not live evidence. Keep
 the presentation flags scoped to the build command, as in the captured inline
 command: the runtime deliberately rejects `PROTECTED_PRESENTATION_*` variables.
 Do not add those build-only keys to either service's persistent environment.
