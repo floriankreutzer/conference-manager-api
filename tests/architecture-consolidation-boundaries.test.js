@@ -229,3 +229,20 @@ test('protected session and provider gates cannot enter either closed Demo graph
     }
   }
 });
+
+test('fixed daily storage stays at the owned Operations roots and cannot enter a Customer or lower module', () => {
+  const adapter = 'src/integrations/daily-insight-storage.js';
+  for (const consumer of ['src/customer-composition.js', 'src/application/unsafe.js',
+    'src/platform/application/unsafe.js', 'src/demo/customer-main.js']) {
+    const relative = consumer.split('/').length === 2 ? './integrations/daily-insight-storage.js'
+      : consumer.startsWith('src/platform/') ? '../../integrations/daily-insight-storage.js'
+        : '../integrations/daily-insight-storage.js';
+    assert.ok(moduleBoundaryViolations({ [consumer]: `import '${relative}';`,
+      [adapter]: 'export const read = true;' }).some(message => message.includes('fixed daily insight reader')));
+  }
+  for (const [root, relative] of [['src/protected-platform-runtime.js', './integrations/daily-insight-storage.js'],
+    ['src/demo/platform-live-storage.js', '../integrations/daily-insight-storage.js']]) {
+    assert.deepEqual(moduleBoundaryViolations({ [root]: `export { read } from '${relative}';`,
+      [adapter]: "import { S3Client } from '@aws-sdk/client-s3';export const read = S3Client;" }), []);
+  }
+});
