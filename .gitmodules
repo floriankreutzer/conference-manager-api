@@ -1,3 +1,6 @@
 [submodule "vendor/demo-frontend"]
 	path = vendor/demo-frontend
 	url = https://github.com/floriankreutzer/conference-manager.git
+[submodule "vendor/protected-frontend"]
+	path = vendor/protected-frontend
+	url = https://github.com/floriankreutzer/conference-manager.git

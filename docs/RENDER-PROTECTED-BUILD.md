@@ -90,20 +90,32 @@ The API pin must identify the actual deployed commit containing this wrapper,
 not an earlier audited release or a mutable branch. The wrapper refuses dirty
 tracked source and unknown inputs before deleting either fixed build directory.
 
-The wrapper recreates .protected-ui-build and .protected-frontend, refuses symlink
-roots, verifies both source commits, installs locked dependencies with lifecycle
-scripts disabled, then invokes the reviewed frontend's own sealing builder.
+The wrapper removes the obsolete .protected-ui-build cache and recreates
+.protected-frontend, refuses symlink roots, verifies both source commits, installs
+locked dependencies with lifecycle scripts disabled, then invokes the reviewed
+frontend's own sealing builder in the provider-initialized submodule.
 Only nonsecret profile inputs reach that builder. Its minimized output contains
 both public manifest digests; those are evidence, not automatic runtime approval.
 Configure each service's PROTECTED_HOSTED_FRONTEND_SHA256 independently after
 qualification. Never derive and automatically trust the runtime digest at startup.
 
-Private source access must use a separately verified provider-managed HTTPS Git
-credential helper or GIT_ASKPASS path. No token-in-URL, anonymous fallback success,
-new credential, or credential storage is provisioned by this script. Git runs
-without interactive prompts; failed authentication fails the build with a fixed
-error. A successful public checkout does not prove private checkout capability.
-Subprocess diagnostics are captured and not reflected by the CLI.
+The reviewed frontend is now the separate Gitlink `vendor/protected-frontend`,
+pinned to `efe672ebaaa844f6663186b8a5d53a18ebab98a6`. The legacy
+`vendor/demo-frontend` and its Demo contract are unchanged. Render documents that
+it initializes Git submodules using its connected Git-provider credentials:
+<https://render.com/docs/git-provider#git-submodules>. The existing Render
+installation must retain read access to both API and frontend repositories.
+
+The wrapper requires a real initialized submodule directory, matching committed
+Gitlink mode/SHA, exact checkout root/HEAD and clean frontend source before
+installation or cache deletion. It performs no clone, fetch or checkout and has
+no anonymous fallback, token-in-URL, GIT_ASKPASS input or new credential store.
+An empty uninitialized submodule cannot fall through to the API repository's Git
+root. Provider authentication failure therefore prevents preparation, rather than
+silently creating an unrelated public checkout. Subprocess diagnostics are
+captured and not reflected by the CLI. A successful build while sources are
+public still does not prove actual private-state delivery: retain that separate
+2 November cutover readback in frontend issue310.
 
 Before switching either existing service, verify Blueprint ownership and absence
 of conflicting sync, exact source pair, private read access, both independently
@@ -123,7 +135,8 @@ be updated together after an actual qualified release. Historical report values
 must not be copied into a new active selection as current evidence.
 
 Tests cover repeated stale directories, unrelated-file preservation, invalid
-profiles, dirty/mismatched source, symlink escapes, builder environment isolation
-and rejected output binding. They use a command adapter and real temporary
+profiles, dirty/mismatched API and frontend source, missing/uninitialized Gitlinks,
+wrong Gitlink mode/SHA, symlink escapes, builder environment isolation and rejected
+output binding. They use a command adapter and real temporary
 filesystem operations: they do not claim an authenticated Render build, actual
 artifact sealing or a deployment. Those remain activation gates in INF-04/05.
