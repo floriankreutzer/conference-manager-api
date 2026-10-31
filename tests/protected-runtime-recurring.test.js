@@ -61,11 +61,11 @@ test('daily local window preserves exact boundaries across winter, summer and DS
 
 test('fixed reviewed deployments remain independent from qualified observer source; no invented optional evidence', async () => {
   const selection = await readRecurringRuntimeObservationSelection();
-  const deployedSource = 'ca1f06b5b5181965f7c3aeffdc235aa44c638771';
+  const deployedSource = 'fa488070bd62d677c67b5d266282eecfb007e474';
   assert.equal(selection.environment, 'int');
   assert.equal(selection.apiCommit, deployedSource);
   assert.notEqual(selection.apiCommit, source);
-  assert.equal(selection.frontendCommit, '2ddcf3859505fe62a46ac008fb1d6e9059711bbb');
+  assert.equal(selection.frontendCommit, 'efe672ebaaa844f6663186b8a5d53a18ebab98a6');
   assert.notEqual(selection.customer.deploymentReference, selection.platform.deploymentReference);
   assert.equal(selection.evidence.rollback, null);assert.ok(Object.isFrozen(selection));
 });
@@ -73,7 +73,7 @@ test('fixed reviewed deployments remain independent from qualified observer sour
 test('the released frontend is required by both selection validation and the credential-free checkout', async () => {
   const selection = await readRecurringRuntimeObservationSelection();
   assert.doesNotThrow(() => normalizeRuntimeObservationSelection(selection));
-  for (const frontendCommit of ['2667b0b6df74ffa2632fce4be6f95ef8ef8103ac', 'f6359ff537165c5e29fc4884578d92a83ce22be4', 'a'.repeat(40)]) {
+  for (const frontendCommit of ['2ddcf3859505fe62a46ac008fb1d6e9059711bbb', '2667b0b6df74ffa2632fce4be6f95ef8ef8103ac', 'f6359ff537165c5e29fc4884578d92a83ce22be4', 'a'.repeat(40)]) {
     assert.throws(() => normalizeRuntimeObservationSelection({ ...selection, frontendCommit }), /OBSERVATION_REFUSED/);
   }
   const workflow = await readFile('.github/workflows/protected-int-runtime-recurring.yml', 'utf8');

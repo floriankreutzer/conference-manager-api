@@ -28,7 +28,7 @@ loaded from the existing private environment binding, never a public workflow
 input. There is no Tenant selector, connection, origin, SQL, role or health-state
 input. For the original one-shot workflow, the deployed API SHA must equal the exact observer Main SHA. Frontend
 selection is additionally locked to qualified immutable commit
-`2ddcf3859505fe62a46ac008fb1d6e9059711bbb`; changing that pin requires a reviewed
+`efe672ebaaa844f6663186b8a5d53a18ebab98a6`; changing that pin requires a reviewed
 source change and renewed pair qualification. An arbitrary branch commit cannot
 execute browser build code before subsequent offline credential allocation.
 
@@ -104,7 +104,7 @@ recovery and real Microsoft365/Exchange acceptance remain separate open work.
 
 ## Bounded recurring INT profile
 
-Selection reconciliation on 2026-10-30 (INF-02): the checked-in selection now
+Historical selection reconciliation on 2026-10-30 (INF-02): the then checked-in selection
 matches actual live Render receipts `dep-dbibkggu01pc7397eb40` (Customer) and
 `dep-dbibkjnlk1mc73fr97gg` (Platform), both on API
 `ca1f06b5b5181965f7c3aeffdc235aa44c638771` and frontend
@@ -182,7 +182,7 @@ transition, the UI must show stale/unknown rather than a manufactured healthy st
 The operating window is a resource bound, **not a zero-cost guarantee**. Two Render
 Free services awake for ten hours daily consume about 620 shared instance-hours
 in a 31-day month before startup/other usage, against the workspace's published
-750-hour allowance. The current complete sealed bytes total approximately 3.56 MB
+750-hour allowance. The October30 complete sealed bytes totaled approximately 3.56 MB
 per collection (about 13.3 GB over 31 days at 120 collections/day, before headers).
 Verify actual remaining workspace instance-hours, bandwidth/build allowances and
 configured spending controls before activation; existing other usage still counts.
@@ -199,7 +199,7 @@ after operating execution. No invitation, email receipt or real-tenant issue is
 closed by this runtime-only change.
 
 
-## QA-10 reconciliation candidate — 30 October 2026
+## Historical QA-10 reconciliation candidate — 30 October 2026
 
 The fixed recurring selection is reconciled to the successful existing-service
 receipts recorded in frontend issues #113 and #419: API `ca1f06b5b5181965f7c3aeffdc235aa44c638771`
@@ -224,3 +224,29 @@ zero-additional-cost boundary remain unchanged. No workflow dispatch, variable,
 credential, grant, service, plan or deployment is changed by this source patch.
 Provider subscription collection and Product/Feedback source activation are
 separate from this runtime collector (see `PROTECTED-PLATFORM-INSIGHTS.md`).
+
+
+## Current QA-10 selection — 31 October 2026
+
+The fixed selection now follows the coordinated release in API PR362. The
+canonical migration completed in Actions run41185228840 with canonical75,
+overlay33, resetPerformed=false and retainedCountsMatch=true. Both existing
+services were suspended before migration and their public readiness routes
+returned503. Blueprint sync exe-dbiqh25g1s2s73dvnrbg applied only the reviewed
+branch, build command and three runtime pins for each existing service.
+
+Actual successful Render receipts are Customer dep-dbiqhrcs728c7381n1hg at
+2026-10-31T08:39:05.558Z and Platform dep-dbiqhtmtlv9c73bf1urg at
+2026-10-31T08:39:07.528Z. Both deploy API
+`fa488070bd62d677c67b5d266282eecfb007e474` and frontend
+`efe672ebaaa844f6663186b8a5d53a18ebab98a6`; both readiness endpoints returned200
+with ready status after deployment. Their manifest digests are the independently
+qualified values recorded in the selection and coordinated release runbook.
+These are actual deployment receipts, not new persisted observation timestamps.
+
+The fixed frontend allowlist and credential-free workflow checkout move together.
+The observer source remains independently qualified: require its candidate and
+Main gates before updating the qualified-SHA variable and running one manual
+collection. Keep CM_INT_OBSERVER_SCHEDULE_ENABLED=false. This change does not
+claim a successful collector write, current UI freshness, recurring execution,
+optional provider health or completion of QA-09's separate sources.
