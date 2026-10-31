@@ -1,8 +1,8 @@
 # Protected OPS daily insights and consistent cards
 
 Tracking: frontend #419 and #428; existing infrastructure #432 and observer #113.
-Merge the coordinated wrapper selection in API PR366 and the implementation in
-API PR365/frontend PR440 before this selection. Reconcile any concurrent provider
+The coordinated wrapper selection in API PR366 is merged and retained. Merge the
+implementation in API PR365/frontend PR440 before this selection. Reconcile any concurrent provider
 activation first. This document selects a candidate pair and its procedure, not a
 deployment receipt. The earlier schema75 release and its actual receipts remain
 historical evidence in QA-20261031-RELEASE.md and the current observer selection.
@@ -11,11 +11,11 @@ historical evidence in QA-20261031-RELEASE.md and the current observer selection
 
 | Input | Selection |
 | --- | --- |
-| API | `ded73b39be9101197150091c84ebfa879ec40575` |
-| Frontend | `a930bb1fbbda3f3d5037ec9c016c756363c60ae6` |
-| Release branch | `release/int-20261031-ded73b3` |
-| Customer manifest SHA256 | `4d5a89ae1b429c8b6b0b71a18fc85903dc17b4889035210f0918f26d9f821b5b` |
-| Platform manifest SHA256 | `20edadef605b3d6552e75e23b1eabb4870455400c42d1f28aba2d1a1d0c53f8b` |
+| API | `668d3be0e4682250dc4c92c4d2dc3c580d6892ed` |
+| Frontend | `4908ef26da53ac17fea2212f071067b1863a2865` |
+| Release branch | `release/int-20261031-668d3be` |
+| Customer manifest SHA256 | `9eca0c3fe0c38fe5c173248bd082d9f255dbf37aa2db2752d41e9c5982279988` |
+| Platform manifest SHA256 | `f8f078237f7aca0736352e42e17a764a7a46253bcaa1682fb9cc4dcf24087e12` |
 
 The real authenticated-build wrapper built 300 Customer and 197 Platform files using these
 exact source refs, existing INT origins and unchanged presentation flags. The
@@ -34,8 +34,8 @@ presentation flags remain build-command-only. Actual private-repository delivery
 remains the separate agreed cutover acceptance.
 
 The frontend's complete protected browser matrix is pinned to API d65e5c79. The
-selected API ded73b39 differs only in the protected frontend Gitlink and its build
-documentation: application, routes, tests, dependencies and build-wrapper code are
+selected API 668d3be0 differs only in the protected frontend Gitlink and accepted
+release configuration/documentation: application, routes, tests, dependencies and build-wrapper code are
 byte-identical. Exact selected-pair wrapper builds, artifact validation and actual
 insight/runtime wire checks supplement its required API/Main gates. This does not
 replace the unchanged permanent Demo counterpart or claim live/private acceptance.
