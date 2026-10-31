@@ -4,7 +4,16 @@ Tracking: floriankreutzer/conference-manager#432, INF-04/05. `render.int.yaml`
 describes both existing protected INT services. The legacy `render.yaml` remains
 a separate CI dependency and must not be synchronized over protected INT.
 
-## Blueprint adoption for the existing qualified release
+## Current release selection
+
+`render.int.yaml` now selects the QA release described in
+[the coordinated schema75 runbook](QA-20261031-RELEASE.md). Its immutable API
+and frontend pins and both independently verified manifests move together.
+The selection is not proof of a deployment or migration. Keep automatic Blueprint
+sync paused and follow that runbook before applying the selected pair.
+The following 30 October provider receipts remain historical evidence.
+
+## Historical Blueprint adoption — 30 October 2026
 
 The existing Blueprint `conference-manager-demo` (`exs-daakihlg1s2s73df6jdg`)
 owns both services and `conference-manager-demo-shared`. At the administration
@@ -36,7 +45,7 @@ the existing receipts remain historical evidence rather than guessed new IDs.
 For a future release, create and protect a new immutable release branch and
 update the Blueprint's pair, source guards and digests together after qualification.
 
-The file freezes the actually deployed API `ca1f06b5b5181965f7c3aeffdc235aa44c638771`
+The previous Blueprint snapshot froze the actually deployed API `ca1f06b5b5181965f7c3aeffdc235aa44c638771`
 and frontend `2ddcf3859505fe62a46ac008fb1d6e9059711bbb`, including the existing
 literal build guards and clean frontend clone. It intentionally does not activate
 the newer wrapper merely by adopting IaC. Source selection, runtime pins and

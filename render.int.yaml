@@ -1,6 +1,7 @@
 # yaml-language-server: $schema=https://render.com/schema/render.yaml.json
 # Existing protected INT resources; adopt only in the current paused Blueprint.
-# Frozen deployed pair from 2026-10-30. See docs/RENDER-PROTECTED-BUILD.md.
+# Selected QA release pair; not a deployment receipt.
+# See docs/QA-20261031-RELEASE.md before any synchronization.
 previews:
   generation: off
 # Preserve ownership of the legacy group without injecting DEMO_* into INT.
@@ -16,12 +17,12 @@ services:
     region: frankfurt
     numInstances: 1
     repo: https://github.com/floriankreutzer/conference-manager-api
-    branch: release/int-20261030-ca1f06b
+    branch: release/int-20261031-fa48807
     autoDeployTrigger: off
     previews:
       generation: off
     buildCommand: >-
-      test "$(git rev-parse HEAD)" = "ca1f06b5b5181965f7c3aeffdc235aa44c638771" && npm ci --ignore-scripts --no-audit --no-fund && rm -rf .protected-ui-build && git clone --filter=blob:none --no-checkout https://github.com/floriankreutzer/conference-manager.git .protected-ui-build && git -C .protected-ui-build fetch --depth=1 origin 2ddcf3859505fe62a46ac008fb1d6e9059711bbb && git -C .protected-ui-build checkout --detach 2ddcf3859505fe62a46ac008fb1d6e9059711bbb && npm --prefix .protected-ui-build ci --include=dev --ignore-scripts --no-audit --no-fund && protected_api_root="$PWD" && cd .protected-ui-build && PROTECTED_API_COMMIT=ca1f06b5b5181965f7c3aeffdc235aa44c638771 PROTECTED_FRONTEND_COMMIT=2ddcf3859505fe62a46ac008fb1d6e9059711bbb PROTECTED_ENVIRONMENT=int PROTECTED_CUSTOMER_ORIGIN=https://conference-manager-demo.onrender.com PROTECTED_PLATFORM_ORIGIN=https://conference-manager-ops-demo.onrender.com PROTECTED_SYNTHETIC_ENABLED=true PROTECTED_PRESENTATION_MICROSOFT_ENABLED=true PROTECTED_PRESENTATION_INVITATIONS_ENABLED=true PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED=true node scripts/build-protected-frontend.mjs "$protected_api_root/.protected-frontend"
+      test "$(git rev-parse HEAD)" = "fa488070bd62d677c67b5d266282eecfb007e474" && npm ci --ignore-scripts --no-audit --no-fund && rm -rf .protected-ui-build && git clone --filter=blob:none --no-checkout https://github.com/floriankreutzer/conference-manager.git .protected-ui-build && git -C .protected-ui-build fetch --depth=1 origin efe672ebaaa844f6663186b8a5d53a18ebab98a6 && git -C .protected-ui-build checkout --detach efe672ebaaa844f6663186b8a5d53a18ebab98a6 && npm --prefix .protected-ui-build ci --include=dev --ignore-scripts --no-audit --no-fund && protected_api_root="$PWD" && cd .protected-ui-build && PROTECTED_API_COMMIT=fa488070bd62d677c67b5d266282eecfb007e474 PROTECTED_FRONTEND_COMMIT=efe672ebaaa844f6663186b8a5d53a18ebab98a6 PROTECTED_ENVIRONMENT=int PROTECTED_CUSTOMER_ORIGIN=https://conference-manager-demo.onrender.com PROTECTED_PLATFORM_ORIGIN=https://conference-manager-ops-demo.onrender.com PROTECTED_SYNTHETIC_ENABLED=true PROTECTED_PRESENTATION_MICROSOFT_ENABLED=true PROTECTED_PRESENTATION_INVITATIONS_ENABLED=true PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED=true node scripts/build-protected-frontend.mjs "$protected_api_root/.protected-frontend"
     startCommand: npm run start:protected:customer
     healthCheckPath: /api/v1/health/ready
     envVars:
@@ -32,9 +33,9 @@ services:
       - key: PROTECTED_ENVIRONMENT
         value: "int"
       - key: PROTECTED_API_COMMIT
-        value: "ca1f06b5b5181965f7c3aeffdc235aa44c638771"
+        value: "fa488070bd62d677c67b5d266282eecfb007e474"
       - key: PROTECTED_FRONTEND_COMMIT
-        value: "2ddcf3859505fe62a46ac008fb1d6e9059711bbb"
+        value: "efe672ebaaa844f6663186b8a5d53a18ebab98a6"
       - key: PROTECTED_CUSTOMER_ORIGIN
         value: "https://conference-manager-demo.onrender.com"
       - key: PROTECTED_PLATFORM_ORIGIN
@@ -69,7 +70,7 @@ services:
       - key: PROTECTED_SERVICE_VERSION
         value: "cm-int-20261021"
       - key: PROTECTED_HOSTED_FRONTEND_SHA256
-        value: "03b12e5466f3f396f9476e4731a3ef3eec799e355a4fa78e6cd02dfc01d2a241"
+        value: "ebb35677f98538094a4eafd9a4c674a8f48828ec7ff5306b36b6fb0790da5e0d"
       - key: PROTECTED_DATABASE_POOL_MAX
         sync: false
       - key: PROTECTED_LEASE_POOL_MAX
@@ -105,12 +106,12 @@ services:
     region: frankfurt
     numInstances: 1
     repo: https://github.com/floriankreutzer/conference-manager-api
-    branch: release/int-20261030-ca1f06b
+    branch: release/int-20261031-fa48807
     autoDeployTrigger: off
     previews:
       generation: off
     buildCommand: >-
-      test "$(git rev-parse HEAD)" = "ca1f06b5b5181965f7c3aeffdc235aa44c638771" && npm ci --ignore-scripts --no-audit --no-fund && rm -rf .protected-ui-build && git clone --filter=blob:none --no-checkout https://github.com/floriankreutzer/conference-manager.git .protected-ui-build && git -C .protected-ui-build fetch --depth=1 origin 2ddcf3859505fe62a46ac008fb1d6e9059711bbb && git -C .protected-ui-build checkout --detach 2ddcf3859505fe62a46ac008fb1d6e9059711bbb && npm --prefix .protected-ui-build ci --include=dev --ignore-scripts --no-audit --no-fund && protected_api_root="$PWD" && cd .protected-ui-build && PROTECTED_API_COMMIT=ca1f06b5b5181965f7c3aeffdc235aa44c638771 PROTECTED_FRONTEND_COMMIT=2ddcf3859505fe62a46ac008fb1d6e9059711bbb PROTECTED_ENVIRONMENT=int PROTECTED_CUSTOMER_ORIGIN=https://conference-manager-demo.onrender.com PROTECTED_PLATFORM_ORIGIN=https://conference-manager-ops-demo.onrender.com PROTECTED_SYNTHETIC_ENABLED=true PROTECTED_PRESENTATION_MICROSOFT_ENABLED=true PROTECTED_PRESENTATION_INVITATIONS_ENABLED=true PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED=true node scripts/build-protected-frontend.mjs "$protected_api_root/.protected-frontend"
+      test "$(git rev-parse HEAD)" = "fa488070bd62d677c67b5d266282eecfb007e474" && npm ci --ignore-scripts --no-audit --no-fund && rm -rf .protected-ui-build && git clone --filter=blob:none --no-checkout https://github.com/floriankreutzer/conference-manager.git .protected-ui-build && git -C .protected-ui-build fetch --depth=1 origin efe672ebaaa844f6663186b8a5d53a18ebab98a6 && git -C .protected-ui-build checkout --detach efe672ebaaa844f6663186b8a5d53a18ebab98a6 && npm --prefix .protected-ui-build ci --include=dev --ignore-scripts --no-audit --no-fund && protected_api_root="$PWD" && cd .protected-ui-build && PROTECTED_API_COMMIT=fa488070bd62d677c67b5d266282eecfb007e474 PROTECTED_FRONTEND_COMMIT=efe672ebaaa844f6663186b8a5d53a18ebab98a6 PROTECTED_ENVIRONMENT=int PROTECTED_CUSTOMER_ORIGIN=https://conference-manager-demo.onrender.com PROTECTED_PLATFORM_ORIGIN=https://conference-manager-ops-demo.onrender.com PROTECTED_SYNTHETIC_ENABLED=true PROTECTED_PRESENTATION_MICROSOFT_ENABLED=true PROTECTED_PRESENTATION_INVITATIONS_ENABLED=true PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED=true node scripts/build-protected-frontend.mjs "$protected_api_root/.protected-frontend"
     startCommand: npm run start:protected:platform
     healthCheckPath: /api/v1/platform/health/ready
     envVars:
@@ -121,9 +122,9 @@ services:
       - key: PROTECTED_ENVIRONMENT
         value: "int"
       - key: PROTECTED_API_COMMIT
-        value: "ca1f06b5b5181965f7c3aeffdc235aa44c638771"
+        value: "fa488070bd62d677c67b5d266282eecfb007e474"
       - key: PROTECTED_FRONTEND_COMMIT
-        value: "2ddcf3859505fe62a46ac008fb1d6e9059711bbb"
+        value: "efe672ebaaa844f6663186b8a5d53a18ebab98a6"
       - key: PROTECTED_CUSTOMER_ORIGIN
         value: "https://conference-manager-demo.onrender.com"
       - key: PROTECTED_PLATFORM_ORIGIN
@@ -158,7 +159,7 @@ services:
       - key: PROTECTED_SERVICE_VERSION
         value: "cm-int-20261021"
       - key: PROTECTED_HOSTED_FRONTEND_SHA256
-        value: "a244f1fb678ef7a145aa399bea4be7d8cae99a0a9e1b1bbae98effca551c4965"
+        value: "3f8a7afe18f2fdfeefd33f36bb8aaae5d9117e59700d0750f55f8c7ff48a1a4a"
       - key: PROTECTED_DATABASE_POOL_MAX
         sync: false
       - key: PROTECTED_LEASE_POOL_MAX
