@@ -256,15 +256,16 @@ test('successful modular bulk route completes with its bounded route identity', 
 
 test('post-response telemetry observer failures cannot replace an HTTP outcome', async () => {
   const calls = [];
+  let payloadBytes;
   const metrics = createMetricsRegistry({
     write(line) {
-      calls.push(JSON.parse(line).event);
+      calls.push(JSON.parse(line));
       throw new Error('METRIC_SINK_FAILED');
     },
   });
   const logger = createLogger({
     write(line) {
-      calls.push(JSON.parse(line).event);
+      calls.push(JSON.parse(line));
       throw new Error('LOG_SINK_FAILED');
     },
   });
@@ -273,8 +274,25 @@ test('post-response telemetry observer failures cannot replace an HTTP outcome',
     const result = await httpRequest({ port, path: '/api/v1/health/live' });
     assert.equal(result.statusCode, 200);
     assert.equal(result.body.status, 'ok');
+    payloadBytes = result.payloadBytes;
   });
-  assert.deepEqual(calls, ['metric_sample', 'metric_sample', 'request_completed']);
+  // The response finish observer and request finalizer can run in either order.
+  // Both metric observers and the completion logger must still be attempted once.
+  assert.equal(calls.length, 3);
+  const samples = calls.filter(({ event }) => event === 'metric_sample');
+  assert.deepEqual(samples.map(({ metric, labels, value }) => ({ metric, labels, value }))
+    .sort((left, right) => left.metric.localeCompare(right.metric)), [
+    { metric: 'api_requests_total', labels: { route: 'health_live', method: 'GET', status: '2xx' }, value: 1 },
+    { metric: 'api_response_payload_bytes_total',
+      labels: { route: 'health_live', method: 'GET', status: '2xx', payload: 'json' }, value: payloadBytes },
+  ]);
+  const completions = calls.filter(({ event }) => event === 'request_completed');
+  assert.equal(completions.length, 1);
+  assert.equal(completions[0].route, 'health_live');
+  assert.equal(completions[0].method, 'GET');
+  assert.equal(completions[0].statusCode, 200);
+  assert.match(completions[0].requestId, /^[0-9a-f-]{36}$/);
+  assert.ok(Number.isFinite(completions[0].durationMs) && completions[0].durationMs >= 0);
 });
 
 test('booking service records booking and provider outcomes without tenant or provider references', async () => {

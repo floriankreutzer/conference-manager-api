@@ -315,6 +315,15 @@ test('Platform metering PostgreSQL ledger, reconciliation and quota invariants',
       periodEnd: currentPeriodEnd,
     });
     assert.equal(unreadySnapshot.dataState, 'partial');
+    assert.equal(unreadySnapshot.values.active_users, readySnapshot.values.active_users);
+    assert.equal(unreadySnapshot.values.active_rooms, readySnapshot.values.active_rooms);
+    for (const dimension of ['requests_created','bookings_confirmed','integration_operations']) {
+      assert.equal(unreadySnapshot.values[dimension], null);
+    }
+    const old = await unready.readPeriod({ tenantId: TENANT_A,
+      periodStart: '2020-01-01T00:00:00.000Z', periodEnd: '2020-02-01T00:00:00.000Z' });
+    assert.equal(old.dataState, 'unknown');assert.equal(old.measuredAt, null);assert.equal(old.eventWatermark, null);
+    assert.ok(Object.values(old.values).every(value => value === null));
     await assert.rejects(
       ready.readPeriod({
         tenantId: 'a7777777-7777-4777-8777-777777777777',
@@ -651,6 +660,7 @@ test('Platform metering PostgreSQL ledger, reconciliation and quota invariants',
   await t.test('migration rollback refuses retained state and is reversible after reviewed cleanup', async () => {
     assert.deepEqual(await createPostgresPlatformProjectionRepository(pool).consumeBatch(),
       { refreshedCount: 2, retryCount: 0, poisonCount: 0 });
+    assert.equal(await rollbackLatest(pool),true); // Empty service identity075 before unchanged074/older guards.
     assert.equal(await rollbackLatest(pool),true); // Function-only074 before unchanged073/older rollback assertions.
     assert.equal(await rollbackLatest(pool),true); // Empty073 before unchanged072/older rollback assertions.
     assert.equal(await rollbackLatest(pool),true); // Empty072 before retained071/older rollback assertions.

@@ -80,7 +80,8 @@ function workflowDurations(events) {
 
 // Input is held inside the closed repository transaction. Only aggregates and
 // digests leave this function; no Tenant, User, Request or audit identity escapes.
-export function compileRuntimeProductReport({ observedAt, sourceEpoch, epochStartedAt, tenant, platform, revisions }) {
+export function compileRuntimeProductReport({ observedAt, sourceEpoch, epochStartedAt, tenant, platform, revisions,
+  environment = 'demo', accessMode = 'shared_owner_password', sourceContext = null }) {
   const observed = productInstant(observedAt);
   const start = observed - 28 * DAY_MS;
   const periodStart = new Date(start).toISOString();
@@ -136,9 +137,12 @@ export function compileRuntimeProductReport({ observedAt, sourceEpoch, epochStar
       sourcePeriodStart: state === 'not_collected' ? null : periodStart,
       sourcePeriodEnd: state === 'not_collected' ? null : observedAt });
   }
-  return normalizeRuntimeProductReport({ schemaVersion: 2, environment: 'demo', collectionMode: 'runtime_projection',
-    accessMode: 'shared_owner_password', observedAt, evaluatedAt: observedAt, periodStart, periodEnd: observedAt,
+  return normalizeRuntimeProductReport({ schemaVersion: 2, environment, collectionMode: 'runtime_projection',
+    accessMode, ...(environment === 'production' ? { sourceContext } : {}), observedAt, evaluatedAt: observedAt,
+    periodStart, periodEnd: observedAt,
     freshness: 'fresh', sourceState: 'available', product, productCoverage,
-    provenance: { mode: 'retained_runtime', sourceEpoch: hash(['demo', sourceEpoch]), eventCount: facts.length,
-      sourceDigest: hash([sourceEpoch, observedAt, productCoverage, facts]) } });
+    provenance: { mode: 'retained_runtime',
+      sourceEpoch: hash(environment === 'demo' ? ['demo', sourceEpoch] : [environment, sourceEpoch, sourceContext]),
+      eventCount: facts.length,
+      sourceDigest: hash([sourceEpoch, observedAt, productCoverage, facts]) } }, { environment, accessMode });
 }

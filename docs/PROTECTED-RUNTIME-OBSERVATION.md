@@ -28,7 +28,7 @@ loaded from the existing private environment binding, never a public workflow
 input. There is no Tenant selector, connection, origin, SQL, role or health-state
 input. For the original one-shot workflow, the deployed API SHA must equal the exact observer Main SHA. Frontend
 selection is additionally locked to qualified immutable commit
-`f6359ff537165c5e29fc4884578d92a83ce22be4`; changing that pin requires a reviewed
+`efe672ebaaa844f6663186b8a5d53a18ebab98a6`; changing that pin requires a reviewed
 source change and renewed pair qualification. An arbitrary branch commit cannot
 execute browser build code before subsequent offline credential allocation.
 
@@ -104,6 +104,19 @@ recovery and real Microsoft365/Exchange acceptance remain separate open work.
 
 ## Bounded recurring INT profile
 
+Historical selection reconciliation on 2026-10-30 (INF-02): the then checked-in selection
+matches actual live Render receipts `dep-dbibkggu01pc7397eb40` (Customer) and
+`dep-dbibkjnlk1mc73fr97gg` (Platform), both on API
+`ca1f06b5b5181965f7c3aeffdc235aa44c638771` and frontend
+`2ddcf3859505fe62a46ac008fb1d6e9059711bbb`. Receipt completion timestamps are
+normalized to JavaScript millisecond precision. Both public health/status routes
+returned ready, the matching API build and `cm-int-20261021`. Independent sealed
+frontend reconstruction matched both manifest digests in the actual Render build
+logs. These are source/deployment observations, not proof of a database write,
+scheduled event or current UI freshness. The previous selection is superseded,
+not retroactively described as the current deployment. Activation still requires
+the separate observer Main qualification and actual execution receipt below.
+
 `protected-int-runtime-recurring.yml` adds a separately qualified, best-effort
 operating profile. It uses the same collector, credential binding and transactional
 writer; it does not add an HTTP write path, application timer, database role,
@@ -129,6 +142,25 @@ Tenant, health status, database selector or signing key is accepted. Clearing th
 variable stops further execution; any Main change also requires renewed acceptance.
 In-flight operations retain the existing bounded transaction/exclusion semantics.
 
+Main now includes the service-identity migration 075 from API PR359. The observer
+verifies the complete current migration ledger before writing; matching public
+bytes and deployment receipts alone cannot qualify that database prerequisite.
+Confirm the canonical live migration and its coordinated release acceptance before
+activating this newer observer. This infrastructure change does not execute a
+migration or relax the ledger check. Reconcile the fixed selection again if that
+release replaces either deployed source or receipt.
+
+Recurring traffic additionally requires repository variable
+`CM_INT_OBSERVER_SCHEDULE_ENABLED=true`, checked both before runner allocation
+and in the CLI. Missing/empty/false values keep scheduled collection disabled.
+This separates exact-source qualification for one bounded manual observation from
+permission for ongoing traffic. Set the schedule flag only after current workspace
+hours, bandwidth, billing headroom and the existing owner budget are reconciled;
+setting the qualified SHA alone must not reactivate a recurring cost source.
+Clearing this flag stops new scheduled collection without blocking a separately
+qualified owner manual invocation. It does not cancel an already running bounded
+transaction or claim provider-level currency enforcement.
+
 Automatic collection runs every five minutes **only from 09:00 inclusive to 19:00
 exclusive Europe/Berlin**, daily. A UTC cron envelope and a local-time preflight
 cover both daylight-saving offsets. Outside that window the scheduled run ends
@@ -150,7 +182,7 @@ transition, the UI must show stale/unknown rather than a manufactured healthy st
 The operating window is a resource bound, **not a zero-cost guarantee**. Two Render
 Free services awake for ten hours daily consume about 620 shared instance-hours
 in a 31-day month before startup/other usage, against the workspace's published
-750-hour allowance. The current complete sealed bytes total approximately 3.56 MB
+750-hour allowance. The October30 complete sealed bytes totaled approximately 3.56 MB
 per collection (about 13.3 GB over 31 days at 120 collections/day, before headers).
 Verify actual remaining workspace instance-hours, bandwidth/build allowances and
 configured spending controls before activation; existing other usage still counts.
@@ -165,3 +197,56 @@ not proof that a cron event ran. Verify observation timestamps, both deployments
 three current-generation Customer mappings and unchanged Demo business baseline
 after operating execution. No invitation, email receipt or real-tenant issue is
 closed by this runtime-only change.
+
+
+## Historical QA-10 reconciliation candidate — 30 October 2026
+
+The fixed recurring selection is reconciled to the successful existing-service
+receipts recorded in frontend issues #113 and #419: API `ca1f06b5b5181965f7c3aeffdc235aa44c638771`
+and frontend `2ddcf3859505fe62a46ac008fb1d6e9059711bbb`. The Customer and Platform
+manifest digests and deployment IDs come from those receipts; receipt timestamps
+are normalized to the existing millisecond contract. They are deployment times,
+not newly collected observation times. The deployed API and qualified observer
+source deliberately remain separate identities.
+
+This is a **draft reconciliation for that exact pair**, not collector activation.
+The separate Recovery rollout tracked by frontend #426/#400 may supersede the pair.
+Before accepting this selection, reconcile it again against the final successful
+paired rollout receipts if that happens. Never infer deployed identities from Main.
+Require normal candidate and independent Main qualification, then bind the existing
+qualified-SHA variable to that accepted observer source. Only an actual successful
+collection and independent readback can establish a new observation; a later
+`schedule` event is separately required to prove recurring execution.
+
+The five-minute freshness contract, 09:00–19:00 Europe/Berlin window, exact fixed
+origins, all-byte evidence checks, shared exclusion, role/epoch custody and
+zero-additional-cost boundary remain unchanged. No workflow dispatch, variable,
+credential, grant, service, plan or deployment is changed by this source patch.
+Provider subscription collection and Product/Feedback source activation are
+separate from this runtime collector (see `PROTECTED-PLATFORM-INSIGHTS.md`).
+
+
+## Current QA-10 selection — 31 October 2026
+
+The fixed selection now follows the coordinated release in API PR362. The
+canonical migration completed in Actions run41185228840 with canonical75,
+overlay33, resetPerformed=false and retainedCountsMatch=true. Both existing
+services were suspended before migration and their public readiness routes
+returned503. Blueprint sync exe-dbiqh25g1s2s73dvnrbg applied only the reviewed
+branch, build command and three runtime pins for each existing service.
+
+Actual successful Render receipts are Customer dep-dbiqhrcs728c7381n1hg at
+2026-10-31T08:39:05.558Z and Platform dep-dbiqhtmtlv9c73bf1urg at
+2026-10-31T08:39:07.528Z. Both deploy API
+`fa488070bd62d677c67b5d266282eecfb007e474` and frontend
+`efe672ebaaa844f6663186b8a5d53a18ebab98a6`; both readiness endpoints returned200
+with ready status after deployment. Their manifest digests are the independently
+qualified values recorded in the selection and coordinated release runbook.
+These are actual deployment receipts, not new persisted observation timestamps.
+
+The fixed frontend allowlist and credential-free workflow checkout move together.
+The observer source remains independently qualified: require its candidate and
+Main gates before updating the qualified-SHA variable and running one manual
+collection. Keep CM_INT_OBSERVER_SCHEDULE_ENABLED=false. This change does not
+claim a successful collector write, current UI freshness, recurring execution,
+optional provider health or completion of QA-09's separate sources.

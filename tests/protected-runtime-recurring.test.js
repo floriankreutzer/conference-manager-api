@@ -14,7 +14,8 @@ function context(event = 'schedule') {
     GITHUB_ACTOR: 'floriankreutzer', GITHUB_TRIGGERING_ACTOR: 'floriankreutzer', GITHUB_RUN_ATTEMPT: '1',
     GITHUB_SHA: source, QUALIFIED_OBSERVER_SHA: source, OBSERVATION_REPOSITORY_PRIVATE: 'false',
     GITHUB_WORKFLOW_REF: 'floriankreutzer/conference-manager-api/.github/workflows/protected-int-runtime-recurring.yml@refs/heads/main',
-    GITHUB_EVENT_NAME: event, OBSERVATION_SCHEDULE: RECURRING_OBSERVATION_CRON, EXPECTED_MAIN_SHA: source };
+    GITHUB_EVENT_NAME: event, OBSERVATION_SCHEDULE: RECURRING_OBSERVATION_CRON,
+    OBSERVATION_SCHEDULE_ENABLED: 'true', EXPECTED_MAIN_SHA: source };
 }
 
 test('recurring observation accepts only exact qualified public owner Main and explicit event authority', () => {
@@ -26,11 +27,21 @@ test('recurring observation accepts only exact qualified public owner Main and e
     { OBSERVATION_REPOSITORY_PRIVATE: 'true' }, { OBSERVATION_REPOSITORY_PRIVATE: undefined },
     { GITHUB_WORKFLOW_REF: context().GITHUB_WORKFLOW_REF.replace('@refs/heads/main', '@refs/heads/candidate') },
     { GITHUB_EVENT_NAME: 'pull_request_target' }, { OBSERVATION_SCHEDULE: '* * * * *' },
+    { OBSERVATION_SCHEDULE_ENABLED: undefined }, { OBSERVATION_SCHEDULE_ENABLED: 'false' },
+    { OBSERVATION_SCHEDULE_ENABLED: 'yes' },
     { RUNNER_DEBUG: '1' }, { ACTIONS_STEP_DEBUG: 'true' }, { ACTIONS_RUNNER_DEBUG: 'true' }, { NODE_OPTIONS: '--inspect' }]) {
     assert.throws(() => requireRecurringRuntimeObservationContext({ ...context(), ...delta }), /OBSERVATION_REFUSED/);
   }
   assert.throws(() => requireRecurringRuntimeObservationContext({ ...context('workflow_dispatch'),
     EXPECTED_MAIN_SHA: 'c'.repeat(40) }), /OBSERVATION_REFUSED/);
+});
+
+test('a qualified bounded manual observation does not enable recurring traffic', () => {
+  for (const enabled of [undefined, '', 'false']) {
+    assert.doesNotThrow(() => requireRecurringRuntimeObservationContext({
+      ...context('workflow_dispatch'), OBSERVATION_SCHEDULE_ENABLED: enabled,
+    }));
+  }
 });
 
 test('daily local window preserves exact boundaries across winter, summer and DST changes', () => {
@@ -50,11 +61,11 @@ test('daily local window preserves exact boundaries across winter, summer and DS
 
 test('fixed reviewed deployments remain independent from qualified observer source; no invented optional evidence', async () => {
   const selection = await readRecurringRuntimeObservationSelection();
-  const deployedSource = 'cfc591c0164ea3e5902ad3318df1b8e21b9c6d93';
+  const deployedSource = 'fa488070bd62d677c67b5d266282eecfb007e474';
   assert.equal(selection.environment, 'int');
   assert.equal(selection.apiCommit, deployedSource);
   assert.notEqual(selection.apiCommit, source);
-  assert.equal(selection.frontendCommit, 'f6359ff537165c5e29fc4884578d92a83ce22be4');
+  assert.equal(selection.frontendCommit, 'efe672ebaaa844f6663186b8a5d53a18ebab98a6');
   assert.notEqual(selection.customer.deploymentReference, selection.platform.deploymentReference);
   assert.equal(selection.evidence.rollback, null);assert.ok(Object.isFrozen(selection));
 });
@@ -62,7 +73,8 @@ test('fixed reviewed deployments remain independent from qualified observer sour
 test('the released frontend is required by both selection validation and the credential-free checkout', async () => {
   const selection = await readRecurringRuntimeObservationSelection();
   assert.doesNotThrow(() => normalizeRuntimeObservationSelection(selection));
-  for (const frontendCommit of ['2667b0b6df74ffa2632fce4be6f95ef8ef8103ac', 'a'.repeat(40)]) {
+  for (const frontendCommit of ['2ddcf3859505fe62a46ac008fb1d6e9059711bbb',
+    '2667b0b6df74ffa2632fce4be6f95ef8ef8103ac', 'f6359ff537165c5e29fc4884578d92a83ce22be4', 'a'.repeat(40)]) {
     assert.throws(() => normalizeRuntimeObservationSelection({ ...selection, frontendCommit }), /OBSERVATION_REFUSED/);
   }
   const workflow = await readFile('.github/workflows/protected-int-runtime-recurring.yml', 'utf8');
@@ -90,6 +102,7 @@ test('recurring workflow retains shared exclusion, pinned sources, late minimal 
   assert.equal(RECURRING_OBSERVATION_CRON, '2-57/5 7-17 * * *');
   assert.match(workflow, /github.event.repository.private == false/);
   assert.match(workflow, /vars.CM_INT_OBSERVER_QUALIFIED_SHA == github.sha/);
+  assert.match(workflow, /github.event_name == 'schedule' && vars.CM_INT_OBSERVER_SCHEDULE_ENABLED == 'true'/);
   assert.match(workflow, /group: hosted-shared-demo-database-initialize/);
   assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /github.run_attempt == 1/);

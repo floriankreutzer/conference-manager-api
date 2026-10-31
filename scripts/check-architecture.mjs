@@ -16,8 +16,8 @@ async function sourceFiles(directory) {
 const packageJson = JSON.parse(await readFile('package.json', 'utf8'));
 const runtimeDependencies = packageJson.dependencies || {};
 const approvedRuntimeDependencies = {
-  '@aws-sdk/client-s3': '3.1152.0',
-  '@azure/msal-node': '7.1.0',
+  '@aws-sdk/client-s3': '3.1158.0',
+  '@azure/msal-node': '7.1.1',
   '@simplewebauthn/server': '14.0.3',
   pg: '8.23.1',
   sharp: '0.35.5',
@@ -558,8 +558,8 @@ for (const required of [
 }
 
 const pool = await readFile('src/persistence/postgres/pool.js', 'utf8');
-if (!/export const CURRENT_SCHEMA_VERSION = 74;/.test(pool)) {
-  throw new Error('Runtime schema readiness requires participant lifecycle schema 74.');
+if (!/export const CURRENT_SCHEMA_VERSION = 75;/.test(pool)) {
+  throw new Error('Runtime schema readiness requires runtime service identity schema 75.');
 }
 const retentionPrivilegeMigration = await readFile(
   'migrations/041_room_media_retention_privileges.up.sql',

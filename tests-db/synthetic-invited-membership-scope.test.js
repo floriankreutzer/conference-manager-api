@@ -410,10 +410,11 @@ test('native participant registration retains exact Microsoft proof and member-q
     await assert.rejects(pool.query(sql),/SYNTHETIC_PARTICIPANT_BINDING_IMMUTABLE/);
   }
   await assert.rejects(pool.query('TRUNCATE synthetic_invited_memberships'),/SYNTHETIC_PARTICIPANT_HISTORY_REQUIRES_VERIFIED_RECOVERY/);
+  assert.equal(await rollbackLatest(pool),true); // Empty service identity075 before unchanged074/older guards.
   assert.equal(await rollbackLatest(pool),true); // Function-only074 retains participant history before the073 recovery guard.
   await assert.rejects(rollbackLatest(pool),/SYNTHETIC_PARTICIPANT_HISTORY_REQUIRES_VERIFIED_RECOVERY/);
   await migrateUp(pool);
-  assert.equal(await isPostgresSchemaReady(pool,74),true);
+  assert.equal(await isPostgresSchemaReady(pool,75),true);
   for (const { tenantId } of owned.tenants) assert.equal(await audit.verifyTenantChain(tenantId),true);
   // Human membership source custody is independent of a delegated live Owner
   // session, but it cannot survive current owner disablement/security changes.

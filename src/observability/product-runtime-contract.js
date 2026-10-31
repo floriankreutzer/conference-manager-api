@@ -14,12 +14,20 @@ export const PRODUCT_RUNTIME_NULL_REASONS = Object.freeze([
 
 // This is a separate live Product projection. Daily delivery and feedback retain
 // their own v1 contracts and observation clocks; they cannot be refreshed here.
-export function normalizeRuntimeProductReport(value) {
+export function normalizeRuntimeProductReport(value, { environment = 'demo', accessMode = 'shared_owner_password' } = {}) {
   exactProductObject(value, ['schemaVersion', 'environment', 'collectionMode', 'accessMode',
     'observedAt', 'evaluatedAt', 'periodStart', 'periodEnd', 'freshness', 'sourceState',
-    'product', 'productCoverage', 'provenance']);
-  requireProductCondition(value.schemaVersion === 2 && value.environment === 'demo'
-    && value.collectionMode === 'runtime_projection' && value.accessMode === 'shared_owner_password');
+    'product', 'productCoverage', 'provenance', ...(value?.environment === 'production' ? ['sourceContext'] : [])]);
+  requireProductCondition(value.environment === environment && value.accessMode === accessMode
+    && value.schemaVersion === 2 && value.collectionMode === 'runtime_projection'
+    && ((value.environment === 'demo' && value.accessMode === 'shared_owner_password')
+      || (value.environment === 'production' && ['application_passkey','microsoft_mfa'].includes(value.accessMode))));
+  if (value.environment === 'production') {
+    exactProductObject(value.sourceContext, ['runtimeEnvironment','dataProfile','securityEpochDigest']);
+    requireProductCondition(value.sourceContext.runtimeEnvironment === 'int'
+      && ['real','synthetic'].includes(value.sourceContext.dataProfile)
+      && /^[a-f0-9]{64}$/.test(value.sourceContext.securityEpochDigest));
+  }
   const observed = productInstant(value.observedAt);
   const evaluated = productInstant(value.evaluatedAt);
   const start = productInstant(value.periodStart);

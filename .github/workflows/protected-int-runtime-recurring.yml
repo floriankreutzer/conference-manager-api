@@ -29,7 +29,7 @@ jobs:
       vars.CM_INT_OBSERVER_QUALIFIED_SHA == github.sha &&
       github.actor == 'floriankreutzer' && github.triggering_actor == 'floriankreutzer' &&
       github.run_attempt == 1 &&
-      (github.event_name == 'schedule' ||
+      ((github.event_name == 'schedule' && vars.CM_INT_OBSERVER_SCHEDULE_ENABLED == 'true') ||
       (github.event_name == 'workflow_dispatch' && inputs.expected_main_sha == github.sha))
     environment:
       name: hosted-demo-initialize
@@ -40,6 +40,7 @@ jobs:
       QUALIFIED_OBSERVER_SHA: ${{ vars.CM_INT_OBSERVER_QUALIFIED_SHA }}
       OBSERVATION_REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
       OBSERVATION_SCHEDULE: ${{ github.event.schedule }}
+      OBSERVATION_SCHEDULE_ENABLED: ${{ vars.CM_INT_OBSERVER_SCHEDULE_ENABLED }}
     steps:
       - name: Require ordinary logging before secret allocation
         env:
@@ -63,7 +64,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager
-          ref: 'f6359ff537165c5e29fc4884578d92a83ce22be4'
+          ref: 'efe672ebaaa844f6663186b8a5d53a18ebab98a6'
           path: .runtime-observation-source
           persist-credentials: false
       - name: Install locked observer dependencies without database credentials

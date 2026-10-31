@@ -280,7 +280,15 @@ function overallState(metadataState, operationalState) {
   return operationalState;
 }
 
-function projectRuntime(value, now, maxFreshnessAgeMs) {
+function serviceIdentity(value) {
+  if (value === undefined || value === null) return null;
+  exactRecord(value, ['key', 'surface'], 'PLATFORM_RUNTIME_SERVICE_IDENTITY_INVALID');
+  if (typeof value.key !== 'string' || !SUPPORT_IDENTIFIER.test(value.key)
+    || !['customer','platform','shared'].includes(value.surface)) invalid('PLATFORM_RUNTIME_SERVICE_IDENTITY_INVALID');
+  return Object.freeze({ key: value.key, surface: value.surface });
+}
+
+function projectRuntime(value, now, maxFreshnessAgeMs, schemaVersion = 1) {
   exactRecord(value, [
     'environment',
     'deployment',
@@ -290,8 +298,10 @@ function projectRuntime(value, now, maxFreshnessAgeMs) {
     'dependencies',
     'observedAt',
     'evidence',
+    ...((value && Object.hasOwn(value, 'serviceInstance')) ? ['serviceInstance'] : []),
   ], 'PLATFORM_RUNTIME_RECORD_INVALID');
   const environment = requireEnvironment(value.environment);
+  const serviceInstance = serviceIdentity(value.serviceInstance);
   exactRecord(
     value.deployment,
     ['reference', 'deployedAt'],
@@ -347,7 +357,8 @@ function projectRuntime(value, now, maxFreshnessAgeMs) {
   else if (freshnessProjection.state === 'stale') metadataState = PLATFORM_RUNTIME_METADATA_STATE.STALE;
   else if (hasUnknownMetadata) metadataState = PLATFORM_RUNTIME_METADATA_STATE.UNKNOWN;
   return Object.freeze({
-    schemaVersion: 1,
+    schemaVersion,
+    ...(schemaVersion === 2 ? { serviceInstance } : {}),
     environment,
     deployment: Object.freeze({ reference: deploymentReference, deployedAt }),
     components: Object.freeze({ frontend, api }),
@@ -457,7 +468,10 @@ export function createPlatformRuntimeStatusService({
 
   return Object.freeze({
     async listApprovedDeployments(input) {
-      exactRecord(input, ['operatorContext'], 'PLATFORM_RUNTIME_LIST_INPUT_INVALID');
+      exactRecord(input, ['operatorContext', ...((input && Object.hasOwn(input, 'schemaVersion')) ? ['schemaVersion'] : [])],
+        'PLATFORM_RUNTIME_LIST_INPUT_INVALID');
+      const schemaVersion = input.schemaVersion ?? 1;
+      if (![1,2].includes(schemaVersion)) invalid('PLATFORM_RUNTIME_LIST_INPUT_INVALID');
       await authorizePermission(authorizationPolicy, input.operatorContext);
       const records = await repository.listApprovedDeployments({
         auditEventFor: ({ resultCount }) => auditService.createEvent({
@@ -473,12 +487,20 @@ export function createPlatformRuntimeStatusService({
         invalid('PLATFORM_RUNTIME_DEPLOYMENT_LIST_INVALID');
       }
       const now = runtimeClock(clock);
-      const deployments = records.map((record) => projectRuntime(record, now, maxFreshnessAgeMs));
+      const deployments = records.map((record) => projectRuntime(record, now, maxFreshnessAgeMs, schemaVersion));
+      const surfaces = new Map();
+      for (const record of records) {
+        const identity = serviceIdentity(record.serviceInstance);
+        if (!identity) continue;
+        const key = `${record.environment}:${identity.key}`;
+        if (surfaces.has(key) && surfaces.get(key) !== identity.surface) invalid('PLATFORM_RUNTIME_SERVICE_IDENTITY_INVALID');
+        surfaces.set(key, identity.surface);
+      }
       const keys = deployments.map((deployment) => {
         return `${deployment.environment}\u0000${deployment.deployment.reference ?? ''}`;
       });
       if (new Set(keys).size !== keys.length) invalid('PLATFORM_RUNTIME_DUPLICATE_DEPLOYMENT');
-      return Object.freeze({ schemaVersion: 1, deployments: Object.freeze(deployments) });
+      return Object.freeze({ schemaVersion, deployments: Object.freeze(deployments) });
     },
 
     async getServingDeploymentForTenant(input) {

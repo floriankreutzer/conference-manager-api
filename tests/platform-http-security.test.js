@@ -1101,6 +1101,17 @@ test('metering, quota, and runtime routes expose only protected minimized projec
     cookie: `cm_platform_session=${PLATFORM_TOKEN}`,
   });
   assert.equal(deployments.statusCode, 200);
+  const versioned = await request(runtime.server, {
+    path: '/api/v1/platform/runtime/deployments?schemaVersion=2', cookie: `cm_platform_session=${PLATFORM_TOKEN}`,
+  });
+  assert.equal(versioned.statusCode, 200);
+  assert.equal(runtime.calls.filter(([name]) => name === 'listApprovedDeployments').at(-1)[1].schemaVersion, 2);
+  for (const query of ['schemaVersion=3','schemaVersion=2&schemaVersion=2','schemaVersion=2&tenant=foreign']) {
+    const rejected = await request(runtime.server, {
+      path: `/api/v1/platform/runtime/deployments?${query}`, cookie: `cm_platform_session=${PLATFORM_TOKEN}`,
+    });
+    assert.equal(rejected.statusCode, 400);
+  }
   const serving = await request(runtime.server, {
     path: `/api/v1/platform/tenants/${TENANT_ID}/runtime`,
     cookie: `cm_platform_session=${PLATFORM_TOKEN}`,

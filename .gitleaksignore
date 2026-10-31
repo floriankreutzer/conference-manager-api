@@ -9,3 +9,7 @@ eb1987a9a98ca232a76bf2dd01597b643d00df7a:docs/PROTECTED-RUNTIME-CONFIGURATION.md
 # Current source uses explicit deployed-source metadata; only these observed historical findings are excluded.
 61d60a99ee1dbf599e9d9c84de4ce042394a3d09:scripts/data/protected-int-runtime-selection.json:generic-api-key:3
 61d60a99ee1dbf599e9d9c84de4ce042394a3d09:tests/protected-runtime-recurring.test.js:generic-api-key:53
+# Public release Git SHA, not a credential; the build now reads the guarded checkout identity.
+# Exclude only these two historical findings, retaining all current-source scanning.
+6f6759f06f238bb823950903eadcb467fbdbfef2:render.int.yaml:generic-api-key:25
+6f6759f06f238bb823950903eadcb467fbdbfef2:render.int.yaml:generic-api-key:114

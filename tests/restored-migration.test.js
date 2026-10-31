@@ -9,7 +9,7 @@ const sourceHost = 'ep-source-unit.eu-central-1.aws.neon.tech';
 const targetHost = 'ep-restored-unit.c-5.eu-central-1.aws.neon.tech';
 const request = { sourceSha: 'a'.repeat(40), sourceBranchId: 'br-source-unit', targetBranchId: 'br-restored-unit',
   sourceHost, targetHost, snapshotId: 'snap-restored-unit', servicesClosed: true };
-const receipt = { schemaVersion: 1, operation: 'provider_metrics_migration', canonicalVersion: 74, demoVersion: 33,
+const receipt = { schemaVersion: 1, operation: 'provider_metrics_migration', canonicalVersion: 75, demoVersion: 33,
   resetPerformed: false, retainedCountsMatch: true };
 const urlKeys = ['DEMO_CUSTOMER_DATABASE_URL', 'DEMO_PLATFORM_DATABASE_URL',
   'DEMO_RESET_DATABASE_URL', 'DEMO_MIGRATION_DATABASE_URL'];
