@@ -19,6 +19,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Require Jira key in pull request title
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$PR_TITLE" =~ ^CO-[1-9][0-9]*[[:space:]]+[^[:space:]] ]]; then
+            echo "::error title=Missing Jira work item key::PR title must start with CO-123 followed by a descriptive title."
+            exit 1
+          fi
       - name: Create short-lived private source token
         id: source-token
         if: env.HAS_SOURCE_APP == 'true'
