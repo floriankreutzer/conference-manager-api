@@ -42,7 +42,8 @@ export function withProtectedHostedFrontend({ profile,config,artifact,apiHandler
       applySecurityHeaders(response,config);
       if (name===DEPLOYMENT_METADATA_PATH) {
         const bytes=deploymentMetadata(profile);if (bytes===null) throw new ApiError(404,'NOT_FOUND');
-        response.writeHead(200,{ 'Content-Type': 'application/json; charset=utf-8','Content-Length': bytes.length,'Cache-Control': 'no-store' });
+        response.writeHead(200,{ 'Content-Type': 'application/json; charset=utf-8',
+          'Content-Length': bytes.length,'Cache-Control': 'no-store' });
         response.end(request.method==='HEAD' ? undefined : bytes);return;
       }
       if (profile.surface==='platform' && !name) {
