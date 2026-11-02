@@ -77,9 +77,13 @@ async function githubApi(path, options = {}) {
 }
 
 async function findExistingSuccess(repo, sha, environment) {
-  const deployments = await githubApi(
-    `/repos/${repo}/deployments?sha=${encodeURIComponent(sha)}&environment=${encodeURIComponent(environment)}&task=${encodeURIComponent(TASK)}&per_page=100`,
-  );
+  const query = new URLSearchParams({
+    sha,
+    environment,
+    task: TASK,
+    per_page: '100',
+  });
+  const deployments = await githubApi(`/repos/${repo}/deployments?${query}`);
   for (const deployment of deployments) {
     const statuses = await githubApi(
       `/repos/${repo}/deployments/${deployment.id}/statuses?per_page=100`,
