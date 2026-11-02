@@ -3,6 +3,15 @@ import { ApiError } from './api-error.js';
 import { applySecurityHeaders,assertRequestHost,assertSafeRequestTarget,assertSameOrigin,createRateLimiter } from './security.js';
 import { readProtectedFrontendArtifact } from './protected-frontend-artifact.js';
 
+const DEPLOYMENT_METADATA_PATH='assets/hosted-demo-deployment.json';
+const DEPLOYMENT_REPOSITORY='floriankreutzer/conference-manager-api';
+function deploymentMetadata(profile) {
+  if (profile.environment!=='int') return null;
+  return Buffer.from(`${JSON.stringify({ schemaVersion: 1,provider: 'render',repository: DEPLOYMENT_REPOSITORY,branch: 'main',
+    serviceName: profile.surface==='customer' ? 'conference-manager-demo' : 'conference-manager-ops-demo',
+    runtimeRef: profile.apiCommit,frontendRef: profile.frontendCommit })}\n`);
+}
+
 export async function loadProtectedHostedFrontend(profile) {
   if (profile.hostedFrontendSha256===null) return null;
   if (!['customer','platform'].includes(profile.surface)) throw new TypeError('PROTECTED_FRONTEND_ARTIFACT_INVALID');
@@ -31,6 +40,11 @@ export function withProtectedHostedFrontend({ profile,config,artifact,apiHandler
       const url=new URL(request.url,config.publicOrigin);
       let name=decodeURIComponent(url.pathname).slice(1);
       applySecurityHeaders(response,config);
+      if (name===DEPLOYMENT_METADATA_PATH) {
+        const bytes=deploymentMetadata(profile);if (bytes===null) throw new ApiError(404,'NOT_FOUND');
+        response.writeHead(200,{ 'Content-Type': 'application/json; charset=utf-8','Content-Length': bytes.length,'Cache-Control': 'no-store' });
+        response.end(request.method==='HEAD' ? undefined : bytes);return;
+      }
       if (profile.surface==='platform' && !name) {
         response.writeHead(303,{ Location: '/platform-admin/' });response.end();return;
       }
