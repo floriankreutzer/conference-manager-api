@@ -1,6 +1,7 @@
 const EXPECTED_REPOSITORY = 'floriankreutzer/conference-manager-api';
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const TASK = 'deploy:jira:render-pair';
+const IDENTITY_REQUEST_TIMEOUT_MS = 60000;
 
 const ENVIRONMENTS = Object.freeze({
   int: Object.freeze({
@@ -32,11 +33,16 @@ function exactKeys(value, keys, code) {
 
 async function jsonRequest(url, options = {}) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const timeout = setTimeout(() => controller.abort(), IDENTITY_REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(url, { ...options, signal: controller.signal });
     if (!response.ok) throw new Error(`HTTP_${response.status}_${url}`);
     return await response.json();
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`IDENTITY_REQUEST_TIMEOUT_${IDENTITY_REQUEST_TIMEOUT_MS}MS_${url}`);
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
