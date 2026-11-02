@@ -1,0 +1,44 @@
+name: Publish normalized Jira deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_api_sha:
+        description: Exact reviewed API commit currently live on both Render INT services
+        required: true
+        type: string
+      expected_frontend_sha:
+        description: Exact reviewed frontend commit embedded in the live Render pair
+        required: true
+        type: string
+      environment:
+        description: Normalized Jira deployment environment
+        required: true
+        default: int
+        type: choice
+        options:
+          - int
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: jira-deployment-${{ inputs.environment }}-${{ inputs.expected_api_sha }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout reviewed automation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Verify and publish normalized deployment
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+          EXPECTED_API_SHA: ${{ inputs.expected_api_sha }}
+          EXPECTED_FRONTEND_SHA: ${{ inputs.expected_frontend_sha }}
+        run: node scripts/publish-jira-deployment.mjs
