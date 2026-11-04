@@ -31,6 +31,18 @@ production deployment and Product Acceptance gate remains unchanged.
 
 ## Integration still required before activation
 
+`scripts/jira-github-inventory.mjs` now supplies the transport-only first stage:
+authenticated GET requests to the two fixed repositories, all PR states, bounded
+pagination through an empty terminal page, a 45-second overall timeout and a
+4 MiB response limit. Redirects, duplicate PR numbers, malformed records and
+provider failures abort the whole collection without exposing provider errors.
+It retains drafts and closed PRs instead of inferring that they were merged.
+This is not an atomic GitHub snapshot: concurrent edits require independent final
+recollection and scope reconciliation. `complete` means enumeration reached its
+terminal page, not that Jira association, checks or review evidence are complete.
+No workflow calls this module yet; credential/token wiring and live acceptance
+remain open. Unit transport fixtures do not prove installed-token API access.
+
 1. Bind the collector to the approved repositories and authenticated read-only
    provider access. Enumerate complete results with bounded pagination and verify
    schema, source identity and transport failures. No anonymous fallback.
