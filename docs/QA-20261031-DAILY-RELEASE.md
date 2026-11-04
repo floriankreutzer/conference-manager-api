@@ -1,5 +1,9 @@
 # Protected OPS daily insights and consistent cards
 
+Historical candidate, superseded by [the 4 November selection](QA-20261104-DAILY-RELEASE.md).
+The source pair below was not deployed by this workstream. Its local results
+remain dated evidence and must not approve a later candidate.
+
 Tracking: frontend #419 and #428; existing infrastructure #432 and observer #113.
 The coordinated wrapper selection in API PR366 is merged and retained. Merge the
 implementation in API PR365/frontend PR440 before this selection. Reconcile any concurrent provider
