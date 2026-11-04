@@ -386,12 +386,16 @@ export function architectureConsolidationBoundaryViolations(sourceEntries) {
       }
     }
     if (imports.some(({ specifier }) => specifier.startsWith('@aws-sdk/'))
-      && !['src/media/neon-object-storage.js', 'src/demo/platform-live-storage.js',
+      && !['src/media/neon-object-storage.js', 'src/integrations/daily-insight-storage.js',
         'src/demo/platform-operations-source-storage.js'].includes(file)) {
       violations.push(violation(file, 'the object-storage SDK is restricted to the private storage adapter.'));
     }
     if (graph.get(file)?.includes('src/demo/platform-live-storage.js') && file !== 'src/demo/platform-main.js') {
       violations.push(violation(file, 'the read-only live-metrics storage adapter belongs only to the private Platform Demo entrypoint.'));
+    }
+    if (graph.get(file)?.includes('src/integrations/daily-insight-storage.js')
+      && !['src/demo/platform-live-storage.js', 'src/protected-platform-runtime.js'].includes(file)) {
+      violations.push(violation(file, 'the fixed daily insight reader belongs only to the owned Operations compositions.'));
     }
     if (graph.get(file)?.includes('src/demo/platform-operations-source-storage.js') && file !== 'src/demo/platform-main.js') {
       violations.push(violation(file, 'the protected Operations storage adapter belongs only to the Platform Demo entrypoint.'));

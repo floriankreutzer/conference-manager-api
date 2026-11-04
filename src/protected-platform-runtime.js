@@ -57,6 +57,8 @@ import { createMetricsRegistry } from './observability/metrics.js';
 import { assertPlatformRouteKey } from './platform/http/observability.js';
 import { createPlatformInsightService } from './platform/application/insight-service.js';
 import { createPlatformInsightRoutes } from './platform/http/insight-routes.js';
+import { createLiveMetricsStorage } from './integrations/daily-insight-storage.js';
+import { createProtectedDailyInsights } from './observability/protected-daily-insights.js';
 
 function syntheticRoutes(bundle,persistence,authentication,authorizationPolicy,disposables) {
   if (bundle.synthetic===null) return [];
@@ -148,6 +150,9 @@ export async function createProtectedPlatformRuntime(environment) {
     const invitations=createPlatformCustomerInvitationAdministrationService({ ...common,
       repository: invitationRepository(base.pool,custody) });
     const active=['application_passkey','microsoft_mfa'].includes(config.assuranceMode);
+    const dailyStorage=bundle.dailyInsightStorage ? createLiveMetricsStorage(bundle.dailyInsightStorage) : null;
+    if (dailyStorage) disposables.push(()=>dailyStorage.close());
+    const dailyInsights=dailyStorage ? createProtectedDailyInsights({ storage: dailyStorage,accessMode: config.assuranceMode }) : null;
     const tenantRoutes=createPlatformTenantRoutes({ invitationAdministration: true });
     const operational=active ? PLATFORM_OPERATIONAL_ROUTE_MODULES.map(module=>{
       const selected=module.id===tenantRoutes.id ? tenantRoutes : module;
@@ -157,7 +162,7 @@ export async function createProtectedPlatformRuntime(environment) {
       environment: profile.environment,securityEpoch: profile.platformSecurityEpoch });
     }) : [platformHealthRoutes,platformSessionRoutes];
     const insights=active ? [createPlatformInsightRoutes(createPlatformInsightService({
-      sources: bundle.insightSources,authorizationPolicy: platformAuthorizationPolicy }))] : [];
+      sources: bundle.insightSources,dailyInsights,authorizationPolicy: platformAuthorizationPolicy }))] : [];
     const routeModules=Object.freeze([...authentication.routeModules,...operational,...insights,
       ...syntheticRoutes(bundle,persistence,authentication,platformAuthorizationPolicy,disposables),
       ...ownerRoutes(bundle,persistence,authentication,platformAuthorizationPolicy,disposables)]);

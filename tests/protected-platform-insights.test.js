@@ -87,7 +87,11 @@ test('protected insight routes authenticate fixed GETs and reject unsupported me
   const bundle = (await invoke(path, 'GET', '', '?schemaVersion=2')).payload;
   assert.equal(bundle.schemaVersion, 2);assert.equal(bundle.runtimeProduct, null);
   assert.equal(bundle.storedReport.environment, 'production');
-  for (const query of ['?schemaVersion=3','?schemaVersion=2&schemaVersion=2','?schemaVersion=2&tenant=foreign']) {
+  const daily = (await invoke(path, 'GET', '', '?schemaVersion=3')).payload;
+  assert.equal(daily.dailyState, 'not_configured');assert.equal(daily.daily, null);
+  const providers = (await invoke('/api/v1/platform/insights/providers', 'GET', '', '?schemaVersion=2')).payload;
+  assert.equal(providers.providerUsage, null);assert.equal(providers.dailyState, 'not_configured');
+  for (const query of ['?schemaVersion=4','?schemaVersion=2&schemaVersion=2','?schemaVersion=2&tenant=foreign']) {
     await assert.rejects(invoke(path, 'GET', '', query), error => error.statusCode === 400);
   }
   await assert.rejects(invoke(path, 'POST'), error => error.statusCode === 405);
@@ -122,4 +126,39 @@ test('protected Product read keeps capture time, expiry and active epoch separat
   assert.throws(() => loadProtectedPlatformInsightSnapshots({ ...options,
     securityEpoch: '22222222-2222-4222-8222-222222222222' }));
   assert.throws(() => loadProtectedPlatformInsightSnapshots({ runtimeProductSnapshot: JSON.stringify(report) }));
+});
+
+
+test('daily versions authenticate and authorize before IO and keep Product responses free of provider facts', async () => {
+  let reads = 0;
+  const metadata = { observedAt: new Date(NOW).toISOString(), evaluatedAt: new Date(NOW).toISOString(),
+    sourceState: 'available', freshness: 'fresh' };
+  const sources = loadProtectedPlatformInsightSnapshots();
+  const productDelivery = sources.readProduct(NOW);
+  const values = createPlatformInsightService({ sources, clock: () => NOW,
+    authorizationPolicy: createPlatformAuthorizationPolicy(), dailyInsights: { async read() {
+      reads++;return { metadata, measurements: [{ id: 'private-provider-fact' }], providerUsage: null, productDelivery };
+    } } });
+  for (const [kind, schemaVersion] of [['providers', 2], ['product-delivery', 3]]) {
+    for (const operatorContext of [{ roles: ['tenant_admin'] }, principal('allowlist'),
+      { ...principal(), permissions: [] }, { ...principal(), assurance: { ...principal().assurance, level: 'password' } }]) {
+      assert.throws(() => values.read({ operatorContext, kind, schemaVersion }));
+    }
+  }
+  assert.throws(() => values.read({ kind: 'providers', schemaVersion: 2,
+    operatorContext: principal('all', ['platform_support_reader']) }));
+  assert.equal(reads, 0);
+  const product = await values.read({ kind: 'product-delivery', schemaVersion: 3,
+    operatorContext: principal('all', ['platform_support_reader']) });
+  assert.equal(reads, 1);assert.deepEqual(product.daily, metadata);assert.equal(product.storedReport, productDelivery);
+  assert.equal(JSON.stringify(product).includes('private-provider-fact'), false);
+  const providers = await values.read({ kind: 'providers', schemaVersion: 2, operatorContext: principal() });
+  assert.equal(reads, 2);assert.equal(providers.daily.measurements[0].id, 'private-provider-fact');
+  assert.equal(providers.providerUsage, null);
+  const handler = createPlatformInsightRoutes(values).createHandler({ maxResponseBytes: 100000,
+    platformPrincipalGuard: { async require() { throw new Error('unauthenticated'); } } });
+  const path = '/api/v1/platform/insights/providers';
+  await assert.rejects(handler({ path, parsedUrl: new URL(path + '?schemaVersion=2', 'https://ops.example.test'),
+    request: { method: 'GET' } }));
+  assert.equal(reads, 2);
 });

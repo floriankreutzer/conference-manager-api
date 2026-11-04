@@ -24,15 +24,16 @@ schema and expires retained observations after 30 days. Missing Product collecti
 returns explicit unknown metrics, never invented zero events; missing Provider
 collection returns a protected 503 source-unavailable response.
 
-The protected wire identity is `application_passkey`; the separate closed Demo
+The protected wire identity is `application_passkey` or `microsoft_mfa`; the separate closed Demo
 retains `shared_owner_password`, its own perimeter and its existing routes. Shared
 report presentation and FinOps calculations are reused without importing a Demo
-runtime into the protected process. No migration, new dependency, outbound request,
-credential collection or scheduled provider polling is introduced.
+runtime into the protected process. The queryless baseline reads only startup
+configuration. The optional daily reader below adds a fixed private storage GET;
+no migration, new dependency or scheduled provider polling is introduced.
 
 Product runtime collection is attached through the separately qualified offline
 collector below. The protected process does not import the Demo runtime, its reset
-custody, object feed or Operations source writers. Source completeness is an
+custody, Demo object-feed runtime or Operations source writers. Source completeness is an
 operational acceptance criterion, not inferred from a visible menu or CI result.
 
 ## Source readiness and remaining acceptance (QA-09)
@@ -111,3 +112,57 @@ sources. Metering additionally needs committed event producers and an authorized
 period reconciliation. Their absence cannot be declared “not applicable” without
 a business decision. The QA issue remains open until all agreed sources satisfy
 that acceptance, even when Product collection and contract tests pass.
+
+
+## Optional private daily reader (QA-10)
+
+The existing daily collection can supply the protected OPS process through a
+separate neutral storage adapter. Enable it only for active INT Operations with
+`PROTECTED_PLATFORM_DAILY_INSIGHTS_ENABLED=true` and these private settings:
+
+- `PROTECTED_PLATFORM_DAILY_INSIGHTS_BRANCH_ID`: the verified existing source branch.
+- `PROTECTED_PLATFORM_DAILY_INSIGHTS_DATABASE_HOST`: the exact protected database
+  host, restricted to the existing Frankfurt Neon region and shared INT database.
+- `PROTECTED_PLATFORM_DAILY_INSIGHTS_ACCESS_KEY_ID` and
+  `PROTECTED_PLATFORM_DAILY_INSIGHTS_SECRET_ACCESS_KEY`: a distinct `storage:read`
+  credential for that branch, never the default read/write credential, database
+  password or application secret. Provider scope is branch-wide read access;
+  the application adapter further restricts it to one fixed bucket/object GET.
+
+Default is disabled; partial settings while disabled, another environment, setup
+mode, host mismatch or aliased secrets fail configuration. No credential is sent
+to the browser. The code cannot list buckets/objects or write/delete content. It
+reads only `conference-manager-media/operations/metrics/daily-v1.json`, with HTTPS,
+no redirects/retries, a five-second deadline, a single socket and a 48,000-byte
+strict UTF-8 JSON bound. The same neutral adapter preserves the existing separate
+Demo reader contract. No Demo runtime or reset authority enters the protected root.
+
+The authenticated versioned reads are:
+
+- `GET /api/v1/platform/insights/providers?schemaVersion=2`
+- `GET /api/v1/platform/insights/product-delivery?schemaVersion=3`
+
+Authorization and global scope are checked before storage access. Provider values
+still require Platform Security Admin. Product responses never contain provider
+measurements. Queryless v1 and Product v2 retain their existing wire contracts.
+Deploy this API before the frontend that requests these new versions.
+
+Concurrent reads share one request. A successful storage read is cached for five
+minutes; a failure is retried no sooner than one minute. Invalid, future or
+regressing reports cannot replace the last valid report. Missing source is explicit
+(`not_configured` or `unavailable`); a retained valid report is `last_good`. Reads
+never change observation time. Source age becomes stale at 24 hours and expires
+at 30 days; each provider observation and Delivery report also retains its own
+original clock. Configured startup fallback is disclosed, never silently freshened.
+
+The legacy daily envelope is admitted only through a strict minimization adapter:
+11 fixed global provider dimensions and independently compiled Delivery aggregates.
+The five Demo inventory/activity dimensions are discarded. Product outcomes must
+remain unknown and feedback unconfigured in this feed; protected Product collection
+continues through its independent epoch-bound offline snapshot. A daily report does
+not establish missing Product, feedback, invoice, metering or recovery evidence.
+
+The implementation and synthetic contract/security tests do not prove that a live
+credential has been installed or a report read. Qualification must bind the actual
+API/frontend release, protected UI readback and unchanged source clocks. Keep
+private reports and provider credentials out of repository/CI evidence.
