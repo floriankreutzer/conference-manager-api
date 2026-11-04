@@ -1,19 +1,19 @@
 # Protected INT Render build
 
-Tracking: floriankreutzer/conference-manager#432, INF-04/05. `render.int.yaml`
+Tracking: CO-85, INF-04/05. `render.int.yaml`
 describes both existing protected INT services. The legacy `render.yaml` remains
 a separate CI dependency and must not be synchronized over protected INT.
 
 ## Current release selection
 
-`render.int.yaml` selects the wrapper activation pair documented in
-[the infrastructure release runbook](INFRASTRUCTURE-20261031-WRAPPER-RELEASE.md).
-Its immutable API/frontend pins, build command and both independently verified
-manifests move together. This is a configuration selection, not a deployment
-receipt. Keep automatic Blueprint sync paused and require the exact candidate,
-independent Main and provider gates in that runbook before manual application.
-The earlier [schema75 QA release](QA-20261031-RELEASE.md) and the following
-30 October receipts remain historical evidence. This release adds no migration.
+`render.int.yaml` selects the daily-insights pair in
+[the coordinated OPS release runbook](QA-20261104-DAILY-RELEASE.md), retaining the
+authenticated wrapper selected by API PR366. Its immutable source pair, protected
+Gitlink, build command and independently verified manifests move together. Keep
+Blueprint auto-sync paused and require the exact candidate/Main and provider gates
+before application. A merged configuration is not a deployment receipt. The earlier
+schema75 and initial wrapper selections remain historical evidence; no migration
+or reset is part of this release.
 
 ## Historical Blueprint adoption — 30 October 2026
 
@@ -128,9 +128,9 @@ Frankfurt, autoDeployTrigger off, the separate protected Customer/Platform start
 commands and their existing readiness paths. Do not introduce duplicate services,
 change domain origins, reset data or activate new presentation capabilities.
 
-The versioned wrapper is selected by the infrastructure release configuration;
-activation is complete only after both actual services and their receipts match
-the separately qualified paired release. A merged YAML file alone is not live evidence. Keep
+The versioned wrapper is selected by the paired release configuration. Activation
+is complete only after both actual services and their receipts match its qualified
+source and artifact pins. A merged YAML file alone is not live evidence. Keep
 the presentation flags scoped to the build command, as in the captured inline
 command: the runtime deliberately rejects `PROTECTED_PRESENTATION_*` variables.
 Do not add those build-only keys to either service's persistent environment.
