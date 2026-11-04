@@ -40,8 +40,15 @@ It retains drafts and closed PRs instead of inferring that they were merged.
 This is not an atomic GitHub snapshot: concurrent edits require independent final
 recollection and scope reconciliation. `complete` means enumeration reached its
 terminal page, not that Jira association, checks or review evidence are complete.
-No workflow calls this module yet; credential/token wiring and live acceptance
-remain open. Unit transport fixtures do not prove installed-token API access.
+The manual `Jira GitHub Inventory Diagnostic` workflow calls this module only on
+the owning repository's `main`. It mints a short-lived token from the existing
+CI Reader App secrets, limited to pull-request read access in the two repositories.
+It uses pinned actions, persists no checkout credential, runs without dependency
+installation and retains only fixed repository names and counts in its log.
+The token action revokes the token on cleanup. Failures produce a fixed error and
+nonzero exit, never partial success. No PR titles, refs or provider payloads are
+published, and no readiness or Jira mutation occurs. Dispatch after reviewed merge
+is required to prove installed-token access; fixture tests alone do not prove it.
 
 1. Bind the collector to the approved repositories and authenticated read-only
    provider access. Enumerate complete results with bounded pagination and verify

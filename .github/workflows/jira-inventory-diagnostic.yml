@@ -1,0 +1,41 @@
+name: Jira GitHub Inventory Diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jira-github-inventory-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  inventory:
+    if: github.repository == 'floriankreutzer/conference-manager-api' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout reviewed source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Create bounded read-only inventory token
+        id: inventory-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.CM_CI_READER_APP_ID }}
+          private-key: ${{ secrets.CM_CI_READER_PRIVATE_KEY }}
+          owner: floriankreutzer
+          repositories: |
+            conference-manager
+            conference-manager-api
+          permission-pull-requests: read
+      - name: Verify authenticated enumeration without publishing PR data
+        env:
+          CM_GITHUB_INVENTORY_TOKEN: ${{ steps.inventory-token.outputs.token }}
+        run: node scripts/jira-github-inventory-diagnostic.mjs
