@@ -98,6 +98,12 @@ test('HTTP delivery validates Host, target, method and body while retaining the 
   assert.equal(print.headers['content-disposition'],undefined);assert.match(print.bytes.toString(),/<!doctype html>/i);
   assert.match(html.headers['content-security-policy'],/frame-ancestors/);
   assert.equal((await exchange('/assets/fixture.css?v=reviewed')).status,200);
+  const identity=await exchange('/assets/hosted-demo-deployment.json');
+  assert.equal(identity.status,200);assert.match(identity.headers['content-type'],/^application\/json/);
+  assert.deepEqual(JSON.parse(identity.bytes.toString()),{
+    schemaVersion: 1,provider: 'render',repository: 'floriankreutzer/conference-manager-api',branch: 'main',
+    serviceName: 'conference-manager-demo',runtimeRef: selected.apiCommit,frontendRef: selected.frontendCommit,
+  });
   assert.equal((await exchange('/',{ method: 'HEAD' })).bytes.length,0);
   for (const target of ['/manifest.json','/scripts/build.mjs','/platform-admin/','/missing',
     '/%2e%2e/index.html','//foreign.example.test/']) {

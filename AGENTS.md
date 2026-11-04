@@ -377,3 +377,18 @@ contributors or API consumers.
 5. Keep private knowledge, transcripts, credentials and customer data out of this
    public repository. Report briefly which learning IDs informed the work and
    which knowledge commit or pull request was actually saved.
+
+## Jira-led delivery governance
+
+Conference Manager uses Jira, GitHub and Confluence with explicit system ownership:
+
+- Jira is the authoritative system for internal backlog, priority, workflow state, release scope, product acceptance and delivery/audit coordination.
+- GitHub is the authoritative engineering system for source code, branches, commits, pull requests, reviews, CI/security checks and native technical evidence.
+- Confluence is the authoritative system for durable product requirements, RFCs, ADRs, architecture, runbooks and documented decisions.
+- Do not create new GitHub Issues or GitHub Milestones for internal Conference Manager work. Existing historical items remain migration sources only until the controlled Jira migration is complete.
+- Every productive repository change must reference an existing Jira work item. Use the Jira key in the branch name where practical (`CO-123-short-description`) and in the pull-request title (`CO-123 Concise technical description`). Use the key in commit messages where practical.
+- One Jira work item may own changes across multiple repositories; do not create duplicate work items merely because implementation spans repositories.
+- Pull-request descriptions are engineering-review artifacts, not audit records. Keep them concise: Jira reference, technical summary, material technical risk and genuinely necessary manual test notes. Do not copy long acceptance, audit, governance or release histories into PR bodies.
+- Native GitHub evidence stays in GitHub and is referenced or surfaced from Jira rather than manually duplicated.
+- Durable decisions belong in Confluence and must be linked from the relevant Jira work item when applicable.
+

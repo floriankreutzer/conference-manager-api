@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
 
 permissions:
   contents: read
@@ -19,6 +20,35 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Require matching Jira key in PR title and branch
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          HEAD_REF: ${{ github.head_ref }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$PR_TITLE" =~ ^(CO-[1-9][0-9]*)[[:space:]]+[^[:space:]] ]]; then
+            echo "::error title=Missing Jira work item key::PR title must start with CO-123 followed by a descriptive title."
+            exit 1
+          fi
+          TITLE_KEY="${BASH_REMATCH[1]}"
+
+          if [[ "$ACTOR" == "dependabot[bot]" ]]; then
+            echo "Dependabot branch naming is provider-controlled; Jira traceability is enforced through PR key $TITLE_KEY."
+            exit 0
+          fi
+
+          if [[ ! "$HEAD_REF" =~ (^|[/_-])(CO-[1-9][0-9]*)([/_-]|$) ]]; then
+            echo "::error title=Missing Jira branch key::Branch name must contain the PR Jira key, for example CO-123-short-description or feature/CO-123-short-description."
+            exit 1
+          fi
+          BRANCH_KEY="${BASH_REMATCH[2]}"
+          if [[ "$BRANCH_KEY" != "$TITLE_KEY" ]]; then
+            echo "::error title=Jira key mismatch::Branch key $BRANCH_KEY must match PR key $TITLE_KEY."
+            exit 1
+          fi
       - name: Create short-lived private source token
         id: source-token
         if: env.HAS_SOURCE_APP == 'true'
