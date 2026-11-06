@@ -177,3 +177,37 @@ counts and booleans, installs no dependencies and never writes Jira or changes P
 Its bounded GitHub GraphQL POST contains only a fixed read query. Native execution
 after reviewed merge is required to establish installed access; local fixtures are
 not live acceptance. Transport is limited to 45 seconds and 4 MiB per response.
+
+## Composed issue diagnostic
+
+`scripts/jira-readiness-diagnostic.mjs` composes the existing Jira reader, complete
+App/API inventories, register proposal, per-PR gate collector and decision kernel.
+It independently repeats Jira, inventory and gate reads. A changed issue identity,
+status, update timestamp, register, inventory, head, policy, check result or review
+blocks the entire diagnostic. New obligations are discovered even when the stored
+register omits them; existing classifications and renamed obligations are retained.
+There is no automatic supersession or supporting classification.
+
+The complete operation has a 55-second deadline, 512-request and 64-MiB aggregate
+response budget, at most 20 delivery PRs and two concurrent per-PR collections.
+Existing per-provider pagination/response limits also apply. Exceeding a bound,
+missing evidence or any provider failure produces a fixed redacted error and exit
+1, never partial success or a mutation. The manual main-only workflow reuses the
+existing credentials, installs no dependencies and emits only counts, booleans and
+fixed result codes. All data requests are GET except the existing fixed read-only
+GitHub GraphQL query. No new credential, grant or recurring trigger is introduced.
+
+`candidateGateResult` evaluates only the hypothetical proposed scope. Even
+`CANDIDATE_GATES_PASS` is **not** a readiness authorization: enrollment and register
+updates may still be needed, classifications are not authenticated as authorized
+decisions, and writer provenance is not established. Every result explicitly has
+`registerProvenanceVerified=false`, `readinessAuthorized=false` and
+`mutationPerformed=false`. No decision key or transition target is exported.
+Do not consume this diagnostic as a Jira promotion condition. Two stable reads
+also do not establish an atomic cross-provider snapshot or prevent later changes.
+
+Trusted register persistence/provenance/replay controls, serialized final recheck
+and transition recovery, automatic invocation and all six actual Jira automation
+acceptance scenarios remain required. The controlled manual operating gate stays
+in effect. Native execution after reviewed merge qualifies this composition's
+installed read access only, not those remaining write/automation boundaries.
