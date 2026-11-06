@@ -1,0 +1,57 @@
+name: Jira GitHub Gates Diagnostic
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: Approved delivery repository
+        required: true
+        type: choice
+        options:
+          - floriankreutzer/conference-manager-api
+          - floriankreutzer/conference-manager
+      pr_number:
+        description: Pull request number to read without mutation
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jira-github-gates-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  read-gates:
+    if: github.repository == 'floriankreutzer/conference-manager-api' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout reviewed source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Create bounded read-only gates token
+        id: gates-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.CM_CI_READER_APP_ID }}
+          private-key: ${{ secrets.CM_CI_READER_PRIVATE_KEY }}
+          owner: floriankreutzer
+          repositories: |
+            conference-manager
+            conference-manager-api
+          permission-pull-requests: read
+          permission-checks: read
+          permission-contents: read
+      - name: Read current policy checks and reviews without promotion
+        env:
+          CM_GITHUB_GATES_TOKEN: ${{ steps.gates-token.outputs.token }}
+          CM_GITHUB_PR_REPOSITORY: ${{ inputs.repository }}
+          CM_GITHUB_PR_NUMBER: ${{ inputs.pr_number }}
+        run: node scripts/jira-gates-diagnostic.mjs
