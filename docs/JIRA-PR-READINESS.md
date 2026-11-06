@@ -1,5 +1,20 @@
 # Automatic Jira PR readiness
 
+## Temporary controlled manual gate (6 November 2026)
+
+The owner accepted a temporary manual transition from `in Review` to
+`Ready for Deployment` while the remaining CO-296 automation is implemented.
+Before each transition, reconcile the complete issue-specific App/API scope,
+explicitly retain supporting/superseded classifications, verify actual merges and
+exact-commit required CI/security/review evidence, and record the reviewer, UTC
+decision time and native evidence on the Jira work item. Recheck scope and status
+immediately before transition. Missing or ambiguous evidence still blocks.
+
+This supersedes the earlier prohibition of a manual interim operating mode.
+It neither completes CO-296 nor waives its six native automation scenarios.
+The unsafe automatic promotion rules remain disabled. Deployment and Product
+Acceptance are separate gates; this procedure never authorizes `Done`.
+
 ## Approved register ownership (6 November 2026)
 
 The owner approved an integration-maintained, versioned Jira PR register as the
@@ -97,7 +112,7 @@ is required to prove installed-token access; fixture tests alone do not prove it
 No HTTP/API, database, migration, tenant or deployed application contract changes.
 Local kernel tests establish only decision behavior. Native collection, secret
 custody, serialized transition, workflow triggers and operational acceptance remain
-open integration work, not an alternative manual operating model.
+open integration work. The temporary manual gate above does not qualify automation.
 
 ## Explicit scope reconciliation
 
@@ -134,3 +149,31 @@ transition safety or operational acceptance. Issue properties are editable by
 principals with issue-edit permissions; authenticated reads alone cannot certify
 which integration wrote the value. Those remaining boundaries must be resolved
 before a property can authorize promotion.
+
+## GitHub check and review evidence
+
+`scripts/jira-github-gates.mjs` reads one App/API PR and its effective main-branch
+rules, all head check runs, formal reviews, authenticated Codex summary and all
+review threads. It binds required contexts to their producer App IDs and selects
+the highest check-run ID for each context/producer; a newer pending or failed run
+does not inherit an older success. Lists reach an empty terminal page (check-run
+totals must agree); GraphQL thread cursors must finish without repeats or errors.
+PR identity and policy are independently read again before returning evidence.
+
+The supported profile is the current ruleset-only main policy with zero required
+human approvals and no code-owner/last-push approval requirement. Classic branch
+protection, a new unsupported rule or approval profile, missing producer identity,
+ambiguous review summary or source drift blocks collection. Formal approval counts
+remain distinct from the current-head Codex review. Pending/unresolved/failed
+evidence is retained as blocking evidence, never relabeled successful. The existing
+readiness kernel remains responsible for the final decision. This transport does
+not establish Jira scope, property provenance, replay protection or serialization.
+
+The manual main-only `Jira GitHub Gates Diagnostic` uses the existing CI Reader App
+with read-only pull-request, check and content permissions limited to both delivery
+repositories. Token creation must fail if the installation lacks a requested read
+permission; no permission upgrade or anonymous fallback is performed. It logs only
+counts and booleans, installs no dependencies and never writes Jira or changes PRs.
+Its bounded GitHub GraphQL POST contains only a fixed read query. Native execution
+after reviewed merge is required to establish installed access; local fixtures are
+not live acceptance. Transport is limited to 45 seconds and 4 MiB per response.
