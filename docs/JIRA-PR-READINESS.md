@@ -74,3 +74,18 @@ No HTTP/API, database, migration, tenant or deployed application contract change
 Local kernel tests establish only decision behavior. Native collection, secret
 custody, serialized transition, workflow triggers and operational acceptance remain
 open integration work, not an alternative manual operating model.
+
+## Explicit scope reconciliation
+
+`scripts/jira-pr-scope.mjs` compares a versioned, closed scope with a complete,
+non-stale issue association. Every linked PR must be classified exactly once as
+`delivery`, `supporting` (with reason), or `superseded` (with reason and a direct
+replacement in the delivery set). Unknown/missing links, duplicates, foreign
+repository delivery and unresolved supersession fail closed. Supporting PRs remain
+part of the scope revision but are not evaluated as application delivery.
+
+This is pure reconciliation, not an authenticated scope reader. Its inputs must
+come from the trusted Jira adapter and an authorized scope-maintenance path; no
+caller-supplied `complete`, `closed` or `stale` flag confers authority. The revision
+is a deterministic content identifier, not a signature. The source adapter,
+concurrency enforcement and native acceptance remain required before activation.
