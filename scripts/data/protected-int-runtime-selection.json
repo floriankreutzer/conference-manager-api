@@ -1,22 +1,22 @@
 {
   "environment": "int",
-  "deployedSourceCommit": "fa488070bd62d677c67b5d266282eecfb007e474",
-  "frontendCommit": "efe672ebaaa844f6663186b8a5d53a18ebab98a6",
+  "deployedSourceCommit": "863e8220b4aa5d3ef58946b1833550f78369dfb7",
+  "frontendCommit": "17c28fb615264e6a2eccc7ed6e46d20171cb66e3",
   "serviceVersion": "cm-int-20261021",
   "customer": {
-    "deploymentReference": "dep-dbiqhrcs728c7381n1hg",
-    "deployedAt": "2026-10-31T08:39:05.558Z",
-    "frontendSha256": "ebb35677f98538094a4eafd9a4c674a8f48828ec7ff5306b36b6fb0790da5e0d"
+    "deploymentReference": "dep-dbn0d4ff3r2c73bqeaog",
+    "deployedAt": "2026-11-06T16:56:45.323Z",
+    "frontendSha256": "273679d3f7f18e8accb5df2aeaa3cf0716641fd7a3676a0cc0a60daa89ba20e6"
   },
   "platform": {
-    "deploymentReference": "dep-dbiqhtmtlv9c73bf1urg",
-    "deployedAt": "2026-10-31T08:39:07.528Z",
-    "frontendSha256": "3f8a7afe18f2fdfeefd33f36bb8aaae5d9117e59700d0750f55f8c7ff48a1a4a"
+    "deploymentReference": "dep-dbn0c96c6qcc73cnu0o0",
+    "deployedAt": "2026-11-06T16:54:53.652Z",
+    "frontendSha256": "7a566a28b8484b0f369d657bbf9feb3a5f6ba35c1559ac8ed36eaac5128858ad"
   },
   "evidence": {
-    "release": "github:conference-manager/issues/428",
-    "change": "github:conference-manager-api/pull/362",
+    "release": "jira:CO-85",
+    "change": "github:conference-manager-api/pull/377",
     "rollback": null,
-    "runbook": "git:conference-manager-api/a6b82916cc4aab8acbe0266e70842a1c02f9fae2/docs/QA-20261031-RELEASE.md"
+    "runbook": "git:conference-manager-api/6e8286551b88f567d9f8436c0f6a484bacacbe3b/docs/QA-20261104-DAILY-RELEASE.md"
   }
 }
