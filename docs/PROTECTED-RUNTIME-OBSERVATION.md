@@ -28,7 +28,7 @@ loaded from the existing private environment binding, never a public workflow
 input. There is no Tenant selector, connection, origin, SQL, role or health-state
 input. For the original one-shot workflow, the deployed API SHA must equal the exact observer Main SHA. Frontend
 selection is additionally locked to qualified immutable commit
-`efe672ebaaa844f6663186b8a5d53a18ebab98a6`; changing that pin requires a reviewed
+`17c28fb615264e6a2eccc7ed6e46d20171cb66e3`; changing that pin requires a reviewed
 source change and renewed pair qualification. An arbitrary branch commit cannot
 execute browser build code before subsequent offline credential allocation.
 
@@ -257,7 +257,7 @@ Provider subscription collection and Product/Feedback source activation are
 separate from this runtime collector (see `PROTECTED-PLATFORM-INSIGHTS.md`).
 
 
-## Current QA-10 selection — 31 October 2026
+## Historical QA-10 selection — 31 October 2026
 
 The fixed selection now follows the coordinated release in API PR362. The
 canonical migration completed in Actions run41185228840 with canonical75,
@@ -281,3 +281,25 @@ Main gates before updating the qualified-SHA variable and running one manual
 collection. Keep CM_INT_OBSERVER_SCHEDULE_ENABLED=false. This change does not
 claim a successful collector write, current UI freshness, recurring execution,
 optional provider health or completion of QA-09's separate sources.
+
+## Current QA-10 selection — 6 November 2026
+
+CO-84 follows the qualified KPI release in API PR377 and frontend PR446.
+The deployed API is `863e8220b4aa5d3ef58946b1833550f78369dfb7`; the immutable
+frontend is `17c28fb615264e6a2eccc7ed6e46d20171cb66e3`. Actual successful Render
+receipts are Customer `dep-dbn0d4ff3r2c73bqeaog` at
+`2026-11-06T16:56:45.323Z` and Platform `dep-dbn0c96c6qcc73cnu0o0` at
+`2026-11-06T16:54:53.652Z`, normalized to the existing millisecond contract.
+Independent clean reconstruction and both native builds agree with the selection's
+manifest digests. Every hosted file was checked for exact SHA-256, byte count and
+content type (300 Customer, 197 Platform); both health routes returned ready and
+the expected API build. Deployment times are not observation timestamps.
+
+The fixed frontend pin and workflow checkout advance together; the superseded
+frontend is refused. No schema, roles, epoch, resources or application deployment
+are changed by this observer reconciliation. Existing rollback evidence remains
+unknown. Require candidate and independent Main qualification before changing
+`CM_INT_OBSERVER_QUALIFIED_SHA` and executing one bounded owner dispatch. Keep
+`CM_INT_OBSERVER_SCHEDULE_ENABLED=false`; a successful manual observation is not
+a recurring or Product/Feedback acceptance. The 300-second freshness, owner
+custody, exact migration ledger and full sealed-byte checks remain unchanged.
