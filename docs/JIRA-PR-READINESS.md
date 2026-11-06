@@ -1,5 +1,29 @@
 # Automatic Jira PR readiness
 
+## Approved register ownership (6 November 2026)
+
+The owner approved an integration-maintained, versioned Jira PR register as the
+authoritative association source. Jira's Development summary is corroborating
+information, not the sole enumeration authority. This replaces the earlier
+requirement to derive completeness from that index. It does not relax merge,
+current-head CI/review, scope completeness or Product Acceptance requirements.
+
+`scripts/jira-pr-register.mjs` proposes automatic register updates from complete,
+fresh, authenticated App/API inventories. Exact issue keys in PR titles or source
+branch names discover delivery obligations. Existing entries survive renaming;
+missing historical PRs block. New PRs increment the version, repeated collections
+are stable, and neither draft nor closed state can exclude a PR. Supporting and
+superseded classifications require explicit authorized decisions and are retained.
+No association means no closed scope. Automatic discovery covers the approved
+App/API delivery repositories; additional delivery repositories require a reviewed
+extension, never an implicit supporting classification.
+
+This is currently a pure proposal module. Trusted Jira persistence, provenance,
+serialized read/compare/write and independent final recollection are still required.
+Its `closed` field means the proposed association is enumerated, not that delivery
+is complete. The adapter must not authenticate its own input merely by copying
+these output flags. No Jira register is written or automation activated by this module.
+
 Tracking: CO-296. Automatic promotion is required; permanent manual promotion is
 not the accepted target. The existing unsafe Jira rules stay disabled until the
 complete integration and its native acceptance pass.
@@ -74,3 +98,39 @@ No HTTP/API, database, migration, tenant or deployed application contract change
 Local kernel tests establish only decision behavior. Native collection, secret
 custody, serialized transition, workflow triggers and operational acceptance remain
 open integration work, not an alternative manual operating model.
+
+## Explicit scope reconciliation
+
+`scripts/jira-pr-scope.mjs` compares a versioned, closed scope with a complete,
+non-stale issue association. Every linked PR must be classified exactly once as
+`delivery`, `supporting` (with reason), or `superseded` (with reason and a direct
+replacement in the delivery set). Unknown/missing links, duplicates, foreign
+repository delivery and unresolved supersession fail closed. Supporting PRs remain
+part of the scope revision but are not evaluated as application delivery.
+
+This is pure reconciliation, not an authenticated scope reader. Its inputs must
+come from the trusted Jira adapter and an authorized scope-maintenance path; no
+caller-supplied `complete`, `closed` or `stale` flag confers authority. The revision
+is a deterministic content identifier, not a signature. The source adapter,
+concurrency enforcement and native acceptance remain required before activation.
+
+## Jira read transport and credential diagnostic
+
+`scripts/jira-register-reader.mjs` reads the configured CO issue and its
+`cm.delivery.pr-register.v1` property through the fixed Atlassian API origin.
+The scoped API token, account email and validated cloud ID come from protected
+runner configuration. It allows only GET, rejects redirects and foreign issue/
+project identities, bounds responses to 256 KiB and the total read to 15 seconds,
+and emits fixed errors without credentials or provider payloads. A missing
+property means enrollment is required, never a complete empty delivery scope.
+
+The manual main-only `Jira Register Diagnostic` workflow requires repository
+variable `CM_JIRA_CLOUD_ID` and secrets `CM_JIRA_READINESS_EMAIL` and
+`CM_JIRA_READINESS_API_TOKEN`. It reports only read success/enrollment-needed
+booleans, performs no mutation, and accepts the issue key through an environment
+variable rather than shell interpolation. A successful diagnostic proves token
+read access only. It does not prove writer provenance, write scopes, locking,
+transition safety or operational acceptance. Issue properties are editable by
+principals with issue-edit permissions; authenticated reads alone cannot certify
+which integration wrote the value. Those remaining boundaries must be resolved
+before a property can authorize promotion.

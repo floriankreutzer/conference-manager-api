@@ -1,0 +1,38 @@
+name: Jira Register Diagnostic
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_key:
+        description: CO work item to read without mutation
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jira-register-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  read-register:
+    if: github.repository == 'floriankreutzer/conference-manager-api' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout reviewed source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Verify authenticated Jira register read
+        env:
+          CM_JIRA_CLOUD_ID: ${{ vars.CM_JIRA_CLOUD_ID }}
+          CM_JIRA_READINESS_EMAIL: ${{ secrets.CM_JIRA_READINESS_EMAIL }}
+          CM_JIRA_READINESS_API_TOKEN: ${{ secrets.CM_JIRA_READINESS_API_TOKEN }}
+          CM_JIRA_ISSUE_KEY: ${{ inputs.issue_key }}
+        run: node scripts/jira-register-diagnostic.mjs
