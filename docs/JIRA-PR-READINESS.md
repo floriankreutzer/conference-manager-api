@@ -1,5 +1,29 @@
 # Automatic Jira PR readiness
 
+## Approved register ownership (6 November 2026)
+
+The owner approved an integration-maintained, versioned Jira PR register as the
+authoritative association source. Jira's Development summary is corroborating
+information, not the sole enumeration authority. This replaces the earlier
+requirement to derive completeness from that index. It does not relax merge,
+current-head CI/review, scope completeness or Product Acceptance requirements.
+
+`scripts/jira-pr-register.mjs` proposes automatic register updates from complete,
+fresh, authenticated App/API inventories. Exact issue keys in PR titles or source
+branch names discover delivery obligations. Existing entries survive renaming;
+missing historical PRs block. New PRs increment the version, repeated collections
+are stable, and neither draft nor closed state can exclude a PR. Supporting and
+superseded classifications require explicit authorized decisions and are retained.
+No association means no closed scope. Automatic discovery covers the approved
+App/API delivery repositories; additional delivery repositories require a reviewed
+extension, never an implicit supporting classification.
+
+This is currently a pure proposal module. Trusted Jira persistence, provenance,
+serialized read/compare/write and independent final recollection are still required.
+Its `closed` field means the proposed association is enumerated, not that delivery
+is complete. The adapter must not authenticate its own input merely by copying
+these output flags. No Jira register is written or automation activated by this module.
+
 Tracking: CO-296. Automatic promotion is required; permanent manual promotion is
 not the accepted target. The existing unsafe Jira rules stay disabled until the
 complete integration and its native acceptance pass.
