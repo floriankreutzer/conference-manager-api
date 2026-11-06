@@ -113,3 +113,24 @@ come from the trusted Jira adapter and an authorized scope-maintenance path; no
 caller-supplied `complete`, `closed` or `stale` flag confers authority. The revision
 is a deterministic content identifier, not a signature. The source adapter,
 concurrency enforcement and native acceptance remain required before activation.
+
+## Jira read transport and credential diagnostic
+
+`scripts/jira-register-reader.mjs` reads the configured CO issue and its
+`cm.delivery.pr-register.v1` property through the fixed Atlassian API origin.
+The scoped API token, account email and validated cloud ID come from protected
+runner configuration. It allows only GET, rejects redirects and foreign issue/
+project identities, bounds responses to 256 KiB and the total read to 15 seconds,
+and emits fixed errors without credentials or provider payloads. A missing
+property means enrollment is required, never a complete empty delivery scope.
+
+The manual main-only `Jira Register Diagnostic` workflow requires repository
+variable `CM_JIRA_CLOUD_ID` and secrets `CM_JIRA_READINESS_EMAIL` and
+`CM_JIRA_READINESS_API_TOKEN`. It reports only read success/enrollment-needed
+booleans, performs no mutation, and accepts the issue key through an environment
+variable rather than shell interpolation. A successful diagnostic proves token
+read access only. It does not prove writer provenance, write scopes, locking,
+transition safety or operational acceptance. Issue properties are editable by
+principals with issue-edit permissions; authenticated reads alone cannot certify
+which integration wrote the value. Those remaining boundaries must be resolved
+before a property can authorize promotion.
