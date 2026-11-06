@@ -1,5 +1,20 @@
 # Automatic Jira PR readiness
 
+## Temporary controlled manual gate (6 November 2026)
+
+The owner accepted a temporary manual transition from `in Review` to
+`Ready for Deployment` while the remaining CO-296 automation is implemented.
+Before each transition, reconcile the complete issue-specific App/API scope,
+explicitly retain supporting/superseded classifications, verify actual merges and
+exact-commit required CI/security/review evidence, and record the reviewer, UTC
+decision time and native evidence on the Jira work item. Recheck scope and status
+immediately before transition. Missing or ambiguous evidence still blocks.
+
+This supersedes the earlier prohibition of a manual interim operating mode.
+It neither completes CO-296 nor waives its six native automation scenarios.
+The unsafe automatic promotion rules remain disabled. Deployment and Product
+Acceptance are separate gates; this procedure never authorizes `Done`.
+
 ## Approved register ownership (6 November 2026)
 
 The owner approved an integration-maintained, versioned Jira PR register as the
@@ -97,7 +112,7 @@ is required to prove installed-token access; fixture tests alone do not prove it
 No HTTP/API, database, migration, tenant or deployed application contract changes.
 Local kernel tests establish only decision behavior. Native collection, secret
 custody, serialized transition, workflow triggers and operational acceptance remain
-open integration work, not an alternative manual operating model.
+open integration work. The temporary manual gate above does not qualify automation.
 
 ## Explicit scope reconciliation
 
