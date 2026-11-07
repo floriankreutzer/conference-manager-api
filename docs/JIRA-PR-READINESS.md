@@ -211,3 +211,50 @@ and transition recovery, automatic invocation and all six actual Jira automation
 acceptance scenarios remain required. The controlled manual operating gate stays
 in effect. Native execution after reviewed merge qualifies this composition's
 installed read access only, not those remaining write/automation boundaries.
+
+## Durable register journal foundation
+
+`scripts/jira-register-journal.mjs` supplies a separate PostgreSQL adapter for the
+register writer's recovery checkpoint. Jira remains the authoritative association
+register; this journal anchors the exact value the trusted integration intended
+to publish and later independently read back. It is not a second backlog or a
+replacement for GitHub collection. No application root imports this adapter.
+
+The explicit operational migration `scripts/sql/jira-register-journal-v1.sql`
+creates the isolated `cm_delivery` schema. It is not part of application startup
+or the customer migration chain. Provisioning must use a separate schema owner
+and a dedicated integration login, with schema USAGE, table SELECT/INSERT, and
+UPDATE restricted to `state` and `confirmed_at`. Do not give that login ownership,
+DDL, DELETE or UPDATE on scope/digest/version; do not grant any access to PUBLIC,
+customer/runtime roles or Jira editors. Use the existing PostgreSQL infrastructure
+with validated TLS and a bounded dedicated pool, never a customer database secret
+in a workflow. No database role, credential, live schema or paid resource is created
+by importing this source. A second execution of the migration fails deliberately;
+there is no destructive rollback. Preserve journal rows when deactivating it.
+
+Preparation commits a `pending` intent before any external write. New enrollment
+requires version one and delivery-only obligations; unauthenticated exceptions
+cannot acquire provenance through enrollment. Automatic updates only add delivery
+obligations, retain every old entry exactly, increment one version and compare
+the previously confirmed digest. Reclassification still requires its separately
+authorized implementation. Per-cloud/per-issue transaction locks serialize even
+first enrollment. SQL/lock timeouts are bounded, values are parameterized, errors
+are redacted and pending intents survive process restart. Canonical JSON uses a
+closed schema and a 32-KiB UTF-8 limit; key/entry ordering cannot change its digest.
+
+Confirmation requires the independently observed Jira value to match the latest
+intent exactly. An older correctly formed value, wrong issue ID, different scope
+or competing update fails closed. Duplicate preparation/confirmation is stable.
+An unknown database commit outcome requires a fresh read; an error does not prove
+that nothing committed. The hash alone is not a signature or authorization: its
+trusted database checkpoint and isolated writer identity establish the boundary.
+
+This adapter does **not** collect GitHub, write Jira, authenticate a supplied
+observation, serialize an external HTTP request, or perform a transition. Its
+transaction lock ends before a caller can use the returned value. The eventual
+single-writer composition must independently collect inputs, retain serialization
+across its final checks and writes, compare Jira readback, quarantine ambiguous
+external outcomes, and implement transition deduplication/recovery. Never retry a
+Jira PUT/transition merely because preparation returned an existing pending intent.
+Native six-scenario automation acceptance and protected runtime provisioning remain
+activation requirements. No workflow trigger or readiness flag is enabled here.
