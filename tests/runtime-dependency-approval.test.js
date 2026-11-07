@@ -23,6 +23,8 @@ test('runtime dependency approval rejects version drift, ranges, missing and ext
       { ...manifest.dependencies, '@aws-sdk/client-s3': '3.1148.0' },
       { ...manifest.dependencies, '@aws-sdk/client-s3': '3.1152.0' },
       { ...manifest.dependencies, '@aws-sdk/client-s3': '3.1158.0' },
+      { ...manifest.dependencies, '@aws-sdk/client-s3': '3.1160.0' },
+      { ...manifest.dependencies, '@aws-sdk/client-s3': '3.1161.0' },
       { ...manifest.dependencies, '@azure/msal-node': '^7.1.0' },
       { ...manifest.dependencies, '@simplewebauthn/server': '14.0.2' },
       { ...manifest.dependencies, '@simplewebauthn/server': '^14.0.3' },

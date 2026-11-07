@@ -16,7 +16,7 @@ async function sourceFiles(directory) {
 const packageJson = JSON.parse(await readFile('package.json', 'utf8'));
 const runtimeDependencies = packageJson.dependencies || {};
 const approvedRuntimeDependencies = {
-  '@aws-sdk/client-s3': '3.1160.0',
+  '@aws-sdk/client-s3': '3.1164.0',
   '@azure/msal-node': '7.1.2',
   '@simplewebauthn/server': '14.0.3',
   pg: '8.23.1',
