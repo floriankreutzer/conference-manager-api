@@ -114,6 +114,7 @@ for (const [name, platform, authenticationContext] of [
       assert.equal(url.searchParams.has('clidata'), false);
     }
     assert.equal(url.searchParams.has('client_secret'), false);
+    assert.equal(url.searchParams.has('pocd'), false);
   });
 
   test(`installed MSAL keeps ${name} code redemption fail-closed with the exact PKCE verifier`, async () => {
@@ -154,5 +155,6 @@ for (const [mode,authenticationContext,maxAge,prompt] of [
     for (const key of ['stateMatches','nonceMatches','pkceMatches','callbackMatches','clientMatches']) assert.equal(shape[key],true);
     assert.equal(shape.prompt,prompt);
     assert.equal(url.searchParams.has('client_secret'),false);assert.equal(url.searchParams.has('clidata'),false);
+    assert.equal(url.searchParams.has('pocd'),false);
   });
 }
