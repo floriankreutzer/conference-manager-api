@@ -33,8 +33,9 @@ No association means no closed scope. Automatic discovery covers the approved
 App/API delivery repositories; additional delivery repositories require a reviewed
 extension, never an implicit supporting classification.
 
-This is currently a pure proposal module. Trusted Jira persistence, provenance,
-serialized read/compare/write and independent final recollection are still required.
+This remains a pure proposal module. The journal and conditional publisher below
+provide separate persistence/readback components; their protected provisioning,
+native qualification and the transition composition are still required.
 Its `closed` field means the proposed association is enumerated, not that delivery
 is complete. The adapter must not authenticate its own input merely by copying
 these output flags. No Jira register is written or automation activated by this module.
@@ -206,8 +207,9 @@ decisions, and writer provenance is not established. Every result explicitly has
 Do not consume this diagnostic as a Jira promotion condition. Two stable reads
 also do not establish an atomic cross-provider snapshot or prevent later changes.
 
-Trusted register persistence/provenance/replay controls, serialized final recheck
-and transition recovery, automatic invocation and all six actual Jira automation
+The journal and conditional publisher below are separate from this diagnostic.
+Protected writer provisioning/qualification, serialized final recheck and
+transition recovery, automatic invocation and all six actual Jira automation
 acceptance scenarios remain required. The controlled manual operating gate stays
 in effect. Native execution after reviewed merge qualifies this composition's
 installed read access only, not those remaining write/automation boundaries.
@@ -251,10 +253,64 @@ trusted database checkpoint and isolated writer identity establish the boundary.
 
 This adapter does **not** collect GitHub, write Jira, authenticate a supplied
 observation, serialize an external HTTP request, or perform a transition. Its
-transaction lock ends before a caller can use the returned value. The eventual
-single-writer composition must independently collect inputs, retain serialization
-across its final checks and writes, compare Jira readback, quarantine ambiguous
-external outcomes, and implement transition deduplication/recovery. Never retry a
+transaction lock ends before a caller can use the returned value. The conditional
+publisher below supplies register dispatch claims, recollection and readback;
+the transition composition still needs its own serialized final checks and
+deduplication/recovery. Ambiguous external outcomes stay quarantined. Never retry a
 Jira PUT/transition merely because preparation returned an existing pending intent.
 Native six-scenario automation acceptance and protected runtime provisioning remain
 activation requirements. No workflow trigger or readiness flag is enabled here.
+
+## Conditional register publisher
+
+`scripts/jira-register-publisher.mjs` composes authenticated Jira and complete
+App/API inventory reads with the journal and a conditional Jira property writer.
+It accepts no caller-provided scope. Two independent collections must agree before
+the integration prepares a new register. Existing confirmed Jira content must
+match the trusted checkpoint; unanchored properties, missing obligations or drift
+block. Draft/open PRs remain delivery obligations. Registration is not readiness.
+
+Apply `scripts/sql/jira-register-write-receipts-v2.sql` after the v1 operational
+migration. Grant the isolated integration role SELECT/INSERT and UPDATE(task_id)
+on this additional table only. Preparation with `claimWrite=true` atomically
+records the pending register and one dispatch claim. Only its fresh creator gets
+permission to submit the request; duplicates and uncertain database commits do
+not acquire another claim. A missing v2 table rolls back the entire preparation.
+The resulting task identity is durable, cannot be replaced by another task and
+cannot be reused for another issue/version in the same cloud.
+
+The transport uses Jira's conditional bulk-property operation with exactly one
+issue ID and either `hasProperty=false` or `hasProperty=true` plus the exact
+`currentValue`. It never submits an unfiltered operation or an unconditional
+single-issue overwrite. A 303 response establishes an asynchronous task, not a
+successful property update. Its Location URL is never followed: only a bounded
+task ID is extracted and read through the fixed gateway for the same cloud.
+Task COMPLETE must be followed by exact property readback before confirmation.
+See the owning [Jira property contract](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-properties/)
+and [task contract](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-tasks/).
+The provider-side eligibility filter is used as documented; this is not a claim
+of an atomic cross-provider Jira/GitHub snapshot.
+
+Recovery observes a previously recorded task without resubmitting the mutation.
+Queued/running tasks return pending. An unknown submission with no durable task
+receipt remains quarantined even when the desired property is visible; it needs
+explicit operator reconciliation. Failed, cancelled, unavailable or conflicting
+task/readback evidence never confirms the journal. No automatic retry, cancellation,
+cleanup deletion, supporting/superseded reclassification or status transition is
+implemented. A pending task needs a later invocation; no recurring trigger is
+installed by this source. The controlled manual readiness gate remains current.
+
+HTTP work has a 55-second cancellation budget, 128 requests and 32 MiB, with
+the existing per-provider limits and a 15-second write/observation transport bound.
+The injected operator pool must retain validated TLS and bounded connection/query
+timeouts. In-flight SQL settles under its own timeouts; cancellation does not prove
+that it rolled back. A deadline exceeded during SQL cannot return success or start
+new HTTP work. Public results contain fixed codes, `writeSubmitted` for this invocation
+and `readinessAuthorized=false`; a submitted task may still be pending. Errors
+are redacted and deliberately do not claim that nothing was submitted or committed.
+
+No application root, environment credential or workflow invokes this publisher.
+Protected provisioning, installed write/task-read scopes, native conditional-write
+and fault recovery qualification, transition deduplication, automatic invocation
+and all six native readiness scenarios remain required before activation. Fixtures
+and database tests are not a native Jira acceptance claim.

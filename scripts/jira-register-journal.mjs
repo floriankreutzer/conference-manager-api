@@ -87,10 +87,10 @@ export function createPostgresJiraRegisterJournal(pool) {
     read(binding) {
       return transaction(binding, async (_client, _values, current) => current);
     },
-    prepare({ scope, expectedDigest = null, ...binding } = {}) {
+    prepare({ scope, expectedDigest = null, claimWrite = false, ...binding } = {}) {
       return transaction(binding, async (client, values, current) => {
         const next = canonicalJiraRegister(scope);
-        if (next.scope.issueKey !== binding.issueKey
+        if (typeof claimWrite !== 'boolean' || next.scope.issueKey !== binding.issueKey
           || (expectedDigest !== null && (typeof expectedDigest !== 'string' || !HASH.test(expectedDigest)))) throw failure();
         // An exact duplicate is recoverable, but never grants permission to repeat a Jira PUT.
         if (current?.digest === next.digest) return current;
@@ -116,7 +116,34 @@ export function createPostgresJiraRegisterJournal(pool) {
           (cloud_id, issue_key, issue_id, version, scope, digest, state)
           VALUES ($1,$2,$3,$4,$5::jsonb,$6,'pending')`,
         [...values, next.scope.version, JSON.stringify(next.scope), next.digest]);
-        return { ...next, state: 'pending' };
+        if (claimWrite) {
+          await client.query(`INSERT INTO cm_delivery.register_write_receipts (cloud_id, issue_key, version)
+            VALUES ($1,$2,$3)`, [...values.slice(0, 2), next.scope.version]);
+        }
+        // Only the creator of a new atomically claimed intent may submit its HTTP write.
+        // Replays and unknown COMMIT outcomes never return a fresh dispatch claim.
+        return { ...next, state: 'pending', ...(claimWrite ? { writeClaimed: true } : {}) };
+      });
+    },
+    readWriteReceipt({ digest, ...binding } = {}) {
+      return transaction(binding, async (client, values, current) => {
+        if (!current || current.digest !== digest) throw failure();
+        const { rows } = await client.query(`SELECT task_id FROM cm_delivery.register_write_receipts
+          WHERE cloud_id=$1 AND issue_key=$2 AND version=$3`, [...values.slice(0, 2), current.scope.version]);
+        if (rows.length !== 1 || (rows[0].task_id !== null
+          && !/^[a-zA-Z0-9-]{1,100}$/.test(rows[0].task_id))) throw failure();
+        return { taskId: rows[0].task_id };
+      });
+    },
+    attachWriteReceipt({ digest, taskId, ...binding } = {}) {
+      return transaction(binding, async (client, values, current) => {
+        if (!current || current.state !== 'pending' || current.digest !== digest
+          || typeof taskId !== 'string' || !/^[a-zA-Z0-9-]{1,100}$/.test(taskId)) throw failure();
+        const result = await client.query(`UPDATE cm_delivery.register_write_receipts SET task_id=$4
+          WHERE cloud_id=$1 AND issue_key=$2 AND version=$3 AND (task_id IS NULL OR task_id=$4) RETURNING task_id`,
+        [...values.slice(0, 2), current.scope.version, taskId]);
+        if (result.rows.length !== 1) throw failure();
+        return { taskId: result.rows[0].task_id };
       });
     },
     confirm({ observedScope, ...binding } = {}) {
