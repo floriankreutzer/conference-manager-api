@@ -309,8 +309,52 @@ new HTTP work. Public results contain fixed codes, `writeSubmitted` for this inv
 and `readinessAuthorized=false`; a submitted task may still be pending. Errors
 are redacted and deliberately do not claim that nothing was submitted or committed.
 
-No application root, environment credential or workflow invokes this publisher.
-Protected provisioning, installed write/task-read scopes, native conditional-write
+No application root invokes this publisher. The manual runner below is a separate
+integration entry point. Protected provisioning, installed write/task-read scopes, native conditional-write
 and fault recovery qualification, transition deduplication, automatic invocation
 and all six native readiness scenarios remain required before activation. Fixtures
 and database tests are not a native Jira acceptance claim.
+
+## Protected manual publisher entry point
+
+`Jira Register Publisher` invokes `scripts/jira-register-publish.mjs` only through
+manual dispatch on this repository's `main`, in `jira-readiness-writer`. No schedule,
+PR event, transition or automatic retry is installed. Runs serialize without
+cancelling a previous writer. Pinned actions install locked dependencies without
+lifecycle scripts before any writer credentials enter a process. The existing
+Reader App creates a short-lived token with only pull-request read access to the
+two delivery repositories; its permissions are not expanded.
+
+Provision the actual GitHub environment with exactly the `main` branch, no tags
+and no administrator bypass. Verify the policy independently before credentials
+are installed; a workflow environment name is not proof of that protection.
+Use only these dedicated environment secrets, with no repository/organization
+fallback copies: `CM_JIRA_REGISTER_DATABASE_URL`, `CM_JIRA_WRITER_EMAIL`, and
+`CM_JIRA_WRITER_API_TOKEN`. The existing read diagnostic credentials are not writer
+credentials and must not be widened. The token needs the installed issue/property
+read, conditional-property write and own-task read access required by the provider
+contracts; a successful read diagnostic alone does not qualify those scopes.
+
+The environment variables are `CM_JIRA_CLOUD_ID`,
+`CM_JIRA_REGISTER_DATABASE_HOST` (the exact approved Neon endpoint hostname) and
+`CM_JIRA_REGISTER_WRITER_ENABLED`. Leave the enabled variable absent until the
+operational schema, dedicated login, secret placement and native qualification
+plan are ready. Only literal `true` enables an explicit manual invocation.
+
+The database URL must use `postgresql`, role `cm_jira_register_writer`, database
+`conference_manager_demo_shared`, the exact configured Neon AWS host, default
+port or 5432, and only `sslmode=verify-full`. The runner removes URL options before
+passing an explicit verified TLS policy to pg. Its pool has at most two connections
+and bounded connection, statement and query timeouts. Initial identity checks reject
+foreign databases/users, superuser, role/database creation, RLS bypass and inherited
+roles. These checks do not establish the complete schema ACL: provision and verify
+the narrow grants documented above, separate ownership and absence of customer-data
+access independently. There is no implicit migration or customer-credential fallback.
+
+Idle database errors cancel outbound work; connection, publisher, cleanup and
+output failures cannot report success. Logs contain fixed result codes and booleans
+only, without connection strings, Jira payloads or a false no-write assertion on
+failure. A pending task requires a later manual invocation which observes its
+durable receipt. Unknown submissions remain quarantined. A green publisher run
+never grants readiness or Product Acceptance; native six-case automation acceptance
+and the transition/event integration remain separate unfinished work.
