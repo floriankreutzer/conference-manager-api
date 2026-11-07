@@ -75,8 +75,10 @@ test('real PostgreSQL journal: enrollment, readback, monotonic updates and resta
   });
 
   await t.test('migration grants no PUBLIC access and cannot silently replace an existing journal', async () => {
-    const { rows } = await pool.query(`SELECT nspacl::text AS acl FROM pg_namespace WHERE nspname='cm_delivery'`);
-    assert.ok(!rows[0].acl.includes('=U/'), 'PUBLIC must not have schema USAGE');
+    const { rows } = await pool.query(`SELECT privileges.privilege_type
+      FROM pg_namespace namespace, LATERAL aclexplode(namespace.nspacl) privileges
+      WHERE namespace.nspname='cm_delivery' AND privileges.grantee=0`);
+    assert.deepEqual(rows, [], 'PUBLIC must not have any schema privilege');
     await assert.rejects(pool.query(sql));
     await pool.query('ROLLBACK');
     assert.equal((await journal.read(binding)).scope.version, 2);
