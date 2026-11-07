@@ -31,7 +31,7 @@ export function loadJiraWriterConfig(env = {}) {
   } catch { throw failure(); }
 }
 
-export async function runJiraRegisterPublisher({ env = process.env, write = console.log,
+export async function runJiraPublisher({ env = process.env, write = console.log,
   poolFactory = config => new Pool(config), publish = publishJiraRegister, fetchImpl = fetch } = {}) {
   let pool;
   let failed = false;
@@ -69,5 +69,5 @@ export async function runJiraRegisterPublisher({ env = process.env, write = cons
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  process.exitCode = process.argv.length === 2 ? await runJiraRegisterPublisher() : 1;
+  process.exitCode = process.argv.length === 2 ? await runJiraPublisher() : 1;
 }

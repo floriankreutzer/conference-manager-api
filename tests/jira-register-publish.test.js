@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
-import { loadJiraWriterConfig, runJiraRegisterPublisher } from '../scripts/jira-register-publish.mjs';
+import { loadJiraWriterConfig, runJiraPublisher } from '../scripts/jira-register-publish.mjs';
 
 const env = { GITHUB_REPOSITORY: 'floriankreutzer/conference-manager-api', GITHUB_REF: 'refs/heads/main',
   GITHUB_EVENT_NAME: 'workflow_dispatch', CM_JIRA_REGISTER_WRITER_ENABLED: 'true',
@@ -55,7 +55,7 @@ for (const change of [
 ]) {
   test(`invalid runner configuration performs no I/O: ${JSON.stringify(change)}`, async () => {
     const output = [];
-    assert.equal(await runJiraRegisterPublisher({ env: { ...env, ...change },
+    assert.equal(await runJiraPublisher({ env: { ...env, ...change },
       poolFactory: () => assert.fail('unexpected pool'), publish: () => assert.fail('unexpected publisher'),
       write: value => output.push(JSON.parse(value)) }), 1);
     assert.deepEqual(output, [failed]);
@@ -67,7 +67,7 @@ for (const role of [{ ...identity, role_name: 'neondb_owner' }, { ...identity, d
   { ...identity, rolsuper: undefined }]) {
   test(`rejects broad or uncertain database identity: ${JSON.stringify(role)}`, async () => {
     const mock = harness({ role });
-    assert.equal(await runJiraRegisterPublisher({ ...mock.options, publish: () => assert.fail('unexpected publish') }), 1);
+    assert.equal(await runJiraPublisher({ ...mock.options, publish: () => assert.fail('unexpected publish') }), 1);
     assert.deepEqual(mock.output, [failed]);
     assert.equal(mock.closed(), true);
   });
@@ -77,7 +77,7 @@ for (const result of ['JIRA_REGISTER_CONFIRMED', 'JIRA_REGISTER_TASK_PENDING', '
   'JIRA_REGISTER_ISSUE_NOT_IN_REVIEW']) {
   test(`reports bounded publisher outcome ${result} without readiness authority`, async () => {
     const mock = harness();
-    assert.equal(await runJiraRegisterPublisher({ ...mock.options, publish: async options => {
+    assert.equal(await runJiraPublisher({ ...mock.options, publish: async options => {
       assert.equal(options.pool, mock.pool);
       assert.equal(options.token, env.CM_JIRA_WRITER_API_TOKEN);
       return { result, writeSubmitted: true, readinessAuthorized: false, privatePayload: 'never log this' };
@@ -90,7 +90,7 @@ for (const result of ['JIRA_REGISTER_CONFIRMED', 'JIRA_REGISTER_TASK_PENDING', '
 test('query, publisher and cleanup failures stay redacted without a false no-write claim', async () => {
   for (const options of [{ queryFailure: true }, { cleanupFailure: true }, {}]) {
     const mock = harness(options);
-    assert.equal(await runJiraRegisterPublisher({ ...mock.options, publish: async () => {
+    assert.equal(await runJiraPublisher({ ...mock.options, publish: async () => {
       if (!options.cleanupFailure) throw new Error('private provider token');
       return { result: 'JIRA_REGISTER_CONFIRMED', writeSubmitted: true, readinessAuthorized: false };
     } }), 1);
@@ -102,7 +102,7 @@ test('query, publisher and cleanup failures stay redacted without a false no-wri
 test('idle pool errors abort outbound requests and prevent later submission or success', async () => {
   const mock = harness();
   let signal;
-  assert.equal(await runJiraRegisterPublisher({ ...mock.options,
+  assert.equal(await runJiraPublisher({ ...mock.options,
     fetchImpl: async (_url, options) => { signal = options.signal; return new Response(null); },
     publish: async ({ fetchImpl }) => {
       const options = { signal: new AbortController().signal };
@@ -119,11 +119,11 @@ test('unknown publisher output and output sink failure cannot return success', a
   for (const result of [{ result: 'private payload', writeSubmitted: true, readinessAuthorized: false },
     { result: 'JIRA_REGISTER_CONFIRMED', writeSubmitted: true, readinessAuthorized: true }]) {
     const mock = harness();
-    assert.equal(await runJiraRegisterPublisher({ ...mock.options, publish: async () => result }), 1);
+    assert.equal(await runJiraPublisher({ ...mock.options, publish: async () => result }), 1);
     assert.deepEqual(mock.output, [failed]);
   }
   const mock = harness();
-  assert.equal(await runJiraRegisterPublisher({ ...mock.options, publish: async () => ({
+  assert.equal(await runJiraPublisher({ ...mock.options, publish: async () => ({
     result: 'JIRA_REGISTER_UNCHANGED', writeSubmitted: false, readinessAuthorized: false }),
   write: () => { throw new Error('broken output'); } }), 1);
 });
