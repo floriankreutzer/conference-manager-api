@@ -171,3 +171,32 @@ test('real SDK signs only the fixed endpoint and neither follows redirects nor r
     } finally { storage.close(); }
   }
 });
+
+test('real SDK preserves signed upload, verified download and removal without optional checksum streaming', async () => {
+  const calls = [];
+  const storage = createNeonObjectStorage(config, { clientFactory: (options) => new S3Client({ ...options,
+    requestHandler: { destroy() {}, async handle(request) {
+      calls.push(request);
+      return { response: { statusCode: request.method === 'DELETE' ? 204 : 200,
+        headers: { 'content-type': reference.contentType, 'content-length': String(bytes.length) },
+        body: Readable.from(request.method === 'GET' ? [bytes] : []) } };
+    } },
+  }) });
+  try {
+    assert.equal(await storage.put(reference, bytes), mediaObjectReference(reference).key);
+    assert.deepEqual(await storage.get(reference), bytes);
+    await storage.remove(reference);
+    assert.deepEqual(calls.map(request => request.method), ['PUT', 'GET', 'DELETE']);
+    for (const request of calls) {
+      assert.equal(request.hostname, new URL(config.endpoint).hostname);
+      assert.equal(request.protocol, 'https:');
+      assert.equal(request.path, `/${config.bucket}/${mediaObjectReference(reference).key}`);
+      assert.match(request.headers.authorization, /^AWS4-HMAC-SHA256 /);
+    }
+    assert.deepEqual(calls[0].body, bytes);
+    assert.equal(calls[0].headers['content-length'], String(bytes.length));
+    assert.equal(calls[0].headers['content-type'], reference.contentType);
+    assert.equal(calls[0].headers['content-encoding'], undefined);
+    assert.equal(calls[0].headers['x-amz-trailer'], undefined);
+  } finally { storage.close(); }
+});
