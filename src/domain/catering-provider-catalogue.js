@@ -106,3 +106,9 @@ export function normalizeCateringProviderCatalogueMetadata(value) {
   return Object.freeze({ sourceVersion: text(value.sourceVersion,160,true), itemCount: value.itemCount,
     packageCount: value.packageCount, terms: terms(value.terms) });
 }
+
+// Reusable provider business terms only. Unknown values remain explicit null;
+// this neither proves receipt/publication nor supplier availability or approval.
+export function normalizeCateringProviderTerms(value) {
+  return terms(value);
+}
