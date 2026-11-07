@@ -13,3 +13,7 @@ eb1987a9a98ca232a76bf2dd01597b643d00df7a:docs/PROTECTED-RUNTIME-CONFIGURATION.md
 # Exclude only these two historical findings, retaining all current-source scanning.
 6f6759f06f238bb823950903eadcb467fbdbfef2:render.int.yaml:generic-api-key:25
 6f6759f06f238bb823950903eadcb467fbdbfef2:render.int.yaml:generic-api-key:114
+
+# Historical false positive: exported JavaScript function runJiraRegisterPublisher, not an API token.
+# The current runner uses the shorter runJiraPublisher name; only this observed historical finding is excluded.
+701429e0e9fa66f55de8005a41df96ea1dd3e83c:tests/jira-register-publish.test.js:atlassian-api-token:4

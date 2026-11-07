@@ -1,0 +1,56 @@
+name: Jira Register Publisher
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_key:
+        description: CO work item to register without a status transition
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jira-register-publisher
+  cancel-in-progress: false
+
+jobs:
+  publish-register:
+    if: github.repository == 'floriankreutzer/conference-manager-api' && github.ref == 'refs/heads/main'
+    environment: jira-readiness-writer
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout reviewed source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: Create bounded inventory reader token
+        id: inventory-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.CM_CI_READER_APP_ID }}
+          private-key: ${{ secrets.CM_CI_READER_PRIVATE_KEY }}
+          owner: floriankreutzer
+          repositories: |
+            conference-manager
+            conference-manager-api
+          permission-pull-requests: read
+      - name: Publish or observe the conditional register task
+        env:
+          CM_GITHUB_INVENTORY_TOKEN: ${{ steps.inventory-token.outputs.token }}
+          CM_JIRA_CLOUD_ID: ${{ vars.CM_JIRA_CLOUD_ID }}
+          CM_JIRA_REGISTER_WRITER_ENABLED: ${{ vars.CM_JIRA_REGISTER_WRITER_ENABLED }}
+          CM_JIRA_REGISTER_DATABASE_HOST: ${{ vars.CM_JIRA_REGISTER_DATABASE_HOST }}
+          CM_JIRA_REGISTER_DATABASE_URL: ${{ secrets.CM_JIRA_REGISTER_DATABASE_URL }}
+          CM_JIRA_WRITER_EMAIL: ${{ secrets.CM_JIRA_WRITER_EMAIL }}
+          CM_JIRA_WRITER_API_TOKEN: ${{ secrets.CM_JIRA_WRITER_API_TOKEN }}
+          CM_JIRA_ISSUE_KEY: ${{ inputs.issue_key }}
+        run: node scripts/jira-register-publish.mjs
