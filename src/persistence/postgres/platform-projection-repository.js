@@ -48,28 +48,26 @@ async function loadSource(client, tenantId) {
     values: [tenantId],
   });
   if (!tenant.rows[0]) return null;
-  const [entitlements, mappings, health] = await Promise.all([
-    client.query({
-      name: 'platform-projection-entitlement-source',
-      text: `SELECT capability_id, enabled FROM tenant_entitlements
-             WHERE tenant_id = $1 ORDER BY capability_id`,
-      values: [tenantId],
-    }),
-    client.query({
-      name: 'platform-projection-mapping-source',
-      text: `SELECT count(*)::integer AS total,
-             count(*) FILTER (WHERE provider_status = 'active')::integer AS active,
-             count(*) FILTER (WHERE provider_status = 'missing')::integer AS missing
-             FROM microsoft365_room_mappings WHERE tenant_id = $1`,
-      values: [tenantId],
-    }),
-    client.query({
-      name: 'platform-projection-health-source',
-      text: `SELECT capability, status, reason, last_checked_at, last_success_at
-             FROM microsoft365_capability_health WHERE tenant_id = $1 ORDER BY capability`,
-      values: [tenantId],
-    }),
-  ]);
+  const entitlements = await client.query({
+    name: 'platform-projection-entitlement-source',
+    text: `SELECT capability_id, enabled FROM tenant_entitlements
+           WHERE tenant_id = $1 ORDER BY capability_id`,
+    values: [tenantId],
+  });
+  const mappings = await client.query({
+    name: 'platform-projection-mapping-source',
+    text: `SELECT count(*)::integer AS total,
+           count(*) FILTER (WHERE provider_status = 'active')::integer AS active,
+           count(*) FILTER (WHERE provider_status = 'missing')::integer AS missing
+           FROM microsoft365_room_mappings WHERE tenant_id = $1`,
+    values: [tenantId],
+  });
+  const health = await client.query({
+    name: 'platform-projection-health-source',
+    text: `SELECT capability, status, reason, last_checked_at, last_success_at
+           FROM microsoft365_capability_health WHERE tenant_id = $1 ORDER BY capability`,
+    values: [tenantId],
+  });
   return Object.freeze({
     tenant: tenant.rows[0],
     entitlements: entitlements.rows,
