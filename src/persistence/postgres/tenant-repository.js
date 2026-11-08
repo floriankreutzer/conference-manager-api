@@ -32,49 +32,47 @@ async function requireAuthoritativeReadiness(client, tenantId) {
   });
   if (connection.rowCount !== 1) return false;
   const integration = connection.rows[0];
-  const [binding, mapping, health, entitlements] = await Promise.all([
-    client.query({
-      name: 'tenant-pilot-lock-ready-binding',
-      text: `
-        SELECT 1 FROM tenant_identity_bindings
-        WHERE tenant_id = $1 AND provider = 'microsoft_entra'
-          AND provider_tenant_reference = $2 AND status = 'active'
-        FOR SHARE
-      `,
-      values: [tenantId, integration.provider_reference],
-    }),
-    client.query({
-      name: 'tenant-pilot-lock-ready-room',
-      text: `
-        SELECT 1 FROM microsoft365_room_mappings
-        WHERE tenant_id = $1 AND integration_id = $2 AND provider_status = 'active'
-        LIMIT 1 FOR SHARE
-      `,
-      values: [tenantId, integration.id],
-    }),
-    client.query({
-      name: 'tenant-pilot-lock-ready-free-busy',
-      text: `
-        SELECT 1 FROM microsoft365_capability_health
-        WHERE tenant_id = $1 AND integration_id = $2
-          AND capability = 'free_busy' AND status = 'healthy'
-          AND last_success_at IS NOT NULL
-        FOR SHARE
-      `,
-      values: [tenantId, integration.id],
-    }),
-    client.query({
-      name: 'tenant-pilot-lock-ready-entitlements',
-      text: `
-        SELECT capability_id FROM tenant_entitlements
-        WHERE tenant_id = $1
-          AND capability_id = ANY($2::varchar[])
-          AND enabled = TRUE
-        FOR SHARE
-      `,
-      values: [tenantId, ['microsoft.directory', 'microsoft.calendar']],
-    }),
-  ]);
+  const binding = await client.query({
+    name: 'tenant-pilot-lock-ready-binding',
+    text: `
+      SELECT 1 FROM tenant_identity_bindings
+      WHERE tenant_id = $1 AND provider = 'microsoft_entra'
+        AND provider_tenant_reference = $2 AND status = 'active'
+      FOR SHARE
+    `,
+    values: [tenantId, integration.provider_reference],
+  });
+  const mapping = await client.query({
+    name: 'tenant-pilot-lock-ready-room',
+    text: `
+      SELECT 1 FROM microsoft365_room_mappings
+      WHERE tenant_id = $1 AND integration_id = $2 AND provider_status = 'active'
+      LIMIT 1 FOR SHARE
+    `,
+    values: [tenantId, integration.id],
+  });
+  const health = await client.query({
+    name: 'tenant-pilot-lock-ready-free-busy',
+    text: `
+      SELECT 1 FROM microsoft365_capability_health
+      WHERE tenant_id = $1 AND integration_id = $2
+        AND capability = 'free_busy' AND status = 'healthy'
+        AND last_success_at IS NOT NULL
+      FOR SHARE
+    `,
+    values: [tenantId, integration.id],
+  });
+  const entitlements = await client.query({
+    name: 'tenant-pilot-lock-ready-entitlements',
+    text: `
+      SELECT capability_id FROM tenant_entitlements
+      WHERE tenant_id = $1
+        AND capability_id = ANY($2::varchar[])
+        AND enabled = TRUE
+      FOR SHARE
+    `,
+    values: [tenantId, ['microsoft.directory', 'microsoft.calendar']],
+  });
   return binding.rowCount === 1
     && mapping.rowCount === 1
     && health.rowCount === 1
