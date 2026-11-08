@@ -38,6 +38,33 @@ test('writer configuration pins target identity, verified TLS and bounded dedica
   assert.equal(config.publisher.issueKey, 'CO-296');
 });
 
+test('writer accepts a pinned Neon cell endpoint with verified TLS', () => {
+  const host = 'ep-test-example.c-5.eu-central-1.aws.neon.tech';
+  const candidate = { ...env, CM_JIRA_REGISTER_DATABASE_HOST: host,
+    CM_JIRA_REGISTER_DATABASE_URL: env.CM_JIRA_REGISTER_DATABASE_URL
+      .replace(env.CM_JIRA_REGISTER_DATABASE_HOST, host) };
+  const config = loadJiraWriterConfig(candidate);
+  assert.equal(new URL(config.database.connectionString).hostname, host);
+  assert.deepEqual(config.database.ssl, { rejectUnauthorized: true });
+  assert.throws(() => loadJiraWriterConfig({ ...candidate,
+    CM_JIRA_REGISTER_DATABASE_HOST: host.replace('c-5', 'c-6') }), /JIRA_REGISTER_RUN_UNVERIFIED/);
+});
+
+test('invalid Neon cell or foreign authority fails before any connection', async () => {
+  for (const host of ['ep-test.c-x.eu-central-1.aws.neon.tech',
+    'ep-test.c-5.c-6.eu-central-1.aws.neon.tech', 'ep-test.c-5.eu-central-1.aws.neon.tech.evil.test',
+    'ep-test.c-5.eu-central-1.aws.neon.tech.', '127.0.0.1',
+    `ep-${'a'.repeat(240)}.c-5.eu-central-1.aws.neon.tech`]) {
+    const output = [];
+    assert.equal(await runJiraPublisher({ env: { ...env, CM_JIRA_REGISTER_DATABASE_HOST: host,
+      CM_JIRA_REGISTER_DATABASE_URL: env.CM_JIRA_REGISTER_DATABASE_URL
+        .replace(env.CM_JIRA_REGISTER_DATABASE_HOST, host) },
+    poolFactory: () => assert.fail('unexpected pool'), publish: () => assert.fail('unexpected publish'),
+    write: value => output.push(JSON.parse(value)) }), 1);
+    assert.deepEqual(output, [failed]);
+  }
+});
+
 for (const change of [
   { GITHUB_REPOSITORY: 'foreign/repo' }, { GITHUB_REF: 'refs/pull/1/merge' },
   { GITHUB_EVENT_NAME: 'pull_request_target' }, { CM_JIRA_REGISTER_WRITER_ENABLED: '' },
