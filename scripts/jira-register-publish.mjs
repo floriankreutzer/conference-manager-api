@@ -14,7 +14,8 @@ export function loadJiraWriterConfig(env = {}) {
     const raw = env.CM_JIRA_REGISTER_DATABASE_URL;
     const host = env.CM_JIRA_REGISTER_DATABASE_HOST;
     if (typeof raw !== 'string' || raw.length > 4096 || /\s/.test(raw)
-      || typeof host !== 'string' || !/^ep-[a-z0-9-]+\.[a-z0-9-]+\.aws\.neon\.tech$/.test(host)) throw failure();
+      || typeof host !== 'string' || host.length > 253
+      || !/^ep-[a-z0-9-]+\.(?:c-[0-9]+\.)?[a-z0-9-]+\.aws\.neon\.tech$/.test(host)) throw failure();
     const url = new URL(raw);
     if (url.protocol !== 'postgresql:' || url.hostname !== host || (url.port && url.port !== '5432')
       || url.username !== 'cm_jira_register_writer' || !url.password || url.hash
