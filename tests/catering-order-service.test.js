@@ -13,8 +13,8 @@ const context = () => ({ principal: { tenantId: id(1), userId: id(20), roles: ['
   permissions: ['request:manage'], session: { id: id(21), securityVersion: 1 } },
 tenantContext: { tenantId: id(1), status: 'active' }, correlationId: id(22) });
 
-function fixture() {
-  const [snapshot] = createCateringOrderSnapshots(cateringOrderFixture());
+function fixture(options = {}) {
+  const [snapshot] = createCateringOrderSnapshots(cateringOrderFixture(options));
   const authorizationPolicy = createAuthorizationPolicy();
   const audit = createAuditHarness({ authorizationPolicy });
   const view = { tenantId: id(1), snapshot, providerId: 'manual_catering', configurationRevision: 1, operation: 'initial',
@@ -234,4 +234,15 @@ test('historical order reads cannot receive another version from the persistence
   assert.equal(f.calls.at(-1).input.orderVersion, 1);
   await assert.rejects(f.service.load({ ...context(), orderId: f.snapshot.orderId, orderVersion: 2 }), /INVALID/);
   await assert.rejects(f.service.load({ ...context(), orderId: f.snapshot.orderId, orderVersion: 0 }));
+});
+
+
+test('CO-301 Manager order reads preserve projected multiline requirements for both request schemas', async () => {
+  for (const schemaVersion of [2, 3]) {
+    const options = { schemaVersion, dietaryRequirements: 'Vegan\nNo nuts', specialRequirements: 'First\nSecond' };
+    const f = fixture(options);
+    const result = await f.service.load({ ...context(), orderId: f.snapshot.orderId });
+    assert.equal(result.order.dietaryRequirements, options.dietaryRequirements);
+    assert.equal(result.order.specialRequirements, options.specialRequirements);
+  }
 });

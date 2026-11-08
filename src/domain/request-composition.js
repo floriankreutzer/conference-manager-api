@@ -83,10 +83,12 @@ function identifierList(value, maximum, code) {
   return Object.freeze([...result].sort());
 }
 
-function text(value, { minimum = 1, maximum, nullable = false, code }) {
+function text(value, { minimum = 1, maximum, nullable = false, multiline = false, code }) {
   if (nullable && value === null) return null;
-  if (typeof value !== 'string' || UNSAFE_TEXT.test(value)) invalid(code);
-  const normalized = value.trim().normalize('NFC');
+  if (typeof value !== 'string') invalid(code);
+  const lines = multiline ? value.replace(/\r\n/g, '\n') : value;
+  if (UNSAFE_TEXT.test(multiline ? lines.replace(/\n/g, '') : lines)) invalid(code);
+  const normalized = lines.trim().normalize('NFC');
   if (nullable && normalized.length === 0) return null;
   if (normalized.length < minimum || normalized.length > maximum) invalid(code);
   return normalized;
@@ -265,11 +267,13 @@ export function normalizeRequestV2Draft(value) {
     dietaryRequirements: text(draft.dietaryRequirements, {
       maximum: MAX_REQUIREMENTS_LENGTH,
       nullable: true,
+      multiline: true,
       code: 'REQUEST_DIETARY_REQUIREMENTS_INVALID',
     }),
     specialRequirements: text(draft.specialRequirements, {
       maximum: MAX_REQUIREMENTS_LENGTH,
       nullable: true,
+      multiline: true,
       code: 'REQUEST_SPECIAL_REQUIREMENTS_INVALID',
     }),
     allocations: Object.freeze([...allocations].sort((left, right) => (
@@ -846,11 +850,13 @@ function normalizeDetailsSnapshot(value) {
     specialRequirements: text(details.specialRequirements, {
       maximum: MAX_REQUIREMENTS_LENGTH,
       nullable: true,
+      multiline: true,
       code: 'REQUEST_DETAILS_SNAPSHOT_INVALID',
     }),
     dietaryRequirements: text(details.dietaryRequirements, {
       maximum: MAX_REQUIREMENTS_LENGTH,
       nullable: true,
+      multiline: true,
       code: 'REQUEST_DETAILS_SNAPSHOT_INVALID',
     }),
     serviceIds: identifierList(
