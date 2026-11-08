@@ -457,3 +457,67 @@ Activation still requires all six CO-296 native scenarios, installed workflow/
 actor/transition metadata, real duplicate/restart evidence and an independently
 qualified automatic trigger that also discovers pending journal work. The manual
 qualification runner does not itself complete the automatic-promotion requirement.
+
+## Bounded automatic catch-up and recovery
+
+`Jira Readiness Sweep` supplies a separate hourly main-only entry point at minute
+23, plus an explicit manual dispatch for operational qualification. Both
+`CM_JIRA_READINESS_AUTOMATION_ENABLED` and `CM_JIRA_TRANSITION_WRITER_ENABLED`
+must be literal `true`. Until then it reports `JIRA_READINESS_AUTOMATION_DISABLED`
+and skips dependency installation, App-token creation and the credential-bearing
+writer step. Its protected environment, pinned actions, read-only GitHub token,
+direct verified-TLS database connection and shared non-cancelling concurrency
+group are the same as the qualification runner. There is no privileged PR or
+`workflow_run` trigger and no event payload can supply a snapshot or select a ref.
+
+`jira-readiness-candidates.mjs` performs authenticated enhanced JQL search for
+CO work items currently in `in Review`, with a fixed query and minimum fields.
+It follows every cursor to a terminal page, rejects duplicate/foreign/malformed
+records, warnings and cursor loops, and bounds discovery to 20 pages of 50 items,
+256 KiB per page and 15 seconds. Search is eventually consistent and discovers
+candidates only; it never proves association, readiness or absence of obligations.
+Every selected issue passes the existing fresh register and gate composition.
+See the [Jira enhanced search contract](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-search/).
+
+Apply `scripts/sql/jira-readiness-sweep-v4.sql` explicitly under the isolated owner
+after v3. Grant the existing writer SELECT/INSERT and
+UPDATE(`last_issue_key`, `updated_at`) on `cm_delivery.readiness_sweep_cursor`.
+No DELETE, ownership, DDL, cloud-ID update or customer-table grant is required.
+This single cursor per cloud is scheduling metadata, not a copy of the Jira backlog,
+a readiness receipt or permission to retry a mutation. It is retained on disable.
+
+The PostgreSQL selector unions discovered candidates with **all pending register
+and transition journal work**, independently of the issue's present Jira status.
+A transition already applied remotely is therefore still discoverable for receipt
+recovery after it leaves `in Review`. The union is capped at 1,000 issues. A
+transactional per-cloud scheduling lock and persisted numeric issue-key cursor
+select at most five issues in rotation. Persistent blocked/pending issues cannot
+monopolize the first page of a stable queue; concurrent selections do not repeatedly
+take its same first batch. The cursor commits before processing, so an interruption
+may defer that batch until rotation returns. It never grants dispatch authority;
+the existing per-issue lock and one-shot journal still govern every execution.
+
+The runner processes the selected issues sequentially within 12 minutes and a
+15-minute job cap. One unverified issue produces a minimized error receipt while
+the remaining selected issues continue; any such error makes the run fail as
+`JIRA_READINESS_SWEEP_PARTIAL`. Connection loss/deadline/cleanup uncertainty cannot
+report completion. Logs contain only bounded CO keys, fixed result codes, counts
+and booleans, never titles, source payloads, credentials or a false no-write claim
+on error. No association, incomplete gates or unsupported data never promote.
+An empty candidate/recovery queue means no work was selected, not that delivery
+or Product Acceptance is complete.
+
+This is best-effort catch-up, with no guaranteed response time. Delayed/missed
+schedules, provider failures, changing candidate sets and quarantined unknown
+writes remain visible operational conditions. Diagnose a failing issue with its
+manual runner and original journal/history; do not clear a claim or replay its
+POST. No paid infrastructure, runner quota increase or new credential permission
+is needed. Disabling the automation flag stops recurring writes; disable both
+writer flags as well to stop the separately authorized manual entry points.
+
+Enable recurring writes only after the reviewed source and separate Main checks,
+v3/v4 grants, actor/workflow metadata, all six native CO-296 scenarios and real
+duplicate/restart recovery pass. A manual sweep qualifies the same execution path
+but is not proof that a scheduled event ran; retain an actual `schedule` receipt
+separately. The older unsafe Jira promotion rules remain disabled. This integration
+never completes Product Acceptance, transitions to `Done`, merges or deploys.
