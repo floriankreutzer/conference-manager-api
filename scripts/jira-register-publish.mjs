@@ -6,16 +6,14 @@ const failure = () => new Error('JIRA_REGISTER_RUN_UNVERIFIED');
 const results = new Set(['JIRA_REGISTER_CONFIRMED', 'JIRA_REGISTER_TASK_PENDING',
   'JIRA_REGISTER_UNCHANGED', 'JIRA_REGISTER_ISSUE_NOT_IN_REVIEW']);
 
-export function loadJiraWriterConfig(env = {}) {
+export function loadJiraWriterDatabaseConfig(env = {}) {
   try {
-    if (env.GITHUB_REPOSITORY !== 'floriankreutzer/conference-manager-api'
-      || env.GITHUB_REF !== 'refs/heads/main' || env.GITHUB_EVENT_NAME !== 'workflow_dispatch'
-      || env.CM_JIRA_REGISTER_WRITER_ENABLED !== 'true') throw failure();
     const raw = env.CM_JIRA_REGISTER_DATABASE_URL;
     const host = env.CM_JIRA_REGISTER_DATABASE_HOST;
     if (typeof raw !== 'string' || raw.length > 4096 || /\s/.test(raw)
       || typeof host !== 'string' || host.length > 253
-      || !/^ep-[a-z0-9-]+\.(?:c-[0-9]+\.)?[a-z0-9-]+\.aws\.neon\.tech$/.test(host)) throw failure();
+      || !/^ep-[a-z0-9-]+\.(?:c-[0-9]+\.)?[a-z0-9-]+\.aws\.neon\.tech$/.test(host)
+      || host.split('.')[0].endsWith('-pooler')) throw failure();
     const url = new URL(raw);
     if (url.protocol !== 'postgresql:' || url.hostname !== host || (url.port && url.port !== '5432')
       || url.username !== 'cm_jira_register_writer' || !url.password || url.hash
@@ -23,13 +21,32 @@ export function loadJiraWriterConfig(env = {}) {
       || url.searchParams.size !== 1 || url.searchParams.get('sslmode') !== 'verify-full') throw failure();
     // Do not let pg-connection-string options override the explicit TLS contract.
     url.search = '';
-    return { database: { connectionString: url.toString(), ssl: { rejectUnauthorized: true },
+    return { connectionString: url.toString(), ssl: { rejectUnauthorized: true },
       max: 2, connectionTimeoutMillis: 5000, statement_timeout: 5000, query_timeout: 6000,
-      idleTimeoutMillis: 1000, application_name: 'cm-jira-register-writer' },
+      idleTimeoutMillis: 1000, application_name: 'cm-jira-register-writer' };
+  } catch { throw failure(); }
+}
+
+export function loadJiraWriterConfig(env = {}) {
+  if (env.GITHUB_REPOSITORY !== 'floriankreutzer/conference-manager-api'
+    || env.GITHUB_REF !== 'refs/heads/main' || env.GITHUB_EVENT_NAME !== 'workflow_dispatch'
+    || env.CM_JIRA_REGISTER_WRITER_ENABLED !== 'true') throw failure();
+  return { database: loadJiraWriterDatabaseConfig(env),
     publisher: { cloudId: env.CM_JIRA_CLOUD_ID, email: env.CM_JIRA_WRITER_EMAIL,
       token: env.CM_JIRA_WRITER_API_TOKEN, githubToken: env.CM_GITHUB_INVENTORY_TOKEN,
       issueKey: env.CM_JIRA_ISSUE_KEY } };
-  } catch { throw failure(); }
+}
+
+export async function assertJiraWriterIdentity(pool) {
+  const identity = await pool.query(`SELECT current_user AS role_name, current_database() AS database_name,
+    r.rolsuper, r.rolcreatedb, r.rolcreaterole, r.rolbypassrls,
+    EXISTS (SELECT 1 FROM pg_auth_members WHERE member=r.oid) AS inherits_role
+    FROM pg_roles r WHERE r.rolname=current_user`);
+  const role = identity.rows[0];
+  if (identity.rows.length !== 1 || role.role_name !== 'cm_jira_register_writer'
+    || role.database_name !== 'conference_manager_demo_shared'
+    || [role.rolsuper, role.rolcreatedb, role.rolcreaterole, role.rolbypassrls, role.inherits_role]
+      .some(value => value !== false)) throw failure();
 }
 
 export async function runJiraPublisher({ env = process.env, write = console.log,
@@ -42,15 +59,8 @@ export async function runJiraPublisher({ env = process.env, write = console.log,
     const config = loadJiraWriterConfig(env);
     pool = poolFactory(config.database);
     pool.on('error', () => { failed = true; controller.abort(); });
-    const identity = await pool.query(`SELECT current_user AS role_name, current_database() AS database_name,
-      r.rolsuper, r.rolcreatedb, r.rolcreaterole, r.rolbypassrls,
-      EXISTS (SELECT 1 FROM pg_auth_members WHERE member=r.oid) AS inherits_role
-      FROM pg_roles r WHERE r.rolname=current_user`);
-    const role = identity.rows[0];
-    if (identity.rows.length !== 1 || role.role_name !== 'cm_jira_register_writer'
-      || role.database_name !== 'conference_manager_demo_shared'
-      || [role.rolsuper, role.rolcreatedb, role.rolcreaterole, role.rolbypassrls, role.inherits_role]
-        .some(value => value !== false) || failed) throw failure();
+    await assertJiraWriterIdentity(pool);
+    if (failed) throw failure();
     const result = await publish({ ...config.publisher, pool, fetchImpl: (url, options) => {
       if (failed || controller.signal.aborted) throw failure();
       return fetchImpl(url, { ...options, signal: AbortSignal.any([controller.signal, options.signal]) });

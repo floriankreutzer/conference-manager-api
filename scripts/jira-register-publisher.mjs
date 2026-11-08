@@ -3,6 +3,7 @@ import { collectGithubPrInventory } from './jira-github-inventory.mjs';
 import { proposeJiraPrRegister } from './jira-pr-register.mjs';
 import { canonicalJiraRegister, createPostgresJiraRegisterJournal } from './jira-register-journal.mjs';
 import { startJiraRegisterWrite, observeJiraRegisterWrite } from './jira-register-write-transport.mjs';
+import { withJiraIssueLock } from './jira-issue-lock.mjs';
 
 const failure = () => new Error('JIRA_REGISTER_PUBLISH_UNVERIFIED');
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -14,7 +15,7 @@ const outcome = (result, writeSubmitted) => Object.freeze({ result, writeSubmitt
  * Trusted integration composition. Pool is a bounded, TLS-verified, isolated
  * operator pool, never application/customer credentials. No CLI or trigger.
  */
-export async function publishJiraRegister({ cloudId, email, token, githubToken, issueKey, pool, fetchImpl = fetch } = {}) {
+async function publishLockedRegister({ cloudId, email, token, githubToken, issueKey, pool, fetchImpl = fetch } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 55000);
   let requests = 0;
@@ -83,4 +84,15 @@ export async function publishJiraRegister({ cloudId, email, token, githubToken, 
     controller.abort();
     clearTimeout(timer);
   }
+}
+
+export async function publishJiraRegister(options = {}) {
+  try {
+    return await withJiraIssueLock(options, lease => publishLockedRegister({ ...options, pool: lease.pool,
+      fetchImpl: (url, request) => {
+        lease.assertActive();
+        return (options.fetchImpl ?? fetch)(url, { ...request,
+          signal: AbortSignal.any([lease.signal, request.signal]) });
+      } }));
+  } catch { throw failure(); }
 }
