@@ -7,8 +7,8 @@ import { createProviderRegistry } from '../src/integrations/provider-registry.js
 import { cateringId as id, cateringOrderFixture } from './support/catering-order-fixture.js';
 
 function fixture({ kind = 'dispatch', attempt = 0, reads = 0, mode = 'api', provider = true, response = 'valid',
-  thrown = null, begin = true, cancelledAfterCall = false, hanging = false, cancelledAfterIntent = false } = {}) {
-  const [snapshot] = createCateringOrderSnapshots(cateringOrderFixture());
+  requestOptions = {}, thrown = null, begin = true, cancelledAfterCall = false, hanging = false, cancelledAfterIntent = false } = {}) {
+  const [snapshot] = createCateringOrderSnapshots(cateringOrderFixture(requestOptions));
   const registry = createProviderRegistry({ runtime: 'production', descriptors: [{ id: 'synthetic_caterer', runtime: 'production',
     capabilities: { 'catering.order': 'api', 'catering.status': 'api' } }] });
   const candidate = { kind, leaseId: id(90), providerId: 'synthetic_caterer', mode, snapshot,
@@ -149,5 +149,18 @@ test('first-order routing rejects invented or inconsistent replacement lease map
     const f = fixture(); Object.assign(f.candidate, extra);
     await assert.rejects(f.run(), /PORT_INVALID/);
     assert.deepEqual(f.calls, ['claim']);
+  }
+});
+
+
+test('CO-301 delivery validates and dispatches projected multiline requirements without stranding the order', async () => {
+  for (const schemaVersion of [2, 3]) {
+    const requestOptions = { schemaVersion, dietaryRequirements: 'Vegan\nNo nuts', specialRequirements: 'First\nSecond' };
+    const f = fixture({ requestOptions });
+    assert.equal((await f.run()).completedCount, 1);
+    assert.equal(f.calls.filter(call => call.provider).length, 1);
+    const sent = f.calls.find(call => call.provider).provider;
+    assert.equal(sent.order.dietaryRequirements, requestOptions.dietaryRequirements);
+    assert.equal(sent.order.specialRequirements, requestOptions.specialRequirements);
   }
 });

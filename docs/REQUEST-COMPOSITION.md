@@ -274,6 +274,10 @@ Tenant-configured limit but never a higher platform limit.
 
 The multiline exception applies only to `specialRequirements` and
 `dietaryRequirements` in v2/v3 drafts and their immutable detail snapshots.
+The projected Catering order snapshot, Manager reader, delivery processor and
+browser order/document readers must retain those same canonical LF values.
+Catering readers preserve stored content without renormalizing it; other C0
+controls, CR and DEL remain rejected.
 Titles and catalogue text keep their single-line contracts. Clients must show
 field-specific errors before submission and render permitted values as text,
 never HTML. Line-ending normalization precedes the existing NFC/trim and length

@@ -45,3 +45,26 @@ test('accessors, hidden and symbol fields cannot participate in order-value vali
   for (const changed of [Object.defineProperty(structuredClone(f.snapshot), 'hidden', { value: true }),
     { ...f.snapshot, [Symbol('authority')]: true }]) assert.throws(() => normalizeCateringOrderSnapshot(changed, f.expected));
 });
+
+
+test('CO-301 multiline v2/v3 requirements survive request projection and every catering snapshot reader', () => {
+  for (const schemaVersion of [2, 3]) {
+    const options = { schemaVersion, specialRequirements: 'Line one\r\nLine two', dietaryRequirements: 'Vegan\nNo nuts' };
+    for (const snapshot of createCateringOrderSnapshots(cateringOrderFixture(options))) {
+      const expected = { tenantId: snapshot.tenantId, orderId: snapshot.orderId };
+      const value = normalizeCateringOrderSnapshot(snapshot, expected);
+      assert.equal(value.specialRequirements, 'Line one\nLine two');
+      assert.equal(value.dietaryRequirements, options.dietaryRequirements);
+      assert.deepEqual(value, snapshot);
+      for (const field of ['specialRequirements', 'dietaryRequirements']) {
+        for (const bad of ['line\tother', 'line\rother', 'line\u0000other', 'line\u007fother', 'x'.repeat(2001)]) {
+          assert.throws(() => normalizeCateringOrderSnapshot({ ...snapshot, [field]: bad }, expected));
+        }
+        assert.equal(normalizeCateringOrderSnapshot({ ...snapshot, [field]: null }, expected)[field], null);
+        const maximum = 'x'.repeat(1998) + '\ny';
+        assert.equal(normalizeCateringOrderSnapshot({ ...snapshot, [field]: maximum }, expected)[field], maximum);
+      }
+      assert.throws(() => normalizeCateringOrderSnapshot({ ...snapshot, title: 'title\nother' }, expected));
+    }
+  }
+});
