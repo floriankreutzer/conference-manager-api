@@ -7,6 +7,7 @@ import {
   createRequestV2Snapshot,
   normalizePersistedRequestV2Snapshot,
   normalizeRequestV2Draft,
+  normalizeRequestV3Draft,
   priceRequestComposition,
 } from '../src/domain/request-composition.js';
 import {
@@ -244,6 +245,46 @@ test('Request v2 draft schema is exact, canonical and bounded to 500 participant
   ];
   for (const invalidDraft of invalidDrafts) {
     assert.throws(() => normalizeRequestV2Draft(invalidDraft), RequestCompositionInputError);
+  }
+});
+
+test('CO-301 requirement line endings normalize identically in v2/v3 and immutable public snapshots', () => {
+  const expected = "Bitte Wasser & O'Neills Tee.\nDanach Raum lüften.";
+  for (const lineBreak of ['\n', '\r\n']) {
+    const value = `  Bitte Wasser & O'Neills Tee.${lineBreak}Danach Raum lu\u0308ften.  `;
+    const v2 = normalizeRequestV2Draft(draft({ specialRequirements: value, dietaryRequirements: value }));
+    const v3 = normalizeRequestV3Draft({ ...draft({ specialRequirements: value, dietaryRequirements: value }), equipmentIds: [] });
+    for (const normalized of [v2, v3]) {
+      assert.equal(normalized.specialRequirements, expected);
+      assert.equal(normalized.dietaryRequirements, expected);
+    }
+  }
+  const snapshot = clone(validSnapshot());
+  snapshot.details.specialRequirements = expected;
+  snapshot.details.dietaryRequirements = expected;
+  const persisted = normalizePersistedRequestV2Snapshot(snapshot);
+  assert.equal(persisted.details.specialRequirements, expected);
+  const publicRequest = toPublicRequest(normalizeRequest(requestRecord({ snapshot })));
+  assert.equal(publicRequest.details.dietaryRequirements, expected);
+  const boundary = 'x'.repeat(999) + '\r\n' + 'x'.repeat(1_000);
+  assert.equal(normalizeRequestV2Draft(draft({ specialRequirements: boundary })).specialRequirements.length, 2_000);
+});
+
+test('CO-301 multiline exception keeps title, forbidden-character and requirement length boundaries', () => {
+  for (const field of ['specialRequirements', 'dietaryRequirements']) {
+    for (const value of [
+      'x\ry', 'x\ty', 'x\0y', 'x\u001fy', 'x\u007fy', 'x\u202ey', 'x\u2066y',
+      '<b>Text</b>', '<script>alert(1)</script>', 'x'.repeat(2_001), 42,
+    ]) {
+      assert.throws(() => normalizeRequestV2Draft(draft({ [field]: value })), RequestCompositionInputError);
+      assert.throws(() => normalizeRequestV3Draft({ ...draft({ [field]: value }), equipmentIds: [] }), RequestCompositionInputError);
+      const snapshot = clone(validSnapshot());
+      snapshot.details[field] = value;
+      assert.throws(() => normalizePersistedRequestV2Snapshot(snapshot), RequestCompositionInputError);
+    }
+  }
+  for (const title of ['x\ny', 'x\r\ny', '<Title>', 'x'.repeat(161)]) {
+    assert.throws(() => normalizeRequestV2Draft(draft({ title })), RequestCompositionInputError);
   }
 });
 

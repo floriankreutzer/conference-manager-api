@@ -8,6 +8,7 @@ const canonical = (value) => ({ ...value, active: true, order: 0, siteIds: [], r
 
 export function cateringOrderFixture({ schemaVersion = 2, includedCount = 2, extraCount = 1,
   includedSelection = true, quantity = 2, participants = 3, unitPrice = 100, packagePrice = 300, includedIds = null,
+  dietaryRequirements = 'Synthetic dietary note', specialRequirements = 'Synthetic delivery note',
   capturedAt = DEFAULT_CAPTURED_AT, startsAt = '2026-10-20T10:00:00.000Z', requestVersion = 2, catalogueRevision = 4 } = {}) {
   const included = Array.from({ length: includedCount }, (_, n) => entry(includedIds?.[n] ?? `included-${n}`, unitPrice));
   const extras = Array.from({ length: extraCount }, (_, n) => entry(`extra-${n}`, unitPrice));
@@ -24,7 +25,7 @@ export function cateringOrderFixture({ schemaVersion = 2, includedCount = 2, ext
     serviceIds: [], ...(schemaVersion === 3 ? { equipmentIds: [] } : {}),
     catering: { participantCount: participants, packageSelection: { packageId: 'package-a', variantId: 'variant-a' },
       itemQuantities: direct.map((item) => ({ itemId: item.id, quantity })) },
-    dietaryRequirements: 'Synthetic dietary note', specialRequirements: 'Synthetic delivery note',
+    dietaryRequirements, specialRequirements,
     allocations: [{ costCenterId: 'center-a', percentageBasisPoints: 10000 }], configurationRevisions: revisions };
   const room = { id: 'room-a', siteId: 'site-a', name: 'Synthetic Room', price: money(0) };
   const catalogueSnapshot = { schemaVersion: 1, catalogRevision: catalogueRevision, capturedAt, siteId: 'site-a', roomId: 'room-a',
