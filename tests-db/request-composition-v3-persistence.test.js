@@ -249,6 +249,24 @@ test('Request v3 equipment persists, changes, rolls back and preserves exact v2 
     requestId: 'v3-request', changeId: afterTerminal.change.id, rejectionReason: 'Still not required' });
   assert.deepEqual((await requests.findByTenantIdAndId(TENANT, 'v3-request')).snapshot.details.equipmentIds, []);
 
+  await t.test('CO-301 v3 multiline requirements survive persistence and immutable history', async () => {
+    const requirements = {
+      specialRequirements: "Wasser & O'Neills Tee.\nDanach lüften.",
+      dietaryRequirements: 'Ohne Nüsse.\nEine vegetarische Portion.',
+    };
+    const result = await create('v3-multiline', draft(requirements));
+    assert.equal(result.status, 'created');
+    const loaded = await requests.findByTenantIdAndId(TENANT, 'v3-multiline');
+    const entries = await requests.listHistoryPageByTenantIdAndId(TENANT, 'v3-multiline', {
+      asOfVersion: 1, beforeVersion: null, limit: 11,
+    });
+    for (const [field, value] of Object.entries(requirements)) {
+      assert.equal(loaded.snapshot.details[field], value);
+      assert.equal(entries[0].request.details[field], value);
+    }
+    assert.equal(await requests.findByTenantIdAndId(FOREIGN_TENANT, 'v3-multiline'), null);
+  });
+
   const { equipmentIds, ...v2 } = draft();
   assert.equal(equipmentIds.length, 1);
   const old = await create('v2-request', v2, requests, 2);
