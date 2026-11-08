@@ -689,6 +689,29 @@ test('workflow submission binds its reserved ID, trusted owner epoch and normali
   assert.equal(calls.length, previousCalls);
 });
 
+test('CO-301 normalized multiline requirements share retry identity while changed text does not', async () => {
+  const { service, calls } = harness();
+  const input = {
+    principal: employee({ session: { securityVersion: 7 } }),
+    tenantContext: { tenantId: TENANT_A }, correlationId: CORRELATION_ID,
+    schemaVersion: 2, workflowId: REQUEST_ID,
+  };
+  await service.createRequest({ ...input, requestDraft: requestDraft({
+    specialRequirements: '  Wasser\r\nLu\u0308ften  ', dietaryRequirements: 'Tee\r\nOhne Nüsse',
+  }) });
+  const first = calls.at(-1)[1];
+  assert.equal(first.requestDraft.specialRequirements, 'Wasser\nLüften');
+  assert.equal(first.requestDraft.dietaryRequirements, 'Tee\nOhne Nüsse');
+  await service.createRequest({ ...input, requestDraft: requestDraft({
+    specialRequirements: 'Wasser\nLüften', dietaryRequirements: 'Tee\nOhne Nüsse',
+  }) });
+  assert.equal(calls.at(-1)[1].submissionFingerprint, first.submissionFingerprint);
+  await service.createRequest({ ...input, requestDraft: requestDraft({
+    specialRequirements: 'Wasser\nLüften', dietaryRequirements: 'Tee\nMit Milch',
+  }) });
+  assert.notEqual(calls.at(-1)[1].submissionFingerprint, first.submissionFingerprint);
+});
+
 test('workflow replay returns the immutable public first revision and terminal conflicts fail closed', async () => {
   const { service, requestRepository } = harness();
   const firstRevision = toPublicRequest(storedRequest(REQUEST_ID, '2026-09-01T10:00:00.000Z', { status: 'Submitted' }));
