@@ -433,10 +433,21 @@ half as many entries, down to one. Smaller pages remain in effect for the rest
 of the enumeration; description edits can contain large old/new values even
 when the status receipt itself is small. Only this bounded read-size failure is
 retried, never authorization, malformed JSON, transport failures or a transition
-POST. Recovery retains the 15-second transport deadline, 1,000-entry ceiling,
-complete stable-total/duplicate/receipt validation and an additional cap of 100
-changelog requests including reductions. An oversized single entry or exhausted
-budget remains unverified and leaves the original claim intact for investigation.
+POST. Recovery allows 60 seconds for the complete history observation, including
+its initial register read, while every history GET remains bounded to 15 seconds
+through response-body consumption. Transition resolution and the one-shot POST
+retain their existing 15-second budgets; the enclosing promoter retains its
+90-second total deadline. The 1,000-entry ceiling, complete stable-total/duplicate/
+receipt validation and cap of 100 changelog requests including reductions remain.
+An oversized single entry or exhausted budget remains unverified and leaves the
+original claim intact for investigation.
+
+The manual runner may append a closed `historyObservation` diagnostic containing
+only a fixed phase/outcome, monotonic elapsed milliseconds and bounded request/
+entry counts. It contains no issue content, identifiers, provider response or
+credentials. It is collection telemetry, not proof of a committed confirmation:
+the owning result and independent journal/history readback remain authoritative.
+Failures outside history observation retain the existing fixed error-only output.
 
 ## Protected transition qualification runner
 

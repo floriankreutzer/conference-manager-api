@@ -102,3 +102,28 @@ test('manual transition runner shares the publisher lock and injects secrets onl
   assert.ok(workflow.indexOf('CM_JIRA_WRITER_API_TOKEN:') > workflow.indexOf('run: npm ci'));
   for (const line of workflow.split('\n').filter(value => value.includes('uses:'))) assert.match(line, /@[a-f0-9]{40} /);
 });
+
+test('manual diagnostics remain separate from the confirmed or failed persistence result', async () => {
+  for (const cleanupFailure of [false, true]) {
+    const h = harness({ cleanupFailure });
+    const historyObservation = { phase: 'complete', outcome: 'matched', requests: 19, entries: 56, elapsedMs: 21000 };
+    assert.equal(await runJiraReadiness({ ...h.options, promote: async options => {
+      options.onHistoryObservation(historyObservation);
+      return confirmed;
+    } }), cleanupFailure ? 1 : 0);
+    assert.deepEqual(h.output, [{ ...(cleanupFailure ? failed : confirmed), historyObservation }]);
+  }
+});
+
+test('unknown or unbounded history diagnostics fail closed without logging provider fields', async () => {
+  const valid = { phase: 'history', outcome: 'unverified', requests: 2, entries: 1, elapsedMs: 15000 };
+  for (const patch of [{ phase: 'private phase' }, { outcome: 'private response' }, { requests: 101 },
+    { entries: 1001 }, { elapsedMs: -1 }, { elapsedMs: NaN }, { elapsedMs: 240001 }, { payload: 'private token' }]) {
+    const h = harness();
+    assert.equal(await runJiraReadiness({ ...h.options, promote: async options => {
+      options.onHistoryObservation({ ...valid, ...patch }); return confirmed;
+    } }), 1);
+    assert.deepEqual(h.output, [failed]);
+    assert.equal(h.closed(), true);
+  }
+});

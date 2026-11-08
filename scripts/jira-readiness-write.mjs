@@ -8,6 +8,17 @@ const failure = () => new Error('JIRA_READINESS_RUN_UNVERIFIED');
 const results = new Set(['JIRA_READINESS_TRANSITION_PENDING', 'JIRA_READINESS_TRANSITION_CONFIRMED',
   'JIRA_READINESS_ALREADY_CONFIRMED', 'JIRA_READINESS_ISSUE_NOT_IN_REVIEW', 'JIRA_READINESS_GATES_BLOCKED']);
 
+function historyDiagnostic(value) {
+  if (!value || Object.keys(value).sort().join(',') !== 'elapsedMs,entries,outcome,phase,requests'
+    || !['register', 'history', 'validation', 'complete'].includes(value.phase)
+    || !['matched', 'missing', 'unverified'].includes(value.outcome)
+    || !Number.isSafeInteger(value.elapsedMs) || value.elapsedMs < 0 || value.elapsedMs > 240000
+    || !Number.isSafeInteger(value.requests) || value.requests < 0 || value.requests > 100
+    || !Number.isSafeInteger(value.entries) || value.entries < 0 || value.entries > 1000) throw failure();
+  return { phase: value.phase, outcome: value.outcome, requests: value.requests,
+    entries: value.entries, elapsedMs: value.elapsedMs };
+}
+
 export function loadJiraReadinessIntegration(env = {}) {
   if (typeof env.CM_JIRA_WRITER_ACCOUNT_ID !== 'string'
     || !/^[a-zA-Z0-9:-]{1,128}$/.test(env.CM_JIRA_WRITER_ACCOUNT_ID)) throw failure();
@@ -48,6 +59,7 @@ export async function runJiraReadiness({ env = process.env, write = console.log,
   let pool;
   let failed = false;
   let report;
+  let historyObservation;
   const controller = new AbortController();
   try {
     const config = loadJiraReadinessConfig(env);
@@ -55,7 +67,8 @@ export async function runJiraReadiness({ env = process.env, write = console.log,
     pool.on('error', () => { failed = true; controller.abort(); });
     await assertJiraWriterIdentity(pool);
     if (failed) throw failure();
-    const options = { ...config.integration, pool, fetchImpl: (url, request) => {
+    const options = { ...config.integration, pool,
+      onHistoryObservation: value => { historyObservation = historyDiagnostic(value); }, fetchImpl: (url, request) => {
       if (failed || controller.signal.aborted) throw failure();
       return fetchImpl(url, { ...request, signal: AbortSignal.any([controller.signal, request.signal]) });
     } };
@@ -67,6 +80,7 @@ export async function runJiraReadiness({ env = process.env, write = console.log,
     try { await pool?.end(); } catch { failed = true; }
   }
   if (failed) report = { result: 'JIRA_READINESS_RUN_UNVERIFIED' };
+  if (historyObservation) report.historyObservation = historyObservation;
   // Errors never assert that an external write did not happen.
   try { write(JSON.stringify(report)); } catch { return 1; }
   return failed ? 1 : 0;
