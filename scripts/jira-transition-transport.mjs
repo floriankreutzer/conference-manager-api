@@ -34,13 +34,23 @@ async function json(response) {
   } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
 }
 
-async function bounded(options, action) {
+async function bounded(options, action, durationMs = 15000) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15000);
+  const timer = setTimeout(() => controller.abort(), durationMs);
   try {
     const config = connection(options);
-    const get = async path => json(await (options.fetchImpl ?? fetch)(`${config.base}${path}`, {
-      method: 'GET', redirect: 'error', signal: controller.signal, headers: config.headers }));
+    const get = async path => {
+      if (controller.signal.aborted) throw failure();
+      const requestController = new AbortController();
+      const requestTimer = setTimeout(() => requestController.abort(), 15000);
+      try {
+        const result = await json(await (options.fetchImpl ?? fetch)(`${config.base}${path}`, {
+          method: 'GET', redirect: 'error', signal: AbortSignal.any([controller.signal, requestController.signal]),
+          headers: config.headers }));
+        if (controller.signal.aborted || requestController.signal.aborted) throw failure();
+        return result;
+      } finally { clearTimeout(requestTimer); requestController.abort(); }
+    };
     const result = await action({ ...config, get, signal: controller.signal });
     if (controller.signal.aborted) throw failure();
     return result;
@@ -102,11 +112,7 @@ export async function submitJiraReadyTransition({ attempt, ...options } = {}) {
   });
 }
 
-/** Read-only recovery uses immutable Jira history with the actual writer actor,
- * random attempt identity and exact from/to IDs. Current status alone is no receipt.
- */
-export async function observeJiraReadyTransition({ attempt, ...options } = {}) {
-  validateAttempt(attempt);
+async function observeHistory(attempt, options, progress) {
   return bounded(options, async ({ get, signal }) => {
     const jira = await readJiraRegister({ ...options, fetchImpl: (url, request) =>
       (options.fetchImpl ?? fetch)(url, { ...request, signal: AbortSignal.any([signal, request.signal]) }) });
@@ -118,7 +124,9 @@ export async function observeJiraReadyTransition({ attempt, ...options } = {}) {
     let pageSize = 100;
     let requests = 0;
     while (true) {
-      if (++requests > 100) throw failure();
+      if (requests === 100) throw failure();
+      progress.requests = ++requests;
+      progress.phase = 'history';
       let page;
       try {
         page = await get(`/changelog?startAt=${offset}&maxResults=${pageSize}`);
@@ -129,13 +137,15 @@ export async function observeJiraReadyTransition({ attempt, ...options } = {}) {
         pageSize = Math.max(1, Math.floor(pageSize / 2));
         continue;
       }
+      progress.phase = 'validation';
       if (page?.startAt !== offset || !Number.isSafeInteger(page.total) || page.total < 0 || page.total > 1000
         || (total !== null && total !== page.total) || !Array.isArray(page.values) || page.values.length > pageSize
         || typeof page.isLast !== 'boolean') throw failure();
       total = page.total;
       for (const row of page.values) {
-        if (!matches(row?.id, ID) || seen.has(row.id)) throw failure();
+        if (!matches(row?.id, ID) || seen.has(row.id) || seen.size === 1000) throw failure();
         seen.add(row.id);
+        progress.entries = seen.size;
         const metadata = row.historyMetadata;
         if (metadata?.extraData?.attemptId !== attempt.attemptId) continue;
         const time = Date.parse(row.created);
@@ -155,7 +165,27 @@ export async function observeJiraReadyTransition({ attempt, ...options } = {}) {
       if (!page.values.length) throw failure();
     }
     if (matching.length > 1) throw failure();
+    progress.phase = 'complete';
     return matching.length === 0 ? { completed: false } : { completed: true, historyId: matching[0],
       atTarget: jira.issueStatus === 'Ready for Deployment' };
-  });
+  }, 60000);
+}
+
+/** Read-only recovery uses immutable Jira history with the actual writer actor,
+ * random attempt identity and exact from/to IDs. Current status alone is no receipt.
+ * Optional trusted-runner diagnostics contain fixed enums and bounded counts only.
+ */
+export async function observeJiraReadyTransition({ attempt, ...options } = {}) {
+  validateAttempt(attempt);
+  const started = performance.now();
+  const progress = { phase: 'register', outcome: 'unverified', requests: 0, entries: 0 };
+  try {
+    const result = await observeHistory(attempt, options, progress);
+    progress.outcome = result.completed ? 'matched' : 'missing';
+    return result;
+  } finally {
+    try {
+      options.onHistoryObservation?.(Object.freeze({ ...progress, elapsedMs: Math.floor(performance.now() - started) }));
+    } catch { throw failure(); }
+  }
 }

@@ -179,3 +179,104 @@ test('reduced pages still reject a duplicate receipt after the first match and c
     assert.equal(f.posts, 1);
   }
 });
+
+test('complete large-history recovery tolerates cumulative latency beyond one request deadline', async t => {
+  const f = fixture(); const pending = attempt();
+  f.histories = Array.from({ length: 54 }, (_, i) => ({ id: String(i + 1),
+    items: [{ field: 'description', fromString: 'x'.repeat(30000), toString: 'y'.repeat(30000) }] }));
+  await submitJiraReadyTransition({ ...provider(f), attempt: pending });
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const observations = [];
+  const options = provider(f, (_f, url) => {
+    if (url.includes('/changelog?')) t.mock.timers.tick(2000);
+  });
+  assert.deepEqual(await observeJiraReadyTransition({ ...options, attempt: pending,
+    onHistoryObservation: value => observations.push(value) }),
+  { completed: true, historyId: '55', atTarget: true });
+  assert.equal(f.posts, 1);
+  assert.equal(observations.length, 1);
+  assert.equal(observations[0].outcome, 'matched');
+  assert.equal(observations[0].entries, 55);
+  assert.equal(observations[0].requests, options.calls.filter(call => call.url.includes('/changelog?')).length);
+});
+
+test('each history request retains its deadline through stalled headers or response-body consumption', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  for (const phase of ['headers', 'body']) {
+    const f = fixture(); const pending = attempt(); const observations = [];
+    await submitJiraReadyTransition({ ...provider(f), attempt: pending });
+    let entered;
+    const started = new Promise(resolve => { entered = resolve; });
+    const options = provider(f, (_f, url, calls) => {
+      if (!url.includes('/changelog?')) return undefined;
+      const signal = calls.at(-1).init.signal;
+      if (phase === 'headers') return new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('private provider timeout')), { once: true });
+        entered();
+      });
+      return new Response(new ReadableStream({ start(controller) {
+        signal.addEventListener('abort', () => controller.error(new Error('private provider body')), { once: true });
+        entered();
+      } }), { headers: { 'content-type': 'application/json' } });
+    });
+    const rejected = assert.rejects(observeJiraReadyTransition({ ...options, attempt: pending,
+      onHistoryObservation: value => observations.push(value) }), failure);
+    await started;
+    t.mock.timers.tick(15000);
+    await rejected;
+    assert.equal(f.posts, 1);
+    assert.equal(observations[0].phase, 'history');
+    assert.equal(observations[0].outcome, 'unverified');
+    assert.equal(observations[0].requests, 1);
+    assert.equal(observations[0].entries, 0);
+    assert.doesNotMatch(JSON.stringify(observations), /private|token|CO-296|11111111/);
+  }
+});
+
+test('the overall history deadline stops otherwise responsive pages without replay', async t => {
+  const f = fixture(); const pending = attempt();
+  f.histories = Array.from({ length: 75 }, (_, i) => ({ id: String(i + 1) }));
+  await submitJiraReadyTransition({ ...provider(f), attempt: pending });
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const observations = [];
+  const options = provider(f, (_f, url) => {
+    if (!url.includes('/changelog?')) return undefined;
+    const offset = Number(new URL(url).searchParams.get('startAt'));
+    t.mock.timers.tick(1000);
+    return response({ startAt: offset, total: 76, isLast: offset === 75, values: f.histories.slice(offset, offset + 1) });
+  });
+  await assert.rejects(observeJiraReadyTransition({ ...options, attempt: pending,
+    onHistoryObservation: value => observations.push(value) }), failure);
+  assert.equal(observations[0].outcome, 'unverified');
+  assert.equal(observations[0].requests, 60);
+  assert.equal(observations[0].entries, 59);
+  assert.equal(options.calls.filter(call => call.url.includes('/changelog?')).length, 60);
+  assert.equal(f.posts, 1);
+});
+
+test('transition resolution and an accepted but late POST keep their original total deadline', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture();
+  const slowRead = provider(f, () => { t.mock.timers.tick(15000); });
+  await assert.rejects(readJiraReadyTransition(slowRead), failure);
+  assert.equal(f.posts, 0);
+  const slowPost = provider(f, (_f, url) => { if (url.endsWith('/transitions')) t.mock.timers.tick(15000); });
+  await assert.rejects(submitJiraReadyTransition({ ...slowPost, attempt: attempt() }), failure);
+  assert.equal(f.posts, 1);
+});
+
+test('invalid history and diagnostic callback failures expose no source content', async () => {
+  const f = fixture(); const pending = attempt(); const observations = [];
+  await submitJiraReadyTransition({ ...provider(f), attempt: pending });
+  f.histories[0].author.accountId = 'private-foreign-actor';
+  await assert.rejects(observeJiraReadyTransition({ ...provider(f), attempt: pending,
+    onHistoryObservation: value => observations.push(value) }), failure);
+  assert.equal(observations[0].phase, 'validation');
+  assert.equal(observations[0].outcome, 'unverified');
+  assert.deepEqual(Object.keys(observations[0]).sort(), ['elapsedMs', 'entries', 'outcome', 'phase', 'requests']);
+  assert.doesNotMatch(JSON.stringify(observations), /private|synthetic|CO-296|11111111/);
+  f.histories[0].author.accountId = f.options.actorId;
+  await assert.rejects(observeJiraReadyTransition({ ...provider(f), attempt: pending,
+    onHistoryObservation: () => { throw new Error('private diagnostic failure'); } }), failure);
+  assert.equal(f.posts, 1);
+});
