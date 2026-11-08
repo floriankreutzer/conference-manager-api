@@ -427,6 +427,17 @@ enumeration. The promoter is limited to 90 seconds, 600 requests and 72 MiB; the
 collector's tighter existing limits still apply. Logs expose fixed outcomes and
 booleans only. Failure output intentionally makes no assertion that no write occurred.
 
+Changelog reads start at 100 entries per page. A page exceeding the unchanged
+256 KiB response limit is cancelled and fetched again at the same offset with
+half as many entries, down to one. Smaller pages remain in effect for the rest
+of the enumeration; description edits can contain large old/new values even
+when the status receipt itself is small. Only this bounded read-size failure is
+retried, never authorization, malformed JSON, transport failures or a transition
+POST. Recovery retains the 15-second transport deadline, 1,000-entry ceiling,
+complete stable-total/duplicate/receipt validation and an additional cap of 100
+changelog requests including reductions. An oversized single entry or exhausted
+budget remains unverified and leaves the original claim intact for investigation.
+
 ## Protected transition qualification runner
 
 `Jira Readiness Writer` runs only by manual dispatch on protected `main`, using the

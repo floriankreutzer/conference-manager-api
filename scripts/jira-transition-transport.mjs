@@ -4,6 +4,7 @@ const failure = () => new Error('JIRA_TRANSITION_TRANSPORT_UNVERIFIED');
 const ID = /^[1-9][0-9]{0,19}$/;
 const HASH = /^[a-f0-9]{64}$/;
 const UUID = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
+const oversizedResponse = Symbol('oversized Jira response');
 export const JIRA_TRANSITION_HISTORY_TYPE = 'cm.delivery.readiness.v1';
 const matches = (value, pattern) => typeof value === 'string' && pattern.test(value);
 
@@ -26,7 +27,7 @@ async function json(response) {
       const { done, value } = await reader.read();
       if (done) break;
       bytes += value.byteLength;
-      if (bytes > 256 * 1024) throw failure();
+      if (bytes > 256 * 1024) throw oversizedResponse;
       chunks.push(value);
     }
     return JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -114,10 +115,22 @@ export async function observeJiraReadyTransition({ attempt, ...options } = {}) {
     const matching = [];
     let offset = 0;
     let total = null;
+    let pageSize = 100;
+    let requests = 0;
     while (true) {
-      const page = await get(`/changelog?startAt=${offset}&maxResults=100`);
+      if (++requests > 100) throw failure();
+      let page;
+      try {
+        page = await get(`/changelog?startAt=${offset}&maxResults=${pageSize}`);
+      } catch (error) {
+        // Only an oversized read may be retried, at the SAME offset with fewer
+        // entries. Never raise the byte limit, skip history or retry a POST.
+        if (error !== oversizedResponse || pageSize === 1) throw failure();
+        pageSize = Math.max(1, Math.floor(pageSize / 2));
+        continue;
+      }
       if (page?.startAt !== offset || !Number.isSafeInteger(page.total) || page.total < 0 || page.total > 1000
-        || (total !== null && total !== page.total) || !Array.isArray(page.values) || page.values.length > 100
+        || (total !== null && total !== page.total) || !Array.isArray(page.values) || page.values.length > pageSize
         || typeof page.isLast !== 'boolean') throw failure();
       total = page.total;
       for (const row of page.values) {
