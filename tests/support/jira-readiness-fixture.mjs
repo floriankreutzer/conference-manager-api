@@ -50,8 +50,10 @@ export function transport(f, mutate = () => {}) {
       }] });
       if (parsed.pathname.endsWith('/changelog')) {
         const offset = Number(parsed.searchParams.get('startAt'));
-        return response({ startAt: offset, maxResults: 100, total: f.histories.length,
-          isLast: offset + 100 >= f.histories.length, values: f.histories.slice(offset, offset + 100) });
+        const size = Number(parsed.searchParams.get('maxResults'));
+        assert.ok(Number.isSafeInteger(size) && size >= 1 && size <= 100);
+        return response({ startAt: offset, maxResults: size, total: f.histories.length,
+          isLast: offset + size >= f.histories.length, values: f.histories.slice(offset, offset + size) });
       }
       assert.equal(init.headers.Authorization, `Basic ${Buffer.from(`${options.email}:${options.token}`).toString('base64')}`);
       if (parsed.pathname.endsWith('/properties/cm.delivery.pr-register.v1')) {

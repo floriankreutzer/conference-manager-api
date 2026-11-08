@@ -108,3 +108,74 @@ test('foreign destinations and malformed attempts are rejected without outbound 
       ...change, fetchImpl: () => assert.fail('must not fetch') }), failure);
   }
 });
+
+test('large description history pages shrink without losing the original transition or replaying it', async () => {
+  const f = fixture(); const pending = attempt();
+  f.histories = Array.from({ length: 54 }, (_, i) => ({ id: String(i + 1),
+    items: [{ field: 'description', fromString: 'x'.repeat(30000), toString: 'y'.repeat(30000) }] }));
+  await submitJiraReadyTransition({ ...provider(f), attempt: pending });
+  const options = provider(f);
+  assert.deepEqual(await observeJiraReadyTransition({ ...options, attempt: pending }),
+    { completed: true, historyId: '55', atTarget: true });
+  const pages = options.calls.filter(call => call.url.includes('/changelog?'));
+  assert.deepEqual(pages.slice(0, 6).map(call => new URL(call.url).searchParams.get('maxResults')),
+    ['100', '50', '25', '12', '6', '3']);
+  assert.ok(pages.slice(0, 6).every(call => new URL(call.url).searchParams.get('startAt') === '0'));
+  assert.equal(new URL(pages.at(-1).url).searchParams.get('startAt'), '54');
+  assert.equal(f.posts, 1);
+});
+
+test('an oversized single history entry still fails closed after bounded page reduction', async () => {
+  const f = fixture(); const pending = attempt();
+  await submitJiraReadyTransition({ ...provider(f), attempt: pending });
+  f.histories.unshift({ id: '99', items: [{ field: 'description', toString: 'x'.repeat(256 * 1024) }] });
+  const options = provider(f);
+  await assert.rejects(observeJiraReadyTransition({ ...options, attempt: pending }), failure);
+  const pages = options.calls.filter(call => call.url.includes('/changelog?'));
+  assert.equal(pages.length, 7);
+  assert.ok(pages.every(call => new URL(call.url).searchParams.get('startAt') === '0'));
+  assert.equal(new URL(pages.at(-1).url).searchParams.get('maxResults'), '1');
+  assert.equal(f.posts, 1);
+});
+
+test('auth, malformed JSON, interrupted streams and transport errors never trigger read retries', async () => {
+  for (const fail of [
+    () => new Response('private credentials', { status: 403 }),
+    () => new Response('{', { headers: { 'content-type': 'application/json' } }),
+    () => new Response(new ReadableStream({ start(controller) { controller.error(new Error('private stream')); } }),
+      { headers: { 'content-type': 'application/json' } }),
+    () => { throw new Error('private transport'); },
+  ]) {
+    const f = fixture(); const options = provider(f, (_f, url) => url.includes('/changelog?') ? fail() : undefined);
+    await assert.rejects(observeJiraReadyTransition({ ...options, attempt: attempt() }), failure);
+    assert.equal(options.calls.filter(call => call.url.includes('/changelog?')).length, 1);
+    assert.equal(f.posts, 0);
+  }
+});
+
+test('small provider pages cannot exceed the recovery request budget', async () => {
+  const f = fixture();
+  const options = provider(f, (_f, url) => {
+    if (!url.includes('/changelog?')) return undefined;
+    const offset = Number(new URL(url).searchParams.get('startAt'));
+    return response({ startAt: offset, total: 101, isLast: offset === 100, values: [{ id: String(offset + 1) }] });
+  });
+  await assert.rejects(observeJiraReadyTransition({ ...options, attempt: attempt() }), failure);
+  assert.equal(options.calls.filter(call => call.url.includes('/changelog?')).length, 100);
+  assert.equal(f.posts, 0);
+});
+
+test('reduced pages still reject a duplicate receipt after the first match and changing totals', async () => {
+  for (const drift of [false, true]) {
+    const f = fixture(); const pending = attempt();
+    await submitJiraReadyTransition({ ...provider(f), attempt: pending });
+    f.histories.push(...Array.from({ length: 10 }, (_, i) => ({ id: String(i + 2), padding: 'x'.repeat(60000) })));
+    f.histories.push({ ...f.histories[0], id: '12' });
+    const options = provider(f, (_f, url) => {
+      if (!drift || !url.includes('/changelog?startAt=3&')) return undefined;
+      return response({ startAt: 3, total: 13, isLast: false, values: f.histories.slice(3, 6) });
+    });
+    await assert.rejects(observeJiraReadyTransition({ ...options, attempt: pending }), failure);
+    assert.equal(f.posts, 1);
+  }
+});

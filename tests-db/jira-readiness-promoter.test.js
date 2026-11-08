@@ -114,6 +114,19 @@ test('real PostgreSQL transition composition and durable restart recovery', asyn
     assert.equal((await run(f)).transitionConfirmed, true);
     assert.equal(f.posts, 1); assert.equal(await pending(binding), null);
   });
+  await t.test('large description histories recover the same durable attempt without another POST', async () => {
+    const { f, binding } = await make();
+    f.histories = Array.from({ length: 54 }, (_, i) => ({ id: String(i + 1),
+      items: [{ field: 'description', fromString: 'x'.repeat(30000), toString: 'y'.repeat(30000) }] }));
+    await run(f, { deferConfirmation: true });
+    const original = await pending(binding);
+    assert.deepEqual(await run(f), { result: 'JIRA_READINESS_TRANSITION_CONFIRMED',
+      transitionSubmitted: false, transitionConfirmed: true, atTarget: true });
+    const confirmed = await pool.query(`SELECT attempt_id, state, history_id FROM cm_delivery.transition_journal
+      WHERE cloud_id=$1 AND issue_key=$2`, [binding.cloudId, binding.issueKey]);
+    assert.deepEqual(confirmed.rows, [{ attempt_id: original.attemptId, state: 'confirmed', history_id: '55' }]);
+    assert.equal(await pending(binding), null); assert.equal(f.posts, 1);
+  });
   await t.test('a rejected POST remains quarantined; a new adapter cannot infer safe replay from current status', async () => {
     const { f, binding } = await make(); f.rejectPost = true;
     await assert.rejects(run(f), failure); const original = await pending(binding);
