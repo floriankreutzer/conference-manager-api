@@ -29,3 +29,15 @@ The dated audit is a baseline, not a promised saving. Compare cancelled-run shar
 runner minutes per successful candidate, cache hit/miss setup time and dependency
 PR count in comparable windows. Current public-runner usage is not an invoice;
 private-source restoration requires separately verified quota and read access.
+
+## Metadata-triggered cancellation
+
+Ordinary CI keeps title edits and draft-to-ready events, including the existing
+Jira title/branch validation and every source/security/browser/database gate.
+Those metadata events join the PR concurrency group without cancelling its
+running validation. A newer source event can still supersede stale PR work.
+Main runs have unique run-ID groups so each merged commit keeps its separate
+qualification. GitHub still keeps at most one pending run per group: a later
+pending event can replace an earlier pending event. This is not an every-event
+delivery guarantee, metadata deduplication, or a measured runner-minute saving.
+No successful skipped surrogate or reusable unverified result replaces a gate.

@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'edited' && github.event.action != 'ready_for_review' }}
 
 jobs:
   quality:
@@ -54,7 +54,7 @@ jobs:
         if: env.HAS_SOURCE_APP == 'true'
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.CM_CI_READER_APP_ID }}
+          client-id: ${{ secrets.CM_CI_READER_APP_ID }}
           private-key: ${{ secrets.CM_CI_READER_PRIVATE_KEY }}
           owner: floriankreutzer
           repositories: |
@@ -204,7 +204,7 @@ jobs:
         if: env.HAS_SOURCE_APP == 'true'
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.CM_CI_READER_APP_ID }}
+          client-id: ${{ secrets.CM_CI_READER_APP_ID }}
           private-key: ${{ secrets.CM_CI_READER_PRIVATE_KEY }}
           owner: floriankreutzer
           repositories: |
