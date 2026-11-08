@@ -69,7 +69,7 @@ Only `in Review` can produce a `Ready for Deployment` decision. This kernel neve
 returns `Done`, performs a merge, or changes Product Acceptance. The independent
 production deployment and Product Acceptance gate remains unchanged.
 
-## Integration still required before activation
+## Collection contracts and activation requirements
 
 `scripts/jira-github-inventory.mjs` now supplies the transport-only first stage:
 authenticated GET requests to the two fixed repositories, all PR states, bounded
@@ -110,10 +110,11 @@ is required to prove installed-token access; fixture tests alone do not prove it
    missing index, closed-unmerged and Product Acceptance negatives. Include stale
    observations, authentication/pagination failures and duplicate delivery.
 
-No HTTP/API, database, migration, tenant or deployed application contract changes.
-Local kernel tests establish only decision behavior. Native collection, secret
-custody, serialized transition, workflow triggers and operational acceptance remain
-open integration work. The temporary manual gate above does not qualify automation.
+No customer HTTP/API, migration, tenant or deployed application contract changes.
+The separate operator journal migrations and transition composition are described
+below. Local kernel tests establish only decision behavior. Native qualification,
+automatic invocation and operational acceptance remain activation requirements.
+The temporary manual gate above does not qualify automation.
 
 ## Explicit scope reconciliation
 
@@ -208,9 +209,10 @@ Do not consume this diagnostic as a Jira promotion condition. Two stable reads
 also do not establish an atomic cross-provider snapshot or prevent later changes.
 
 The journal and conditional publisher below are separate from this diagnostic.
-Protected writer provisioning/qualification, serialized final recheck and
-transition recovery, automatic invocation and all six actual Jira automation
-acceptance scenarios remain required. The controlled manual operating gate stays
+Protected writer provisioning/qualification, automatic invocation and all six
+actual Jira automation acceptance scenarios remain required. The transition
+composition below adds serialization and recovery; its source tests do not replace
+native qualification. The controlled manual operating gate stays
 in effect. Native execution after reviewed merge qualifies this composition's
 installed read access only, not those remaining write/automation boundaries.
 
@@ -255,7 +257,7 @@ This adapter does **not** collect GitHub, write Jira, authenticate a supplied
 observation, serialize an external HTTP request, or perform a transition. Its
 transaction lock ends before a caller can use the returned value. The conditional
 publisher below supplies register dispatch claims, recollection and readback;
-the transition composition still needs its own serialized final checks and
+the transition composition below supplies its own serialized final checks and
 deduplication/recovery. Ambiguous external outcomes stay quarantined. Never retry a
 Jira PUT/transition merely because preparation returned an existing pending intent.
 Native six-scenario automation acceptance and protected runtime provisioning remain
@@ -358,3 +360,95 @@ failure. A pending task requires a later manual invocation which observes its
 durable receipt. Unknown submissions remain quarantined. A green publisher run
 never grants readiness or Product Acceptance; native six-case automation acceptance
 and the transition/event integration remain separate unfinished work.
+
+## Serialized one-shot readiness transition
+
+`scripts/jira-readiness-promoter.mjs` is a trusted integration composition, not an
+HTTP endpoint. It accepts no readiness snapshot from a client. The existing
+diagnostic and promoter share `jira-readiness-collection.mjs`; the diagnostic
+still reports candidate evidence only and never grants mutation authority.
+
+Both register publication and promotion retain the same per-cloud/per-issue
+PostgreSQL session advisory lock through collection, journal transactions and
+outbound mutation. Nested journal transactions borrow that physical connection.
+A busy lock fails without collection. Connection loss aborts outbound work and the
+connection is destroyed on exit, never returned with session state to the pool.
+The two manual workflows also share a non-cancelling concurrency group. These
+locks serialize this integration; they cannot prevent human or provider changes
+outside it and do not establish an atomic Jira/GitHub snapshot.
+
+Apply `scripts/sql/jira-transition-journal-v3.sql` explicitly after v1 and v2,
+under the existing isolated schema owner. Grant the dedicated writer SELECT,
+INSERT and UPDATE(`state`, `history_id`, `confirmed_at`) on
+`cm_delivery.transition_journal` only. Do not grant UPDATE on intent identity,
+DELETE, DDL, ownership, role membership or customer-table access. There is no
+startup migration or destructive rollback. Disabling the writer preserves all
+records for recovery. A repeated migration fails instead of replacing evidence.
+
+Promotion requires the current property to equal the latest confirmed journal
+value, two complete current GitHub gate passes, final issue/inventory recollection,
+an unchanged scope and a fresh kernel decision. The raw Jira transitions response
+must expose exactly one available, non-global, screenless transition from the
+current source status to the **status** `Ready for Deployment`, with no mandatory
+fields. The transition's display name is not its target status. Missing global/
+availability metadata or an unsupported workflow blocks instead of guessing.
+The transition contract and source status are independently read again before
+the claim. See the owning [Jira issue transition and changelog contract](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issues/).
+
+Before one POST, a transaction commits a pending claim binding issue identity,
+stable decision key, register version/digest, random attempt ID, configured writer
+account ID, transition and source/target status IDs. Only a newly committed claim
+authorizes submission. One pending claim per issue and unique decision/receipt
+identities prevent concurrent or restarted callers from acquiring another dispatch.
+The kernel freshness check is repeated after the database commit. An unchanged
+scope/head/policy decision is never resubmitted, including after a human returns
+the issue to `in Review`.
+
+The POST includes a bounded history-metadata marker for that exact attempt.
+HTTP 204 alone does not confirm the journal. Confirmation requires complete,
+bounded Jira changelog enumeration with one matching marker, the actual changelog
+author matching the configured writer, the exact from/to IDs and a plausible
+provider timestamp. Current status alone is never a receipt. Recovery checks the
+pending claim **before** the current-status filter, so a prior successful POST
+remains recoverable after the issue has left `in Review`. A scheduler must likewise
+include pending journal work independently of its new-candidate status query.
+
+An ambiguous database COMMIT or POST never authorizes retry. A later invocation
+only observes the original attempt. Missing, conflicting, truncated or unavailable
+history leaves it pending or fails closed; it requires operator reconciliation,
+not deletion, automatic replay or an inferred success. The bounded history window
+is 1,000 entries; exceeding it requires explicit investigation rather than partial
+enumeration. The promoter is limited to 90 seconds, 600 requests and 72 MiB; the
+collector's tighter existing limits still apply. Logs expose fixed outcomes and
+booleans only. Failure output intentionally makes no assertion that no write occurred.
+
+## Protected transition qualification runner
+
+`Jira Readiness Writer` runs only by manual dispatch on protected `main`, using the
+existing `jira-readiness-writer` environment and dedicated secrets. It reconciles
+the register before promotion, waits for a confirmed register, and never changes
+Product Acceptance, `Done`, deployments or merges. The existing Reader App token
+is limited to pull-request/check/content reads in the two delivery repositories.
+No credential permission expansion, schedule or PR-triggered privileged execution
+is introduced by this entry point. No writer credentials enter dependency installation.
+
+In addition to the existing cloud/database configuration, explicitly configure
+`CM_JIRA_WRITER_ACCOUNT_ID` to the authenticated writer's actual account ID and
+`CM_JIRA_TRANSITION_WRITER_ENABLED=true` for an authorized qualification run.
+The transition flag authorizes both register reconciliation and the one-shot
+transition; it is independent of the manual register publisher's enable flag.
+Absent, malformed or non-literal activation fails before connecting. The database
+identity/TLS restrictions are shared with the existing publisher. Native token
+access to transitions and changelog metadata must be proven, not inferred from
+successful property writes.
+
+The optional manual `defer_confirmation=true` input leaves a submitted transition
+pending deliberately. The next invocation must recover its original native
+history without a second POST; it cannot use this flag to resubmit an existing
+claim. This qualifies restart behavior without changing the normal decision gates.
+
+Source, fixture and real PostgreSQL tests prove only their executed contracts.
+Activation still requires all six CO-296 native scenarios, installed workflow/
+actor/transition metadata, real duplicate/restart evidence and an independently
+qualified automatic trigger that also discovers pending journal work. The manual
+qualification runner does not itself complete the automatic-promotion requirement.

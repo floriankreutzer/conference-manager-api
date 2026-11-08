@@ -1,0 +1,65 @@
+name: Jira Readiness Writer
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_key:
+        description: CO work item for trusted register reconciliation and readiness
+        required: true
+        type: string
+      defer_confirmation:
+        description: Qualify restart recovery by leaving the submitted attempt pending
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jira-readiness-writer
+  cancel-in-progress: false
+
+jobs:
+  readiness:
+    if: github.repository == 'floriankreutzer/conference-manager-api' && github.ref == 'refs/heads/main'
+    environment: jira-readiness-writer
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Checkout reviewed source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: Create bounded read-only gates token
+        id: gates-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.CM_CI_READER_APP_ID }}
+          private-key: ${{ secrets.CM_CI_READER_PRIVATE_KEY }}
+          owner: floriankreutzer
+          repositories: |
+            conference-manager
+            conference-manager-api
+          permission-pull-requests: read
+          permission-checks: read
+          permission-contents: read
+      - name: Reconcile register and execute or recover one readiness decision
+        env:
+          CM_GITHUB_GATES_TOKEN: ${{ steps.gates-token.outputs.token }}
+          CM_JIRA_CLOUD_ID: ${{ vars.CM_JIRA_CLOUD_ID }}
+          CM_JIRA_TRANSITION_WRITER_ENABLED: ${{ vars.CM_JIRA_TRANSITION_WRITER_ENABLED }}
+          CM_JIRA_WRITER_ACCOUNT_ID: ${{ vars.CM_JIRA_WRITER_ACCOUNT_ID }}
+          CM_JIRA_REGISTER_DATABASE_HOST: ${{ vars.CM_JIRA_REGISTER_DATABASE_HOST }}
+          CM_JIRA_REGISTER_DATABASE_URL: ${{ secrets.CM_JIRA_REGISTER_DATABASE_URL }}
+          CM_JIRA_WRITER_EMAIL: ${{ secrets.CM_JIRA_WRITER_EMAIL }}
+          CM_JIRA_WRITER_API_TOKEN: ${{ secrets.CM_JIRA_WRITER_API_TOKEN }}
+          CM_JIRA_ISSUE_KEY: ${{ inputs.issue_key }}
+          CM_JIRA_DEFER_CONFIRMATION: ${{ inputs.defer_confirmation }}
+        run: node scripts/jira-readiness-write.mjs
