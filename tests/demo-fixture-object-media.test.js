@@ -6,6 +6,7 @@ import { DEMO_FIXTURE } from '../src/demo/fixture.js';
 import { forEachDemoMediaBatch, demoFixtureMediaReferences, publishDemoFixtureMedia,
   readDemoFixtureMediaBytes } from '../src/persistence/postgres/demo-fixture-media.js';
 import { seedDemoBusinessState } from '../src/persistence/postgres/demo-fixture-state.js';
+import { withPostgresTransaction } from '../src/persistence/postgres/transaction.js';
 
 test('canonical media intents are Tenant/kind/content bound and external seeding stores metadata only', async () => {
   const references = demoFixtureMediaReferences(DEMO_FIXTURE);
@@ -16,9 +17,15 @@ test('canonical media intents are Tenant/kind/content bound and external seeding
   const uploaded = [];
   let active = 0;
   let peak = 0;
+  let queryActive = false;
   const client = { async query(query) {
-    queries.push(query);
-    return { rowCount: 1, rows: query.name === 'demo-fixture-projection-clock' ? [{ observed_at: new Date() }] : [] };
+    assert.equal(queryActive, false, 'same-client queries must not overlap');
+    queryActive = true;
+    try {
+      await new Promise((resolve) => setImmediate(resolve));
+      queries.push(query);
+      return { rowCount: 1, rows: query.name === 'demo-fixture-projection-clock' ? [{ observed_at: new Date() }] : [] };
+    } finally { queryActive = false; }
   } };
   await seedDemoBusinessState({ client,
     fixture: { ...DEMO_FIXTURE, tenants: DEMO_FIXTURE.tenants.map((tenant) => ({ ...tenant, requests: [] })) },
@@ -26,6 +33,7 @@ test('canonical media intents are Tenant/kind/content bound and external seeding
     mediaObjects: { async putWithClient(actualClient, reference, bytes) {
       active += 1;
       peak = Math.max(peak, active);
+      await actualClient.query({ name: 'synthetic-media-upload-lock', values: [reference.tenantId] });
       await new Promise((resolve) => setImmediate(resolve));
       assert.equal(actualClient, client);
       assert.equal(bytes.length, reference.byteLength);
@@ -36,13 +44,54 @@ test('canonical media intents are Tenant/kind/content bound and external seeding
     } },
   });
   assert.deepEqual(uploaded.map(({ key }) => key).sort(), references.map(({ key }) => key).sort());
-  assert.ok(peak > 1 && peak <= 4);
+  assert.equal(peak, 1, 'publication includes same-client SQL; only provider-only work may batch');
   assert.equal(active, 0);
   const room = queries.filter(({ name }) => name === 'demo-fixture-insert-room-media');
   const catalogue = queries.filter(({ name }) => name === 'demo-fixture-insert-catalogue-media');
   assert.equal(room.every(({ values }) => values[3] === null && values[10].startsWith(`v1/${values[0]}/room/`)), true);
   assert.equal(catalogue.every(({ values }) => values[4] === null && values[11].startsWith(`v1/${values[0]}/catalogue/`)), true);
 });
+
+for (const failureAt of ['synthetic-media-upload-lock', 'demo-fixture-insert-room-media',
+  'demo-fixture-insert-catalogue-media']) {
+  test(`media seeding stops at ${failureAt} before rollback and release`, async () => {
+    const failure = new Error('INJECTED_MEDIA_QUERY_FAILURE');
+    const calls = [];
+    let active = false;
+    let failed = false;
+    let released = false;
+    const client = {
+      async query(query) {
+        assert.equal(active, false, 'same-client queries must not overlap');
+        assert.equal(released, false);
+        const name = typeof query === 'string' ? query : query.name;
+        assert.ok(!failed || name === 'ROLLBACK', 'no work after failed publication');
+        active = true;
+        calls.push(name);
+        try {
+          await new Promise((resolve) => setImmediate(resolve));
+          if (name === failureAt) { failed = true; throw failure; }
+          return { rowCount: 1, rows: [] };
+        } finally { active = false; }
+      },
+      release() { assert.equal(active, false); released = true; },
+    };
+    const pool = { async connect() { return client; } };
+    await assert.rejects(withPostgresTransaction(pool, () => seedDemoBusinessState({ client,
+      fixture: { ...DEMO_FIXTURE, tenants: DEMO_FIXTURE.tenants.map((tenant) => ({ ...tenant, requests: [] })) },
+      refreshProjections: async () => { assert.fail('no projection after failed seed'); },
+      mediaObjects: { async putWithClient(actualClient, reference) {
+        assert.equal(actualClient, client);
+        await actualClient.query({ name: 'synthetic-media-upload-lock', values: [reference.tenantId] });
+        return reference.key;
+      } },
+    })), (error) => error === failure);
+    assert.equal(failed, true);
+    assert.equal(calls.at(-1), 'ROLLBACK');
+    assert.equal(calls.includes('COMMIT'), false);
+    assert.equal(released, true);
+  });
+}
 
 test('Demo media batches drain in-flight work before failure and never dispatch the next batch', async () => {
   const started = [];
