@@ -224,8 +224,13 @@ the server reselects and enforces current policy in the Request write transactio
 `GET /api/v1/application/requests?limit=1..10&cursor=<opaque>` returns top-level
 `{ schemaVersion: 3, asOf, requests, page }`. Every Request includes its persisted
 `requesterAttribution: { displayName }`. Employees receive only their server-owned Requests;
-Conference Managers receive the active Tenant scope; Tenant Admin does not inherit that access.
-Rows are ordered by ascending `startsAt` and Request ID. The HMAC-protected cursor binds Tenant,
+Conference Managers receive the active Tenant scope by default; Tenant Admin does not inherit that access.
+Optional `scope=own` narrows any authorized caller to the authenticated Principal’s own Requests,
+including Conference Managers and combined roles. The API accepts no requester or Tenant selector.
+An unknown, empty or repeated scope fails validation. A cursor from the Manager-wide list cannot
+be reused for the personal list, or conversely; changing scope requires a fresh first page.
+Clients must deploy this API capability before requesting personal scope; old servers reject it.
+Rows are ordered by descending `startsAt`, then ascending Request ID. The HMAC-protected cursor binds Tenant,
 ownership scope, revision watermark, ordering key and a 30-minute expiry. A consumer has a complete
 snapshot only when `page.complete` is true and `page.nextCursor` is null. Every page is also bounded
 by the configured response-byte cap.
