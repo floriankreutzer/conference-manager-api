@@ -19,7 +19,7 @@ const NOTIFICATION_PATH = /^\/api\/v1\/application\/notifications\/([0-9a-f-]{36
 const REQUEST_WORKFLOW_ABANDON_PATH = /^\/api\/v1\/application\/request-workflows\/([0-9a-f-]{36})\/abandon$/i;
 const EMPTY_BODY_SCHEMA = Object.freeze({ required: Object.freeze({}), optional: Object.freeze({}) });
 const CATALOG_QUERY_KEYS = new Set(['section', 'limit', 'cursor', 'context']);
-const REQUEST_LIST_QUERY_KEYS = new Set(['limit', 'cursor']);
+const REQUEST_LIST_QUERY_KEYS = new Set(['limit', 'cursor', 'scope']);
 const REQUEST_REPORT_QUERY_KEYS = new Set(['from', 'to', 'limit', 'cursor']);
 const REQUEST_RESUBMISSION_PATH = new RegExp(
   '^/api/v1/application/requests/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})/resubmissions$',
@@ -140,13 +140,16 @@ function requestListQuery(parsedUrl) {
   }
   const limit = parsedUrl.searchParams.get('limit');
   const cursor = parsedUrl.searchParams.get('cursor');
+  const scope = parsedUrl.searchParams.get('scope');
   if (
-    (limit !== null && limit.length > 2)
+    (scope !== null && scope !== 'own')
+    || (limit !== null && limit.length > 2)
     || (cursor !== null && cursor.length > 2_048)
   ) throw new ApiError(400, 'VALIDATION_FAILED');
   return Object.freeze({
     limit: limit ?? undefined,
     cursor: cursor ?? undefined,
+    ...(scope === null ? {} : { scope }),
   });
 }
 

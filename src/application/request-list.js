@@ -91,6 +91,13 @@ function decodeCursor(value, tenantId, requesterUserId, cursorSecret, evaluatedA
   });
 }
 
+export function normalizeApplicationRequestListScope(value) {
+  const query = exactObject(value, Object.hasOwn(value ?? {}, 'scope')
+    ? ['limit', 'cursor', 'scope'] : ['limit', 'cursor']);
+  if (query.scope !== undefined && query.scope !== 'own') invalid();
+  return query.scope;
+}
+
 export function normalizeApplicationRequestListQuery(value, {
   requesterUserId,
   tenantId,
@@ -99,7 +106,8 @@ export function normalizeApplicationRequestListQuery(value, {
 } = {}) {
   if (!isInternalUuid(tenantId) || !validScope(requesterUserId)) invalid();
   const normalizedEvaluatedAt = utcInstant(evaluatedAt);
-  const query = exactObject(value, ['limit', 'cursor']);
+  normalizeApplicationRequestListScope(value);
+  const query = value;
   return Object.freeze({
     limit: pageLimit(query.limit),
     ...decodeCursor(query.cursor, tenantId, requesterUserId, cursorSecret, normalizedEvaluatedAt),

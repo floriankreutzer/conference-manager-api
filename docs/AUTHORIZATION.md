@@ -78,6 +78,13 @@ Request persistence is always queried with the server-resolved internal `tenant_
 
 Employee Request access additionally requires `request.requester_user_id === principal.userId`.
 
+The application Request list accepts optional `scope=own` as a narrowing selector, never as
+identity or permission authority. After the existing list authorization, the service passes
+the authenticated Principal’s User ID into the existing Tenant-scoped paginated repository.
+This also narrows Conference Manager and combined-role personal views. Omitted scope preserves
+the authorized Manager-wide list. Signed continuation cursors retain the effective owner scope;
+requesting personal scope grants no additional object, workflow or report permission.
+
 Request creation and resubmission use the Employee `request:read` capability. Resubmission additionally requires requester ownership, `Change Requested` status and the expected Request version; a Conference Manager cannot use management scope to impersonate the owning Employee.
 
 A missing Request, a Request from another Tenant and a same-Tenant Request owned by another Employee are exposed to an Employee as the same `404 NOT_FOUND` response. This prevents object-existence disclosure through BOLA/IDOR probing.
