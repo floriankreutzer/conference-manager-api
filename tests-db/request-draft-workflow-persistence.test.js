@@ -120,15 +120,28 @@ test('Request lifecycle is tenant/owner scoped, concurrent, idempotent and audit
   await t.test('first submission and exact retries share a Request and immutable first revision', async () => {
     const values = startValues();
     await workflows.startForOwner(values);
+    const multiline = {
+      ...submission(values).requestDraft,
+      specialRequirements: 'Wasser bereitstellen.\nDanach lüften.',
+      dietaryRequirements: 'Ohne Nüsse.\nEine vegetarische Portion.',
+    };
+    const command = submission(values, { requestDraft: multiline });
     const results = await Promise.all([
-      requests.createVersionedForTenant(submission(values)), requests.createVersionedForTenant(submission(values)),
+      requests.createVersionedForTenant(command), requests.createVersionedForTenant(command),
     ]);
     assert.deepEqual(results.map((result) => result.status).sort(), ['created', 'replayed']);
     const created = results.find((result) => result.status === 'created').request;
     const replayed = results.find((result) => result.status === 'replayed').publicRequest;
     assert.deepEqual(toPublicRequest(created), replayed);
     assert.equal(created.id, values.workflowId);
-    const later = await requests.createVersionedForTenant(submission(values, { createdAt: new Date(END.getTime() + 60_000) }));
+    const loaded = await requests.findByTenantIdAndId(TENANT, values.workflowId);
+    assert.equal(loaded.snapshot.details.specialRequirements, multiline.specialRequirements);
+    assert.equal(loaded.snapshot.details.dietaryRequirements, multiline.dietaryRequirements);
+    const history = await requests.listHistoryPageByTenantIdAndId(TENANT, values.workflowId, {
+      asOfVersion: 1, beforeVersion: null, limit: 11,
+    });
+    assert.equal(history[0].request.details.specialRequirements, multiline.specialRequirements);
+    const later = await requests.createVersionedForTenant({ ...command, createdAt: new Date(END.getTime() + 60_000) });
     assert.deepEqual(later.publicRequest, toPublicRequest(created));
     const changed = await requests.createVersionedForTenant(submission(values, { submissionFingerprint: 'b'.repeat(64) }));
     assert.equal(changed.status, 'workflow_conflict');

@@ -263,7 +263,7 @@ in the create example. The following bounds apply before persistence:
 | Catering participant count | Integer from 0 through 500 and no greater than total Request participants; a selected package requires at least one catering participant. |
 | Package selection | Exactly `packageId` and `variantId`, or `null`. |
 | Direct catering items | At most 100 unique item IDs; each integer quantity is 1 through 1,000. |
-| Requirements | `null` or trimmed NFC text up to 2,000 characters with unsafe control/markup characters rejected. |
+| Requirements | `null` or trimmed NFC text up to 2,000 UTF-16 code units. LF and CRLF line breaks are accepted; CRLF is normalized to LF. Bare CR, other existing forbidden control characters, angle brackets and bidirectional controls remain rejected. |
 | Allocations | At most 100 unique cost-center IDs; each percentage is 1-10,000 integer basis points. The Cost Allocation owner enforces required/optional and exact 10,000-basis-point totals. |
 | Configuration revisions | Exactly five positive safe integers: `organization`, `locations`, `catalogue`, `bookingPolicies`, and `costAllocation`. |
 
@@ -271,6 +271,17 @@ Selection collections are normalized into deterministic stable-ID order. The
 participant platform limit for v2 is 500 even if an older settings snapshot or
 legacy Request admitted a larger value. Booking Policy may impose a lower
 Tenant-configured limit but never a higher platform limit.
+
+The multiline exception applies only to `specialRequirements` and
+`dietaryRequirements` in v2/v3 drafts and their immutable detail snapshots.
+Titles and catalogue text keep their single-line contracts. Clients must show
+field-specific errors before submission and render permitted values as text,
+never HTML. Line-ending normalization precedes the existing NFC/trim and length
+checks, so equivalent LF/CRLF input retains the same canonical retry identity.
+No schema or seed change is required. Roll out the compatible frontend reader
+before the API accepts multiline data; an older reader cannot display those new
+values. After first use, rollback requires a compatible reader/API or a forward
+fix rather than silently stripping stored content.
 
 ## Authoritative evaluation and pricing
 
