@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { loadJiraWriterConfig, runJiraPublisher } from '../scripts/jira-register-publish.mjs';
+import { runJiraReadiness } from '../scripts/jira-readiness-write.mjs';
 
 const env = { GITHUB_REPOSITORY: 'floriankreutzer/conference-manager-api', GITHUB_REF: 'refs/heads/main',
   GITHUB_EVENT_NAME: 'workflow_dispatch', CM_JIRA_REGISTER_WRITER_ENABLED: 'true',
@@ -62,6 +63,23 @@ test('invalid Neon cell or foreign authority fails before any connection', async
     poolFactory: () => assert.fail('unexpected pool'), publish: () => assert.fail('unexpected publish'),
     write: value => output.push(JSON.parse(value)) }), 1);
     assert.deepEqual(output, [failed]);
+  }
+});
+
+test('both writers reject fully pinned pooled endpoints before connecting because issue locks require a direct session', async () => {
+  for (const host of ['ep-test-example-pooler.eu-central-1.aws.neon.tech',
+    'ep-test-example-pooler.c-5.eu-central-1.aws.neon.tech']) {
+    for (const [run, expected] of [[runJiraPublisher, failed],
+      [runJiraReadiness, { result: 'JIRA_READINESS_RUN_UNVERIFIED' }]]) {
+      const output = [];
+      assert.equal(await run({ env: { ...env, CM_JIRA_TRANSITION_WRITER_ENABLED: 'true',
+        CM_JIRA_WRITER_ACCOUNT_ID: 'test-writer', CM_JIRA_REGISTER_DATABASE_HOST: host,
+        CM_JIRA_REGISTER_DATABASE_URL: env.CM_JIRA_REGISTER_DATABASE_URL.replace(env.CM_JIRA_REGISTER_DATABASE_HOST, host) },
+      poolFactory: () => assert.fail('must not connect to a transaction pooler'),
+      publish: () => assert.fail('must not publish'), promote: () => assert.fail('must not promote'),
+      write: value => output.push(JSON.parse(value)) }), 1);
+      assert.deepEqual(output, [expected]);
+    }
   }
 });
 

@@ -345,7 +345,12 @@ plan are ready. Only literal `true` enables an explicit manual invocation.
 
 The database URL must use `postgresql`, role `cm_jira_register_writer`, database
 `conference_manager_demo_shared`, the exact configured Neon AWS host, default
-port or 5432, and only `sslmode=verify-full`. The runner removes URL options before
+port or 5432, and only `sslmode=verify-full`. Only direct endpoints are supported:
+Neon hostnames whose endpoint label ends in `-pooler` are rejected before connecting,
+even when both configured host and URL match. Transaction pooling cannot preserve
+the session advisory lock across independent transactions and HTTP operations.
+See the [Neon pooling contract](https://neon.com/docs/connect/connection-pooling#connection-pooling-in-transaction-mode).
+The runner removes URL options before
 passing an explicit verified TLS policy to pg. Its pool has at most two connections
 and bounded connection, statement and query timeouts. Initial identity checks reject
 foreign databases/users, superuser, role/database creation, RLS bypass and inherited
