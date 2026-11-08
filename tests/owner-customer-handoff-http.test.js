@@ -59,8 +59,9 @@ test('REAL owner final navigation waits for committed private service and retain
   assert.equal(result.headers['set-cookie'].filter(value=>/Max-Age=0/.test(value)).length,2);
   assert.doesNotMatch(result.headers['set-cookie'].join(';'),/cm_synthetic_/);
   f.state.block=null;f.state.complete=new Error('OWNER_HANDOFF_LOGOUT_REQUIRED');
-  const denied=await f.request('/complete',{ body,headers });assert.equal(denied.status,409);
-  assert.match(denied.text,/AUTHENTICATION_LOGOUT_REQUIRED/);assert.equal(denied.headers['set-cookie'],undefined);
+  const denied=await f.request('/complete',{ body,headers });assert.equal(denied.status,303);
+  assert.equal(denied.headers.location,'/?auth=owner_confirmation');assert.equal(denied.text,'');
+  assert.equal(denied.headers['set-cookie'],undefined);
   f.state.complete=new Error('COMMIT_FAILED private');
   const failed=await f.request('/complete',{ body,headers });assert.equal(failed.status,500);
   assert.equal(failed.headers['set-cookie'],undefined);assert.doesNotMatch(failed.text,/COMMIT|private/);

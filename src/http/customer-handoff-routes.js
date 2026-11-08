@@ -94,51 +94,64 @@ async function call(work) { try { return await work(); } catch (error) { throw m
         if (site!==undefined && site!=='same-origin'
           || request.headers.origin!==undefined && request.headers.origin!==scope.customerOrigin
           || mutation && request.headers.origin!==scope.customerOrigin) throw new ApiError(403,'ORIGIN_NOT_ALLOWED');
-        let form=null;
-        if (mutation && isBrowserNavigationForm(request.headers)) {
-          if (path===`${ROOT}/logout`) throw new ApiError(415,'UNSUPPORTED_MEDIA_TYPE');
-          if (request.headers['x-csrf-token']!==undefined) throw new ApiError(400,'VALIDATION_FAILED');
-          form=await call(()=>readBrowserNavigationForm(request,{ keys: path===`${ROOT}/start` ? [] : ['csrfToken'],
-            maxBytes: Math.min(1024,maxBodyBytes) }));
-        } else if (mutation) {
-          validateExactObject(await readJsonObjectBody(request,{ maxBytes: Math.min(1024,maxBodyBytes) }),{ required: {} });
-        } else await assertEmptyAuthenticationBody(request);
-        if (path===`${ROOT}/start`) {
-          const result=await call(()=>service.start(request.socket.remoteAddress));
-          if (result?.status==='limited') { response.setHeader('Retry-After','60');throw new ApiError(429,'RATE_LIMITED'); }
-          if (['busy','capacity'].includes(result?.status)) throw new ApiError(503,'AUTHENTICATION_UNAVAILABLE');
-          exact(result,['status','flowId','state','browserToken','expiresAt']);
-          if (result.status!=='started' || !isCustomerEmailBrowserToken(result.state)) invalid();
-          const cookie=codec.serializeBrowser(result,lifetime(result.expiresAt,600,clock));
-          const arrivePath=legacy ? '/api/v1/platform/auth/delegation/arrive' : '/api/v1/platform/auth/owner/arrive';
-          const location=new URL(arrivePath,scope.platformOrigin);
-          location.searchParams.set('flow',result.flowId);location.searchParams.set('state',result.state);
-          response.setHeader('Set-Cookie',[cookie,codec.clear()[1]]);
-          return redirect(response,location.href);
+        const nativeCompletion=path===`${ROOT}/complete` && isBrowserNavigationForm(request.headers);
+        try {
+          let form=null;
+          if (mutation && isBrowserNavigationForm(request.headers)) {
+            if (path===`${ROOT}/logout`) throw new ApiError(415,'UNSUPPORTED_MEDIA_TYPE');
+            if (request.headers['x-csrf-token']!==undefined) throw new ApiError(400,'VALIDATION_FAILED');
+            form=await call(()=>readBrowserNavigationForm(request,{ keys: path===`${ROOT}/start` ? [] : ['csrfToken'],
+              maxBytes: Math.min(1024,maxBodyBytes) }));
+          } else if (mutation) {
+            validateExactObject(await readJsonObjectBody(request,{ maxBytes: Math.min(1024,maxBodyBytes) }),{ required: {} });
+          } else await assertEmptyAuthenticationBody(request);
+          if (path===`${ROOT}/start`) {
+            const result=await call(()=>service.start(request.socket.remoteAddress));
+            if (result?.status==='limited') { response.setHeader('Retry-After','60');throw new ApiError(429,'RATE_LIMITED'); }
+            if (['busy','capacity'].includes(result?.status)) throw new ApiError(503,'AUTHENTICATION_UNAVAILABLE');
+            exact(result,['status','flowId','state','browserToken','expiresAt']);
+            if (result.status!=='started' || !isCustomerEmailBrowserToken(result.state)) invalid();
+            const cookie=codec.serializeBrowser(result,lifetime(result.expiresAt,600,clock));
+            const arrivePath=legacy ? '/api/v1/platform/auth/delegation/arrive' : '/api/v1/platform/auth/owner/arrive';
+            const location=new URL(arrivePath,scope.platformOrigin);
+            location.searchParams.set('flow',result.flowId);location.searchParams.set('state',result.state);
+            response.setHeader('Set-Cookie',[cookie,codec.clear()[1]]);
+            return redirect(response,location.href);
+          }
+          const browser=codec.readBrowser(request.headers),completion=codec.readCompletion(request.headers);
+          if (!browser || !completion) throw new ApiError(401,'AUTHENTICATION_REJECTED');
+          if (path===`${ROOT}/confirmation`) {
+            const result=await call(()=>service.confirmation({ ...browser,completion }));
+            exact(result,legacy ? ['slot','role','csrfToken'] : ['tenantId','tenantName','role','csrfToken']);
+            const targetValid=legacy ? SYNTHETIC_HANDOFF_SLOTS.includes(result.slot)
+              : isInternalUuid(result.tenantId) && typeof result.tenantName==='string' && result.tenantName.trim().length>0
+                && result.tenantName.length<=200 && !/[\u0000-\u001f\u007f]/.test(result.tenantName);
+            if (!targetValid || !(legacy ? SYNTHETIC_HANDOFF_ROLES : OWNER_CUSTOMER_ACCESS_ROLES).includes(result.role)
+              || typeof result.csrfToken!=='string' || !/^[a-f0-9]{64}$/.test(result.csrfToken)) invalid();
+            return sendCustomerAuthenticationJson(response,200,{ ...result,
+              accountSwitchRequired: hasSessionCookie(request.headers),requestId },maxResponseBytes);
+          }
+          const csrfToken=readCustomerFlowCsrf(form ? { headers: { 'x-csrf-token': form.csrfToken } } : request);
+          if (path===`${ROOT}/logout`) {
+            const result=await call(()=>service.logout({ ...browser,completion,csrfToken,request,correlationId: requestId }));
+            exact(result,['setCookie']);if (result.setCookie!==serializeClearedSessionCookie({ secure: true })) invalid();
+            response.setHeader('Set-Cookie',result.setCookie);response.statusCode=204;response.end();return 204;
+          }
+          const result=await call(()=>service.complete({ ...browser,completion,csrfToken,request,correlationId: requestId }));
+          exact(result,['principal','csrfToken','setCookie']);
+          response.setHeader('Set-Cookie',[checkedCustomerSessionCookie(result.setCookie),...codec.clear()]);
+          return redirect(response,'/');
+        } catch (error) {
+          // A same-origin native completion rejection returns to the existing
+          // localized confirmation/restart surface, never claim authentication.
+          // JSON callers and infrastructure failures keep their error contract.
+          if (!nativeCompletion || !(error instanceof ApiError)
+            || ![400,401,403,409].includes(error.statusCode)) throw error;
+          // A newly present ordinary account requires explicit switch consent.
+          // Preserve that account and its flow; rejected proofs clear only flow cookies.
+          if (error.statusCode!==409) response.setHeader('Set-Cookie',codec.clear());
+          return redirect(response,`/?auth=${prefix}_confirmation`);
         }
-        const browser=codec.readBrowser(request.headers),completion=codec.readCompletion(request.headers);
-        if (!browser || !completion) throw new ApiError(401,'AUTHENTICATION_REJECTED');
-        if (path===`${ROOT}/confirmation`) {
-          const result=await call(()=>service.confirmation({ ...browser,completion }));
-          exact(result,legacy ? ['slot','role','csrfToken'] : ['tenantId','tenantName','role','csrfToken']);
-          const targetValid=legacy ? SYNTHETIC_HANDOFF_SLOTS.includes(result.slot)
-            : isInternalUuid(result.tenantId) && typeof result.tenantName==='string' && result.tenantName.trim().length>0
-              && result.tenantName.length<=200 && !/[\u0000-\u001f\u007f]/.test(result.tenantName);
-          if (!targetValid || !(legacy ? SYNTHETIC_HANDOFF_ROLES : OWNER_CUSTOMER_ACCESS_ROLES).includes(result.role)
-            || typeof result.csrfToken!=='string' || !/^[a-f0-9]{64}$/.test(result.csrfToken)) invalid();
-          return sendCustomerAuthenticationJson(response,200,{ ...result,
-            accountSwitchRequired: hasSessionCookie(request.headers),requestId },maxResponseBytes);
-        }
-        const csrfToken=readCustomerFlowCsrf(form ? { headers: { 'x-csrf-token': form.csrfToken } } : request);
-        if (path===`${ROOT}/logout`) {
-          const result=await call(()=>service.logout({ ...browser,completion,csrfToken,request,correlationId: requestId }));
-          exact(result,['setCookie']);if (result.setCookie!==serializeClearedSessionCookie({ secure: true })) invalid();
-          response.setHeader('Set-Cookie',result.setCookie);response.statusCode=204;response.end();return 204;
-        }
-        const result=await call(()=>service.complete({ ...browser,completion,csrfToken,request,correlationId: requestId }));
-        exact(result,['principal','csrfToken','setCookie']);
-        response.setHeader('Set-Cookie',[checkedCustomerSessionCookie(result.setCookie),...codec.clear()]);
-        return redirect(response,'/');
       };
     },
   });
