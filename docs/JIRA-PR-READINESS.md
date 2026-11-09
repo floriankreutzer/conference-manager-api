@@ -1,9 +1,40 @@
 # Automatic Jira PR readiness
 
-## Temporary controlled manual gate (6 November 2026)
+## Dated qualification checkpoint (9 November 2026)
+
+The base readiness integration is implemented and has completed its six native
+CO-296 scenarios. On 8 November, [draft-only](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42476213831)
+and [partial-merge](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42476341560)
+scopes blocked; a final merged scope transitioned once and recovered its original
+receipt; [missing association](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42476508003)
+and [closed-unmerged](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42476634833)
+scopes failed closed; Pending/Rejected Product Acceptance never authorized `Done`.
+The [positive transition](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42485831273),
+[original-receipt recovery](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42497856759)
+and [Rejected-fixture sweep recovery outside Review](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42502102598)
+are dated native evidence, separate from source tests. The failed negative-case
+executions remain failures; their expected fail-closed assertions were accepted.
+
+The enabled [scheduled execution](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42504913960)
+ran with `event=schedule` on qualified Main `0151d80c`. Its `PARTIAL`/failure result
+remains a failure; accepted fail-closed and recovery assertions do not make the
+whole workflow green. Controlled manual readiness remains a fallback.
+
+The new explicit scope-revision operator has a separate acceptance boundary.
+[PR #406](https://github.com/floriankreutzer/conference-manager-api/pull/406) is merged
+at Main `7efdb4bb`, with [independent Main qualification](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42702626965)
+complete. The isolated v5 schema was applied once on 9 November and independently
+verified, including the actual restricted-writer login and unchanged prior grants.
+Native operator identity/comment access, conditional scope write, exact readback
+and duplicate/recovery qualification remain pending; the manual register-writer
+flag remains false at this checkpoint. Existing readiness/sweep qualification
+is not a native scope-revision acceptance. CO-312's original pending transition
+remains retained without replay. Product Acceptance, PROD and `Done` stay separate.
+
+## Controlled manual fallback (accepted 6 November 2026)
 
 The owner accepted a temporary manual transition from `in Review` to
-`Ready for Deployment` while the remaining CO-296 automation is implemented.
+`Ready for Deployment` while automatic readiness was being implemented.
 Before each transition, reconcile the complete issue-specific App/API scope,
 explicitly retain supporting/superseded classifications, verify actual merges and
 exact-commit required CI/security/review evidence, and record the reviewer, UTC
@@ -34,8 +65,9 @@ App/API delivery repositories; additional delivery repositories require a review
 extension, never an implicit supporting classification.
 
 This remains a pure proposal module. The journal and conditional publisher below
-provide separate persistence/readback components; their protected provisioning,
-native qualification and the transition composition are still required.
+provide separate persistence/readback components. Their protected provisioning
+and native qualification remain separate activation requirements; the implemented
+transition composition is described below.
 Its `closed` field means the proposed association is enumerated, not that delivery
 is complete. The adapter must not authenticate its own input merely by copying
 these output flags. No Jira register is written or automation activated by this module.
@@ -210,11 +242,12 @@ also do not establish an atomic cross-provider snapshot or prevent later changes
 
 The journal and conditional publisher below are separate from this diagnostic.
 Protected writer provisioning/qualification, automatic invocation and all six
-actual Jira automation acceptance scenarios remain required. The transition
-composition below adds serialization and recovery; its source tests do not replace
-native qualification. The controlled manual operating gate stays
-in effect. Native execution after reviewed merge qualifies this composition's
-installed read access only, not those remaining write/automation boundaries.
+actual Jira automation scenarios are distinct activation requirements. Their dated
+qualification for the existing readiness integration is recorded in the checkpoint
+above. The transition composition adds serialization and recovery; its source
+tests do not replace native qualification. Controlled manual readiness remains a
+fallback. Native execution of this diagnostic establishes installed read access
+only; it does not qualify the separate write/automation boundaries.
 
 ## Durable register journal foundation
 
@@ -300,7 +333,7 @@ explicit operator reconciliation. Failed, cancelled, unavailable or conflicting
 task/readback evidence never confirms the journal. No automatic retry, cancellation,
 cleanup deletion, supporting/superseded reclassification or status transition is
 implemented. A pending task needs a later invocation; no recurring trigger is
-installed by this source. The controlled manual readiness gate remains current.
+installed by this source. Controlled manual readiness remains available as a fallback.
 
 HTTP work has a 55-second cancellation budget, 128 requests and 32 MiB, with
 the existing per-provider limits and a 15-second write/observation transport bound.
@@ -312,10 +345,12 @@ and `readinessAuthorized=false`; a submitted task may still be pending. Errors
 are redacted and deliberately do not claim that nothing was submitted or committed.
 
 No application root invokes this publisher. The manual runner below is a separate
-integration entry point. Protected provisioning, installed write/task-read scopes, native conditional-write
-and fault recovery qualification, transition deduplication, automatic invocation
-and all six native readiness scenarios remain required before activation. Fixtures
-and database tests are not a native Jira acceptance claim.
+integration entry point. Protected provisioning, installed write/task-read scopes,
+native conditional-write and fault recovery qualification, transition deduplication,
+automatic invocation and all six native readiness scenarios are distinct activation
+requirements. The checkpoint above records the existing integration's dated
+qualification; the explicit scope-revision operator has its own pending native
+acceptance. Fixtures and database tests are not a native Jira acceptance claim.
 
 ## Protected manual publisher entry point
 
@@ -363,8 +398,9 @@ output failures cannot report success. Logs contain fixed result codes and boole
 only, without connection strings, Jira payloads or a false no-write assertion on
 failure. A pending task requires a later manual invocation which observes its
 durable receipt. Unknown submissions remain quarantined. A green publisher run
-never grants readiness or Product Acceptance; native six-case automation acceptance
-and the transition/event integration remain separate unfinished work.
+never grants readiness or Product Acceptance. The existing transition/sweep
+integration has separate native qualification; the new scope-revision operator
+below still requires its own native acceptance.
 
 ## Explicit journaled scope revision
 
