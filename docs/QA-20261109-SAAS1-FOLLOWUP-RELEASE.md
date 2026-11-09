@@ -1,19 +1,21 @@
 # Protected SaaS1 QA follow-up release — 9 November 2026
 
 Jira: CO-320, with CO-306, CO-315, CO-317 and CO-296. Frontend integration is
-PR479, incorporating the scoped PR475–478 changes. API PR404 supplies the
-separate bounded readiness diagnostics. This source preparation is not a live
-release, a passing Main receipt or full Product Acceptance.
+PR479, incorporating the scoped PR475–478 changes. The current API Main baseline
+includes PR404's bounded readiness diagnostics, PR406's Scope Revision source
+and PR407's reconciliation of the readiness runbook. This source preparation is
+not a live release, a passing Main receipt or full Product Acceptance.
 
 ## Prepared source candidate
 
 | Input | Prepared selection |
 | --- | --- |
-| API source baseline | `b8eb59e4e6615a948535b083caa5533ea91dee27` |
-| Protected frontend F | `be00e3910cd8b80f125b36d0ec2b52ab40bcfe94` |
-| Frontend tree | `b33be3490ee98f9cf4bb2f505f46a37fc722d5f9` |
+| API source baseline | `4b356b016c2632b5cdfc8a09515e4ffa7179fdd4` |
+| API baseline Main qualification | [42720208847](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42720208847); verify its terminal results independently |
+| Protected frontend F | `88ed5f346ebb9ceb16625b96ebe0b662eeb9637a` |
+| Frontend tree | `f75dfae2b40d884f915757fd9539d55f028a732e` |
 | Frontend candidate | [PR479](https://github.com/floriankreutzer/conference-manager/pull/479) |
-| Candidate native run | [42692068689](https://github.com/floriankreutzer/conference-manager/actions/runs/42692068689), pending at source preparation |
+| Candidate native run | [42722345572](https://github.com/floriankreutzer/conference-manager/actions/runs/42722345572), pending at source preparation |
 | API release source R | The actual published source commit containing this selection; record after publication |
 
 This candidate changes only `vendor/protected-frontend` and the source-selection
@@ -36,6 +38,8 @@ selection and qualification; artifacts from an earlier F cannot be carried over.
    browser engines, both protected engines and the permanent three-customer,
    two-reset acceptance. Review the actual DE/EN multipage PDF originals,
    including every page, complete public text and all card/WLAN frame edges.
+   Keep actual Chromium and WebKit print/export evidence separate: a WebKit
+   print-media screenshot does not prove an actual WebKit or Safari PDF export.
    Preserve failed and superseded runs with their actual results.
 2. Commit the protected frontend Gitlink and source-selection documentation as
    an API source candidate. Record the actual published source commit as R and the
@@ -61,16 +65,16 @@ selection and qualification; artifacts from an earlier F cannot be carried over.
 
 Frontend F's CI pins immutable API
 `2b9a7f4fbeaba3688877d045337a1c00e3eda5de`. Comparison with the prepared API
-baseline `b8eb59e4e6615a948535b083caa5533ea91dee27` gives:
+baseline `4b356b016c2632b5cdfc8a09515e4ffa7179fdd4` gives:
 
 | Scope | Verified comparison |
 | --- | --- |
-| Application and persistence | Complete `src/`, `migrations/`, `demo-migrations/` and `tests-db/` trees are byte-identical. |
+| Application and migrations | Complete `src/`, `migrations/` and `demo-migrations/` trees are byte-identical. All 167 existing `tests-db/` files retain their content; the separate Scope Revision database case is additional. |
 | Dependencies and protected builder | `package.json`, `package-lock.json`, `scripts/render-build-protected.mjs` and `tests/render-build-protected.test.js` are byte-identical. |
-| Legacy Demo and acceptance | `render.yaml`, `.github/workflows/ci.yml` and `vendor/demo-frontend` are unchanged; the frontend acceptance pin remains `9158135fbf7db5db4a95a149314c39348c476942`. |
-| Jira operator source | `scripts/jira-readiness-sweep.mjs` and `scripts/jira-readiness-write.mjs` add bounded, normalized diagnostic evidence. Their own qualification remains separate from application equivalence. |
-| Changed tests | Exactly `tests/jira-readiness-sweep.test.js`, `tests/jira-readiness-write.test.js` and `tests/protected-runtime-recurring.test.js` differ. Other test files retain their original content. |
-| Release and observer selection | `render.int.yaml`, the protected frontend Gitlink, observer selection/plan, its recurring workflow and four documentation files differ. These select or document the earlier qualified release; they are not identical deployment configuration. |
+| Legacy Demo and acceptance | `render.yaml`, `.github/workflows/ci.yml` and `vendor/demo-frontend` are unchanged. The API CI frontend remains `9158135fbf7db5db4a95a149314c39348c476942`, with permanent acceptance `3b1ecdf369e6c6daa2ef144f0319b4493a8dfe33`; these are distinct from protected frontend F. |
+| Jira operator source | Bounded readiness diagnostics and the Scope Revision decision, publication, journal, runner and optional v5 SQL paths differ. Their workflow, restricted SQL activation, native execution and independent qualification remain separate from business application equivalence. |
+| Changed tests | Six top-level test files and the Scope Revision fixture differ: readiness sweep/write, recurring observer, Scope Revision, decision reader and runner. `tests-db/jira-scope-revision.test.js` is the additional database case. Other test files retain their original content. |
+| Release and observer selection | `render.int.yaml`, the protected frontend Gitlink, observer selection/plan, its recurring workflow and four documentation files differ. These select or document the earlier qualified release and current operator contracts; they are not identical deployment configuration. |
 
 The application/configuration parsers remain identical, while the explicit INT
 deployment pins differ. The INT diff preserves resources, origins, flags, start

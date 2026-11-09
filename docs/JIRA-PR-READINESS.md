@@ -1,9 +1,40 @@
 # Automatic Jira PR readiness
 
-## Temporary controlled manual gate (6 November 2026)
+## Dated qualification checkpoint (9 November 2026)
+
+The base readiness integration is implemented and has completed its six native
+CO-296 scenarios. On 8 November, [draft-only](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42476213831)
+and [partial-merge](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42476341560)
+scopes blocked; a final merged scope transitioned once and recovered its original
+receipt; [missing association](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42476508003)
+and [closed-unmerged](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42476634833)
+scopes failed closed; Pending/Rejected Product Acceptance never authorized `Done`.
+The [positive transition](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42485831273),
+[original-receipt recovery](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42497856759)
+and [Rejected-fixture sweep recovery outside Review](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42502102598)
+are dated native evidence, separate from source tests. The failed negative-case
+executions remain failures; their expected fail-closed assertions were accepted.
+
+The enabled [scheduled execution](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42504913960)
+ran with `event=schedule` on qualified Main `0151d80c`. Its `PARTIAL`/failure result
+remains a failure; accepted fail-closed and recovery assertions do not make the
+whole workflow green. Controlled manual readiness remains a fallback.
+
+The new explicit scope-revision operator has a separate acceptance boundary.
+[PR #406](https://github.com/floriankreutzer/conference-manager-api/pull/406) is merged
+at Main `7efdb4bb`, with [independent Main qualification](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42702626965)
+complete. The isolated v5 schema was applied once on 9 November and independently
+verified, including the actual restricted-writer login and unchanged prior grants.
+Native operator identity/comment access, conditional scope write, exact readback
+and duplicate/recovery qualification remain pending; the manual register-writer
+flag remains false at this checkpoint. Existing readiness/sweep qualification
+is not a native scope-revision acceptance. CO-312's original pending transition
+remains retained without replay. Product Acceptance, PROD and `Done` stay separate.
+
+## Controlled manual fallback (accepted 6 November 2026)
 
 The owner accepted a temporary manual transition from `in Review` to
-`Ready for Deployment` while the remaining CO-296 automation is implemented.
+`Ready for Deployment` while automatic readiness was being implemented.
 Before each transition, reconcile the complete issue-specific App/API scope,
 explicitly retain supporting/superseded classifications, verify actual merges and
 exact-commit required CI/security/review evidence, and record the reviewer, UTC
@@ -34,8 +65,9 @@ App/API delivery repositories; additional delivery repositories require a review
 extension, never an implicit supporting classification.
 
 This remains a pure proposal module. The journal and conditional publisher below
-provide separate persistence/readback components; their protected provisioning,
-native qualification and the transition composition are still required.
+provide separate persistence/readback components. Their protected provisioning
+and native qualification remain separate activation requirements; the implemented
+transition composition is described below.
 Its `closed` field means the proposed association is enumerated, not that delivery
 is complete. The adapter must not authenticate its own input merely by copying
 these output flags. No Jira register is written or automation activated by this module.
@@ -210,11 +242,12 @@ also do not establish an atomic cross-provider snapshot or prevent later changes
 
 The journal and conditional publisher below are separate from this diagnostic.
 Protected writer provisioning/qualification, automatic invocation and all six
-actual Jira automation acceptance scenarios remain required. The transition
-composition below adds serialization and recovery; its source tests do not replace
-native qualification. The controlled manual operating gate stays
-in effect. Native execution after reviewed merge qualifies this composition's
-installed read access only, not those remaining write/automation boundaries.
+actual Jira automation scenarios are distinct activation requirements. Their dated
+qualification for the existing readiness integration is recorded in the checkpoint
+above. The transition composition adds serialization and recovery; its source
+tests do not replace native qualification. Controlled manual readiness remains a
+fallback. Native execution of this diagnostic establishes installed read access
+only; it does not qualify the separate write/automation boundaries.
 
 ## Durable register journal foundation
 
@@ -300,7 +333,7 @@ explicit operator reconciliation. Failed, cancelled, unavailable or conflicting
 task/readback evidence never confirms the journal. No automatic retry, cancellation,
 cleanup deletion, supporting/superseded reclassification or status transition is
 implemented. A pending task needs a later invocation; no recurring trigger is
-installed by this source. The controlled manual readiness gate remains current.
+installed by this source. Controlled manual readiness remains available as a fallback.
 
 HTTP work has a 55-second cancellation budget, 128 requests and 32 MiB, with
 the existing per-provider limits and a 15-second write/observation transport bound.
@@ -312,10 +345,12 @@ and `readinessAuthorized=false`; a submitted task may still be pending. Errors
 are redacted and deliberately do not claim that nothing was submitted or committed.
 
 No application root invokes this publisher. The manual runner below is a separate
-integration entry point. Protected provisioning, installed write/task-read scopes, native conditional-write
-and fault recovery qualification, transition deduplication, automatic invocation
-and all six native readiness scenarios remain required before activation. Fixtures
-and database tests are not a native Jira acceptance claim.
+integration entry point. Protected provisioning, installed write/task-read scopes,
+native conditional-write and fault recovery qualification, transition deduplication,
+automatic invocation and all six native readiness scenarios are distinct activation
+requirements. The checkpoint above records the existing integration's dated
+qualification; the explicit scope-revision operator has its own pending native
+acceptance. Fixtures and database tests are not a native Jira acceptance claim.
 
 ## Protected manual publisher entry point
 
@@ -363,8 +398,127 @@ output failures cannot report success. Logs contain fixed result codes and boole
 only, without connection strings, Jira payloads or a false no-write assertion on
 failure. A pending task requires a later manual invocation which observes its
 durable receipt. Unknown submissions remain quarantined. A green publisher run
-never grants readiness or Product Acceptance; native six-case automation acceptance
-and the transition/event integration remain separate unfinished work.
+never grants readiness or Product Acceptance. The existing transition/sweep
+integration has separate native qualification; the new scope-revision operator
+below still requires its own native acceptance.
+
+## Explicit journaled scope revision
+
+The accepted register ownership permits an explicitly authorized, reasoned
+supersession. `scripts/jira-register-reviser.mjs` supplies a separate manual path
+for that decision. The automatic publisher and its journal `prepare` method still
+only append delivery obligations. Neither the hourly sweep nor the readiness
+runner creates a scope exception. Supporting reclassification, deletion, enrollment
+and cross-repository substitution are outside this operator's contract.
+
+Authority comes from the owner's explicit scope decision and the protected manual
+Main dispatch. A Jira comment, authenticated token or account ID alone grants no
+classification authority. For this operator, reuse the already qualified
+`CM_JIRA_WRITER_ACCOUNT_ID` as the permitted decision author; do not invent a new
+author list or copy private account IDs into source. The reader binds the actual
+active token account through `/rest/api/3/myself`, requires both comment author and
+update author to match that configured account, and rejects an edited comment.
+Absent identity, denied native access or a mismatch fails closed. The owning
+[current-user](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-myself/)
+and [issue-comment](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-comments/)
+contracts require separate installed read access; no permission expansion is
+performed by the workflow or inferred from successful property writes.
+
+### Decision and source binding
+
+Record the concrete decision on the affected Jira issue as exactly one JSON code
+block (`language=json`). Use JSON.stringify spelling with optional JSON whitespace,
+without surrounding prose, links, duplicate keys or extra fields. The closed value
+has `schemaVersion: 1`, `operation: "supersede"`, the exact `issueKey`,
+`expectedRegisterVersion`, `expectedRegisterDigest`, and `supersessions`.
+Each supersession contains:
+
+| Field | Required meaning |
+| --- | --- |
+| `repository`, `number`, `headSha` | Exact existing delivery PR in one of the two approved repositories, and its current 40-character head SHA. |
+| `replacedBy.repository`, `replacedBy.number`, `replacedBy.headSha` | Different direct replacement PR in the same repository, bound to its current head. |
+| `reason` | Explicit reviewed coverage/replacement rationale; one nonempty line, at most 1,000 characters. |
+
+The whole JSON text is at most 16 KiB and contains 1–20 supersessions. Pin the
+SHA-256 of the exact UTF-8 text as the manual `decision_digest`; whitespace is part
+of those approved bytes. An edited or stale decision requires a new explicit
+comment and approval, not an overwrite of an earlier journal record.
+
+First reconcile every newly discovered obligation through the ordinary append
+path, then read the confirmed current register version and digest. A new revision
+requires that exact checkpoint to match Jira, the issue to be `in Review`, and two
+independent complete inventory/Jira/decision collections to agree. Newly discovered
+unregistered PRs, changed heads, unknown provenance and existing unrelated pending
+register or transition claims block the operation. A confirmed register does not
+clear an unconfirmed transition: its original UUID/evidence stays untouched. The
+new journal method checks this again in the serialized transaction. No unknown
+source is silently excluded.
+
+The operator preserves every existing entry and changes only the explicitly named
+delivery entries to `superseded`, retaining the reason and direct replacement.
+An absent named replacement is added as delivery; an existing replacement must
+already be delivery. Other supporting/superseded entries remain unchanged, and
+self references, duplicate sources and replacement chains are rejected. Both ends
+are bound to current authenticated PR heads. Source ancestry alone does not prove
+functional coverage: the owner/reviewer must substantiate that decision separately.
+
+The replacement's title need not repeat every issue it replaces: each affected
+issue receives its own explicit register association. The replacement remains a
+normal delivery obligation subject to the unchanged draft, merge, exact-head
+CI/security/review and unresolved-finding gates. The operator neither produces nor
+modifies review markers, checks, PR state, issue status or Product Acceptance.
+
+### Immutable provenance, execution and recovery
+
+Apply `scripts/sql/jira-register-scope-revisions-v5.sql` explicitly as the integration
+schema owner after v1/v2/v3. Grant the isolated writer SELECT/INSERT only on
+`cm_delivery.register_scope_revisions`; retain all existing least-privilege journal
+and receipt grants, including existing SELECT on the transition journal. Grant
+no UPDATE/DELETE on revision provenance, schema ownership, DDL or customer-data
+access. The migration does not run automatically and runtime/application roles
+receive no new access. Native migration and actual-role qualification remain required.
+
+The new journal method atomically inserts the next pending checkpoint, immutable
+decision text/digest, author/comment/time provenance, prior version/digest, actual
+workflow source/run/actor identity, and one dispatch claim. Foreign keys bind both
+versions; a comment/digest cannot be consumed twice for the same issue. Prior rows
+are retained. The ordinary append method cannot invoke this reclassification.
+
+Use the existing `Jira Register Publisher` dispatch with `operation=supersede`,
+`issue_key`, `decision_comment_id` and `decision_digest`. Its default remains
+`append`; decision inputs with the default are rejected. The existing explicit
+register-writer flag, protected environment, direct TLS connection, dedicated
+identity, late secret injection and common non-cancelling concurrency still apply.
+Revision mode requires a first-attempt manual Main run and records GitHub's actual
+source SHA, run ID and actor ID. It introduces no schedule or new default write.
+
+The same physical issue lock is retained throughout collection, SQL and HTTP.
+One fresh committed claim may submit the existing conditional property write;
+the exact old property is the provider-side eligibility condition. Persist the
+returned task ID, observe that original task, and require COMPLETE plus exact
+readback before confirmation. Duplicate decisions retain their original provenance
+and never acquire another dispatch claim. Unknown database commits, unknown provider
+submissions and missing receipts remain pending/quarantined, including when the
+intended property is visible. A later **new manual invocation** may observe an
+existing receipt without resubmission, even after the issue leaves Review or the
+source comment is deleted. It cannot adopt another decision's pending claim.
+
+All HTTP remains bounded by 55 seconds, 128 requests and 32 MiB, with 15-second
+decision reads and 64-KiB decision/current-user responses; existing register/task
+and GitHub response caps remain unchanged. Only fixed result codes and booleans
+are logged; private decision text, identities and credentials stay out of logs and
+artifacts. Every outcome retains `readinessAuthorized=false`; errors do not claim
+that no write occurred. Disable the manual mode for rollback and retain its schema,
+decisions and receipts for recovery; never delete history to restore an old binary.
+
+Node and real PostgreSQL tests cover parser/identity/drift rejection, the unchanged
+append contract, actual-role permissions, atomic rollback, duplicates, unknown
+commit/write outcomes, source-state changes and original-task recovery. These are
+local/CI protocol and database evidence, not native Jira acceptance. Activate only
+after reviewed source, exact native checks, separate schema/grant provisioning,
+installed comment/current-user access, conditional-write/readback and duplicate/
+recovery qualification. The existing readiness promoter remains the sole automatic
+status gate; this source does not activate scope writes or close product acceptance.
 
 ## Serialized one-shot readiness transition
 
