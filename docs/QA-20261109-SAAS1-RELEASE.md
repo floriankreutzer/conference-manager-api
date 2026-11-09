@@ -9,11 +9,11 @@ successfully before applying it.
 
 | Input | Selection |
 | --- | --- |
-| API | `ee20204999f7f25c868316827eb4a23e795ed50f` |
-| Frontend | `75022cbb9e03e8fdef620240c873739f17c27352` |
-| Release branch | `release/int-20261109-ee20204` |
-| Customer manifest SHA256 | `86d844d09ee6e8dd3f6cde5447b8d61cb586201e2a01db3c5f355d8eb7b33464` |
-| Platform manifest SHA256 | `601b5528d82e34b44c70181b187900cc818f6b637f37d4377bcd8d03d4b699da` |
+| API | `967e1a74afe45c6bf2177da304cc7aafdb5e9e8f` |
+| Frontend | `b6a3fe56964e7b661d6423be179dc2e2c8ce6d4b` |
+| Release branch | `release/int-20261109-967e1a7` |
+| Customer manifest SHA256 | `a023b56c077183b5960300a2239ad1d99779e173b421a2095c0f67d888b3c23b` |
+| Platform manifest SHA256 | `584dc673d5162d7de9fe2f1ee1b8ea9889042eaaaf1062b4e130e98015fed236` |
 
 Two real clean-source executions of `scripts/render-build-protected.mjs` on this
 pair produced identical manifests. The independent API artifact reader verified
