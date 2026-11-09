@@ -6,8 +6,8 @@ a separate CI dependency and must not be synchronized over protected INT.
 
 ## Current release selection
 
-`render.int.yaml` selects the daily-insights pair in
-[the coordinated OPS release runbook](QA-20261104-DAILY-RELEASE.md), retaining the
+`render.int.yaml` selects the SaaS1 QA pair in
+[the coordinated Customer/Platform release runbook](QA-20261109-SAAS1-RELEASE.md), retaining the
 authenticated wrapper selected by API PR366. Its immutable source pair, protected
 Gitlink, build command and independently verified manifests move together. Keep
 Blueprint auto-sync paused and require the exact candidate/Main and provider gates
@@ -102,8 +102,8 @@ Configure each service's PROTECTED_HOSTED_FRONTEND_SHA256 independently after
 qualification. Never derive and automatically trust the runtime digest at startup.
 
 The reviewed frontend is now the separate Gitlink `vendor/protected-frontend`,
-pinned to `17c28fb615264e6a2eccc7ed6e46d20171cb66e3`, the consistent OPS cards
-and private daily-source frontend candidate in frontend PR446 (CO-81). Require its complete
+pinned to `83f883dbccd76a28050f1981c8431f18174f04e7`, the integrated SaaS1 QA
+frontend candidate in frontend PR465 (CO-8). Require its complete
 candidate/Main acceptance before selecting a paired release. The legacy
 `vendor/demo-frontend` and its Demo contract are unchanged. Render documents that
 it initializes Git submodules using its connected Git-provider credentials:
