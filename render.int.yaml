@@ -17,12 +17,12 @@ services:
     region: frankfurt
     numInstances: 1
     repo: https://github.com/floriankreutzer/conference-manager-api
-    branch: release/int-20261109-967e1a7
+    branch: release/int-20261109-c146aea
     autoDeployTrigger: off
     previews:
       generation: off
     buildCommand: >-
-      test "$(git rev-parse HEAD)" = "967e1a74afe45c6bf2177da304cc7aafdb5e9e8f" && PROTECTED_PRESENTATION_MICROSOFT_ENABLED=true PROTECTED_PRESENTATION_INVITATIONS_ENABLED=true node scripts/render-build-protected.mjs
+      test "$(git rev-parse HEAD)" = "c146aeab3501b73d71d2fde70cb5b102d4d617a6" && PROTECTED_PRESENTATION_MICROSOFT_ENABLED=true PROTECTED_PRESENTATION_INVITATIONS_ENABLED=true node scripts/render-build-protected.mjs
     startCommand: npm run start:protected:customer
     healthCheckPath: /api/v1/health/ready
     envVars:
@@ -33,9 +33,9 @@ services:
       - key: PROTECTED_ENVIRONMENT
         value: "int"
       - key: PROTECTED_API_COMMIT
-        value: "967e1a74afe45c6bf2177da304cc7aafdb5e9e8f"
+        value: "c146aeab3501b73d71d2fde70cb5b102d4d617a6"
       - key: PROTECTED_FRONTEND_COMMIT
-        value: "b6a3fe56964e7b661d6423be179dc2e2c8ce6d4b"
+        value: "83f883dbccd76a28050f1981c8431f18174f04e7"
       - key: PROTECTED_CUSTOMER_ORIGIN
         value: "https://conference-manager-demo.onrender.com"
       - key: PROTECTED_PLATFORM_ORIGIN
@@ -70,7 +70,7 @@ services:
       - key: PROTECTED_SERVICE_VERSION
         value: "cm-int-20261021"
       - key: PROTECTED_HOSTED_FRONTEND_SHA256
-        value: "a023b56c077183b5960300a2239ad1d99779e173b421a2095c0f67d888b3c23b"
+        value: "1ca0d18a0360677e32c1aff7d5e3c2f76b73d0faf4a6e7256adf156293fc5792"
       - key: PROTECTED_DATABASE_POOL_MAX
         sync: false
       - key: PROTECTED_LEASE_POOL_MAX
@@ -106,12 +106,12 @@ services:
     region: frankfurt
     numInstances: 1
     repo: https://github.com/floriankreutzer/conference-manager-api
-    branch: release/int-20261109-967e1a7
+    branch: release/int-20261109-c146aea
     autoDeployTrigger: off
     previews:
       generation: off
     buildCommand: >-
-      test "$(git rev-parse HEAD)" = "967e1a74afe45c6bf2177da304cc7aafdb5e9e8f" && PROTECTED_PRESENTATION_MICROSOFT_ENABLED=true PROTECTED_PRESENTATION_INVITATIONS_ENABLED=true node scripts/render-build-protected.mjs
+      test "$(git rev-parse HEAD)" = "c146aeab3501b73d71d2fde70cb5b102d4d617a6" && PROTECTED_PRESENTATION_MICROSOFT_ENABLED=true PROTECTED_PRESENTATION_INVITATIONS_ENABLED=true node scripts/render-build-protected.mjs
     startCommand: npm run start:protected:platform
     healthCheckPath: /api/v1/platform/health/ready
     envVars:
@@ -122,9 +122,9 @@ services:
       - key: PROTECTED_ENVIRONMENT
         value: "int"
       - key: PROTECTED_API_COMMIT
-        value: "967e1a74afe45c6bf2177da304cc7aafdb5e9e8f"
+        value: "c146aeab3501b73d71d2fde70cb5b102d4d617a6"
       - key: PROTECTED_FRONTEND_COMMIT
-        value: "b6a3fe56964e7b661d6423be179dc2e2c8ce6d4b"
+        value: "83f883dbccd76a28050f1981c8431f18174f04e7"
       - key: PROTECTED_CUSTOMER_ORIGIN
         value: "https://conference-manager-demo.onrender.com"
       - key: PROTECTED_PLATFORM_ORIGIN
@@ -159,7 +159,7 @@ services:
       - key: PROTECTED_SERVICE_VERSION
         value: "cm-int-20261021"
       - key: PROTECTED_HOSTED_FRONTEND_SHA256
-        value: "584dc673d5162d7de9fe2f1ee1b8ea9889042eaaaf1062b4e130e98015fed236"
+        value: "dddd875ecd4655883452bb3286191df443a910ca5df80360852d876bc0faee28"
       - key: PROTECTED_DATABASE_POOL_MAX
         sync: false
       - key: PROTECTED_LEASE_POOL_MAX
