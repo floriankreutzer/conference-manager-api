@@ -6,8 +6,8 @@ a separate CI dependency and must not be synchronized over protected INT.
 
 ## Current release selection
 
-`render.int.yaml` selects the daily-insights pair in
-[the coordinated OPS release runbook](QA-20261104-DAILY-RELEASE.md), retaining the
+`render.int.yaml` selects the SaaS1 QA pair in
+[the coordinated Customer/Platform release runbook](QA-20261109-SAAS1-RELEASE.md), retaining the
 authenticated wrapper selected by API PR366. Its immutable source pair, protected
 Gitlink, build command and independently verified manifests move together. Keep
 Blueprint auto-sync paused and require the exact candidate/Main and provider gates
