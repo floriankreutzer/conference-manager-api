@@ -523,11 +523,24 @@ The runner processes the selected issues sequentially within 12 minutes and a
 15-minute job cap. One unverified issue produces a minimized error receipt while
 the remaining selected issues continue; any such error makes the run fail as
 `JIRA_READINESS_SWEEP_PARTIAL`. Connection loss/deadline/cleanup uncertainty cannot
-report completion. Logs contain only bounded CO keys, fixed result codes, counts
-and booleans, never titles, source payloads, credentials or a false no-write claim
+report completion. Logs contain only bounded CO keys, fixed result/phase codes,
+counts and booleans, never titles, source payloads, credentials or a false no-write claim
 on error. No association, incomplete gates or unsupported data never promote.
 An empty candidate/recovery queue means no work was selected, not that delivery
 or Product Acceptance is complete.
+
+Each unverified issue receipt includes a fixed `failurePhase`: `register` or
+`promotion` identifies the stage reached by the shared trusted composition;
+`reconciliation` means it failed before a stage was observed; `receipt` identifies
+invalid returned result data; `diagnostic` identifies a rejected observation.
+These markers locate where failure surfaced, not its underlying cause or whether
+an external write occurred. When the transition history reader emits an observation,
+the receipt also includes its separately validated `historyObservation` (`phase`, `outcome`,
+`requests`, `entries`, `elapsedMs`). The runner snapshots only those bounded fields
+for that issue, on both successful and failed paths. A matched history observation
+does not replace the journal confirmation or make an unverified result successful.
+Error receipts never contain transition booleans. These diagnostics do not change
+the history budgets, timeouts, decision gates, one-shot claims or recovery rules.
 
 This is best-effort catch-up, with no guaranteed response time. Delayed/missed
 schedules, provider failures, changing candidate sets and quarantined unknown

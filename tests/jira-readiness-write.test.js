@@ -127,3 +127,16 @@ test('unknown or unbounded history diagnostics fail closed without logging provi
     assert.equal(h.closed(), true);
   }
 });
+
+test('diagnostic values are snapshotted once before validation and cannot change before serialization', async () => {
+  const h = harness(); let reads = 0;
+  const historyObservation = { phase: 'history', outcome: 'unverified', requests: 2, entries: 1, elapsedMs: 15000 };
+  assert.equal(await runJiraReadiness({ ...h.options, promote: async options => {
+    const value = { ...historyObservation, get phase() { reads++; return reads === 1 ? 'history' : 'private token'; } };
+    options.onHistoryObservation(value);
+    value.outcome = 'private response';
+    return confirmed;
+  } }), 0);
+  assert.equal(reads, 1);
+  assert.deepEqual(h.output, [{ ...confirmed, historyObservation }]);
+});
