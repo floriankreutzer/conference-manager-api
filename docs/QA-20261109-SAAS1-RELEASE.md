@@ -86,3 +86,31 @@ dirty-state/media usability work, representative screenreader/first-user testing
 real Microsoft/Exchange integration, isolated load and recovery gates require
 their own evidence. Preserve those open scopes rather than equating source merge,
 artifact integrity or public readiness with complete product acceptance.
+
+
+## Actual deployment receipt — 9 November 2026
+
+Frontend PR465 merged as `983d04d60b253b2b8bcac64751c1416fb941c7dc`; API PR402,
+incorporating PR401, merged as `e0a26bf4d5e3ab3410204357e54a87609301597d`.
+Candidate gates and both independent Main CI/security/source-attestation gates
+passed before applying the release. Main CI runs were frontend `42623874166`
+and API `42623621234`; both complete frontend engines passed all 523 tests.
+The separate scheduled Jira Readiness Sweep `42625473313` reported a partial
+batch while release qualification was still running; it is not a successful
+readiness receipt and is not relabeled by the later release gates.
+
+The active no-bypass release rule protects the selected branch against update,
+deletion and force pushes. Render sync `exe-dbosfobl550s73aoscng` changed only the
+two existing services' release branch, literal build guard and three runtime pins.
+No new resource, migration, data reset, plan change or secret input was required.
+Customer receipt `dep-dbot1d6c6qcc738lsdi0` became live at
+`2026-11-09T13:56:00.566Z`; Platform receipt `dep-dbot1d6c6qcc738lsdg0` became live
+at `2026-11-09T13:56:03.168Z`, both on the exact selected API commit.
+
+Independent verification completed at 13:56 UTC: all 311 Customer and 197 Platform
+files matched their sealed artifact hashes, lengths and content types; both
+readiness responses and API/frontend metadata matched the selected pair.
+Authenticated business smoke tests and full product acceptance are separate:
+this browser had no active Customer/Owner session. The source observer selection
+is reconciled separately and requires its own candidate/Main qualification and
+actual collection receipt; public checks do not imply a database observation.

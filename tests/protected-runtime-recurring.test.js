@@ -82,11 +82,11 @@ test('daily local window preserves exact boundaries across winter, summer and DS
 
 test('fixed reviewed deployments remain independent from qualified observer source; no invented optional evidence', async () => {
   const selection = await readRecurringRuntimeObservationSelection();
-  const deployedSource = '863e8220b4aa5d3ef58946b1833550f78369dfb7';
+  const deployedSource = 'c146aeab3501b73d71d2fde70cb5b102d4d617a6';
   assert.equal(selection.environment, 'int');
   assert.equal(selection.apiCommit, deployedSource);
   assert.notEqual(selection.apiCommit, source);
-  assert.equal(selection.frontendCommit, '17c28fb615264e6a2eccc7ed6e46d20171cb66e3');
+  assert.equal(selection.frontendCommit, '83f883dbccd76a28050f1981c8431f18174f04e7');
   assert.notEqual(selection.customer.deploymentReference, selection.platform.deploymentReference);
   assert.equal(selection.evidence.rollback, null);assert.ok(Object.isFrozen(selection));
 });
@@ -94,7 +94,8 @@ test('fixed reviewed deployments remain independent from qualified observer sour
 test('the released frontend is required by both selection validation and the fixed checkout', async () => {
   const selection = await readRecurringRuntimeObservationSelection();
   assert.doesNotThrow(() => normalizeRuntimeObservationSelection(selection));
-  for (const frontendCommit of ['efe672ebaaa844f6663186b8a5d53a18ebab98a6', '2ddcf3859505fe62a46ac008fb1d6e9059711bbb',
+  for (const frontendCommit of ['17c28fb615264e6a2eccc7ed6e46d20171cb66e3',
+    'efe672ebaaa844f6663186b8a5d53a18ebab98a6', '2ddcf3859505fe62a46ac008fb1d6e9059711bbb',
     '2667b0b6df74ffa2632fce4be6f95ef8ef8103ac', 'f6359ff537165c5e29fc4884578d92a83ce22be4', 'a'.repeat(40)]) {
     assert.throws(() => normalizeRuntimeObservationSelection({ ...selection, frontendCommit }), /OBSERVATION_REFUSED/);
   }
