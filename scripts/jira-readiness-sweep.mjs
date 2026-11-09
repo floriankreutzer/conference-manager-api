@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import { Pool } from 'pg';
 import { loadJiraWriterDatabaseConfig, assertJiraWriterIdentity } from './jira-register-publish.mjs';
-import { loadJiraReadinessIntegration, reconcileJiraReadinessIssue } from './jira-readiness-write.mjs';
+import { loadJiraReadinessIntegration, normalizeJiraHistoryObservation, reconcileJiraReadinessIssue } from './jira-readiness-write.mjs';
 import { collectJiraReadinessCandidates } from './jira-readiness-candidates.mjs';
 import { selectJiraReadinessBatch } from './jira-readiness-queue.mjs';
 
@@ -40,19 +40,34 @@ export async function runJiraReadinessSweep({ env = process.env, write = console
     const receipts = [];
     for (const issueKey of batch.issueKeys) {
       active();
+      let historyObservation;
+      let failurePhase = 'reconciliation';
+      let receipt;
       try {
-        const result = await execute({ ...integration, issueKey }); active();
+        const result = await execute({ ...integration, issueKey,
+          onReadinessPhase: value => {
+            if (!['register', 'promotion'].includes(value)) { failurePhase = 'diagnostic'; throw failure(); }
+            failurePhase = value;
+          },
+          onHistoryObservation: value => {
+            historyObservation = undefined;
+            try { historyObservation = normalizeJiraHistoryObservation(value); }
+            catch { failurePhase = 'diagnostic'; throw failure(); }
+          } }); active();
+        failurePhase = 'receipt';
         if (!outcomes.has(result?.result) || ['transitionSubmitted', 'transitionConfirmed', 'atTarget']
           .some(key => typeof result[key] !== 'boolean')) throw failure();
-        receipts.push({ issueKey, result: result.result, transitionSubmitted: result.transitionSubmitted,
-          transitionConfirmed: result.transitionConfirmed, atTarget: result.atTarget });
+        receipt = { issueKey, result: result.result, transitionSubmitted: result.transitionSubmitted,
+          transitionConfirmed: result.transitionConfirmed, atTarget: result.atTarget };
       } catch {
         failed = true;
         // A failing issue cannot prevent other selected issues from making progress.
         // No false no-write claim: this record deliberately has no transition booleans.
-        receipts.push({ issueKey, result: 'JIRA_READINESS_RUN_UNVERIFIED' });
+        receipt = { issueKey, result: 'JIRA_READINESS_RUN_UNVERIFIED', failurePhase };
         active();
       }
+      if (historyObservation) receipt.historyObservation = historyObservation;
+      receipts.push(receipt);
     }
     report = { result: failed ? 'JIRA_READINESS_SWEEP_PARTIAL' : 'JIRA_READINESS_SWEEP_COMPLETED',
       queueSize: batch.queueSize, selected: batch.issueKeys.length, receipts };
