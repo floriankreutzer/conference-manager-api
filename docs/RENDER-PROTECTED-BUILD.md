@@ -102,8 +102,8 @@ Configure each service's PROTECTED_HOSTED_FRONTEND_SHA256 independently after
 qualification. Never derive and automatically trust the runtime digest at startup.
 
 The reviewed frontend is now the separate Gitlink `vendor/protected-frontend`,
-pinned to `17c28fb615264e6a2eccc7ed6e46d20171cb66e3`, the consistent OPS cards
-and private daily-source frontend candidate in frontend PR446 (CO-81). Require its complete
+pinned to `75022cbb9e03e8fdef620240c873739f17c27352`, the integrated SaaS1 QA
+frontend candidate in frontend PR465 (CO-8). Require its complete
 candidate/Main acceptance before selecting a paired release. The legacy
 `vendor/demo-frontend` and its Demo contract are unchanged. Render documents that
 it initializes Git submodules using its connected Git-provider credentials:
