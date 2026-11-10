@@ -147,3 +147,35 @@ test('static budget admits complete cold graph navigations and then limits asset
   assert.equal(await status('/assets/fixture.css'),429);
   assert.equal(await status('/api/v1/session'),418);assert.equal(apiCalls,1);
 });
+
+test('both protected static planes enforce embedding isolation on documents, redirects and refusals without changing API headers',async t=>{
+  for (const surface of ['customer','platform']) {
+    const { root,selected }=await fixture(t,surface),artifact=await readProtectedFrontendArtifact(root,selected);
+    const publicOrigin=surface==='customer' ? selected.customerOrigin : selected.platformOrigin;
+    const server=createServer(withProtectedHostedFrontend({ profile: selected,config: { mode: 'production',publicOrigin },
+      artifact,apiHandler: (_request,response)=>{ response.writeHead(418);response.end(); } }));
+    await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+    t.after(()=>new Promise(resolve=>server.close(resolve)));
+    async function exchange(target,method='GET') {
+      return new Promise((resolve,reject)=>{
+        const call=request({ hostname: '127.0.0.1',port: server.address().port,path: target,method,
+          headers: { host: new URL(publicOrigin).host } },response=>{
+          response.resume();response.once('end',()=>resolve({ status: response.statusCode,headers: response.headers }));
+        });call.once('error',reject);call.end();
+      });
+    }
+    for (const [target,method,status] of [
+      [surface==='customer' ? '/' : '/platform-admin/','GET',200],
+      [surface==='customer' ? '/' : '/platform-admin/','HEAD',200],
+      ['/','GET',surface==='customer' ? 200 : 303],['/missing','GET',404],['/','POST',405],
+    ]) {
+      const result=await exchange(target,method);assert.equal(result.status,status);
+      assert.equal(result.headers['cross-origin-embedder-policy'],'require-corp');
+      assert.equal(result.headers['cross-origin-opener-policy'],'same-origin');
+      assert.equal(result.headers['cross-origin-resource-policy'],'same-origin');
+      assert.equal(result.headers['cache-control'],'no-store');
+    }
+    const api=await exchange('/api/v1/session');assert.equal(api.status,418);
+    assert.equal(api.headers['cross-origin-embedder-policy'],undefined);
+  }
+});
