@@ -431,6 +431,17 @@ block (`language=json`). Use JSON.stringify spelling with optional JSON whitespa
 without surrounding prose, links, duplicate keys or extra fields. The closed value
 has `schemaVersion: 1`, `operation: "supersede"`, the exact `issueKey`,
 `expectedRegisterVersion`, `expectedRegisterDigest`, and `supersessions`.
+The ADF envelope accepts only `attrs: { language: "json" }` or that exact object
+with one optional `uniqueId`. The [published ADF code-block contract](https://developer.atlassian.com/platform/framework/adf-builder/reference/nodes/codeBlock/)
+permits an optional string; this reader deliberately supports only 1–128 ASCII
+letters, digits, underscores or hyphens. This is a local input bound, not an
+upstream format guarantee. The validated node metadata is excluded from the
+decision proof and exact JSON-text digest. It grants no author, timestamp,
+workflow or journal authority. Every other attribute, including `localId`,
+`wrap` and `hideLineNumbers`, remains rejected. Rendered HTML alone does not prove
+the stored ADF shape; the operator still reads the original comment through the
+fixed native Jira endpoint and applies all unchanged provenance checks.
+
 Each supersession contains:
 
 | Field | Required meaning |
