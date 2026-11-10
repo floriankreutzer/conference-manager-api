@@ -5,7 +5,7 @@ export const PROTECTED_OBSERVATION_ORIGINS = Object.freeze({
   platform: 'https://conference-manager-ops-demo.onrender.com',
 });
 export const OBSERVATION_MAX_AGE_MS = 120_000;
-export const OBSERVATION_FRONTEND_COMMIT = '83f883dbccd76a28050f1981c8431f18174f04e7';
+export const OBSERVATION_FRONTEND_COMMIT = '28a864ea6b1d4f5ae0e0066a072f6012e059358d';
 export function refuseRuntimeObservation() { throw new Error('PROTECTED_RUNTIME_OBSERVATION_REFUSED'); }
 export function exactObservationObject(value, keys) {
   if (!value || ![Object.prototype, null].includes(Object.getPrototypeOf(value))
