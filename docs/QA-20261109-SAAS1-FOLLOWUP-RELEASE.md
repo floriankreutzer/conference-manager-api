@@ -12,10 +12,10 @@ not a live release, a passing Main receipt or full Product Acceptance.
 | --- | --- |
 | API source baseline | `4b356b016c2632b5cdfc8a09515e4ffa7179fdd4` |
 | API baseline Main qualification | [42720208847](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42720208847); verify its terminal results independently |
-| Protected frontend F | `79127af1180cde18cb1e26351c74062d1fca4916` |
-| Frontend tree | `3abd3bc89d002d82ad674e77d6eb1a740814cd33` |
+| Protected frontend F | `0b89158a98332415a7bdfe4d74c6a6bb945dd055` |
+| Frontend tree | `b962db71e4df7a17dd01139cd4c3f040d38b80ac` |
 | Frontend candidate | [PR479](https://github.com/floriankreutzer/conference-manager/pull/479) |
-| Candidate native run | [42740576995](https://github.com/floriankreutzer/conference-manager/actions/runs/42740576995), pending at source preparation |
+| Candidate native run | [42746409149](https://github.com/floriankreutzer/conference-manager/actions/runs/42746409149), pending at source preparation |
 | API release source R | The actual published source commit containing this selection; record after publication |
 
 This candidate changes only `vendor/protected-frontend` and the source-selection
@@ -34,11 +34,20 @@ selection and qualification; artifacts from an earlier F cannot be carried over.
 The earlier F `88ed5f346ebb9ceb16625b96ebe0b662eeb9637a` remains a failed
 qualification: [42722345572](https://github.com/floriankreutzer/conference-manager/actions/runs/42722345572)
 passed 599 Chromium cases and 598 of 599 WebKit cases. The remaining Booking
-Policies case lost the new numeric input after saving. The current selection
-adds the shared post-save focus guard to three settings owners and corrects the
-narrow Manager tabs and Catering actions, with regression coverage. Its own
-complete candidate and Main gates remain required; earlier passing jobs do not
-qualify this new source.
+Policies case lost the new numeric input after saving.
+
+The superseded F `79127af1180cde18cb1e26351c74062d1fca4916` completed native
+[42740576995](https://github.com/floriankreutzer/conference-manager/actions/runs/42740576995)
+with 605 cases per engine, including the six owner-focus and six reflow cases.
+Its [authentic P2 review finding](https://github.com/floriankreutzer/conference-manager/pull/479#discussion_r4520403143)
+identified independent CSV action state overwritten by Room price-save unlock.
+The current selection coordinates that state with the save's interaction lock;
+its own candidate, review and separate Main gates remain required.
+
+API candidate `972d0b23368e0dfedf86bd997967ec608d518e0d` completed
+[42741215694](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42741215694)
+with F791 selected. These historical results do not qualify the new F/R pair;
+the actual published successor R requires its own native checks and review.
 
 ## Source and configuration sequence
 
