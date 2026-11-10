@@ -42,7 +42,11 @@ a deployed source pair.
 
 The owned responder validates Host, target, optional Origin, GET/HEAD and absence
 of a request body. It bounds rate-limit state and sends no-store, nosniff,
-same-origin resource policy, HSTS and the verified HTML CSP with frame denial.
+same-origin resource/opener policies, `Cross-Origin-Embedder-Policy: require-corp`,
+HSTS and the verified HTML CSP with frame denial. Embedding isolation covers both
+static planes, GET/HEAD, the fixed redirect and refusals; API responses retain their
+original owning handler. All permitted embedded assets are same-origin sealed
+resources. Native paired Chromium/WebKit journeys must verify compatibility.
 Platform `/` redirects only to its fixed `/platform-admin/`. Unknown files return
 an empty404; no SPA/Demo/API fallback exists. All `/api` targets use the original
 protected transport handler and whole-request database lease, including unknown
@@ -84,3 +88,14 @@ An additional actual-HTTP case admits sixteen complete minimal graph loads,
 then requires429 for the next static file while API routing remains unaffected.
 The earlier local2052/both-DAST result does not prove this correction; fresh
 complete CI including both qualified engines is required.
+
+
+The 10 November DAST run `42881015589` reached both protected live surfaces and
+passed deployment identity before/after each scan, but failed the exact-risk gate
+on `90004-2` (missing COEP, Low). The older closed Demo responder already set this
+header; its coverage did not establish coverage of this owned protected wrapper.
+The new actual-HTTP regression first failed with an absent header, then requires
+`require-corp` on both document entrypoints, HEAD, redirects and rejection paths
+while preserving API delegation. This source correction needs normal review,
+candidate/Main qualification, a new immutable release and actual live rescanning.
+The finding is not allowlisted and no previous failed scan is relabelled.
