@@ -30,7 +30,7 @@ The browser and all provider responses are untrusted. Client-controlled Tenant I
 ## Persistence controls (#49)
 
 - PostgreSQL 18 is authoritative production persistence.
-- Exact runtime dependencies are limited to `pg` and `@azure/msal-node`; provider SDK types do not cross into application or domain contracts.
+- Exact runtime dependencies are owned by [package.json](../package.json), its lockfile and the [architecture dependency gate](../scripts/check-architecture.mjs). The reviewed adapters cover PostgreSQL (`pg`), Microsoft identity (`@azure/msal-node`), Platform passkey verification (`@simplewebauthn/server`), bounded image processing (`sharp`) and private object storage (`@aws-sdk/client-s3`); their types and implementations remain inside their approved infrastructure boundaries.
 - Pilot and Production require external database configuration and `verify-full` TLS.
 - SQL application values use PostgreSQL parameters and SQL remains inside PostgreSQL infrastructure adapters.
 - Migration pairs are versioned, checksum-protected, advisory-lock serialized and transactional.
@@ -213,7 +213,7 @@ See `docs/MICROSOFT365-CONNECTION.md`.
   provider-neutral inputs and produces only deterministic success, conflict or degradation
   outcomes.
 - A reset-only database role, separate from the migration owner and both runtime roles, verifies an immutable Demo sentinel, current database/role,
-  exact canonical schema `001..042`, exact table inventory and the source fixture checksum before
+  the exact canonical schema required by the [target release](PERSISTENCE.md#release-bound-schema-authority), exact table inventory and the source fixture checksum before
   destructive work.
 - Normal Demo requests hold a shared advisory lock; reset holds the corresponding exclusive lock.
   Truncate, deterministic seed and semantic checksum readback commit in one serializable
