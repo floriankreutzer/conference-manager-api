@@ -15,6 +15,13 @@ before application. A merged configuration is not a deployment receipt. The earl
 schema75 and initial wrapper selections remain historical evidence; no migration
 or reset is part of this release.
 
+The next QA source integration is prepared separately in
+[the follow-up release runbook](QA-20261109-SAAS1-FOLLOWUP-RELEASE.md).
+Updating the protected Gitlink does not select or deploy that source. Keep the
+current `render.int.yaml` pair and actual deployment receipts authoritative until
+the new immutable pair, both independently verified artifacts and the subsequent
+configuration/Main gates have qualified.
+
 ## Historical Blueprint adoption — 30 October 2026
 
 The existing Blueprint `conference-manager-demo` (`exs-daakihlg1s2s73df6jdg`)
@@ -101,11 +108,15 @@ both public manifest digests; those are evidence, not automatic runtime approval
 Configure each service's PROTECTED_HOSTED_FRONTEND_SHA256 independently after
 qualification. Never derive and automatically trust the runtime digest at startup.
 
-The reviewed frontend is now the separate Gitlink `vendor/protected-frontend`,
-pinned to `83f883dbccd76a28050f1981c8431f18174f04e7`, the integrated SaaS1 QA
-frontend candidate in frontend PR465 (CO-8). Require its complete
-candidate/Main acceptance before selecting a paired release. The legacy
-`vendor/demo-frontend` and its Demo contract are unchanged. Render documents that
+The separate source Gitlink `vendor/protected-frontend` is now prepared at
+`28a864ea6b1d4f5ae0e0066a072f6012e059358d`, frontend PR481 (CO-317), as described
+in the follow-up runbook. Its actual H GTK print evidence is qualified there;
+complete candidate/review/separate Main acceptance and the new API source's own
+checks remain required. This prepared pin is not a qualified release or a
+deployment receipt. The historical R6a/F0b results do not qualify the new pair.
+The unchanged `render.int.yaml` still selects the earlier qualified frontend
+`83f883dbccd76a28050f1981c8431f18174f04e7` through its immutable API release source.
+The legacy `vendor/demo-frontend` and its Demo contract are unchanged. Render documents that
 it initializes Git submodules using its connected Git-provider credentials:
 <https://render.com/docs/git-provider#git-submodules>. The existing Render
 installation must retain read access to both API and frontend repositories.
