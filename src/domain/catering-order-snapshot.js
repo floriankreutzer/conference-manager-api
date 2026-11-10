@@ -1,10 +1,8 @@
 import { isInternalUuid } from './identifiers.js';
 import { normalizeRequest } from './request.js';
 import { REQUEST_STATUS } from './request-workflow.js';
-import { normalizeTenantCatalogue } from './tenant-catalogue.js';
-import { normalizeCateringCatalogueAssignments } from './catering-catalogue-assignments.js';
 import { normalizeCateringOrderTotal } from './catering-order-money.js';
-import { CATERING_MAX_ORDER_POSITIONS } from './catering-order-limits.js';
+import { createCateringRequestCommercialSelection } from './catering-request-commercial-selection.js';
 
 export { CATERING_MAX_ORDER_POSITIONS } from './catering-order-limits.js';
 
@@ -16,11 +14,6 @@ function frozenCopy(value) {
   ));
   return value;
 }
-function sameEntry(snapshot, canonical) {
-  return canonical && ['id', 'name', 'description'].every((key) => snapshot[key] === canonical[key])
-    && snapshot.price.amountMinor === canonical.price.amountMinor && snapshot.price.currency === canonical.price.currency;
-}
-
 // All inputs are independently loaded by an authorized use case. This pure
 // projection neither authenticates a caller nor releases/enqueues an order.
 export function createCateringOrderSnapshots({ request: requestValue, assignmentRevision,
@@ -31,14 +24,13 @@ export function createCateringOrderSnapshots({ request: requestValue, assignment
     || typeof orderIdFactory !== 'function' || typeof positionIdFactory !== 'function') invalid();
   const request = normalizeRequest(requestValue);
   if (request.status !== REQUEST_STATUS.CONFIRMED || request.snapshot === null) invalid();
-  const canonical = normalizeTenantCatalogue(canonicalCatalogue);
-  const catalogueRevision = request.snapshot.configurationRevisions.catalogue;
-  const normalizedOwnership = normalizeCateringCatalogueAssignments(ownership, {
-    tenantId: request.tenantId, catalogueRevision, catalogue: canonical, connections,
-  });
-  const owners = new Map(normalizedOwnership.assignments.map((entry) => [`${entry.kind}:${entry.entryId}`, entry.integrationId]));
-  const itemById = new Map(canonical.cateringItems.map((entry) => [entry.id, entry]));
-  const groups = new Map();
+  const catalogueRevision=request.snapshot.configurationRevisions.catalogue;
+  let selection;
+  try { selection=createCateringRequestCommercialSelection({request,ownership,canonicalCatalogue,connections}); } catch (error) {
+    if (error instanceof TypeError && error.message === 'CATERING_REQUEST_COMMERCIAL_SELECTION_INVALID') invalid();
+    throw error;
+  }
+  const groups=new Map(selection.map(({integrationId,positions})=>[integrationId,positions]));
   const ids = new Set();
   function allocate(factory, context) {
     const value = factory(Object.freeze(context));
@@ -48,43 +40,6 @@ export function createCateringOrderSnapshots({ request: requestValue, assignment
     ids.add(normalized);
     return normalized;
   }
-  function addPosition(kind, entry, quantity, lineTotalMinor, packageDetails = null) {
-    const integrationId = owners.get(`${kind}:${entry.id}`);
-    if (!integrationId) invalid();
-    if (!groups.has(integrationId)) groups.set(integrationId, []);
-    groups.get(integrationId).push({ kind, entryId: entry.id, name: entry.name,
-      description: entry.description, quantity, unitPrice: entry.price, conferenceLineTotalMinor: lineTotalMinor, packageDetails });
-  }
-  const catering = request.snapshot.pricing.catering;
-  const selectedPackage = catering.packageSelection;
-  if (selectedPackage !== null) {
-    const packageEntry = canonical.cateringPackages.find((entry) => entry.id === selectedPackage.package.id);
-    const variant = packageEntry?.variants.find((entry) => entry.id === selectedPackage.variant.id);
-    if (!sameEntry(selectedPackage.package, packageEntry) || !sameEntry(selectedPackage.variant, variant)
-      || selectedPackage.includedItems.length !== packageEntry.itemIds.length
-      || selectedPackage.includedItems.some((entry) => !packageEntry.itemIds.includes(entry.id)
-        || !sameEntry(entry, itemById.get(entry.id)))) invalid();
-    // One commercial package position retains every included component. A direct
-    // selection already included by the package is retained as descriptive input,
-    // never duplicated as another supplier charge or invented quantity.
-    addPosition('package', selectedPackage.package, selectedPackage.participantCount, selectedPackage.lineTotalMinor, {
-      variant: selectedPackage.variant, includedItems: selectedPackage.includedItems,
-      includedSelections: catering.items.filter((entry) => entry.includedByPackage)
-        .map((entry) => ({ itemId: entry.item.id, quantity: entry.quantity })),
-    });
-    const line = groups.get(owners.get(`package:${selectedPackage.package.id}`)).at(-1);
-    line.unitPrice = selectedPackage.variant.price;
-  }
-  for (const line of catering.items) {
-    if (!sameEntry(line.item, itemById.get(line.item.id))) invalid();
-    if (!line.includedByPackage) addPosition('item', line.item, line.quantity, line.lineTotalMinor);
-  }
-  const expectedTotal = catering.items.reduce((sum, entry) => sum + entry.lineTotalMinor, selectedPackage?.lineTotalMinor ?? 0);
-  if (!Number.isSafeInteger(expectedTotal) || expectedTotal !== request.snapshot.pricing.breakdown.cateringItemsMinor
-    + request.snapshot.pricing.breakdown.cateringPackageMinor) invalid();
-  const allPositions = [...groups.values()].flat();
-  const total = allPositions.reduce((sum, position) => sum + position.conferenceLineTotalMinor, 0);
-  if (total !== expectedTotal || allPositions.length > CATERING_MAX_ORDER_POSITIONS) invalid();
   const selectedIntegration = onlyIntegrationId?.toLowerCase() ?? null;
   if (selectedIntegration !== null && !groups.has(selectedIntegration)) invalid();
   const orders = [...groups].filter(([integrationId]) => selectedIntegration === null || integrationId === selectedIntegration)
@@ -101,7 +56,7 @@ export function createCateringOrderSnapshots({ request: requestValue, assignment
       requestId: request.id, requestVersion: request.version, assignmentRevision, catalogueRevision,
       sourceCapturedAt: request.snapshot.capturedAt, startsAt: request.startsAt, endsAt: request.endsAt,
       room: { id: request.roomId, siteId: request.snapshot.pricing.room.siteId, name: request.snapshot.pricing.room.name },
-      title: request.snapshot.details.title, participantCount: catering.participantCount,
+      title: request.snapshot.details.title, participantCount: request.snapshot.pricing.catering.participantCount,
       dietaryRequirements: request.snapshot.details.dietaryRequirements,
       specialRequirements: request.snapshot.details.specialRequirements,
       positions, conferencePrice, providerCost: null };
