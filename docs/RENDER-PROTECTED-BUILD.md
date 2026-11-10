@@ -6,21 +6,25 @@ a separate CI dependency and must not be synchronized over protected INT.
 
 ## Current release selection
 
-`render.int.yaml` selects the SaaS1 QA pair in
-[the coordinated Customer/Platform release runbook](QA-20261109-SAAS1-RELEASE.md), retaining the
-authenticated wrapper selected by API PR366. Its immutable source pair, protected
-Gitlink, build command and independently verified manifests move together. Keep
+`render.int.yaml` retains API source `15b4f45ccd834548344e3859ef39996a2f885ece`
+and frontend `28a864ea6b1d4f5ae0e0066a072f6012e059358d`, documented in
+[the 10 November configuration record](QA-20261110-SAAS1-CONFIGURATION.md).
+It retains the authenticated wrapper selected by API PR366. The selected source
+pair, build command and independently verified manifests move together. Keep
 Blueprint auto-sync paused and require the exact candidate/Main and provider gates
 before application. A merged configuration is not a deployment receipt. The earlier
 schema75 and initial wrapper selections remain historical evidence; no migration
 or reset is part of this release.
 
-The next QA source integration is prepared separately in
-[the follow-up release runbook](QA-20261109-SAAS1-FOLLOWUP-RELEASE.md).
-Updating the protected Gitlink does not select or deploy that source. Keep the
-current `render.int.yaml` pair and actual deployment receipts authoritative until
-the new immutable pair, both independently verified artifacts and the subsequent
-configuration/Main gates have qualified.
+The next source integration for CO-320/CO-322 is prepared separately in
+[the SaaS 2 source record](QA-20261110-SAAS2-FOLLOWUP-RELEASE.md). The existing
+[follow-up release contract](QA-20261109-SAAS1-FOLLOWUP-RELEASE.md) expressly
+permits reversible source-candidate preparation while qualification is pending.
+Updating the protected Gitlink does not select a running configuration or deploy
+that source. Retain the current configuration pair and independently observed
+provider receipts until the new pair, both artifacts and the required
+candidate/Main/configuration gates qualify. The older follow-up record remains
+dated evidence for its own sources.
 
 ## Historical Blueprint adoption — 30 October 2026
 
@@ -109,13 +113,15 @@ Configure each service's PROTECTED_HOSTED_FRONTEND_SHA256 independently after
 qualification. Never derive and automatically trust the runtime digest at startup.
 
 The separate source Gitlink `vendor/protected-frontend` is now prepared at
-`28a864ea6b1d4f5ae0e0066a072f6012e059358d`, frontend PR481 (CO-317), as described
-in the follow-up runbook. Its actual H GTK print evidence is qualified there;
-complete candidate/review/separate Main acceptance and the new API source's own
-checks remain required. This prepared pin is not a qualified release or a
-deployment receipt. The historical R6a/F0b results do not qualify the new pair.
-The unchanged `render.int.yaml` still selects the earlier qualified frontend
-`83f883dbccd76a28050f1981c8431f18174f04e7` through its immutable API release source.
+`26e3a75bfa15f0a2ea1373e7f8e6ccc61a224dfc`, frontend PR480 (CO-322), as described
+in the dated SaaS 2 source record. Its actual native protected checkout is
+`d4ee97f316ad7a71220dc220359e121fd1d9c474`, with the same frontend tree; source
+head, tested checkout and later merged Main remain separately evidenced.
+Complete frontend candidate/review/separate Main qualification and the new API
+source's own checks remain required. This prepared pin is not a release approval
+or deployment receipt. Historical R6a/F0b and R15b/F28a artifacts do not qualify
+the new pair. The unchanged `render.int.yaml` still selects frontend F28a through
+its immutable API release source R15b above.
 The legacy `vendor/demo-frontend` and its Demo contract are unchanged. Render documents that
 it initializes Git submodules using its connected Git-provider credentials:
 <https://render.com/docs/git-provider#git-submodules>. The existing Render
