@@ -109,9 +109,11 @@ Configure each service's PROTECTED_HOSTED_FRONTEND_SHA256 independently after
 qualification. Never derive and automatically trust the runtime digest at startup.
 
 The separate source Gitlink `vendor/protected-frontend` is now prepared at
-`0b89158a98332415a7bdfe4d74c6a6bb945dd055`, frontend PR479 (CO-320), as described
-in the follow-up runbook. Its complete candidate/Main acceptance remains required;
-this prepared pin is not a qualified release or a deployment receipt.
+`28a864ea6b1d4f5ae0e0066a072f6012e059358d`, frontend PR481 (CO-317), as described
+in the follow-up runbook. Its actual H GTK print evidence is qualified there;
+complete candidate/review/separate Main acceptance and the new API source's own
+checks remain required. This prepared pin is not a qualified release or a
+deployment receipt. The historical R6a/F0b results do not qualify the new pair.
 The unchanged `render.int.yaml` still selects the earlier qualified frontend
 `83f883dbccd76a28050f1981c8431f18174f04e7` through its immutable API release source.
 The legacy `vendor/demo-frontend` and its Demo contract are unchanged. Render documents that

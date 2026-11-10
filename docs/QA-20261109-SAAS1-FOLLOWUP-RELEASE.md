@@ -1,7 +1,8 @@
 # Protected SaaS1 QA follow-up release — 9 November 2026
 
-Jira: CO-320, with CO-306, CO-315, CO-317 and CO-296. Frontend integration is
-PR479, incorporating the scoped PR475–478 changes. The current API Main baseline
+Jira: CO-320, with CO-306, CO-315, CO-317 and CO-296. Frontend PR479 integrated
+the scoped PR475–478 changes; PR481 adds the Guest pagination correction.
+The current API Main baseline
 includes PR404's bounded readiness diagnostics, PR406's Scope Revision source
 and PR407's reconciliation of the readiness runbook. This source preparation is
 not a live release, a passing Main receipt or full Product Acceptance.
@@ -12,10 +13,12 @@ not a live release, a passing Main receipt or full Product Acceptance.
 | --- | --- |
 | API source baseline | `4b356b016c2632b5cdfc8a09515e4ffa7179fdd4` |
 | API baseline Main qualification | [42720208847](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42720208847); verify its terminal results independently |
-| Protected frontend F | `0b89158a98332415a7bdfe4d74c6a6bb945dd055` |
-| Frontend tree | `b962db71e4df7a17dd01139cd4c3f040d38b80ac` |
-| Frontend candidate | [PR479](https://github.com/floriankreutzer/conference-manager/pull/479) |
-| Candidate native run | [42746409149](https://github.com/floriankreutzer/conference-manager/actions/runs/42746409149), pending at source preparation |
+| Protected frontend F | `28a864ea6b1d4f5ae0e0066a072f6012e059358d` |
+| Frontend tree | `5ec76c98c20bcbbe06cfe582c9578ceeafbccf68` |
+| Frontend candidate | [PR481](https://github.com/floriankreutzer/conference-manager/pull/481) |
+| Candidate native run | [42759055183](https://github.com/floriankreutzer/conference-manager/actions/runs/42759055183), pending at this source-preparation checkpoint |
+| Actual Guest print H | `e815c4669880295aac88429e002742e95ac969c1`, tree `0ee417b9df76258885dd6505dd48db6ff36b4756` |
+| H native print evidence | [42760165795](https://github.com/floriankreutzer/conference-manager/actions/runs/42760165795), success on 10 November at 05:10:35 UTC; bounded scope below |
 | API release source R | The actual published source commit containing this selection; record after publication |
 
 This candidate changes only `vendor/protected-frontend` and the source-selection
@@ -41,13 +44,59 @@ The superseded F `79127af1180cde18cb1e26351c74062d1fca4916` completed native
 with 605 cases per engine, including the six owner-focus and six reflow cases.
 Its [authentic P2 review finding](https://github.com/floriankreutzer/conference-manager/pull/479#discussion_r4520403143)
 identified independent CSV action state overwritten by Room price-save unlock.
-The current selection coordinates that state with the save's interaction lock;
-its own candidate, review and separate Main gates remain required.
+F0b incorporated the correction coordinating that state with the save's
+interaction lock. The current F28a selection inherits it and requires its own
+candidate, review and separate Main gates.
 
 API candidate `972d0b23368e0dfedf86bd997967ec608d518e0d` completed
 [42741215694](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42741215694)
 with F791 selected. These historical results do not qualify the new F/R pair;
 the actual published successor R requires its own native checks and review.
+
+## Guest pagination correction and bounded native evidence
+
+The superseded F0b `0b89158a98332415a7bdfe4d74c6a6bb945dd055` completed its
+candidate and Ready qualification in
+[42746409149](https://github.com/floriankreutzer/conference-manager/actions/runs/42746409149)
+and [42751385932](https://github.com/floriankreutzer/conference-manager/actions/runs/42751385932).
+PR479 merged as `cd935478e9c441e6bbd5bddb36b1090d70554124`, retaining tree
+`b962db71e4df7a17dd01139cd4c3f040d38b80ac`; its separate
+[Main run 42755296589](https://github.com/floriankreutzer/conference-manager/actions/runs/42755296589)
+passed. These frontend results remain historical qualification of that source.
+
+API R6a `6a3d2e9a17299bba31d81e77b6f41d79ec35c91b`, tree
+`7cca9a6a4e8a09e98fe4faf16567b07da00edde7`, selected F0b and passed all nine
+required contexts in
+[42747788349](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42747788349).
+The [retained qualification record](https://github.com/floriankreutzer/conference-manager-api/pull/405#issuecomment-6758414597)
+records its completed exact-R6a review without findings. These results do not
+qualify a successor R/F pair.
+No two-wrapper-build or deployment result is claimed for R6a/F0b.
+
+Original H `74589584b5a8c24b6a8120ef20bbf9caf23b6a70` still failed
+[42751545181](https://github.com/floriankreutzer/conference-manager/actions/runs/42751545181)
+with `PDF_PUBLIC_FIELDS`. Its first actual PDF, SHA256
+`ba44a9813239ff23bb9cd34e43c1a46d43c1a165997b89d42a8bb94b5d214da3`,
+visibly clipped content at the page boundary. The independent original-PDF
+[diagnosis 42756981227](https://github.com/floriankreutzer/conference-manager/actions/runs/42756981227)
+found only nine complete fields even in content-stream order. It did not
+reclassify H745 or qualify the missing three PDFs.
+
+Current F28a adds print-only grouping and an exact A4 group-height check. The
+separate H successor uses content-stream extraction for the unchanged complete
+ten-field/whitespace-only predicate; it retains every privacy, A4, nonempty-page,
+PDF/raster, source, TLS, sandbox and cleanup gate. H run 42760165795 passed
+1086 baseline tests, zero-vulnerability audits, all four original DOM captures,
+all six native TLS cases and four actual GTK PDFs, each with two A4 pages.
+All eight original page rasters were reviewed for the observed clipping and
+complete text/card boundaries. The source-bound Guest receipt SHA256 is
+`c5e015e6b70e002bdcf498a754ab223fc3879b9e9944d9960a42c063640261f8`.
+
+That actual GTK evidence has the exact F28a/H sources above. It does not replace
+F28a's full candidate/review/separate Main gates, independent Chromium PDF
+qualification, the successor R's own checks, two real clean-source builds or
+later configuration/provider acceptance. Older artifacts and the unexecuted
+build preparation bound to R6a/F0b cannot qualify the new pair.
 
 ## Source and configuration sequence
 
