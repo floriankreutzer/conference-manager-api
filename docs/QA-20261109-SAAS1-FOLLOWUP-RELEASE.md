@@ -12,10 +12,10 @@ not a live release, a passing Main receipt or full Product Acceptance.
 | --- | --- |
 | API source baseline | `4b356b016c2632b5cdfc8a09515e4ffa7179fdd4` |
 | API baseline Main qualification | [42720208847](https://github.com/floriankreutzer/conference-manager-api/actions/runs/42720208847); verify its terminal results independently |
-| Protected frontend F | `88ed5f346ebb9ceb16625b96ebe0b662eeb9637a` |
-| Frontend tree | `f75dfae2b40d884f915757fd9539d55f028a732e` |
+| Protected frontend F | `79127af1180cde18cb1e26351c74062d1fca4916` |
+| Frontend tree | `3abd3bc89d002d82ad674e77d6eb1a740814cd33` |
 | Frontend candidate | [PR479](https://github.com/floriankreutzer/conference-manager/pull/479) |
-| Candidate native run | [42722345572](https://github.com/floriankreutzer/conference-manager/actions/runs/42722345572), pending at source preparation |
+| Candidate native run | [42740576995](https://github.com/floriankreutzer/conference-manager/actions/runs/42740576995), pending at source preparation |
 | API release source R | The actual published source commit containing this selection; record after publication |
 
 This candidate changes only `vendor/protected-frontend` and the source-selection
@@ -30,6 +30,15 @@ Do not run or attest the two real wrapper builds against a temporary local API
 commit. First establish the actual published R, then use clean R/F checkouts for
 both executions. A frontend correction changes F and requires a new source
 selection and qualification; artifacts from an earlier F cannot be carried over.
+
+The earlier F `88ed5f346ebb9ceb16625b96ebe0b662eeb9637a` remains a failed
+qualification: [42722345572](https://github.com/floriankreutzer/conference-manager/actions/runs/42722345572)
+passed 599 Chromium cases and 598 of 599 WebKit cases. The remaining Booking
+Policies case lost the new numeric input after saving. The current selection
+adds the shared post-save focus guard to three settings owners and corrects the
+narrow Manager tabs and Catering actions, with regression coverage. Its own
+complete candidate and Main gates remain required; earlier passing jobs do not
+qualify this new source.
 
 ## Source and configuration sequence
 
