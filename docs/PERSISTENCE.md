@@ -1,9 +1,8 @@
 # PostgreSQL Persistence
 
-Current custody readiness is055/Demo021, accepted in API#230 mainbe04a087.
-This branch adds a default-off Manager review HTTP interface without changing
-that qualified schema or any deployed immutable counterpart. HTTP qualification
-remains separate from accepted storage and from deployment/release.
+Root `AGENTS.md` is authoritative. This document describes the persistence contracts
+on the current source branch. Migration targets are bound to the exact release commit
+as defined below; historical feature checkpoints do not define a current deployment.
 
 ## Decision
 
@@ -26,6 +25,31 @@ Production requirements include:
 - a stable externally managed `AUDIT_HMAC_SECRET` for every DB-backed deployment; the HMAC key is not stored in PostgreSQL.
 
 A configured `DATABASE_URL` without `AUDIT_HMAC_SECRET` fails configuration before persistence composition. The key must remain stable while existing audit rows depend on it. Key rotation requires an explicit audit-integrity migration/checkpoint design rather than a normal secret replacement.
+
+## Release-bound schema authority
+
+Read the following sources at the same immutable API commit that will be deployed.
+They define the complete migration and readiness requirements for that release:
+
+| Requirement | Owning source |
+| --- | --- |
+| Canonical runtime schema version | `CURRENT_SCHEMA_VERSION` in [the PostgreSQL pool](../src/persistence/postgres/pool.js) |
+| Complete canonical migration pairs and checksums | [Canonical migrations](../migrations/) and [the migration runner](../scripts/db-migrations.mjs) |
+| Demo overlay version and complete migration stream | `DEMO_OVERLAY_MIGRATION_VERSION` in [the Demo runtime contract](../src/demo/runtime-contract.js) and [Demo migrations](../demo-migrations/) |
+| Canonical prerequisite for Demo migration and reset | [Demo migration runner](../scripts/demo-db-migrations.mjs) and [Demo reset repository](../src/persistence/postgres/demo-reset-repository.js) |
+
+The verified source checkpoint on 2026-11-10 at
+[`2ec37ddaa0223e12636f2815ff5883a118ef7543`](https://github.com/floriankreutzer/conference-manager-api/commit/2ec37ddaa0223e12636f2815ff5883a118ef7543)
+requires canonical migrations `001..075` and Demo overlays `001..033`. This is a dated
+source observation, not evidence that an environment has applied those migrations.
+For a later release, resolve the values from its pinned sources instead of copying
+this checkpoint or a historical feature's introduction version.
+
+Deployment evidence must separately bind the API commit, actual canonical and Demo
+ledgers/checksums, exact readiness result and, for Demo, reset/seed verification.
+Canonical runtime, Demo migration prerequisites and Demo reset must agree on the
+release's required canonical version. The migration owner applies the full reviewed
+sequence before the corresponding runtime starts; neither runtime auto-migrates.
 
 ## Schema ownership
 
@@ -172,7 +196,9 @@ The all-role Tenant presentation contract reuses the current Organization row an
 `organization_revision`. Its managed-brand policy maps one fixed reference to a code-shipped preset
 and therefore introduces no upload metadata, asset table, external object reference or migration.
 
-Migration 039 introduced schema version 39; the current exact runtime readiness version is 55. The migration runner remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
+Migration 039 introduced schema version 39; current runtime readiness follows the
+[release-bound schema authority](#release-bound-schema-authority). The migration runner
+remains the sole owner of transactions, checksums and `schema_migrations` bookkeeping.
 
 No entitlement row means disabled. The raw session token, CSRF token, OIDC transaction secret, OIDC plaintext state/nonce and audit HMAC key are never persisted.
 
@@ -355,7 +381,9 @@ npm run db:migrate
 npm run db:rollback
 ```
 
-The app does not auto-migrate on process start. Deployment automation runs migrations before app rollout. Runtime readiness requires connectivity and exact schema version 55.
+The app does not auto-migrate on process start. Deployment automation runs migrations
+before app rollout. Runtime readiness requires connectivity and the exact canonical
+version defined by the [target release](#release-bound-schema-authority).
 
 ## Shared Demo persistence
 
@@ -367,9 +395,10 @@ reset/seed capability and migration ownership. All four URLs must resolve to the
 distinct.
 
 The canonical `migrations/` stream remains the source of the business schema and must contain the
-exact applied sequence `001..055`. The independent `demo-migrations/` stream has its own
-`demo_schema_migrations` ledger, checksum and advisory lock; current Demo overlay version `021`
-installs the immutable database sentinel, provider/persona reference tables, minimized views and
+complete applied sequence required by the [target release](#release-bound-schema-authority).
+The independent `demo-migrations/` stream has its own `demo_schema_migrations` ledger, checksum
+and advisory lock. Its complete release-bound overlay installs the immutable database sentinel,
+provider/persona reference tables, minimized views and
 role grants, private Room/Catering media and create/attach lifecycle support. Overlay 004 grants only `INSERT` and `TRUNCATE` on the canonical attribution
 migration-state singleton to the reset role; customer and Platform roles receive no access. The
 overlay reads but never writes the canonical `schema_migrations` ledger. Overlays 009–012 add
@@ -490,9 +519,11 @@ revision once to add Room prices; pre-migration Catalogue clients must reload. O
 has been used, production rollback requires a reviewed forward fix, compatible application rollback
 or restore/PITR decision rather than deletion of immutable history or bypass of the guard.
 
-The following authorization-epoch rollback describes the historical 033/034 boundary, not a supported direct downgrade from current schema 42. Every intervening populated rollback guard and compatible target-release check must pass; prefer a forward fix.
+The following authorization-epoch rollback describes the historical 033/034 boundary,
+not a supported direct downgrade from a later release schema. Every intervening populated
+rollback guard and compatible target-release check must pass; prefer a forward fix.
 
-Migration 034 down deliberately leaves every cutover revocation in place. An emergency binary rollback must drain Customer traffic before removing schema bookkeeping; all pre-cutover cookies remain revoked and sessions issued by the new epoch are unresolvable by old token hashing. Reapplying migration 034 after a rollback window revokes any sessions the old binary issued. A restore or PITR target older than migration 034 must not receive Customer traffic until the complete current canonical sequence through 043, including migration 034, has been applied and exact schema readiness plus old-cookie/fresh-session checks pass. Operators must never clear `revoked_at`, reuse an epoch or rewrite hashes to make a rollback appear successful.
+Migration 034 down deliberately leaves every cutover revocation in place. An emergency binary rollback must drain Customer traffic before removing schema bookkeeping; all pre-cutover cookies remain revoked and sessions issued by the new epoch are unresolvable by old token hashing. Reapplying migration 034 after a rollback window revokes any sessions the old binary issued. A restore or PITR target older than migration 034 must not receive Customer traffic until the complete canonical sequence required by the [target release](#release-bound-schema-authority), including migration 034, has been applied and exact schema readiness plus old-cookie/fresh-session checks pass. Operators must never clear `revoked_at`, reuse an epoch or rewrite hashes to make a rollback appear successful.
 
 ## Testing evidence required
 
@@ -558,9 +589,10 @@ Tenant-composite Catalogue tables, charged once and included in allocation.
 
 The `saas-3.7-three-demo-customers-v1` reset fixture contains distinct priced Northwind/Contoso Equipment
 and verifies those identity, price and applicability facts during semantic readback. Demo overlay
-004 supplies only the reset privilege required by canonical attribution migration 036. Apply
-canonical migrations first, apply Demo overlays 001 through 008, reset/reseed Demo, deploy both API
-processes at one compatible SHA, verify Catalogue pages and then pin/deploy the updated frontend.
+004 supplies only the reset privilege required by canonical attribution migration 036. For a
+current release, apply the complete canonical sequence first and then the complete Demo overlay
+sequence from the [pinned release sources](#release-bound-schema-authority). Reset/reseed Demo,
+deploy both API processes at one compatible SHA, verify Catalogue pages and then pin/deploy the updated frontend.
 Down 035 refuses once any v3 snapshot/proposal/history exists; use a compatible binary or a forward
 fix. Production never activates Demo authority.
 
@@ -579,8 +611,9 @@ Nullable Site `guest_information` is separate from legacy `details`. Immutable L
 
 Migration 042 extends only the existing receipt document-type CHECK constraint to admit Equipment.
 The composite Tenant/actor foreign key, immutable payload hash, revision, expiry and atomic Apply
-contract remain unchanged. Runtime, Demo migration prerequisites and reset require canonical
-001..043; Demo overlays remain independently tracked at 001..008. Down migration locks the receipt
+contract remain unchanged. The earlier canonical `001..043` / Demo `001..008` rollout checkpoint
+is historical; current runtime, Demo migration prerequisites and reset follow the
+[complete target-release sequences](#release-bound-schema-authority). Down migration locks the receipt
 table and refuses rollback if any Equipment receipt exists, preserving compatibility and evidence.
 See `docs/TENANT-BULK-TRANSFER.md` for the authoritative API contract.
 
@@ -641,15 +674,24 @@ source content, explicit selling prices, same-provider components/variants,
 ownership and unrelated retained content are fenced. No source or order is
 backfilled. Exact readiness/reset inventories include all three FK-owning tables
 and private nonexecutable guards. API#230 qualified custody on PostgreSQL18.6 and
-all nine current-head checks. The default-off HTTP/read interface prepared here
-requires its own actual cookie/database and complete paired/security acceptance.
+all nine checks on that reviewed head. At that checkpoint, the default-off HTTP/read
+interface still required its own actual cookie/database and complete paired/security acceptance.
 See CATERING-CATALOGUE-PUBLICATION.md for retained evidence and remaining scope.
 
 
-Unreleased migration056 adds independently authorized Platform passkey enrollment
-after the retained catalogue publication055. Demo022 grants only isolated reset
+## Historical catalogue and enrollment checkpoints
+
+API#230 at mainbe04a087 accepted catalogue custody at canonical055/Demo021.
+The subsequent default-off Manager review HTTP interface retained that schema;
+HTTP qualification remained separate from storage and deployment acceptance.
+This records that source checkpoint and does not establish today's deployed state.
+
+The enrollment candidate subsequently introduced migration056 for independently
+authorized Platform passkey enrollment after the retained catalogue publication055.
+Demo022 grants only isolated reset
 TRUNCATE; publication021 and supplier020 grants remain intact. This candidate
-requires exact056/022 readiness and all paired regression/security evidence.
+required exact056/022 readiness and all paired regression/security evidence at that stage.
 The former unmerged055/021 enrollment numbering was superseded during main
 integration; no accepted publication migration or checksum was rewritten.
-See PLATFORM-PASSKEY-ASSURANCE.md. CA mode and the security epoch remain unchanged.
+Current migration targets follow the [release-bound schema authority](#release-bound-schema-authority).
+See PLATFORM-PASSKEY-ASSURANCE.md for the current assurance contract and retained acceptance limits.
