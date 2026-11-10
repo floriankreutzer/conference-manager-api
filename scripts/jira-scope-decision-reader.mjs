@@ -55,12 +55,19 @@ export async function readJiraScopeWriter(options = {}) {
   return bounded(options, async () => options.actorId);
 }
 
+function decisionAttributes(attrs) {
+  if (!keys(attrs, ['language']) && !keys(attrs, ['language', 'uniqueId'])) return false;
+  if (attrs.language !== 'json') return false;
+  return !Object.hasOwn(attrs, 'uniqueId') || (typeof attrs.uniqueId === 'string'
+    && attrs.uniqueId.length >= 1 && attrs.uniqueId.length <= 128 && !/[^A-Za-z0-9_-]/.test(attrs.uniqueId));
+}
+
 function decisionText(body) {
   if (!keys(body, ['version', 'type', 'content']) || body.version !== 1 || body.type !== 'doc'
     || !Array.isArray(body.content) || body.content.length !== 1) throw failure();
   const block = body.content[0];
   if (!keys(block, ['type', 'attrs', 'content']) || block.type !== 'codeBlock'
-    || !keys(block.attrs, ['language']) || block.attrs.language !== 'json'
+    || !decisionAttributes(block.attrs)
     || !Array.isArray(block.content) || block.content.length < 1 || block.content.length > 16) throw failure();
   const text = block.content.map(part => {
     if (!keys(part, ['type', 'text']) || part.type !== 'text' || typeof part.text !== 'string') throw failure();
