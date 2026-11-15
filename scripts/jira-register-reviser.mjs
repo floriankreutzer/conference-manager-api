@@ -15,7 +15,7 @@ const outcome = (result, writeSubmitted) => Object.freeze({ result, writeSubmitt
 
 /** Separate manual composition. It cannot enroll, append silently, downgrade a gate or transition an issue. */
 async function reviseLocked({ cloudId, issueKey, actorId, email, token, githubToken, commentId,
-  expectedDecisionDigest, execution: suppliedExecution, pool, fetchImpl = fetch } = {}) {
+  expectedDecisionDigest, execution: suppliedExecution, pool, fetchImpl = fetch, onScopePhase = () => {} } = {}) {
   const execution = normalizeJiraScopeExecution(suppliedExecution);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 55000);
@@ -38,20 +38,26 @@ async function reviseLocked({ cloudId, issueKey, actorId, email, token, githubTo
   const githubOptions = { token: githubToken, fetchImpl: transport };
   const journal = createPostgresJiraRegisterJournal(pool);
   try {
+    onScopePhase('writer_identity');
     await readJiraScopeWriter(jiraOptions);
+    onScopePhase('register_read');
     const jira = await readJiraRegister(jiraOptions);
     const binding = { cloudId, issueKey, issueId: jira.issueId };
+    onScopePhase('journal_read');
     const current = await journal.read(binding);
     const revision = await journal.readScopeRevision({ ...binding, commentId, expectedDecisionDigest, actorId });
     if (controller.signal.aborted) throw failure();
     const recover = async (pending, writeSubmitted) => {
       if (controller.signal.aborted) throw failure();
+      onScopePhase('receipt_read');
       const receipt = await journal.readWriteReceipt({ ...binding, digest: pending.digest });
       if (receipt.taskId === null || controller.signal.aborted) throw failure();
+      onScopePhase('receipt_observe');
       const observation = await observeJiraRegisterWrite({ ...jiraOptions, issueId: jira.issueId,
         taskId: receipt.taskId, expectedScope: pending.scope });
       if (!observation.completed) return outcome('JIRA_SCOPE_REVISION_TASK_PENDING', writeSubmitted);
       if (controller.signal.aborted) throw failure();
+      onScopePhase('journal_confirm');
       await journal.confirm({ ...binding, observedScope: observation.scope });
       if (controller.signal.aborted) throw failure();
       return outcome('JIRA_SCOPE_REVISION_CONFIRMED', writeSubmitted);
@@ -65,23 +71,30 @@ async function reviseLocked({ cloudId, issueKey, actorId, email, token, githubTo
       || canonicalJiraRegister(jira.scope).digest !== current.digest) throw failure();
     if (revision) return outcome('JIRA_SCOPE_REVISION_ALREADY_CONFIRMED', false);
     if (jira.issueStatus !== 'in Review') return outcome('JIRA_SCOPE_REVISION_ISSUE_NOT_IN_REVIEW', false);
+    onScopePhase('transition_read');
     if (await createPostgresJiraTransitionJournal(pool).pending(binding)) throw failure();
+    onScopePhase('decision_read');
     const decision = await readJiraScopeDecision(decisionOptions);
+    onScopePhase('inventory');
     const inventory = await collectGithubPrInventory(githubOptions);
     // First reconcile every newly discovered obligation through the existing append path.
     if (proposeJiraPrRegister({ issueKey, previous: current.scope, inventory }).changed) throw failure();
     assertJiraScopeRevisionHeads(decision, inventory);
+    onScopePhase('recollection');
     const [finalJira, finalInventory, finalDecision] = await Promise.all([
       readJiraRegister(jiraOptions), collectGithubPrInventory(githubOptions), readJiraScopeDecision(decisionOptions),
     ]);
     if (!same(jira, finalJira) || !same(timeless(inventory), timeless(finalInventory))
       || !same(decision, finalDecision) || controller.signal.aborted) throw failure();
+    onScopePhase('journal_prepare');
     const prepared = await journal.prepareScopeRevision({ ...binding, decision, execution });
     if (controller.signal.aborted) throw failure();
     if (prepared.writeClaimed !== true) throw failure(); // No new write for a duplicate/uncertain commit.
+    onScopePhase('write_submit');
     const receipt = await startJiraRegisterWrite({ ...jiraOptions, issueId: jira.issueId,
       expectedScope: current.scope, nextScope: prepared.scope });
     if (controller.signal.aborted) throw failure();
+    onScopePhase('receipt_attach');
     await journal.attachWriteReceipt({ ...binding, digest: prepared.digest, taskId: receipt.taskId });
     return await recover(prepared, true);
   } catch { throw failure(); }
@@ -90,11 +103,16 @@ async function reviseLocked({ cloudId, issueKey, actorId, email, token, githubTo
 
 export async function reviseJiraRegisterScope(options = {}) {
   try {
-    return await withJiraIssueLock(options, lease => reviseLocked({ ...options, pool: lease.pool,
-      fetchImpl: (url, request) => {
-        lease.assertActive();
-        return (options.fetchImpl ?? fetch)(url, { ...request,
-          signal: AbortSignal.any([lease.signal, request.signal]) });
-      } }));
+    options.onScopePhase?.('issue_lock');
+    return await withJiraIssueLock(options, async lease => {
+      const result = await reviseLocked({ ...options, pool: lease.pool,
+        fetchImpl: (url, request) => {
+          lease.assertActive();
+          return (options.fetchImpl ?? fetch)(url, { ...request,
+            signal: AbortSignal.any([lease.signal, request.signal]) });
+        } });
+      options.onScopePhase?.('issue_unlock');
+      return result;
+    });
   } catch { throw failure(); }
 }
