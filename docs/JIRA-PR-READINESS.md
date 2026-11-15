@@ -516,11 +516,24 @@ source comment is deleted. It cannot adopt another decision's pending claim.
 
 All HTTP remains bounded by 55 seconds, 128 requests and 32 MiB, with 15-second
 decision reads and 64-KiB decision/current-user responses; existing register/task
-and GitHub response caps remain unchanged. Only fixed result codes and booleans
-are logged; private decision text, identities and credentials stay out of logs and
+and GitHub response caps remain unchanged. Only fixed result codes, booleans and
+the manual revision runner's closed `failurePhase` labels are logged;
+private decision text, identities and credentials stay out of logs and
 artifacts. Every outcome retains `readinessAuthorized=false`; errors do not claim
 that no write occurred. Disable the manual mode for rollback and retain its schema,
 decisions and receipts for recovery; never delete history to restore an old binary.
+
+On a failed explicit `supersede` run, `failurePhase` identifies the last entered
+stage: configuration, database connection/identity, issue lock, writer identity,
+register/journal/transition/decision reads, inventory/recollection, journal prepare,
+write submission, receipt attachment/read/observation, journal confirmation, unlock,
+or result validation. Pool errors, cleanup-only failures and invalid diagnostic
+callbacks have separate fixed labels. The first observed failure is retained if
+pool cleanup also fails. This is stage evidence, not a provider root cause or a
+no-write guarantee; a failure after submission still requires journal/task readback.
+No exception text, SQL, URLs, provider bodies or decision data enter this field.
+Success and ordinary append reports remain unchanged. Diagnostics do not activate
+the writer, retry an operation or change any scope, identity or readiness gate.
 
 Node and real PostgreSQL tests cover parser/identity/drift rejection, the unchanged
 append contract, actual-role permissions, atomic rollback, duplicates, unknown

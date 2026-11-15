@@ -57,7 +57,11 @@ test('PostgreSQL scope revision: immutable authority, conditional writes, least 
     await journal.confirm({ ...fixture.target, observedScope: fixture.original.scope });
     return fixture;
   };
-  const invoke = (fixture, changes = {}) => reviseJiraRegisterScope({ ...fixture.options, pool: operator, ...changes });
+  const invoke = (fixture, changes = {}) => {
+    fixture.phases = [];
+    return reviseJiraRegisterScope({ ...fixture.options, pool: operator,
+      onScopePhase: phase => fixture.phases.push(phase), ...changes });
+  };
   const provenance = fixture => journal.readScopeRevision({ ...fixture.target, commentId: fixture.proof.commentId,
     expectedDecisionDigest: fixture.proof.decisionDigest, actorId });
 
@@ -66,6 +70,9 @@ test('PostgreSQL scope revision: immutable authority, conditional writes, least 
     assert.deepEqual(await invoke(fixture), {
       result: 'JIRA_SCOPE_REVISION_CONFIRMED', writeSubmitted: true, readinessAuthorized: false,
     });
+    assert.deepEqual(fixture.phases, ['issue_lock', 'writer_identity', 'register_read', 'journal_read',
+      'transition_read', 'decision_read', 'inventory', 'recollection', 'journal_prepare', 'write_submit',
+      'receipt_attach', 'receipt_read', 'receipt_observe', 'journal_confirm', 'issue_unlock']);
     const saved = await provenance(fixture);
     assert.equal(saved.state, 'confirmed');
     assert.deepEqual(saved.decision, fixture.proof);
@@ -145,6 +152,7 @@ test('PostgreSQL scope revision: immutable authority, conditional writes, least 
   await t.test('an uncertain provider submission stays quarantined even when its new property is visible', async () => {
     const fixture = await enroll(806); fixture.state.unknownWrite = true;
     await assert.rejects(invoke(fixture), rejected);
+    assert.equal(fixture.phases.at(-1), 'write_submit');
     const pending = await provenance(fixture);
     assert.equal(pending.state, 'pending');
     assert.equal(fixture.state.property.version, 2, 'provider might already have applied the write');
@@ -152,6 +160,7 @@ test('PostgreSQL scope revision: immutable authority, conditional writes, least 
     fixture.state.unknownWrite = false;
     await assert.rejects(invoke(fixture), rejected);
     assert.equal(fixture.state.puts.length, 1);
+    assert.equal(fixture.phases.at(-1), 'receipt_read');
     assert.deepEqual(await provenance(fixture), pending);
   });
 
@@ -256,6 +265,7 @@ test('PostgreSQL scope revision: immutable authority, conditional writes, least 
     await withJiraIssueLock({ pool: operator, ...fixture.target }, async () => {
       await assert.rejects(invoke(fixture), rejected);
       assert.equal(fixture.state.gets.length, 0);
+      assert.deepEqual(fixture.phases, ['issue_lock']);
       assert.equal(fixture.state.puts.length, 0);
     });
     assert.equal((await invoke(fixture)).result, 'JIRA_SCOPE_REVISION_CONFIRMED');
