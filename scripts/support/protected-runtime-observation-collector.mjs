@@ -3,7 +3,7 @@ import { open } from 'node:fs/promises';
 import path from 'node:path';
 import { readProtectedFrontendArtifact } from '../../src/protected-frontend-artifact.js';
 import { isInternalUuid } from '../../src/domain/identifiers.js';
-import { normalizeRuntimeObservationPlan, exactObservationObject, PROTECTED_OBSERVATION_ORIGINS,
+import { normalizeRuntimeObservationPlan, normalizeRuntimeVerificationSelection, exactObservationObject, PROTECTED_OBSERVATION_ORIGINS,
   OBSERVATION_MAX_AGE_MS, refuseRuntimeObservation } from './protected-runtime-observation-plan.mjs';
 
 const collected = new WeakMap();
@@ -83,9 +83,7 @@ async function collectSurface({ surface, plan, root, fetchImpl, signal }) {
     optional: health.status === 'degraded' ? 'degraded' : 'unknown' });
 }
 
-export async function collectProtectedRuntimeObservation({ plan: input, artifactRoot, fetchImpl = fetch,
-  clock = Date.now, timeoutMs = 90_000 } = {}) {
-  const plan = normalizeRuntimeObservationPlan(input);
+async function collectVerifiedSurfaces({ plan, artifactRoot, fetchImpl, clock, timeoutMs }) {
   if (!path.isAbsolute(artifactRoot ?? '') || typeof fetchImpl !== 'function' || typeof clock !== 'function'
     || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 90_000) {
     refuseRuntimeObservation();
@@ -100,12 +98,29 @@ export async function collectProtectedRuntimeObservation({ plan: input, artifact
     const observedAt = clock();
     if (!Number.isSafeInteger(observedAt) || observedAt < startedAt
       || observedAt - startedAt >= OBSERVATION_MAX_AGE_MS || controller.signal.aborted) refuseRuntimeObservation();
-    const receipt = Object.freeze({});
-    collected.set(receipt, Object.freeze({ plan, surfaces: Object.freeze(surfaces), observedAt }));
-    return receipt;
+    return Object.freeze({ plan, surfaces: Object.freeze(surfaces), observedAt });
   } catch {
     controller.abort();refuseRuntimeObservation();
   } finally { clearTimeout(timer); }
+}
+
+// Public evidence only: no epoch, database binding, reconciliation or persistable
+// WeakMap receipt. Reuse exactly the same sealed-byte and fixed-origin checks.
+export async function verifyProtectedRuntimeArtifacts({ selection: input, artifactRoot, fetchImpl = fetch,
+  clock = Date.now, timeoutMs = 90_000 } = {}) {
+  const plan = normalizeRuntimeVerificationSelection(input);
+  const result = await collectVerifiedSurfaces({ plan, artifactRoot, fetchImpl, clock, timeoutMs });
+  return Object.freeze({ schemaVersion: 1, verificationOnly: true, selection: plan,
+    surfaces: result.surfaces, observedAt: result.observedAt });
+}
+
+export async function collectProtectedRuntimeObservation({ plan: input, artifactRoot, fetchImpl = fetch,
+  clock = Date.now, timeoutMs = 90_000 } = {}) {
+  const plan = normalizeRuntimeObservationPlan(input);
+  const result = await collectVerifiedSurfaces({ plan, artifactRoot, fetchImpl, clock, timeoutMs });
+  const receipt = Object.freeze({});
+  collected.set(receipt, result);
+  return receipt;
 }
 
 // Same-process handoff only: serialized/caller-invented observations cannot be
