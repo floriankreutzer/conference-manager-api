@@ -17,7 +17,8 @@ The frontend restores only the executable metadata of the existing ZAP runner,
 strengthens its direct-execution regression and adds dated evidence. Its script
 blob remains `4e6d10778344eb14d44fc99ca5c31876f380ae40`; all application
 bytes from the qualified capacity-feedback source remain unchanged.
-This API change selects that Gitlink and adds this record. It does not change
+This change selects that Gitlink, adds this record and records one exact
+historical false-positive fingerprint in `.gitleaksignore`. It does not change
 runtime code, the build guard, dependencies, migrations, legacy Demo bindings,
 credentials, flags, provider configuration or observer/DAST selections.
 
@@ -35,6 +36,18 @@ The original provider build command was restored after bounded failure-only
 diagnostics. Do not weaken clean-source checks, ignore file modes or rewrite
 source before the guard to conceal the mismatch. Keep all failed evidence
 historical in the owning Jira work item.
+
+## Historical secret-scan false positive
+
+The first candidate's metadata heading made the scanner interpret the public
+preparation commit as a generic credential. Both actual failed scans identify
+only historical commit `7e3e2ac095d3566cb1c577c47e82a17918d63e1d`, this file,
+rule `generic-api-key`, line 8. The referenced value is the verified public
+repository commit above, not credential material. Current prose is clarified.
+Following the existing repository convention, the exclusion contains only that
+exact historical fingerprint; current-source scanning and every other finding
+remain active. Preserve failed runs 43754826713 and 43755142923 as historical
+results. This exception does not waive any required fresh security check.
 
 ## Remaining qualification
 

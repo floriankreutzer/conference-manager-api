@@ -23,3 +23,7 @@ eb1987a9a98ca232a76bf2dd01597b643d00df7a:docs/PROTECTED-RUNTIME-CONFIGURATION.md
 # Retain all current-source scanning; exclude only these two observed historical findings.
 113d5f90bcce311313bb4e0a008b50c3323de651:.github/workflows/protected-int-runtime-verification.yml:generic-api-key:41
 113d5f90bcce311313bb4e0a008b50c3323de651:.github/workflows/protected-int-runtime-verification.yml:generic-api-key:53
+
+# Historical false positive: public preparation commit 4f52cae6, not a credential.
+# Current prose separates repository metadata; ignore only this observed historical finding.
+7e3e2ac095d3566cb1c577c47e82a17918d63e1d:docs/QA-20261115-SAAS2-MODE-RELEASE.md:generic-api-key:8
