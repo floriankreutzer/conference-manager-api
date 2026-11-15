@@ -127,7 +127,8 @@ function checkEvidence(runs, required, headSha) {
   });
 }
 
-function reviewEvidence(comments, reviews, headSha, authorId) {
+async function reviewEvidence(comments, reviews, pr, authorId, request, root) {
+  const { headSha, mergeSha } = pr;
   const summaries = comments.filter((comment) => comment.user?.id === BOT_ID
     && comment.user?.type === 'Bot' && comment.user?.login === 'chatgpt-codex-connector[bot]'
     && typeof comment.body === 'string' && comment.body.includes('<!-- codex-review-state:v1 '));
@@ -136,8 +137,20 @@ function reviewEvidence(comments, reviews, headSha, authorId) {
   const matches = [...summaries[0].body.matchAll(/<!-- codex-review-state:v1 (.*?) -->/g)];
   if (matches.length !== 1) throw failure();
   const code = JSON.parse(matches[0][1]).code_review;
-  if (code?.commit_sha !== headSha || code.status !== 'completed'
+  if (!validSha(code?.commit_sha) || code.status !== 'completed'
     || typeof code.has_any_findings !== 'boolean' || typeof code.has_unresolved_findings !== 'boolean') throw failure();
+  let reviewBinding = 'head';
+  let reviewTreeSha = null;
+  if (code.commit_sha !== headSha) {
+    if (pr.merged !== true || pr.state !== 'closed' || pr.draft !== false
+      || code.commit_sha !== mergeSha || code.has_any_findings || code.has_unresolved_findings) throw failure();
+    const head = await request(`${root}/git/commits/${headSha}`);
+    const merge = await request(`${root}/git/commits/${mergeSha}`);
+    if (head?.sha !== headSha || merge?.sha !== mergeSha || !validSha(head.tree?.sha)
+      || !validSha(merge.tree?.sha) || head.tree.sha !== merge.tree.sha) throw failure();
+    reviewBinding = 'merge-identical-tree';
+    reviewTreeSha = head.tree.sha;
+  }
   const latest = new Map();
   for (const review of reviews) {
     if (!positive(review.user?.id) || !validSha(review.commit_id)
@@ -145,7 +158,7 @@ function reviewEvidence(comments, reviews, headSha, authorId) {
     if (review.state === 'COMMENTED' || review.state === 'PENDING') continue;
     if (!latest.has(review.user.id) || latest.get(review.user.id).id < review.id) latest.set(review.user.id, review);
   }
-  return { reviewHeadSha: headSha, reviewCompleted: true, reviewsComplete: true,
+  return { reviewHeadSha: headSha, reviewCommitSha: code.commit_sha, reviewBinding, reviewTreeSha, reviewCompleted: true, reviewsComplete: true,
     unresolvedFindings: code.has_unresolved_findings ? 1 : 0,
     changesRequested: [...latest.values()].some((review) => review.state === 'CHANGES_REQUESTED'),
     validApprovals: [...latest.values()].filter((review) => review.state === 'APPROVED'
@@ -215,12 +228,13 @@ export async function collectGithubPrGates({ token, repository, number, fetchImp
     const reviews = await pages(request, `${root}/pulls/${number}/reviews`);
     const comments = await pages(request, `${root}/issues/${number}/comments`);
     const threads = await unresolvedThreads(request, repository, number, pr.headSha);
+    const review = await reviewEvidence(comments, reviews, pr, rawPr.user.id, request, root);
     const finalPr = prIdentity(await request(`${root}/pulls/${number}`), repository, number);
     const finalRules = await effectiveRules(request, root);
     const finalLegacy = legacyPolicy(await request(`${root}/branches/main`));
     if (JSON.stringify(pr) !== JSON.stringify(finalPr) || JSON.stringify(rules) !== JSON.stringify(finalRules)
       || legacy !== finalLegacy || controller.signal.aborted || Date.now() - startedAt > 45000) throw failure();
-    return { ...pr, ...requirements, ...reviewEvidence(comments, reviews, pr.headSha, rawPr.user.id),
+    return { ...pr, ...requirements, ...review,
       checksHeadSha: pr.headSha, checksComplete: true, checks: checkEvidence(runs, requirements.requiredChecks, pr.headSha),
       unresolvedThreads: threads, startedAt, collectedAt: Date.now() };
   } catch {
