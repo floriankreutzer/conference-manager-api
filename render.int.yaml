@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://render.com/schema/render.yaml.json
 # Existing protected INT resources; adopt only in the current paused Blueprint.
-# Selected QA follow-up release pair; not a deployment receipt.
-# See docs/QA-20261115-SAAS2-CAPACITY-CONFIGURATION.md before any synchronization.
+# Selected mode-corrected source pair; not a deployment receipt.
+# See docs/QA-20261115-SAAS2-MODE-CONFIGURATION.md before any synchronization.
 previews:
   generation: off
 # Preserve ownership of the legacy group without injecting DEMO_* into INT.
@@ -17,12 +17,12 @@ services:
     region: frankfurt
     numInstances: 1
     repo: https://github.com/floriankreutzer/conference-manager-api
-    branch: release/int-20261115-aa732f9
+    branch: release/int-20261115-671d883
     autoDeployTrigger: off
     previews:
       generation: off
     buildCommand: >-
-      test "$(git rev-parse HEAD)" = "aa732f9765858343a8f82bff7bb7ed81d780b903" && PROTECTED_PRESENTATION_MICROSOFT_ENABLED=true PROTECTED_PRESENTATION_INVITATIONS_ENABLED=true node scripts/render-build-protected.mjs
+      test "$(git rev-parse HEAD)" = "671d8837402f8d70b022550321834389132126bd" && PROTECTED_PRESENTATION_MICROSOFT_ENABLED=true PROTECTED_PRESENTATION_INVITATIONS_ENABLED=true node scripts/render-build-protected.mjs
     startCommand: npm run start:protected:customer
     healthCheckPath: /api/v1/health/ready
     envVars:
@@ -33,9 +33,9 @@ services:
       - key: PROTECTED_ENVIRONMENT
         value: "int"
       - key: PROTECTED_API_COMMIT
-        value: "aa732f9765858343a8f82bff7bb7ed81d780b903"
+        value: "671d8837402f8d70b022550321834389132126bd"
       - key: PROTECTED_FRONTEND_COMMIT
-        value: "53fa27a6b994f1559327f9764a0825fbee2e2165"
+        value: "f89a71e7ed590c6fab78423f24d65953cb3f6c3e"
       - key: PROTECTED_CUSTOMER_ORIGIN
         value: "https://conference-manager-demo.onrender.com"
       - key: PROTECTED_PLATFORM_ORIGIN
@@ -70,7 +70,7 @@ services:
       - key: PROTECTED_SERVICE_VERSION
         value: "cm-int-20261021"
       - key: PROTECTED_HOSTED_FRONTEND_SHA256
-        value: "95d3eacd3d92cefad28a597aa3f3219ca459030b8138e9afec2de9f7e323c01e"
+        value: "a96511d17cb1836becf265dff0c32b03f2588c7f3540fe20bacfcd1b7b20a342"
       - key: PROTECTED_DATABASE_POOL_MAX
         sync: false
       - key: PROTECTED_LEASE_POOL_MAX
@@ -106,12 +106,12 @@ services:
     region: frankfurt
     numInstances: 1
     repo: https://github.com/floriankreutzer/conference-manager-api
-    branch: release/int-20261115-aa732f9
+    branch: release/int-20261115-671d883
     autoDeployTrigger: off
     previews:
       generation: off
     buildCommand: >-
-      test "$(git rev-parse HEAD)" = "aa732f9765858343a8f82bff7bb7ed81d780b903" && PROTECTED_PRESENTATION_MICROSOFT_ENABLED=true PROTECTED_PRESENTATION_INVITATIONS_ENABLED=true node scripts/render-build-protected.mjs
+      test "$(git rev-parse HEAD)" = "671d8837402f8d70b022550321834389132126bd" && PROTECTED_PRESENTATION_MICROSOFT_ENABLED=true PROTECTED_PRESENTATION_INVITATIONS_ENABLED=true node scripts/render-build-protected.mjs
     startCommand: npm run start:protected:platform
     healthCheckPath: /api/v1/platform/health/ready
     envVars:
@@ -122,9 +122,9 @@ services:
       - key: PROTECTED_ENVIRONMENT
         value: "int"
       - key: PROTECTED_API_COMMIT
-        value: "aa732f9765858343a8f82bff7bb7ed81d780b903"
+        value: "671d8837402f8d70b022550321834389132126bd"
       - key: PROTECTED_FRONTEND_COMMIT
-        value: "53fa27a6b994f1559327f9764a0825fbee2e2165"
+        value: "f89a71e7ed590c6fab78423f24d65953cb3f6c3e"
       - key: PROTECTED_CUSTOMER_ORIGIN
         value: "https://conference-manager-demo.onrender.com"
       - key: PROTECTED_PLATFORM_ORIGIN
@@ -159,7 +159,7 @@ services:
       - key: PROTECTED_SERVICE_VERSION
         value: "cm-int-20261021"
       - key: PROTECTED_HOSTED_FRONTEND_SHA256
-        value: "3a2a9cab3ab0ada3590e93baa4452a52515e3c76fca5f149a74fc4fbd349b886"
+        value: "1554e3ba6eea91ff0f4ada69ff9182968cde42aa400e6e6103acd7da9efdcfd6"
       - key: PROTECTED_DATABASE_POOL_MAX
         sync: false
       - key: PROTECTED_LEASE_POOL_MAX
