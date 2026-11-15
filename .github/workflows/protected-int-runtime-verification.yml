@@ -1,0 +1,128 @@
+name: Verify existing protected INT artifacts without persistence
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - .github/workflows/protected-int-runtime-verification.yml
+      - scripts/support/protected-runtime-observation-collector.mjs
+      - scripts/support/protected-runtime-observation-plan.mjs
+      - tests/protected-runtime-verification.test.js
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/protected-int-runtime-verification.yml
+      - scripts/support/protected-runtime-observation-collector.mjs
+      - scripts/support/protected-runtime-observation-plan.mjs
+      - tests/protected-runtime-verification.test.js
+
+permissions:
+  contents: read
+
+concurrency:
+  group: protected-int-read-only-verification
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    # No paid/private execution or fork credential allocation is enabled here.
+    if: >-
+      github.repository == 'floriankreutzer/conference-manager-api' &&
+      github.event.repository.private == false &&
+      github.actor == 'floriankreutzer' && github.triggering_actor == 'floriankreutzer' &&
+      github.run_attempt == 1 &&
+      ((github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository) ||
+      ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    env:
+      INT_DEPLOYED_SOURCE_COMMIT: '405003e9be0c386934ae02be43d57dd12a6d8d6c'
+      PROTECTED_FRONTEND_COMMIT: '26e3a75bfa15f0a2ea1373e7f8e6ccc61a224dfc'
+      PROTECTED_ENVIRONMENT: int
+      PROTECTED_CUSTOMER_ORIGIN: https://conference-manager-demo.onrender.com
+      PROTECTED_PLATFORM_ORIGIN: https://conference-manager-ops-demo.onrender.com
+      PROTECTED_SYNTHETIC_ENABLED: 'true'
+      PROTECTED_OWNER_CUSTOMER_ACCESS_ENABLED: 'true'
+      PROTECTED_PRESENTATION_MICROSOFT_ENABLED: 'true'
+      PROTECTED_PRESENTATION_INVITATIONS_ENABLED: 'true'
+      # Native provider receipts and independently qualified digests; never read
+      # expected values from the build output or the target being verified.
+      INT_VERIFICATION_SELECTION: >-
+        {"environment":"int","deployedSourceCommit":"405003e9be0c386934ae02be43d57dd12a6d8d6c","frontendCommit":"26e3a75bfa15f0a2ea1373e7f8e6ccc61a224dfc","serviceVersion":"cm-int-20261021","customer":{"deploymentReference":"dep-dbsoc767bikc73c1bltg","deployedAt":"2026-11-15T10:15:47.083Z","frontendSha256":"016663458140e74636a99ac2c28907aea26ab6634c92f4065181f98c145601d3"},"platform":{"deploymentReference":"dep-dbsoc767bikc73c1bl00","deployedAt":"2026-11-15T10:15:46.580Z","frontendSha256":"0f2aae70f45ad7be5684c2864c57e9275253438d0e240b7eacf0155a564c0f9b"},"evidence":{"release":null,"change":null,"rollback":null,"runbook":null}}
+    steps:
+      - name: Refuse debug logging before source credential allocation
+        env:
+          ACTIONS_STEP_DEBUG: ${{ secrets.ACTIONS_STEP_DEBUG }}
+          ACTIONS_RUNNER_DEBUG: ${{ secrets.ACTIONS_RUNNER_DEBUG }}
+        run: test -z "${RUNNER_DEBUG:-}${ACTIONS_STEP_DEBUG:-}${ACTIONS_RUNNER_DEBUG:-}"
+      - name: Checkout verification source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Verify read-only boundaries before source credential allocation
+        run: node --test tests/protected-runtime-verification.test.js
+      - name: Create existing short-lived read-only source token
+        id: source-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.CM_CI_READER_APP_ID }}
+          private-key: ${{ secrets.CM_CI_READER_PRIVATE_KEY }}
+          owner: floriankreutzer
+          repositories: |
+            conference-manager
+            conference-manager-api
+          permission-contents: read
+      - name: Checkout the exact deployed API and its qualified frontend Gitlink
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: floriankreutzer/conference-manager-api
+          ref: '405003e9be0c386934ae02be43d57dd12a6d8d6c'
+          path: release-source
+          token: ${{ steps.source-token.outputs.token }}
+          submodules: true
+          persist-credentials: false
+      - name: Reconstruct artifacts using the unchanged qualified release builder
+        env:
+          PROTECTED_API_COMMIT: ${{ env.INT_DEPLOYED_SOURCE_COMMIT }}
+        run: node release-source/scripts/render-build-protected.mjs
+      - name: Require direct readiness before bounded all-byte verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          for target in \
+            'https://conference-manager-demo.onrender.com/api/v1/health/ready' \
+            'https://conference-manager-ops-demo.onrender.com/api/v1/platform/health/ready'; do
+            ready=false
+            for attempt in {1..6}; do
+              status="$(curl --silent --output /dev/null --write-out '%{http_code}' --connect-timeout 5 --max-time 10 "$target" || true)"
+              if [[ "$status" == '200' ]]; then ready=true; break; fi
+              if [[ "$attempt" != '6' ]]; then sleep 2; fi
+            done
+            test "$ready" = true
+          done
+      - name: Verify every sealed response and exact API identity without database credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import path from 'node:path';
+          import { verifyProtectedRuntimeArtifacts } from './scripts/support/protected-runtime-observation-collector.mjs';
+          try {
+            const { deployedSourceCommit, ...selection } = JSON.parse(process.env.INT_VERIFICATION_SELECTION);
+            const report = await verifyProtectedRuntimeArtifacts({
+              selection: { ...selection, apiCommit: deployedSourceCommit },
+              artifactRoot: path.resolve('release-source/.protected-frontend'),
+            });
+            process.stdout.write(`${JSON.stringify(report)}\n`);
+            if (report.surfaces.some(row => row.required !== 'ready')) process.exitCode = 1;
+          } catch {
+            process.stderr.write('PROTECTED_RUNTIME_VERIFICATION_REFUSED\n');
+            process.exitCode = 1;
+          }
+          JS
