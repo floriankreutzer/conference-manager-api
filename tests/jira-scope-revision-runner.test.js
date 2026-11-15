@@ -69,7 +69,9 @@ for (const [name, change] of [
       poolFactory: () => assert.fail('invalid authority must not construct a pool'),
       publish: () => assert.fail('no fallback'), revise: () => assert.fail('no revision'),
       write: value => output.push(JSON.parse(value)) }), 1);
-    assert.deepEqual(output, [failed]);
+    const operation = { ...env, ...change }.CM_JIRA_REGISTER_OPERATION;
+    assert.deepEqual(output, [{ ...failed,
+      ...(operation === 'supersede' ? { failurePhase: 'configuration' } : {}) }]);
   });
 }
 
@@ -78,7 +80,7 @@ test('revision failure cannot claim no write, leak a decision, or produce readin
   assert.equal(await runJiraPublisher({ ...fixture.options, revise: async () => {
     throw new Error('private decision and provider credentials after an uncertain write');
   } }), 1);
-  assert.deepEqual(fixture.output, [failed]);
+  assert.deepEqual(fixture.output, [{ ...failed, failurePhase: 'revision' }]);
   assert.equal(fixture.closed(), true);
 });
 
@@ -87,7 +89,7 @@ test('a result from the wrong operation cannot be reported as successful scope e
   assert.equal(await runJiraPublisher({ ...fixture.options, revise: async () => ({
     result: 'JIRA_REGISTER_CONFIRMED', writeSubmitted: true, readinessAuthorized: false,
   }) }), 1);
-  assert.deepEqual(fixture.output, [failed]);
+  assert.deepEqual(fixture.output, [{ ...failed, failurePhase: 'result' }]);
 });
 
 test('existing manual workflow exposes an explicit mode, not a new default or recurring revision path', async () => {
@@ -98,4 +100,58 @@ test('existing manual workflow exposes an explicit mode, not a new default or re
   assert.match(source, /CM_JIRA_DECISION_DIGEST: \$\{\{ inputs\.decision_digest \}\}/);
   assert.doesNotMatch(source, /schedule:|workflow_run:|pull_request_target:|permission-contents: write/);
   assert.ok(source.indexOf('CM_JIRA_WRITER_ACCOUNT_ID:') > source.indexOf('run: npm ci --ignore-scripts'));
+});
+
+for (const phase of ['issue_lock', 'writer_identity', 'register_read', 'journal_read', 'transition_read',
+  'decision_read', 'inventory', 'recollection', 'journal_prepare', 'write_submit', 'receipt_attach',
+  'receipt_read', 'receipt_observe', 'journal_confirm', 'issue_unlock']) {
+  test(`scope diagnostic retains only the fixed ${phase} phase across redacted failure and cleanup`, async () => {
+    const fixture = harness();
+    fixture.pool.end = async () => { throw new Error('private database cleanup details'); };
+    assert.equal(await runJiraPublisher({ ...fixture.options, revise: async ({ onScopePhase }) => {
+      onScopePhase(phase);
+      throw new Error('private credentials and decision payload');
+    } }), 1);
+    assert.deepEqual(fixture.output, [{ ...failed, failurePhase: phase }]);
+  });
+}
+
+test('unknown diagnostic values cannot be logged or converted into success by swallowing the error', async () => {
+  for (const value of ['private-token', { token: 'private-token' }, null]) {
+    const fixture = harness();
+    assert.equal(await runJiraPublisher({ ...fixture.options, revise: async ({ onScopePhase }) => {
+      assert.throws(() => onScopePhase(value), /^Error: JIRA_REGISTER_RUN_UNVERIFIED$/);
+      onScopePhase('journal_confirm');
+      return { result: 'JIRA_SCOPE_REVISION_CONFIRMED', writeSubmitted: true, readinessAuthorized: false };
+    } }), 1);
+    assert.deepEqual(fixture.output, [{ ...failed, failurePhase: 'diagnostic' }]);
+  }
+});
+
+test('database connection, identity and successful-operation cleanup failures have distinct safe phases', async () => {
+  for (const phase of ['database_connect', 'database_identity', 'pool_cleanup']) {
+    const fixture = harness();
+    const reject = () => { throw new Error('private database details'); };
+    if (phase === 'database_connect') fixture.options.poolFactory = reject;
+    if (phase === 'database_identity') fixture.pool.query = reject;
+    if (phase === 'pool_cleanup') fixture.pool.end = reject;
+    assert.equal(await runJiraPublisher({ ...fixture.options, revise: async () => ({
+      result: 'JIRA_SCOPE_REVISION_CONFIRMED', writeSubmitted: true, readinessAuthorized: false,
+    }) }), 1);
+    assert.deepEqual(fixture.output, [{ ...failed, failurePhase: phase }]);
+  }
+});
+
+test('idle pool failure aborts transport and cannot be overwritten by a later phase or result', async () => {
+  const fixture = harness();
+  let idleError;
+  fixture.pool.on = (_event, listener) => { idleError = listener; };
+  assert.equal(await runJiraPublisher({ ...fixture.options, revise: async ({ onScopePhase, fetchImpl }) => {
+    onScopePhase('write_submit');
+    idleError(new Error('private connection details'));
+    onScopePhase('journal_confirm');
+    assert.throws(() => fetchImpl('https://example.invalid', {}), /^Error: JIRA_REGISTER_RUN_UNVERIFIED$/);
+    return { result: 'JIRA_SCOPE_REVISION_CONFIRMED', writeSubmitted: true, readinessAuthorized: false };
+  } }), 1);
+  assert.deepEqual(fixture.output, [{ ...failed, failurePhase: 'database_pool' }]);
 });

@@ -5,6 +5,9 @@ import { reviseJiraRegisterScope } from './jira-register-reviser.mjs';
 import { normalizeJiraScopeExecution } from './jira-register-scope-revision.mjs';
 
 const failure = () => new Error('JIRA_REGISTER_RUN_UNVERIFIED');
+const scopePhases = new Set(['issue_lock', 'writer_identity', 'register_read', 'journal_read',
+  'transition_read', 'decision_read', 'inventory', 'recollection', 'journal_prepare',
+  'write_submit', 'receipt_attach', 'receipt_read', 'receipt_observe', 'journal_confirm', 'issue_unlock']);
 const results = {
   append: new Set(['JIRA_REGISTER_CONFIRMED', 'JIRA_REGISTER_TASK_PENDING',
     'JIRA_REGISTER_UNCHANGED', 'JIRA_REGISTER_ISSUE_NOT_IN_REVIEW']),
@@ -73,28 +76,43 @@ export async function runJiraPublisher({ env = process.env, write = console.log,
   revise = reviseJiraRegisterScope, fetchImpl = fetch } = {}) {
   let pool;
   let failed = false;
+  let phase = 'configuration';
+  let observingScope = false;
+  const onScopePhase = value => {
+    if (!observingScope || failed) return;
+    if (!scopePhases.has(value)) { phase = 'diagnostic'; failed = true; controller.abort(); throw failure(); }
+    phase = value;
+  };
   let report = { result: 'JIRA_REGISTER_RUN_UNVERIFIED', readinessAuthorized: false };
   const controller = new AbortController();
   try {
     const config = loadJiraWriterConfig(env);
+    phase = 'database_connect';
     pool = poolFactory(config.database);
-    pool.on('error', () => { failed = true; controller.abort(); });
+    pool.on('error', () => { if (!failed) phase = 'database_pool'; failed = true; controller.abort(); });
+    phase = 'database_identity';
     await assertJiraWriterIdentity(pool);
     if (failed) throw failure();
     const operation = config.operation === 'supersede' ? revise : publish;
-    const result = await operation({ ...config.publisher, pool, fetchImpl: (url, options) => {
+    phase = 'revision';
+    observingScope = config.operation === 'supersede';
+    const result = await operation({ ...config.publisher, pool, onScopePhase, fetchImpl: (url, options) => {
       if (failed || controller.signal.aborted) throw failure();
       return fetchImpl(url, { ...options, signal: AbortSignal.any([controller.signal, options.signal]) });
     } });
+    observingScope = false;
+    if (!failed) phase = 'result';
     if (!results[config.operation].has(result?.result) || typeof result.writeSubmitted !== 'boolean'
       || result.readinessAuthorized !== false || failed) throw failure();
     report = { result: result.result, writeSubmitted: result.writeSubmitted, readinessAuthorized: false };
   } catch { failed = true; }
   finally {
+    observingScope = false;
     controller.abort();
-    try { await pool?.end(); } catch { failed = true; }
+    try { await pool?.end(); } catch { if (!failed) phase = 'pool_cleanup'; failed = true; }
   }
-  if (failed) report = { result: 'JIRA_REGISTER_RUN_UNVERIFIED', readinessAuthorized: false };
+  if (failed) report = { result: 'JIRA_REGISTER_RUN_UNVERIFIED', readinessAuthorized: false,
+    ...(env.CM_JIRA_REGISTER_OPERATION === 'supersede' ? { failurePhase: phase } : {}) };
   // No false no-write claim on failure, including cleanup after a submitted task.
   try { write(JSON.stringify(report)); } catch { return 1; }
   return failed ? 1 : 0;

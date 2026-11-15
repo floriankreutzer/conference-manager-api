@@ -52,7 +52,7 @@ The owner approved an integration-maintained, versioned Jira PR register as the
 authoritative association source. Jira's Development summary is corroborating
 information, not the sole enumeration authority. This replaces the earlier
 requirement to derive completeness from that index. It does not relax merge,
-current-head CI/review, scope completeness or Product Acceptance requirements.
+current-head CI and verified review binding, scope completeness or Product Acceptance requirements.
 
 `scripts/jira-pr-register.mjs` proposes automatic register updates from complete,
 fresh, authenticated App/API inventories. Exact issue keys in PR titles or source
@@ -92,7 +92,8 @@ authoritative scope revision which remains auditable in Jira.
 
 Every PR requires the exact current head, merge commit, complete required-check
 policy, successful checks bound to the expected producer app and head, and
-completed head-bound review evidence with no unresolved findings or threads.
+completed review evidence bound to the head under the contract below, with no
+unresolved findings or threads.
 Formal approval counts and completed automated reviews are different evidence.
 The owning repositories retain authority for their required policy; this module
 does not hard-code or weaken their required check names or approval counts.
@@ -198,10 +199,38 @@ The supported profile is the current ruleset-only main policy with zero required
 human approvals and no code-owner/last-push approval requirement. Classic branch
 protection, a new unsupported rule or approval profile, missing producer identity,
 ambiguous review summary or source drift blocks collection. Formal approval counts
-remain distinct from the current-head Codex review. Pending/unresolved/failed
+remain distinct from the authenticated Codex review. Pending/unresolved/failed
 evidence is retained as blocking evidence, never relabeled successful. The existing
 readiness kernel remains responsible for the final decision. This transport does
 not establish Jira scope, property provenance, replay protection or serialization.
+
+### Approved review binding (15 November 2026)
+
+The owner approved an additional binding for already merged, closed, non-draft
+PRs. An authentic, unambiguous, completed Codex summary may reference either the
+current PR head or GitHub's actual `merge_commit_sha` for that PR. A merge-bound
+summary must report neither findings nor unresolved findings. The collector reads
+both immutable Git commit objects through the existing fixed GitHub origin,
+validates each returned SHA against its requested identity, and requires identical,
+valid 40-character tree SHAs. Missing objects, malformed or unequal trees, another
+commit, an unmerged synthetic merge or incomplete provider enumeration fails closed.
+PR identity (including merge SHA) and policy are rechecked after this collection.
+
+Evidence retains `reviewCommitSha` (the actual reviewed commit), `reviewBinding`
+(`head` or `merge-identical-tree`) and `reviewTreeSha` (the verified common tree,
+otherwise null). `reviewHeadSha` identifies the head covered by that validated
+binding; it does not claim the bot reviewed that exact commit. The trusted kernel
+continues to require this covered head to match the current PR head. Independent
+recollection compares the full evidence, including this provenance. The kernel
+is not a verifier for caller-supplied evidence.
+
+This changes only the automated review binding. Required checks remain bound to
+the exact PR head and producer. Formal approvals, requested changes, unresolved
+threads, current policy, freshness and scope gates are unchanged. No bot marker is
+rewritten; no transition journal is cleared or replayed. The existing response,
+time and aggregate request limits cover the two additional read-only requests.
+Source tests are not native readiness acceptance; that requires the reviewed merge
+and a separate real execution with the existing protected credentials.
 
 The manual main-only `Jira GitHub Gates Diagnostic` uses the existing CI Reader App
 with read-only pull-request, check and content permissions limited to both delivery
@@ -476,7 +505,7 @@ functional coverage: the owner/reviewer must substantiate that decision separate
 The replacement's title need not repeat every issue it replaces: each affected
 issue receives its own explicit register association. The replacement remains a
 normal delivery obligation subject to the unchanged draft, merge, exact-head
-CI/security/review and unresolved-finding gates. The operator neither produces nor
+CI/security, verified review binding and unresolved-finding gates. The operator neither produces nor
 modifies review markers, checks, PR state, issue status or Product Acceptance.
 
 ### Immutable provenance, execution and recovery
@@ -516,11 +545,24 @@ source comment is deleted. It cannot adopt another decision's pending claim.
 
 All HTTP remains bounded by 55 seconds, 128 requests and 32 MiB, with 15-second
 decision reads and 64-KiB decision/current-user responses; existing register/task
-and GitHub response caps remain unchanged. Only fixed result codes and booleans
-are logged; private decision text, identities and credentials stay out of logs and
+and GitHub response caps remain unchanged. Only fixed result codes, booleans and
+the manual revision runner's closed `failurePhase` labels are logged;
+private decision text, identities and credentials stay out of logs and
 artifacts. Every outcome retains `readinessAuthorized=false`; errors do not claim
 that no write occurred. Disable the manual mode for rollback and retain its schema,
 decisions and receipts for recovery; never delete history to restore an old binary.
+
+On a failed explicit `supersede` run, `failurePhase` identifies the last entered
+stage: configuration, database connection/identity, issue lock, writer identity,
+register/journal/transition/decision reads, inventory/recollection, journal prepare,
+write submission, receipt attachment/read/observation, journal confirmation, unlock,
+or result validation. Pool errors, cleanup-only failures and invalid diagnostic
+callbacks have separate fixed labels. The first observed failure is retained if
+pool cleanup also fails. This is stage evidence, not a provider root cause or a
+no-write guarantee; a failure after submission still requires journal/task readback.
+No exception text, SQL, URLs, provider bodies or decision data enter this field.
+Success and ordinary append reports remain unchanged. Diagnostics do not activate
+the writer, retry an operation or change any scope, identity or readiness gate.
 
 Node and real PostgreSQL tests cover parser/identity/drift rejection, the unchanged
 append contract, actual-role permissions, atomic rollback, duplicates, unknown

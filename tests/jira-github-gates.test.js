@@ -19,6 +19,8 @@ function fixture() {
     { ruleset_id: 1, type: 'required_status_checks', parameters: { strict_required_status_checks_policy: true,
       required_status_checks: [{ context: 'quality', integration_id: 15368 }] } }],
     runs: [{ id: 2, head_sha: sha, app: { id: 15368 }, name: 'quality', status: 'completed', conclusion: 'success' }],
+    commits: { [sha]: { sha, tree: { sha: 'c'.repeat(40) } },
+      ['b'.repeat(40)]: { sha: 'b'.repeat(40), tree: { sha: 'c'.repeat(40) } } },
     reviews: [],
     comments: [{ id: 3, user: { id: 199175422, type: 'Bot', login: 'chatgpt-codex-connector[bot]' },
       body: '<!-- codex-review-state:v1 ' + JSON.stringify({ code_review: { commit_sha: sha,
@@ -41,6 +43,7 @@ function transport(f, mutate = () => {}) {
         number: 1, headRefOid: sha, reviewThreads: f.threads } } } });
     }
     assert.equal(options.method, 'GET');
+    if (url.includes('/git/commits/')) return response(f.commits[url.split('/').at(-1)] ?? null);
     if (url.endsWith('/pulls/1')) return response(f.pr);
     if (url.includes('/rules/branches/main?')) return response(url.endsWith('page=1') ? f.rules : []);
     if (url.endsWith('/branches/main')) return response(f.branch);
@@ -207,5 +210,94 @@ test('rejects oversized responses and reflected transport errors', async () => {
   for (const fetchImpl of [async () => response('x'.repeat(4 * 1024 * 1024)), async () => { throw new Error(token); }]) {
     await assert.rejects(collectGithubPrGates({ token, repository, number: 1, fetchImpl }),
       { message: 'GITHUB_PR_GATES_UNVERIFIED' });
+  }
+});
+
+function mergeReviewFixture() {
+  const f = fixture();
+  f.comments[0].body = f.comments[0].body.replace(sha, f.pr.merge_commit_sha);
+  return f;
+}
+
+test('merged review with identical verified trees retains exact provenance and head-bound checks', async () => {
+  const f = mergeReviewFixture();
+  const result = await collect(f);
+  assert.equal(result.reviewHeadSha, sha);
+  assert.equal(result.reviewCommitSha, f.pr.merge_commit_sha);
+  assert.equal(result.reviewBinding, 'merge-identical-tree');
+  assert.equal(result.reviewTreeSha, 'c'.repeat(40));
+  assert.equal(result.checksHeadSha, sha);
+  assert.equal(result.checks[0].headSha, sha);
+  const snapshot = { schemaVersion: 1, issueKey: 'CO-296', issueStatus: 'in Review',
+    startedAt: result.startedAt, collectedAt: result.collectedAt, scopeRevision: 'd'.repeat(40),
+    scopeClosed: true, associationComplete: true, indexConsistent: true,
+    inventories: ['floriankreutzer/conference-manager', repository].map((repo) => ({ repository: repo,
+      authenticated: true, complete: true, nextPage: null, incompleteResults: false, count: 1, returnedCount: 1 })),
+    expectedPullRequests: [{ repository, number: 1 }], pullRequests: [{ ...result, issueKey: 'CO-296' }] };
+  assert.equal(evaluateJiraPrReadiness(snapshot).eligible, true);
+  snapshot.pullRequests[0].checks[0].conclusion = 'failure';
+  assert.equal(evaluateJiraPrReadiness(snapshot).eligible, false);
+});
+
+test('exact head review preserves provenance without requesting commit equivalence', async () => {
+  const f = fixture();
+  f.commits = {};
+  const t = transport(f);
+  const result = await collectGithubPrGates({ token, repository, number: 1, ...t });
+  assert.equal(result.reviewCommitSha, sha);
+  assert.equal(result.reviewBinding, 'head');
+  assert.equal(result.reviewTreeSha, null);
+  assert.equal(t.calls.some(({ url }) => url.includes('/git/commits/')), false);
+});
+
+for (const [name, mutate] of Object.entries({
+  'different trees': (f) => { f.commits[sha].tree.sha = 'd'.repeat(40); },
+  'missing head commit': (f) => { delete f.commits[sha]; },
+  'missing merge commit': (f) => { delete f.commits[f.pr.merge_commit_sha]; },
+  'wrong head identity': (f) => { f.commits[sha].sha = 'd'.repeat(40); },
+  'wrong merge identity': (f) => { f.commits[f.pr.merge_commit_sha].sha = 'd'.repeat(40); },
+  'malformed tree': (f) => { f.commits[sha].tree.sha = 'bad'; },
+  'missing tree': (f) => { delete f.commits[f.pr.merge_commit_sha].tree; },
+  'unmerged synthetic merge': (f) => { f.pr.merged = false; f.pr.state = 'open'; },
+  'closed unmerged PR': (f) => { f.pr.merged = false; },
+  'draft PR': (f) => { f.pr.draft = true; },
+  'different reviewed commit': (f) => { f.comments[0].body = f.comments[0].body.replace(f.pr.merge_commit_sha, 'e'.repeat(40)); },
+  'unresolved findings': (f) => {
+    f.comments[0].body = f.comments[0].body.replace('"has_unresolved_findings":false', '"has_unresolved_findings":true');
+  },
+  'findings present': (f) => { f.comments[0].body = f.comments[0].body.replace('"has_any_findings":false', '"has_any_findings":true'); },
+  'incomplete review': (f) => { f.comments[0].body = f.comments[0].body.replace('completed', 'pending'); },
+  'wrong bot': (f) => { f.comments[0].user.id = 7; },
+})) {
+  test(`merge equivalence fails closed for ${name}`, async () => {
+    const f = mergeReviewFixture();
+    mutate(f);
+    await assert.rejects(collect(f), { message: 'GITHUB_PR_GATES_UNVERIFIED' });
+  });
+}
+
+test('merge binding is rechecked after commit collection', async () => {
+  await assert.rejects(collect(mergeReviewFixture(), (f, url, calls) => {
+    if (url.endsWith('/pulls/1') && calls.filter((c) => c.url === url).length === 2) f.pr.merge_commit_sha = 'd'.repeat(40);
+  }), { message: 'GITHUB_PR_GATES_UNVERIFIED' });
+});
+
+test('merge review cannot bypass unresolved threads, requested changes or failing checks', async () => {
+  const f = mergeReviewFixture();
+  f.threads.nodes = [{ id: 'thread', isResolved: false }];
+  f.reviews = [{ id: 1, user: { id: 9 }, commit_id: sha, state: 'CHANGES_REQUESTED' }];
+  f.runs[0].conclusion = 'failure';
+  const result = await collect(f);
+  assert.equal(result.unresolvedThreads, 1);
+  assert.equal(result.changesRequested, true);
+  assert.equal(result.checks[0].conclusion, 'failure');
+});
+
+test('merge review rejects commit transport failure and incomplete comment pagination', async () => {
+  for (const endpoint of ['/git/commits/', '/comments?per_page=100&page=2']) {
+    const base = transport(mergeReviewFixture()).fetchImpl;
+    await assert.rejects(collectGithubPrGates({ token, repository, number: 1,
+      fetchImpl: (url, options) => url.includes(endpoint) ? new Response(token, { status: 403 }) : base(url, options) }),
+    { message: 'GITHUB_PR_GATES_UNVERIFIED' });
   }
 });
