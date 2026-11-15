@@ -6,31 +6,26 @@ a separate CI dependency and must not be synchronized over protected INT.
 
 ## Current release selection
 
-The newer CO-299 source candidate selects protected frontend
+`render.int.yaml` selects published API source
+`aa732f9765858343a8f82bff7bb7ed81d780b903` and protected frontend
 `53fa27a6b994f1559327f9764a0825fbee2e2165` for the confirmed-booking capacity
-feedback correction. Its exact preparation and outstanding release gates are in
-[the 15 November source record](QA-20261115-SAAS2-CAPACITY-RELEASE.md).
-This source selection does not change the existing INT configuration below.
+feedback correction. The source preparation remains dated in
+[the 15 November source record](QA-20261115-SAAS2-CAPACITY-RELEASE.md);
+[the separate configuration record](QA-20261115-SAAS2-CAPACITY-CONFIGURATION.md)
+binds the qualified sources, frozen release branch and independently verified
+manifest digests. It retains the authenticated wrapper selected by API PR366.
+The later configuration commit must not replace the published API source in
+its literal build guard or runtime profile.
 
-`render.int.yaml` selects API source `405003e9be0c386934ae02be43d57dd12a6d8d6c`
-and frontend `26e3a75bfa15f0a2ea1373e7f8e6ccc61a224dfc`, documented in
-[the SaaS 2 configuration record](QA-20261110-SAAS2-CONFIGURATION.md).
-It retains the authenticated wrapper selected by API PR366. The selected source
-pair, build command and independently verified manifests move together. Keep
-Blueprint auto-sync paused and require the exact candidate/Main and provider gates
-before application. A merged configuration is not a deployment receipt. The earlier
-schema75 and initial wrapper selections remain historical evidence; no migration
-or reset is part of this release.
-
-The source integration for CO-320/CO-322 is documented separately in
-[the SaaS 2 source record](QA-20261110-SAAS2-FOLLOWUP-RELEASE.md). The existing
-[follow-up release contract](QA-20261109-SAAS1-FOLLOWUP-RELEASE.md) expressly
-permits reversible source-candidate preparation while qualification is pending.
-Updating the protected Gitlink or this configuration does not prove deployment.
-The prior R15b/F28a configuration and independently observed provider receipts
-remain the dated rollback baseline; obtain actual new receipts only after the
-new pair, both artifacts and all source/Main/configuration/provider gates qualify.
-The older follow-up record remains dated evidence for its own sources.
+Keep Blueprint auto-sync paused and require this configuration's own complete
+candidate/Main and provider gates before application. A merged configuration is
+not a deployment receipt. No migration or reset is part of this release.
+The preceding R405/F26 configuration in
+[the 10 November record](QA-20261110-SAAS2-CONFIGURATION.md) and its actual
+matching provider receipts are the rollback baseline. Older R15b/F28a and
+initial wrapper selections remain historical evidence for their own sources.
+Record new provider receipts only after successful deployment and independent
+served-byte verification; reconcile observer and DAST selections afterward.
 
 ## Historical Blueprint adoption — 30 October 2026
 
@@ -123,14 +118,13 @@ The previous separate source Gitlink `vendor/protected-frontend` was prepared at
 in the dated SaaS 2 source record. Its actual native protected checkout is
 `d4ee97f316ad7a71220dc220359e121fd1d9c474`, with the same frontend tree; source
 head, tested checkout and later merged Main remain separately evidenced.
-Complete frontend candidate/review/separate Main qualification and the new API
-source's own checks remain required. This prepared pin is not a release approval
-or deployment receipt. Historical R6a/F0b and R15b/F28a artifacts do not qualify
-the new pair. The separate `render.int.yaml` configuration now binds this F26e
-to its actual published API release source R405 and two independently verified
-manifest digests; the later configuration commit must never replace R405 in the
-literal source guard or runtime profile. This is a source configuration selection,
-not an actual provider receipt.
+That dated preparation required separate frontend and API candidate/Main
+qualification. The 10 November configuration subsequently bound F26e to the
+actual published API release source R405 and its two independently verified
+manifest digests. Those historical sources and artifacts do not qualify the
+current Raa732/F53fa selection. The current configuration record above binds
+its own sources, native checks and independent artifacts; provider receipts
+remain a separate gate.
 The legacy `vendor/demo-frontend` and its Demo contract are unchanged. Render documents that
 it initializes Git submodules using its connected Git-provider credentials:
 <https://render.com/docs/git-provider#git-submodules>. The existing Render
