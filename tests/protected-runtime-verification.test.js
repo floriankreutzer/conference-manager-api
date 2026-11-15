@@ -35,7 +35,7 @@ const verify = f => verifyProtectedRuntimeArtifacts({ selection: f.selection,
 test('read-only verification accepts independently pinned artifacts without changing the observer allowlist', async t => {
   const f = await verificationFixture(t);
   const before = JSON.stringify(f.selection);
-  assert.equal(OBSERVATION_FRONTEND_COMMIT, '28a864ea6b1d4f5ae0e0066a072f6012e059358d');
+  assert.equal(OBSERVATION_FRONTEND_COMMIT, '26e3a75bfa15f0a2ea1373e7f8e6ccc61a224dfc');
   assert.throws(() => normalizeRuntimeObservationSelection(f.selection), /OBSERVATION_REFUSED/);
   assert.throws(() => normalizeRuntimeObservationPlan({ ...f.selection, securityEpoch: f.plan.securityEpoch }), /OBSERVATION_REFUSED/);
   const report = await verify(f);
