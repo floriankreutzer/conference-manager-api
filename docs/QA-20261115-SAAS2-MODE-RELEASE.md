@@ -5,7 +5,8 @@ successful provider receipt or Product Acceptance.
 
 ## Selected counterpart
 
-Base API Main: `4f52cae617f590c134643d2dd05d846dfca923d1`.
+Preparation starts at repository commit
+`4f52cae617f590c134643d2dd05d846dfca923d1` on Main.
 Select frontend `f89a71e7ed590c6fab78423f24d65953cb3f6c3e`
 ([PR487](https://github.com/floriankreutzer/conference-manager/pull/487)).
 Its full tree is `e50b74fba6dfdaa4a801e9e5d830533d5e0789ed`.
