@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-slim
     timeout-minutes: 5
     env:
-      PROTECTED_API_COMMIT: '405003e9be0c386934ae02be43d57dd12a6d8d6c'
+      INT_DEPLOYED_SOURCE_COMMIT: '405003e9be0c386934ae02be43d57dd12a6d8d6c'
       PROTECTED_FRONTEND_COMMIT: '26e3a75bfa15f0a2ea1373e7f8e6ccc61a224dfc'
       PROTECTED_ENVIRONMENT: int
       PROTECTED_CUSTOMER_ORIGIN: https://conference-manager-demo.onrender.com
@@ -50,7 +50,7 @@ jobs:
       # Native provider receipts and independently qualified digests; never read
       # expected values from the build output or the target being verified.
       INT_VERIFICATION_SELECTION: >-
-        {"environment":"int","apiCommit":"405003e9be0c386934ae02be43d57dd12a6d8d6c","frontendCommit":"26e3a75bfa15f0a2ea1373e7f8e6ccc61a224dfc","serviceVersion":"cm-int-20261021","customer":{"deploymentReference":"dep-dbsoc767bikc73c1bltg","deployedAt":"2026-11-15T10:15:47.083Z","frontendSha256":"016663458140e74636a99ac2c28907aea26ab6634c92f4065181f98c145601d3"},"platform":{"deploymentReference":"dep-dbsoc767bikc73c1bl00","deployedAt":"2026-11-15T10:15:46.580Z","frontendSha256":"0f2aae70f45ad7be5684c2864c57e9275253438d0e240b7eacf0155a564c0f9b"},"evidence":{"release":null,"change":null,"rollback":null,"runbook":null}}
+        {"environment":"int","deployedSourceCommit":"405003e9be0c386934ae02be43d57dd12a6d8d6c","frontendCommit":"26e3a75bfa15f0a2ea1373e7f8e6ccc61a224dfc","serviceVersion":"cm-int-20261021","customer":{"deploymentReference":"dep-dbsoc767bikc73c1bltg","deployedAt":"2026-11-15T10:15:47.083Z","frontendSha256":"016663458140e74636a99ac2c28907aea26ab6634c92f4065181f98c145601d3"},"platform":{"deploymentReference":"dep-dbsoc767bikc73c1bl00","deployedAt":"2026-11-15T10:15:46.580Z","frontendSha256":"0f2aae70f45ad7be5684c2864c57e9275253438d0e240b7eacf0155a564c0f9b"},"evidence":{"release":null,"change":null,"rollback":null,"runbook":null}}
     steps:
       - name: Refuse debug logging before source credential allocation
         env:
@@ -88,6 +88,8 @@ jobs:
           submodules: true
           persist-credentials: false
       - name: Reconstruct artifacts using the unchanged qualified release builder
+        env:
+          PROTECTED_API_COMMIT: ${{ env.INT_DEPLOYED_SOURCE_COMMIT }}
         run: node release-source/scripts/render-build-protected.mjs
       - name: Require direct readiness before bounded all-byte verification
         shell: bash
@@ -112,8 +114,9 @@ jobs:
           import path from 'node:path';
           import { verifyProtectedRuntimeArtifacts } from './scripts/support/protected-runtime-observation-collector.mjs';
           try {
+            const { deployedSourceCommit, ...selection } = JSON.parse(process.env.INT_VERIFICATION_SELECTION);
             const report = await verifyProtectedRuntimeArtifacts({
-              selection: JSON.parse(process.env.INT_VERIFICATION_SELECTION),
+              selection: { ...selection, apiCommit: deployedSourceCommit },
               artifactRoot: path.resolve('release-source/.protected-frontend'),
             });
             process.stdout.write(`${JSON.stringify(report)}\n`);

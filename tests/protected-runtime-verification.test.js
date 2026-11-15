@@ -189,3 +189,19 @@ test('the native verification path is fixed-source, owner-only, read-only and ne
     '0f2aae70f45ad7be5684c2864c57e9275253438d0e240b7eacf0155a564c0f9b',
     'dep-dbsoc767bikc73c1bltg', 'dep-dbsoc767bikc73c1bl00']) assert.ok(workflow.includes(literal));
 });
+
+
+test('native metadata names the public deployed source and maps it without changing the sealed verification contract', async () => {
+  const workflow = await readFile('.github/workflows/protected-int-runtime-verification.yml', 'utf8');
+  const raw = workflow.match(/INT_VERIFICATION_SELECTION: >-\n        (\{[^\n]+\})/);
+  assert.ok(raw);
+  const { deployedSourceCommit, ...selection } = JSON.parse(raw[1]);
+  const source = workflow.match(/INT_DEPLOYED_SOURCE_COMMIT: '([a-f0-9]{40})'/)?.[1];
+  assert.equal(deployedSourceCommit, source);
+  assert.equal(source, workflow.match(/ref: '([a-f0-9]{40})'/)?.[1]);
+  assert.equal(normalizeRuntimeVerificationSelection({ ...selection, apiCommit: deployedSourceCommit }).apiCommit, source);
+  assert.equal(Object.hasOwn(selection, 'apiCommit'), false);
+  assert.match(workflow, /PROTECTED_API_COMMIT: \$\{\{ env\.INT_DEPLOYED_SOURCE_COMMIT \}\}/);
+  assert.match(workflow, /selection: \{ \.\.\.selection, apiCommit: deployedSourceCommit \}/);
+  assert.doesNotMatch(workflow, /gitleaks:allow|GITLEAKS_ENABLE|continue-on-error/);
+});
