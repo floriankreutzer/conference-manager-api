@@ -78,7 +78,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager
-          ref: '28a864ea6b1d4f5ae0e0066a072f6012e059358d'
+          ref: '26e3a75bfa15f0a2ea1373e7f8e6ccc61a224dfc'
           path: .runtime-observation-source
           token: ${{ steps.source-token.outputs.token }}
           persist-credentials: false
