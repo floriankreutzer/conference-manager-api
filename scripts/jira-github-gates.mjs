@@ -158,7 +158,8 @@ async function reviewEvidence(comments, reviews, pr, authorId, request, root) {
     if (review.state === 'COMMENTED' || review.state === 'PENDING') continue;
     if (!latest.has(review.user.id) || latest.get(review.user.id).id < review.id) latest.set(review.user.id, review);
   }
-  return { reviewHeadSha: headSha, reviewCommitSha: code.commit_sha, reviewBinding, reviewTreeSha, reviewCompleted: true, reviewsComplete: true,
+  return { reviewHeadSha: headSha, reviewCommitSha: code.commit_sha, reviewBinding, reviewTreeSha,
+    reviewCompleted: true, reviewsComplete: true,
     unresolvedFindings: code.has_unresolved_findings ? 1 : 0,
     changesRequested: [...latest.values()].some((review) => review.state === 'CHANGES_REQUESTED'),
     validApprovals: [...latest.values()].filter((review) => review.state === 'APPROVED'

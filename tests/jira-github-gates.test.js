@@ -262,7 +262,9 @@ for (const [name, mutate] of Object.entries({
   'closed unmerged PR': (f) => { f.pr.merged = false; },
   'draft PR': (f) => { f.pr.draft = true; },
   'different reviewed commit': (f) => { f.comments[0].body = f.comments[0].body.replace(f.pr.merge_commit_sha, 'e'.repeat(40)); },
-  'unresolved findings': (f) => { f.comments[0].body = f.comments[0].body.replace('"has_unresolved_findings":false', '"has_unresolved_findings":true'); },
+  'unresolved findings': (f) => {
+    f.comments[0].body = f.comments[0].body.replace('"has_unresolved_findings":false', '"has_unresolved_findings":true');
+  },
   'findings present': (f) => { f.comments[0].body = f.comments[0].body.replace('"has_any_findings":false', '"has_any_findings":true'); },
   'incomplete review': (f) => { f.comments[0].body = f.comments[0].body.replace('completed', 'pending'); },
   'wrong bot': (f) => { f.comments[0].user.id = 7; },
