@@ -6,6 +6,12 @@ a separate CI dependency and must not be synchronized over protected INT.
 
 ## Current release selection
 
+The newer CO-299 source candidate selects protected frontend
+`53fa27a6b994f1559327f9764a0825fbee2e2165` for the confirmed-booking capacity
+feedback correction. Its exact preparation and outstanding release gates are in
+[the 15 November source record](QA-20261115-SAAS2-CAPACITY-RELEASE.md).
+This source selection does not change the existing INT configuration below.
+
 `render.int.yaml` selects API source `405003e9be0c386934ae02be43d57dd12a6d8d6c`
 and frontend `26e3a75bfa15f0a2ea1373e7f8e6ccc61a224dfc`, documented in
 [the SaaS 2 configuration record](QA-20261110-SAAS2-CONFIGURATION.md).
@@ -112,7 +118,7 @@ both public manifest digests; those are evidence, not automatic runtime approval
 Configure each service's PROTECTED_HOSTED_FRONTEND_SHA256 independently after
 qualification. Never derive and automatically trust the runtime digest at startup.
 
-The separate source Gitlink `vendor/protected-frontend` is now prepared at
+The previous separate source Gitlink `vendor/protected-frontend` was prepared at
 `26e3a75bfa15f0a2ea1373e7f8e6ccc61a224dfc`, frontend PR480 (CO-322), as described
 in the dated SaaS 2 source record. Its actual native protected checkout is
 `d4ee97f316ad7a71220dc220359e121fd1d9c474`, with the same frontend tree; source
