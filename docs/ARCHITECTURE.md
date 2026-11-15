@@ -263,7 +263,8 @@ Provider claims, Microsoft response bodies and provider SDK types do not cross i
   network, provider, identity or database work and supplies no Tenant authorization. Demo and
   protected provisioning consumers own their separate persistence/authority contracts.
 - `scripts/demo-db-migrations.mjs` owns the independent checksum-protected Demo overlay migration
-  ledger after verifying the exact canonical schema `001..064`.
+  ledger after verifying the exact canonical schema required by the
+  [target release](PERSISTENCE.md#release-bound-schema-authority).
 - `scripts/platform-break-glass-grant.mjs` and `scripts/platform-recovery-fallback.mjs` are the only local privileged mutation wrappers. They accept credentials only through fixed descriptors and require live Platform sessions plus a dual-control, exact Tenant/permission-bound, one-use grant. The retired process-local Tenant-operator runtime and package entry point are prohibited. Independent offline passkey enrollment/recovery retains its separate reviewed issuer contract and cannot enter a runtime import graph.
 - `scripts/check-architecture.mjs` prevents architecture, migration and composition drift.
 - `scripts/check-security-baseline.mjs` prevents drift between the documented Pilot/Production security baseline and executable controls.
@@ -363,8 +364,9 @@ Schema ownership lives in `migrations/`. Migrations are paired up/down files, nu
 
 The application never auto-migrates at startup. Deployment automation runs
 migrations first. Runtime readiness requires database connectivity and the exact
-source-owned complete checksummed ledger, currently canonical001..064. The list
-below records selected ownership milestones; it is not the migration inventory.
+source-owned complete checksummed ledger defined by the
+[target release](PERSISTENCE.md#release-bound-schema-authority). The list below
+records selected ownership milestones; it is not the migration inventory.
 
 - Migration 001 establishes Tenant-owned product structures.
 - Migration 002 adds User security-version state and server-side sessions.
@@ -446,8 +448,9 @@ listening. Its HTTP reset path performs the same bounded refresh after reset com
 returning success. Projection failure remains visible and is not represented as a rolled-back
 authoritative reset.
 
-The complete canonical schema is `001..064`; the Demo-only overlay is independently tracked
-as `demo-migrations/001..028`. Neither application process auto-migrates or auto-seeds. See
+The complete canonical schema and independently tracked Demo-only overlay are defined by the
+[release-bound executable contracts](PERSISTENCE.md#release-bound-schema-authority).
+Neither application process auto-migrates or auto-seeds. See
 `docs/SHARED-DEMO-RUNTIME.md` for provisioning and operations.
 
 ## Request composition architecture
@@ -567,7 +570,12 @@ The foundation rate limiter is local, in-memory and bounded. It is not a multi-i
 - Platform Admin/developer operator Principal and audit APIs remain a separate authorization domain.
 - External audit anchoring/WORM retention and selected-platform backup/restore evidence remain operational/governance decisions before stronger completeness or recovery claims are made.
 
-## Equipment composition rollout
+## Historical Equipment composition rollout
+
+The following preserves the earlier Equipment rollout checkpoint, including its fixture and
+overlay versions. Current deployment must use the complete
+[target-release migration sequences](PERSISTENCE.md#release-bound-schema-authority)
+and the current seed contract in `docs/SHARED-DEMO-RUNTIME.md`.
 
 Migration 035 adds exact Request composition v3 Equipment constraints to the existing Request,
 revision and booking-change JSON snapshots. Existing v1/v2 data is not rewritten. Create,
@@ -578,9 +586,10 @@ Tenant-composite Catalogue tables, charged once and included in allocation.
 The `saas-3.6-shared-demo-v5` reset fixture contains distinct priced Northwind/Contoso Equipment
 and verifies those identity, price and applicability facts during semantic readback. Demo overlay
 004 grants only the reset role's `INSERT` and `TRUNCATE` access to the canonical attribution
-migration-state table; customer and Platform roles receive no access. Apply canonical migrations
-first, apply Demo overlays 001 through 008, reset/reseed Demo, deploy both API processes at one
-compatible SHA, verify Catalogue pages and then pin/deploy the updated frontend. Down 035 refuses
+migration-state table; customer and Platform roles receive no access. The recorded rollout
+instructions called for canonical migrations first, then Demo overlays 001 through 008, Demo
+reset/reseed, both API processes at one compatible SHA, Catalogue-page verification and the pinned
+frontend deployment. These instructions are not evidence of an executed deployment. Down 035 refuses
 once any v3 snapshot/proposal/history exists; use a compatible binary or a forward fix. Production
 never activates Demo authority.
 

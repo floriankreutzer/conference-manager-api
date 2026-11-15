@@ -172,3 +172,23 @@ form-action; self-only meta and a broader header intersect, never loosen each
 other. Ordinary closed Demo HTML/CSP remains unchanged. Frontend365 prepares the
 Customer artifact helper and tested native local303; complete two-origin/static
 root/real-primary/browser/deployment acceptance remains outstanding.
+
+
+## Rejected native completion recovery (CO-302)
+
+After strict same-origin checks, a native Customer completion rejected by
+canonical form validation or with authentication/CSRF failure returns HTTP 303 to the fixed
+`/?auth=synthetic_confirmation` (or `/?auth=owner_confirmation` for Owner access).
+It clears only the two transient handoff cookies. It never issues, clears, or
+revokes an ordinary Customer session. The existing frontend confirmation read
+then fails closed and renders its localized expired/rejected state with explicit
+restart and cancel actions. No completion is automatically retried. A late
+account-switch conflict returns to the same confirmation surface without clearing
+any cookies, so explicit account-switch consent remains required.
+
+The 30-second server expiry, one-use proof, browser binding and CSRF verification
+are unchanged. JSON clients retain 401/403/409 error semantics. Oversized or unsupported form encodings, foreign origins,
+outer transport/security rejections and infrastructure failures
+retain their error responses; they are not converted to a successful login.
+The recovery redirect contains no user-controlled target, token, request ID or
+raw error detail. Exact-source browser and database acceptance is still required.

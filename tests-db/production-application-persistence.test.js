@@ -275,6 +275,16 @@ test('production application persistence is tenant-scoped and request create is 
     [],
   );
 
+  for (const [requesterUserId, expected] of [[null, [REQUEST_A]], [USER_A, [REQUEST_A]], [USER_B, []]]) {
+    const first = await requestRepository.listPageByTenantId({ tenantId: TENANT_A, requesterUserId, limit: 10 });
+    assert.equal(first.status, 'ready');
+    assert.deepEqual(first.requests.map((request) => request.id), expected);
+    const repeated = await requestRepository.listPageByTenantId({
+      tenantId: TENANT_A, requesterUserId, snapshot: first.snapshot, limit: 10,
+    });
+    assert.deepEqual(repeated.requests.map((request) => request.id), expected);
+  }
+
   const auditA = await pool.query(
     'SELECT action, target_id FROM audit_events WHERE tenant_id = $1 ORDER BY id',
     [TENANT_A],

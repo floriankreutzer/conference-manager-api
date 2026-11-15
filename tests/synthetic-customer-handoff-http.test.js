@@ -102,10 +102,14 @@ test('native Customer start/complete forms keep top-level redirects and require 
   const cookie=`${f.originalCookie}; ${f.completionCookie}; ${f.ordinaryCookie.split(';')[0]}`;
   const body=new URLSearchParams({ csrfToken: f.signed.csrfToken }).toString();
   for (const value of ['',body+'&csrfToken='+f.signed.csrfToken,'tenantId='+f.flowId]) {
-    const denied=await f.request('/complete',{ body: value,headers: { ...headers,cookie } });assert.equal(denied.status,400);
+    const denied=await f.request('/complete',{ body: value,headers: { ...headers,cookie } });assert.equal(denied.status,303);
+    assert.equal(denied.headers.location,'/?auth=synthetic_confirmation');
+    assert.doesNotMatch(denied.headers['set-cookie'].join(';'),/cm_session=/);
   }
   assert.equal(f.calls.length,1);
-  assert.equal((await f.request('/complete',{ body,headers: { ...headers,cookie,'x-csrf-token': f.signed.csrfToken } })).status,400);
+  const ambiguous=await f.request('/complete',{ body,headers: { ...headers,cookie,'x-csrf-token': f.signed.csrfToken } });
+  assert.equal(ambiguous.status,303);assert.equal(ambiguous.headers.location,'/?auth=synthetic_confirmation');
+  assert.equal(f.calls.length,1);assert.doesNotMatch(ambiguous.headers['set-cookie'].join(';'),/cm_session=/);
   const answer=await f.request('/complete',{ body,headers: { ...headers,cookie } });
   assert.equal(answer.status,303);assert.equal(answer.headers.location,'/');assert.equal(answer.headers['set-cookie'][0],f.ordinaryCookie);
   assert.equal(f.calls.at(-1).input.csrfToken,f.signed.csrfToken);assert.equal(f.calls.at(-1).input.request.headers.cookie,cookie);
@@ -128,3 +132,54 @@ test('flow-bound explicit logout clears only the actual ordinary cookie after co
   const failed=await f.request('/logout',{ headers: { cookie,'x-csrf-token': f.signed.csrfToken } });
   assert.equal(failed.status,500);assert.equal(failed.headers['set-cookie'],undefined);assert.doesNotMatch(failed.text,/private|COMMIT/);
 });
+
+
+for (const kind of ['synthetic', 'owner_real']) {
+  test(`CO-302 ${kind}: rejected native completion returns to fixed recovery without issuing or clearing an ordinary session`, async t => {
+    const f = await fixture(t, { kind });
+    const prefix = kind === 'synthetic' ? 'synthetic' : 'owner';
+    const headers = { 'content-type': 'application/x-www-form-urlencoded' };
+    const body = new URLSearchParams({ csrfToken: f.signed.csrfToken }).toString();
+    const cookie = `${f.originalCookie}; ${f.completionCookie}; ${f.ordinaryCookie.split(';')[0]}`;
+    for (const missing of [undefined, f.originalCookie, f.completionCookie]) {
+      const answer = await f.request('/complete', { body, headers: { ...headers, cookie: missing } });
+      assert.equal(answer.status, 303);
+      assert.equal(answer.headers.location, `/?auth=${prefix}_confirmation`);
+      assert.equal(answer.text, '');
+      assert.equal(answer.headers['cache-control'], 'no-store');
+      assert.equal(answer.headers['referrer-policy'], 'no-referrer');
+      assert.equal(answer.headers['set-cookie'].length, 2);
+      assert.ok(answer.headers['set-cookie'].every(value => /Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT$/.test(value)));
+      assert.doesNotMatch(answer.headers['set-cookie'].join(';'), /cm_session=/);
+    }
+    assert.equal(f.calls.length, 0);
+    const invalidCsrf = await f.request('/complete', {
+      body: 'csrfToken=invalid', headers: { ...headers, cookie },
+    });
+    assert.equal(invalidCsrf.headers.location, `/?auth=${prefix}_confirmation`);
+    assert.equal(f.calls.length, 0);
+    f.state.complete = new Error(kind === 'synthetic' ? 'SYNTHETIC_HANDOFF_DENIED' : 'OWNER_HANDOFF_DENIED');
+    const denied = await f.request('/complete', { body, headers: { ...headers, cookie } });
+    assert.equal(denied.status, 303);
+    assert.equal(denied.headers.location, `/?auth=${prefix}_confirmation`);
+    assert.doesNotMatch(denied.headers['set-cookie'].join(';'), /cm_session=/);
+    const jsonDenied = await f.request('/complete', { headers: { cookie, 'x-csrf-token': f.signed.csrfToken } });
+    assert.equal(jsonDenied.status, 401);
+    assert.equal(jsonDenied.headers.location, undefined);
+    f.state.complete = new Error(kind === 'synthetic' ? 'SYNTHETIC_HANDOFF_LOGOUT_REQUIRED' : 'OWNER_HANDOFF_LOGOUT_REQUIRED');
+    const switchRequired = await f.request('/complete', { body, headers: { ...headers, cookie } });
+    assert.equal(switchRequired.headers.location, `/?auth=${prefix}_confirmation`);
+    assert.equal(switchRequired.headers['set-cookie'], undefined);
+    const before = f.calls.length;
+    const foreign = await f.request('/complete', { body, headers: { ...headers, cookie, origin: 'https://foreign.test' } });
+    assert.equal(foreign.status, 403);
+    assert.equal(foreign.headers.location, undefined);
+    assert.equal(f.calls.length, before);
+    f.state.complete = new Error('COMMIT_FAILED private');
+    const unavailable = await f.request('/complete', { body, headers: { ...headers, cookie } });
+    assert.equal(unavailable.status, 500);
+    assert.equal(unavailable.headers.location, undefined);
+    assert.equal(unavailable.headers['set-cookie'], undefined);
+    assert.doesNotMatch(unavailable.text, /COMMIT_FAILED|private/);
+  });
+}

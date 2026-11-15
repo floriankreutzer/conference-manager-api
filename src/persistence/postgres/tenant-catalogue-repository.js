@@ -107,54 +107,36 @@ async function loadCurrentWithClient(client, tenantId, { lock = false } = {}) {
   const tenant = tenantResult.rows[0];
   if (!tenant) return null;
 
-  const [
-    services,
-    equipment,
-    packages,
-    items,
-    variants,
-    packageItems,
-    serviceSites,
-    serviceRooms,
-    equipmentSites,
-    equipmentRooms,
-    packageSites,
-    packageRooms,
-    itemSites,
-    itemRooms,
-    roomPrices,
-  ] = await Promise.all([
-    queryRows(client, 'tenant-catalogue-services-read', 'services', tenantId,
-      'id, name, description, price_minor, currency, active, sort_order'),
-    queryRows(client, 'tenant-catalogue-equipment-read', 'equipment', tenantId,
-      'id, name, description, price_minor, currency, active, sort_order'),
-    queryRows(client, 'tenant-catalogue-packages-read', 'catering_packages', tenantId,
-      'id, name, description, price_minor, currency, active, sort_order'),
-    queryRows(client, 'tenant-catalogue-items-read', 'catering_items', tenantId,
-      'id, name, description, price_minor, currency, active, sort_order'),
-    queryRows(client, 'tenant-catalogue-variants-read', 'catering_package_variants', tenantId,
-      'package_id, id, name, description, price_minor, currency, active, sort_order'),
-    queryRows(client, 'tenant-catalogue-package-items-read', 'catering_package_items', tenantId,
-      'package_id, item_id'),
-    queryRows(client, 'tenant-catalogue-service-sites-read', 'service_site_applicability', tenantId,
-      'service_id, site_id'),
-    queryRows(client, 'tenant-catalogue-service-rooms-read', 'service_room_applicability', tenantId,
-      'service_id, room_id'),
-    queryRows(client, 'tenant-catalogue-equipment-sites-read', 'equipment_site_applicability', tenantId,
-      'equipment_id, site_id'),
-    queryRows(client, 'tenant-catalogue-equipment-rooms-read', 'equipment_room_applicability', tenantId,
-      'equipment_id, room_id'),
-    queryRows(client, 'tenant-catalogue-package-sites-read', 'catering_package_site_applicability', tenantId,
-      'package_id, site_id'),
-    queryRows(client, 'tenant-catalogue-package-rooms-read', 'catering_package_room_applicability', tenantId,
-      'package_id, room_id'),
-    queryRows(client, 'tenant-catalogue-item-sites-read', 'catering_item_site_applicability', tenantId,
-      'item_id, site_id'),
-    queryRows(client, 'tenant-catalogue-item-rooms-read', 'catering_item_room_applicability', tenantId,
-      'item_id, room_id'),
-    queryRows(client, 'tenant-catalogue-room-prices-read', 'tenant_room_prices', tenantId,
-      'room_id, price_minor, currency'),
-  ]);
+  const services = await queryRows(client, 'tenant-catalogue-services-read', 'services', tenantId,
+    'id, name, description, price_minor, currency, active, sort_order');
+  const equipment = await queryRows(client, 'tenant-catalogue-equipment-read', 'equipment', tenantId,
+    'id, name, description, price_minor, currency, active, sort_order');
+  const packages = await queryRows(client, 'tenant-catalogue-packages-read', 'catering_packages', tenantId,
+    'id, name, description, price_minor, currency, active, sort_order');
+  const items = await queryRows(client, 'tenant-catalogue-items-read', 'catering_items', tenantId,
+    'id, name, description, price_minor, currency, active, sort_order');
+  const variants = await queryRows(client, 'tenant-catalogue-variants-read', 'catering_package_variants', tenantId,
+    'package_id, id, name, description, price_minor, currency, active, sort_order');
+  const packageItems = await queryRows(client, 'tenant-catalogue-package-items-read', 'catering_package_items', tenantId,
+    'package_id, item_id');
+  const serviceSites = await queryRows(client, 'tenant-catalogue-service-sites-read', 'service_site_applicability', tenantId,
+    'service_id, site_id');
+  const serviceRooms = await queryRows(client, 'tenant-catalogue-service-rooms-read', 'service_room_applicability', tenantId,
+    'service_id, room_id');
+  const equipmentSites = await queryRows(client, 'tenant-catalogue-equipment-sites-read', 'equipment_site_applicability', tenantId,
+    'equipment_id, site_id');
+  const equipmentRooms = await queryRows(client, 'tenant-catalogue-equipment-rooms-read', 'equipment_room_applicability', tenantId,
+    'equipment_id, room_id');
+  const packageSites = await queryRows(client, 'tenant-catalogue-package-sites-read', 'catering_package_site_applicability', tenantId,
+    'package_id, site_id');
+  const packageRooms = await queryRows(client, 'tenant-catalogue-package-rooms-read', 'catering_package_room_applicability', tenantId,
+    'package_id, room_id');
+  const itemSites = await queryRows(client, 'tenant-catalogue-item-sites-read', 'catering_item_site_applicability', tenantId,
+    'item_id, site_id');
+  const itemRooms = await queryRows(client, 'tenant-catalogue-item-rooms-read', 'catering_item_room_applicability', tenantId,
+    'item_id, room_id');
+  const roomPrices = await queryRows(client, 'tenant-catalogue-room-prices-read', 'tenant_room_prices', tenantId,
+    'room_id, price_minor, currency');
 
   const serviceSiteMap = relationMap(serviceSites, 'service_id', 'site_id');
   const serviceRoomMap = relationMap(serviceRooms, 'service_id', 'room_id');
@@ -280,18 +262,16 @@ async function referencesExist(client, tenantId, catalogue) {
     }
   }
   catalogue.roomPrices.forEach((entry) => roomIds.add(entry.roomId));
-  const [sites, rooms] = await Promise.all([
-    client.query({
-      name: 'tenant-catalogue-site-references',
-      text: 'SELECT id FROM sites WHERE tenant_id = $1 AND id = ANY($2::varchar[])',
-      values: [tenantId, [...siteIds]],
-    }),
-    client.query({
-      name: 'tenant-catalogue-room-references',
-      text: 'SELECT id FROM rooms WHERE tenant_id = $1 AND id = ANY($2::varchar[])',
-      values: [tenantId, [...roomIds]],
-    }),
-  ]);
+  const sites = await client.query({
+    name: 'tenant-catalogue-site-references',
+    text: 'SELECT id FROM sites WHERE tenant_id = $1 AND id = ANY($2::varchar[])',
+    values: [tenantId, [...siteIds]],
+  });
+  const rooms = await client.query({
+    name: 'tenant-catalogue-room-references',
+    text: 'SELECT id FROM rooms WHERE tenant_id = $1 AND id = ANY($2::varchar[])',
+    values: [tenantId, [...roomIds]],
+  });
   return sites.rowCount === siteIds.size && rooms.rowCount === roomIds.size;
 }
 

@@ -28,7 +28,7 @@ loaded from the existing private environment binding, never a public workflow
 input. There is no Tenant selector, connection, origin, SQL, role or health-state
 input. For the original one-shot workflow, the deployed API SHA must equal the exact observer Main SHA. Frontend
 selection is additionally locked to qualified immutable commit
-`17c28fb615264e6a2eccc7ed6e46d20171cb66e3`; changing that pin requires a reviewed
+`83f883dbccd76a28050f1981c8431f18174f04e7`; changing that pin requires a reviewed
 source change and renewed pair qualification. An arbitrary branch commit cannot
 execute browser build code before subsequent offline credential allocation.
 
@@ -282,7 +282,7 @@ collection. Keep CM_INT_OBSERVER_SCHEDULE_ENABLED=false. This change does not
 claim a successful collector write, current UI freshness, recurring execution,
 optional provider health or completion of QA-09's separate sources.
 
-## Current QA-10 selection — 6 November 2026
+## Historical QA-10 selection — 6 November 2026
 
 CO-84 follows the qualified KPI release in API PR377 and frontend PR446.
 The deployed API is `863e8220b4aa5d3ef58946b1833550f78369dfb7`; the immutable
@@ -303,3 +303,26 @@ unknown. Require candidate and independent Main qualification before changing
 `CM_INT_OBSERVER_SCHEDULE_ENABLED=false`; a successful manual observation is not
 a recurring or Product/Feedback acceptance. The 300-second freshness, owner
 custody, exact migration ledger and full sealed-byte checks remain unchanged.
+
+
+## Current SaaS1 QA selection — 9 November 2026
+
+CO-320 follows frontend integration PR465 and API release PR402 (including PR401).
+The deployed API is `c146aeab3501b73d71d2fde70cb5b102d4d617a6`; frontend is
+`83f883dbccd76a28050f1981c8431f18174f04e7`. Successful Render receipts are Customer
+`dep-dbot1d6c6qcc738lsdi0` at `2026-11-09T13:56:00.566Z` and Platform
+`dep-dbot1d6c6qcc738lsdg0` at `2026-11-09T13:56:03.168Z`.
+
+Independent read-only verification at 13:56 UTC matched every hosted file's
+SHA-256, byte count and content type (311 Customer, 197 Platform) to the qualified
+sealed artifacts. Both readiness routes and API/frontend deployment metadata
+matched the selected pair. These are actual deployment and public-byte checks,
+not persisted observer timestamps or authenticated business acceptance.
+
+The selection, fixed frontend checkout and exact frontend allowlist advance
+together; regression coverage now also refuses the superseded November 6 frontend.
+No application redeployment, schema, role, epoch or scheduling change is part of
+this reconciliation. Require this observer candidate and independent Main gates
+before qualifying its exact Main SHA and one bounded manual collection. Keep
+`CM_INT_OBSERVER_SCHEDULE_ENABLED=false`. The separate 300-second freshness,
+owner custody, migration ledger and all-byte checks remain unchanged.

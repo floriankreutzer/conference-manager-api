@@ -1,10 +1,16 @@
 import { pathToFileURL } from 'node:url';
 import { Pool } from 'pg';
 import { publishJiraRegister } from './jira-register-publisher.mjs';
+import { reviseJiraRegisterScope } from './jira-register-reviser.mjs';
+import { normalizeJiraScopeExecution } from './jira-register-scope-revision.mjs';
 
 const failure = () => new Error('JIRA_REGISTER_RUN_UNVERIFIED');
-const results = new Set(['JIRA_REGISTER_CONFIRMED', 'JIRA_REGISTER_TASK_PENDING',
-  'JIRA_REGISTER_UNCHANGED', 'JIRA_REGISTER_ISSUE_NOT_IN_REVIEW']);
+const results = {
+  append: new Set(['JIRA_REGISTER_CONFIRMED', 'JIRA_REGISTER_TASK_PENDING',
+    'JIRA_REGISTER_UNCHANGED', 'JIRA_REGISTER_ISSUE_NOT_IN_REVIEW']),
+  supersede: new Set(['JIRA_SCOPE_REVISION_CONFIRMED', 'JIRA_SCOPE_REVISION_TASK_PENDING',
+    'JIRA_SCOPE_REVISION_ALREADY_CONFIRMED', 'JIRA_SCOPE_REVISION_ISSUE_NOT_IN_REVIEW']),
+};
 
 export function loadJiraWriterDatabaseConfig(env = {}) {
   try {
@@ -31,10 +37,23 @@ export function loadJiraWriterConfig(env = {}) {
   if (env.GITHUB_REPOSITORY !== 'floriankreutzer/conference-manager-api'
     || env.GITHUB_REF !== 'refs/heads/main' || env.GITHUB_EVENT_NAME !== 'workflow_dispatch'
     || env.CM_JIRA_REGISTER_WRITER_ENABLED !== 'true') throw failure();
-  return { database: loadJiraWriterDatabaseConfig(env),
+  const operation = env.CM_JIRA_REGISTER_OPERATION ?? 'append';
+  if (!['append', 'supersede'].includes(operation)) throw failure();
+  let revision = {};
+  if (operation === 'supersede') {
+    if (typeof env.CM_JIRA_WRITER_ACCOUNT_ID !== 'string' || !/^[a-zA-Z0-9:-]{1,128}$/.test(env.CM_JIRA_WRITER_ACCOUNT_ID)
+      || typeof env.CM_JIRA_DECISION_COMMENT_ID !== 'string' || !/^[1-9][0-9]{0,19}$/.test(env.CM_JIRA_DECISION_COMMENT_ID)
+      || typeof env.CM_JIRA_DECISION_DIGEST !== 'string' || !/^[a-f0-9]{64}$/.test(env.CM_JIRA_DECISION_DIGEST)
+      || typeof env.CM_JIRA_ISSUE_KEY !== 'string' || !/^CO-[1-9][0-9]{0,8}$/.test(env.CM_JIRA_ISSUE_KEY)
+      || env.GITHUB_RUN_ATTEMPT !== '1') throw failure();
+    revision = { actorId: env.CM_JIRA_WRITER_ACCOUNT_ID, commentId: env.CM_JIRA_DECISION_COMMENT_ID,
+      expectedDecisionDigest: env.CM_JIRA_DECISION_DIGEST, execution: normalizeJiraScopeExecution({
+        sourceSha: env.GITHUB_SHA, runId: env.GITHUB_RUN_ID, runAttempt: 1, githubActorId: env.GITHUB_ACTOR_ID }) };
+  } else if (env.CM_JIRA_DECISION_COMMENT_ID || env.CM_JIRA_DECISION_DIGEST) throw failure();
+  return { operation, database: loadJiraWriterDatabaseConfig(env),
     publisher: { cloudId: env.CM_JIRA_CLOUD_ID, email: env.CM_JIRA_WRITER_EMAIL,
       token: env.CM_JIRA_WRITER_API_TOKEN, githubToken: env.CM_GITHUB_INVENTORY_TOKEN,
-      issueKey: env.CM_JIRA_ISSUE_KEY } };
+      issueKey: env.CM_JIRA_ISSUE_KEY, ...revision } };
 }
 
 export async function assertJiraWriterIdentity(pool) {
@@ -50,7 +69,8 @@ export async function assertJiraWriterIdentity(pool) {
 }
 
 export async function runJiraPublisher({ env = process.env, write = console.log,
-  poolFactory = config => new Pool(config), publish = publishJiraRegister, fetchImpl = fetch } = {}) {
+  poolFactory = config => new Pool(config), publish = publishJiraRegister,
+  revise = reviseJiraRegisterScope, fetchImpl = fetch } = {}) {
   let pool;
   let failed = false;
   let report = { result: 'JIRA_REGISTER_RUN_UNVERIFIED', readinessAuthorized: false };
@@ -61,11 +81,12 @@ export async function runJiraPublisher({ env = process.env, write = console.log,
     pool.on('error', () => { failed = true; controller.abort(); });
     await assertJiraWriterIdentity(pool);
     if (failed) throw failure();
-    const result = await publish({ ...config.publisher, pool, fetchImpl: (url, options) => {
+    const operation = config.operation === 'supersede' ? revise : publish;
+    const result = await operation({ ...config.publisher, pool, fetchImpl: (url, options) => {
       if (failed || controller.signal.aborted) throw failure();
       return fetchImpl(url, { ...options, signal: AbortSignal.any([controller.signal, options.signal]) });
     } });
-    if (!results.has(result?.result) || typeof result.writeSubmitted !== 'boolean'
+    if (!results[config.operation].has(result?.result) || typeof result.writeSubmitted !== 'boolean'
       || result.readinessAuthorized !== false || failed) throw failure();
     report = { result: result.result, writeSubmitted: result.writeSubmitted, readinessAuthorized: false };
   } catch { failed = true; }

@@ -179,7 +179,9 @@ async t=>{
   const switchView=await request('customer','/api/v1/auth/delegation/confirmation',{ headers: { cookie: switchCookie } });
   assert.equal(JSON.parse(switchView.text).accountSwitchRequired,true);
   const blocked=await request('customer','/api/v1/auth/delegation/complete',{ method: 'POST',form: { csrfToken },
-    headers: { cookie: switchCookie } });assert.equal(blocked.status,409);assert.equal(blocked.headers['set-cookie'],undefined);
+    headers: { cookie: switchCookie } });assert.equal(blocked.status,303);
+  assert.equal(blocked.headers.location,'/?auth=synthetic_confirmation');
+  assert.equal(blocked.headers['set-cookie'],undefined);assert.equal(await count(),before);
   const wrong=await request('customer','/api/v1/auth/delegation/logout',{ method: 'POST',body: {},
     headers: { cookie: switchCookie,'x-csrf-token': '0'.repeat(64) } });assert.equal(wrong.status,401);
   assert.ok(await realSessions.resolvePrincipal({ headers: { cookie: realCookie } }));
@@ -194,8 +196,12 @@ async t=>{
   assert.equal(unknown.status,204);assert.match(unknown.headers['set-cookie'][0],/^cm_session=;.*Max-Age=0/);
   const complete=()=>request('customer','/api/v1/auth/delegation/complete',{ method: 'POST',form: { csrfToken },
     headers: { cookie: completionCookie } });
-  const results=await Promise.all([complete(),complete()]);assert.deepEqual(results.map(result=>result.status).sort(),[303,401]);
-  assert.equal(await count(),before+1);const customerCookie=pair(results.find(result=>result.status===303).headers['set-cookie'][0]);
+  const results=await Promise.all([complete(),complete()]);assert.ok(results.every(result=>result.status===303));
+  assert.deepEqual(results.map(result=>result.headers.location).sort(),['/','/?auth=synthetic_confirmation']);
+  const rejected=results.find(result=>result.headers.location!=='/');
+  assert.doesNotMatch(rejected.headers['set-cookie'].join(';'),/cm_session=/);
+  assert.equal(await count(),before+1);
+  const customerCookie=pair(results.find(result=>result.headers.location==='/').headers['set-cookie'][0]);
   assert.ok(await customerSessions.resolvePrincipal({ headers: { cookie: customerCookie } }));
   assert.equal((await request('customer','/api/v1/session',{ headers: { cookie: customerCookie } })).status,200);
   assert.equal(await tenantAudit.verifyTenantChain(generation.tenants[0].tenantId),true);

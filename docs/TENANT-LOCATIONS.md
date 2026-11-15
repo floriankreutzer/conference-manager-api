@@ -24,16 +24,15 @@ Read/history access is available only to recognized authorized principals that r
 
 `GET /api/v1/tenant/settings/locations/history` returns bounded revision metadata. `GET /api/v1/tenant/settings/locations/history/{revision}` returns an immutable local-configuration snapshot. A stale write returns `409 TENANT_SETTINGS_REVISION_CONFLICT` with only the current safe numeric revision. No stale mutation, revision increment or success audit event commits.
 
-## Legacy Room text during Guest rollout
+Current Guest editors explicitly select schema `3` on current/revision reads and writes. Unparameterized reads retain the exact schema `1` contract; `?schemaVersion=2` remains supported for legacy readers. See [Structured public Guest values](STRUCTURED-GUEST-VALUES.md) for the schema `3` fields and preservation rules.
 
-Stored v1/v2 Locations reads and history retain previously accepted bounded Room `floor` and `accessibility` values, even when a value fails the newer public Guest text screen. The public Guest projection validates separately and fails closed for unsafe stored text. New Locations writes still require the strict public-safe Room text shape; an authorized Manager must correct affected legacy values before submitting a new aggregate revision. The Site Guest prose policy in ADR-012 remains a separate release blocker until structured values replace it.
+## Structured Guest values and legacy text compatibility
 
-Until the structured H-035 contract is implemented, the confirmed-Request Guest projection
-withholds all Site Guest-v2 free-text fields and the Wi-Fi network name, plus Room `floor`
-and `accessibility` prose. It retains the nullable v2 response shape and approved fixed
-Wi-Fi policy for existing readers. Authorized Locations v2 reads and history still expose
-stored values to their owners for correction; public reads do not. Site address, route,
-contact and Site/Room names remain separately governed public inputs under ADR-012.
+The structured H-035 contract is implemented as Locations schema `3` and confirmed-Request Guest schema `3`. Nullable Site and Room `guestPublicValues` hold bounded public choices; legacy prose is neither promoted nor backfilled into them. The owning contract is [Structured public Guest values](STRUCTURED-GUEST-VALUES.md).
+
+Authorized Locations reads and history retain previously accepted bounded Room `floor` and `accessibility` values, including legacy values that fail the newer public Guest text screen. New Locations writes still require the strict Room text shape, so an authorized Manager must correct affected legacy values before submitting a new aggregate revision.
+
+Both Guest response versions withhold Site Guest free-text fields and the Wi-Fi network name, and return Room `floor: null` and `accessibility: []`. Legacy Guest v2 additionally retains its strict stored-Room-text rejection; Guest v3 does not publish that legacy Room prose and uses the structured values for the corresponding presentation. Authorized Locations reads/history still expose stored values to their owners for correction. Site address, route, contact and Site/Room names remain separately governed public inputs with residual content risk under ADR-012. Implemented structured values do not by themselves close product/security or deployment acceptance.
 
 ## SaaS 3.6 ownership boundary
 
@@ -44,6 +43,7 @@ Conference Manager owns Room business fields:
 - `active` business availability;
 - `floor`;
 - bounded `equipment` and `accessibility` tags;
+- Room `guestPublicValues` in schema `3`;
 - applicable `serviceIds`;
 - applicable `cateringPackageIds`;
 - local `floorplanAssetId` and `mediaAssetIds`.
@@ -52,7 +52,7 @@ Those changes require `conference_manager` plus `tenant:rooms:business:manage`.
 
 Tenant Admin owns technical Location shape:
 
-- Site records, including stable ID, display name, active state, authoritative IANA time zone and bounded postal address metadata;
+- Site records, including stable ID, display name, active state, authoritative IANA time zone, bounded postal address metadata, `guestInformation` and schema `3` `guestPublicValues`;
 - Room stable identity;
 - Room-to-Site technical assignment (`siteId`);
 - provider connection/discovery/import/resync and provider Room identity/resource mapping through the dedicated integration services.
@@ -112,6 +112,8 @@ Migration rollback is fail-closed after versioned/domain use and requires review
 - shared-Demo browser evidence on the same server-backed API contract;
 - provider discovery/import/resync evidence remains separate external acceptance and never substitutes for local authorization tests.
 
-## Explicit version 2 Guest Information
+## Explicit Guest versions and preservation
 
-Locations v2 adds nullable Site-owned `guestInformation`; v1 reads omit it and v1 writes, rollbacks and bulk operations preserve it. Guest changes use the same locked revision, Site-field authorization, immutable history and audit transaction. See `docs/SITE-GUEST-INFORMATION.md` for exact configuration, negotiation and migration 037.
+Locations v2 adds nullable Site-owned `guestInformation`; v1 reads omit it and v1 writes, rollbacks and bulk operations preserve it. Schema `3` retains that field and adds nullable Site/Room `guestPublicValues`; v1/v2 writes and rollback preserve the structured values. Guest changes use the same locked revision, field-level authorization, immutable history and audit transaction.
+
+See [Site Guest Information](SITE-GUEST-INFORMATION.md) for the retained v2 configuration and migration 037, and [Structured public Guest values](STRUCTURED-GUEST-VALUES.md) for current schema `3`, migration 040 and the unchanged release-evidence requirements.

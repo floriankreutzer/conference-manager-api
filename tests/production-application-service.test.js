@@ -353,6 +353,69 @@ test('request list scope is employee-owned and manager tenant-wide', async () =>
   }]);
 });
 
+test('personal Request scope narrows every authorized role without accepting caller identity', async () => {
+  for (const principal of [employee(), manager(), tenantAdmin(), {
+    ...manager(), roles: [...manager().roles, TENANT_ROLE.TENANT_ADMIN],
+  }]) {
+    const { service, calls } = harness();
+    await service.listRequests({
+      principal, tenantContext: { tenantId: TENANT_A }, correlationId: CORRELATION_ID,
+      query: { limit: undefined, cursor: undefined, scope: 'own' },
+    });
+    assert.equal(calls[0][1].tenantId, TENANT_A);
+    assert.equal(calls[0][1].requesterUserId, principal.userId);
+  }
+  for (const query of [
+    { scope: 'all' }, { scope: '' }, { scope: null }, { scope: ['own'] },
+    { scope: USER_A }, { scope: 'own', requesterUserId: USER_A },
+    { scope: 'own', tenantId: TENANT_B },
+  ]) {
+    const { service, calls } = harness();
+    await assert.rejects(service.listRequests({
+      principal: manager(), tenantContext: { tenantId: TENANT_A }, correlationId: CORRELATION_ID,
+      query: { limit: undefined, cursor: undefined, ...query },
+    }), AuthorizationInputError);
+    assert.equal(calls.length, 0);
+  }
+  for (const principal of [employee({ permissions: [] }), manager()]) {
+    const { service, calls } = harness();
+    await assert.rejects(service.listRequests({
+      principal, tenantContext: { tenantId: TENANT_B }, correlationId: CORRELATION_ID,
+      query: { limit: undefined, cursor: undefined, scope: 'own' },
+    }), AuthorizationDeniedError);
+    assert.equal(calls.length, 0);
+  }
+});
+
+test('personal and Manager Request pages cannot exchange signed continuation cursors', async () => {
+  const { service, calls, requestRepository } = harness();
+  requestRepository.listPageByTenantId = async (args) => {
+    calls.push(['listRequests', args]);
+    return {
+      status: 'ready', snapshot: { revisionWatermark: 2, asOf: AT },
+      requests: [
+        toPublicRequest(storedRequest('OWN-1', '2026-09-01T08:00:00.000Z')),
+        toPublicRequest(storedRequest('OWN-2', '2026-09-01T09:00:00.000Z')),
+      ],
+    };
+  };
+  const context = {
+    principal: manager(), tenantContext: { tenantId: TENANT_A }, correlationId: CORRELATION_ID,
+  };
+  for (const scope of [undefined, 'own']) {
+    const first = await service.listRequests({ ...context, query: { limit: '1', cursor: undefined, scope } });
+    assert.equal(first.page.complete, false);
+    const count = calls.length;
+    await assert.rejects(service.listRequests({
+      ...context, query: { limit: '1', cursor: first.page.nextCursor, scope: scope ? undefined : 'own' },
+    }), AuthorizationInputError);
+    assert.equal(calls.length, count);
+    await service.listRequests({ ...context, query: { limit: '1', cursor: first.page.nextCursor, scope } });
+    assert.equal(calls.at(-1)[1].requesterUserId, scope ? USER_A : null);
+    assert.equal(calls.at(-1)[1].afterRequestId, 'OWN-1');
+  }
+});
+
 test('Manager Request report is UTC-range scoped, cursor-complete and uses public v2 records', async () => {
   const { service, requestRepository, calls } = harness();
   const rows = [

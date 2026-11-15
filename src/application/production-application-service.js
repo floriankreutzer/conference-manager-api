@@ -38,6 +38,7 @@ import {
 import {
   createApplicationRequestListCursor,
   normalizeApplicationRequestListQuery,
+  normalizeApplicationRequestListScope,
 } from './request-list.js';
 
 const NOTIFICATION_LIMIT = 200;
@@ -255,15 +256,17 @@ export function createProductionApplicationService({
     async listRequests({ principal, tenantContext, correlationId, query }) {
       requireCorrelationId(correlationId);
       const scope = authorizationPolicy.requestListScope(principal, tenantContext);
+      const requesterUserId = normalizeApplicationRequestListScope(query) === 'own'
+        ? principal.userId : scope.requesterUserId;
       const page = normalizeApplicationRequestListQuery(query, {
         tenantId: tenantContext.tenantId,
-        requesterUserId: scope.requesterUserId,
+        requesterUserId,
         cursorSecret,
         evaluatedAt: clockDate(clock).toISOString(),
       });
       const loaded = await requestRepository.listPageByTenantId({
         tenantId: tenantContext.tenantId,
-        requesterUserId: scope.requesterUserId,
+        requesterUserId,
         snapshot: page.snapshot,
         afterStartsAt: page.afterStartsAt === null ? null : new Date(page.afterStartsAt),
         afterRequestId: page.afterRequestId,
@@ -284,7 +287,7 @@ export function createProductionApplicationService({
         limit: page.limit,
         maxResponseBytes,
         cursorFor: (last) => createApplicationRequestListCursor({
-          requesterUserId: scope.requesterUserId,
+          requesterUserId,
           tenantId: tenantContext.tenantId,
           snapshot: loaded.snapshot,
           startsAt: last.startsAt,

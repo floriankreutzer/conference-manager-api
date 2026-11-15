@@ -1506,6 +1506,11 @@ test('paged catalog and Manager request feeds expose their exact versioned query
     assert.deepEqual(list.body.requests, []);
     assert.equal(list.body.page.complete, true);
 
+    const own = await request({ port, path: '/api/v1/application/requests?limit=10&scope=own' });
+    assert.equal(own.statusCode, 200);
+    assert.deepEqual(calls.at(-1)[1].query, { limit: '10', cursor: undefined, scope: 'own' });
+
+
     const report = await request({
       port,
       path: '/api/v1/application/reports/requests?from=2026-01-01T00%3A00%3A00.000Z&to=2027-01-01T00%3A00%3A00.000Z&limit=10',
@@ -1521,6 +1526,10 @@ test('paged catalog and Manager request feeds expose their exact versioned query
       '/api/v1/application/catalog?section=services&tenantId=foreign',
       '/api/v1/application/requests?limit=2&limit=3',
       '/api/v1/application/requests?tenantId=foreign',
+      '/api/v1/application/requests?scope=own&scope=own',
+      '/api/v1/application/requests?scope=all',
+      '/api/v1/application/requests?scope=',
+      '/api/v1/application/requests?scope=own&requesterUserId=foreign',
       '/api/v1/application/reports/requests?from=2026-01-01T00%3A00%3A00.000Z',
       '/api/v1/application/reports/requests?from=x&from=y&to=z',
       '/api/v1/application/reports/requests?from=x&to=y&tenantId=foreign',
@@ -1537,7 +1546,7 @@ test('paged catalog and Manager request feeds expose their exact versioned query
     });
     assert.equal(wrongMethod.statusCode, 405);
   });
-  assert.deepEqual(calls.map(([name]) => name), ['catalog', 'catalog', 'list', 'report']);
+  assert.deepEqual(calls.map(([name]) => name), ['catalog', 'catalog', 'list', 'list', 'report']);
   assert.deepEqual(calls[0][1].query, {
     section: 'sites', limit: '10', cursor: undefined, context: undefined,
   });
@@ -1545,7 +1554,7 @@ test('paged catalog and Manager request feeds expose their exact versioned query
     section: 'equipment', limit: '10', cursor: undefined, context: 'catalog-context',
   });
   assert.deepEqual(calls[2][1].query, { limit: '10', cursor: undefined });
-  assert.equal(calls[3][1].query.limit, '10');
+  assert.equal(calls[4][1].query.limit, '10');
 });
 
 test('logs contain only bounded metadata and do not copy authorization or cookie headers', async () => {

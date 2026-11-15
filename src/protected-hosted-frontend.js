@@ -28,6 +28,7 @@ export function withProtectedHostedFrontend({ profile,config,artifact,apiHandler
   const limiter=createRateLimiter({ max: Math.min(4096,artifact.fileCount*16),windowMs: 60_000,maxKeys: 2000 });
   return (request,response)=>{
     if (typeof request.url!=='string' || /^\/api(?:\/|\?|$)/.test(request.url)) return apiHandler(request,response);
+    response.setHeader('Cross-Origin-Embedder-Policy','require-corp');
     try {
       assertRequestHost(request.headers,config.publicOrigin);assertSafeRequestTarget(request.url);
       assertSameOrigin(request.headers,config.publicOrigin);

@@ -242,12 +242,16 @@ test('native designated owner REAL handoff creates only own identity, preserves 
   const finish=()=>exchangeProtectedRuntime('customer',app.outcome.port,'/api/v1/auth/owner/complete',{
     method: 'POST',form: { csrfToken: confirmed.csrfToken },headers: { cookie: flowCookies } });
   const wrongCsrf=await exchangeProtectedRuntime('customer',app.outcome.port,'/api/v1/auth/owner/complete',{
-    method: 'POST',form: { csrfToken: '0'.repeat(64) },headers: { cookie: flowCookies } });assert.equal(wrongCsrf.status,401);
+    method: 'POST',form: { csrfToken: '0'.repeat(64) },headers: { cookie: flowCookies } });assert.equal(wrongCsrf.status,303);
+  assert.equal(wrongCsrf.headers.location,'/?auth=owner_confirmation');
+  assert.doesNotMatch(wrongCsrf.headers['set-cookie'].join(';'),/cm_session=/);
   const completed=await finish();assert.equal(completed.status,303);assert.equal(completed.headers.location,'/');
   const customerContinuation=completed.headers['set-cookie'].find(value=>value.startsWith('cm_session='));
   assert.ok(customerContinuation);const actual=await customer.sessionService.resolvePrincipal(headers(customerContinuation));
   assert.ok(actual);assert.equal(actual.userId,ownId);assert.deepEqual(actual.roles,['employee','tenant_admin']);
-  previous={ principal: actual,setCookie: customerContinuation };assert.equal((await finish()).status,401);
+  previous={ principal: actual,setCookie: customerContinuation };
+  const replay=await finish();assert.equal(replay.status,303);assert.equal(replay.headers.location,'/?auth=owner_confirmation');
+  assert.doesNotMatch(replay.headers['set-cookie'].join(';'),/cm_session=/);
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM platform_owner_customer_users')).rows[0].count,1);
   assert.equal((await pool.query('SELECT count(*)::int AS count FROM tenant_user_roles WHERE user_id=$1',[ownId])).rows[0].count,0);
   assert.equal((await pool.query(`SELECT count(*)::int AS count FROM platform_microsoft_operation_proofs

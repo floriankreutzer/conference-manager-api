@@ -8,15 +8,18 @@ const failure = () => new Error('JIRA_READINESS_RUN_UNVERIFIED');
 const results = new Set(['JIRA_READINESS_TRANSITION_PENDING', 'JIRA_READINESS_TRANSITION_CONFIRMED',
   'JIRA_READINESS_ALREADY_CONFIRMED', 'JIRA_READINESS_ISSUE_NOT_IN_REVIEW', 'JIRA_READINESS_GATES_BLOCKED']);
 
-function historyDiagnostic(value) {
-  if (!value || Object.keys(value).sort().join(',') !== 'elapsedMs,entries,outcome,phase,requests'
-    || !['register', 'history', 'validation', 'complete'].includes(value.phase)
-    || !['matched', 'missing', 'unverified'].includes(value.outcome)
-    || !Number.isSafeInteger(value.elapsedMs) || value.elapsedMs < 0 || value.elapsedMs > 240000
-    || !Number.isSafeInteger(value.requests) || value.requests < 0 || value.requests > 100
-    || !Number.isSafeInteger(value.entries) || value.entries < 0 || value.entries > 1000) throw failure();
-  return { phase: value.phase, outcome: value.outcome, requests: value.requests,
-    entries: value.entries, elapsedMs: value.elapsedMs };
+export function normalizeJiraHistoryObservation(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || Object.keys(value).sort().join(',') !== 'elapsedMs,entries,outcome,phase,requests') throw failure();
+  // Snapshot once so later mutation or a changing accessor cannot bypass the
+  // closed diagnostic contract between validation and serialization.
+  const { phase, outcome, requests, entries, elapsedMs } = value;
+  if (!['register', 'history', 'validation', 'complete'].includes(phase)
+    || !['matched', 'missing', 'unverified'].includes(outcome)
+    || !Number.isSafeInteger(elapsedMs) || elapsedMs < 0 || elapsedMs > 240000
+    || !Number.isSafeInteger(requests) || requests < 0 || requests > 100
+    || !Number.isSafeInteger(entries) || entries < 0 || entries > 1000) throw failure();
+  return Object.freeze({ phase, outcome, requests, entries, elapsedMs });
 }
 
 export function loadJiraReadinessIntegration(env = {}) {
@@ -40,12 +43,14 @@ export function loadJiraReadinessConfig(env = {}) {
 
 /** Shared trusted composition; callers establish their actual event, environment and identity before invoking it. */
 export async function reconcileJiraReadinessIssue(options, { publish = publishJiraRegister, promote = promoteJiraReadiness } = {}) {
+  options.onReadinessPhase?.('register');
   const registered = await publish(options);
   if (!['JIRA_REGISTER_CONFIRMED', 'JIRA_REGISTER_UNCHANGED', 'JIRA_REGISTER_TASK_PENDING',
     'JIRA_REGISTER_ISSUE_NOT_IN_REVIEW'].includes(registered?.result) || registered.readinessAuthorized !== false) throw failure();
   if (registered.result === 'JIRA_REGISTER_TASK_PENDING') {
     return { result: 'JIRA_READINESS_REGISTER_PENDING', transitionSubmitted: false, transitionConfirmed: false, atTarget: false };
   }
+  options.onReadinessPhase?.('promotion');
   const result = await promote(options);
   if (!results.has(result?.result) || ['transitionSubmitted', 'transitionConfirmed', 'atTarget']
     .some(key => typeof result[key] !== 'boolean')) throw failure();
@@ -68,7 +73,7 @@ export async function runJiraReadiness({ env = process.env, write = console.log,
     await assertJiraWriterIdentity(pool);
     if (failed) throw failure();
     const options = { ...config.integration, pool,
-      onHistoryObservation: value => { historyObservation = historyDiagnostic(value); }, fetchImpl: (url, request) => {
+      onHistoryObservation: value => { historyObservation = normalizeJiraHistoryObservation(value); }, fetchImpl: (url, request) => {
       if (failed || controller.signal.aborted) throw failure();
       return fetchImpl(url, { ...request, signal: AbortSignal.any([controller.signal, request.signal]) });
     } };

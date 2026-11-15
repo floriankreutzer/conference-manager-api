@@ -7,6 +7,22 @@ on:
         description: CO work item to register without a status transition
         required: true
         type: string
+      operation:
+        description: Append obligations, or execute one explicitly approved scope decision
+        required: true
+        default: append
+        type: choice
+        options:
+          - append
+          - supersede
+      decision_comment_id:
+        description: Unedited authorized JSON decision comment (supersede only)
+        required: false
+        type: string
+      decision_digest:
+        description: Approved SHA-256 of the exact JSON decision text (supersede only)
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -53,4 +69,8 @@ jobs:
           CM_JIRA_WRITER_EMAIL: ${{ secrets.CM_JIRA_WRITER_EMAIL }}
           CM_JIRA_WRITER_API_TOKEN: ${{ secrets.CM_JIRA_WRITER_API_TOKEN }}
           CM_JIRA_ISSUE_KEY: ${{ inputs.issue_key }}
+          CM_JIRA_REGISTER_OPERATION: ${{ inputs.operation }}
+          CM_JIRA_WRITER_ACCOUNT_ID: ${{ vars.CM_JIRA_WRITER_ACCOUNT_ID }}
+          CM_JIRA_DECISION_COMMENT_ID: ${{ inputs.decision_comment_id }}
+          CM_JIRA_DECISION_DIGEST: ${{ inputs.decision_digest }}
         run: node scripts/jira-register-publish.mjs
