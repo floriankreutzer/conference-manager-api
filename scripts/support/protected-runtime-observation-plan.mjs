@@ -20,14 +20,14 @@ function instant(value) {
     || new Date(value).toISOString() !== value) refuseRuntimeObservation();
 }
 
-// An approved deployment selection, never an observation or browser mutation.
-// This first implementation is restricted to the two existing INT origins.
-export function normalizeRuntimeObservationSelection(value) {
+// Read-only verification can inspect a newly qualified immutable release before
+// the separately qualified, epoch-bound persistence allowlist is advanced.
+// Destinations remain fixed; this selection grants no persistence authority.
+export function normalizeRuntimeVerificationSelection(value) {
   exactObservationObject(value, ['environment', 'apiCommit', 'frontendCommit',
     'serviceVersion', 'customer', 'platform', 'evidence']);
   if (value.environment !== 'int'
     || ![value.apiCommit, value.frontendCommit].every(item => typeof item === 'string' && /^[a-f0-9]{40}$/.test(item))
-    || value.frontendCommit !== OBSERVATION_FRONTEND_COMMIT
     || typeof value.serviceVersion !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(value.serviceVersion)) {
     refuseRuntimeObservation();
   }
@@ -46,6 +46,13 @@ export function normalizeRuntimeObservationSelection(value) {
   }
   return Object.freeze({ ...value, customer: Object.freeze({ ...value.customer }),
     platform: Object.freeze({ ...value.platform }), evidence: Object.freeze({ ...value.evidence }) });
+}
+
+// Preserve the original observer's fixed frontend pin and all epoch/owner gates.
+export function normalizeRuntimeObservationSelection(value) {
+  const selection = normalizeRuntimeVerificationSelection(value);
+  if (selection.frontendCommit !== OBSERVATION_FRONTEND_COMMIT) refuseRuntimeObservation();
+  return selection;
 }
 
 export function normalizeRuntimeObservationPlan(value) {
