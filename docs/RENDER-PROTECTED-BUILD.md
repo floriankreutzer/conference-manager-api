@@ -6,14 +6,15 @@ a separate CI dependency and must not be synchronized over protected INT.
 
 ## Current release selection
 
-`render.int.yaml` selects published API source
-`aa732f9765858343a8f82bff7bb7ed81d780b903` and protected frontend
-`53fa27a6b994f1559327f9764a0825fbee2e2165` for the confirmed-booking capacity
+`render.int.yaml` now prepares published API source
+`671d8837402f8d70b022550321834389132126bd` and protected frontend
+`f89a71e7ed590c6fab78423f24d65953cb3f6c3e` for the confirmed-booking capacity
 feedback correction. The source preparation remains dated in
-[the 15 November source record](QA-20261115-SAAS2-CAPACITY-RELEASE.md);
-[the separate configuration record](QA-20261115-SAAS2-CAPACITY-CONFIGURATION.md)
-binds the qualified sources, frozen release branch and independently verified
-manifest digests. It retains the authenticated wrapper selected by API PR366.
+[the mode-repair source record](QA-20261115-SAAS2-MODE-RELEASE.md);
+[the new separate configuration candidate](QA-20261115-SAAS2-MODE-CONFIGURATION.md)
+lists the qualified sources, proposed frozen release branch and independently
+verified manifest digests. Branch protection, configuration Main gates and
+successful provider receipts remain open. It retains the authenticated wrapper selected by API PR366.
 The later configuration commit must not replace the published API source in
 its literal build guard or runtime profile.
 
@@ -122,9 +123,9 @@ That dated preparation required separate frontend and API candidate/Main
 qualification. The 10 November configuration subsequently bound F26e to the
 actual published API release source R405 and its two independently verified
 manifest digests. Those historical sources and artifacts do not qualify the
-current Raa732/F53fa selection. The current configuration record above binds
-its own sources, native checks and independent artifacts; provider receipts
-remain a separate gate.
+now-superseded Raa732/F53fa selection. The current R671/Ff89 configuration
+candidate above binds its own sources, native checks and independent artifacts;
+provider receipts remain a separate gate.
 The legacy `vendor/demo-frontend` and its Demo contract are unchanged. Render documents that
 it initializes Git submodules using its connected Git-provider credentials:
 <https://render.com/docs/git-provider#git-submodules>. The existing Render
