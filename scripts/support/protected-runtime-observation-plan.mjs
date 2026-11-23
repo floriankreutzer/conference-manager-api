@@ -5,7 +5,7 @@ export const PROTECTED_OBSERVATION_ORIGINS = Object.freeze({
   platform: 'https://conference-manager-ops-demo.onrender.com',
 });
 export const OBSERVATION_MAX_AGE_MS = 120_000;
-export const OBSERVATION_FRONTEND_COMMIT = '26e3a75bfa15f0a2ea1373e7f8e6ccc61a224dfc';
+export const OBSERVATION_FRONTEND_COMMIT = 'dda63bc08bffacc1f80e2681e12bbee59d8fe4f6';
 export function refuseRuntimeObservation() { throw new Error('PROTECTED_RUNTIME_OBSERVATION_REFUSED'); }
 export function exactObservationObject(value, keys) {
   if (!value || ![Object.prototype, null].includes(Object.getPrototypeOf(value))
@@ -48,7 +48,7 @@ export function normalizeRuntimeVerificationSelection(value) {
     platform: Object.freeze({ ...value.platform }), evidence: Object.freeze({ ...value.evidence }) });
 }
 
-// Preserve the original observer's fixed frontend pin and all epoch/owner gates.
+// Preserve the qualified observer's fixed frontend pin and all epoch/owner gates.
 export function normalizeRuntimeObservationSelection(value) {
   const selection = normalizeRuntimeVerificationSelection(value);
   if (selection.frontendCommit !== OBSERVATION_FRONTEND_COMMIT) refuseRuntimeObservation();
