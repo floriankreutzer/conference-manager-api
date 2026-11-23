@@ -1,22 +1,22 @@
 {
   "environment": "int",
-  "deployedSourceCommit": "405003e9be0c386934ae02be43d57dd12a6d8d6c",
-  "frontendCommit": "26e3a75bfa15f0a2ea1373e7f8e6ccc61a224dfc",
+  "deployedSourceCommit": "67527b7e054191cd51686d733b9b5575e7beccee",
+  "frontendCommit": "dda63bc08bffacc1f80e2681e12bbee59d8fe4f6",
   "serviceVersion": "cm-int-20261021",
   "customer": {
-    "deploymentReference": "dep-dbsoc767bikc73c1bltg",
-    "deployedAt": "2026-11-15T10:15:47.083Z",
-    "frontendSha256": "016663458140e74636a99ac2c28907aea26ab6634c92f4065181f98c145601d3"
+    "deploymentReference": "dep-dc2936l6e07s73b4qkkg",
+    "deployedAt": "2026-11-23T19:19:38.992Z",
+    "frontendSha256": "52e641d94e1284f19b44665fcfe08c1d9343bbfbc3cb4ad779a8b72cd81aca03"
   },
   "platform": {
-    "deploymentReference": "dep-dbsoc767bikc73c1bl00",
-    "deployedAt": "2026-11-15T10:15:46.580Z",
-    "frontendSha256": "0f2aae70f45ad7be5684c2864c57e9275253438d0e240b7eacf0155a564c0f9b"
+    "deploymentReference": "dep-dc2936l6e07s73b4qld0",
+    "deployedAt": "2026-11-23T19:19:38.980Z",
+    "frontendSha256": "21fefc4a4a50e0bfb3d9175dfc7f14acf9b584559a29c0b59750f7c19b747052"
   },
   "evidence": {
     "release": "jira:CO-320",
-    "change": "github:conference-manager-api/pull/415",
-    "rollback": null,
-    "runbook": "git:conference-manager-api/9734992407e30ba18a5e577f740f9ec92c8c3eac/docs/QA-20261110-SAAS2-CONFIGURATION.md"
+    "change": "github:conference-manager-api/pull/430",
+    "rollback": "git:conference-manager-api/671d8837402f8d70b022550321834389132126bd",
+    "runbook": "git:conference-manager-api/bb8cf407e326b1491fe209609e1ba9d891384eae/docs/QA-20261123-SAAS2-CATERING-CONFIGURATION.md"
   }
 }
