@@ -6,27 +6,25 @@ a separate CI dependency and must not be synchronized over protected INT.
 
 ## Current release selection
 
-`render.int.yaml` now prepares published API source
-`671d8837402f8d70b022550321834389132126bd` and protected frontend
-`f89a71e7ed590c6fab78423f24d65953cb3f6c3e` for the confirmed-booking capacity
-feedback correction. The source preparation remains dated in
-[the mode-repair source record](QA-20261115-SAAS2-MODE-RELEASE.md);
-[the new separate configuration candidate](QA-20261115-SAAS2-MODE-CONFIGURATION.md)
-lists the qualified sources, proposed frozen release branch and independently
-verified manifest digests. Branch protection, configuration Main gates and
-successful provider receipts remain open. It retains the authenticated wrapper selected by API PR366.
-The later configuration commit must not replace the published API source in
-its literal build guard or runtime profile.
+`render.int.yaml` prepares API source
+`67527b7e054191cd51686d733b9b5575e7beccee` and protected frontend
+`dda63bc08bffacc1f80e2681e12bbee59d8fe4f6` for the unused-catering participant
+reduction correction. See [the source record](QA-20261123-SAAS2-CATERING-SOURCE.md)
+and [the separate configuration record](QA-20261123-SAAS2-CATERING-CONFIGURATION.md).
+The configuration is not a deployment receipt. Require its own candidate/review
+and separate Main qualification, source Main qualification, the exact active
+release-branch ruleset and a fresh provider plan before applying it.
 
-Keep Blueprint auto-sync paused and require this configuration's own complete
-candidate/Main and provider gates before application. A merged configuration is
-not a deployment receipt. No migration or reset is part of this release.
-The preceding R405/F26 configuration in
-[the 10 November record](QA-20261110-SAAS2-CONFIGURATION.md) and its actual
-matching provider receipts are the rollback baseline. Older R15b/F28a and
-initial wrapper selections remain historical evidence for their own sources.
-Record new provider receipts only after successful deployment and independent
-served-byte verification; reconcile observer and DAST selections afterward.
+Keep Blueprint auto-sync paused. The later merge/configuration commit must never
+replace the published source R in the literal build guard or runtime profile.
+No migration, reset, new provider input or resource is part of this release.
+
+The actually deployed rollback baseline is R671/Ff89, selected in
+[the mode configuration](QA-20261115-SAAS2-MODE-CONFIGURATION.md), with successful
+22 November Customer receipt `dep-dc1knbavcj2c73erod00` and Platform receipt
+`dep-dc1knbavcj2c73eroc50`. The earlier R405/F26 and other selections remain dated
+history. Record replacement receipts only after both services successfully deploy
+and all served bytes are independently verified; reconcile observer/DAST afterward.
 
 ## Historical Blueprint adoption — 30 October 2026
 
