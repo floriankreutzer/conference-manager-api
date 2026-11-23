@@ -1,5 +1,5 @@
 import { pathToFileURL } from 'node:url';
-import { readJiraRegister } from './jira-register-reader.mjs';
+import { readJiraRegister, JiraRegisterReadError } from './jira-register-reader.mjs';
 
 export async function runJiraRegisterDiagnostic({ write = console.log, ...options } = {}) {
   try {
@@ -7,8 +7,10 @@ export async function runJiraRegisterDiagnostic({ write = console.log, ...option
     write(JSON.stringify({ schemaVersion: 1, result: 'JIRA_REGISTER_READ',
       enrollmentRequired: result.enrollmentRequired, readinessEvaluated: false, mutationPerformed: false }));
     return 0;
-  } catch {
+  } catch (error) {
     write(JSON.stringify({ schemaVersion: 1, result: 'JIRA_REGISTER_READ_UNVERIFIED',
+      phase: error instanceof JiraRegisterReadError ? error.phase : 'unknown',
+      httpStatus: error instanceof JiraRegisterReadError ? error.httpStatus : null,
       readinessEvaluated: false, mutationPerformed: false }));
     return 1;
   }
