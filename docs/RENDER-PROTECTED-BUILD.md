@@ -4,27 +4,25 @@ Tracking: CO-85, INF-04/05. `render.int.yaml`
 describes both existing protected INT services. The legacy `render.yaml` remains
 a separate CI dependency and must not be synchronized over protected INT.
 
-## Current release selection
+## Prepared recovery release selection
 
-`render.int.yaml` selects the deployed API source
-`67527b7e054191cd51686d733b9b5575e7beccee` and protected frontend
-`dda63bc08bffacc1f80e2681e12bbee59d8fe4f6` for the unused-catering participant
-reduction correction. The source, configuration, Main qualification, actual
-provider receipts and complete served-byte verification are recorded in
-[the dated release evidence](QA-20261123-SAAS2-RELEASE-VERIFICATION.md).
+`render.int.yaml` prepares API source
+`4e64ba5d3f8fc94a38cc1af391897ce700d5faa4` and protected frontend
+`2e452aff6e5d3db6f040065faece0146e1c6ec19` for room-change recovery.
+[The configuration record](QA-20261123-SAAS2-ROOM-RECOVERY-CONFIGURATION.md)
+contains exact source bindings, independently reproduced artifacts and remaining
+qualification/application gates. Preparation is not a successful deployment.
 
-Keep Blueprint auto-sync paused. The later merge/configuration or observer commit
-must never replace published source R in the literal build guard or runtime
-profile. No migration, reset, new provider input or resource is part of this release.
-The current receipts are Customer `dep-dc2936l6e07s73b4qkkg` and Platform
-`dep-dc2936l6e07s73b4qld0`, both successfully deployed on 23 November.
-
-The accepted rollback pair remains R671/Ff89, selected in
-[the historical mode configuration](QA-20261115-SAAS2-MODE-CONFIGURATION.md), with
-22 November receipts `dep-dc1knbavcj2c73erod00` and `dep-dc1knbavcj2c73eroc50`.
-Earlier R405/F26 selections remain historical. Updating source-owned verification
-inputs does not authorize another observer dispatch, schedule activation, new
-qualification variable or Product Acceptance closure.
+The last observed deployed pair remains R67527/Fdda63, with Customer
+`dep-dc2936l6e07s73b4qkkg` and Platform `dep-dc2936l6e07s73b4qld0`.
+[Its dated evidence](QA-20261123-SAAS2-RELEASE-VERIFICATION.md) remains historical
+truth until fresh provider receipts and served-byte equality prove replacement.
+Keep Blueprint auto-sync paused; do not deploy a later configuration commit as R.
+No migration, reset, new provider input, resource or spending is authorized here.
+Observer dispatch, recurring activation, qualification variables and Product
+Acceptance remain separate gates. Earlier R671/Ff89 remains a historical rollback
+checkpoint; the immediately preceding observed R67527/Fdda63 is retained in the
+new configuration record.
 
 ## Historical Blueprint adoption — 30 October 2026
 
