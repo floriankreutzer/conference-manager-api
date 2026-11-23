@@ -5,7 +5,10 @@ source candidate, not a qualified release or a successful deployment receipt.
 
 ## Exact source selection
 
-Preparation starts at API Main `096a90826861db825d88e5c79a221c430cb99cc8`.
+Initial preparation started at API Main `096a90826861db825d88e5c79a221c430cb99cc8`.
+The current candidate integrates subsequent Main
+`69bcf28d0714df5b3e18917b3a95d4c2b4500809`, preserving its Jira site-link migration
+workflow, bounded operator tooling and tests. No application runtime changed.
 The protected frontend Gitlink selects
 `dda63bc08bffacc1f80e2681e12bbee59d8fe4f6`, tree
 `094e155d812a98f91cc20a70efa28d3b54d928d9`, from
@@ -26,6 +29,16 @@ application `src/`, migrations, dependencies, protected wrapper/reader and API C
 unchanged. Differences concern release selections, observer and Jira tooling,
 their tests and documentation. This is functional application equivalence, not
 whole-tree equality or a substitute for the candidate's own native gates.
+
+## Frontend qualification
+
+Frontend candidate CI 45199284550 passed all gates, including 617 tests in each
+full browser engine, both protected engines and three-customer/two-reset acceptance.
+Its authentic review completed without findings. Merged Main
+`03d59bfbe11949f12ed91e143e3479e16d1f1290` has the same full tree and independently
+passed CI 45206805496, Secret Scan and release source evidence. The earlier API
+candidate `3e1b54e0b2523eb0440ce3621a37c47f8124ddad` passed CI 45200491797 and review;
+that historical result does not qualify the new Main-integration candidate.
 
 ## Qualification boundary
 

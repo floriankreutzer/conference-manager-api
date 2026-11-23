@@ -112,6 +112,23 @@ test('diagnostic emits neither provider data nor credentials on success or failu
     assert.ok(code === 0 || code === 1);
   }
 });
+test('diagnostic distinguishes safe transport, HTTP and schema phases without provider payloads', async () => {
+  for (const [fetchImpl, phase, httpStatus] of [
+    [async () => { throw new Error(config.token); }, 'issue_transport', null],
+    [async () => new Response(config.token, { status: 401 }), 'issue_response', 401],
+    [async () => response({ private: config.token }), 'issue_schema', 200],
+    [async (url) => url.includes('/properties/') ? new Response(config.token, { status: 403 }) : response(issue), 'register_response', 403],
+    [mock({ key: JIRA_REGISTER_PROPERTY, value: {} }), 'register_schema', 200],
+  ]) {
+    const lines = [];
+    assert.equal(await runJiraRegisterDiagnostic({ ...config, fetchImpl, write: (line) => lines.push(line) }), 1);
+    const diagnostic = JSON.parse(lines[0]);
+    assert.equal(diagnostic.phase, phase);
+    assert.equal(diagnostic.httpStatus, httpStatus);
+    assert.equal(diagnostic.mutationPerformed, false);
+    assert.equal(lines[0].includes(config.token), false);
+  }
+});
 test('diagnostic workflow protects credentials from PR code and shell input interpolation', () => {
   const yaml = readFileSync(new URL('../.github/workflows/jira-register-diagnostic.yml', import.meta.url), 'utf8');
   assert.match(yaml, /github.ref == 'refs\/heads\/main'/);
