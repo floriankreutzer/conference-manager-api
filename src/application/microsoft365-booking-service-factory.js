@@ -169,7 +169,11 @@ export function createMicrosoft365BookingServiceFactory({
       let created;
       try {
         created = normalizeCreateResult(
-          await targetProvider.createCalendarEvent(Object.freeze({ ...input, idempotencyKey })),
+          await targetProvider.createCalendarEvent(Object.freeze({
+            ...input,
+            providerResourceReference: targetProvider.providerResourceReference,
+            idempotencyKey,
+          })),
         );
       } catch (error) {
         throw new BookingChangeCalendarMoveError(

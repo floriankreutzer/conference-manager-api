@@ -145,6 +145,13 @@ The provider receives only the opaque stored reference and the desired server bo
 Post-confirmation booking changes use a separate proposal aggregate instead of overloading the Request workflow status. A partial unique index permits one `pending` or `applying` proposal per confirmed Request. A v2 proposal contains the complete desired composition plus expected Request version and persists an immutable next-version snapshot after evaluating current Tenant configuration. A genuinely participant-count-only change with unchanged configuration revisions can apply immediately; every other composition change or revision-only refresh remains pending manager decision. Same-room updates retain the opaque event reference. Because a Graph event belongs to its room mailbox, room changes use an idempotent replacement saga with cleanup/compensation and an audit-atomic provider-reference swap; they never pretend that changing the local `room_id` moved an event between mailboxes.
 
 The proposal's persisted `applying` state is also its crash-recovery boundary.
+Room replacement passes the target provider's captured resource reference to
+the create operation, just as ordinary creation and restoration pass their
+server-owned bindings. Strict adapters must continue to reject missing or foreign
+resource references; they must not infer authority from a browser field. The
+service/actual-synthetic-adapter regression covers replacement, restoration and
+foreign selection denial. Its repository fixture does not prove deployed
+PostgreSQL finalization or browser recovery.
 Repeated approval resumes that state and keeps the same room-move key while a
 target create outcome is unknown. Confirmed target cleanup returns the proposal
 to `pending`, so the next applying attempt derives a new key and cannot resolve
