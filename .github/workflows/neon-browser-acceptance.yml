@@ -121,13 +121,19 @@ jobs:
           from pathlib import Path
           path = Path('/etc/apt/apt-mirrors.txt')
           if path.is_file():
-              original = path.read_text()
-              azure = 'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1'
-              archive = 'https://archive.ubuntu.com/ubuntu/\tpriority:2'
-              if original.count(azure) == 1 and original.count(archive) == 1:
-                  updated = original.replace(azure, azure[:-1] + '2', 1)
-                  updated = updated.replace(archive, archive[:-1] + '1', 1)
-                  path.write_text(updated)
+              original = path.read_bytes().decode('utf-8')
+              lines = original.splitlines(keepends=True)
+              cloud_mirrors = (
+                  'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\n',
+                  'http://us-east-2.ec2.archive.ubuntu.com/ubuntu/\tpriority:1\n',
+              )
+              preferred = [mirror for mirror in cloud_mirrors if mirror in lines]
+              archive = 'https://archive.ubuntu.com/ubuntu/\tpriority:2\n'
+              if len(preferred) == 1 and lines.count(preferred[0]) == 1 and lines.count(archive) == 1:
+                  cloud = preferred[0]
+                  lines[lines.index(cloud)] = cloud[:-2] + '2\n'
+                  lines[lines.index(archive)] = archive[:-2] + '1\n'
+                  path.write_bytes(''.join(lines).encode('utf-8'))
                   print('Using the existing official Ubuntu HTTPS mirror first.')
               else:
                   print('Runner mirror layout changed; retaining its trusted defaults.')

@@ -109,6 +109,16 @@ qualified digests. Negative coverage refuses the superseded frontend. This
 source reconciliation requires its own normal review, candidate/Main and security
 gates; those later native receipts remain in GitHub and are referenced from Jira.
 
+Its first candidate CI run `45298122645`, WebKit/object job `138124406587`,
+reached the unchanged 30-minute budget. APT fetched 140 MB from the runner's AWS
+Ubuntu mirror in 24 minutes 37 seconds (94.7 kB/s). Both shared browser cases
+then passed, but permanent three-customer/reset acceptance did not complete.
+That cancelled attempt is not a pass. The existing Azure-only mirror preference
+had retained the AWS defaults. The bounded correction also recognizes the
+runner's exact AWS entry and swaps only existing priorities with the official
+HTTPS archive. Negative fixtures preserve unknown or ambiguous configurations.
+Fresh exact-head review and complete candidate/Main gates remain required.
+
 This work does not activate recurring collection, change qualification variables,
 allocate database credentials or claim a persisted observer result. Owner,
 epoch, migration-ledger, routing, freshness and budget guards remain in force.
