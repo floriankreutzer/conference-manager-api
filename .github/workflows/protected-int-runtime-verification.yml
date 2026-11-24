@@ -38,8 +38,8 @@ jobs:
     runs-on: ubuntu-slim
     timeout-minutes: 5
     env:
-      INT_DEPLOYED_SOURCE_COMMIT: '67527b7e054191cd51686d733b9b5575e7beccee'
-      PROTECTED_FRONTEND_COMMIT: 'dda63bc08bffacc1f80e2681e12bbee59d8fe4f6'
+      INT_DEPLOYED_SOURCE_COMMIT: '4e64ba5d3f8fc94a38cc1af391897ce700d5faa4'
+      PROTECTED_FRONTEND_COMMIT: '2e452aff6e5d3db6f040065faece0146e1c6ec19'
       PROTECTED_ENVIRONMENT: int
       PROTECTED_CUSTOMER_ORIGIN: https://conference-manager-demo.onrender.com
       PROTECTED_PLATFORM_ORIGIN: https://conference-manager-ops-demo.onrender.com
@@ -50,7 +50,7 @@ jobs:
       # Native provider receipts and independently qualified digests; never read
       # expected values from the build output or the target being verified.
       INT_VERIFICATION_SELECTION: >-
-        {"environment":"int","deployedSourceCommit":"67527b7e054191cd51686d733b9b5575e7beccee","frontendCommit":"dda63bc08bffacc1f80e2681e12bbee59d8fe4f6","serviceVersion":"cm-int-20261021","customer":{"deploymentReference":"dep-dc2936l6e07s73b4qkkg","deployedAt":"2026-11-23T19:19:38.992Z","frontendSha256":"52e641d94e1284f19b44665fcfe08c1d9343bbfbc3cb4ad779a8b72cd81aca03"},"platform":{"deploymentReference":"dep-dc2936l6e07s73b4qld0","deployedAt":"2026-11-23T19:19:38.980Z","frontendSha256":"21fefc4a4a50e0bfb3d9175dfc7f14acf9b584559a29c0b59750f7c19b747052"},"evidence":{"release":"jira:CO-320","change":"github:conference-manager-api/pull/430","rollback":"git:conference-manager-api/671d8837402f8d70b022550321834389132126bd","runbook":"git:conference-manager-api/bb8cf407e326b1491fe209609e1ba9d891384eae/docs/QA-20261123-SAAS2-CATERING-CONFIGURATION.md"}}
+        {"environment":"int","deployedSourceCommit":"4e64ba5d3f8fc94a38cc1af391897ce700d5faa4","frontendCommit":"2e452aff6e5d3db6f040065faece0146e1c6ec19","serviceVersion":"cm-int-20261021","customer":{"deploymentReference":"dep-dc2dhke8bjmc73fbp850","deployedAt":"2026-11-24T00:23:33.522Z","frontendSha256":"652c82a3a83a0fb9193b725715134093bec91c933d603ccda385e2e11ae686cf"},"platform":{"deploymentReference":"dep-dc2dhke8bjmc73fbp8s0","deployedAt":"2026-11-24T00:23:38.929Z","frontendSha256":"d255ec1f24a74d3da66a1c8b1d5ff5da68cdb100a9e879df0498e37907ddc376"},"evidence":{"release":"jira:CO-320","change":"github:conference-manager-api/pull/434","rollback":"git:conference-manager-api/67527b7e054191cd51686d733b9b5575e7beccee","runbook":"git:conference-manager-api/1a7b93120b0bd95b56be8d9cbe491c035b567b4e/docs/QA-20261123-SAAS2-ROOM-RECOVERY-CONFIGURATION.md"}}
     steps:
       - name: Refuse debug logging before source credential allocation
         env:
@@ -82,7 +82,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: floriankreutzer/conference-manager-api
-          ref: '67527b7e054191cd51686d733b9b5575e7beccee'
+          ref: '4e64ba5d3f8fc94a38cc1af391897ce700d5faa4'
           path: release-source
           token: ${{ steps.source-token.outputs.token }}
           submodules: true

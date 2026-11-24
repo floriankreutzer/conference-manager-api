@@ -305,7 +305,7 @@ a recurring or Product/Feedback acceptance. The 300-second freshness, owner
 custody, exact migration ledger and full sealed-byte checks remain unchanged.
 
 
-## Current SaaS1 QA selection — 9 November 2026
+## Historical SaaS1 QA selection — 9 November 2026
 
 CO-320 follows frontend integration PR465 and API release PR402 (including PR401).
 The deployed API is `c146aeab3501b73d71d2fde70cb5b102d4d617a6`; frontend is
@@ -326,3 +326,22 @@ this reconciliation. Require this observer candidate and independent Main gates
 before qualifying its exact Main SHA and one bounded manual collection. Keep
 `CM_INT_OBSERVER_SCHEDULE_ENABLED=false`. The separate 300-second freshness,
 owner custody, migration ledger and all-byte checks remain unchanged.
+
+## Current room-recovery selection — 24 November 2026
+
+CO-299/CO-320 follows the qualified room-recovery pair: deployed API
+`4e64ba5d3f8fc94a38cc1af391897ce700d5faa4` and frontend
+`2e452aff6e5d3db6f040065faece0146e1c6ec19`. Actual successful receipts are
+Customer `dep-dc2dhke8bjmc73fbp850` at `2026-11-24T00:23:33.522Z` and Platform
+`dep-dc2dhke8bjmc73fbp8s0` at `2026-11-24T00:23:38.929Z`. The dated
+[verification record](QA-20261124-SAAS2-ROOM-RECOVERY-VERIFICATION.md) binds the
+independently reproduced manifests, all 512 hosted files and both ready API
+identities. Provider completion times retain the millisecond contract; they are
+not observation timestamps.
+
+The selection, fixed frontend checkout and allowlist advance together. Negative
+coverage also refuses the superseded Fdda63 source. This reconciliation does not
+deploy an observer, change its qualification variables, enable recurring traffic,
+allocate database credentials or prove a persisted Runtime result. Candidate and
+independent Main qualification remain required before separate activation; owner,
+epoch, complete migration-ledger, routing, freshness and budget gates still apply.

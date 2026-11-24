@@ -35,7 +35,7 @@ const verify = f => verifyProtectedRuntimeArtifacts({ selection: f.selection,
 test('read-only verification accepts independently pinned artifacts without changing the observer allowlist', async t => {
   const f = await verificationFixture(t);
   const before = JSON.stringify(f.selection);
-  assert.equal(OBSERVATION_FRONTEND_COMMIT, 'dda63bc08bffacc1f80e2681e12bbee59d8fe4f6');
+  assert.equal(OBSERVATION_FRONTEND_COMMIT, '2e452aff6e5d3db6f040065faece0146e1c6ec19');
   assert.throws(() => normalizeRuntimeObservationSelection(f.selection), /OBSERVATION_REFUSED/);
   assert.throws(() => normalizeRuntimeObservationPlan({ ...f.selection, securityEpoch: f.plan.securityEpoch }), /OBSERVATION_REFUSED/);
   const report = await verify(f);
@@ -184,10 +184,10 @@ test('the native verification path is fixed-source, owner-only, read-only and ne
   assert.doesNotMatch(workflow, /reconcileProtectedRuntimeObservation|protected-runtime-recurring-observe|protected-runtime-observe\.mjs/);
   assert.match(workflow, /row\.required !== 'ready'/);
   assert.match(workflow, /PROTECTED_RUNTIME_VERIFICATION_REFUSED/);
-  for (const literal of ['67527b7e054191cd51686d733b9b5575e7beccee', 'dda63bc08bffacc1f80e2681e12bbee59d8fe4f6',
-    '52e641d94e1284f19b44665fcfe08c1d9343bbfbc3cb4ad779a8b72cd81aca03',
-    '21fefc4a4a50e0bfb3d9175dfc7f14acf9b584559a29c0b59750f7c19b747052',
-    'dep-dc2936l6e07s73b4qkkg', 'dep-dc2936l6e07s73b4qld0']) assert.ok(workflow.includes(literal));
+  for (const literal of ['4e64ba5d3f8fc94a38cc1af391897ce700d5faa4', '2e452aff6e5d3db6f040065faece0146e1c6ec19',
+    '652c82a3a83a0fb9193b725715134093bec91c933d603ccda385e2e11ae686cf',
+    'd255ec1f24a74d3da66a1c8b1d5ff5da68cdb100a9e879df0498e37907ddc376',
+    'dep-dc2dhke8bjmc73fbp850', 'dep-dc2dhke8bjmc73fbp8s0']) assert.ok(workflow.includes(literal));
 });
 
 

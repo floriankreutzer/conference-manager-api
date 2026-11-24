@@ -15,8 +15,9 @@ No second HTTP checker or business implementation is introduced.
 selection metadata without a security epoch. It returns an immutable public
 report, never the private same-process WeakMap receipt required for persistence.
 `collectProtectedRuntimeObservation` still requires the original fixed frontend
-allowlist and valid epoch. Its selected release, workflows, database ownership,
-migration ledger, routing, freshness, credentials and activation flags are unchanged.
+allowlist and valid epoch. Advancing that reviewed release selection is a separate
+source change with its own qualification; database ownership, migration ledger,
+routing, freshness, credentials and activation flags remain independently enforced.
 
 ## Native execution
 
