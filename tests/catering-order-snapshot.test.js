@@ -76,3 +76,14 @@ test('server identifier factories must produce distinct internal identities; no 
   const input = cateringOrderFixture(); input.orderIdFactory = () => cateringId(100);
   assert.throws(() => createCateringOrderSnapshots(input), /SNAPSHOT_INVALID/);
 });
+
+test('shared commercial-selection failures retain the exact order error consumed by persisted version-proposal fallback', () => {
+  for (const change of [
+    value => { value.canonicalCatalogue.cateringItems[0].price.amountMinor++; },
+    value => { value.canonicalCatalogue.cateringPackages[0].variants[0].description='Changed meal'; },
+    value => { value.canonicalCatalogue.cateringPackages[0].itemIds.pop(); },
+  ]) {
+    const value=cateringOrderFixture(); change(value);
+    assert.throws(()=>createCateringOrderSnapshots(value),{name:'TypeError',message:'CATERING_ORDER_SNAPSHOT_INVALID'});
+  }
+});
