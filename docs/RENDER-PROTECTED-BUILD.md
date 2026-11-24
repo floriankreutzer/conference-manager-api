@@ -4,19 +4,23 @@ Tracking: CO-85, INF-04/05. `render.int.yaml`
 describes both existing protected INT services. The legacy `render.yaml` remains
 a separate CI dependency and must not be synchronized over protected INT.
 
-## Prepared recovery release selection
+## Current recovery release selection — 24 November 2026
 
-`render.int.yaml` prepares API source
+`render.int.yaml` selects the deployed API source
 `4e64ba5d3f8fc94a38cc1af391897ce700d5faa4` and protected frontend
 `2e452aff6e5d3db6f040065faece0146e1c6ec19` for room-change recovery.
 [The configuration record](QA-20261123-SAAS2-ROOM-RECOVERY-CONFIGURATION.md)
-contains exact source bindings, independently reproduced artifacts and remaining
-qualification/application gates. Preparation is not a successful deployment.
+contains exact source bindings and independently reproduced artifacts.
+[The verification record](QA-20261124-SAAS2-ROOM-RECOVERY-VERIFICATION.md)
+records completed candidate/Main qualification, actual provider application,
+all hosted bytes and the retained synthetic booking's recovery and cancellation.
 
-The last observed deployed pair remains R67527/Fdda63, with Customer
-`dep-dc2936l6e07s73b4qkkg` and Platform `dep-dc2936l6e07s73b4qld0`.
-[Its dated evidence](QA-20261123-SAAS2-RELEASE-VERIFICATION.md) remains historical
-truth until fresh provider receipts and served-byte equality prove replacement.
+Actual successful receipts are Customer `dep-dc2dhke8bjmc73fbp850` at
+`2026-11-24T00:23:33.522Z` and Platform `dep-dc2dhke8bjmc73fbp8s0` at
+`2026-11-24T00:23:38.929Z`. All 315 Customer and 197 Platform files match the
+qualified artifacts; both services are ready at R4e64ba5/F2e452aff.
+The immediately preceding R67527/Fdda63 pair and
+[its dated evidence](QA-20261123-SAAS2-RELEASE-VERIFICATION.md) remain historical.
 Keep Blueprint auto-sync paused; do not deploy a later configuration commit as R.
 No migration, reset, new provider input, resource or spending is authorized here.
 Observer dispatch, recurring activation, qualification variables and Product
@@ -119,9 +123,9 @@ That dated preparation required separate frontend and API candidate/Main
 qualification. The 10 November configuration subsequently bound F26e to the
 actual published API release source R405 and its two independently verified
 manifest digests. Those historical sources and artifacts do not qualify the
-now-superseded Raa732/F53fa selection. The current R671/Ff89 configuration
-candidate above binds its own sources, native checks and independent artifacts;
-provider receipts remain a separate gate.
+now-superseded Raa732/F53fa selection. The later historical R671/Ff89
+configuration had its own sources, native checks and independent artifacts.
+The current pair and actual provider receipts are recorded at the top of this file.
 The legacy `vendor/demo-frontend` and its Demo contract are unchanged. Render documents that
 it initializes Git submodules using its connected Git-provider credentials:
 <https://render.com/docs/git-provider#git-submodules>. The existing Render

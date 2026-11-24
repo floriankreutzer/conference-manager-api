@@ -82,13 +82,13 @@ test('daily local window preserves exact boundaries across winter, summer and DS
 
 test('fixed reviewed deployments remain independent from qualified observer source; no invented optional evidence', async () => {
   const selection = await readRecurringRuntimeObservationSelection();
-  const deployedSource = '67527b7e054191cd51686d733b9b5575e7beccee';
+  const deployedSource = '4e64ba5d3f8fc94a38cc1af391897ce700d5faa4';
   assert.equal(selection.environment, 'int');
   assert.equal(selection.apiCommit, deployedSource);
   assert.notEqual(selection.apiCommit, source);
-  assert.equal(selection.frontendCommit, 'dda63bc08bffacc1f80e2681e12bbee59d8fe4f6');
+  assert.equal(selection.frontendCommit, '2e452aff6e5d3db6f040065faece0146e1c6ec19');
   assert.notEqual(selection.customer.deploymentReference, selection.platform.deploymentReference);
-  assert.equal(selection.evidence.rollback, 'git:conference-manager-api/671d8837402f8d70b022550321834389132126bd');
+  assert.equal(selection.evidence.rollback, 'git:conference-manager-api/67527b7e054191cd51686d733b9b5575e7beccee');
   assert.ok(Object.isFrozen(selection));
 });
 
@@ -99,7 +99,8 @@ test('the released frontend is required by both selection validation and the fix
     '28a864ea6b1d4f5ae0e0066a072f6012e059358d', '83f883dbccd76a28050f1981c8431f18174f04e7',
     '17c28fb615264e6a2eccc7ed6e46d20171cb66e3',
     'efe672ebaaa844f6663186b8a5d53a18ebab98a6', '2ddcf3859505fe62a46ac008fb1d6e9059711bbb',
-    '2667b0b6df74ffa2632fce4be6f95ef8ef8103ac', 'f6359ff537165c5e29fc4884578d92a83ce22be4', 'a'.repeat(40)]) {
+    '2667b0b6df74ffa2632fce4be6f95ef8ef8103ac', 'f6359ff537165c5e29fc4884578d92a83ce22be4',
+    'dda63bc08bffacc1f80e2681e12bbee59d8fe4f6', 'a'.repeat(40)]) {
     assert.throws(() => normalizeRuntimeObservationSelection({ ...selection, frontendCommit }), /OBSERVATION_REFUSED/);
   }
   const workflow = await readFile('.github/workflows/protected-int-runtime-recurring.yml', 'utf8');

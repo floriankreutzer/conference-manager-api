@@ -41,3 +41,19 @@ qualification. GitHub still keeps at most one pending run per group: a later
 pending event can replace an earlier pending event. This is not an every-event
 delivery guarantee, metadata deduplication, or a measured runner-minute saving.
 No successful skipped surrogate or reusable unverified result replaces a gate.
+
+## Browser prerequisite mirror selection
+
+The existing bounded APT preference recognizes the runner image's Azure and
+`us-east-2.ec2.archive.ubuntu.com` mirror entries. Exactly one recognized cloud
+entry at priority 1 and one existing official Ubuntu HTTPS archive at priority 2
+are required before swapping only those two priorities. Duplicate, ambiguous,
+commented or unfamiliar entries remain unchanged. The workflow never adds a
+repository or changes signatures, keys, suites, components or TLS policy.
+
+The ordinary and two operational browser workflows retain the same policy,
+verified by executing their actual Python against isolated mirror-list fixtures.
+This handles the observed AWS package-download stall without increasing job
+budgets, adding test retries or reducing browser/customer/reset coverage. The
+operational workflows remain manually governed; source tests do not claim their
+live Neon or restored-pair acceptance has been executed.
